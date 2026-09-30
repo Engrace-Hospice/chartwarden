@@ -8,6 +8,8 @@ import type {
   ComplianceWindowSeverity,
   ComplianceWindowStatusValue,
 } from "@wardenx/types";
+import type { LocalDate } from "@wardenx/types";
+import { computeF2fWindow, decideF2fWindowStatus } from "../certification/window-math";
 
 export const M6_PLATFORM_JOB_ID = "m6-admission-cron";
 // ── §4.3 queue catalog ────────────────────────────────────────────────────────────────────────────
@@ -275,4 +277,75 @@ export function planWindowAlert(
       },
     }));
   return { transitions, events };
+}
+
+// ── F2F "prior-to" window missed scan (F-178b, #248) ────────────────────────────────────────────────
+//
+// `decideF2fWindowStatus` (certification/window-math.ts) shipped with no caller anywhere in the
+// codebase: `m6.f2f.window_missed` was a catalogued (events-by-m6.ts) but never-emitted event. Unlike
+// the OTHER compliance-window kinds `planWindowAlert` scans (which assume a `compliance_window` row is
+// already open and only promotes its status), NO code path ever opens a `f2f_recert_30d_prior` row —
+// only `attestF2f`'s `close_window` effect touches that kind, and it no-ops when nothing is open. So
+// this scan cannot read `promoteWindowStatus`'s `ComplianceWindowSnapshot` shape; it computes the
+// window itself from the recert election period's (sequence >= `RECERT_SEQUENCE_FLOOR`) own facts and
+// OPENS the `compliance_window` row itself, at the moment it first detects "missed" — which then also
+// serves as the idempotency ledger (a second tick finds the row already open and skips; a later
+// `attestF2f` closes it exactly as it does for a row opened any other way).
+//
+// `periodStartDate` for a not-yet-active recert period N is not stored anywhere (election-period.ts:
+// "the START is the moment the period is activated") — so this reads it off the PRECEDING period N-1's
+// `scheduled_end_at + 1 day` (42 CFR 418.21(a) benefit periods are contiguous; the same arithmetic
+// `electionPeriodWindow` already treats as authoritative for N-1's own window).
+
+/** One recert election period the store has resolved enough facts for to run `decideF2fWindowStatus`. */
+export interface F2fWindowMissedCandidate {
+  readonly electionPeriodId: string;
+  readonly admissionId: string;
+  /** Derived from the preceding period's `scheduled_end_at + 1 day` (yyyy-mm-dd). */
+  readonly periodStartDate: LocalDate;
+  /** Does this period already carry an ATTESTED face-to-face encounter? */
+  readonly attested: boolean;
+  /** Is a non-closed `f2f_recert_30d_prior` compliance_window row already open for this admission? */
+  readonly alreadyFlagged: boolean;
+}
+
+/** One recert period whose F2F window newly reads `missed` and should be opened + emitted. */
+export interface PlannedF2fWindowMissed {
+  readonly electionPeriodId: string;
+  readonly admissionId: string;
+  readonly windowStart: LocalDate;
+  readonly windowEnd: LocalDate;
+  readonly windowEndInstant: string;
+}
+
+/**
+ * `admission.window_alert` (F2F half, F-178b) — pure: for each candidate not already flagged, compute
+ * its CMS 418.22 window off `periodStartDate` and run `decideF2fWindowStatus`; only a fresh `missed`
+ * verdict plans an emission. Idempotent by construction: `alreadyFlagged` candidates are skipped by the
+ * caller re-supplying them once the compliance_window row this plan asks the runner to open exists.
+ */
+export function planF2fWindowMissedScan(
+  candidates: readonly F2fWindowMissedCandidate[],
+  today: LocalDate,
+  timeZone: string,
+): PlannedF2fWindowMissed[] {
+  const planned: PlannedF2fWindowMissed[] = [];
+  for (const candidate of candidates) {
+    if (candidate.alreadyFlagged) continue;
+    const window = computeF2fWindow(candidate.periodStartDate, timeZone);
+    const status = decideF2fWindowStatus({
+      today,
+      window,
+      attested: candidate.attested,
+    });
+    if (status !== "missed") continue;
+    planned.push({
+      electionPeriodId: candidate.electionPeriodId,
+      admissionId: candidate.admissionId,
+      windowStart: window.windowStart,
+      windowEnd: window.windowEnd,
+      windowEndInstant: window.windowEndInstant,
+    });
+  }
+  return planned;
 }

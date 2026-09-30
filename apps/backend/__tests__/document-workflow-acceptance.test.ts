@@ -552,6 +552,9 @@ describe("M22-T11 §4.12 — external-disclosure presign gates on the M40 BAA st
       return {
         objectKey: `documents/${PAT}/discharge_summary/${DOC}/v1.pdf`,
         externalRecipient: { kind: "facility", mdmEntityId: "fac_partner_lab" },
+        // F-197 (#248) — not SUD-class; this describe block exercises the §4.12 BAA gate only.
+        patientId: PAT,
+        isSudClass: false,
       };
     },
   };

@@ -7,11 +7,18 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
+import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
@@ -24,6 +31,7 @@ import {
   normalizeDocumentRequest,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -394,6 +402,9 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ["m6.nor.acknowledged", "nor", { norAcknowledgmentId: ORDER }],
     ["m6.revocation.created", "revocation", { revocationEventId: ORDER }],
     ["m6.discharge.created", "discharge_summary", { dischargeEventId: ORDER }],
+    ["m6.discharge.cosigned", "discharge_summary", { dischargeEventId: ORDER }],
+    // F-192 (#248) — M6's seventh artifact, the transfer summary (both directions, one template).
+    ["m6.transfer.created", "discharge_summary_transfer", { transferEventId: ORDER }],
   ])("%s renders %s against its own row, on the patient's chart", (eventType, templateKey, ids) => {
     const { event, payload } = normalizeDocumentRequest({
       eventType,
@@ -421,14 +432,9 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ).toThrow(/names no aggregate id/);
   });
 
-  // Both are named by the M22 spec and both are deliberately unbound — see REQUEST_SHAPES for why.
-  // Pinned so that binding either one is a deliberate edit here rather than a silent widening.
-  it.each(["m6.discharge.cosigned", "m6.transfer.created"])(
-    "does not consume %s — it is a documented deferral, not an oversight",
-    (eventType) => {
-      expect(M22_DOCUMENT_REQUEST_EVENTS as readonly string[]).not.toContain(eventType);
-    },
-  );
+  // F-176 (#248) bound `m6.discharge.cosigned` (appends a discharge_summary version). F-192 (#248) bound
+  // `m6.transfer.created` too (`discharge_summary_transfer`, migration 0267) — see the `it.each` above,
+  // which now covers it. No pinned "not consumed" list remains for this group.
 
   it("throws on an M33 aggregateType M22 has no template for", () => {
     expect(() =>
@@ -529,6 +535,42 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m6.nor.acknowledged",
       "m6.revocation.created",
       "m6.discharge.created",
+      "m6.discharge.cosigned",
+      // F-144 (#248) — four render requests catalogued, spec-named by their producing module's own
+      // document-request table, and never emitted anywhere (the producer-side gap, not a declaration
+      // gap): the M13 machine's effect list was never read, and M23/M24/M25 had every typed builder and
+      // no caller.
+      "m13.administration_record.document_requested",
+      "m23.billing.document_render_requested",
+      "m24.medicaid_billing.document_render_requested",
+      "m25.denial_resolution_letter.render_requested",
+      // F-161 (#248) — 2 of the 10 "confirmed genuine" events, the two with the most decisive
+      // producer-side evidence: M17's caregiver-reminder PDF (`visit_confirmation`, no producer yet on
+      // M17's side) and M7's care-plan-signed PDF (new `care_plan` aggregate type, migration 0252).
+      "m17.caregiver_reminder_due",
+      "m7.care_plan.version_signed",
+      // F-192 (#248) — the last of that group: the M22 spec's own "discharge_summary (transfer
+      // variant)" — a distinct `document_aggregate_type` (migration 0267), not a second version of the
+      // base `discharge_summary` template.
+      "m6.transfer.created",
+      // F-166 (#248) — five GENESIS-only render requests, all real `document_aggregate_type` enum
+      // values since migration 0048 that had never gotten a TemplateDescriptor or a subscription.
+      "m8.encounter.signed",
+      "m18.evv.aggregator_accepted",
+      "m14.packet.render_requested",
+      "m14.minutes.signed",
+      "m15.plan.version_signed",
+      // F-168 (#248) — three requests genuinely blocked ONLY by the idempotency-key-granularity gate
+      // (migration 0261): each asks for a NEW VERSION of an aggregate its GENESIS sibling above already
+      // rendered.
+      "m8.encounter.addendum_signed",
+      "m14.minutes.amended",
+      "m12.medication_order.transmitted",
+      // F-208 (#248) — the printable M9 assessment summary. No per-request id on the payload, so
+      // `patientId` is the aggregate (the first patientId-keyed render this table binds) and every
+      // request — chart-open auto-refresh or the explicit download/print action — appends a new
+      // version of one evolving per-patient `assessment_summary` document.
+      "m9.assessment.summary_requested",
     ]);
   });
 
@@ -546,19 +588,33 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     const declared = new Map(
       [
         ...M6_OUTBOX_EVENTS,
+        ...M7_OUTBOX_EVENTS,
+        ...M8_OUTBOX_EVENTS,
+        ...M9_OUTBOX_EVENTS,
         ...M10_OUTBOX_EVENTS,
         ...M11_OUTBOX_EVENTS,
         ...M12_OUTBOX_EVENTS,
         ...M13_OUTBOX_EVENTS,
+        ...M14_OUTBOX_EVENTS,
+        ...M15_OUTBOX_EVENTS,
         ...M16_OUTBOX_EVENTS,
+        ...M17_OUTBOX_EVENTS,
+        ...M18_OUTBOX_EVENTS,
         ...M20_OUTBOX_EVENTS,
         ...M21_OUTBOX_EVENTS,
         ...M23_OUTBOX_EVENTS,
+        ...M24_OUTBOX_EVENTS,
         ...M25_OUTBOX_EVENTS,
         ...M27_OUTBOX_EVENTS,
         ...M33_OUTBOX_EVENTS,
         ...M37_OUTBOX_EVENTS,
-      ].map((e) => [e.eventName, e]),
+      ].map(
+        // `e.eventName` widened to `string`: M17's own catalog (events-by-m17.ts's own header comment)
+        // deliberately relaxes single-segment alert names below the stricter `OutboxEventName` template
+        // (`m${number}.${string}.${string}`) — `m17.caregiver_reminder_due` has only one dot — so the
+        // Map's key type must not be narrowed to that template or `.get()` below fails to accept it.
+        (e) => [e.eventName as string, e] as const,
+      ),
     );
     for (const eventName of M22_DOCUMENT_REQUEST_EVENTS) {
       const entry = declared.get(eventName);

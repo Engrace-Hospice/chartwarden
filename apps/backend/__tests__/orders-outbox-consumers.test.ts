@@ -66,11 +66,21 @@ describe("M11 outbox event contract (§4.4)", () => {
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     // F-117 (#248) — m22 removed: redundant with `m11.order.document_requested`, emitted in the
     // same `signOrder`/`signOnBehalf` transaction.
-    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m21", "m29", "m30"]));
+    // F-141 (#248) — m29 removed: redundant with the specific `m11.order.hl7_orm_requested` event,
+    // which carries the rich PID/ORC/OBR/NTE payload M29's own spec actually names.
+    // F-149 (#248) — m30 moved to seamConsumers: M30's own spec states it never subscribes to an
+    // upstream module's outbox, only calls seams.
+    // F-153 (#248) — m21 removed: redundant with the co-emitted, more specific
+    // `m11.order.supply_fulfillment_requested` sibling (same `emitDownstreamSignedEvent` transaction).
+    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m14"]));
+    expect(signed?.declaredConsumers).not.toContain("m21");
     expect(signed?.declaredConsumers).not.toContain("m22");
+    expect(signed?.declaredConsumers).not.toContain("m29");
+    expect(signed?.declaredConsumers).not.toContain("m30");
     // M33's reporting intake is a pull over `report_mv.*` — recorded, but not an outbox subscription
     // (#103).
     expect(signed?.seamConsumers).toContain("m33");
+    expect(signed?.seamConsumers).toContain("m30");
   });
 
   it("`m11.order.recertification_signed` reaches M6 for the CTI handshake (W-RC-01)", () => {
@@ -137,7 +147,7 @@ describe("M11 outbox event contract (§4.4)", () => {
 // ── §4.5 subscription bindings ──────────────────────────────────────────────────────────────────────────
 
 describe("M11 outbox subscriptions (§4.5)", () => {
-  it("binds the three Wave-E events, the live M14 IDG intake, and the live M22 back-ref", () => {
+  it("binds the three Wave-E events, the live M14 IDG intake, the live M22 back-ref, and the F-152 D8 auto-complete", () => {
     expect(M11_OUTBOX_SUBSCRIPTIONS).toEqual([
       {
         eventName: "m6.admission.discharged",
@@ -147,6 +157,25 @@ describe("M11 outbox subscriptions (§4.5)", () => {
       { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m11.hope-trigger" },
       { eventName: "idg.decision_recorded", consumerName: "m11.idg-decision-intake" },
       { eventName: "m22.document.rendered", consumerName: "m11.document-backref" },
+      {
+        eventName: "m21.supply_request.status_changed",
+        consumerName: "m11.m21-fulfillment-status",
+      },
+      // F-166 (#248) — releases the still-in-flight source order on a staff-initiated M21 cancel.
+      {
+        eventName: "m21.supply_request.cancelled",
+        consumerName: "m11.m21-supply-cancelled",
+      },
+      // F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events.
+      { eventName: "m29.lab_order.transmitted", consumerName: "m11.lab-transmission-applier" },
+      { eventName: "m29.lab_order.transmission_failed", consumerName: "m11.lab-transmission-applier" },
+      // F-187 (#248) — the worker's row-less refusals, so an order is never silently stuck `pending`.
+      { eventName: "m29.lab_order.dispatch_refused", consumerName: "m11.lab-transmission-applier" },
+      // F-187 (#248) — SELF-consumption: the lab-order supersession alert (T-29.08 defines no outbound cancel).
+      { eventName: "m11.order.discontinued", consumerName: "m11.lab-cancellation-required" },
+      { eventName: "m11.order.corrected", consumerName: "m11.lab-cancellation-required" },
+      // F-203 (#248) — SELF-consumption: the two-person lab-recovery control's DURABLE compliance alerts.
+      { eventName: "m11.order.recovery_alert_requested", consumerName: "m11.recovery-alert" },
     ]);
   });
 

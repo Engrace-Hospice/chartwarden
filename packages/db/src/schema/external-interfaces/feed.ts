@@ -12,6 +12,7 @@
 // FKs. Every cross-module reference — `sending_facility_allowlist` (M40 Facility ids),
 // `proposed_by_membership_id` / `approved_by_*_id` (M2 memberships) — is a LOGICAL uuid validated at the
 // write boundary; no DB FK crosses a module edge.
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -23,6 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { organizations } from "../organizations";
 import {
   externalFeedCredentialKind,
@@ -31,6 +33,17 @@ import {
   externalFeedProtocol,
   externalFeedStatus,
 } from "./enums";
+
+/**
+ * One feed per (organization, port, kind) — the rule `uq_external_feed_org_port_kind` enforces, with what violating it
+ * means to the caller. Registered so a `23505` answers 409 with this sentence instead of a bare 500 (F-189): the admin
+ * create route surfaced a duplicate as `500 INTERNAL_ERROR`. Declared here, not inside the `pgTable` callback, because
+ * Drizzle invokes that callback lazily and a registration that has not run is a rule the error handler cannot see.
+ */
+const FEED_ORG_PORT_KIND_UQ = businessRule(
+  "uq_external_feed_org_port_kind",
+  "This organization already has a feed of this kind on that port. Choose a different port, or update the existing feed instead of creating another.",
+);
 
 export const externalFeed = pgTable(
   "external_feed",
@@ -45,8 +58,26 @@ export const externalFeed = pgTable(
     host: text("host"),
     port: integer("port").notNull(),
     protocol: externalFeedProtocol("protocol").notNull(),
-    /** sha256(certPEM) — null only for `mllp_plain` (test only). */
+    /** Lowercase-hex sha256 of the certificate's DER encoding — the canonical convention (F-181, defined in
+     *  `apps/backend/src/modules/29-external-interfaces/feed/cert-pin.ts`; the admin routes derive it from an
+     *  uploaded PEM). NOT a hash of PEM text (not byte-stable). Null only for `mllp_plain` (test only;
+     *  refused for outbound feeds in production). */
     channelCertPin: text("channel_cert_pin"),
+    /** F-181 (#248, migration 0262) — the LOGICAL M40 Facility id this OUTBOUND feed delivers to. Routing key for
+     *  `OrmRequestedPayload.labDestinationFacilityId`; null for an inbound listener or an unlinked legacy feed. */
+    labDestinationFacilityId: uuid("lab_destination_facility_id"),
+    /** F-181 — outbound MSH-3/4/5/6 identity (HL7-safe, ≤180 chars, CHECK-enforced). Null ⇒ the worker refuses a
+     *  real send rather than fabricating one (MSH-3 alone falls back to the fixed platform identity). */
+    mshSendingApplication: text("msh_sending_application"),
+    mshSendingFacility: text("msh_sending_facility"),
+    mshReceivingApplication: text("msh_receiving_application"),
+    mshReceivingFacility: text("msh_receiving_facility"),
+    /** F-183 (#248, migration 0263) — the operator's explicit statement that this OUTBOUND feed's receiver dedupes on
+     *  MSH-10. Only then may the `in_flight` reclaim sweep requeue a stale row (same wire, same MSH-10); otherwise the
+     *  row is HELD for human verification with the lab. Default false = never auto-resend an unknown-delivery ORM. */
+    receiverDedupesControlId: boolean("receiver_dedupes_control_id").notNull().default(false),
+    /** F-183 — per-feed `in_flight` lease in seconds (CHECK 60..3600); null = the platform default. */
+    inFlightLeaseSeconds: integer("in_flight_lease_seconds"),
     /** string[] of M40 Facility ids — the per-feed MSH-4 sender allowlist (§4.11.2). */
     sendingFacilityAllowlist: jsonb("sending_facility_allowlist")
       .notNull()
@@ -75,12 +106,15 @@ export const externalFeed = pgTable(
   },
   (t) => ({
     orgKindIdx: index("idx_external_feed_org_kind").on(t.organizationId, t.kind),
-    uniqOrgPortKind: uniqueIndex("uq_external_feed_org_port_kind").on(
+    uniqOrgPortKind: uniqueIndex(FEED_ORG_PORT_KIND_UQ).on(
       t.organizationId,
       t.port,
       t.kind,
     ),
     statusIdx: index("idx_external_feed_status").on(t.status),
+    orgDestFacilityIdx: index("idx_external_feed_org_dest_facility")
+      .on(t.organizationId, t.labDestinationFacilityId)
+      .where(sql`${t.labDestinationFacilityId} IS NOT NULL`),
   }),
 );
 

@@ -6,7 +6,8 @@
 //
 // TWO SEAMS, TWO QUESTIONS:
 //   • M11 `OrderProvider.getOrder`         — who is this order for? (§2.8's logical-FK check)
-//   • M6  `AdmissionStatusReader`          — which provider entity, and is anyone still there? (§7.1)
+//   • M6  `AdmissionStatusReader`          — which provider entity, location, and is anyone still there?
+//                                             (§7.1)
 //
 // A THIRD READ IS CONDITIONAL. `AdmissionSummary.status` says `discharged` for a death and a live
 // discharge alike, and §7.1 wants those recorded with different reasons, so a discharged admission gets one
@@ -19,7 +20,17 @@
 // tolerance M16-T03's `resolveDeathFact` settled on). A miss returns `false`, not `null`: the admission IS
 // discharged, M6's death census does not list it, and "not a death discharge" is the honest reading of
 // that pair. `null` is reserved for a read that could not be performed at all.
-import type { AdmissionSummary, IsoInstant, LocationId, OrderRecordId } from "@wardenx/types";
+//
+// THE SERVING-LOCATION FACT (F-166, #248) — no longer a separate unresolved port. This file used to carry
+// a `resolveServingLocation` port with the header "NO PLATFORM SEAM ANSWERS THIS" — checked again rather
+// than trusted, and it was stale: `AdmissionSummary.locationId` (task-11's M6 activation-siting anchor,
+// the SAME fact `05-patient/outbox-consumers/m6-admission-activated.ts` denormalizes onto
+// `patient.location_id`, F-152) has been on the `getAdmissionSummary` return type the whole time, and this
+// file already calls that seam for `admission` — it simply never read the field. `null` on a not-yet-sited
+// admission (draft, or a location port unbound at activation) is a real, honest gap `decideSupplyFulfillment
+// Intake` already dead-letters on (`M21_SERVING_LOCATION_UNRESOLVED`) — narrower now (a genuinely unsited
+// admission) than before (every admission, unconditionally), not fabricated.
+import type { AdmissionSummary, IsoInstant, OrderRecordId } from "@wardenx/types";
 import {
   getAdmissionStatusReader,
   getDeathDischargeReader,
@@ -56,20 +67,6 @@ export function deathCensusWindow(dischargedAt: string): { from: string; to: str
 export interface SupplyIntakePorts {
   /** §7.1 edge 2 — a `supply_request` already written for this order (outbox-retry idempotency). */
   findRequestBySourceOrder(orderId: OrderRecordId): Promise<string | null>;
-  /**
-   * The Location the agency fills this patient's supplies from (`supply_request.location_id`, NOT NULL).
-   *
-   * NO PLATFORM SEAM ANSWERS THIS, and that is a real gap rather than an oversight: M2 owns Locations, M5
-   * owns the patient, and neither publishes a "which Location serves this patient" read. Until one exists
-   * the port resolves the tenant's configured serving Location; a null dead-letters the delivery
-   * (`M21_SERVING_LOCATION_UNRESOLVED`) so an unconfigured tenant gets a fixable error instead of supply
-   * requests silently anchored to whichever Location happened to sort first.
-   */
-  resolveServingLocation(input: {
-    organizationId: string;
-    patientId: string;
-    admissionId: string;
-  }): Promise<LocationId | null>;
 }
 
 /** Project M6's summary onto the facts the decider reads, resolving the death discriminator on the
@@ -94,6 +91,8 @@ async function toAdmissionContext(
   }
   return {
     providerEntityId: summary.providerEntityId,
+    // F-166 (#248) — the serving-Location fact was on this projection's own source the whole time.
+    locationId: summary.locationId ?? null,
     status: summary.status,
     dischargedAt: summary.dischargedAt,
     deathDischarge,
@@ -142,14 +141,9 @@ export async function resolveSupplyOrderContext(
     admission = null;
   }
 
-  const servingLocationId =
-    admission === null
-      ? null
-      : await ports.resolveServingLocation({
-          organizationId,
-          patientId: order.patientId,
-          admissionId: order.admissionId,
-        });
+  // F-166 (#248) — the serving Location is `admission.locationId` (M6's activation-siting anchor),
+  // already carried on the projection above; no second read.
+  const servingLocationId = admission === null ? null : admission.locationId;
 
   return { existingRequestId: null, order, admission, servingLocationId };
 }

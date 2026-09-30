@@ -47,6 +47,8 @@ export interface PersistedAlert {
    *  missing here even though `emit()`'s own input always carries one). */
   readonly payload: Record<string, unknown>;
   readonly deliveries: readonly PlannedDelivery[];
+  /** F-199 — count a repeat of this `correlationId` instead of silently absorbing it (see `AlertEmitter.emit`). */
+  readonly countRepeats?: boolean;
 }
 
 /**
@@ -64,8 +66,12 @@ export interface AlertEmitterPorts {
     orgId: string,
     userIds: readonly string[],
   ): Promise<ReadonlyMap<string, RecipientPreferences>>;
-  /** Persist the alert + its delivery plan; returns the new `alert.id`. */
-  persist(record: PersistedAlert): Promise<{ alertId: string }>;
+  /**
+   * Persist the alert + its delivery plan; returns the new `alert.id`. A repeat of an existing `(org,
+   * correlationId)` returns the EXISTING id and writes no deliveries. When `record.countRepeats`, it also returns
+   * the alert's occurrence count after this call (1 for the first, +1 per absorbed repeat) — F-199.
+   */
+  persist(record: PersistedAlert): Promise<{ alertId: string; occurrences?: number }>;
   /** Evaluation clock — explicit so quiet-hours/vacation are deterministic in tests. */
   now(): Date;
 }
@@ -117,15 +123,20 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
         );
       }
 
-      const { alertId } = await ports.persist({
+      const { alertId, occurrences } = await ports.persist({
         orgId,
         eventType: input.eventType,
         severity: input.severity,
         correlationId: input.correlationId,
         payload: input.payload,
         deliveries,
+        ...(input.countRepeats ? { countRepeats: true } : {}),
       });
-      return { alertId, resolvedRecipientCount: recipientUnion.size };
+      return {
+        alertId,
+        resolvedRecipientCount: recipientUnion.size,
+        ...(occurrences === undefined ? {} : { occurrences }),
+      };
     },
   };
 }
@@ -183,6 +194,8 @@ export function createInMemoryAlertEmitter(options: InMemoryAlertEmitterOptions 
 } {
   const recorded: RecordedAlert[] = [];
   let seq = 0;
+  // F-199 — occurrence counts for `countRepeats` alerts, keyed `org|correlationId` (the real table's unique key).
+  const counted = new Map<string, { alertId: string; occurrences: number }>();
   const recipients: RecipientSourcePorts = { ...EMPTY_RECIPIENT_PORTS, ...options.recipients };
   const preferences = options.preferences ?? new Map<string, RecipientPreferences>();
 
@@ -192,10 +205,17 @@ export function createInMemoryAlertEmitter(options: InMemoryAlertEmitterOptions 
       options.rulesFor ? options.rulesFor(_orgId, eventType) : platformRulesFor(eventType),
     preferencesFor: async () => preferences,
     persist: async (record) => {
+      const key = `${record.orgId}|${record.correlationId}`;
+      const seen = record.countRepeats ? counted.get(key) : undefined;
+      if (seen) {
+        seen.occurrences += 1;
+        return { alertId: seen.alertId, occurrences: seen.occurrences };
+      }
       seq += 1;
       const alertId = `alert_${seq}`;
       recorded.push({ ...record, alertId });
-      return { alertId };
+      if (record.countRepeats) counted.set(key, { alertId, occurrences: 1 });
+      return record.countRepeats ? { alertId, occurrences: 1 } : { alertId };
     },
     now: options.now ?? (() => new Date()),
   });

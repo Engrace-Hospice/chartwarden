@@ -133,3 +133,42 @@ export {
   buildM30CostReportConsumer,
   buildM30LiveForwardSeams,
 } from "./consumed-seam-adapters";
+
+// §4.10 upstream — F-150 (#248): the two `OutboxConsumerBinding`s for M30's real, previously-unbound
+// §4.10 upstream-event handlers that are fully ready to bind (`m10.hope.submission_accepted`,
+// `m23.claim.adjudicated`; both call only the real `enqueueRecompute` port). See the file headers for
+// why `m6.discharge.death` / `m12.medication.error_reported` are not bound (`m18.evv.visit_verified` is
+// now bound too — F-194, below).
+export {
+  M30_SYSTEM_MEMBERSHIP_ID,
+  buildM30UpstreamConsumerPorts,
+} from "./outbox-consumers/upstream-consumer-ports";
+export {
+  buildM30ClaimAdjudicatedConsumer,
+  buildM30HopeSubmissionAcceptedConsumer,
+} from "./outbox-consumers/upstream-events";
+// F-160-follow-up (#248): the `m16.bereavement.plan_closed_completed` / `.plan_closed_declined` /
+// `.plan_closed_early` consumer — enqueues a `bereavement_coverage_rate` recompute (see the file header
+// for why a plan closure has a real, if narrow, data dependency on that one measure).
+export { buildM30BereavementPlanClosedConsumer } from "./outbox-consumers/m16-plan-closed";
+// F-185 (#248): the `m37.restraint.applied` consumer — auto-files a `restraint_use` incident draft (D8,
+// thin-pointer payload). See the file header for why `providerEntityId` needs the injected M37 siting
+// port, mirroring `buildM30BereavementPlanClosedConsumer`'s shape.
+export {
+  type RestraintAdmissionSitingForOrg,
+  buildM30RestraintAppliedConsumer,
+} from "./outbox-consumers/m37-restraint-applied";
+// F-194 (#248): the `m18.evv.visit_verified` consumer — enqueues an HVLDL recompute (the already-built
+// `handleEvvVisitVerified`/`hvldl_near_death_recompute` pure logic, previously unwired). See the file
+// header for why `providerEntityId` needs the injected M18 siting port, the same shape a third time.
+export {
+  type EvvVisitProviderEntityForOrg,
+  buildM30VisitVerifiedConsumer,
+} from "./outbox-consumers/m18-evv-visit-verified";
+// F-205 (#248): the `m12.medication.error_reported` consumer — auto-files a `medication_error` incident
+// draft (D8). See the file header for why `providerEntityId` needs the two injected M12/M6 siting ports.
+export {
+  type AdmissionSchedulingContextForOrg,
+  type MedicationOrderScheduleContextForOrg,
+  buildM30MedicationErrorReportedConsumer,
+} from "./outbox-consumers/m12-medication-error-reported";

@@ -49,6 +49,19 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m29.hl7_inbound_proposal.expired",
+    moduleOwner: "m29",
+    description:
+      "A pending HL7 inbound proposal was auto-expired by a system-driven sweep, never a human reviewer (`decidedByMembershipId: null`) — either the §2.2 72h SLA-review-window sweep (unbuilt: no cron worker anywhere calls `expireProposal`, F-165/#248) or the `m5.patient.deceased` freeze consumer (`outbox-consumers/m5-patient-deceased.ts`, F-165/#248), distinguishable by `decision_rationale` on the row. Had NO catalog entry at all before F-165 even though `expireProposal` has produced this envelope since M29-T04 — the `.accepted`/`.rejected` task-11 gap a third sibling over. Record-only: the row IS the durable record, the same posture `.rejected` above already states.",
+    payloadSchema: Type.Object({
+      proposalId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      expiredAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 
   // ── §4.2 / §4.10 unmatched-lab review decisions (GAP-044) ─────────────────────────────────────────
   // Both are record-only. The spec's §4.10 table lists M4 (and M11 for the bind) as consumers, but M4 is
@@ -101,6 +114,90 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
   // an org-less row and M40's canonical had no write path. The three `sync_run.*` lifecycle events are
   // record-only: the row IS the operational record, and M33's dashboard reads `nppes_sync_run` directly
   // rather than subscribing.
+  // ── §4.4/§4.10 outbound ORM lifecycle (M29-T08, F-175/#248) ───────────────────────────────────────
+  // HAD NO CATALOG ENTRY AT ALL before F-175 — the task-11/F-165/F-167 "decision core ships, nothing
+  // registers or drains it" shape one module over: `dispatch-planner.ts`/`ack-correlation.ts`/
+  // `retry-policy.ts` have produced these exact envelopes since M29-T06, but `outbound-events.ts`'s own
+  // header ("published by the T08 worker") was future tense until this pass — no `M29_OUTBOX_EVENTS`
+  // entry existed, so `bindCallerModule(txOutboxPublisher, "m29")`'s `Value.Check` would have REJECTED
+  // every publish attempt even after a T08 worker existed to make one. `declaredConsumers: ["m11"]` per
+  // the spec's own §4.4 relationship text ("M11 also receives... consumed by M11 to update
+  // order_record.transmission_status") — checked directly, not guessed: no `LabTransmissionApplier`
+  // implementation exists anywhere in the repo (only the two doc-comment mentions on
+  // `m11.order.transmission_status_changed`/`.transmission_terminal_failed` in `events-by-m11.ts`), so
+  // this pair is itself now the SAME "declared but genuinely unbound" shape on M11's side that this
+  // register (`scripts/outbox-deferred-consumers.ts`) exists to track — a real, separate follow-up this
+  // pass surfaces but does not build (M11's own consumer, out of this task's scope).
+  {
+    eventName: "m29.lab_order.transmitted",
+    moduleOwner: "m29",
+    description:
+      "An outbound ORM^O01 the destination lab `AA`-acked (§4.12.2) — M11 consumes to flip `order_record.transmission_status` to TRANSMITTED.",
+    payloadSchema: Type.Object({
+      orderId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      feedId: Type.String({ minLength: 1 }),
+      outboundMessageId: Type.String({ minLength: 1 }),
+      messageControlId: Type.String({ minLength: 1 }),
+      ackReceivedAt: Type.String({ minLength: 1 }),
+      // F-200 — the outbound attempt the acked row belongs to; M11 applies it only to the order's current attempt.
+      // Optional: a row queued before F-200 (or a request that carried no attempt) has none and applies as before.
+      attemptId: Type.Optional(Type.String({ minLength: 1 })),
+    }),
+    declaredConsumers: ["m11"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.lab_order.transmission_failed",
+    moduleOwner: "m29",
+    description:
+      "A terminal outbound ORM^O01 failure (§4.12.2/W-XI-09) — an `AR` structural reject (`application_reject`, no retry) or a transport/`AE` retry-budget exhaustion (`dlq_exhausted`); NEVER emitted for a pre-persist BAA refusal (that is transient and self-heals, per `dispatch-planner.ts`'s own header). M11 consumes to flip `order_record.transmission_status` to TRANSMISSION_FAILED; M36 raises the high-severity operator alert.",
+    payloadSchema: Type.Object({
+      orderId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      feedId: Type.String({ minLength: 1 }),
+      outboundMessageId: Type.String({ minLength: 1 }),
+      reason: Type.Union([Type.Literal("application_reject"), Type.Literal("dlq_exhausted")]),
+      detail: Type.Union([Type.String(), Type.Null()]),
+      attemptCount: Type.Integer({ minimum: 0 }),
+      // F-200 — the outbound attempt the failed row belongs to (see `m29.lab_order.transmitted`).
+      attemptId: Type.Optional(Type.String({ minLength: 1 })),
+    }),
+    declaredConsumers: ["m11"],
+    isOutboxOnly: true,
+  },
+  {
+    // F-187 (#248) — the worker's "wrote NO row" exits (no/ambiguous/unlinked active feed, incomplete MSH identity
+    // on the feed, lapsed BAA) used to end silently, leaving the order `pending` forever with no path to resend.
+    // This is the terminal signal M11's `LabTransmissionApplier` consumes to flip such an order to `failed`
+    // (`dispatch_refused:<reason>`), which F-182's resend then acts on once the operator fixes the cause. Distinct
+    // from `transmission_failed` because there is NO outbound row (no `outboundMessageId`) and the reasons are
+    // configuration states, not wire outcomes.
+    eventName: "m29.lab_order.dispatch_refused",
+    moduleOwner: "m29",
+    description:
+      "The outbound ORM worker could not persist a dispatch row for an order — no/ambiguous/unlinked active feed, an incomplete MSH identity on the feed, or a lapsed BAA. Nothing was sent and no outbound row exists. M11 consumes to flip `order_record.transmission_status` to failed with `dispatch_refused:<reason>` so the order is never silently stuck pending; M36 raises the ordering-provider alert.",
+    payloadSchema: Type.Object({
+      orderId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      feedId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      refusalId: Type.String({ minLength: 1 }),
+      reason: Type.Union([
+        Type.Literal("no_active_feed"),
+        Type.Literal("ambiguous_feed"),
+        Type.Literal("no_feed_for_destination"),
+        Type.Literal("feed_identity_incomplete"),
+        Type.Literal("baa_inactive"),
+        Type.Literal("attested_redispatch_blocked"),
+      ]),
+      // F-188 — the outbound attempt this refusal concerns (echoed from the request); M11 applies it only to the
+      // order's current attempt.
+      attemptId: Type.Optional(Type.String({ minLength: 1 })),
+    }),
+    declaredConsumers: ["m11"],
+    isOutboxOnly: true,
+  },
+
   {
     eventName: "m29.nppes.provider_synced",
     moduleOwner: "m29",

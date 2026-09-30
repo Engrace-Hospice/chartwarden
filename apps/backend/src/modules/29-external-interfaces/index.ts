@@ -396,3 +396,53 @@ export {
   runNppesSyncJob,
   scheduleNppesSyncJob,
 } from "./nppes/cron-workers";
+// F-165 (#248) — `m5.patient.deceased` → freeze every still-pending `hl7_inbound_proposal` for the
+// decedent (see the file header for what this does NOT build: the real-time post-death A01/A04 refusal).
+export {
+  M29_PATIENT_DECEASED_CONSUMER,
+  type M29PatientDeceasedConsumerDeps,
+  buildM29PatientDeceasedConsumer,
+} from "./outbox-consumers/m5-patient-deceased";
+
+// ── M29-T08: outbound ORM dispatch worker (F-175/#248) — the real IO shell over T06's pure cores ──────────
+export {
+  type OutboundTenantKeyProvider,
+  type OutboundPayloadCipher,
+  createOutboundPayloadCipher,
+} from "./outbound/dispatch-crypto";
+export {
+  OUTBOUND_SENDING_APPLICATION,
+  type ResolvedOutboundFeed,
+  type ResolvedFeedTransport,
+  type OutboundFeedCandidateRow,
+  type FeedIdentityField,
+  type RetryFeedResolutionResult,
+  selectOutboundFeed,
+  type FeedResolutionFailureReason,
+  type FeedResolutionResult,
+  type OutboundFeedResolver,
+  buildDrizzleOutboundFeedResolver,
+} from "./outbound/feed-resolver";
+// F-188 — the read-only outbound/inbound evidence M11's attested recovery checks a `not_received_by_lab` against.
+export { ormOutboundEvidenceForOrder } from "./outbound/order-dispatch-dedupe";
+// F-201 — the two M29 facts M11's stuck-order recovery is injected with (BAA gate + the feed a held order went to).
+export { outboundBaaCleared, ormOutboundFeedsForOrders } from "./outbound/stuck-order-support";
+export { type FeedRateLimiter, createFeedRateLimiter } from "./outbound/rate-limiter";
+export { resolveOutboundBaaResult } from "./outbound/resolve-baa";
+export {
+  M29_OUTBOUND_CRON_QUEUES,
+  M29_OUTBOUND_JOB_SCHEDULES,
+  M29_OUTBOUND_QUEUE_PARAMS,
+  M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE,
+} from "./outbound/queues";
+export {
+  M29_OUTBOUND_DISPATCH_CONSUMER,
+  type OutboundAlertPort,
+  type OutboundDispatchWorkerDeps,
+  type OutboundRetrySweepDeps,
+  buildM29OutboundDispatchConsumer,
+  runOutboundRetrySweepOnce,
+  registerM29OutboundRetrySweepWorker,
+  scheduleM29OutboundRetrySweepJob,
+} from "./outbound/dispatch-worker";
+export { M29_PLATFORM_JOB_ID, wireM29Tenancy } from "./wiring";

@@ -13,6 +13,7 @@
 // at sign); when `targetKind === 'medication_order'` there is no local M11 row — the signature/verbal row
 // is recorded and M12 owns the med-order lifecycle. Reads project read-only DTOs (never Drizzle rows); no
 // per-kind `data` jsonb (PHI) crosses the seam.
+import { DEFAULT_VERBAL_POLICY, type VerbalDeadlinePolicy } from "@wardenx/orders";
 import type {
   AdmissionId,
   IsoInstant,
@@ -50,7 +51,9 @@ export interface InsertSignatureInput {
   readonly signedAt: IsoInstant;
 }
 
-/** The fields a `recordVerbalOrder` write records (the deadline is computed by the provider). The
+/** The fields a `recordVerbalOrder` write records (the deadline is computed by the provider, from the
+ * per-org policy `verbalPolicyForOrg` reads — never the platform default alone, so a tenant that has
+ * tightened its window per §2.3 D3 is honored for a seam caller exactly as it is for M11's own route). The
  * attestation rides along because `verbal_order.verbal_attestation` is NOT NULL (denylisted in audit) —
  * the Drizzle store cannot record a receipt without it. */
 export interface InsertVerbalOrderInput {
@@ -64,6 +67,9 @@ export interface InsertVerbalOrderInput {
   readonly effectiveAt: IsoInstant;
   readonly receivedAt: IsoInstant;
   readonly deadlineAt: IsoInstant;
+  /** Stamped onto `verbal_order.deadline_policy_version` — the policy version `deadlineAt` was actually
+   * computed under, so a later policy change never silently re-dates an existing row (§2.3 D3). */
+  readonly deadlinePolicyVersion: string;
 }
 
 /** The fields a `cosignOrder` write records. */
@@ -108,6 +114,14 @@ export interface OrderSeamStore {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<{ numerator: number; denominator: number }>;
+  /**
+   * The per-org verbal-order deadline policy (`order_verbal_policy`, §2.3 D3) — the SAME row M11's own
+   * `orders-route-service-db.ts` reads before computing a verbal deadline, so a seam caller (M12, M19) gets
+   * the tenant's real tightened-window policy rather than the platform default alone. Read fresh per call
+   * (no caching, so a policy edit takes effect on the very next verbal order); defaults to the 48h platform
+   * floor when the org has never configured one — same default `orders-route-service-db.ts` falls back to.
+   */
+  verbalPolicyForOrg(): Promise<VerbalDeadlinePolicy>;
   // ── writes (OrderSignatureProvider — polymorphic by targetKind, D4) ──────────────────────────────────
   insertSignature(input: InsertSignatureInput): Promise<OrderSignatureId>;
   insertVerbalOrder(input: InsertVerbalOrderInput): Promise<VerbalOrderId>;
@@ -141,6 +155,9 @@ export interface OrderSeamSeed {
   readonly verbalOrders?: readonly VerbalSeedRow[];
   /** Care-plan intervention → order back-refs (M7's reverse FK; `findByCarePlanIntervention`). */
   readonly carePlanInterventionLinks?: Readonly<Record<string, OrderRecordId>>;
+  /** The per-org verbal-order deadline policy `verbalPolicyForOrg` returns — defaults to the 48h platform
+   * floor (unseeded), matching the Drizzle store's default when no `order_verbal_policy` row exists. */
+  readonly verbalPolicy?: VerbalDeadlinePolicy;
 }
 
 /** Pads `n` to mint a uuid-shaped id so created ids round-trip through uuid-validated bodies (M8 slice). */
@@ -195,6 +212,9 @@ export function createInMemoryOrderSeamStore(seed: OrderSeamSeed = {}): { store:
       /** Slice default: 0/0, which M30's kernel SUPPRESSES rather than scoring as perfect timeliness. */
       async verbalTimelinessCountsForOrg() {
         return { numerator: 0, denominator: 0 };
+      },
+      async verbalPolicyForOrg() {
+        return seed.verbalPolicy ?? DEFAULT_VERBAL_POLICY;
       },
       async insertSignature(_input) {
         return uuidFromCounter(++seq) as OrderSignatureId;

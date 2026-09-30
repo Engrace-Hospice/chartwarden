@@ -44,9 +44,9 @@ import {
   type CahpsExportPorts,
   type CahpsMonthlySampleCronPorts,
   CahpsRepository,
+  type ComplianceWindowCountsView,
   type ComputeHvldlInput,
   HCI_SKILLED_NURSING_GAP_DAYS,
-  HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR,
   HCI_THRESHOLDS_v2025,
   HCI_UNAVAILABLE_MEASURE_CODES,
   HVLDL_MIN_QUALIFYING_VISITS,
@@ -98,6 +98,7 @@ import {
   resolvePeriodWindow,
   riskRegisterRefreshCronProcessor,
   riskRegisterRefreshProcessor,
+  skilledNursingMinutesOnRhcDays,
   sraRemindersCronProcessor,
   unboundWorkerPort,
 } from "@wardenx/quality";
@@ -486,6 +487,15 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "gte",
     label: "bereavement coverage rate (CoP 418.64(d); platform default)",
   },
+  // D17 — the screening-completeness measure excludes `minimal` data-completeness rows from its
+  // denominator, so this floor targets the reduced (usable-evidence) population, not the raw contact
+  // roster. No CMS-published floor for this internal documentation-quality metric, so — like
+  // `bereavement_coverage_rate` above — this is a platform default, set by symmetry with it.
+  bereavement_risk_screening_completeness_rate: {
+    value: 0.9,
+    direction: "gte",
+    label: "bereavement risk-screening completeness rate (D17; platform default)",
+  },
   // CoP 418.76(h) — the aide supervisory visit must occur at least every 14 days (the M15 clock's floor).
   supervisory_visit_on_time: {
     value: 0.95,
@@ -517,6 +527,24 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     value: 1.0,
     direction: "gte",
     label: "cost-report filing compliance (CoP 418.310; regulatory floor — no partial compliance)",
+  },
+  // CoP 418.22 — the F2F compliance window must close on time; higher is better. F-178 (#248): M6's
+  // nightly-batch `ComplianceWindowCountsProvider` pull. No CMS-published floor for this internal
+  // timeliness metric (unlike the 418.22 F2F-attestation requirement itself), so this is a platform
+  // default like the other CoP-adjacent operational entries above.
+  f2f_window_on_time_rate: {
+    value: 0.95,
+    direction: "gte",
+    label: "F2F compliance-window on-time rate (CoP 418.22; platform default)",
+  },
+  // LOWER is better — the Medical-Director override is a documented escape valve for a window that
+  // could not close on time; a high override rate signals the on-time process itself is failing, so the
+  // agency target keeps it rare. §7.5 W-OVR-02 (M6 spec): tracked as a SEPARATE signal from the on-time
+  // rate above, not folded into it (both share the same due-window denominator).
+  f2f_window_override_rate: {
+    value: 0.05,
+    direction: "lte",
+    label: "F2F compliance-window override rate (CoP 418.22; platform default; lower is better)",
   },
 };
 
@@ -572,10 +600,18 @@ interface IdgCadenceCountsView {
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
-/** The M16 CoP 418.64(d) outreach-compliance tally, as this resolver uses it (a scope object, not the
- *  (orgId, window) shape the other producers above take — mirrors M16's own `BereavementScope`). */
+/** The M16 CoP 418.64(d) outreach-compliance + D17 screening-completeness tallies, as this resolver uses
+ *  them (a scope object, not the (orgId, window) shape the other producers above take — mirrors M16's own
+ *  `BereavementScope`). Both methods back `BereavementComplianceProvider` (F-184, #248). */
 interface BereavementCoverageCountsView {
   copOutreachCounts(scope: {
+    orgId: string;
+    providerEntityId?: string;
+    fromIso?: string;
+    toIso?: string;
+  }): Promise<{ numerator: number; denominator: number }>;
+  /** D17 — excludes `minimal` data-completeness rows from the denominator. */
+  riskScreeningCompletenessCounts(scope: {
     orgId: string;
     providerEntityId?: string;
     fromIso?: string;
@@ -619,8 +655,11 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "prn_effectiveness_documented_rate",
   "idg_cadence_adherence",
   "bereavement_coverage_rate",
+  "bereavement_risk_screening_completeness_rate",
   "supervisory_visit_on_time",
   "volunteer_compliance_gate_rate",
+  "f2f_window_on_time_rate",
+  "f2f_window_override_rate",
 ]);
 
 /**
@@ -647,6 +686,7 @@ export async function resolveOperationalMeasureInput(
     readonly idg: IdgCadenceCountsView;
     readonly bereavementCompliance: BereavementCoverageCountsView;
     readonly disciplineCompliance: DisciplineComplianceCountsView;
+    readonly complianceWindow: ComplianceWindowCountsView;
   },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
@@ -723,6 +763,20 @@ export async function resolveOperationalMeasureInput(
       });
       return { ...base, eligibleBereaved: c.denominator, bereavedWithPlan: c.numerator, threshold };
     }
+    case "bereavement_risk_screening_completeness_rate": {
+      const c = await seams.bereavementCompliance.riskScreeningCompletenessCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return {
+        ...base,
+        screeningsDue: c.denominator,
+        screeningsCompleted: c.numerator,
+        threshold,
+      };
+    }
     case "supervisory_visit_on_time": {
       const c = await seams.disciplineCompliance.supervisoryOnTimeCounts({
         orgId: organizationId,
@@ -748,6 +802,34 @@ export async function resolveOperationalMeasureInput(
         ...base,
         evaluatedPeriods: c.denominator,
         periodsMeetingGate: c.numerator,
+        threshold,
+      };
+    }
+    case "f2f_window_on_time_rate": {
+      const c = await seams.complianceWindow.f2fWindowOnTimeCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return {
+        ...base,
+        f2fWindowsDue: c.denominator,
+        f2fClosedOnTime: c.numerator,
+        threshold,
+      };
+    }
+    case "f2f_window_override_rate": {
+      const c = await seams.complianceWindow.f2fWindowOverrideCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return {
+        ...base,
+        f2fWindowsDue: c.denominator,
+        f2fClosedViaOverride: c.numerator,
         threshold,
       };
     }
@@ -1069,17 +1151,11 @@ export async function resolveHciLiveDischargeTimingInput(
 // M30, over two aggregate reads — the same posture as HCI 10 and HVLDL (M6 supplies the population, M30
 // loops it against M8), never a cross-module SQL join.
 //
-// ★ FLAGGED (`HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR` / `HCI_SKILLED_NURSING_GAP_DAYS`): CMS defines 8
-//   and 9 as a minutes-per-day RATIO scored by national percentile, not as a count of days clearing a cut.
-//   The platform's calculators take the day-count shape, which needs a per-day floor CMS does not publish.
-//   Both constants live beside the threshold table under the same caveat — see `hci/thresholds.ts`.
+// ★ FLAGGED (`HCI_SKILLED_NURSING_GAP_DAYS`): indicator 2's gap length is a platform constant beside the
+//   threshold table — see `hci/thresholds.ts`. Indicators 8 and 9 follow the CMS definitions directly (mean
+//   SN minutes per RHC day; weekend share of those minutes) through the pure `skilledNursingMinutesOnRhcDays`.
 
 const MS_PER_DAY_HCI = 86_400_000;
-
-/** Key into the per-(admission, day) skilled-nursing totals. */
-function dayKey(admissionId: string, serviceDate: string): string {
-  return `${admissionId}|${serviceDate}`;
-}
 
 /** Whole days between two `yyyy-mm-dd` UTC dates (`to - from`); negative when `to` precedes `from`. */
 function daysBetween(from: string, to: string): number {
@@ -1088,35 +1164,16 @@ function daysBetween(from: string, to: string): number {
   );
 }
 
-/** Every `yyyy-mm-dd` in a half-open `[from, to)` span. */
-function daysIn(from: string, to: string): string[] {
-  const out: string[] = [];
-  for (
-    let t = Date.parse(`${from}T00:00:00.000Z`);
-    t < Date.parse(`${to}T00:00:00.000Z`);
-    t += MS_PER_DAY_HCI
-  ) {
-    out.push(new Date(t).toISOString().slice(0, 10));
-  }
-  return out;
-}
-
-/** UTC weekday of a `yyyy-mm-dd`: Saturday or Sunday. */
-function isWeekend(isoDay: string): boolean {
-  const dow = new Date(`${isoDay}T00:00:00.000Z`).getUTCDay();
-  return dow === 0 || dow === 6;
-}
-
 /**
- * Shape M6's level-of-care day spans × M8's per-day skilled-nursing totals into HCI indicator 8 (SN minutes
- * per routine-home-care day) or indicator 9 (SN minutes on weekends) — one pair of reads covers both, the
- * `resolveHciLiveDischargeTimingInput` precedent.
+ * Shape M6's level-of-care day spans × M8's per-day skilled-nursing totals into HCI indicator 8 (mean SN
+ * minutes per routine-home-care day) or indicator 9 (share of those SN minutes delivered on weekends) — one
+ * pair of reads covers both, the `resolveHciLiveDischargeTimingInput` precedent.
  *
- * Indicator 8's population is ROUTINE HOME CARE days only (the level of care its name is about). Indicator
- * 9's is every care day that falls on a Saturday or Sunday, at ANY level of care — a weekend spent at
- * general inpatient level is still a weekend the agency staffed, and excluding it would flatter the rate.
+ * Both follow the CMS HCI definitions, so both populations are ROUTINE HOME CARE days: indicator 8 divides
+ * the SN minutes on those days by the days, indicator 9 divides the Saturday/Sunday share of those minutes
+ * by all of them. The reduction is the pure `skilledNursingMinutesOnRhcDays` in `@wardenx/quality`.
  *
- * Aggregate-by-default: two org-level reads in, two counts out (D6).
+ * Aggregate-by-default: two org-level reads in, totals out (D6).
  */
 export async function resolveHciSkilledNursingDayInput(
   request: {
@@ -1137,39 +1194,21 @@ export async function resolveHciSkilledNursingDayInput(
     seams.levelOfCarePeriodReader.levelOfCareDaySpans(organizationId, window),
     seams.encounters.skilledNursingDayTotalsForOrg(organizationId, window),
   ]);
-
-  const minutesByDay = new Map<string, number>();
-  for (const d of dayTotals) {
-    minutesByDay.set(dayKey(d.admissionId, d.serviceDate), d.minutes);
-  }
-  const meetsFloor = (admissionId: string, day: string): boolean =>
-    (minutesByDay.get(dayKey(admissionId, day)) ?? 0) >= HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR;
-
-  const isIndicator08 = request.registration.code === "hci_indicator_08";
-  let denominator = 0;
-  let numerator = 0;
-  for (const span of spans) {
-    if (isIndicator08 && span.levelOfCare !== "routine_home_care") continue;
-    for (const day of daysIn(span.from, span.to)) {
-      if (!isIndicator08 && !isWeekend(day)) continue;
-      denominator += 1;
-      if (meetsFloor(span.admissionId, day)) numerator += 1;
-    }
-  }
+  const totals = skilledNursingMinutesOnRhcDays(spans, dayTotals, window);
 
   const base = { organizationId, providerEntityId, periodStart, periodEnd };
-  if (isIndicator08) {
+  if (request.registration.code === "hci_indicator_08") {
     return {
       ...base,
-      totalRhcDays: denominator,
-      rhcDaysMeetingSnMinuteFloor: numerator,
+      totalRhcDays: totals.totalRhcDays,
+      skilledNursingMinutesOnRhcDays: totals.skilledNursingMinutes,
       threshold: HCI_THRESHOLDS_v2025.indicators.indicator_08,
     };
   }
   return {
     ...base,
-    totalWeekendCareDays: denominator,
-    weekendDaysMeetingSnMinuteFloor: numerator,
+    totalSkilledNursingMinutes: totals.skilledNursingMinutes,
+    weekendSkilledNursingMinutes: totals.weekendSkilledNursingMinutes,
     threshold: HCI_THRESHOLDS_v2025.indicators.indicator_09,
   };
 }
@@ -1685,6 +1724,9 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             idg: getSeam("IdgScheduleProvider") as never,
             bereavementCompliance: getSeam("BereavementComplianceProvider") as never,
             disciplineCompliance: getSeam("DisciplineComplianceProvider") as never,
+            // F-178 (#248) — M6's F2F compliance-window aggregate. Opaque (`unknown`) in the M1 registry;
+            // the concrete view lives in @wardenx/quality's m6-compliance-window.ts consumer-side leaf.
+            complianceWindow: getSeam("ComplianceWindowCountsProvider") as never,
           });
         return resolveHopeMeasureInput(request, seams);
       },

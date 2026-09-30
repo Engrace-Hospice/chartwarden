@@ -1516,6 +1516,18 @@ export function createDbAdmissionRouteService(
               "m6.discharge.death": {
                 dischargeEventId: ev.dischargeEventId,
                 dischargeDate: ev.effectiveAt,
+                // F-172 (#248) — required by the catalog schema (M37's `ipu_body_release
+                // .pronouncing_physician_id`, NOT NULL). Only ever reaches this branch for
+                // `dischargeType === "death"`, and `checkDischargeNarrative` already refused the
+                // discharge request upstream if `deathCertifierId` was absent for that reason — so
+                // this is a real, already-verified fact at this point, never a guess.
+                deathCertifierId:
+                  ev.dischargeType === "death"
+                    ? (ev.deathCertifierId ??
+                      (() => {
+                        throw conflict("m6.discharge.death cannot be emitted without deathCertifierId");
+                      })())
+                    : undefined,
               },
             }
           : {}),
@@ -1633,13 +1645,23 @@ export function createDbAdmissionRouteService(
             state: ADM.status,
             version: ADM.version,
             patientId: ADM.patientId,
+            // F-195 (#248) — M6's own spec (line 2983) names these "surfaced in M30's operational
+            // dashboard"; this org-wide, `state`-filterable list (`?state=on_hold`) IS that dashboard read.
+            holdReason: ADM.holdReason,
+            holdAt: ADM.holdAt,
+            releasedAt: ADM.releasedAt,
           })
           .from(ADM)
           .where(where)
           .orderBy(desc(ADM.admissionAt), desc(ADM.id))
           .limit(limit + 1)
           .offset(offset);
-        const items = rows.slice(0, limit).map(toSummary);
+        const items = rows.slice(0, limit).map((r) => ({
+          ...toSummary(r),
+          holdReason: r.holdReason ?? null,
+          holdAt: r.holdAt ? r.holdAt.toISOString() : null,
+          releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
+        }));
         const nextCursor = rows.length > limit ? String(offset + limit) : null;
         return { items, nextCursor };
       });
@@ -4669,6 +4691,14 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const period = await latestPeriod(tx, admissionId);
         if (!period) throw new ResourceNotFoundError(admissionId);
+        // F-192 (#248) — the chart M22's transfer-summary render files against; `transferIn` below
+        // already reads this same column for its own CTI-attribution needs.
+        const [xferAdm] = await tx
+          .select({ patientId: ADM.patientId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!xferAdm) throw new ResourceNotFoundError(admissionId);
         // §2.3.6 R-XFR-01 — only one transfer-out per benefit period (42 CFR 418.28). No DB constraint
         // enforces this (unlike revocation_event's `revocation_period_idx` unique index), so query the
         // real fact rather than assuming it can never happen (the admission-graph transition to
@@ -4719,6 +4749,8 @@ export function createDbAdmissionRouteService(
             // F-107 — `effectiveAt` is the transfer's own date, which M23 dates the 42 CFR 418.26
             // NOTR window from. `admission.discharged_at` is `now()` and cannot substitute.
             effectiveAt: input.effectiveDate,
+            // F-192 (#248) — M22's transfer-summary render handshake.
+            patientId: xferAdm.patientId,
           },
           organizationId,
           aggregateKind: "transfer_event",
@@ -4881,6 +4913,9 @@ export function createDbAdmissionRouteService(
             admissionId,
             direction: "in",
             effectiveAt: input.effectiveDate,
+            // F-192 (#248) — M22's transfer-summary render handshake; `adm.patientId` was already
+            // resolved above for the CTI hospice-physician attribution.
+            patientId: adm.patientId,
           },
           organizationId,
           aggregateKind: "transfer_event",
@@ -5073,6 +5108,11 @@ export function createDbAdmissionRouteService(
           payload: {
             dischargeEventId: id,
             medicalDirectorCosignedAt: now().toISOString(),
+            // F-176 (#248) — M22 renders a new discharge-summary version on cosign and files it on the chart.
+            admissionId: cur.admissionId,
+            patientId: await patientForAdmission(tx, cur.admissionId),
+            dischargeDate: cur.effectiveAt,
+            reason: "for_cause",
           },
           organizationId,
           aggregateKind: "discharge_event",

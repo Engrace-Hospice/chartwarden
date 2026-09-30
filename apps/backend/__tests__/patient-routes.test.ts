@@ -120,7 +120,15 @@ function makeServer() {
     ).store,
   });
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerPatientRoutes(app, { service });
+  // F-171 (#248) — the merge write path (`merges-db.ts`) is real Drizzle over `patient`/`patient_merge`
+  // and has no in-memory counterpart; this harness's own patient map is private to
+  // `createInMemoryPatientRouteService` (unlike `PatientRouteService`, `mergePatients` is not on that
+  // interface — see `patient-routes.ts`'s header). No test in this file exercises the merge route; the
+  // real mechanism is proven live in `m5-patient-merge.live.test.ts`.
+  const mergePatients = async (): Promise<never> => {
+    throw new Error("mergePatients: not implemented in the route-test in-memory harness");
+  };
+  registerPatientRoutes(app, { service, mergePatients });
   return { app, events };
 }
 

@@ -20,6 +20,7 @@ import {
   computeNextSpawnAt,
   computeVerbalDeadline,
   disciplineCanOrder,
+  hoursOverdue,
   planCosignAttest,
   planStandingCreation,
   planStandingDiscontinuation,
@@ -38,7 +39,13 @@ import type {
   StandingOrderCadence,
   StandingOrderStatus,
 } from "@wardenx/types";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
+import {
+  type RecoveryAttestation,
+  type RecoveryEvidence,
+  classifyOrmResend,
+  classifyTransmissionRecovery,
+} from "../orm-request/orm-resend";
 
 /** Minimal M40 `MdmEntityProvider` subset the order service binds (physician / DME-vendor resolution). */
 export interface OrderMdmValidator {
@@ -109,6 +116,46 @@ export interface OrderDetailView extends OrderView {
   } | null;
   readonly requirements: readonly OrderRequirement[];
   readonly allowedActions: OrderAllowedActions;
+  /**
+   * F-202 — the order's attested-recovery HISTORY (append-only ledger rows, oldest first). Empty for a non-lab order
+   * and for a lab order that was never recovered. The lab contact's NAME and the lab's reference are a third party's
+   * personal data: they are `null` unless the reader holds `orders.transmission.recover` (F-203) or `orders.transmission.cosign_escalated`.
+   */
+  readonly transmissionAttestations: readonly TransmissionAttestationView[];
+  /** F-202 — the recovery awaiting its co-signature, if any (at most one per order); `null` otherwise. */
+  readonly pendingRecovery: RecoveryRequestView | null;
+}
+
+/** F-202 — one attested recovery, as the order detail shows it. Ids only for "who", per the rest of the view. */
+export interface TransmissionAttestationView {
+  readonly id: string;
+  readonly attestation: "not_received_by_lab" | "received_by_lab";
+  readonly outcome: "redispatched" | "marked_transmitted";
+  readonly priorFailureReason: string;
+  readonly attestedByMembershipId: string | null;
+  /** The second person (dual control) — `null` for `received_by_lab` and for rows recorded before F-202. */
+  readonly cosignedByMembershipId: string | null;
+  readonly attemptId: string | null;
+  readonly createdAt: string;
+  /** Redacted (`null`) for a reader without `orders.transmission.recover` / `.cosign_escalated` (F-203). */
+  readonly labContactName: string | null;
+  readonly labReference: string | null;
+}
+
+/** F-202 — a two-person recovery request. `labContactName` / `labReference` are redacted like the ledger's. */
+export interface RecoveryRequestView {
+  readonly id: string;
+  readonly orderId: string;
+  readonly status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+  /** F-203 — why a `superseded` request can no longer execute (a fixed token); `null` otherwise. */
+  readonly supersededReason: string | null;
+  readonly requestedByMembershipId: string | null;
+  readonly requestedAt: string;
+  readonly expiresAt: string;
+  readonly cosignedByMembershipId: string | null;
+  readonly resolvedAt: string | null;
+  readonly labContactName: string | null;
+  readonly labReference: string | null;
 }
 
 /** Detail-only workflow projection. It is deliberately never persisted. */
@@ -328,6 +375,41 @@ export interface OrderAbacFacts {
   readonly alreadyCosigned: boolean;
 }
 
+/**
+ * F-182 (#248) — the outcome of re-running a refused lab ORM. `requested`: every fact resolved this time, the
+ * `m11.order.hl7_orm_requested` was published in the same transaction and `transmission_status` is back to
+ * `pending`. `still_refused`: a fact is still missing — the order stays `failed` with the (possibly new) refusal
+ * reason and nothing was published. `refusalReason` is a fixed producer token (never PHI).
+ */
+export interface ResendLabTransmissionResult {
+  readonly outcome: "requested" | "still_refused";
+  readonly refusalReason: string | null;
+  readonly order: OrderDetailView;
+}
+
+/**
+ * F-187 (#248) — the outcome of an operator's ATTESTED recovery of a lab order whose transmission ended in an M29
+ * terminal failure. `redispatched`: the operator attested the lab did NOT receive it; the producer re-ran, ONE
+ * `m11.order.hl7_orm_requested` (carrying the attestation id) was published in the same transaction and
+ * `transmission_status` is back to `pending`. `marked_transmitted`: the operator attested the lab DID receive it;
+ * nothing was sent and the order is `transmitted`. `still_refused`: a fact the ORM needs is missing NOW, so it
+ * cannot be rebuilt — the order is left EXACTLY as it was (still `failed` with its M29 reason, never rewritten to an
+ * `orm_refused:*` that would make the plain resend — and its duplicate risk — reachable). `refusalReason` is a fixed
+ * producer token (never PHI).
+ */
+export interface RecoverLabTransmissionResult {
+  /**
+   * F-202 — `pending_cosign`: a `not_received_by_lab` attestation no longer executes on its own. It FILED a recovery
+   * request (see `recovery`) that a DIFFERENT authorized person must co-sign before anything is re-dispatched; the order
+   * is unchanged. `redispatched` is now the result of the CO-SIGN, never of the first call.
+   */
+  readonly outcome: "redispatched" | "marked_transmitted" | "still_refused" | "pending_cosign";
+  readonly refusalReason: string | null;
+  readonly order: OrderDetailView;
+  /** F-202 — the request this call filed (`pending_cosign`) or executed (`redispatched`); `null` otherwise. */
+  readonly recovery: RecoveryRequestView | null;
+}
+
 /** The resolver the §4.7 ABAC predicates read order facts through (the slice implements it in-memory). */
 export interface OrderAbacResolver {
   loadOrder(organizationId: string, orderId: string): Promise<OrderAbacFacts | null>;
@@ -419,6 +501,65 @@ export interface OrderRouteService extends OrderAbacResolver {
     reason?: string,
     actor?: OrderDetailActor,
   ): Promise<OrderDetailView>;
+  /**
+   * F-182 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose ORM request was REFUSED
+   * (`transmission_failure_reason = 'orm_refused:*'`). `auditUserId` is the Better Auth user id the M4 write-audit
+   * trigger stamps as `actor_user_id` (a membership id would violate that FK); omit for a system caller.
+   */
+  resendLabTransmission(
+    organizationId: string,
+    membershipId: string,
+    id: string,
+    actor?: OrderDetailActor,
+    auditUserId?: string,
+  ): Promise<ResendLabTransmissionResult>;
+  /**
+   * F-187 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
+   * (`dlq_exhausted` incl. F-183's "held, delivery unverified", or `application_reject`). `attestation` is what the
+   * operator established WITH THE LAB: `not_received_by_lab` re-dispatches once, `received_by_lab` marks the order
+   * transmitted without sending. F-188 — `evidence` (who at the lab was contacted + the lab's reference) is REQUIRED
+   * and persisted with the attestation in the append-only `order_transmission_attestation` table under
+   * `auditUserId`; `not_received_by_lab` is first checked against inbound evidence (409 on a contradiction).
+   */
+  recoverLabTransmission(
+    organizationId: string,
+    membershipId: string,
+    id: string,
+    attestation: RecoveryAttestation,
+    evidence: RecoveryEvidence,
+    actor?: OrderDetailActor,
+    auditUserId?: string,
+  ): Promise<RecoverLabTransmissionResult>;
+  /**
+   * F-202 — CO-SIGN a pending `not_received_by_lab` recovery (the second person of the two-person control). Refused —
+   * 409, in this order — when the request is not pending, has lapsed, or was filed by the SAME user; otherwise it
+   * executes the re-dispatch exactly as the single-person path did, in one transaction, and raises the compliance alert.
+   * `auditUserId` is the Better Auth USER id (the distinctness rule compares it, not the membership id).
+   */
+  cosignLabTransmissionRecovery(
+    organizationId: string,
+    membershipId: string,
+    orderId: string,
+    requestId: string,
+    actor?: OrderDetailActor,
+    auditUserId?: string,
+  ): Promise<RecoverLabTransmissionResult>;
+  /** F-202 — CANCEL a pending recovery (either person). Raises the (info) compliance alert; a settled request is a 409. */
+  cancelLabTransmissionRecovery(
+    organizationId: string,
+    membershipId: string,
+    orderId: string,
+    requestId: string,
+    actor?: OrderDetailActor,
+    auditUserId?: string,
+  ): Promise<{ readonly recovery: RecoveryRequestView; readonly order: OrderDetailView }>;
+  /**
+   * F-202 — the sweep: every pending recovery past its `expires_at` becomes `expired` and raises the compliance alert.
+   * Runs from the hourly M11 timer (system actor, per org). Returns how many lapsed.
+   */
+  expireStaleLabRecoveryRequests(
+    organizationId: string,
+  ): Promise<{ readonly expired: number; readonly superseded: number }>;
   pendingSignature(organizationId: string): Promise<{ orders: OrderView[] }>;
   verbalExpiring(organizationId: string): Promise<{ orders: OrderView[] }>;
   cosignPending(organizationId: string): Promise<{ orders: OrderView[] }>;
@@ -463,6 +604,17 @@ export interface OrderRouteService extends OrderAbacResolver {
     organizationId: string,
     now?: string,
   ): Promise<{ spawnedOrderIds: string[] }>;
+  /**
+   * §2.3 D3 / §4.8 `orders.verbal_timer` — scan the polymorphic `verbal_order` table for every `pending`
+   * receipt whose `deadline_at` has passed and flip each to `expired_unsigned`, emitting
+   * `m11.order.verbal_expired_unsigned` (§2.8 D14: `targetKind='order'` for M11's own `order_record`,
+   * `targetKind='medication_order'` for an M12 row — M11 owns the ONE timer for both, per the module's own
+   * "why M12 has no parallel timer" design). One bad/raced row must not stop the rest of the sweep.
+   */
+  expireOverdueVerbals(
+    organizationId: string,
+    at?: string,
+  ): Promise<{ expiredVerbalOrderIds: string[] }>;
   getVerbalPolicy(organizationId: string): Promise<VerbalPolicyView>;
   putVerbalPolicy(organizationId: string, args: VerbalPolicyArgs): Promise<VerbalPolicyView>;
   regenerateVerbalTimer(
@@ -476,7 +628,10 @@ export interface OrderRouteService extends OrderAbacResolver {
 
 // ── in-memory records (the slice mutates these; the view DTOs are the read-only projections) ────────────
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
-interface OrderRecord extends Mutable<Omit<OrderDetailView, "requirements" | "allowedActions">> {
+interface OrderRecord
+  extends Mutable<
+    Omit<OrderDetailView, "requirements" | "allowedActions" | "transmissionAttestations" | "pendingRecovery">
+  > {
   organizationId: string;
   cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null;
 }
@@ -575,6 +730,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       transmissionStatus: "not_applicable",
       resultsStatus: "not_applicable",
       verbalDeadlineAt: null,
+      verbalOrder: null,
       discontinuationReason: null,
       replacesOrderId: null,
       triggeringAssessmentId: null,
@@ -617,7 +773,14 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     ...view(r),
     kindVersion: r.kindVersion,
     data: r.data,
+    // `view()`'s declared return type (`OrderView`) omits `verbalOrder` (it's detail-only, per
+    // `OrderDetailView`'s own doc comment) even though the destructure leaves it on the runtime
+    // object — forwarded explicitly here, mirroring `orders-route-service-db.ts`'s
+    // `toOrderDetailView` doing the identical re-add.
+    verbalOrder: r.verbalOrder,
     ...buildOrderWorkflowProjection(r, actor, r.cosignerRoleNeeded),
+    transmissionAttestations: [],
+    pendingRecovery: null,
   });
   const viewSt = (r: StandingRecord): StandingOrderView => {
     const { organizationId: _o, signerDiscipline: _s, data: _d, ...v } = r;
@@ -716,6 +879,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         createdAt: now(),
         kindVersion: `${args.kind}.v1`,
         data: args.data,
+        verbalOrder: null,
       };
       orders.set(id, rec);
       emit(
@@ -806,6 +970,18 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         signedBy: null,
         completedAt: null,
         createdAt: now(),
+        // Mirrors `orders-route-service-db.ts`'s `verbal_orders` insert shape exactly (organizationId,
+        // status "pending", readBackVerified already gated true above, signedAt null until the sign
+        // path completes it — see `signInternal` below).
+        verbalOrder: {
+          status: "pending",
+          receivedAt: args.verbal.receivedAt,
+          effectiveAt: args.verbal.effectiveAt,
+          deadlineAt,
+          signedAt: null,
+          readBackVerified: args.verbal.readBackVerified,
+          attestation: args.verbal.verbalAttestation,
+        },
       };
       orders.set(id, rec);
       emit(
@@ -918,6 +1094,12 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async recordVerbal(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
+      // Mirrors `orders-route-service-db.ts`'s `recordVerbal` guard exactly.
+      if (!args.readBackVerified)
+        throw Object.assign(new Error("Verbal order must be read back and verified"), {
+          code: "VERBAL_READ_BACK_REQUIRED",
+          statusCode: 422,
+        });
       const t = transitionOrder(r.status, {
         type: "recordVerbal",
         kind: r.kind,
@@ -932,6 +1114,17 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         policyVersion: policy.policyVersion,
       });
       r.orderingPhysicianMdmId = args.orderingPhysicianMdmId;
+      // The detail-only verbal-order evidence (`OrderDetailView.verbalOrder`) — mirrors the real
+      // `verbal_orders` row shape `orders-route-service-db.ts` inserts.
+      r.verbalOrder = {
+        status: "pending",
+        receivedAt: args.receivedAt,
+        effectiveAt: args.effectiveAt,
+        deadlineAt: r.verbalDeadlineAt,
+        signedAt: null,
+        readBackVerified: args.readBackVerified,
+        attestation: args.verbalAttestation,
+      };
       emit(
         "m11.order.verbal_received",
         { orderId: id, deadlineAt: r.verbalDeadlineAt },
@@ -1021,6 +1214,59 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         `${correction.id}:corrected`,
       );
       return correction;
+    },
+
+    async resendLabTransmission(organizationId, _membershipId, id) {
+      // The in-mem slice has no outbound-ORM producer, so no order here can carry an `orm_refused:*` failure:
+      // it applies the SAME eligibility rule as the DB backend and therefore always refuses.
+      const r = find(organizationId, id);
+      const verdict = classifyOrmResend({
+        kind: r.kind,
+        status: r.status,
+        transmissionStatus: r.transmissionStatus,
+        transmissionFailureReason: null,
+      });
+      throw new ConflictError(
+        `ORM resend not allowed (${verdict.ok ? "no_orm_producer" : verdict.code}): ${
+          verdict.ok ? "the in-memory service has no outbound ORM producer" : verdict.message
+        }`,
+      );
+    },
+
+    async recoverLabTransmission(organizationId, _membershipId, id, attestation, _evidence) {
+      // Like the resend: the in-mem slice never has an M29 terminal failure to recover, so it applies the SAME
+      // eligibility rule as the DB backend and always refuses.
+      const r = find(organizationId, id);
+      const verdict = classifyTransmissionRecovery(
+        {
+          kind: r.kind,
+          status: r.status,
+          transmissionStatus: r.transmissionStatus,
+          transmissionFailureReason: null,
+        },
+        attestation,
+      );
+      throw new ConflictError(
+        `Transmission recovery not allowed (${verdict.ok ? "no_outbound_transport" : verdict.code}): ${
+          verdict.ok ? "the in-memory service has no outbound transport" : verdict.message
+        }`,
+      );
+    },
+
+    async cosignLabTransmissionRecovery(organizationId, _membershipId, orderId) {
+      find(organizationId, orderId);
+      throw new ConflictError(
+        "Transmission recovery not allowed (no_outbound_transport): the in-memory service has no outbound transport",
+      );
+    },
+    async cancelLabTransmissionRecovery(organizationId, _membershipId, orderId) {
+      find(organizationId, orderId);
+      throw new ConflictError(
+        "Transmission recovery not allowed (no_outbound_transport): the in-memory service has no outbound transport",
+      );
+    },
+    async expireStaleLabRecoveryRequests() {
+      return { expired: 0, superseded: 0 };
     },
 
     async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {
@@ -1208,6 +1454,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         createdAt: now(),
         kindVersion: r.kindVersion,
         data: r.data,
+        verbalOrder: null,
       });
       r.spawnCount += 1;
       emit(
@@ -1239,6 +1486,40 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       return { spawnedOrderIds };
     },
 
+    async expireOverdueVerbals(organizationId, at = now()) {
+      const expiredVerbalOrderIds: string[] = [];
+      for (const [id, r] of orders) {
+        if (r.organizationId !== organizationId) continue;
+        if (r.status !== "verbal_pending" || !r.verbalDeadlineAt) continue;
+        if (r.verbalDeadlineAt > at) continue;
+        // Validates NOT_SYSTEM_ACTOR / VERBAL_DEADLINE_NOT_REACHED / ILLEGAL_ORDER_TRANSITION.
+        const t = transitionOrder(r.status, {
+          type: "expire",
+          isSystemActor: true,
+          deadlineReached: true,
+        });
+        r.status = t.to;
+        r.discontinuationReason = "expired_verbal";
+        if (r.verbalOrder) r.verbalOrder = { ...r.verbalOrder, status: "expired_unsigned" };
+        // The slice models only M11's own `order_record` target (`targetKind='order'`) — it has no
+        // polymorphic `verbal_order` table of its own to represent an M12 `medication_order` receipt.
+        emit(
+          "m11.order.verbal_expired_unsigned",
+          {
+            orderId: id,
+            verbalOrderId: id,
+            targetKind: "order",
+            expiredAt: at,
+            hoursOverdue: hoursOverdue(at, r.verbalDeadlineAt),
+            orderingPhysicianMdmId: r.orderingPhysicianMdmId,
+          },
+          `${id}:verbal_expired_unsigned`,
+        );
+        expiredVerbalOrderIds.push(id);
+      }
+      return { expiredVerbalOrderIds };
+    },
+
     async getVerbalPolicy(_organizationId) {
       return policy;
     },
@@ -1258,12 +1539,14 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       const r = find(organizationId, id);
       if (r.status !== "verbal_pending")
         throw new NotFoundError(`order ${id} is not verbal_pending`);
+      if (!r.verbalOrder) throw new NotFoundError(`order ${id} has no verbal-order receipt`);
       r.verbalDeadlineAt = computeVerbalDeadline(now(), {
         windowHours: policy.windowHours,
         businessHoursOnly: policy.businessHoursOnly,
         timeZone: tz,
         policyVersion: policy.policyVersion,
       });
+      r.verbalOrder = { ...r.verbalOrder, deadlineAt: r.verbalDeadlineAt };
       emit(
         "m11.order.verbal_received",
         { orderId: id, deadlineAt: r.verbalDeadlineAt, regenerated: true },
@@ -1319,6 +1602,16 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     r.signedAt = now();
     r.signedBy = userId;
     r.version += 1;
+    // Mirrors `orders-route-service-db.ts`'s verbal-order sign path: a verbal order carries forward
+    // its own status/signedAt independent of the order's own transition.
+    if (r.verbalOrder) {
+      r.verbalOrder = { ...r.verbalOrder, status: "signed_in_time", signedAt: r.signedAt };
+      emit(
+        "m11.order.verbal_signed_in_time",
+        { orderId: id, signedAt: r.signedAt },
+        `${id}:verbal_signed_in_time`,
+      );
+    }
     emit(
       "m11.order.signed",
       { orderId: id, kind: r.kind, signedBy: userId, onBehalf },

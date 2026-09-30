@@ -292,6 +292,12 @@ export const M16_EVENT_IDEMPOTENCY_KEYS = {
  * path a `bereavement_plan` row can come into existence — or, for `m6.discharge.death`, was simply the
  * co-emitted source event `bereavement.eligible` is itself derived from in the same transaction. Neither
  * M16's own §4.5 table nor its `lifecycle/cascades.ts` deciders ever named any of the six.
+ *
+ * F-172/#248 — `m37.ipu_admission.death_recorded` removed too, the identical redundant-sibling shape:
+ * M37's own spec names M16 here ("bereavement onboarding"), but M16's real intake mechanism is keyed off
+ * the M6 admission (`m6.discharge.death`/`m6.admission.discharged` reason=death), which M37's own
+ * `recordDeath` transition (newly bound, F-172) is itself driven from — so this event carries no fact
+ * M16 doesn't already have earlier from the M6 side.
  */
 export const M16_SUBSCRIBED_EVENT_NAMES = [
   // The two topics M16's `consumers/` actually decides on today.
@@ -301,7 +307,6 @@ export const M16_SUBSCRIBED_EVENT_NAMES = [
   // `idg.decision_recorded` is the one M16 already binds LIVE — and the one this list did not name.
   "idg.decision_recorded",
   "m6.admission.discharged",
-  "m37.ipu_admission.death_recorded",
   "m39.consent.revoked",
   "m39.consent.signed",
   "m5.patient.bereavement_opt_out_changed",

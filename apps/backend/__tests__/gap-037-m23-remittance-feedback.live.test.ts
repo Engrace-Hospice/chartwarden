@@ -286,11 +286,18 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
   });
 
   it("a CLP02=22 reversal takes PAID back to ACK_ACCEPTED and emits nothing from M23", async () => {
+    // F-163 (#248) widened this payload with patientId/recoupedAmountCents/serviceFrom/serviceTo (M26's
+    // `handleClaimReversed` reads them); this test's own dispatcher still binds no M26 consumer, so the
+    // "stays pending" assertion below is unaffected — only the schema shape needed catching up.
     await postAndDrain(ORG_A, "m25.remittance.claim_recouped", {
       claimId: CLAIM.recouped,
+      patientId: "00000000-0000-0000-0000-0000000ba710",
       remittanceLineId: "00000000-0000-0000-0000-0000000f11e4",
       remittanceAdviceId: ADVICE,
       recoupedAmount: "1234.56",
+      recoupedAmountCents: 123_456,
+      serviceFrom: "2026-02-01",
+      serviceTo: "2026-02-28",
       postedAt: "2026-03-04T05:06:07.000Z",
     });
     expect(await stateOf(CLAIM.recouped)).toBe("ACK_ACCEPTED");

@@ -233,13 +233,24 @@ describe("M13-T08 — §4.7 controlled_substance_witness_eligible", () => {
 });
 
 describe("M13-T08 — §4.7 reconciliation_authoring_eligible + §4.4 draft-order event", () => {
-  it("an RN records a carry_forward decision (201) → m13.reconciliation.draft_order_requested fires", async () => {
+  it("an RN records a carry_forward decision on a caregiver-reported line, with explicit drug content (201) → m13.reconciliation.draft_order_requested fires", async () => {
     const { app, backend } = makeServer();
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/reconciliation/worksheets/${WORKSHEET}/decisions`,
       headers: RN,
-      payload: { lineKind: "active_medication", sourceId: ORDER, decision: "carry_forward" },
+      payload: {
+        lineKind: "caregiver_reported",
+        sourceId: ORDER,
+        decision: "carry_forward",
+        medicationDetails: {
+          drugName: "Lisinopril",
+          strength: "10mg",
+          doseForm: "tablet",
+          route: "oral",
+          medClass: "standard",
+        },
+      },
     });
     expect(res.statusCode).toBe(201);
     expect(backend.drainEvents().map((e) => e.eventName)).toContain(

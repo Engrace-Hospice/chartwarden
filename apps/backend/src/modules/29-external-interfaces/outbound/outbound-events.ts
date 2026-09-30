@@ -15,6 +15,12 @@ export interface LabOrderTransmittedPayload {
   /** MSH-10 of the transmitted ORM (= MSA-2 of the ack that correlated it). */
   readonly messageControlId: string;
   readonly ackReceivedAt: string;
+  /**
+   * F-200 — the outbound attempt the acked row belongs to (`hl7_message_outbound.attempt_id`, copied from the request's
+   * `attemptId`). M11's applier applies the event only to the order's CURRENT attempt. Absent for a row queued before
+   * F-200 or for a request that carried none; such an event applies as it always did.
+   */
+  readonly attemptId?: string;
 }
 
 /** Why an outbound ORM failed — an `AR` structural reject vs. transport-exhaustion DLQ vs. a pre-persist BAA
@@ -34,6 +40,46 @@ export interface LabOrderTransmissionFailedPayload {
   readonly detail: string | null;
   /** The number of dispatch attempts made before the terminal state (1 for `AR`, 5 for a DLQ exhaustion). */
   readonly attemptCount: number;
+  /**
+   * F-200 — the outbound attempt the failed row belongs to (see {@link LabOrderTransmittedPayload.attemptId}). A late or
+   * redelivered failure from an EARLIER attempt names a stale id and M11 ignores it — before this, the terminal-state
+   * check was the only guard, and it stops protecting an order the moment a recovery sets it `pending` again.
+   */
+  readonly attemptId?: string;
+}
+
+/**
+ * F-187 — why the worker could not even PERSIST a dispatch row for an order. Every one is an operator-fixable
+ * configuration state (activate / link / complete a feed, renew the BAA), so the order must not sit `pending`
+ * forever: M11's applier flips it to `failed` with `dispatch_refused:<reason>`, and F-182's resend re-runs the
+ * producer once the operator has fixed it. NO outbound row exists for any of these, so a resend cannot duplicate.
+ */
+export type LabOrderDispatchRefusalReason =
+  | "no_active_feed"
+  | "ambiguous_feed"
+  | "no_feed_for_destination"
+  | "feed_identity_incomplete"
+  | "baa_inactive"
+  // F-188 — an operator-ATTESTED re-dispatch that the worker could not honour because an outbound row that still
+  // owns the order (`queued`/`in_flight`/`acked`) appeared between the operator's request and the claim. Unlike the
+  // reasons above a row DOES exist for this order, so it is NOT resendable: M11 records it as
+  // `recovery_blocked:row_owns_order`, which only the attested recovery (not F-182's plain resend) can act on.
+  | "attested_redispatch_blocked";
+
+/** `m29.lab_order.dispatch_refused` — the worker wrote NO row for this order; M11 consumes (F-187). */
+export interface LabOrderDispatchRefusedPayload {
+  readonly orderId: string;
+  readonly organizationId: string;
+  /** The feed the refusal concerns when one was resolved (identity-incomplete, BAA); null when none was. */
+  readonly feedId: string | null;
+  /** Unique per refusal — the applier's `sourceM29EventId` (there is no outbound row id to cite). */
+  readonly refusalId: string;
+  readonly reason: LabOrderDispatchRefusalReason;
+  /**
+   * F-188 — the outbound attempt this refusal concerns (echoed from `OrmRequestedPayload.attemptId`). M11's applier
+   * applies the refusal only when it names the order's CURRENT attempt. Absent for a request that carried none.
+   */
+  readonly attemptId?: string;
 }
 
 /** The M11-facing outbound outbox events (§4.10). */
@@ -42,14 +88,30 @@ export type OutboundOutboxEvent =
   | {
       readonly name: "m29.lab_order.transmission_failed";
       readonly payload: LabOrderTransmissionFailedPayload;
+    }
+  | {
+      readonly name: "m29.lab_order.dispatch_refused";
+      readonly payload: LabOrderDispatchRefusedPayload;
     };
+
+/**
+ * Every M36 alert `eventType` the outbound worker can emit. A runtime list (not just a type) so F-188's guard can
+ * assert each one has a seeded platform-default `alert_rule` — an alert kind with no rule persists an `alert` row
+ * with zero recipients, i.e. reaches nobody.
+ */
+export const OUTBOUND_ALERT_KINDS = [
+  "hl7_outbound.transmission_failed",
+  "external_feed.baa_expired",
+  "external_feed.baa_missing",
+  // F-199 — the ESCALATION raised once per window when a feed's failures cross the storm threshold
+  // (`alert-routing.ts` `emitOutboundAlert`). Its own kind, so it is a SECOND alert row (its own correlation id)
+  // with its own seeded rule — the first alert of the window has already paged and cannot be re-paged.
+  "hl7_outbound.transmission_storm",
+] as const;
 
 /** An M36 typed-alert intent (§4.9). M29 owns no delivery code — the T08 worker hands this to M36's engine. */
 export interface OutboundAlert {
-  readonly kind:
-    | "hl7_outbound.transmission_failed"
-    | "external_feed.baa_expired"
-    | "external_feed.baa_missing";
+  readonly kind: (typeof OUTBOUND_ALERT_KINDS)[number];
   readonly severity: "HIGH" | "NORMAL";
   readonly channel: "operator-on-call" | "compliance";
   readonly feedId: string;
@@ -67,7 +129,11 @@ export interface OutboundAuditRecord {
     | "hl7.outbound.nacked"
     | "hl7.outbound.dlq"
     | "hl7.outbound.baa_refuse"
-    | "hl7.outbound.orphan_ack";
+    | "hl7.outbound.orphan_ack"
+    // F-183 — the `in_flight` lease-expiry outcomes, distinct from an ordinary retry's `dispatched` so the §164.528
+    // disclosure accounting can tell "requeued after a lost attempt" and "held, delivery unverified" apart.
+    | "hl7.outbound.reclaimed"
+    | "hl7.outbound.held";
   readonly feedId: string | null;
   readonly orderRecordId: string | null;
   readonly outboundMessageId: string | null;

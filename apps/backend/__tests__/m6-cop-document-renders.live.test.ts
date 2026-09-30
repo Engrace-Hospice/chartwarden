@@ -34,6 +34,9 @@ import {
   M6_OUTBOX_EVENTS,
   buildM6DocumentBackrefConsumer,
 } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
+import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
 import {
@@ -41,7 +44,11 @@ import {
   buildM12DocumentBackrefConsumer,
 } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS, buildM13DocumentBackrefConsumer } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
@@ -56,6 +63,7 @@ import {
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import {
@@ -243,15 +251,27 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
     // consumer, and this suite would prove M6's path against a dispatcher production never builds.
     const catalog = buildBootOutboxCatalog([
       M6_OUTBOX_EVENTS,
+      // F-166 (#248) — M7/M8/M14/M15/M17/M18's GENESIS-only render requests; same reason every
+      // sibling entry here is (the dispatcher refuses to construct on an unrepresented event).
+      M7_OUTBOX_EVENTS,
+      M8_OUTBOX_EVENTS,
+      M9_OUTBOX_EVENTS,
       M10_OUTBOX_EVENTS,
       M11_OUTBOX_EVENTS,
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
+      M14_OUTBOX_EVENTS,
+      M15_OUTBOX_EVENTS,
       M16_OUTBOX_EVENTS,
+      M17_OUTBOX_EVENTS,
+      M18_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,
       M23_OUTBOX_EVENTS,
+      // F-144 (#248) — M22's render consumer now also subscribes to
+      // `m24.medicaid_billing.document_render_requested`; same reason every sibling entry here is.
+      M24_OUTBOX_EVENTS,
       M25_OUTBOX_EVENTS,
       M27_OUTBOX_EVENTS,
       M33_OUTBOX_EVENTS,
@@ -408,6 +428,62 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
     );
     expect(rows[0].n).toBe(1);
     expect(await backref("certification_of_terminal_illness", adm.ctiId)).toBe(first.id);
+  });
+
+  it("F-176: a for-cause cosign appends v2 of the SAME discharge summary; the back-ref keeps v1's link; a redelivery adds no v3", async () => {
+    const patientId = randomUUID();
+    const adm = await activeAdmission(patientId);
+    await settle();
+    const filed = await svc.discharge(
+      ORG_A,
+      adm.admissionId,
+      {
+        reason: "for_cause",
+        dischargeDate: "2026-05-05",
+        narrative: "Discharge for cause; safety of staff could not be assured.",
+        forCauseReason: "Staff safety could not be assured at the residence after repeated incidents.",
+      } as never,
+      USER,
+    );
+    await settle();
+    const v1 = await documentFor("discharge_summary", filed.id);
+    expect(v1, "the filing-time `.created` render").not.toBeNull();
+    expect(await backref("discharge_event", filed.id)).toBe(v1.id);
+
+    await svc.cosignDischarge(
+      ORG_A,
+      filed.id,
+      { cosignerName: "Dr Director", cosignerNpi: "1234567893" } as never,
+      filed.version,
+      MD,
+    );
+    await settle();
+    const versions = async () =>
+      (
+        await admin.query(
+          `SELECT v.version_number, v.source_event_id FROM document d JOIN document_version v ON v.document_id = d.id
+            WHERE d.aggregate_type='discharge_summary' AND d.aggregate_id=$1 ORDER BY v.version_number`,
+          [filed.id],
+        )
+      ).rows;
+    // ONE document, TWO versions — never a second document — and both carry the chart.
+    const afterCosign = await documentFor("discharge_summary", filed.id);
+    expect(afterCosign.id).toBe(v1.id);
+    expect(afterCosign.patient_id).toBe(patientId);
+    expect(await versions()).toHaveLength(2);
+    // The M6 back-ref only stamps an UNSET column, so v2 does not overwrite v1's link.
+    expect(await backref("discharge_event", filed.id)).toBe(v1.id);
+
+    // A further relay pass redelivers nothing new: no v3.
+    await settle();
+    expect(await versions()).toHaveLength(2);
+
+    // Org B sees neither version through RLS.
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM document WHERE aggregate_type='discharge_summary' AND aggregate_id=$1 AND organization_id=$2",
+      [filed.id, ORG_B],
+    );
+    expect(rows[0].n).toBe(0);
   });
 
   it("every one of the six is a published template M22 renders and M6 stamps", async () => {

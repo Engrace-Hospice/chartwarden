@@ -13,9 +13,10 @@ import {
   type AbacTarget,
   requireAbac,
   requirePermission,
+  requireStepUp,
   resolveActorPermissions,
 } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   CompleteOrderRequest,
@@ -30,6 +31,8 @@ import {
   OrderParamsSchema,
   PatientParamsSchema,
   RecordVerbalRequest,
+  RecoverLabTransmissionRequest,
+  RecoveryRequestParamsSchema,
   RegenerateVerbalTimerRequest,
   RequestSignatureRequest,
   SignOnBehalfRequest,
@@ -90,6 +93,21 @@ const VERBAL = P("orders.verbal.record");
 const COSIGN = P("orders.cosign");
 const DISCONTINUE = P("orders.discontinue");
 const AMEND = P("orders.amend");
+// F-203 — the lab-transmission recovery authority, SPLIT OUT of `orders.amend` (which nearly every clinical role holds):
+// resend, file/cancel a recovery and co-sign need `orders.transmission.recover`. A co-signature is also accepted from a
+// holder of `orders.transmission.cosign_escalated` (the high-trust co-signer the recovery bound requires — see the
+// service), so that guard is an any-of.
+const RECOVER = P("orders.transmission.recover");
+const RECOVER_COSIGN: PreHandler = async (request) => {
+  const ctx = request.context;
+  if (!ctx?.organizationId) throw new UnauthorizedError();
+  const granted = await resolveActorPermissions({ organizationId: ctx.organizationId, userId: ctx.userId });
+  if (!granted.has("orders.transmission.recover") && !granted.has("orders.transmission.cosign_escalated")) {
+    throw new ForbiddenError("requires permission 'orders.transmission.recover' or 'orders.transmission.cosign_escalated'");
+  }
+};
+// F-188 — a fresh, server-verified second factor for the attested recovery (see the route).
+const RECOVER_STEP_UP = requireStepUp("order.recover_transmission") as PreHandler;
 const COMPLETE = P("orders.complete");
 const STANDING_MANAGE = P("orders.standing.manage");
 const STANDING_SPAWN = P("orders.standing.spawn");
@@ -427,6 +445,92 @@ export function registerOrderRoutes(
       await detailActorOf(request),
     );
   });
+
+  // F-182 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose HL7 request was REFUSED at
+  // sign time (`orm_refused:*`) after someone fixed the missing fact. `orders.amend` (RN Case Manager, MD/NP/PA,
+  // Medical Director, Clinical Supervisor — the roles that can correct an order, hence fix its facts); no step-up
+  // (the order was already signed for exactly this transmission — a resend discloses nothing new). There is no
+  // body: the target is the order, the action is fixed. The audit actor is the Better Auth USER id (the M4
+  // audit trigger's `actor_user_id` FKs `user`, unlike the membership id the rest of M11 passes).
+  app.post("/api/v1/orders/:id/resend-transmission", { preHandler: [RECOVER] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(OrderParamsSchema, request.params);
+    return service.resendLabTransmission(
+      organizationId,
+      userId,
+      id,
+      await detailActorOf(request),
+      request.context?.userId ?? "",
+    );
+  });
+
+  // F-187 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built (an M29
+  // terminal failure: `dlq_exhausted`, incl. F-183's "held, delivery unverified", or `application_reject`) — the
+  // orders F-182's resend refuses because the lab MAY already hold them. The body's `attestation` is required: the
+  // operator states what the lab actually has (`not_received_by_lab` → re-dispatch once; `received_by_lab` → mark
+  // transmitted, send nothing). Same `orders.amend` as the resend and no step-up: it re-discloses the SAME signed
+  // order to the SAME lab (or records a fact) and what protects it is the explicit attestation, recorded with who /
+  // when in the order's write-audit diff, plus the row-lock + conditional-update single-dispatch guards. The audit
+  // actor is the Better Auth USER id, as for the resend.
+  // F-188 — `requireStepUp("order.recover_transmission")`: BOTH attestations are gated (a wrong `not_received_by_lab`
+  // orders the test twice; a wrong `received_by_lab` hides an order the lab never got), so a fresh, server-verified
+  // second-factor is required on top of `orders.amend`. The body also carries STRUCTURED lab-contact evidence.
+  app.post("/api/v1/orders/:id/recover-transmission", { preHandler: [RECOVER, RECOVER_STEP_UP] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(OrderParamsSchema, request.params);
+    const body = parse(RecoverLabTransmissionRequest, request.body);
+    return service.recoverLabTransmission(
+      organizationId,
+      userId,
+      id,
+      body.attestation,
+      { contactName: body.contactName, labReference: body.labReference },
+      await detailActorOf(request),
+      request.context?.userId ?? "",
+    );
+  });
+
+  // F-202 — the SECOND person of the two-person control on `not_received_by_lab`. The first call above only FILED a
+  // request (`outcome: "pending_cosign"`); THIS executes the re-dispatch, and only for a DIFFERENT user than the one who
+  // filed it (409 `self_cosign`; a DB CHECK backs the rule), before the request lapses (24 h → 409 `expired`). Same
+  // `orders.amend` and the same fresh step-up as the request: a co-signature is a second person accepting the
+  // duplicate risk, so it is gated at least as hard as the attestation. The distinctness rule compares the Better Auth
+  // USER id (`request.context.userId`), not the membership id.
+  app.post(
+    "/api/v1/orders/:id/recover-transmission/:requestId/cosign",
+    { preHandler: [RECOVER_COSIGN, RECOVER_STEP_UP] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
+      return service.cosignLabTransmissionRecovery(
+        organizationId,
+        userId,
+        id,
+        requestId,
+        await detailActorOf(request),
+        request.context?.userId ?? "",
+      );
+    },
+  );
+
+  // F-202 — cancel a pending recovery: either person (the requester who thinks better of it, or a colleague who finds
+  // the lab DID have the order). `orders.amend` alone — cancelling sends nothing and can only prevent a re-dispatch.
+  app.post(
+    "/api/v1/orders/:id/recover-transmission/:requestId/cancel",
+    { preHandler: [RECOVER] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
+      return service.cancelLabTransmissionRecovery(
+        organizationId,
+        userId,
+        id,
+        requestId,
+        await detailActorOf(request),
+        request.context?.userId ?? "",
+      );
+    },
+  );
 
   // 18 — list standing orders.
   app.get(

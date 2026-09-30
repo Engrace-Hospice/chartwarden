@@ -96,6 +96,7 @@ import {
   LocChangeSchema,
   LocConfirmBedSchema,
   LocPatchSchema,
+  AdmissionSummaryPageResponseSchema as M6AdmissionSummaryPageResponseSchema,
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
@@ -276,6 +277,7 @@ import {
   AssignRetrieverBody as M21AssignRetrieverBody,
   AssignVendorBody as M21AssignVendorBody,
   CancelRequestBody as M21CancelRequestBody,
+  CaptureCaregiverSignatureBody as M21CaptureCaregiverSignatureBody,
   ConfirmReceivedBody as M21ConfirmReceivedBody,
   CreateDispatchBody as M21CreateDispatchBody,
   CreateReturnBody as M21CreateReturnBody,
@@ -603,6 +605,8 @@ import {
   AmendmentResponseSchema as M5EAmendmentResponseSchema,
   CensusMetricsResponseSchema as M5ECensusMetricsResponseSchema,
   DenyBodySchema as M5EDenyBodySchema,
+  MergeBodySchema as M5EMergeBodySchema,
+  MergeResponseSchema as M5EMergeResponseSchema,
   PatientAddressesResponseSchema as M5EPatientAddressesResponseSchema,
   PatientCareTeamResponseSchema as M5EPatientCareTeamResponseSchema,
   PatientDemographicsSchema as M5EPatientDemographicsSchema,
@@ -1223,6 +1227,7 @@ import {
 } from "../../apps/backend/src/modules/08-encounters/routes/encounters-typebox";
 import {
   AcknowledgeChangeSchema as M9AcknowledgeChangeSchema,
+  AssessmentDetailResponseSchema as M9AssessmentDetailResponseSchema,
   AssessmentListQuerySchema as M9AssessmentListQuerySchema,
   AssessmentListResponseSchema as M9AssessmentListResponseSchema,
   AssessmentSummaryResponseSchema as M9AssessmentSummaryResponseSchema,
@@ -1234,6 +1239,7 @@ import {
   LatestBatchQuerySchema as M9LatestBatchQuerySchema,
   LatestBatchResponseSchema as M9LatestBatchResponseSchema,
   RecordAssessmentSchema as M9RecordAssessmentSchema,
+  RequestSummaryDocumentResponseSchema as M9RequestSummaryDocumentResponseSchema,
   ScaleCatalogResponseSchema as M9ScaleCatalogResponseSchema,
   ScaleDeltaResponseSchema as M9ScaleDeltaResponseSchema,
   ScaleLicenseListResponseSchema as M9ScaleLicenseListResponseSchema,
@@ -1300,6 +1306,10 @@ import {
   RecordVerbalRequest as M11RecordVerbalRequest,
   RegenerateVerbalTimerRequest as M11RegenerateVerbalTimerRequest,
   RequestSignatureRequest as M11RequestSignatureRequest,
+  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
+  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
+  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
+  ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
   SignOrderRequest as M11SignOrderRequest,
   SpawnResponseSchema as M11SpawnResponseSchema,
@@ -1312,6 +1322,10 @@ import {
   VerbalPolicyRequest as M11VerbalPolicyRequest,
   VerbalPolicyViewResponseSchema as M11VerbalPolicyViewResponseSchema,
 } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
+import {
+  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
+  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
+} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
 import {
   ApproveRefillRequest as M12ApproveRefillRequest,
   CompleteRequest as M12CompleteRequest,
@@ -1330,12 +1344,14 @@ import {
   MedicationOrderResponseSchema as M12MedicationOrderResponseSchema,
   NewOrderIdResponseSchema as M12NewOrderIdResponseSchema,
   PrescriberRosterListResponseSchema as M12PrescriberRosterListResponseSchema,
+  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   ReconcileRequest as M12ReconcileRequest,
   RecordVerbalRequest as M12RecordVerbalRequest,
   RefillInboxPolicyRequest as M12RefillInboxPolicyRequest,
   RefillInboxPolicyResponseSchema as M12RefillInboxPolicyResponseSchema,
   RefillListResponseSchema as M12RefillListResponseSchema,
   RefillRequestResponseSchema as M12RefillRequestResponseSchema,
+  ReportMedicationErrorRequest as M12ReportMedicationErrorRequest,
   RequestSignatureRequest as M12RequestSignatureRequest,
   RevokePrescriberRequest as M12RevokePrescriberRequest,
   RxBenefitLookupRequest as M12RxBenefitLookupRequest,
@@ -3502,7 +3518,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/admissions": {
     summary: "Admission census (cursor-paginated, filterable by state)",
     query: AdmissionListQuerySchema,
-    response: M6SummaryPageResponseSchema,
+    response: M6AdmissionSummaryPageResponseSchema,
   },
   "GET /api/v1/admissions/:id": {
     summary: "Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5)",
@@ -4001,9 +4017,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Per-scale latest-capture summary surface",
     response: M9AssessmentSummaryResponseSchema,
   },
+  "POST /api/v1/patients/:patientId/assessments/summary/document": {
+    summary:
+      "F-208 explicit trigger — request a fresh printable assessment-summary render (M22 renders assessment_summary)",
+    response: M9RequestSummaryDocumentResponseSchema,
+  },
   "GET /api/v1/patients/:patientId/assessments/:id": {
-    summary: "Read one assessment row",
-    response: M9AssessmentViewResponseSchema,
+    summary: "Read one assessment with ordered per-item responses",
+    response: M9AssessmentDetailResponseSchema,
   },
   "GET /api/v1/patients/:patientId/scales/:scaleType/latest": {
     summary: "Latest capture of one scale",
@@ -4221,6 +4242,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M11OrderListQuerySchema,
     response: M11OrderListResponseSchema,
   },
+  "GET /api/v1/orders/held-transmissions": {
+    summary:
+      "Held lab-order worklist — orders that failed AFTER their HL7 message was built (dlq_exhausted / application_reject / recovery_blocked:*) and wait for an operator to verify with the lab; oldest first, cursor-paginated, with age + escalation stage (orders.amend)",
+    query: M11HeldTransmissionsQuerySchema,
+    response: M11HeldTransmissionsResponseSchema,
+  },
   "GET /api/v1/orders/pending-signature": {
     summary: "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
     response: M11OrderListResponseSchema,
@@ -4307,6 +4334,26 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Manual completion (incl. lab Mark-reviewed)",
     body: M11CompleteOrderRequest,
     response: M11OrderViewResponseSchema,
+  },
+  "POST /api/v1/orders/:id/resend-transmission": {
+    summary:
+      "Re-run the outbound lab HL7 request for a signed lab order whose request was refused (orm_refused:*) — 409 when not resendable",
+    response: M11ResendLabTransmissionResponseSchema,
+  },
+  "POST /api/v1/orders/:id/recover-transmission": {
+    summary:
+      "Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (FILES a two-person request a different user must co-sign; nothing is re-dispatched until then) or DID (mark transmitted, send nothing) — 409 when not recoverable",
+    body: M11RecoverLabTransmissionRequest,
+    response: M11RecoverLabTransmissionResponseSchema,
+  },
+  "POST /api/v1/orders/:id/recover-transmission/:requestId/cosign": {
+    summary:
+      "Co-sign a pending not_received_by_lab recovery (the second person of the two-person control): re-dispatches once — 409 when the request is not pending, has lapsed (24 h), or was filed by the same user",
+    response: M11RecoverLabTransmissionResponseSchema,
+  },
+  "POST /api/v1/orders/:id/recover-transmission/:requestId/cancel": {
+    summary: "Cancel a pending recovery request (either person) — 409 when it is no longer pending",
+    response: M11CancelLabTransmissionRecoveryResponseSchema,
   },
   "GET /api/v1/standing-orders": {
     summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
@@ -4416,6 +4463,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/medication-orders/:id/discontinue": {
     summary: "Discontinue a medication order",
     body: M12DiscontinueRequest,
+  },
+  "POST /api/v1/medication-orders/:id/report-error": {
+    summary: "File a clinician-initiated medication-error report against an order (F-205, #248)",
+    body: M12ReportMedicationErrorRequest,
+    response: M12MedicationErrorReportResponseSchema,
   },
   "POST /api/v1/medication-orders/:id/complete": {
     summary: "Complete a medication order (no-refills-no-renewal)",
@@ -5644,6 +5696,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M5EAddPatientPayerResponseSchema,
     status: 201,
   },
+  "POST /api/v1/patients/:id/merge": {
+    summary:
+      "Direct patient merge (§2.4/§4.3, step-up + caseload_or_scope on both source + target) — folds :id into targetPatientId, no destructive UPDATE on satellite tables (F-171, #248)",
+    body: M5EMergeBodySchema,
+    response: M5EMergeResponseSchema,
+  },
   "POST /api/v1/patients/:id/amendments": {
     summary: "Open a record-amendment request (§7.7, 60-day SLA)",
     body: M5EAmendmentBodySchema,
@@ -6465,6 +6523,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-delivered": {
     summary: "D7 courier attestation (deliveredBy stamped from session; If-Match)",
     body: M21MarkDeliveredBody,
+    response: M21SupplyRequestDetailSchema,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/caregiver-signature": {
+    summary:
+      "M21's own caregiver-signature capture (F-193, #248) — not a status transition, no outbox emission, refuses a second capture (If-Match)",
+    body: M21CaptureCaregiverSignatureBody,
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/confirm-received": {
@@ -9612,6 +9676,13 @@ const M29FeedDetailSchema = Type.Object({
   channelCertPin: Type.Union([Type.String(), Type.Null()]),
   sendingFacilityAllowlist: Type.Array(Type.String()),
   rateLimitMsgPerSec: Type.Integer(),
+  labDestinationFacilityId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  mshSendingApplication: Type.Union([Type.String(), Type.Null()]),
+  mshSendingFacility: Type.Union([Type.String(), Type.Null()]),
+  mshReceivingApplication: Type.Union([Type.String(), Type.Null()]),
+  mshReceivingFacility: Type.Union([Type.String(), Type.Null()]),
+  receiverDedupesControlId: Type.Boolean(),
+  inFlightLeaseSeconds: Type.Union([Type.Integer(), Type.Null()]),
   proposedByMembershipId: Type.String(),
   approvedByOpId: Type.Union([Type.String(), Type.Null()]),
   approvedByComplId: Type.Union([Type.String(), Type.Null()]),

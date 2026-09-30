@@ -58,6 +58,13 @@ export const M13_ERROR_STATUS = {
   // §2.8 D17 — a per-line reconciliation decision is illegal for the line's source (e.g. `new_order` on an
   // already-active M12 order).
   RECONCILIATION_DECISION_INVALID: 422,
+  // §2.8 D17 (F-16x, #248) — a `carry_forward`/`new_order` decision on a non-active line supplied no real
+  // drug content to mint the M12 draft from. Never defaulted/fabricated.
+  RECONCILIATION_MEDICATION_DETAILS_REQUIRED: 422,
+  // §2.8 D17 (F-16x, #248) — a `carry_forward`/`new_order` decision targeted an `m12_medhx` line, but no
+  // M12 medication-history record projection exists anywhere in this codebase yet (genuinely missing
+  // infrastructure, not a wiring gap — see `ReconciliationMedicationDetails`'s doc in `@wardenx/emar`).
+  RECONCILIATION_MEDHX_UNAVAILABLE: 501,
   // §2.8 D17 — finalization was attempted while one or more worksheet lines are still undecided.
   RECONCILIATION_NOT_FINALIZABLE: 422,
   // §2.8 D17 — a worksheet lifecycle event was attempted from a terminal/illegal status (already finalized/voided).

@@ -93,7 +93,9 @@ export type OrderDiscontinuationReason =
   | "level_of_care_change"
   | "standing_order_discontinued"
   | "corrected_replacement"
-  | "expired_verbal";
+  | "expired_verbal"
+  // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never M11's own discharge cascade).
+  | "supply_request_cancelled";
 
 /** The §2.2 / §4.10 orthogonal lab-wire dispatch state (mirrors `order_transmission_status`). */
 export type OrderTransmissionStatus =
@@ -179,6 +181,8 @@ export const M11_EVENT_NAMES = [
   "m11.order.document_requested",
   "m11.order.verbal_expiring_soon",
   "m11.order.suggestion_state_changed",
+  // F-203 (#248) — the DURABLE compliance-alert intent of the two-person lab-recovery control.
+  "m11.order.recovery_alert_requested",
 ] as const;
 
 /** An M11 outbox event name (§4.4). */
@@ -346,6 +350,20 @@ export interface OrmRequestedPayload {
   readonly priority: "R" | "S" | "A" | "T"; // ORC-7 / OBR-5
   readonly requestedAt: string; // signed_at as ISO
   readonly labOrderPayload: OrderHl7LabOrderPayload;
+  /**
+   * F-187 — set ONLY by the operator's attested re-dispatch (`recoverLabTransmission`, outcome
+   * `not_received_by_lab`): an id minted per attestation. It is the one sanctioned exception to M29's
+   * one-ORM-per-order guard (F-183) — see `dispatch-worker.ts`. Absent on every ordinary request.
+   */
+  readonly redispatchAttestationId?: string;
+  /**
+   * F-188 — the id of THIS outbound attempt, minted by the producer at every emission (sign, F-182 resend,
+   * attested recovery) and persisted as `order_record.transmission_attempt_id` in the same transaction. M29 echoes it
+   * on `m29.lab_order.dispatch_refused`, and M11's applier applies a refusal only to the attempt it refused, so a
+   * stale refusal redelivered after an operator resend cannot flip the order `failed` again. Optional: a request
+   * emitted before F-188 carries none, and its refusal is applied as it always was.
+   */
+  readonly attemptId?: string;
 }
 
 // ── §2.8 / §4.3 owned-seam read DTOs (read-only projections; never Drizzle rows) ──────────────────────

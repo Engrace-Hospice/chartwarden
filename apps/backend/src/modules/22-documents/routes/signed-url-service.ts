@@ -11,6 +11,12 @@
 // `BaaStatusProvider` via the T06 fail-closed BAA resolver — a missing/inactive BAA blocks the presign
 // (`baa_inactive`). M22 `dependsOn` is `[1, 5]`: the BAA seam is resolved OPAQUELY from the M1 registry
 // (no `@wardenx/mdm` import, no dependency-cruiser edge — the T06 baa-gate precedent).
+//
+// SUD-CONSENT MINT-TIME GATE (§7.16, F-197 #248). `consent-gate.ts`'s `resolveSudConsentPresent` is also
+// run at RENDER time (`decide-document-request.ts`), but that is a one-shot check — a document rendered
+// while consent was active stayed freely downloadable via fresh signed URLs forever after a later 42 CFR
+// Part 2 revocation, since nothing re-checked consent on any SUBSEQUENT mint. Every mint now re-checks
+// consent for any document flagged `metadata.sudRedacted` at render time, for every purpose, fail-closed.
 import type {
   DocumentAccessKind,
   DocumentAccessPurpose,
@@ -21,6 +27,7 @@ import type {
 import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import { planSignedUrl } from "../lifecycle/storage";
 import { resolveExternalBaaActive } from "../outbox-consumers/baa-gate";
+import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
 
 /** The §4.3 `DocumentStorageProvider` arm the signed-URL service consumes (presign only). */
@@ -36,6 +43,13 @@ export interface SignedUrlObjectFacts {
   readonly objectKey: string;
   /** The external partner this presign targets, if any — gates the BAA check (§4.12). */
   readonly externalRecipient: ExternalRecipientRef | null;
+  /** F-197 (#248) — the document's patient, for the §7.16 SUD-consent re-check below. Null only for an
+   *  org-level document (never SUD-class — `isSudClass` is false whenever this is null in practice). */
+  readonly patientId: string | null;
+  /** F-197 (#248) — was this document version rendered while flagged 42 CFR Part 2 SUD-class (D20/D23,
+   *  `document.metadata.sudRedacted`)? The render-time gate (`consent-gate.ts`) only ever checks ONCE, at
+   *  render; this is the fact that lets `mint()` below re-check consent on every LATER download too. */
+  readonly isSudClass: boolean;
 }
 
 /** Loads a version's org-scoped object-key facts (in-memory in the slice; Drizzle in prod under RLS). */
@@ -90,8 +104,9 @@ export interface SignedUrlService {
 
 /**
  * Build the §4.1 signed-URL service. `mint` plans the PHI-free presign descriptor (T03, ≤ 300s),
- * runs the §4.12 external-disclosure BAA gate (fail-closed via the T06 resolver), and presigns through the
- * injected T04 storage port. A missing/cross-tenant version is a non-leaking 404; a blocked BAA is 403.
+ * runs the §7.16 SUD-consent re-check + the §4.12 external-disclosure BAA gate (both fail-closed), and
+ * presigns through the injected T04 storage port. A missing/cross-tenant version is a non-leaking 404; a
+ * blocked BAA or an absent SUD consent is 403.
  */
 export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlService {
   const { storage, resolver } = deps;
@@ -103,6 +118,27 @@ export function createSignedUrlService(deps: SignedUrlServiceDeps): SignedUrlSer
         versionId: args.versionId,
       });
       if (!facts) throw new NotFoundError("document version");
+
+      // F-197 (#248) — §7.16 SUD-consent RE-check at mint time, mirroring the BAA gate immediately below.
+      // `resolveSudConsentPresent` was already run once, at RENDER time — but a signed URL can be minted
+      // arbitrarily long after a document was rendered, and a 42 CFR Part 2 consent can be revoked in
+      // between. Applies to EVERY purpose (unlike the BAA gate below, which is disclosure-specific) — SUD
+      // consent gates who can see the content at all, not just external disclosure. Fail-closed: a SUD
+      // document with no resolvable patient (should not happen — SUD content is patient-scoped by
+      // construction) is refused rather than silently let through.
+      if (facts.isSudClass) {
+        const consentPresent =
+          facts.patientId !== null &&
+          (await resolveSudConsentPresent({
+            organizationId: args.organizationId,
+            patientId: facts.patientId,
+          }));
+        if (!consentPresent) {
+          throw new ForbiddenError(
+            "signed-url denied: 42 CFR Part 2 consent is not currently active for this patient",
+          );
+        }
+      }
 
       // §4.12 — external disclosure presigns gate on M40's live BAA status (as-of NOW); fail closed.
       if (isExternalDisclosure(args.purpose) && facts.externalRecipient) {

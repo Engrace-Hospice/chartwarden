@@ -4,21 +4,21 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1301/1301 route defs sit behind a covered module · 1244/1301 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1311/1311 route defs sit behind a covered module · 1253/1311 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
 | 02-identity | 25 | ✅ | 24/25 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/device-attestation-routes.test.ts, apps/backend/__tests__/identity-routes.test.ts, apps/backend/__tests__/session-step-up.test.ts, apps/backend/__tests__/step-up-mount.test.ts |
 | 03-authorization | 17 | ✅ | 16/17 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts |
 | 04-audit | 13 | ✅ | 13/13 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes-mount.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts, apps/backend/__tests__/gap-003-compliance-routes.live.test.ts |
-| 05-patient | 15 | ✅ | 15/15 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
+| 05-patient | 16 | ✅ | 16/16 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
 | 06-admission | 68 | ✅ | 68/68 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 22 | ✅ | 21/22 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
 | 08-encounters | 37 | ✅ | 33/37 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
-| 09-assessments | 19 | ✅ | 14/19 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/m9-assessments-write.live.test.ts |
+| 09-assessments | 20 | ✅ | 15/20 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/m9-assessments-write.live.test.ts |
 | 10-hope | 29 | ✅ | 27/29 | apps/backend/__tests__/hope-routes.test.ts |
-| 11-orders | 28 | ✅ | 22/28 | apps/backend/__tests__/orders-routes.test.ts |
-| 12-dosespot | 31 | ✅ | 19/31 | apps/backend/__tests__/dosespot-routes.test.ts |
+| 11-orders | 34 | ✅ | 27/34 | apps/backend/__tests__/orders-routes.test.ts, apps/backend/__tests__/orm-recovery.test.ts, apps/backend/__tests__/orm-resend.test.ts, apps/backend/__tests__/stuck-recovery.test.ts |
+| 12-dosespot | 32 | ✅ | 20/32 | apps/backend/__tests__/dosespot-routes.test.ts |
 | 13-emar | 28 | ✅ | 16/28 | apps/backend/__tests__/emar-caregiver-barcode.test.ts, apps/backend/__tests__/emar-routes.test.ts |
 | 14-idg | 30 | ✅ | 30/30 | apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-routes.test.ts |
 | 15-discipline-care-plans | 28 | ✅ | 28/28 | apps/backend/__tests__/discipline-plans-inject.test.ts |
@@ -27,7 +27,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 18-evv | 25 | ✅ | 25/25 | apps/backend/__tests__/evv-inject.test.ts |
 | 19-oncall | 39 | ✅ | 38/39 | apps/backend/__tests__/oncall-inject.test.ts |
 | 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts |
-| 21-supplies | 37 | ✅ | 37/37 | apps/backend/__tests__/supplies-inject.test.ts |
+| 21-supplies | 38 | ✅ | 38/38 | apps/backend/__tests__/supplies-inject.test.ts |
 | 22-documents | 40 | ✅ | 35/40 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts |
 | 23-billing-medicare | 43 | ✅ | 43/43 | apps/backend/__tests__/billing-medicare-inject.test.ts |
 | 24-billing-medicaid | 39 | ✅ | 39/39 | apps/backend/__tests__/billing-medicaid-inject.test.ts |

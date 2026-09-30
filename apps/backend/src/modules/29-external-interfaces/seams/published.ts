@@ -23,11 +23,26 @@ import { registerSeam } from "../../../bootstrap/index";
 export interface LabObservationSeamValue {
   readonly obxSetId: number;
   readonly loincCode: string;
+  /** The value-row's own display text (`lab_observation_value.loinc_display_text`) — distinct from the
+   *  parent observation's panel-level `loincDisplayText` below; a panel can carry several differently
+   *  named component results under one observation. */
+  readonly loincDisplayText: string;
   readonly valueType: string;
   readonly numericValue: number | null;
   readonly stringValue: string | null;
   readonly units: string | null;
   readonly abnormalFlag: string | null;
+  /** F-171 (#248) — the 42 CFR Part 2 SUD-class flag M22's §7.16 redaction gate needs before rendering ANY
+   *  lab value (the identical Part-2-disclosure risk F-035 refused for the M12/M13 FHIR projections until
+   *  the flag was added). Ingest applies SUD redaction uniformly across every OBX row of one observation
+   *  (D15/W-XI-14: `ConsentEvaluator.evaluateForIngressRedaction` decides per MESSAGE, not per value —
+   *  `lab-attach-planner.ts`'s `buildValueRows` strips/sentinels every row in the same message together),
+   *  so this is the real, non-fabricated per-value projection of the parent `lab_observation
+   *  .sud_redacted_at_ingest` column — never an invented per-row classifier. A row whose parent observation
+   *  was SUD-redacted at ingest already carries the `SUD_REDACTED_SENTINEL` string, not the raw value; this
+   *  flag is what tells a consumer WHY, so the §7.16 gate can still show the redaction banner rather than
+   *  rendering the sentinel text as if it were a real result. */
+  readonly isSudClass: boolean;
 }
 export interface LabObservationSeamDTO {
   readonly id: string;
@@ -87,6 +102,17 @@ export interface LabObservationReader {
     patientId: string;
     limit?: number;
   }): Promise<readonly LabObservationSeamDTO[]>;
+  /** F-171 (#248) — the M22 §7.15 lab-backref render consumer resolves an observation from `m11.order
+   *  .results_received`, whose real catalogued payload (`events-by-m11.ts`) carries `observationId` but
+   *  NOT `patientId` (M11 owns the order, not the patient binding a lab result resolves to). `getById`
+   *  cannot be used there — it REQUIRES a `patientId` the caller does not have. Additive rather than
+   *  widening `getById` (which stays required for the M28 caller that already supplies one, and whose
+   *  extra `patientId` predicate is real defense-in-depth, not vestigial): `lab_observation.id` is already
+   *  the app-generated PK, unique with no `patientId` needed to disambiguate it. */
+  getByObservationId(opts: {
+    organizationId: string;
+    observationId: string;
+  }): Promise<LabObservationSeamDTO | null>;
 }
 
 /** §4.4 — read-side projection of pending ADT proposals for cross-module review surfaces (M5/M6 badges). */
@@ -131,6 +157,11 @@ export interface M29PublishedSeamStore {
     patientId: string,
     observationId: string,
   ): Promise<LabObservationSeamDTO | null>;
+  /** F-171 (#248) — the patientId-free lookup {@link LabObservationReader.getByObservationId} delegates to. */
+  labObservationByObservationId(
+    organizationId: string,
+    observationId: string,
+  ): Promise<LabObservationSeamDTO | null>;
   labObservationsForPatient(
     organizationId: string,
     patientId: string,
@@ -165,6 +196,8 @@ export interface M29PublishedSeamStore {
 export function createLabObservationReader(store: M29PublishedSeamStore): LabObservationReader {
   return {
     getById: (o) => store.labObservationById(o.organizationId, o.patientId, o.observationId),
+    getByObservationId: (o) =>
+      store.labObservationByObservationId(o.organizationId, o.observationId),
     listByPatient: (o) =>
       store.labObservationsForPatient(o.organizationId, o.patientId, o.limit ?? 50),
   };

@@ -47,6 +47,9 @@ const GOOD: EnvLike = {
   INTERNAL_SERVICE_TOKEN: "w".repeat(32),
   // #105 — the platform KEK wrapping every tenant DEK: `<kekId>:<base64 32 bytes>` (ADR-0045).
   M34_TENANT_KEK: `kek-1:${Buffer.alloc(32, 5).toString("base64")}`,
+  // F-172 (#248) — the platform KEK wrapping the M35 `patient_pseudonym_key` singleton (a SEPARATE
+  // secret from M34_TENANT_KEK; same `<kekId>:<base64 32 bytes>` shape).
+  M35_PSEUDONYM_KEY_KEK: `kek-2:${Buffer.alloc(32, 6).toString("base64")}`,
 };
 
 describe("collectEnvProblems", () => {
@@ -292,5 +295,23 @@ describe("#115 — reserved placeholder hosts", () => {
     expect(
       collectEnvProblems({ ...GOOD, NODE_ENV: "development", PASSKEY_RP_ID: "x.invalid" }),
     ).toEqual([]);
+  });
+});
+
+// F-181 (#248) — a switch that exists only for non-production use must be ABSENT in production.
+describe("F-181 — M29_ALLOW_MLLP_PLAIN is forbidden in production", () => {
+  it("a production env carrying the cleartext-HL7 opt-in fails closed, naming the key", () => {
+    const problems = collectEnvProblems({ ...GOOD, M29_ALLOW_MLLP_PLAIN: "true" });
+    expect(problems.map((p) => p.key)).toContain("M29_ALLOW_MLLP_PLAIN");
+    expect(() => assertProductionEnv({ ...GOOD, M29_ALLOW_MLLP_PLAIN: "true" })).toThrow(
+      /M29_ALLOW_MLLP_PLAIN/,
+    );
+  });
+  it("any non-empty value trips it (not just 'true'), and absence / non-production is fine", () => {
+    expect(
+      collectEnvProblems({ ...GOOD, M29_ALLOW_MLLP_PLAIN: "false" }).map((p) => p.key),
+    ).toContain("M29_ALLOW_MLLP_PLAIN");
+    expect(collectEnvProblems(GOOD).map((p) => p.key)).not.toContain("M29_ALLOW_MLLP_PLAIN");
+    expect(collectEnvProblems({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })).toEqual([]);
   });
 });

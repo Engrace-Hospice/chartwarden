@@ -99,6 +99,19 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Medication Administration Record",
   },
+  // F-171 (#248) — the patient-facing active-medication list. `patient_medication_list` has been a real
+  // `document_aggregate_type` enum value (mig 0048) and a `@wardenx/forms` `TemplateDescriptor` since
+  // M22-T01 — but that is a SEPARATE golden-template-diff/overlay registry (`packages/forms/src/templates/
+  // registry.ts`), never consulted by this table or by render-consumer.ts's REQUEST_SHAPES; this table is
+  // the one `createDocumentRenderer`/`render()` actually resolves `templateKey` against, and it had no
+  // entry here — a first render would have thrown `UnknownTemplateError` regardless of the forms-registry
+  // row existing. `clinical_record`: the rendered list is filed on the chart, the same class as the
+  // individual `medication_order` render.
+  patient_medication_list: {
+    aggregateType: "patient_medication_list",
+    retentionClass: "clinical_record",
+    defaultTitle: "Patient Medication List",
+  },
   bereavement_letter: {
     aggregateType: "bereavement_letter",
     retentionClass: "bereavement",
@@ -172,6 +185,47 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "Appeal Packet",
   },
+  // M25 — the manual (no-appeal) denial-resolution letter, filed against `denial_case`. F-144 (#248):
+  // catalogued (`m25.denial_resolution_letter.render_requested`) and never emitted before this pass.
+  denial_resolution_letter: {
+    aggregateType: "denial_resolution_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Denial Resolution Letter",
+  },
+  // M23's four §4.10 document kinds behind ONE wire event (`m23.billing.document_render_requested`,
+  // discriminated by `kind`) — F-144 (#248): `consumers/document-render.ts`'s four typed builders had
+  // every payload shape and no caller. All `compliance`: each is CMS-filing-adjacent correspondence, the
+  // same class `abn`/`nor`/`cti` already carry, not a clinical record.
+  noe_confirmation_receipt: {
+    aggregateType: "noe_confirmation_receipt",
+    retentionClass: "compliance",
+    defaultTitle: "Notice of Election Confirmation Receipt",
+  },
+  notr_confirmation_receipt: {
+    aggregateType: "notr_confirmation_receipt",
+    retentionClass: "compliance",
+    defaultTitle: "Notice of Termination/Revocation Confirmation Receipt",
+  },
+  claim_acknowledgment_letter: {
+    aggregateType: "claim_acknowledgment_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Claim Acknowledgment Letter",
+  },
+  denial_appeal_cover_letter: {
+    aggregateType: "denial_appeal_cover_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Denial Appeal Cover Letter",
+  },
+  // M24's §4.10 equivalent of `claim_acknowledgment_letter` above, behind its own wire event
+  // (`m24.medicaid_billing.document_render_requested`) — F-144 (#248). The other three kinds the M24
+  // spec names (R&B contract summary / remittance summary / denial-appeal cover letter) have no
+  // producer transition yet and deliberately get no descriptor here (an unpublished template is a
+  // visible retry-then-DLQ; publishing one for a render nobody requests would manufacture coverage).
+  medicaid_claim_acknowledgment_letter: {
+    aggregateType: "medicaid_claim_acknowledgment_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Medicaid Claim Acknowledgment Letter",
+  },
   // M27's three, keyed by the `artifactKind` discriminator. The event's own payload schema pins
   // `retentionClass: "compliance"` for all three, which is what these carry.
   cost_report_ecr: {
@@ -230,6 +284,86 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "Tenant Export Cover Letter",
   },
+  // F-161 (#248) — two of the seven events in M22's own `handlers-unbound` group's "decisively named by
+  // the producing module's own outbox table" bucket that actually turned out to be real, buildable
+  // renders (the other five — m14.minutes.amended, m21.supply_request.delivered, and all three
+  // m39.consent.* events — are NOT document renders at all; see the render-consumer.ts comment on each).
+  //
+  // M17 §4.11 D15 — the caregiver visit-confirmation reminder. `visit_confirmation` has been a published
+  // `document_aggregate_type` value since the enum's base definition with no descriptor here and no
+  // producer request event ever wired to it.
+  visit_confirmation: {
+    aggregateType: "visit_confirmation",
+    retentionClass: "operational",
+    defaultTitle: "Visit Confirmation Reminder",
+  },
+  // M7 §2.4 — the care-plan PDF. `m7.care_plan.version_signed`'s own catalog comment ("drives the M8
+  // encounter gate + M22 PDF") is decisive; mig 0252 adds the `document_aggregate_type` value.
+  care_plan: {
+    aggregateType: "care_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Plan of Care",
+  },
+  // F-192 (#248) — M6 §2.3.6/§7.7 — the transfer summary (routes 37/38, both directions). The M22 spec's
+  // own "discharge_summary (transfer variant)" phrasing (see the `m6.discharge.created` comment above);
+  // mig 0267 adds the `document_aggregate_type` value. `clinical_record`, matching `discharge_summary`
+  // itself — this is the continuity-of-care record for a transferred patient's chart, not correspondence.
+  discharge_summary_transfer: {
+    aggregateType: "discharge_summary_transfer",
+    retentionClass: "clinical_record",
+    defaultTitle: "Transfer Summary",
+  },
+  // F-208 (#248) — M9's printable assessment summary. Distinct from `hope_summary` above (M10's own,
+  // per-assessment HOPE PDF); mig 0277 adds the `document_aggregate_type` value. `clinical_record`: the
+  // rendered summary is filed on the chart, one evolving document per patient.
+  assessment_summary: {
+    aggregateType: "assessment_summary",
+    retentionClass: "clinical_record",
+    defaultTitle: "Assessment Summary",
+  },
+  // F-166 (#248) — M14's two IDG render requests. Both `document_aggregate_type` values have existed
+  // since migration 0048 with no descriptor and no subscription — F-162's own precise finding
+  // ("even a first-ever render would hit `unknown_template` today"). `clinical_record`: both are the
+  // signed record of an IDG meeting (the packet and the minutes), not correspondence.
+  idg_patient_packet: {
+    aggregateType: "idg_patient_packet",
+    retentionClass: "clinical_record",
+    defaultTitle: "IDG Patient Packet",
+  },
+  idg_minutes: {
+    aggregateType: "idg_minutes",
+    retentionClass: "clinical_record",
+    defaultTitle: "IDG Meeting Minutes",
+  },
+  // F-166 (#248) — M15's four discipline plans, one `m15.plan.version_signed` event discriminated by
+  // `kind`, one descriptor per kind (never a shared type — the F-160/M23 "a shared type would make one
+  // kind's render read as an idempotent redelivery of a different kind's under the same
+  // (aggregateType, aggregateId) key" reasoning, and here the four kinds share nothing else either: a
+  // signed Aide POC and a signed MSW plan are different `discipline_care_plan.id` rows to begin with, so
+  // this is belt-and-suspenders rather than load-bearing). All four `document_aggregate_type` values have
+  // existed since the platform-floor enum's base definition (migration 0048) with no descriptor and no
+  // producer request wired to any of them until now — the `visit_confirmation`/`care_plan` shape a third
+  // time. `clinical_record`: each is a signed, in-force plan of care the surveyor expects on the chart.
+  aide_poc: {
+    aggregateType: "aide_poc",
+    retentionClass: "clinical_record",
+    defaultTitle: "Aide Plan of Care",
+  },
+  msw_plan: {
+    aggregateType: "msw_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Medical Social Work Plan",
+  },
+  spiritual_plan: {
+    aggregateType: "spiritual_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Spiritual Care Plan",
+  },
+  volunteer_plan: {
+    aggregateType: "volunteer_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Volunteer Plan",
+  },
 } as const;
 
 /** The shape every W2 caller's typed payload carries (a structural minimum; the full payload is template-
@@ -239,6 +373,22 @@ export interface RenderPayloadCore {
   readonly aggregateId: string;
   readonly patientId?: string | null;
   readonly title?: string;
+  /** F-168 (#248) — the delivered outbox event that requested this render, when the caller has one.
+   *  Forwarded straight through to `RenderUpsert.sourceEventId` (`document_version.source_event_id`) — the
+   *  §4.11 render-consumer sets this; every other `render()` caller (DSAR/tenant-export jobs, the M39
+   *  consent render, the lab-backref/statement-of-disagreement variants) leaves it unset, which the store
+   *  writes as NULL, exactly its prior behaviour. */
+  readonly sourceEventId?: string | null;
+  /** F-171 (#248) — a per-RENDER retention-class override, for a template whose retention depends on THIS
+   *  call's content rather than being fixed for the whole template (today: only the §7.15/§7.16 lab-results
+   *  render, which promotes to `compliance_42cfr_part2` (D23) exactly when it redacted a SUD-class value).
+   *  Before this field existed, `render()` used ONLY `descriptor.retentionClass` unconditionally — so
+   *  `planLabResultsRender`'s own `retentionClassOverride` (computed correctly by the pure decider since
+   *  M22-T09) had no channel to reach the actual `document` row, and `packages/forms/src/templates/
+   *  registry.ts`'s own comment ("the D23 SUD auto-tag promotes ... at the render layer, not here") named a
+   *  mechanism that did not exist. Every other `render()` caller leaves this unset, which falls back to
+   *  `descriptor.retentionClass` — exactly the prior behaviour. */
+  readonly retentionClassOverride?: DocumentRetentionClass;
 }
 
 /** Injectable wall clock (ISO instant). Overridable for deterministic tests; defaults to real time. */
@@ -319,7 +469,9 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
         aggregateType: descriptor.aggregateType,
         aggregateId: core.aggregateId,
         patientId,
-        retentionClass: descriptor.retentionClass,
+        // F-171 (#248) — a per-render override (D23's SUD auto-tag) wins over the template's static
+        // default; every caller but the lab-backref consumer leaves this unset.
+        retentionClass: core.retentionClassOverride ?? descriptor.retentionClass,
         title: core.title ?? descriptor.defaultTitle,
         objectKey,
         bucket,
@@ -327,6 +479,7 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
         byteSize: bytes.byteLength,
         mimeType: RENDER_MIME_TYPE,
         renderedAt: now(),
+        sourceEventId: core.sourceEventId ?? null,
       });
 
       return { documentId: row.documentId };

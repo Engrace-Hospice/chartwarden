@@ -99,32 +99,63 @@ export const FeedListQuery = Type.Object({
 });
 export type FeedListQueryInput = Static<typeof FeedListQuery>;
 
+/** F-181 (#248) — an HL7 v2 MSH identity value: no field/component/repetition/escape/subcomponent delimiter and
+ *  no control characters (mirrors the migration-0262 CHECK), 1–180 chars. */
+const MshIdentity = Type.String({ pattern: "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$" });
+const FeedRoutingAndIdentity = {
+  labDestinationFacilityId: Type.Optional(Type.String({ format: "uuid" })),
+  mshSendingApplication: Type.Optional(MshIdentity),
+  mshSendingFacility: Type.Optional(MshIdentity),
+  mshReceivingApplication: Type.Optional(MshIdentity),
+  mshReceivingFacility: Type.Optional(MshIdentity),
+  /** F-183 — the operator's explicit statement that this feed's receiver dedupes on MSH-10. Default (unset) =
+   *  false: a send whose outcome was lost (`in_flight` lease expired) is HELD for verification with the lab, never
+   *  automatically re-sent. Set true ONLY after confirming the lab dedupes on MSH-10. */
+  receiverDedupesControlId: Type.Optional(Type.Boolean()),
+};
+
+/** F-183 — per-feed `in_flight` lease in seconds (mirrors the migration-0263 CHECK: 60..3600). */
+const InFlightLeaseSeconds = Type.Integer({ minimum: 60, maximum: 3600 });
+
 export const CreateFeedBody = Type.Object({
   kind: FeedKindSchema,
   displayName: Type.String({ minLength: 3, maxLength: 120 }),
   host: Type.Optional(Type.String({ maxLength: 255 })),
   port: Type.Integer({ minimum: 1, maximum: 65535 }),
   protocol: FeedProtocolSchema,
+  /** Canonical form: lowercase-hex sha256 of the certificate's DER encoding (F-181). */
   channelCertPin: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$" })),
+  /** F-181 — the feed's server certificate in PEM form; the server derives the canonical `channelCertPin`
+   *  (sha256 of the DER) from it. Send this OR `channelCertPin` (or both, if they agree). */
+  channelCertPem: Type.Optional(Type.String({ minLength: 64, maxLength: 16384 })),
   sendingFacilityAllowlist: Type.Optional(
     Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 64 }),
   ),
   baaContractRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   baaExpiresOn: Type.Optional(Instant),
   rateLimitMsgPerSec: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  inFlightLeaseSeconds: Type.Optional(InFlightLeaseSeconds),
+  ...FeedRoutingAndIdentity,
 });
 export type CreateFeedInput = Static<typeof CreateFeedBody>;
 
 export const UpdateFeedBody = Type.Object({
   displayName: Type.Optional(Type.String({ minLength: 3, maxLength: 120 })),
   host: Type.Optional(Type.String({ maxLength: 255 })),
+  /** Canonical form: lowercase-hex sha256 of the certificate's DER encoding (F-181). */
   channelCertPin: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$" })),
+  /** F-181 — the feed's server certificate in PEM form; the server derives the canonical `channelCertPin`
+   *  (sha256 of the DER) from it. Send this OR `channelCertPin` (or both, if they agree). */
+  channelCertPem: Type.Optional(Type.String({ minLength: 64, maxLength: 16384 })),
   sendingFacilityAllowlist: Type.Optional(
     Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 64 }),
   ),
   baaContractRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   baaExpiresOn: Type.Optional(Instant),
   rateLimitMsgPerSec: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  /** `null` clears the per-feed lease back to the platform default. */
+  inFlightLeaseSeconds: Type.Optional(Type.Union([InFlightLeaseSeconds, Type.Null()])),
+  ...FeedRoutingAndIdentity,
 });
 export type UpdateFeedInput = Static<typeof UpdateFeedBody>;
 

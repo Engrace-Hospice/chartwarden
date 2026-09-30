@@ -20,10 +20,13 @@ import { computeHvldl } from "./hvldl/index";
 // Operational (CoP / non-CMS).
 import {
   computeBereavementCoverageRate,
+  computeBereavementRiskScreeningCompletenessRate,
   computeCarePlan15DayAdherence,
   computeComfortKitDeploymentToAdminMinutes,
   computeCostReportFilingCompliance,
   computeEvvComplianceRate,
+  computeF2fWindowOnTimeRate,
+  computeF2fWindowOverrideRate,
   computeHopeSfvOnTimeRate,
   computeHopeSubmissionAcceptanceRate,
   computeIdgCadenceAdherence,
@@ -87,8 +90,8 @@ const compositeCalculator = computeHciScore as unknown as MeasureCalculator<Comp
 
 /**
  * Every M30 measure that has a CONCRETE pure calculator, bound to its catalog descriptor (§3.1). The HCI ten
- * indicators + composite, HVLDL, the two HOPE-derived TFP measures, and the fifteen operational measures —
- * all 29 {@link MEASURE_CATALOG} entries (the `cahps` family is a CAHPS-composite VALUE ingested from the
+ * indicators + composite, HVLDL, the two HOPE-derived TFP measures, and the nineteen operational measures —
+ * all 33 {@link MEASURE_CATALOG} entries (the `cahps` family is a CAHPS-composite VALUE ingested from the
  * vendor result-summary pipeline, not a computed measure, so it carries no catalog row + no calculator here).
  * This is the list the worker's `registrations` map is built from; an unwired measure recompute still fails
  * closed loudly.
@@ -139,6 +142,11 @@ export const M30_MEASURE_REGISTRATIONS: readonly MeasureRegistration[] = [
     ruleForCode("bereavement_coverage_rate"),
   ),
   registerMeasure(
+    "bereavement_risk_screening_completeness_rate",
+    computeBereavementRiskScreeningCompletenessRate,
+    ruleForCode("bereavement_risk_screening_completeness_rate"),
+  ),
+  registerMeasure(
     "volunteer_compliance_gate_rate",
     computeVolunteerComplianceGateRate,
     ruleForCode("volunteer_compliance_gate_rate"),
@@ -184,6 +192,16 @@ export const M30_MEASURE_REGISTRATIONS: readonly MeasureRegistration[] = [
     "cost_report_filing_compliance",
     computeCostReportFilingCompliance,
     ruleForCode("cost_report_filing_compliance"),
+  ),
+  registerMeasure(
+    "f2f_window_on_time_rate",
+    computeF2fWindowOnTimeRate,
+    ruleForCode("f2f_window_on_time_rate"),
+  ),
+  registerMeasure(
+    "f2f_window_override_rate",
+    computeF2fWindowOverrideRate,
+    ruleForCode("f2f_window_override_rate"),
   ),
 ];
 

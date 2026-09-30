@@ -25,12 +25,13 @@ import type {
   ComfortKitDeploymentId,
   ComfortKitDispatchId,
   ComfortKitDispatchStatus,
+  ComfortKitReturnedContentPayload,
   ComfortKitReturnId,
   ComfortKitReturnState,
-  ControlledSubstanceSchedule,
   IsoInstant,
   M21SubscribedEventName,
   MedicationOrderId,
+  MembershipId,
   OutboxEventId,
   SupplyRequestId,
 } from "@wardenx/types";
@@ -90,10 +91,14 @@ export interface M13ComfortKitDeployedPayload {
   readonly contents: unknown;
 }
 
-/** `m13.comfort_kit.controlled_substance_discrepancy` — the bedside count's verdict on ONE line. */
+/** `m13.comfort_kit.controlled_substance_discrepancy` — the bedside count's verdict on ONE line.
+ *  `returnId` (F-172, #248): the `comfort_kit_return` this discrepancy belongs to — M13's own emit site
+ *  (`13-emar/outbox-consumers/m21-comfort-kit-return-reconciliation.ts`) already has it in scope, since
+ *  that handler IS the `m21.comfort_kit.return_reconciliation` consumer for this exact return. */
 export interface M13ControlledSubstanceDiscrepancyPayload {
   readonly deploymentId: ComfortKitDeploymentId;
   readonly medicationOrderId: MedicationOrderId;
+  readonly returnId: ComfortKitReturnId;
   readonly deltaQuantity: number;
   readonly deltaPercent: number;
 }
@@ -325,72 +330,84 @@ export function decideDeploymentAck(
 
 // ── §4.5.1 the controlled-substance re-emit ──────────────────────────────────────────────────────────
 
-/** One discrepant line as M21 re-publishes it, enriched from the dispatch manifest. */
-export interface ReemittedDiscrepantLine {
-  readonly medicationOrderId: MedicationOrderId;
-  readonly rxnorm: string;
-  readonly drugName: string;
-  readonly controlledSubstanceSchedule: ControlledSubstanceSchedule | null;
-  readonly lotNumber: string | null;
-  readonly deltaQuantity: string;
-  readonly deltaPercent: number;
+/** The `comfort_kit_return` custody facts the catalogued `m21.controlled_substance.discrepancy_detected`
+ *  schema requires alongside `dispatch.dispatchedByMembershipId` (F-172, #248) — read off the SAME
+ *  `comfort_kit_return` row M13's widened payload now names by `returnId`. All three are genuinely
+ *  nullable on that row (a return can be `reconciled` with no retriever/witness recorded, though
+ *  `reconciledByMembershipId` is NOT NULL once `state='reconciled'` — see the schema's own
+ *  `m21_ckit_return_reconciled_complete` CHECK); resolved, never guessed. */
+export interface ControlledSubstanceCustodyChainFacts {
+  readonly retrievingMembershipId: MembershipId | null;
+  readonly disposalWitnessMembershipId: MembershipId | null;
+  readonly reconciledByMembershipId: MembershipId | null;
 }
 
 /** What the `m13.comfort_kit.controlled_substance_discrepancy` decider resolved. */
 export type ControlledSubstanceReemitAction =
-  /** No M21 dispatch context to enrich with. M21 stays SILENT rather than re-emitting a bare copy: M30 and
-   *  M36 already receive M13's own event directly (`declaredConsumers: ["m30","m36"]`), so the surveyor
-   *  signal is not lost — only M21's dispatch-context enrichment is, and a re-emit with no custody chain
-   *  would be a strictly worse duplicate of an alert they already have. */
+  /** No M21 dispatch context, no matching `comfort_kit_returned_content` row, or no `comfort_kit_return`
+   *  row to enrich with. M21 stays SILENT rather than re-emitting a partial or fabricated copy: M30 and
+   *  M36 already receive M13's own event directly (`declaredConsumers: ["m30"→moved,"m36"]`… M13's own
+   *  catalog keeps `seamConsumers: ["m36"]`), so the surveyor signal is not lost — only M21's
+   *  dispatch-context + custody-chain enrichment is, and a re-emit with a fabricated `returnedContentId`
+   *  or an invented custody name would be worse than the (already-delivered) plain M13 signal. */
   | { readonly kind: "no_enrichment_context" }
-  /** Re-emit as `m21.controlled_substance.discrepancy_detected` with `detectionSource: 'm13_reemit'`. */
+  /** Re-emit as `m21.controlled_substance.discrepancy_detected` with `detectionSource: 'm13_reemit'` —
+   *  the exact shape `M21ControlledSubstanceDiscrepancyPayload` (`@wardenx/types`) requires, built from
+   *  the REAL `comfort_kit_returned_content` row rather than a synthesized one, since M21's own
+   *  `reconcileReturn` transaction already wrote it (strictly before this M13 event could ever fire —
+   *  M13 only emits off the `m21.comfort_kit.return_reconciliation` event that same transaction's commit
+   *  produces). */
   | {
       readonly kind: "reemit";
+      readonly returnId: ComfortKitReturnId;
       readonly dispatchId: ComfortKitDispatchId;
       readonly m13DeploymentId: ComfortKitDeploymentId;
       readonly detectionSource: "m13_reemit";
-      readonly line: ReemittedDiscrepantLine;
-      readonly dispatchedByMembershipId: string;
+      readonly discrepantMedication: ComfortKitReturnedContentPayload;
+      readonly custodyChain: {
+        readonly dispatchedByMembershipId: MembershipId;
+        readonly retrievingMembershipId: MembershipId | null;
+        readonly disposalWitnessMembershipId: MembershipId | null;
+        readonly reconciledByMembershipId: MembershipId | null;
+      };
     };
-
-/** The dispatched line the discrepancy names, looked up on the dispatch manifest. */
-export interface DispatchedLineIdentity {
-  readonly rxnorm: string;
-  readonly drugName: string;
-  readonly controlledSubstanceSchedule: ControlledSubstanceSchedule | null;
-  readonly lotNumber: string | null;
-}
 
 /**
  * §4.5.1 — decide what an `m13.comfort_kit.controlled_substance_discrepancy` delivery does.
  *
- * M13 counts at the bedside and knows the delta; M21 knows which physical unit — lot number, schedule,
- * who dispatched it — that delta belongs to. The re-emit exists to join those two halves so a surveyor
- * reading the M30 record does not have to.
+ * M13 counts at the bedside and knows the delta; M21 knows the physical unit's full accounting — lot
+ * number, schedule, who dispatched/retrieved/witnessed/reconciled it. The re-emit exists to join those
+ * two halves onto the ONE survey-investigable record (`m21.controlled_substance.discrepancy_detected`) so
+ * an investigator does not have to correlate M13's bare delta against M21's own custody chain by hand.
  *
- * `deltaQuantity` is stringified at this boundary for the same reason every other quantity is: M13's wire
- * type is a float and M21's perpetual log is `numeric`.
+ * `returnedContent` is the REAL, already-persisted `comfort_kit_returned_content` row for this exact
+ * (return, medication) — not re-derived from M13's `deltaQuantity`/`deltaPercent`, which are M13's OWN
+ * administration-tracked accounting and may legitimately disagree with M21's dispatched-vs-returned
+ * math (that disagreement — two independent discrepancy checks catching different failure modes — is
+ * the whole reason this event exists rather than being redundant with M21's own native
+ * `detectionSource: "return_reconciliation"` emission).
  */
 export function decideControlledSubstanceReemit(
   payload: M13ControlledSubstanceDiscrepancyPayload,
   dispatch: ComfortKitDispatchContext | null,
-  line: DispatchedLineIdentity | null,
+  returnedContent: ComfortKitReturnedContentPayload | null,
+  custody: ControlledSubstanceCustodyChainFacts | null,
 ): ControlledSubstanceReemitAction {
-  if (dispatch === null || line === null) return { kind: "no_enrichment_context" };
+  if (dispatch === null || returnedContent === null || custody === null) {
+    return { kind: "no_enrichment_context" };
+  }
   return {
     kind: "reemit",
+    returnId: payload.returnId,
     dispatchId: dispatch.dispatchId,
     m13DeploymentId: payload.deploymentId,
     detectionSource: "m13_reemit",
-    dispatchedByMembershipId: dispatch.dispatchedByMembershipId,
-    line: {
-      medicationOrderId: payload.medicationOrderId,
-      rxnorm: line.rxnorm,
-      drugName: line.drugName,
-      controlledSubstanceSchedule: line.controlledSubstanceSchedule,
-      lotNumber: line.lotNumber,
-      deltaQuantity: String(payload.deltaQuantity),
-      deltaPercent: payload.deltaPercent,
+    discrepantMedication: returnedContent,
+    custodyChain: {
+      dispatchedByMembershipId: dispatch.dispatchedByMembershipId,
+      retrievingMembershipId: custody.retrievingMembershipId,
+      disposalWitnessMembershipId: custody.disposalWitnessMembershipId,
+      reconciledByMembershipId: custody.reconciledByMembershipId,
     },
   };
 }

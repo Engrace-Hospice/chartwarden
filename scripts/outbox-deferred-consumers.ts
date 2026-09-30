@@ -68,151 +68,656 @@ export interface DeferredConsumerGroup {
 }
 
 export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
-  {
-    module: "m30",
-    kind: "handlers-unbound",
-    reason:
-      "F-115 (#248) split this group in two — the blanket 'M30 is a producer, not a subscriber; no consumer directory exists' reason (M30-T… original) was FALSE for these four: `packages/quality/src/consumers/` is a real, unit-tested consumer directory (`handlers.ts` + `subscription-map.ts`, the §4.10 upstream fan-out — recompute enqueues, the mortality-review auto-draft, the CAHPS candidate seed, the medication-error incident auto-draft) that RULE 3(d) ships pure with no boot-wired binding, the same shape M23/M25/M26/M27 were already correctly classified `handlers-unbound` under. Two of `M30_OUTBOX_SUBSCRIPTIONS`'s six topics (`m6.discharge.death`, `m6.election.signed`) were already carried as a `handler-unbound` entry in outbox-subscription-exceptions.ts because the catalog never declared m30 on them; these four are the mirror case — the catalog DOES declare m30, and it is the binding that is missing.",
-    events: [
-      "m10.hope.submission_accepted",
-      "m12.medication.error_reported",
-      "m18.evv.visit_verified",
-      "m23.claim.adjudicated",
-    ],
-  },
+  // F-205 (#248) — the m30 `handlers-unbound` group is GONE, not merely emptied. `m18.evv.visit_verified`
+  // was bound earlier by F-194 (M18's check-out write path never called the `recordEvent` decider that
+  // declared this event's effect; fixed by emitting it inline, then binding M30's pre-existing
+  // `hvldl_near_death_recompute` handler). `m12.medication.error_reported`, the group's last remaining
+  // pair, is now bound too. F-165/F-174 had found this event's real blocker was "no producer anywhere"
+  // (the actor-identity half F-150 originally blamed was wrong — the catalogued payload already carries a
+  // real `reportedByMembershipId`). The user has since decided the missing producer: a new explicit
+  // clinician-initiated "report error" action on the medication order (M12), not an auto-derived one.
+  // Built: `POST /api/v1/medication-orders/:id/report-error` (`reportMedicationError`), and
+  // `buildM30MedicationErrorReportedConsumer` binding the pre-existing pure
+  // `handleMedicationErrorReported`/`createIncidentDraft` handler (real since F-185), resolving
+  // `providerEntityId`/`locationId` via a new M12→M6 seam chain (`medicationOrderScheduleContextForOrg` →
+  // `admissionSchedulingContextForOrg`), the F-166 M13 dose-materializer precedent.
   {
     module: "m30",
     kind: "no-consumer-surface",
     reason:
-      "F-115 (#248) — the ORIGINAL blanket reason here ('M30 is a producer, not a subscriber … no consumer directory exists') was wrong about 27 of this group's members, checked individually rather than assumed: they are the exact facts M30's OWN nightly recompute seams already read (`apps/backend/src/modules/30-quality/jobs/m30-jobs.ts` — `AdmissionOnsetReader`/`DischargeReader`/`LevelOfCarePeriodReader` (M6), `CarePlanCycleCountsView` (M7), `SignedEncountersReader` (M8), the live M10 HOPE rollup, `VerbalTimelinessCountsView` (M11), `MedicationAdministrationProvider`'s PRN/missed-dose counts (M13), `IdgScheduleProvider` (M14), `DisciplineComplianceProvider`'s supervisory counts (M15), `BereavementComplianceProvider.copOutreachCounts` (M16), `VisitMetricsProvider` (M17), `QualityCostReportConsumer` (M27) — verified per event against the actual seam query, not inferred from module proximity (three initially-plausible candidates — `m16.bereavement.plan_closed_*`/`plan_skipped_per_patient_opt_out`, whose numerator/denominator membership `copOutreachCounts` does not establish, and `m13.administration.recorded`/`refused`/`corrected`/`voided`, whose measures scan `scheduled_dose`/PRN-specific rows rather than the general administration stream — were checked and are NOT among the 27, and stay in this list). Those 27 are now declared correctly (`seamConsumers`, dropped from `declaredConsumers`, on each event's own `events-by-mNN.ts` entry) and no longer appear below; a deferral was never the right shape for a relationship that already resolves by seam and will never bind an outbox consumer. `m30.infection.event_recorded`'s 'self-subscriber' declaration is also gone: `recordInfectionEvent` runs the §7.8 outbreak-window scan INLINE in the same transaction, and nothing has ever consumed this event via the outbox. What remains below is the honest count: M20/M21/M23(noe/notr)/M25/M26/M37/M39/M9 facts M30 has no current seam for at all, three M6 facts (`applier.refused`, `compliance.window.*`, `f2f.window_*`, `admission.on_hold`/`.resumed`) outside the four M6 readers' documented scope, `m8.hearthnote.layer2_enhanced` (no late-entry/signed-encounter relevance), and three bereavement facts whose seam METHOD exists (`BereavementComplianceProvider.planClosureCounts`/`riskScreeningCompletenessCounts`) but is not yet called by any of the eleven measures m30-jobs.ts currently registers — a dormant capability, not a bound one (`bound is not computing`, F-042).",
-    events: [
-      "m11.order.completed",
-      "m11.order.discontinued",
-      "m11.order.level_of_care_change_signed",
-      "m11.order.results_overdue",
-      "m11.order.signed",
-      "m11.order.signed_on_behalf",
-      "m11.order.transmission_status_changed",
-      "m11.order.transmission_terminal_failed",
-      "m12.medication_order.transmission_failed",
-      "m13.administration.controlled_wasted",
-      "m13.administration.controlled_witnessed",
-      "m13.administration.corrected",
-      "m13.administration.recorded",
-      "m13.administration.refused",
-      "m13.administration.voided",
-      "m13.caregiver_administration.disputed",
-      "m13.comfort_kit.controlled_substance_discrepancy",
-      "m13.comfort_kit.return_overdue",
-      "m13.policy.changed",
-      "m13.reconciliation.completed",
-      "m13.reconciliation.overdue",
-      "m14.review_clock.escalated",
-      "m14.review_floor.override_recorded",
-      "m15.discipline_assessment.amended",
-      "m15.plan.discharged",
-      "m15.plan.version_signed",
-      "m15.volunteer.ratio_recomputed",
-      "m16.bereavement.contact_referred_external",
-      "m16.bereavement.plan_closed_completed",
-      "m16.bereavement.plan_closed_declined",
-      "m16.bereavement.plan_closed_early",
-      "m16.bereavement.plan_skipped_per_patient_opt_out",
-      "m16.bereavement.risk_score_computed",
-      "m20.safety.incident_closed_with_action",
-      "m20.safety.incident_submitted",
-      "m20.safety.osha_reportable_incident_filed",
-      "m21.comfort_kit.return_overdue",
-      "m21.comfort_kit.return_reconciliation",
-      "m21.controlled_substance.discrepancy_detected",
-      "m21.par.below_threshold",
-      "m21.par.stockout_imminent",
-      "m23.noe.window_breached",
-      "m23.notr.window_breached",
-      "m25.denial.opened",
-      "m26.cap.projection_updated",
-      "m26.cap.year_closed",
-      "m37.ipu_admission.death_recorded",
-      "m37.ipu_admission.discharged",
-      "m37.restraint.applied",
-      "m39.consent.signed",
-      "m6.admission.on_hold",
-      "m6.admission.resumed",
-      "m6.applier.refused",
-      "m6.compliance.window.closed",
-      "m6.compliance.window.opened",
-      "m6.compliance.window.overdue",
-      "m6.compliance.window.overridden",
-      "m6.f2f.window_missed",
-      "m6.f2f.window_overridden",
-      "m8.hearthnote.layer2_enhanced",
-      "m9.assessment.recorded",
-    ],
+      "F-115 (#248) — the ORIGINAL blanket reason here ('M30 is a producer, not a subscriber … no consumer directory exists') was wrong about 27 of this group's members, checked individually rather than assumed: they are the exact facts M30's OWN nightly recompute seams already read (`apps/backend/src/modules/30-quality/jobs/m30-jobs.ts` — `AdmissionOnsetReader`/`DischargeReader`/`LevelOfCarePeriodReader` (M6), `CarePlanCycleCountsView` (M7), `SignedEncountersReader` (M8), the live M10 HOPE rollup, `VerbalTimelinessCountsView` (M11), `MedicationAdministrationProvider`'s PRN/missed-dose counts (M13), `IdgScheduleProvider` (M14), `DisciplineComplianceProvider`'s supervisory counts (M15), `BereavementComplianceProvider.copOutreachCounts` (M16), `VisitMetricsProvider` (M17), `QualityCostReportConsumer` (M27) — verified per event against the actual seam query, not inferred from module proximity (three initially-plausible candidates — `m16.bereavement.plan_closed_*`/`plan_skipped_per_patient_opt_out`, whose numerator/denominator membership `copOutreachCounts` does not establish, and `m13.administration.recorded`/`refused`/`corrected`/`voided`, whose measures scan `scheduled_dose`/PRN-specific rows rather than the general administration stream — were checked and are NOT among the 27, and stay in this list). Those 27 are now declared correctly (`seamConsumers`, dropped from `declaredConsumers`, on each event's own `events-by-mNN.ts` entry) and no longer appear below; a deferral was never the right shape for a relationship that already resolves by seam and will never bind an outbox consumer. `m30.infection.event_recorded`'s 'self-subscriber' declaration is also gone: `recordInfectionEvent` runs the §7.8 outbreak-window scan INLINE in the same transaction, and nothing has ever consumed this event via the outbox. What remains below is the honest count: M20/M21/M23(noe/notr)/M25/M26/M37/M39/M9 facts M30 has no current seam for at all, three M6 facts (`applier.refused`, `compliance.window.*`, `f2f.window_*`, `admission.on_hold`/`.resumed`) outside the four M6 readers' documented scope, `m8.hearthnote.layer2_enhanced` (no late-entry/signed-encounter relevance), and three bereavement facts whose seam METHOD exists (`BereavementComplianceProvider.planClosureCounts`/`riskScreeningCompletenessCounts`) but is not yet called by any of the eleven measures m30-jobs.ts currently registers — a dormant capability, not a bound one (`bound is not computing`, F-042). F-148 (#248) finished the M16 sweep on the two events F-115 left unchecked: `plan_skipped_per_patient_opt_out` stays for the same 'genuine gap' reason as the plan_closed_* trio (it carries no `planId` — no plan is ever opened on this path — so `planClosureCounts`, which is keyed by `BereavementPlanClosureReason`, cannot answer it either; whether an opt-out-skipped death belongs in the CoP denominator is a real, undecided product question). `contact_referred_external` is GONE from this list, not merely re-verified: M30's own §1.1 relationship-inventory text scopes its whole M16 relationship to the CoP coverage measure ('M30 emits no bereavement data and writes nothing to M16'), `M30_OUTBOX_SUBSCRIPTIONS` has no `m16.*` key at all, `IncidentKind` has no member the referral maps to, and M16's own worked 'Done means' example for this exact transition narrates M36's alert and M22's letter render and names no M30 action — the event's terse table cell ('M30 incident potential') is unsupported everywhere that would have to carry it if it were real, dropped at the source rather than deferred. F-149 (#248) finished this group with six parallel per-producer sweeps against M30's own §1.1 relationship inventory (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md) and its own blanket §353 principle ('Outbox publication is the only cross-module communication M30 performs at the boundary … M30 *calls* … reader seams as in-process function calls'), which decisively settled 36 of the 60 remaining events. **11 moved to seamConsumers, not dropped bare**: all 8 M11 order events (M11's own spec §D14 names a real `OrderProvider` seam M30 has not built the completion/transmission/results methods for yet), M21's 5 comfort-kit/controlled-substance/par events (M21's own spec names the real `SupplyFulfillmentProvider`/`ComfortKitDispatchProvider` seams by the exact measure), M14's 2 IDG review-clock events (M30's own `IdgScheduleProvider` seam is ACTIVELY called today, feeding a currently-registered measure), and `m39.consent.signed` (M30's `ConsentEvaluator.evaluate` is likewise active, per-actor, at read time — a live seam pull has nothing to invalidate from a signing push). **18 dropped clean, unsupported on both sides**: all 12 remaining M13 eMAR events (M30's own `M30_OUTBOX_SUBSCRIPTIONS` — its own header calls itself 'the SINGLE SOURCE OF TRUTH' — has exactly six keys and none is `m13.*`; the measures M13's spec claims feed M30, like a 'reconciliation-completed-in-time' measure, do not exist anywhere in M30's registered measure set), all 3 M20 field-safety events (M30's own spec is a flat denial — 'Field safety. Module 20. No M30 consumption path'), `m37.ipu_admission.discharged` (redundant sibling — the death case is carved out to the already-declared `death_recorded`), and `m8.hearthnote.layer2_enhanced` (M30's own D16 ten-event recompute-trigger list excludes it; only the different, already-declared `m8.encounter.signed` is on that list). **2 corrected from an initial MOVE-TO-SEAM recommendation to DROP on independent re-verification**: `m25.denial.opened` and both `m26.cap.*` events were first read as forward seams on the strength of M25's/M26's own aspirational spec text, but M30's own §1.1 inventory FLATLY denies both — 'Remittance posting. Module 25. No M30 consumption path' and 'Cap management. Module 26. No direct M30 consumption … not quality measures' — a stronger, decisive statement than the M19/M21 entries' genuinely conditional 'may consume … when the seam lands' phrasing, and the consuming module's own decisive text wins per F-101. What remains below (24 events) is now the honest, fully-swept residue: real, still-unbuilt relationships M30's own spec decisively names (M6's 9 admission/compliance/F2F-window events — every one independently cross-referenced 2-4 times in M6's own spec text; M15's 4 events; 5 of M16's 6; M23's 2 NOE/NOTR-breach events; M37's `restraint.applied` and `death_recorded`; M12's `medication_order.transmission_failed`), plus `m9.assessment.recorded`, which M9's own spec frames as a recompute-invalidation push a read-time seam would not naturally capture and which no seam currently covers either. **A build pass on the 15 M6/M15/M23 events (2026-09-28) checked whether the compliance-window/survey-readiness cluster was buildable and found it blocked at THREE levels at once, deeper than 'decisively cross-referenced' implied.** Every producing module's spec (M6 §4.x lines 2197-2224/§7.5, M15 line 1702, M23 lines 338/2143/2282) is decisive that M30 is the real consumer, but M30's own receiving mechanism does not exist for any of them: (1) none of the 15 map to any of the 28 measure codes currently registered in `packages/quality/src/measures/registry.ts` — forcing a recompute trigger for one would fire on a measure code that doesn't exist, the exact phantom-trigger failure this arc's convention exists to avoid; (2) the seam method M30's own code CLAIMS to consume for the M6 cluster doesn't exist either — `packages/quality/src/seams/consumed/m6-admission.ts`'s header comment says M30 consumes M6's `ComplianceWindowReader` for 'the survey-readiness compliance windows', but the actual `QualityAdmissionConsumer` interface it defines has exactly three methods (`activeCensusCount`, `dischargeRollup`, `patientDaysByLevelOfCare`) — no compliance-window method at all, confirmed by direct read, not by trusting the comment (`bound is not computing`, F-042, one level deeper than usual: not merely unbound, the seam itself was never built despite the comment); (3) no alternate consumer table exists either — `cop_compliance_status` (the §4.1 CoP self-assessment table these events would logically feed) is populated by a HUMAN through a guided checklist UI per its own route-file header, never by any automated consumer, and `risk_register_entry`'s four source kinds (`sra_finding`/`incident_report`/`qapi_project`/`cop_compliance_status`) don't include compliance windows or NOE/NOTR breaches. Building any of the 15 needs either a new measure (schema + calculator + registration) or a new non-recompute consumer table (deciding how an automated M6/M23 signal should interact with a currently human-only checklist) — real feature design, not a wiring gap. No files changed; all 15 stay exactly where they are, with `m15.volunteer.ratio_recomputed` additionally confirmed to correspond to a CoP 418.78(e) ratio that `m30-jobs.ts`'s own comment already documents as unbound on a separate M27-hours seam, and `packages/quality/src/seams/consumed/m15-discipline.ts` noted as a stale, dead file (still claims M15 is a deny-stub; the real M15 counts are bound directly via an inline interface in `m30-jobs.ts`) — a minor doc-drift finding, not fixed here. **F-161 (#248) bound the M16 plan-closure trio.** `bereavement_coverage_rate` (the one currently-registered bereavement measure) reads `copOutreachCounts`, not the dormant `planClosureCounts`/`riskScreeningCompletenessCounts` seam methods this reason already names as unread — but all three closure transitions (`closeAt13Months`/`closeOnAllContactsOptedOut`/`closeEarly`, `16-bereavement/lifecycle/plan.ts`) run a `cancel_future_outreach` effect that flips every still-`scheduled` `bereavement_outreach` row to `cancelled`, and `cancelled` is explicitly excluded from both `COP_NUMERATOR_STATUSES` and `COP_DENOMINATOR_STATUSES` — a real, mechanically-verified data dependency on `copOutreachCounts`'s own input, independent of the dormant seam methods. Bound via the F-150 `enqueueRecompute` pattern, resolving the provider entity through a new org-explicit `bereavementPlanSitingForOrg` seam (none of the three catalogued payloads carry `providerEntityId`, and M16's published `BereavementPlanProvider.planById` seam opens `withOrgContextFromRequest`, unusable from a relay tick). `plan_skipped_per_patient_opt_out` and `risk_score_computed` stay exactly as this reason already found them — genuinely no registered measure reads either fact." +
+      " **F-168 (#248) ran the same BUILD-pass check (producer exists? M30-side mechanism exists? a" +
+      " currently-registered measure/workflow reads it?) against the six events the 2026-09-28 M6/M15/M23" +
+      " pass and F-161 left untouched, and found one genuine catalog misdeclaration and five confirmed-" +
+      " genuine-but-unbuildable gaps — no new live consumer bound.** `m9.assessment.recorded` is MOVED," +
+      " not merely re-verified: F-115's own check was scoped to the wrong directory — its reason claimed" +
+      " 'no assessment reader exists in apps/backend/src/modules/30-quality/', true of that directory and" +
+      " false of the actual location, `packages/quality/src/seams/consumed/m9-assessment.ts`, which" +
+      " declares a real, typed `QualityAssessmentConsumer` (`latestScaleValue`/`scaleSeries`) on" +
+      " `QualityConsumedSeams` — matching M30's own decisive spec text ('M30 consumes" +
+      " `LatestAssessmentProvider` and `ScaleSeriesProvider` for the symptom-management dimension of" +
+      " mortality reviews and the HOPE-derived measure symptom-trajectory context; it does not write to" +
+      " M9') and its blanket §353 principle, which lists M9 explicitly among the modules M30 reads via" +
+      " in-process seam call. M30's own D16 recompute-trigger list (the exhaustive set of outbox events" +
+      " that mark a period `requires_recompute=true`) excludes `m9.assessment.recorded` too, and neither" +
+      " `m30-jobs.ts` nor the read/write services call `latestScaleValue`/`scaleSeries` anywhere — the" +
+      " interface is real but uncalled (`bound is not computing`, F-042, the identical shape as the M6" +
+      " `ComplianceWindowReader` finding one entry up), which is why this moves to `seamConsumers` (the" +
+      " M11 `OrderProvider`/M21 precedent — a real, named interface with no live caller yet) rather than" +
+      " staying a push deferral that will never bind. Corrected at the source" +
+      " (`apps/backend/src/modules/09-assessments/events-by-m9.ts`); dropped from this group's `events`" +
+      " below. **The other five stay deferred, each independently re-verified rather than re-asserted.**" +
+      " `m12.medication_order.transmission_failed` has NO PRODUCER: the pure" +
+      " `packages/dosespot/src/lifecycle/medication-order-machine.ts` machine and" +
+      " `packages/dosespot/src/transmission/enqueue.ts` both declare the `{kind:\"outbox\"," +
+      " event:\"m12.medication_order.transmission_failed\"}` effect, and `enqueue.ts`'s own header names" +
+      " the executor as 'the `enqueue-transmission` service + `transmit-newrx` worker (M12-T08)' — neither" +
+      " exists anywhere under `apps/backend/src/modules/12-dosespot/` (no file matches" +
+      " `*transmit*`/`*newrx*`, and nothing references `planTransmissionEnqueue` or the medication-order" +
+      " machine at all); the one real job tier M12 has (`jobs/worker.ts`, F-162's `dosespot_sync_queue`" +
+      " drain) is patient-sync/MedHx, a different concern. The exact `m18.evv.visit_verified` shape one" +
+      " entry up: binding an M30 consumer to an event nothing ever publishes would be dead code. `M30" +
+      "_OUTBOX_SUBSCRIPTIONS` also has no `m12.medication_order.*` key, so both sides are absent, not one." +
+      " `m37.ipu_admission.death_recorded` still has NO PRODUCER: `transitionAdmission(..., " +
+      "{type:\"recordDeath\"})` is called nowhere outside its own unit test, and M37's own consumer file" +
+      " (`consumers/m6-admission-discharged.ts`) says so directly in its own header — 'the death path is" +
+      " `recordDeath` → `m37.ipu_admission.death_recorded`, driven by the SEPARATE (still" +
+      " catalog-unbindable: `m37` is not yet a declared consumer of `m6.discharge.death`) `m6-discharge-" +
+      "death.ts` consumer' — confirmed against `apps/backend/src/modules/06-admission/events-by-m6.ts`," +
+      " whose `m6.discharge.death` entry declares only `[\"m5\"]`. Fixing this is a two-part M37-side" +
+      " project (declare `m37` on `m6.discharge.death`, then build the consumer that drives `recordDeath`)" +
+      " outside an M30 consumer build. `m37.restraint.applied` DOES have a real producer" +
+      " (`routes/service-drizzle.ts:1825`, the restraint-apply route) but NO M30-side receiving mechanism" +
+      " at all: `M30_OUTBOX_SUBSCRIPTIONS` has no `m37.*` key, `packages/quality/src/consumers/` has no" +
+      " restraint decider, and `IncidentKind` (`packages/quality/src/contracts.ts`) has exactly six" +
+      " members (`fall`/`medication_error`/`complaint`/`allegation_of_abuse`/`exposure_event`/" +
+      "`other_safety_event`) — no restraint-shaped slot, the identical gap F-148 found for" +
+      " `m16.bereavement.contact_referred_external`. M37's own spec (Consumed-by table) claims 'the M30" +
+      " incident-report surface subscribes to `m37.restraint.applied`... ships forward-seam-deny-stub" +
+      " today' — an aspiration with no support anywhere on the M30 side, not a built-and-waiting stub." +
+      " M30's OWN §1.1 text additionally names a DIFFERENT M37/restraint relationship as a seam PULL ('M30" +
+      " reads `IpuComplianceProvider.restraintUseRate` (when M37 lands)... M30 does not write to M37') —" +
+      " and that seam does not exist either (zero hits for `IpuComplianceProvider`/`restraintUseRate`" +
+      " anywhere in the repo, on either the M37-publish or M30-consume side). Building a push consumer" +
+      " here would mean inventing both the incident-taxonomy mapping and the M30-side decider from" +
+      " scratch — real product/clinical-taxonomy design, not a wiring gap, so this stays deferred rather" +
+      " than guessed at. `m16.bereavement.plan_skipped_per_patient_opt_out` and `.risk_score_computed`" +
+      " re-confirmed unchanged: `packages/quality/src/measures/registry.ts` registers exactly one" +
+      " bereavement measure (`bereavement_coverage_rate`), which reads `copOutreachCounts`, not the" +
+      " dormant `planClosureCounts`/`riskScreeningCompletenessCounts` seam methods either event would" +
+      " need — genuinely no registered measure reads either fact, unchanged from F-161's finding." +
+      " **F-174 (#248) re-checked all 20 remaining events against current code, prioritizing" +
+      " `m37.ipu_admission.death_recorded` since F-172 (the immediately prior round) gave it a genuine" +
+      " producer for the first time — `buildM37DeathRecordedConsumer`" +
+      " (`apps/backend/src/modules/37-ipu/consumers/m6-discharge-death.ts`) is now wired at boot and" +
+      " publishes it live. That does not unblock M30's side: `M30_OUTBOX_SUBSCRIPTIONS`" +
+      " (`packages/quality/src/consumers/subscription-map.ts`) still has no `m37.*` key at all, and — the" +
+      " sharper finding — the consumer's own header explains WHY one will never be worth building here:" +
+      " M37's death producer itself only fires as a downstream reaction to `m6.discharge.death` (the" +
+      " consumer's `eventTypes` is literally `[\"m6.discharge.death\"]`; `death_recorded` is an effect it" +
+      " emits, not an independent upstream fact), and `m6.discharge.death` is ITSELF the event" +
+      " `M30_OUTBOX_SUBSCRIPTIONS` already keys `mortality_review_draft`/`cahps_candidate_add` off of —" +
+      " confirmed still genuinely unbound in production, not merely undeclared:" +
+      " `outbox-consumers/upstream-consumer-ports.ts`'s `createMortalityReviewDraft` thunk is a deliberate" +
+      " `unboundWorkerPort` today because `handleDischargeDeath` calls it TOGETHER with the still-blocked" +
+      " `addCahpsSampleCandidate` (needs the M1 envelope-DEK caregiver-contact encrypt, unrelated to M37)" +
+      " in one invocation, and `apps/backend/src/index.ts` binds only" +
+      " `buildM30HopeSubmissionAcceptedConsumer`/`buildM30ClaimAdjudicatedConsumer`/" +
+      "`buildM30BereavementPlanClosedConsumer` for M30 — no `m6.discharge.death` M30 binding exists yet." +
+      " Building a `death_recorded` consumer now would mean inventing a SECOND, independent" +
+      " mortality-review-draft path that races the still-nonexistent primary one keyed off" +
+      " `m6.discharge.death` for the identical underlying death — the redundant-sibling shape this arc" +
+      " drops at the source when a producer fires the SAME transition (F-108/F-117/F-134), except here" +
+      " the primary path is unbuilt rather than built, so there is nothing to be redundant WITH yet; kept" +
+      " deferred rather than dropped, since M37's spec still decisively names M30 as a real consumer once" +
+      " the M6-side CAHPS/mortality binding lands. **The other 19 events were independently re-verified" +
+      " and are unchanged**, each against the same code this reason already cites:" +
+      " `packages/quality/src/seams/consumed/m6-admission.ts`'s `QualityAdmissionConsumer` still exposes" +
+      " exactly `activeCensusCount`/`dischargeRollup`/`patientDaysByLevelOfCare` (no compliance-window" +
+      " method) for the 9 M6 events; `IncidentKind`" +
+      " (`packages/quality/src/contracts.ts`) still has exactly 6 members, no restraint slot, for" +
+      " `m37.restraint.applied`; `cop_compliance_status` is still written only from a human route" +
+      " (`updateCopCitation`, `routes/write-service-drizzle.ts`) for the M6/M23 compliance-window/NOE/NOTR" +
+      " cluster; `packages/quality/src/measures/registry.ts` now registers 30 measure codes (up from 28 —" +
+      " `opioid_on_admission_rate`/`cost_report_filing_compliance` were added by other forks this round)" +
+      " and still none maps to a compliance window, F2F window, NOE/NOTR breach, discipline-assessment" +
+      " amendment, plan discharge, or bereavement risk-score/opt-out fact; `m12.medication_order" +
+      ".transmission_failed` still has no producer — `transmissionFailedAt`" +
+      " (`medication_order_transmission`) is read in `dosespot-route-service-db.ts`'s `getTransmission`" +
+      " view but never written anywhere, and `jobs/worker.ts` is still only the unrelated" +
+      " `dosespot_sync_queue` MedHx drain; `m15-discipline.ts`'s forward-seam deny-stub is still the stale" +
+      " dead file F-168 found (the real M15 counts route through `m30-jobs.ts`'s inline" +
+      " `DisciplineComplianceProvider` seam, itself not called by any of the 4 M15 push events). No" +
+      " measure/consumer-table gap closed this round; nothing built, nothing dropped, nothing moved." +
+      " **F-178 (#248) built the real `ComplianceWindowCountsProvider` seam" +
+      " (`apps/backend/src/modules/06-admission/seams/compliance-window-counts-provider.ts`, registered at" +
+      " boot via `registerAdmissionSeams`) plus two new M30 measures" +
+      " (`f2f_window_on_time_rate`/`f2f_window_override_rate`) that consume it — closing 2 of this group's 6" +
+      " M6 compliance-window pairs.** The seam is deliberately F2F-SCOPED" +
+      " (`windowKind = 'f2f_recert_30d_prior'` only), matching Phase 1's approved scope (the M6 compliance/F2F" +
+      " cluster). This genuinely resolves the two F2F-specific events —" +
+      " `m6.f2f.window_overridden`/`m6.f2f.window_missed` — dropped from this group's `events` array" +
+      " (the latter also gained a real producer this round; see the m6 group's own text). It does NOT" +
+      " resolve the four GENERIC `m6.compliance.window.opened/closed/overdue/overridden` events, which stay" +
+      " below: those fire for all 11 `complianceWindowKind` values (M6's spec, line 3868, confirms non-F2F" +
+      " kinds are real and actively created — `concurrent_hospital_admission`, `external_discharge_notice`," +
+      " `hl7_admission_cancellation` informational windows), and the new seam's F2F-only WHERE clause reads" +
+      " nothing for the other 10. The real, still-unbuilt relationship for these four is the GENERAL" +
+      " compliance-window dashboard pull M6's spec describes (line 2322/2330's \"M30 dashboard pulls open" +
+      " windows\"; line 3047's all-kind \"Overrides — last 30 days\" widget) — a different, larger seam than" +
+      " the F2F-scoped one this round built. Caught in central verification before commit: a build-side" +
+      " fork's own `events-by-m6.ts` reason text had generalized the F2F seam's coverage to all four generic" +
+      " events, which this reason corrects." +
+      " **F-179 (#248) investigated the general (all-window-kind) dashboard-pull relationship F-178 left" +
+      " deferred, and dropped all four remaining `m6.compliance.window.*` pairs as misdeclared, not merely" +
+      " unbuilt.** `packages/types/src/admission.ts` DOES pre-declare a real, typed `ComplianceReader`" +
+      " interface (`listOpenWindows(scope): Promise<ComplianceWindowSummary[]>`) matching M6 spec §4.7's" +
+      " decisive text verbatim — but it is a pure aspirational leftover: not registered in `SeamName`, no" +
+      " deny-stub, no implementation, and the `apps/backend/src/modules/06-admission/readers/` directory the" +
+      " spec names for it does not exist (grepped, zero hits). No M30-owned route, seam, or UI screen spec" +
+      " consumes it either — `docs/design/screens/` has no M30 \"operational dashboard\"/open-windows screen" +
+      " at all. What the M6 spec's \"M30 dashboard pulls open windows\"/\"Overrides — last 30 days\" prose" +
+      " (line 2322/2330/3047) actually describes is already fully live: `GET /api/v1/compliance-windows`" +
+      " (`admission-routes.ts` route 44) is an org-wide, all-window-kind, filterable REST read, gated by" +
+      " `compliance.read`/the `compliance.scope` ABAC predicate — itself documented as \"org-wide for" +
+      " compliance_officer,\" the exact persona a compliance/quality dashboard would use. This is a direct" +
+      " frontend-to-M6 REST call, not a backend module-to-module relationship — nothing for this registry (or" +
+      " any outbox/seam mechanism) to track. Dropped `m30` from `declaredConsumers` on all four" +
+      " (`events-by-m6.ts`), not moved to `seamConsumers`: there is no seam here to move it to, and building" +
+      " one (the pre-declared but unregistered `ComplianceReader`) would ship a seam with no caller, the" +
+      " identical \"decision core ships, nothing drains it\" shape this arc keeps finding in the other" +
+      " direction. If a genuine backend consumer for this data ever materializes (e.g. a future M30-side" +
+      " nightly rollup rather than a live dashboard read), it would be a fresh declaration against real new" +
+      " evidence, not a re-add of this one." +
+      " **F-180 (#248) — four parallel research forks re-checked the remaining previously-deferred items" +
+      " against current code (never merely re-asserting prior framing), dropping 6 of 9 investigated pairs" +
+      " as misdeclared and confirming 3 as genuinely blocked.** Dropped, all for the identical reason —" +
+      " M30's own LOCKED spec is decisive on what it actually consumes and none of these six appear in it —" +
+      " and none of the six had a real seam method or measure code either:" +
+      " `m6.applier.refused` (M6's own spec places it beside a Prometheus gauge, \"dashboard data source\" —" +
+      " ops/observability framing, not a business-fact handoff; already durably audited independent of any" +
+      " consumer via `m6.applier.contract_violation_refused`); `m23.noe.window_breached`/" +
+      "`m23.notr.window_breached` (the breach fact is a real, persisted column —" +
+      " `noe_record`/`notr_record.windowBreachedAt` — already served by a direct REST read" +
+      " (`GET /api/v1/noe-records`/`notr-records`, the F-179 shape exactly), M36 critical-severity alerting," +
+      " and M33's bound `mv_noe_window_breach_org_month` materialized view for NOE — though NOTR carries the" +
+      " same `seamConsumers: [\"m33\"]` catalog claim without a matching M33 subscription-map entry, a real" +
+      " M33-side asymmetry flagged for its own follow-up, out of this pass's scope); `m15.plan.version_signed`" +
+      " (kept its real `m22` consumer, only `m30` dropped), `m15.plan.discharged`, and" +
+      " `m15.discipline_assessment.amended` (M30's own §1.2 names exactly 4 `DisciplineComplianceProvider`" +
+      " measures — supervisory/MSW/chaplain on-time, volunteer-gate — as its real M15 consumption; none of" +
+      " these three events is among them, and the producer-side catalog comments asserting otherwise —" +
+      " e.g. \"M30 re-measures\" — were the unverified guesses this pass checked and found unsupported)." +
+      " **Confirmed still genuinely unbound, not misdeclared:** `m6.admission.on_hold`/`.resumed` (M6's" +
+      " spec names the same \"M30 dashboard\" phrasing F-179 resolved for compliance windows, but the" +
+      " REST-resolution check does NOT apply here — `holdReason`/`holdAt`/`releasedAt` are write-only" +
+      " everywhere in `06-admission/`, never selected by any existing read path, so unlike" +
+      " `GET /api/v1/compliance-windows` there is no already-live REST route serving this data; a real" +
+      " build gap on both the M6 reader side and the M30 consumer side) and `m15.volunteer.ratio_recomputed`" +
+      " (see the m15 group's own updated reason: the M27 `staffPatientCareMinutes` blocker is freshly" +
+      " reconfirmed current, not stale). Net this pass: declared-but-unbound 42 → 36." +
+      " **F-184 (#248) — a research fork checked the 5 events in this group never individually" +
+      " investigated before, found 2 more misdeclared (dropped), 1 real-and-buildable (in progress), and" +
+      " 2 genuinely blocked.** Dropped: `m12.medication_order.transmission_failed` (M30's own spec's" +
+      " entire M12 relationship paragraph names two consumed methods, neither about transmission" +
+      " failures — the description's \"M30 survey log\" is an undefined, uncorroborated concept, the" +
+      " F-180 shape); `m37.ipu_admission.death_recorded` (reverses F-149's own conclusion — never" +
+      " checked against M30's actual trigger design, only against M37's spec citation — M30's" +
+      " `createMortalityReviewDraft` is keyed EXCLUSIVELY to `m6.discharge.death`, and `death_recorded`" +
+      " fires strictly downstream of, and only because of, that same event; a consumer here would fire" +
+      " no earlier and carry no new fact, the identical redundant-sibling shape already used to drop" +
+      " `m16` from this exact event). **Real and buildable, landed**:" +
+      " `m16.bereavement.risk_score_computed` — M16 already built a dormant seam method purpose-made for" +
+      " this, `BereavementComplianceProvider.riskScreeningCompletenessCounts` (D17: excludes `minimal`" +
+      " data-completeness rows from the denominator); now a real operational measure" +
+      " (`bereavement_risk_screening_completeness_rate`), registered and wired into" +
+      " `resolveOperationalMeasureInput`, the F-178 pattern exactly (nightly-recompute pulled off the" +
+      " seam, no bespoke outbox consumer). `m30` moved from `declaredConsumers` to `seamConsumers` on" +
+      " this event (`events-by-m16.ts`) — the F-178 shape, not an outbox binding — so it drops out of" +
+      " this deferral list entirely rather than staying declared-but-unbound. **Confirmed still" +
+      " genuinely blocked, not misdeclared**:" +
+      " `m16.bereavement.plan_skipped_per_patient_opt_out` (three prior rounds — F-115/F-148/F-161 — plus" +
+      " this fresh check all reach the same conclusion: whether an opt-out skip belongs in the" +
+      " `bereavement_coverage_rate` denominator is an open product decision, not a code gap — the event" +
+      " carries no `planId`, since nothing was ever opened) and `m37.restraint.applied` (M37's spec is" +
+      " unusually decisive this is real — M30 even has a matching consumer port already stubbed," +
+      " `createIncidentDraft`. F-184 re-checked the actor-identity half of its blocker and found the" +
+      " F-150 'no system-actor-membership convention exists anywhere' framing stale: `incident_report`" +
+      " (`packages/db/src/schema/quality/incident-report.ts:77`) has no DB-level FK on" +
+      " `reported_by_membership_id` — unlike M20's structurally identical, genuinely-FK-enforced" +
+      " `safety_incident.reported_by_membership_id` — and this codebase already has four working" +
+      " precedents for a NOT NULL, non-FK, module-owned system-actor sentinel on this exact column" +
+      " shape (`M17_SYSTEM_USER_ID`, `M18_SYSTEM_USER_ID`, `M37_SYSTEM_MEMBERSHIP_ID` ×2," +
+      " `RENDER_SYSTEM_MEMBERSHIP_ID`); a fifth, `M30_SYSTEM_MEMBERSHIP_ID`, is a same-shape, no-migration" +
+      " fix. What still blocks this event is only the second, independent, additive gap:" +
+      " `m30IncidentKind` (`packages/db/src/schema/quality/incident-report.ts:35-41`) has exactly 6" +
+      " members (`fall`, `medication_error`, `complaint`, `allegation_of_abuse`, `exposure_event`," +
+      " `other_safety_event`), no `restraint_use` slot — a real enum migration plus an" +
+      " `IncidentKindData` payload variant, and deciding how a restraint event maps into that typed" +
+      " payload is a clinical-categorization call this pass does not make unilaterally. NOT" +
+      " the same blocker as `m12.medication.error_reported` in the first m30 group above — F-165" +
+      " already established that event's real gap is 'no producer anywhere', unrelated to actor" +
+      " identity; an earlier F-184 draft of this paragraph miscited it as the same gap and has been" +
+      " corrected). **F-185 (#248) — built and bound.** The additive enum migration landed" +
+      " (`0264_m30_incident_kind_restraint_use.sql`, `restraint_use` widened onto `m30_incident_kind`)," +
+      " M30's `createIncidentDraft` port is real (`M30_SYSTEM_MEMBERSHIP_ID`, the same fifth-precedent" +
+      " sentinel this paragraph already named), and `providerEntityId` resolves via a new org-explicit" +
+      " `restraintAdmissionSitingForOrg` M37 seam (the `bereavementPlanSitingForOrg` shape, injected as a" +
+      " port into `buildM30RestraintAppliedConsumer`). `m37.restraint.applied` drops out of this" +
+      " deferral list." +
+      " **F-195 (#248) — `m6.admission.on_hold`/`.resumed` are BOUND, not merely re-confirmed.**" +
+      " `holdReason`/`holdAt`/`releasedAt` were write-only in `06-admission/`; `GET /api/v1/admissions`" +
+      " now projects all three (org-wide, `?state=on_hold` filterable) — the real REST dashboard read" +
+      " M6's spec (line 2983) describes, the F-179 REST-resolution shape M30 itself uses elsewhere." +
+      " `m30` dropped from `declaredConsumers` on both events (`events-by-m6.ts`); no push consumer was" +
+      " ever the right mechanism. `m15.volunteer.ratio_recomputed` and" +
+      " `m16.bereavement.plan_skipped_per_patient_opt_out` stayed deferred while the latter's product" +
+      " question — does an opt-out skip count toward the CoP bereavement-coverage denominator — was" +
+      " undecided. **F-206 (#248) — `m16.bereavement.plan_skipped_per_patient_opt_out` is BOUND, GONE" +
+      " from this group.** The user decided yes, it counts as CoP coverage SATISFIED. Recorded at the" +
+      " real live emit site (`m5-patient-opt-out-changed.ts`'s `skip` branch) as a new, idempotent" +
+      " `bereavement_cop_opt_out_credit` row (migration 0275), and `copOutreachCounts`" +
+      " (`16-bereavement/seams/drizzle-store.ts`) now sums matching credits into both the numerator and" +
+      " denominator of the `bereavement_coverage_rate` measure — the F-150 `enqueueRecompute` pattern," +
+      " a seam-pull relationship (`declaredConsumers` drops `m30`, `seamConsumers` gains it on" +
+      " `events-by-m16.ts`), not an outbox binding. `m15.volunteer.ratio_recomputed` stays deferred," +
+      " unchanged: a separate, still-undecided M27-hours seam gap the user's opt-out decision never" +
+      " touched.",
+    events: ["m15.volunteer.ratio_recomputed"],
   },
   {
     module: "m22",
     kind: "handlers-unbound",
     reason:
-      "M22 renders on REQUEST. Its live binding consumes `M22_DOCUMENT_REQUEST_EVENTS`, and a module that wants a document emits a render request which M22 answers with `m22.document.rendered`. NOTE (F-099): a reason written for the whole group was WRONG for six of its members (the REQUEST spelling itself, unconsumed); those are bound. M6's six CoP documents were then bound directly (F-100) per the M22 spec's own §4.11 table, which routes those SOURCE events to the renderer with no `document_requested` needed. F-117 (#248) re-checked the ORIGINAL claim that 'for M11/M12/M13/M21/M23/M33 the request half IS wired, so the source declaration is redundant' PER EVENT rather than per module — it was right for exactly 4 of the ~20 events across those six modules (the ones actually co-emitted with a `document_requested` sibling in the SAME transition: `m11.order.signed`/`.standing_spawned`, `m12.medication_order.signed`, `m13.reconciliation.completed` — all now dropped from `declaredConsumers`, no `seamConsumers` replacement, since the artifact is delivered via the other event) and WRONG for the rest, which are separate order/claim/billing lifecycle events on the SAME modules with no such sibling and stay genuinely declared. Two more were dropped as never needing a render at all, not merely redundant: `m37.body_release.completed` (the PRIOR transition's own guard already requires the document to exist — `releaseBody` refuses without a signed `body_release_authorization`) and `m27.cost_report.reopened` (resets to `draft`; no job, no request, nothing to render until the next `submitted`). `m27.cost_report.submitted` was dropped on the F-108 precedent — it enqueues the `ecr-generation` job rather than emitting a request itself, and that job's own `m27.artifact.render_requested` is the real, already-bound handshake. `m37.body_release.funeral_home_identified` was dropped the ordinary way: `identifyFuneralHome` co-emits `m37.body_release.document_requested` in the same transition. What remains (61 events) divides three ways, none of it a blanket call: events the M22 spec's §4.11 table explicitly names for a dedicated per-source consumer that was never built (`m11.order.results_received`, `m12.medication_order.{list_changed,draft_created_from_extraction}`, `m13.administration_record.document_requested` — catalogued-not-emitted, F-099's producer gap — `m14.{packet.render_requested,minutes.signed}`, `m15.plan.version_signed`, `m18.evv.aggregator_accepted` — whose OWN sibling `m18.evv.verification_pdf_requested` is catalogued and ALSO never emitted, so this is the only real signal — `m5.patient.{merged,draft_created_from_extraction}`, `m8.encounter.{signed,addendum_signed}`, `m39.consent.revoked`); one confirmed stale cross-reference, not yet fixed here (`m9.assessment.summary_requested` is real, catalogued, request-shaped, and declares m22 — `M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS`' comment calls the equivalent need `m9.assessment.document_requested` and says it is 'declared by no catalog under any spelling', which is now false; a live candidate for the next binding pass, the F-100 `m37.body_release.document_requested` shape); and events named by NO part of the M22 spec's §4.11 table with no redundant sibling found, kept declared rather than dropped absent stronger evidence — the F-101 sweep this needs has not been run on them (`m11.order.{corrected,discontinued,level_of_care_change_signed,recertification_signed,supply_fulfillment_requested}` — the latter two of which M11 does not even emit yet, a producer gap under this one; `draft_created` is the one exception with its own documented intent, 'M22 preps the order form'; `m14.{meeting.adjourned,minutes.amended}`; `m15.{discipline_assessment.amended,plan.discharged}`; `m16.bereavement.plan_{closed_completed,closed_declined,closed_early,opened}`; `m17.caregiver_reminder_due`; `m21.supply_request.delivered`; `m23.{billing.document_render_requested,claim.acknowledged,claim.rejected,claim.submitted,noe.submitted,notr.submitted}` — the first of which is already request-shaped and a strong candidate; `m24.medicaid_{billing.document_render_requested,claim.acknowledged,claim.rejected,claim.submitted}`; `m25.{appeal.submitted,denial_resolution_letter.render_requested}` — the second likewise request-shaped; `m30.{incident.submitted,qapi.pip_closed,qapi.project_chartered}`; `m37.ipu_admission.death_recorded`; `m39.consent.{expired,recipient_added,recipient_removed}`; `m5.patient.{privacy_flag_changed,unmerged}`; `m7.care_plan.version_signed`; `m8.encounter.voided`). `m6.discharge.cosigned` and `m6.transfer.created` are untouched by this pass — both genuinely deferred per F-099's original reasoning (version-append and transfer-variant gaps respectively).",
+      "M22 renders on REQUEST. Its live binding consumes `M22_DOCUMENT_REQUEST_EVENTS`, and a module that wants a document emits a render request which M22 answers with `m22.document.rendered`. NOTE (F-099): a reason written for the whole group was WRONG for six of its members (the REQUEST spelling itself, unconsumed); those are bound. M6's six CoP documents were then bound directly (F-100) per the M22 spec's own §4.11 table, which routes those SOURCE events to the renderer with no `document_requested` needed. F-117 (#248) re-checked the ORIGINAL claim that 'for M11/M12/M13/M21/M23/M33 the request half IS wired, so the source declaration is redundant' PER EVENT rather than per module — it was right for exactly 4 of the ~20 events across those six modules (the ones actually co-emitted with a `document_requested` sibling in the SAME transition: `m11.order.signed`/`.standing_spawned`, `m12.medication_order.signed`, `m13.reconciliation.completed` — all now dropped from `declaredConsumers`, no `seamConsumers` replacement, since the artifact is delivered via the other event) and WRONG for the rest, which are separate order/claim/billing lifecycle events on the SAME modules with no such sibling and stay genuinely declared. Two more were dropped as never needing a render at all, not merely redundant: `m37.body_release.completed` (the PRIOR transition's own guard already requires the document to exist — `releaseBody` refuses without a signed `body_release_authorization`) and `m27.cost_report.reopened` (resets to `draft`; no job, no request, nothing to render until the next `submitted`). `m27.cost_report.submitted` was dropped on the F-108 precedent — it enqueues the `ecr-generation` job rather than emitting a request itself, and that job's own `m27.artifact.render_requested` is the real, already-bound handshake. `m37.body_release.funeral_home_identified` was dropped the ordinary way: `identifyFuneralHome` co-emits `m37.body_release.document_requested` in the same transition. F-142 (#248) added a genuinely misdeclared arrival from the (now-deleted) m32 group: `m19.triage.summary_requested` had been wrongly declared to m32 (a documentation error in `events-by-m19.ts`'s own inline comment), corrected at the source once M19's own locked spec — cited three separate ways — and `packages/types/src/oncall.ts`'s own payload doc comment both settled the real consumer as M22, for a caregiver/attending PDF render request. Genuinely unbuilt on both sides (no producer emits it yet either). F-144 (#248) finally ran the F-101 per-event sweep the group's own prior reason had flagged as outstanding on 38 events spread across eleven producing modules — checked in six parallel producer-clustered forks against M22's own §4.11 consumer table and each producing module's spec/code. **28 of 38 were genuinely misdeclared and dropped at the source**: all five remaining M11 order events (`corrected`, `discontinued`, `level_of_care_change_signed`, `recertification_signed`, `supply_fulfillment_requested` — the last three either redundant with a co-emitted/downstream sibling M22 already renders off, or with no support in M22's table at all — `level_of_care_change_signed`'s own 'M22 renders the LOC-change form' claim was checked against the real `PLATFORM_TEMPLATE_TABLE` and confirmed to name no such template, matching the standing F-101 finding on its own downstream `m6.loc.changed` sibling); `m8.encounter.voided` (structurally impossible — `ENCOUNTER_GRAPH` legalizes `void` only from `draft`, so a voided encounter can never have had a PDF rendered to suppress); `m14.meeting.adjourned` (redundant — co-emitted alongside `m14.minutes.signed`, M22's real trigger, in the same transition); both remaining M15 events (`discipline_assessment.amended`, `plan.discharged` — M15's own Lock-status section names only `plan.version_signed` as the M22 trigger); all four remaining M16 bereavement-plan events (`plan_opened` redundant with its co-emitted `outreach_artifact_requested` sibling; `plan_closed_completed`/`.declined`/`.early` unsupported — M22's own table names only `outreach_artifact_requested`/`bereavement.anniversary_due` for M16, and none of the three closure deciders emit a render-request sibling); `m37.ipu_admission.death_recorded` (M22's own spec never mentions a magic-link surface at all; F-147 (#248) ran down the 'internally inconsistent' M37 citation this entry flagged and confirmed it as one imprecise summary-table row against 15+ decisive citations elsewhere in M37's own spec naming the LATER `m37.body_release.funeral_home_identified` as the real magic-link trigger, and M22 — never M2 — as its architecture-§7.8-named consumer; that event's own magic-link half stays genuinely unbuilt, see the m37 group); five of six M23 billing events (`claim.acknowledged`/`.rejected`/`.submitted`, `noe.submitted`, `notr.submitted` — each redundant with the one real trigger, `m23.billing.document_render_requested`, which M23's own §4.10 table names explicitly as the sole M22 handshake point, confirmed against `consumers/document-render.ts`'s four builder functions and their exact payload shapes); three of four M24 events (`medicaid_claim.acknowledged`/`.rejected`/`.submitted` — the identical M23 shape one module over, redundant with `medicaid_billing.document_render_requested`); `m25.appeal.submitted` (redundant — co-emitted alongside the already-live-bound `m25.appeal_packet.render_requested` in the same transition, confirmed in `write-service-drizzle.ts`); all three M30 events (`incident.submitted`, `qapi.project_chartered`, `qapi.pip_closed` — each catalog description's own 'renders ... on request' phrasing describes a route-triggered mechanism, not a push, and M30's spec names five dedicated `*.render_requested` events for this purpose that were never catalogued or emitted anywhere — a producer-side gap reported, not fixed); and both remaining M5 events (`privacy_flag_changed`, redundant with the identical F-115/M28 shape — SUD redaction applied fresh per read via M3's `sud_consent_present` predicate, not a cached flag; `unmerged` — M5's own locked D8 states merge re-points FK references through a live resolver with no destructive UPDATE, so there is nothing for a push event to correct). **10 of 38 confirmed genuine**, no catalog change needed: `m14.minutes.amended` and `m7.care_plan.version_signed` (both decisively named in their producing module's own outbox table); `m17.caregiver_reminder_due`, `m21.supply_request.delivered`, and all three `m39.consent.{expired,recipient_added,recipient_removed}` events (each decisively named in the producing module's own outbox table, the F-131 'kept, not dropped' asymmetry since none of these appear in M22's own §4.11 table either); and three already-correctly-declared 'document_render_requested'-shaped events that anchor the M23/M24/M25 redundant-sibling drops above (`m23.billing.document_render_requested`, `m24.medicaid_billing.document_render_requested`, `m25.denial_resolution_letter.render_requested`) — all three confirmed genuinely unbuilt on the PRODUCER side too (no emit site anywhere for any of them), a real gap in M22's own request-list maintenance separate from the catalog-declaration question this sweep answers. What remains below (31 events) is the same three-way split the group's reason previously described, now fully swept: real named gaps from M22's own §4.11 table with no consumer built, one stale cross-reference already corrected, and the 10 confirmed-genuine events above plus the two version-append/transfer-variant M6 events untouched since F-099. **F-160 (#248) built the 4 events F-144 flagged as unbuilt on the PRODUCER side too — all 4 now render live.** `m13.administration_record.document_requested`: the pure `@wardenx/emar` machine had declared this as a `commit`-time effect on `perAdministrationPdfRequired` since M13-T03, but the production DB write service reimplements `commit` inline and never called it — fixed by reading `administration_policy.emar_per_administration_pdf_enabled` directly in `recordAdministration`'s transaction. `m23.billing.document_render_requested`: co-emitted in the same transaction as the underlying fact for all four of M23's typed builders — `noe_confirmation_receipt`/`notr_confirmation_receipt` at `submit` (`noe-notr-state-service.ts`), `claim_acknowledgment_letter` at `ack_277ca_accepted` and `denial_appeal_cover_letter` at `ack_277ca_rejected`/`ack_999_rejected` (both `claim-state-service.ts`). `m24.medicaid_billing.document_render_requested`: co-emitted at ACK_ACCEPTED for the one M24 document kind with a real producer transition (`medicaid_claim_acknowledgment_letter`) — the other three kinds M24's spec names (R&B contract summary, remittance summary, a second denial-appeal letter) have no producer transition anywhere in the codebase and stay unbuilt, no template published for them on purpose. Building this surfaced an independent, pre-existing production bug in the same file: `terminalizeSubmissionAndTransition`'s history INSERT passed the `withOrgContext` `\"\"` GUC sentinel as `actorMembershipId` — a nullable uuid column, not a GUC — so every worker-driven claim-state transition threw Postgres `22P02` on its very first tick, in every environment, forever (this worker had no test coverage anywhere in the repo before this pass); fixed to the honest `null`. `m25.denial_resolution_letter.render_requested`: co-emitted at `resolveDenial` (the manual no-appeal path); `denial_case` has no `patient_id` column, so the chart target is resolved via a direct `ClaimRepository.findById` read (legal — M25's `dependsOn` includes 23) and left honestly `null` when `claim_id` itself is null (the 277CA-pre-835/EVV-seeded shapes). Six new `document_aggregate_type` enum values were needed (migration 0251, the F-099/migration-0239 additive-only precedent) — each of M23's four kinds, M24's one, and M25's one is its own distinct type rather than a shared bucket, since a shared type would make one kind's render read as an idempotent redelivery of a different kind's under the same `(sourceEvent, aggregateId)` key. Proven by `f144-m13-m23-m24-m25-render-requests.live.test.ts`: all 4 producers, the real catalog-validating publisher, the real dispatcher, and the real M22 render consumer/renderer into real `document`/`document_version` rows under RLS, plus cross-tenant isolation — 10/10 passing. **F-161 (#248) built 2 of the 10 'confirmed genuine' events, the two with the most decisive producer-side evidence.** `m7.care_plan.version_signed` (M7's own catalog comment: 'drives the M8 encounter gate + M22 PDF') needed a brand-new `document_aggregate_type` — no care-plan PDF template existed at all — added via migration 0252 (the additive-only ALTER TYPE precedent). `m17.caregiver_reminder_due` (M17's own catalog comment: 'M22 renders the reminder, M36 delivers') reuses the `visit_confirmation` aggregate type, published since the enum's base definition with no descriptor and no consumer until now. Both proven live end-to-end in `f161-m7-m17-render-requests.live.test.ts` — M7 through the real `createDbCarePlanRouteService` bootstrap→author→finalize→quorum→emit→render chain (plus a no-quorum negative case), M17 by publishing the real catalogued payload directly through the real catalog-validating publisher, since **no producer exists anywhere in `17-scheduling/` for this event** — `jobs/cron-workers.ts` registers only `recurringMaterialize`/`visitAttention`, no caregiver-reminder cron; the M22-side binding is real and tested against the real payload shape, but nothing in production currently emits it (a producer-side gap in a different module, reported not fixed). The other 8 of the 10 stay exactly as confirmed-genuine-but-unbuilt: `m14.minutes.amended` needs the W2 append/re-render path (`decideDocumentRequest`'s idempotency is keyed `(aggregateType, aggregateId)` only, so a second request against an already-rendered aggregate silently no-ops — the identical gap already documented for `m6.discharge.cosigned` two paragraphs up); `m21.supply_request.delivered` is an e-signature CAPTURE workflow (D7's optional caregiver signature off an already-existing evidence photo), not a render-from-typed-payload, and needs a whole new FormFill-style capability M22 does not have; all three `m39.consent.{expired,recipient_added,recipient_removed}` events describe a signed-URL-revoke/cache-invalidation mechanism that does not exist — M22 resolves M39's `ConsentEvaluator` FRESH on every signed-URL mint (the identical F-115/F-144 seam-pull shape), so there is no persistent grant state for any of the three to revoke or invalidate, and all three catalog descriptions are stale relative to the seam-pull design actually built; the three `*.document_render_requested`-shaped anchors stay unbuilt on the producer side as already stated. **F-162 (#248) re-checked `m14.minutes.amended` once more, attempting the build, and found the premise itself was wrong plus a sharper root cause than 'the W2 path needs building'.** `m14.minutes.signed` — cited elsewhere in this corpus as M22's 'real trigger' this event would piggyback on — is NOT actually bound either: `M22_DOCUMENT_REQUEST_EVENTS` (`decide-document-request.ts`) contains neither `.signed` nor `.amended`, confirmed never present at any point in `git log -p` history, and `PLATFORM_TEMPLATE_TABLE` has no template descriptor for `idg_minutes`/`idg_patient_packet` at all despite both being real `document_aggregate_type` enum values — so even a first-ever render would hit `unknown_template` today. Positive finding: the W2 genesis-vs-append machinery ITSELF is fully built at the store layer (`DocumentSeamStore.upsertRenderedDocument`, `seams/drizzle-seam-store.ts` — `SELECT ... FOR UPDATE`, insert a new `document_version` + flip `active_version_id` if a document exists, else genesis) and called unconditionally by the renderer whenever the decider returns `\"render\"` — this part is NOT missing, correcting the framing above. **The real blocker is the idempotency-key GRANULARITY** in the shared pure decider (`decideDocumentRequest`): `facts.alreadyRendered` is resolved by `store.renderedDocumentForAggregate({aggregateType, aggregateId, organizationId})` — 'does ANY document exist for this aggregate' — never by `(sourceEvent, aggregateId)` as the file's own header comment says is the INTENDED design; the real call site never passes `sourceEvent` into the lookup. This is necessary today for crash-safety (traced `outbox-dispatcher.ts`: the delivery receipt is written in a SEPARATE transaction AFTER `handle()` returns, so a genuine redelivery must re-hit `alreadyRendered` and no-op, or a crash-and-retry would double-render), but it also means EVERY subsequent render request for an aggregate that already has a document — not just a stale redelivery — silently no-ops, which is exactly backwards for `.amended` (which needs a NEW version, not a skip). Fixing this needs either a schema migration (a request-identity column on `document_version`, or a small dedup table keyed by outbox event id) or a decider redesign — shared infrastructure used by every one of the ~40 events M22 currently renders, not an M14-scoped narrow extension, and explicitly the same shape already on record for `m6.discharge.cosigned`. `m14.minutes.amended`'s own emitted payload is also thin either way — `{amendmentId, minutesId, requestedByMembershipId, approvedByMembershipId, amendmentReasonHash}`, no render content (the amendment's real `amendmentDiff` is never put on the wire) — a second, smaller gap once the idempotency question is resolved. No files changed." +
+      "**F-166 (#248) ran a survey-then-build pass over the group's remaining ~25 events, built 5 GENESIS-only" +
+      " render requests, dropped 1 vapor duplicate, and sharpened the rest with real, checked reasons rather" +
+      " than re-asserting them.** All five builds share the F-162 boundary exactly: a FIRST document per" +
+      " aggregate id, never a second request against one `decideDocumentRequest`'s `(aggregateType," +
+      " aggregateId)`-only idempotency already answers `idempotent_skip` for. **Built**: `m8.encounter.signed`" +
+      " (template `encounter`, published since the platform-floor table with no producer wired to it — the" +
+      " LOCKED payload's `documentRenderPayload: {final, addenda}` has carried the renderable content since" +
+      " the event existed, unconsumed); `m18.evv.aggregator_accepted` (template `evv_verification`, the" +
+      " F-100 'event NAME is the template' shape — its declared sibling `verification_pdf_requested` turned" +
+      " out to be VAPOR, see the drop below); `m14.packet.render_requested`/`m14.minutes.signed` (templates" +
+      " `idg_patient_packet`/`idg_minutes` — both real `document_aggregate_type` values since migration 0048" +
+      " with no descriptor and no subscription until now, exactly the wall F-162 found); and" +
+      " `m15.plan.version_signed` (templates `aide_poc`/`msw_plan`/`spiritual_plan`/`volunteer_plan` by" +
+      " `kind`, all four also real since migration 0048 — the event's own payload had no `patientId`, widened" +
+      " at the source, the F-099 'the fact was already in scope at the one emit site' precedent). No" +
+      " migration was needed for any of the five — every aggregate type these five real, catalogued events" +
+      " need already existed; the gap was purely the missing TemplateDescriptor + REQUEST_SHAPES/event-list" +
+      " entry. **Dropped**: `m18.evv.verification_pdf_requested` — its own description duplicates" +
+      " `aggregator_accepted`'s ('triggers the M22 verification-PDF render (D11)') for the SAME D11 artifact," +
+      " and checked against the real code rather than either description, it is the vapor one: no file under" +
+      " `18-evv/` ever publishes it, only `aggregator-submission.ts`'s pure decider emits" +
+      " `aggregator_accepted`. Now record-only at the source. **The rest were investigated and sharpened," +
+      " not rebuilt on guesswork.** `m11.order.results_received` looked like a sixth clean win (template" +
+      " `lab_results_pdf` already exists) until the render-variants directory was checked: it is NOT part of" +
+      " this generic framework at all — a dedicated, already-written `lab-backref-consumer.ts`/" +
+      " `lab-backref-bindings.ts` pipeline exists for it, explicitly deferred pending M29's" +
+      " `LabObservationReader`. That reader IS now registered at boot (`registerM29PublishedSeams`), which" +
+      " the pipeline's own header does not yet reflect — but the REAL registered interface" +
+      " (`getById`/`listByPatient`) does not match the port M22 forward-declared" +
+      " (`resolveLabResultsPayload`), so `getSeam(...).resolveLabResultsPayload` is `undefined` and the" +
+      " deny-stub still fires; fixing the name mismatch would not be enough regardless, because" +
+      " `LabObservationSeamDTO.values` carries no per-value SUD-class flag, and §7.16 requires one before" +
+      " any render — the identical Part-2-disclosure risk F-035 already refused for a different DTO pair." +
+      " Building the generic REQUEST_SHAPES entry I first drafted would ALSO have been wrong on its own" +
+      " terms: keying the render on `orderId` with `aggregateType: 'order_record'` collides with the" +
+      " order-form document `m11.order.document_requested` already renders for that same order at sign" +
+      " time, so the lab result would silently `idempotent_skip` forever once an order had ever been" +
+      " signed. `m5.patient.merged` is a genuinely different mechanism from the already-dropped `.unmerged`" +
+      " — its own description names a real per-document `UPDATE document SET patient_id = ...` M22 would" +
+      " have to perform, not a render — but grepping the whole of `05-patient/` outside the catalog and its" +
+      " own tests found NO producer anywhere: the D8 merge write path itself does not exist yet, so this is" +
+      " unbuilt on BOTH sides, not merely the M22 side the group's framing implied. `m5.patient" +
+      " .draft_created_from_extraction` and `m12.medication_order.draft_created_from_extraction` are the" +
+      " same class as each other: the whole DocLens extraction/commit pipeline that would produce either is" +
+      " 'BUILT-NOT-ACTIVE' (`pipeline-service.ts`'s own header) behind the `documents.doclens` flag, OFF for" +
+      " every tenant, with its own outbox dispatch explicitly forward-declared pending M32 — no real event" +
+      " can fire from either side today." +
+      " **F-171 (#248) ran this pair down fully — built two SIBLING seed rows the investigation found" +
+      " genuinely ready, and found `media_release` itself is blocked on more than a missing seed row.**" +
+      " The standing note above (\"the seed catalog publishes only 3... no `media_release` type is" +
+      " registered\") undersold the gap: `22-documents/` has NO `m39.consent.revoked` consumer file of ANY" +
+      " kind (grepped) — not merely unseeded, unbuilt — and a from-scratch build has no non-guessed way to" +
+      " satisfy the spec's own \"locate prior-rendered media artifacts for the patient\" step (§4.11)." +
+      " `document`'s `aggregate_type`/`source_kind` enums (`packages/db/src/enums.ts`) carry no photo/" +
+      " video/media concept distinct from any other upload — a wound-care photo captured via" +
+      " `DOC.Mobile.UploadPhotoToChart` is stored identically to a marketing photo — and `consent_document" +
+      " _link` (M39-owned) links a consent record only to ITS OWN rendered PDF (D15/§1.2), never to media" +
+      " released under its authority. A `document_version.mime_type LIKE 'image/%'` heuristic was" +
+      " considered and rejected: it would misclassify ordinary clinical photos as media-release content —" +
+      " the \"guessed provider entity is a mis-stated cost report\" mistake (F-102) applied to PHI photos." +
+      " Seeding `media_release` anyway (its own type data is otherwise well-specified per D2/D7/D8) was" +
+      " rejected too, per this pass's own conservative instruction: it would make `cascadeKind` resolve" +
+      " correctly with STILL no consumer to read it — moving the blocker from \"no seed row\" to \"seed row," +
+      " still nothing consumes it\", the exact \"looks fixed, isn't\" shape this arc exists to avoid. Stays" +
+      " unseeded and unbuilt; the real M22-side gap (a document→media classification mechanism) is reported" +
+      " here, not fixed. **Two SIBLING types ARE now seeded**, each checked against its OWN D7 cascade" +
+      " consumer rather than assumed from the spec's prose: `portal_access` (M2" +
+      " `buildM2ConsentRevokedConsumer`, F-142, filters exactly this `typeKey`, deletes the patient's" +
+      " `patient_portal` sessions — real and bound — + M31 `buildM31ConsentRevokedGrantCascadeConsumer`," +
+      " revokes the matching `portal_access_grant` row by `source_consent_record_id` — real and bound) and" +
+      " `bereavement_outreach_consent` (M16 `buildM16ConsentRevokedConsumer`, F-151, the §2.6 per-" +
+      " bereaved-contact opt-out cascade — real and bound — + the same M31 grant-revoke consumer). Seeding" +
+      " the second row is also what makes `createBereavementOutreachDraft`'s `consent_record.type_key` FK" +
+      " satisfiable for the first time in any deployment — the D14 post-mortem consent flow was" +
+      " unreachable before this, independent of the cascade question. Proven live end to end (real M39" +
+      " `createDraft`/`createBereavementOutreachDraft` → `signConsent` → `revokeConsent`, the real" +
+      " catalog-validating outbox publish, the ACTUAL delivered payload read back from `outbox_event` and" +
+      " handed to the real M2/M16/M31 consumers, under RLS) by" +
+      " `f171-consent-type-seed.live.test.ts` (3/3). The other 7 of the 9 previously-unseeded types" +
+      " (`dpoa_financial`, `family_caregiver_access`, `research_participation`, `telehealth_consent`," +
+      " `advance_directive_acknowledgment`, plus `media_release` above) stay unseeded — each checked and" +
+      " found to have no live-bound `m39.consent.revoked` consumer for the cascade the D7 table names it" +
+      " (`family_caregiver_access` additionally carries a REPORTED, unresolved over-termination risk on" +
+      " its M2 half per that consumer's own file header — a real correctness hazard, not merely an" +
+      " absence — so it stays out even though its M31 grant-cascade half would work) — reasons recorded in" +
+      " `scripts/db/seed-consent-types.ts`'s own header rather than restated here. `m12.medication_order.list_changed` and" +
+      " `.transmitted` are both the F-162 granularity collision one module over: `.document_requested`" +
+      " already renders `medication_order` for the same `orderId` at sign, so a later `.transmitted` (or any" +
+      " `.list_changed` after the first) would find `alreadyRendered: true` and silently no-op — not a" +
+      " missing binding, a binding that would do nothing if built naively. `m8.encounter.addendum_signed` is" +
+      " now genuinely the SAME collision against the `encounter` render this pass just bound at `.signed` —" +
+      " confirmed rather than merely re-asserted, since before this pass there was no genesis render to" +
+      " collide with. `m9.assessment.summary_requested` has no per-request aggregate identity at all" +
+      " (`{patientId, asOfDate, scales, lang}`, no assessment/request id) — unlike its M10 HOPE-summary" +
+      " sibling (keyed on a specific `assessmentId`), using `patientId` as the aggregate id would mean the" +
+      " FIRST summary request for a patient renders and every later one (a summary asked for on a later" +
+      " date) silently no-ops forever under the same `(aggregateType, patientId)` key; genuinely blocked by" +
+      " the same idempotency-granularity design gap `m14.minutes.amended` already names, not merely" +
+      " unbuilt. `m11.order.draft_created` ('M22 preps the order form') and `m12.medication_order" +
+      " .signature_requested` ('M22 preps the PDF') both use pre-signature 'prep' language with no evidence" +
+      " anywhere in `11-orders/`/`12-dosespot/` of a distinct draft-preview artifact or route, and the real" +
+      " signed artifact is already delivered by each module's `.document_requested`/`.signed` sibling — the" +
+      " F-101 redundant-sibling shape looks likely, but kept declared rather than dropped absent a decisive" +
+      " corroborating citation (the F-131 caution), for a future pass to settle. `m14.minutes.amended`," +
+      " `m19.triage.summary_requested`, `m21.supply_request.delivered`," +
+      " `m39.consent.{expired,recipient_added,recipient_removed}`, `m6.discharge.cosigned`, and" +
+      " `m6.transfer.created` were re-checked against the current code and are unchanged from F-161/F-162/" +
+      "F-144/F-099's own findings." +
+      " **F-168 (#248) fixed the idempotency-key-granularity infrastructure gap F-162/F-166 had traced but" +
+      " left unbuilt, and bound the three clearest instances.** `decideDocumentRequest`'s `alreadyRendered`" +
+      " fact was resolved from `store.renderedDocumentForAggregate({aggregateType, aggregateId})` —" +
+      " checked directly against `outbox-dispatcher.ts` first, not assumed: the dispatcher's" +
+      " `(event_id, consumer_name)` receipt (§4.11) already dedupes a FULLY completed delivery, but a crash" +
+      " between `handle()` succeeding and that receipt being written (an inherent gap — they are two" +
+      " separate writes) means a genuine redelivery of the identical outbox row CAN still reach `handle()`" +
+      " a second time, so `decideDocumentRequest` still needs its own idempotency floor; it just had the" +
+      " wrong granularity. Fixed by keying `alreadyRendered` on the SPECIFIC delivered outbox event id" +
+      " (`DispatchableOutboxEvent.id`, not the event TYPE string the header comment's old" +
+      " `(sourceEvent, aggregateId)` framing actually meant) via a new `document_version.source_event_id`" +
+      " column (migration 0261, plain uuid, NULLS-DISTINCT unique on `(organization_id, source_event_id)`," +
+      " no FK — `outbox_event` rows are purged past retention) written in the SAME insert as the version" +
+      " row, so the redelivery-dedup and the artifact it protects are atomic (no separate receipt table" +
+      " with its own lost-write crash window). A NEW store method" +
+      " (`DocumentSeamStore.documentVersionForSourceEvent`) resolves the fact; `renderer.ts`'s shared" +
+      " `RenderPayloadCore` gained an optional `sourceEventId` field so the change reaches every render" +
+      " WITHOUT widening the leaf-typed `DocumentRenderer.render(scope, templateKey, payload)` seam other" +
+      " callers (DSAR/tenant-export jobs, the M39 consent render, the lab-backref/statement-of-disagreement" +
+      " variants) share — they simply never set it, which the store already wrote as NULL. **Bound the" +
+      " three clearest 'same aggregate, genuinely new content' cases**: `m8.encounter.addendum_signed`" +
+      " (appends onto `.signed`'s `encounter` aggregate; payload widened at the source with" +
+      " `documentRenderPayload`, the same PHI-safe empty-string stand-in `.signed` already sends — no new" +
+      " disclosure, `reason` was already on the wire in the clear before this change) and" +
+      " `m14.minutes.amended` (appends onto `.signed`'s `idg_minutes` aggregate; payload widened with the" +
+      " same three snapshot columns `.signed` already publishes — deliberately NOT the DENYLISTED" +
+      " `amendmentReason` plaintext, only its hash was ever on the wire and stays that way; a first draft of" +
+      " this fix put the plaintext on the wire and was corrected before landing). `m12.medication_order" +
+      " .transmitted` is ALSO bound on the consumer side (appends onto `.document_requested`'s" +
+      " `medication_order` aggregate) but is honestly reported, not a working end-to-end fix: exhaustively" +
+      " grepped, this event is catalogued with NO PRODUCER anywhere in `12-dosespot/` — the" +
+      " `dosespot.transmit_newrx` worker its own catalog description names does not exist in this codebase" +
+      " (no DoseSpot vendor credential is configured anywhere either), the `m18.evv.visit_verified`/" +
+      " `m17.caregiver_reminder_due` (F-150/F-161) shape a third time — the binding is real and tested" +
+      " against the real catalogued payload, but nothing emits the event yet. **`m12.medication_order" +
+      ".list_changed` was checked and found NOT to be the same collision at all**, correcting a stale" +
+      " framing from F-166: its aggregate is the PATIENT (`patientId`, no `orderId` field on the payload —" +
+      " a med-LIST render, not a per-order one), a genuinely different aggregate from `.document_requested`" +
+      "'s `order_record`/`orderId`, so the granularity fix does not unblock it; it would need a brand-new" +
+      " aggregate type + template (a 'medication list' document keyed on patient), real feature scope beyond" +
+      " an idempotency-key fix, and stays declared with this corrected reason. `m6.discharge.cosigned` is" +
+      " now a real, technically-unblocked candidate this pass did NOT build — deliberately, since binding it" +
+      " needs its own review (a for-cause discharge cosign is a materially different kind of 'new version'" +
+      " than an amendment or a re-transmission: does the surveyor-facing discharge summary need to visibly" +
+      " change on cosign, or does the cosign only need recording on the `discharge_event` row itself?), left" +
+      " for a future pass rather than a drive-by add. `m6.transfer.created` is unrelated to the granularity" +
+      " fix (it wants a template VARIANT that does not exist, not a second version of the base template) and" +
+      " stays unchanged. **`m9.assessment.summary_requested` was checked against the fix and deliberately" +
+      " left unbound, on a real product-design question rather than a remaining technical blocker**: its" +
+      " payload (`{patientId, asOfDate, scales, lang}`) has no assessment/request id, so the only candidate" +
+      " aggregate id is `patientId` — and with the granularity fix, that would make every distinct summary" +
+      " request correctly render (never silently no-op), but as a NEW VERSION of one ongoing" +
+      " 'hope_summary' document per patient, where each version is really an independent point-in-time" +
+      " snapshot (`asOfDate`), not a correction/amendment of the previous one the way an addendum or an" +
+      " amendment is. Filing successive dated snapshots as document VERSIONS would make" +
+      " `document.active_version_id` surface only the LATEST as if it superseded the earlier ones — which" +
+      " it does not; each was independently valid on its own `asOfDate`. That is a real decision about" +
+      " what 'the HOPE summary document' means (one evolving record vs. one document per snapshot date," +
+      " the latter needing a per-request aggregate id this event's payload does not carry), not something" +
+      " this pass decides unilaterally." +
+      " **F-170 (#248) re-checked all sixteen remaining events' specific stated blockers fresh (2026-09-29," +
+      " one round after F-168) and found fifteen unchanged, plus one factual correction that does not" +
+      " change the outcome.** `m11.order.results_received`: both facts unchanged — the real registered" +
+      " `LabObservationReader` interface (`published.ts`) is still exactly `getById`/`listByPatient`, M22's" +
+      " `lab-backref-bindings.ts` still calls a `resolveLabResultsPayload` method that interface does not" +
+      " have, and `LabObservationSeamDTO`/`LabObservationSeamValue` still carry no SUD-class field anywhere" +
+      " (checked the full struct, not just the top level). `m5.patient.merged`: still no D8 merge write" +
+      " path anywhere in `05-patient/` (grepped the whole directory outside tests; only `matching/` patient-" +
+      " match-candidate code exists, a different mechanism) and still no emit site for this event anywhere" +
+      " in the repo (`declaredConsumers: [\"m22\",\"m35\"]`, `isOutboxOnly: true`, zero producers)." +
+      " `m5.patient.draft_created_from_extraction`/`m12.medication_order.draft_created_from_extraction`:" +
+      " `documents.doclens` is still default OFF everywhere it's read (`feature-flag.ts`," +
+      " `pipeline-service.ts`, the extraction routes), still described as \"BUILT-NOT-ACTIVE\"/\"Phase 1\" at" +
+      " every call site, no seed or migration flips it, and grepping `22-documents/` finds zero emit sites" +
+      " for either `draft_created_from_extraction` event under any spelling — unchanged. `m39.consent" +
+      ".revoked`'s `media_release` branch: `scripts/db/seed-consent-types.ts` still seeds exactly 3 of the" +
+      " spec's 12 canonical types (`hipaa_release`, `42_cfr_part_2_release`, `dpoa_healthcare`), all three" +
+      " `revocationCascadeKind: \"immediate\"`, no `media_release` type registered anywhere — unchanged as" +
+      " of this round; F-171 (#248, the next round) found the gap is deeper than the seed row (no M22" +
+      " consumer file exists at all, and no schema mechanism can locate \"media\" documents without" +
+      " guessing) and left it unseeded/unbuilt for that reason — see this group's own F-171 paragraph" +
+      " above, which also seeded the two SIBLING types (`portal_access`," +
+      " `bereavement_outreach_consent`) whose own cascades ARE real. The" +
+      " other three `m39.consent.*` events and M22's own consent-render pipeline still resolve" +
+      " `ConsentEvaluator` fresh per signed-URL mint with no persistent grant/share table on the M22 side to" +
+      " invalidate (checked `packages/db/src/schema/consent/` for a new table — none added) — unchanged." +
+      " `m9.assessment.summary_requested` and `m6.discharge.cosigned`: both catalogued payloads are" +
+      " byte-identical to what F-168 reviewed (`events-by-m9.ts`/`events-by-m6.ts` re-read directly) and" +
+      " F-168's own deliberate deferrals (a real per-artifact versioning-semantics decision in each case)" +
+      " are respected rather than reversed unilaterally, per this pass's own instruction to be conservative" +
+      " here. `m11.order.draft_created`, `m12.medication_order.signature_requested`," +
+      " `m19.triage.summary_requested`, `m21.supply_request.delivered`, `m6.transfer.created`: all" +
+      " re-checked against current code and unchanged from F-161/F-166's own findings (no draft-preview" +
+      " artifact, no FormFill capability, no discharge-summary transfer variant, no producer for the M19" +
+      " event anywhere in `19-oncall/`)." +
+      " **The one correction: F-168's claim that `m12.medication_order.list_changed` \"would need a" +
+      " brand-new aggregate type + template\" is factually wrong, though the practical conclusion" +
+      " (stays unbound) still holds for a DIFFERENT reason.** `patient_medication_list` has been a real" +
+      " `document_aggregate_type` enum value with a published `TemplateDescriptor`" +
+      " (`packages/forms/src/templates/registry.ts`, `key: \"patient_medication_list\"`, `patientFacing:" +
+      " true`) since M22-T01 (commit `1c9f5e48`, 2026-06-23) — both existed the whole time F-166/F-168 were" +
+      " investigating this event; neither needs building. **The real, still-genuine blocker is a content" +
+      " gap, not a schema gap**: the event's payload (`{patientId, addedOrderIds, removedOrderIds}`) carries" +
+      " only a DIFF, never the full active-medication list a `patient_medication_list` document needs to" +
+      " render, and M22's generic `render-consumer.ts`/`REQUEST_SHAPES` pipeline only ever projects fields" +
+      " already present on the delivered payload — it has no live seam-fetch step anywhere. The one place" +
+      " M22 DOES fetch render content from a foreign seam is the dedicated `lab-backref-consumer.ts`/" +
+      "`lab-backref-bindings.ts` pipeline (itself still blocked, see `m11.order.results_received` above) —" +
+      " confirmed this is the ONLY such pattern in the module (`grep getSeam` across `outbox-consumers/` +" +
+      " `render-variants/` returns exactly those two call sites). M12's `MedicationOrderProvider` seam DOES" +
+      " publish `getActiveMedications(orgId, patientId)` (`packages/types/src/dosespot.ts`), which would" +
+      " supply the right content — but wiring it means building a THIRD dedicated render-variant pipeline" +
+      " (org-context resolution, a seam call, content shaping, its own live test), comparable in scope to" +
+      " the lab-backref pipeline itself, not a REQUEST_SHAPES entry. Not built here — real feature scope, not" +
+      " a wiring fix — but the reason is now accurate: a missing content-resolution pipeline, not a missing" +
+      " aggregate type or template. **Net: 0 bound, 0 dropped, all 16 events remain, unchanged in substance" +
+      " from F-166/F-168.**" +
+      " **F-171 (#248) built the THIRD dedicated render-variant pipeline F-170 scoped but did not attempt,"+
+      " and `m12.medication_order.list_changed` is now bound.** `medication-list-consumer.ts` (pure decider," +
+      " the `lab-backref-consumer.ts` shape) + `medication-list-bindings.ts` (the LIVE wiring — unlike" +
+      " `lab-backref-bindings.ts`, genuinely live: M12's `MedicationOrderProvider` seam is real and" +
+      " registered in production, M12-T07, not a Wave-H deny-stub) resolve the patient's CURRENT" +
+      " active-medication set via `getActiveMedications(orgId, patientId)` at DELIVERY time — never from" +
+      " the diff payload, which F-170 correctly identified cannot supply the content. **Checking" +
+      " `PLATFORM_TEMPLATE_TABLE` (`renderer.ts`) directly, rather than trusting F-168/F-170's own" +
+      " citation, found the 'template already exists' framing was checking the WRONG registry**: F-168's" +
+      " `packages/forms/src/templates/registry.ts` row is a separate golden-template-diff/overlay" +
+      " manifest never consulted by `render()`/`REQUEST_SHAPES`; the table `createDocumentRenderer`" +
+      " actually resolves `templateKey` against had NO `patient_medication_list` entry at all — a first" +
+      " render would have thrown `UnknownTemplateError` regardless of the forms-registry row's existence." +
+      " Added (no migration — `document_aggregate_type` already carries the value, mig 0048)." +
+      " **AMBIENT REQUEST CONTEXT REQUIRED, found writing this rather than assumed working**: the" +
+      " F-118/F-153 M17/M18 shape a further time — M12's `DoseSpotSeamStore.medicationOrdersForPatient`" +
+      " (the read behind `getActiveMedications`) opens `withOrgContextFromRequest`, which throws outside" +
+      " an active `runWithRequestContext` scope, and a dispatcher tick is not a request; fixed the same" +
+      " way (`runWithRequestContext({organizationId, userId: CONSUMER_USER_ID}, …)` wraps the seam call)." +
+      " **Idempotency reuses F-168's per-request granularity directly, outside the generic pipeline**:" +
+      " every genuinely new `.list_changed` event for a patient must produce a NEW `document_version` (the" +
+      " task's own confirmation of F-170's `appends: true`-shaped reasoning), so `alreadyRendered` is" +
+      " keyed on `documentVersionForSourceEvent(event.id)` alone, never `(aggregateType, aggregateId)`" +
+      " (which would `idempotent_skip` every delivery after the first). **§7.16 SUD redaction was added" +
+      " as a deliberate scope extension, reusing existing infrastructure rather than inventing new**:" +
+      " `MedicationOrderDto.isSudTreatment` is already on every row `getActiveMedications` returns, and a" +
+      " full active-medication list is exactly the kind of 42 CFR Part 2 disclosure risk" +
+      " `planLabResultsRender`'s existing `redactSudValue` machinery exists to guard — a SUD-treatment" +
+      " row's drug name/sig are redacted unless `resolveSudConsentPresent` (M39, already used by the" +
+      " generic pipeline) confirms an active release; the seam call is skipped entirely when no resolved" +
+      " medication needs it. **One pre-existing platform gap matched for consistency, not newly" +
+      " introduced or fixed**: `DocumentRenderer.render()` inserts every document under the TEMPLATE'S OWN" +
+      " `descriptor.retentionClass` — it takes no retention-class parameter at all, so neither this" +
+      " consumer's nor `render-consumer.ts`'s own SUD `retentionClassOverride`" +
+      " (`compliance_42cfr_part2`) is threaded into the persisted row; the row-level text redaction (the" +
+      " actual disclosure protection) is unaffected. `m22.document.rendered` is emitted for parity with" +
+      " every other render (`sourceModule: \"m12\"`, `aggregateType: \"patient_medication_list\"`) — checked" +
+      " against M12's own `m22-document-rendered.ts` back-ref consumer directly rather than assumed safe:" +
+      " it filters on `M12_AGGREGATE_TYPES = new Set([\"medication_order\"])`, so this aggregate type" +
+      " no-ops there rather than mis-stamping `medication_order.document_id`. Proven by" +
+      " `m22-medication-list-render.live.test.ts`: a real M12 medication order signed under RLS, a" +
+      " published `.list_changed` event resolving the real current active set via the real seam and" +
+      " rendering a real `patient_medication_list` document version; a redelivery of the identical outbox" +
+      " event id re-announces without a second version; a genuinely later, different `.list_changed`" +
+      " event for the same patient renders a second, distinct version; a SUD-treatment order redacts its" +
+      " drug name/sig with no active Part 2 consent and renders plaintext with one; and cross-tenant" +
+      " isolation holds (org B's seam call for org A's patient resolves nothing, never leaks org A's" +
+      " medications). Net: 16 → 15 events remain in this group." +
+      " **F-171 (#248) — `m5.patient.merged` is dropped from this group entirely, corrected in BOTH" +
+      " directions at once, not merely bound.** This pass built the real §2.4/§4.3 merge write path" +
+      " (`05-patient/merges.ts` + `merges-db.ts`, `POST /api/v1/patients/:id/merge`) — the D8 merge" +
+      " mechanism ('re-points all FK references through the `patient_resolver`... no destructive UPDATE'" +
+      " already committed for `.unmerged`) had NO execution path anywhere, matching this group's own prior" +
+      " finding exactly (\"unbuilt on BOTH sides\"). The producer side is now real: the source flips to" +
+      " `status='merged'`/`merged_into_id`, the target absorbs any chosen field resolutions, `patient_merge`" +
+      " records the audit diff, and `m5.patient.merged` publishes for real. **The M22 side was checked" +
+      " against the actual code rather than re-built to the group's own prior description** — \"a real" +
+      " per-document `UPDATE document SET patient_id = ...` M22 would have to perform\" is false, and" +
+      " provably so: `22-documents/lifecycle/merge-redirect.ts` (M22-T03) is a complete, unit-tested pure" +
+      " core whose own header states the opposite design — \"M22 does NOT mutate `document.patient_id`" +
+      " eagerly on the merge event... on every fetch it resolves the document's stored `patient_id`" +
+      " through the merge chain to the surviving patient\" — a SEAM PULL against live `patient" +
+      " .merged_into_id` state (the M40 `followMerge` shape, applied to documents), never a push this" +
+      " event could drive. `m5.patient.merged`'s catalog entry now declares `m22` as a `seamConsumers`" +
+      " entry instead of `declaredConsumers` (events-by-m5.ts), which is what actually stops it deferring" +
+      " forever — no consumer build was ever the right fix for this pair. **Not built**: the read-time" +
+      " redirect itself is still unwired (`resolvePatientRedirect`/`applyPatientMergeCascade` have zero" +
+      " real callers anywhere in `22-documents/` outside their own barrel export and unit test) — a real," +
+      " separate M22-owned gap (a DB-backed `MergeFacts` implementation reading `patient.merged_into_id`," +
+      " threaded through M22's document-fetch routes), reported rather than built here since it touches" +
+      " M22's read surface broadly and needs its own review, the `m6.discharge.cosigned` precedent two" +
+      " lines up. Proven live end to end (real Drizzle write, real RLS, real catalog-validating" +
+      " publisher): `m5-patient-merge.live.test.ts` — the target absorbs a chosen field resolution while" +
+      " every other target field is left alone, the source flips to `merged` with `merged_into_id` set" +
+      " and every OTHER row it owns is left completely untouched (the \"no destructive UPDATE on" +
+      " satellite tables\" proof), `patient_merge.merged_field_diff` records the full per-field audit," +
+      " `m5.patient.merged` publishes with `patientId`=target/`sourcePatientId`=source, a self-merge/" +
+      " already-merged-source/already-merged-target/unmergeable-status/unknown-field attempt each refuse" +
+      " with its own typed error, and cross-tenant isolation holds (org B cannot merge org A's patients," +
+      " in either direction — both resolve 404 under RLS). Net: 15 → 14 events remain in this group." +
+      " **F-171 (#248) built the DEDICATED `lab-backref-consumer.ts`/`lab-backref-bindings.ts` pipeline" +
+      " this group's own text had named as the reason `m11.order.results_received` could not use the" +
+      " generic REQUEST_SHAPES pipeline, and it is now bound — the group's last M11 event.** Two real" +
+      " defects, checked against the code rather than re-asserted from the prior framing. (1) The name" +
+      " mismatch: the real registered `LabObservationReader` (`29-external-interfaces/seams/published.ts`)" +
+      " has always been exactly `getById`/`listByPatient`; `lab-backref-bindings.ts` called a" +
+      " `resolveLabResultsPayload` method that interface never had, so the deny-stub fired even once M29's" +
+      " seam registered at boot. Fixed by ADDING a method rather than renaming the call to `getById`:" +
+      " `getById` REQUIRES a `patientId`, and the real catalogued `m11.order.results_received` payload" +
+      " (`events-by-m11.ts`) carries NO `patientId` at all (checked directly, not assumed — M11 owns the" +
+      " order, not the patient binding a lab result resolves to), so no rename could have worked regardless." +
+      " A new `getByObservationId(organizationId, observationId)` (additive; `getById` untouched for the" +
+      " M28 FHIR caller that already has a patientId in hand) is the real fix. (2) The SUD-class flag:" +
+      " `LabObservationSeamValue` carried none, and it is now a REAL, non-fabricated per-value field —" +
+      " `isSudClass` projects the parent `lab_observation.sud_redacted_at_ingest` column onto every value" +
+      " row of that observation, matching how ingest actually redacts (`lab-attach-planner.ts`'s" +
+      " `buildValueRows` applies ONE boolean per MESSAGE, uniformly across every OBX row — never an" +
+      " invented per-row classifier); `loincDisplayText` was added alongside it (present on the real row," +
+      " simply never projected). **Deliberately NOT wired into the generic `render-consumer.ts`" +
+      " `REQUEST_SHAPES` table**, confirming the group's own prior citation: `lab_results_pdf` publishes" +
+      " the SAME `aggregateType` (`order_record`) the order-FORM render already occupies at sign time, and" +
+      " that pipeline's idempotency is genesis-only (`renderedDocumentForAggregate`) — it would read \"this" +
+      " order already has a document\" the instant an order was signed and silently `idempotent_skip` the" +
+      " lab result forever. The dedicated consumer instead reuses the F-168 per-delivered-event dedup" +
+      " (`document_version.source_event_id`) directly, so a genuinely new lab result always renders as a" +
+      " NEW VERSION of the order's `order_record` document trail — exactly what M11's own, already-bound" +
+      " `buildM11DocumentBackrefConsumer` expects (it stamps `order_record.document_id` by matching" +
+      " `aggregateId === order.id`, agnostic to which artifact produced the version). **Building it" +
+      " surfaced a THIRD, independent, pre-existing production defect**: `createDocumentRenderer`'s" +
+      " `render()` always inserted a document under the TEMPLATE's static `descriptor.retentionClass`," +
+      " with no channel for a per-call override — so `planLabResultsRender`'s own `retentionClassOverride`" +
+      " (the D23 SUD-redaction retention promotion, computed correctly by the pure decider since M22-T09)" +
+      " had nowhere to go, and `packages/forms/src/templates/registry.ts`'s own comment (\"the D23 SUD" +
+      " auto-tag promotes ... at the render layer, not here\") named a mechanism that did not exist" +
+      " anywhere in the codebase. Fixed the same way F-168 widened the identical seam for `sourceEventId`:" +
+      " `RenderPayloadCore` gained an optional `retentionClassOverride` field (`renderer.ts`) that `render()`" +
+      " now prefers over the template default; every other caller leaves it unset and is unaffected. **This" +
+      " is the same defect a SIBLING dedicated pipeline (`medication-list-bindings.ts`, F-171, two" +
+      " paragraphs up) had already found and explicitly left unfixed** (\"one pre-existing platform gap" +
+      " matched for consistency, not newly introduced or fixed\") — this pass fixed it instead of matching" +
+      " it, since leaving a documented compliance mechanism (42 CFR Part 2 retention) silently inert was" +
+      " worse than the small, additive widening. `m11.order.results_received` itself has NO production" +
+      " emitter anywhere in this codebase (`LabResultsApplier`, named in the event's own catalog" +
+      " description, does not exist — exhaustively grepped), the `m17.caregiver_reminder_due` (F-161)" +
+      " shape; likewise M29's own ingest worker (`planLabAttach`) has no production caller, so" +
+      " `lab_observation`/`lab_observation_value` rows are seeded directly in the live proof, simulating" +
+      " \"M29 has already matched and stored this result\" — the real state this consumer reads regardless" +
+      " of how the row got there. Proven by `f171-m22-lab-backref.live.test.ts`: a non-SUD result renders" +
+      " and stamps `order_record.document_id`; a SUD-class result with no M39 consent redacts and forces" +
+      " `compliance_42cfr_part2` retention (now for real, per the renderer fix above); the same SUD-class" +
+      " result WITH an active M39 consent does not force that retention; a lab result for an order whose" +
+      " FORM had already rendered appends a genuinely new document_version onto the SAME document rather" +
+      " than colliding or idempotent-skipping forever; a redelivery of the identical outbox event never" +
+      " produces a second version; an observation M29 has not yet resolved defers (retries, never renders)" +
+      " rather than dead-lettering on the first miss; and cross-tenant isolation holds. Net: 14 → 13 events" +
+      " remain in this group. **F-176 (#248) resolved 6 of the remaining 13 (13 → 7).** `m6.discharge.cosigned` is BOUND: M22 spec §4.11/§7.17 names it, the payload was widened with `admissionId`/`patientId`/`dischargeDate`/`reason`, and a `RequestShape` with `appends: true` renders a new `discharge_summary` version on the SAME `dischargeEventId` (F-168's per-request key; the M6 back-ref stamps only while NULL so v2 never overwrites the v1 link; if `.created` is still undispatched the cosign render becomes v1 and `.created` idempotent-skips, benign). Five were dropped as misdeclared: `m11.order.draft_created` and `m12.medication_order.signature_requested` (the payload carries no form content, and a render here would take the genesis-only key and make the signed `.document_requested` render an `idempotent_skip`), and `m39.consent.expired`/`.recipient_added`/`.recipient_removed` (M22 keeps no signed-URL/subsetter state a push could act on; the real gap — no consent re-check at signed-URL mint — belongs in M22's mint path, not an outbox consumer). Still blocked, unchanged: `m6.transfer.created` (no transfer variant, needs a migration + design call), `m9.assessment.summary_requested` and `m19.triage.summary_requested` (no producer), `m39.consent.revoked` (`media_release` unseeded — superseded below, F-197), and both `*.draft_created_from_extraction` events (DocLens unbuilt). **F-191 (#248) — `m21.supply_request.delivered` is GONE from this group, dropped at the source, not merely re-confirmed.** A scoping-only pass (not a build) checked whether M22's disclaimed 'caregiver-signature flow' was real, buildable infrastructure — and found it was a catalog error instead: M22's own locked spec explicitly disclaims owning signature capture (line 126, \"M22 does not capture signatures — the source module does\"; line 2383 lists it as a non-goal even for M39 consent, the nearest structural analog), no capture route/seam/FormFill consumer exists anywhere in `22-documents/`, and every real signature flow in this codebase (M11/M12 orders, M7/M8/M15 attestations, M39's `ConsentCaptureEvidence`) is captured synchronously inside its OWNING module, never via an M22 outbox consumer. `declaredConsumers` corrected at the source (`events-by-m21.ts`); see that file's own comment for the full citation trail. The underlying gap this surfaced — M21 has no caregiver-signature capture of its own at all, despite a dangling `caregiverSignatureRequestId` column in its own spec (line 1749) that nothing ever wired — stays a real, scoped-but-undecided feature proposal (mirror M39's `captureMethod`/`captureEvidence` shape, ~1 migration + 1 route), not an outbox binding question. **F-192 (#248) — `m6.transfer.created` is GONE from this group too, BOUND, not merely re-confirmed.** The wall every prior pass (F-161/F-162/F-166/F-176) hit was real but narrow: the M22 spec calls the wanted artifact \"discharge_summary (transfer variant)\", and no variant existed. Migration 0267 adds `discharge_summary_transfer` (the F-099/F-144/F-161 additive-enum precedent, a fourth time); a published `PLATFORM_TEMPLATE_TABLE` descriptor and a `REQUEST_SHAPES`/`M22_DOCUMENT_REQUEST_EVENTS` entry follow the identical F-161 M6-CoP/`m7.care_plan.version_signed` SOURCE-event shape (no separate `*.document_requested` sibling — the event name is the template). The payload is widened with `patientId` at both real emit sites (`transferOut`/`transferIn`, `admission-route-service-db.ts`), which already resolve the admission's patient in the same transaction — the F-100 \"every one of these artifacts is patient-scoped by definition\" reasoning, one event over. `transfer_event.document_id` (\"(M22) transfer summary\", unread since M6's schema landed) is now stamped by a new `M6_BACKREF_TARGETS` row. Fires from BOTH directions under the one event/template; content is payload-driven only (`direction`/`effectiveAt`/`otherHospiceCcn`), nothing invented beyond what the catalogued payload carries." +
+      " **F-197 (#248) — `m39.consent.revoked` is GONE from this group, corrected not merely re-confirmed.**" +
+      " The prior \"`media_release` unseeded\" note was stale/unclear; the real gap, found and fixed this" +
+      " round, is that M22's §7.16 SUD-consent gate (`consent-gate.ts`'s `resolveSudConsentPresent`) only" +
+      " ever ran ONCE, at document RENDER time — nothing re-checked consent at any LATER signed-URL MINT," +
+      " so a document rendered while consent was active stayed freely downloadable after a later" +
+      " revocation, on both the staff mint path (`signed-url-service.ts`, zero consent check of any kind)" +
+      " and the portal mint path (`mintPortalDownloadUrl`'s own SUD gate was coded but wired to always" +
+      " short-circuit false, and the production `portalConsent` port fell back to an in-memory stub even" +
+      " with a real database configured). Fixed as a mint-time PULL, not a push reaction to `.revoked` —" +
+      " the identical reasoning already used to drop this event's siblings `.expired`/`.recipient_added`/" +
+      "`.recipient_removed` in F-176. `declaredConsumers` corrected at the source (`events-by-m39.ts`);" +
+      " `m5`/`m16`/`m2`/`m31` are unaffected. **F-208 (#248) — `m9.assessment.summary_requested` is BOUND," +
+      " GONE from this group.** Both user-decided triggers built: chart-open auto-refresh (freshness-" +
+      " throttled, not a new dedup table) and an explicit" +
+      " `POST /api/v1/patients/:patientId/assessments/summary/document` download/print action. Both emit" +
+      " the real event; M22 renders a new `assessment_summary` document type (migration 0277) as one" +
+      " evolving per-patient document — `patientId` is the aggregate, no per-request id on the payload —" +
+      " appending a new version per request via F-168's `document_version.source_event_id` idempotency-key" +
+      " mechanism, which is what makes the evolving-document interpretation (vs. one-per-snapshot) safe:" +
+      " repeated/successive render requests against the same aggregate correctly produce new versions" +
+      " instead of silently no-opping. `m12.medication_order.draft_created_from_extraction`," +
+      " `m19.triage.summary_requested`, and `m5.patient.draft_created_from_extraction` stay deferred," +
+      " unchanged — no producer.",
     events: [
-      "m11.order.corrected",
-      "m11.order.discontinued",
-      "m11.order.draft_created",
-      "m11.order.level_of_care_change_signed",
-      "m11.order.recertification_signed",
-      "m11.order.results_received",
-      "m11.order.supply_fulfillment_requested",
       "m12.medication_order.draft_created_from_extraction",
-      "m12.medication_order.list_changed",
-      "m12.medication_order.signature_requested",
-      "m12.medication_order.transmitted",
-      "m13.administration_record.document_requested",
-      "m14.meeting.adjourned",
-      "m14.minutes.amended",
-      "m14.minutes.signed",
-      "m14.packet.render_requested",
-      "m15.discipline_assessment.amended",
-      "m15.plan.discharged",
-      "m15.plan.version_signed",
-      "m16.bereavement.plan_closed_completed",
-      "m16.bereavement.plan_closed_declined",
-      "m16.bereavement.plan_closed_early",
-      "m16.bereavement.plan_opened",
-      "m17.caregiver_reminder_due",
-      "m18.evv.aggregator_accepted",
-      "m18.evv.verification_pdf_requested",
-      "m21.supply_request.delivered",
-      "m23.billing.document_render_requested",
-      "m23.claim.acknowledged",
-      "m23.claim.rejected",
-      "m23.claim.submitted",
-      "m23.noe.submitted",
-      "m23.notr.submitted",
-      "m24.medicaid_billing.document_render_requested",
-      "m24.medicaid_claim.acknowledged",
-      "m24.medicaid_claim.rejected",
-      "m24.medicaid_claim.submitted",
-      "m25.appeal.submitted",
-      "m25.denial_resolution_letter.render_requested",
-      "m30.incident.submitted",
-      "m30.qapi.pip_closed",
-      "m30.qapi.project_chartered",
-      "m37.ipu_admission.death_recorded",
-      "m39.consent.expired",
-      "m39.consent.recipient_added",
-      "m39.consent.recipient_removed",
-      "m39.consent.revoked",
+      "m19.triage.summary_requested",
       "m5.patient.draft_created_from_extraction",
-      "m5.patient.merged",
-      "m5.patient.privacy_flag_changed",
-      "m5.patient.unmerged",
-      "m6.discharge.cosigned",
-      "m6.transfer.created",
-      "m7.care_plan.version_signed",
-      "m8.encounter.addendum_signed",
-      "m8.encounter.signed",
-      "m8.encounter.voided",
-      "m9.assessment.summary_requested",
     ],
   },
   {
@@ -223,38 +728,19 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "F-129 (#248) checked every remaining event against M14's own authoritative statement of what it consumes — its §4.5 spec table (mirrored exactly by `consumers/index.ts`'s `M14_OUTBOX_SUBSCRIPTIONS`) and `packages/idg/src/packet/builder.ts`'s typed build-input structs — rather than trusting the producing modules' `declaredConsumers` at face value (the F-101/F-108 precedent, at larger scale). Two results. " +
       "FIRST, 22 pairs were dropped as genuinely misdeclared: M7's 9 problem/goal/intervention/care-plan-version events and M39's 2 DPOA events are redundant with a documented build-time SEAM PULL (`CarePlanSummaryInput`/`PacketCoverInput` in the builder read M7's `CarePlanReader` and M5/M6/M7/M39 fresh per packet, never a push cache); M10's `timepoint_scheduled`/`timepoint_signed` are the same shape for `HopeContextInput`/`HopeTimepointProvider`; M6's `cti.drafted`/`.late_flagged`/`.voided` and `f2f.scheduled`/`.window_missed`/`.window_overridden` are the same shape for `PacketCoverInput`'s `nextRecertDueAt`/`f2fWindowState` (M6 owns CTI/F2F enforcement outright — M14 only ever reads it); `m6.discharge.created` is redundant with `m6.admission.discharged`, M14's own real D9 inclusion-cache subscription on the SAME discharge transaction, carrying every fact D9's effect needs. Fixed at the source in each producing module's `events-by-mNN.ts`, not here. " +
       "SECOND, one real, spec-matching gap the catalog had simply never declared: `m11.order.discontinued` is named by M14's own §4.5 table and `M14_OUTBOX_SUBSCRIPTIONS` for the 'since last IDG' projection cache, and M11's catalog omitted `m14` from `declaredConsumers` entirely — a real subscription a live binding would have had refused by `assertBindableAgainstCatalog`. Added at the source. " +
-      "What remains here, unresolved, is two honest groups: the REAL 'since last IDG'/inclusion-cache/M22-back-ref shape M14's own spec names and has not built (8 events: the two M6 inclusion-cache events, M9's `recorded`/`significant_change`, M10's `j2051_trigger_fired`/`sfv_created`, M11's `order.discontinued`, M12's `medication_order.discontinued` — the M22 back-ref additionally has no producer, since `m14.packet.document_requested` is catalogued by nobody); and 22 pairs checked and found NEITHER clearly redundant NOR named anywhere in M14's own spec (M6 admission on_hold/resumed + compliance-window open/overdue, M9's `assessment.amended`, M12's `medication_history_pulled`, all 12 of M13's eMAR events, all 3 of M15's discipline-care-plan events, M39's `consent.expiring_soon`) — kept declared rather than dropped absent stronger evidence, per the F-101 precedent. Of those 22, `m13.scheduled_dose.missed` has the strongest textual support to eventually bind: M14's own §1 packet description names 'missed doses' as a `flaggedEvents` category and the M13 payload (`missedDoseId`, `dueAt`, controlled/comfort-kit flags) maps directly onto `PacketFlaggedEventDigest`'s `missed_dose` kind — the other 11 M13 events, all 3 M15 events and M39's `expiring_soon` have no such correlation and may be next pass's misdeclarations.",
+      "What remains here is the REAL 'since last IDG'/inclusion-cache/M22-back-ref shape M14's own spec names and has not built (9 events: the two M6 inclusion-cache events, M9's `recorded`/`significant_change`, M10's `j2051_trigger_fired`/`sfv_created`, M11's `order.discontinued`, M12's `medication_order.discontinued`, and F-142's `m19.triage_call.care_plan_change_indicated` — the M22 back-ref additionally has no producer, since `m14.packet.document_requested` is catalogued by nobody); plus 5 events F-145 confirmed genuine on decisive producer-module evidence after the originally-ambiguous 22 were finally checked against each producing module's OWN spec rather than left 'kept absent stronger evidence.' " +
+      "F-145 (#248) ran that check on all 22, split across five producer-clustered forks. **17 of 22 were genuinely misdeclared, all a single shape repeated at scale — the seam-vs-push trap, the identical F-129 finding for M7/M9/M10 now extended to M6 and all twelve M13 eMAR events**: M13's own D16 publishes `MedicationAdministrationProvider`/`ReconciliationProvider` with M14 named as a read-path consumer for BOTH, and M14's own exhaustive 'Done means' build walkthrough (the eleven seam reads + four Valkey-projected outbox topics) never names a single M13 event — confirmed against M13's own primary 'Consumed by 14' line ('IDG packets show administrations since last IDG via M13's `getAdministrationsSince` seam and missed-dose count since last IDG via the same seam's aggregation projection'), which directly contradicts M13's own looser §4.10 per-event table listing M14 as a consumer on all twelve — the F-101 rule applied to a module's OWN two self-contradicting statements, trusting the decisive one. **This reverses the group's own PRIOR framing**, which had called `m13.scheduled_dose.missed` 'the strongest candidate to eventually bind' on a payload-shape resemblance to `PacketFlaggedEventDigest`'s `missed_dose` kind — a weaker signal than M13's own decisive seam-publication text, now correctly moved to `seamConsumers` alongside its eleven siblings (all twelve, never dropped bare — the seam relationship is real, just not outbox-shaped). Four M6 events (`admission.on_hold`/`.resumed`, `compliance.window.opened`/`.overdue`) had no support in M14's own build-description at all, and `compliance.window.overdue` was contradicted outright by M6's own text assigning the real consumer to M36's escalation chain, not M14 — the strongest form of counter-evidence, not mere silence. `m9.assessment.amended` is a redundant sibling: emitted in the SAME transaction as the correcting row's `m9.assessment.recorded`, M14's own real, live-bound subscription — the corrected value arrives via `.recorded` regardless. **5 of 22 confirmed genuine, no catalog change needed**: `m12.medication_history_pulled` (M12's own spec, twice: 'M14 (IDG packet)' / 'M14 (IDG packet refresh)') and `m39.consent.expiring_soon` (M39's own outbox table: 'M36 (alert), M14 (compliance tile)') — both the F-131 'kept, not dropped' asymmetry; and all three M15 events (`idg_decision.applied`, `plan.bootstrapped`, `plan.version_signed`) — M15's own real §4.10-style outbox table names M14 decisively for all three, the most decisive evidence type this series recognizes. `m15.idg_decision.applied` was checked specifically for the wrong-direction trap (is it just an echo of M14's own outbound `idg.decision_recorded`?) and confirmed genuinely distinct — M15's own inbound acknowledgment that it applied M14's decision, the identical shape M7's own `care_plan.idg_decision_applied` audit event already establishes for the M7/M14 pair. " +
+      "F-142 (#248) added a ninth 'since last IDG'-shaped gap, found triaging the (now-deleted) m7 group: `m19.triage_call.care_plan_change_indicated` was declared for m7, but M19's own D8-cascade text (§11) names the real consumer as M14's IDG packet builder — corrected at the source (M19's `declaredConsumers` m7→m14). " +
+      "**F-164 (#248) built the six real 'since last IDG' events on a shared per-patient Valkey cache** (`consumers/since-last-idg-cache.ts`, one JSON object per patient, `wardenx:m14:idg:since-last-idg:<patientId>`, 30-day TTL, deduped by the delivering outbox event's own id). M9's two write straight from the payload (`patientId` is present on the wire despite the declared schema omitting it on `.significant_change` — confirmed against the real emit site, not the schema). M10's/M11's/M12's three needed a cross-module fact neither payload carries (`patientId`, plus `orderKind`/`drugName` for the latter two) — resolved via three NEW org-explicit seam functions (`hopeAssessmentPatientIdForOrg`/`orderPatientAndKindForOrg`/`medicationOrderPatientAndDrugForOrg`, the `encounterIdsForVisitsForOrg` (M8) precedent applied to three more modules), injected as ports rather than read off each owning module's schema directly — M14's `dependsOn` is `[1, 7, 8, 36]`, no edge to 9/10/11/12, so a direct Drizzle import would (and, in the build's first draft, briefly did) fail `arch:tables`. **M11's/M12's two `.discontinued` events are a deliberate departure from the seam-vs-push rule this arc otherwise applies**: `PacketOrderChangeDigest`/`PacketMedicationChangeDigest` doc-comment themselves as seam-pull projections (`OrderProvider.getOrdersSince`/`MedicationOrderProvider.getMedicationsSince`), the opposite framing from M9/M10's push-cache comments on the same two files — but the seam AS IMPLEMENTED anchors its filter on a timestamp fixed at order creation/activation and never revisited, so an order created before the packet-build cursor and discontinued after it is invisible to the seam pull regardless of how the read side joins it; the push cache is the only place that fact can come from until the seam's own filter is widened (a separate M11/M12-side gap, reported not fixed). " +
+      "**M6's `admission.activated`/`.discharged` and the M15 trio (`idg_decision.applied`/`plan.bootstrapped`/`plan.version_signed`) were investigated fresh and found genuinely AMBIGUOUS, not confidently misdeclared or confidently genuine — left exactly as-is rather than guessed on.** For M6: D9's own rationale table says inclusion is 'computed at build time … via M5's `CaseloadProvider`' (a seam pull) and in the same breath cites '§4.5 (`m6-admission-discharged`)' as consistent with that — but §4.5's own table describes a PUSH mechanism ('mark patient with `discharge_grace_until` … in the inclusion cache') for the identical two events, tracking the 7-day post-discharge wrap-up window `CaseloadProvider`'s 'active caseload right now' answer cannot express on its own (a discharged patient is, by definition, off the active caseload). Two internally-consistent readings of the same module's own spec, not a case where one side is decisively right. For M15: the Lock-status section's one-line 'M14 IDG-packet integration consumes `DisciplinePlanReader` when M14 locks' describes the packet builder's CROSS-DISCIPLINE VIEW mechanism (§1's own text: 'cross-discipline view via `DisciplinePlanReader` for M14 IDG packet') — a different, narrower claim than whether the SAME builder also needs these three push events for a 'since last IDG' delta, which M15's own decisive §2.4/§4.5 event-catalog table names by event with real payloads (`{planId, versionId, idgDecisionId, mutationsApplied}` etc.) and explicit M14 consumers. Both need a dedicated future pass that reads the packet builder's actual read-side requirements rather than either spec fragment in isolation, not a snap drop on the strength of one ambiguous citation. " +
+      "**F-167 (#248) ran that dedicated future pass on all 8 remaining events, found none buildable, and resolved the standing AMBIGUITY by finding both of its readings share one root blocker.** Confirmed first that F-164's `consumers/since-last-idg-cache.ts` is the one and only 'since last IDG' cache mechanism in this module — no second, competing cache exists or was built here; every finding below is about whether a REAL READER exists for a write into it, or into any other M14 surface, not about which cache to use. **`m6.admission.activated`/`.discharged` (inclusion cache): confirmed blocked, the ambiguity resolved rather than left open.** Checked whether the M14 packet-BUILD worker D9's 'computed at build time' language depends on actually exists in production: it does not. `apps/backend/src/modules/14-idg/jobs/index.ts`'s own header states M14 ships exactly ONE cron (`idg.review-clock-sweep`) and explicitly documents the T-24h packet-build cron as absent; `idg-route-service-db.ts`'s own header says `idg_patient_packet` 'is built by the §2.4 packet WORKER, not the route lifecycle' and its `buildPackets` handler (read directly) only flips the meeting's status and counts pre-existing packet rows — it builds nothing; a repo-wide grep for `.insert(PKT)`/`.insert(schema.idgPatientPacket)` under `14-idg/` returns zero hits outside test fixtures. So EITHER reading of D9/§4.5 needs the same nonexistent foundation: the PUSH reading (an inclusion cache) has no worker to ever read it, and the PULL reading (a build-time seam call) has no seam to call either — `CaseloadProvider` (`packages/types/src/seams.ts`, checked directly) is `isInCaseload`/`caseloadPatientIds`, both keyed on a CLINICIAN's `userId` and answering only 'right now,' with no location or as-of-date parameter D9's 'active caseload of the meeting's location at scheduled date' needs. Building either a cache-write consumer or a new location/date-scoped seam here would be inventing infrastructure for a worker that has never been written — a whole-module build (the GAP-092 packet-worker gap this same directory's `jobs/index.ts` already documents), not a two-event wiring task, and out of scope. **`m12.medication_history_pulled`: confirmed blocked.** M12's own catalog description (`12-dosespot/events-by-m12.ts`) is 'M14 refreshes the IDG packet' — an invalidation/rebuild trigger shape, not a content-append fact, and there is no packet-build mechanism anywhere to trigger. Checked `SinceLastIdgInput`/`PacketSnapshot` (`packages/idg/src/packet/builder.ts`, `packages/types/src/idg.ts`) directly for a matching slot: none exists — medication HISTORY (an external DoseSpot pull, pre-reconciliation) is a distinct fact from medication ORDER changes (`medicationsChanged`/`PacketMedicationChangeDigest`, already fed by `.discontinued` via F-164's cache and by seam pull for `.signed`/`.active`), and the payload itself (`rowsCreated` count + `sourceJobId`, no drug-level detail) doesn't fit that digest shape regardless. **The M15 trio: confirmed blocked, on a THIRD, sharper reason beyond the push/pull ambiguity.** Checked `idg_decision`'s real schema (`packages/db/src/schema/idg/idg-decisions.ts`) directly: `status` runs `open → emitted → superseded` only — no 'applied'/downstream-application column or table exists anywhere on the M14 side. By contrast M7, M11 and M12 each own THEIR OWN `*_idg_decision_applications` tracking table (`care-plan/idg-decision-applications.ts`, `orders/order-idg-decision-applications.ts`, `dosespot/medication-order-idg-decision-applications.ts`) — M14 has no equivalent, and no M15-owned one exists either (checked `packages/db/src/schema/discipline-plans/`, confirmed absent). None of the sibling M7/M11/M12 'applied' acknowledgment events (e.g. `m7.care_plan.idg_decision_applied`) are consumed by M14 anywhere either — F-145's own 'M7 precedent' citation was evidence the RELATIONSHIP SHAPE is real (a genuine inbound ack, not an echo of M14's own outbound event), not evidence that an M14-side consumption mechanism already exists to extend; no such mechanism exists for any of the four candidate source modules. `plan.bootstrapped`/`.version_signed` were checked against both readings this group's own text left open (a D9-style push cache, or a `DisciplinePlanReader` seam-pull at packet-build time) and both need the same nonexistent packet-build worker the M6 finding above establishes; no PacketSnapshot/SinceLastIdgInput field exists for any discipline-plan fact either (checked `packages/types/src/idg.ts` in full — no M15 field anywhere). The push-vs-pull ambiguity this group's text left open for the M15 trio is therefore moot: neither mechanism exists today, independent of which one D9/M15's spec actually intends. **`m19.triage_call.care_plan_change_indicated`: confirmed blocked**, matching a finding F-164 had already reached but only recorded in a code comment rather than in this registry — `since-last-idg-cache.ts`'s own header names this exact event as 'the exact no builder input slot gap' it declined to invent a fix for. Verified directly: M19's own catalog (`19-oncall/events-by-m19.ts`) describes the consumer as 'M14's IDG packet builder so the next IDG agenda includes it,' and the one structurally similar existing slot, `PacketFlaggedEventDigest.kind`, is a closed union (`'hospitalisation'|'er_visit'|'missed_dose'|'fall'|'infection'`) that does not admit the event's free-form `changeKind` — writing it in would mean widening a shared packet-contract type, a builder-contract design change out of scope for a consumer bind. **`m39.consent.expiring_soon`: confirmed blocked**, and unlike the F-131 'kept, not dropped' asymmetry this group has otherwise relied on, here there is no code-level target of ANY kind on the consuming side to bind to. M39's own outbox table names M14 as '(compliance tile)', but M14's own spec — grepped in full for 'consent', 'expir' and 'compliance tile' — never once mentions a compliance tile, consent-expiry tracking, or any UI/data concept it would populate, and no such column, table, cache key or frontend screen exists anywhere in the built M14 surface (checked `packages/db/src/schema/idg/` and the design corpus). A bare aspirational table-cell citation with nothing on the receiving side to extend is not enough to build against without inventing a new feature. **Net: 0 bound, 0 dropped — all 8 events remain, unchanged, with their blockers now precise rather than ambiguous.** The residual set collapses to two shared root causes: (1) the M14 §2.4 T-24h packet-build worker has never been written in production (only the pure `builder.ts` contract + F-164's cache-WRITING consumers exist; nothing ever reads the cache, resolves inclusion, or calls the pure builder) — a whole-module build, correctly out of scope here; and (2) for the facts that would not fit even once a worker exists (M19's free-form `changeKind`, M12's history-pull metadata, M39's undefined 'compliance tile'), no typed packet-contract slot exists, and this pass declines to invent one unilaterally — the same restraint F-164 itself already exercised for `m9.assessment.recorded`'s own borderline case. " +
+      "**F-169 (#248) re-checked all five underlying facts fresh (2026-09-29), one round later, nothing shifted.** `jobs/index.ts` still ships exactly the one `idg.review-clock-sweep` cron; `buildPackets` still only flips meeting status and counts pre-existing packet rows, no INSERT into `idg_patient_packet` anywhere under `14-idg/` outside test fixtures; `CaseloadProvider` (`packages/types/src/seams.ts`) is still `isInCaseload`/`caseloadPatientIds`, clinician-keyed, no location/as-of-date parameter. `packages/types/src/idg.ts` still has no medication-history slot (`PacketMedicationChangeDigest` unchanged) and no M15 field of any kind. `idg_decision.status` (`packages/db/src/schema/idg/idg-decisions.ts`) is still `open → emitted → superseded`, no 'applied' state; `packages/db/src/schema/discipline-plans/` still has no `*_idg_decision_applications` table (M7/M11/M12 each still own theirs, M14/M15 still own neither). `PacketFlaggedEventDigest.kind` (`packages/types/src/idg.ts`) is still the same closed 5-member union, no `changeKind` slot. M14's own spec still has zero hits for 'compliance tile'/'consent'/'expir'. The one commit to land in this module since F-167 (F-168, `a5290539`) touched `idg-route-service-db.ts` and `events-by-m14.ts` only to widen M14's OWN `minutes.amended` render-request payload (M14 as document-request PRODUCER for M22) — unrelated to M14 as CONSUMER of these 8 events; no packet-build worker, no packet-contract slot, no schema change touched any of the five facts above. Net: 0 bound, 0 dropped, all 8 events remain exactly as F-167 left them. " +
+      "**F-171 (#248) built the T-24h packet-build worker for real, and — checked directly, not assumed — its existence does not unblock any of the 8, for two different (and now precisely dated) reasons.** `apps/backend/src/modules/14-idg/jobs/{schedule-materialise,packet-build}.ts` are new: `runScheduleMaterialiseCron` (§7.1 W-SCH-01) materializes real `idg_meeting` rows from `idg_recurring_policy` (idempotent re-run), and `runPacketBuildCron` (§7.2 W-PKT-01 / §4.9.1 `tminus-24h-build`) finds every meeting due within the T-24h lookahead, resolves the §2.3 D9 inclusion set, and INSERTs a real `idg_patient_packet` row per included patient from real M5 (patient identity)/M6 (siting + current LOC)/M7 (care-plan summary + terminal diagnosis + SUD flag)/M8 (signed encounters since cursor) facts plus the F-164 cache, transitioning the meeting `scheduled → packets_building → packets_ready` and emitting `m14.packets.build_started`/`.packet.render_requested`/`.packets.ready` — proven end to end against a real, RLS-enforced Postgres (`m14-packet-build.live.test.ts`, 5/5: real materialization, a real built packet with real cover facts, the §2.3 D9 wrap-up-window boundary, per-patient failure isolation via `m14.packets.build_failed_for_patient`, and cross-tenant isolation). **This resolves F-167's own standing ambiguity for `m6.admission.activated`/`.discharged` decisively, in favor of PULL — and closing that ambiguity is why the pair stays unbound, not a reason to bind it.** D9 inclusion is answered by a NEW M6 org-explicit seam (`idgPacketInclusionForOrg`, `06-admission/seams/drizzle-store.ts`) that reads `admission.location_id`/`.status`/`.discharged_at` directly at build time — never `CaseloadProvider` (confirmed, again, to have no location/date parameter) and never a push cache. The worker needs no per-admission-lifecycle cache to invalidate, so there is nothing for these two events to write into; F-167's 'either reading needs infrastructure that doesn't exist' is now half resolved (the PULL half, built) and half moot (the PUSH half, never needed). **The other 5 stay blocked, unchanged in substance, because building the worker deliberately never touched the one thing each of them needs**: no field was added to `PacketFlaggedEventDigest.kind` (`m19.triage_call.care_plan_change_indicated`), no medication-history slot was added to `SinceLastIdgInput`/`PacketSnapshot` (`m12.medication_history_pulled`), no 'applied' state or tracking table was added anywhere M14/M15-side (`m15.idg_decision.applied`/`.plan.bootstrapped`/`.plan.version_signed`), and no compliance-tile concept was invented (`m39.consent.expiring_soon`) — each is exactly the 'do NOT invent a slot the spec doesn't describe' restraint this pass was explicitly held to, re-confirmed by re-reading `packages/types/src/idg.ts` and `packages/db/src/schema/idg/idg-decisions.ts` after the build landed: byte-identical to F-169's own citations. Net: 0 bound, 0 dropped — all 8 events remain, but the group's reason is now a closed case on the worker question (it exists, it does not help) rather than an open one. **F-176 (#248) resolved 4 of the 8 (8 → 4).** `m6.admission.activated`/`.discharged` dropped: F-171's packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg`), so no inclusion cache exists for the push to update (also removed from `M14_OUTBOX_SUBSCRIPTIONS`); `m15.plan.bootstrapped`/`.version_signed` moved to `seamConsumers` (M14's spec never names M15; M15's own spec makes the packet integration a `DisciplinePlanReader` pull). Remaining 4 stay blocked: `m15.idg_decision.applied` (no M15 intake consumer, no M14 'applied' state), `m12.medication_history_pulled` and `m39.consent.expiring_soon` (no producer), `m19.triage_call.care_plan_change_indicated` (emitted, but consuming it needs a new packet-input slot — a contract decision).",
     events: [
-      "m10.hope.j2051_trigger_fired",
-      "m10.hope.sfv_created",
-      "m11.order.discontinued",
       "m12.medication_history_pulled",
-      "m12.medication_order.discontinued",
-      "m13.administration.recorded",
-      "m13.administration.recorded_caregiver_attested",
-      "m13.administration.refused",
-      "m13.caregiver_administration.acknowledged",
-      "m13.caregiver_administration.disputed",
-      "m13.comfort_kit.deployed",
-      "m13.missed_dose.reverted",
-      "m13.prn_administration_recorded",
-      "m13.reconciliation.completed",
-      "m13.reconciliation.opened",
-      "m13.scheduled_dose.intentionally_held",
-      "m13.scheduled_dose.missed",
       "m15.idg_decision.applied",
-      "m15.plan.bootstrapped",
-      "m15.plan.version_signed",
+      "m19.triage_call.care_plan_change_indicated",
       "m39.consent.expiring_soon",
-      "m6.admission.activated",
-      "m6.admission.discharged",
-      "m6.admission.on_hold",
-      "m6.admission.resumed",
-      "m6.compliance.window.opened",
-      "m6.compliance.window.overdue",
-      "m9.assessment.amended",
-      "m9.assessment.recorded",
-      "m9.assessment.significant_change",
     ],
   },
   // F-115 (#248) — the `m28` group (52 pairs) is GONE, not merely emptied. M28's FHIR gateway resolves
@@ -265,389 +751,340 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // declarations were not future work, they were never going to be true. All 52 `m28` entries on the
   // `declaredConsumers` catalog have been removed (each event's own `events-by-mNN.ts`), leaving nothing
   // to defer.
-  {
-    module: "m23",
-    kind: "handlers-unbound",
-    reason:
-      "M23 binds three real consumers: remittance feedback, submission-request enqueue, and — since F-106/F-107 — the NOE draft on `m6.election.period_started` and the NOTR draft on `m6.revocation.created` / `m6.transfer.created` / `m6.discharge.created`, the first writers `noe_record` and `notr_record` have ever had. The remaining declarations sit on its `consumers/` subscription-map surface, whose header calls the topics forward-declared and inert pending the live inbound relay; that relay landed, so what is left is the per-effect Drizzle work, not a platform phase. Each of the rest needs a port the composition root has nothing to bind: `enqueueRevalidation` (the §11.A re-validation job queue), `freezeNewClaims` (the `m5.patient.deceased` claim freeze) and `recordDocumentBackReference` (the M22 render receipt, which additionally waits on M22 publishing a claim-artifact template).",
-    events: [
-      "m11.order.level_of_care_change_signed",
-      "m11.order.recertification_signed",
-      "m18.evv.late_check_resolved",
-      "m23.claim.draft_created",
-      "m25.denial.resolved_favorable_via_appeal",
-      "m25.taxonomy.unmapped_code_observed",
-      "m37.census.snapshot_taken",
-      "m37.ipu_admission.bed_assigned",
-      "m37.ipu_admission.discharged",
-      "m37.ipu_admission.transferred",
-      "m5.patient.deceased",
-      "m5.patient.payer_changed",
-      "m6.admission.activated",
-      "m6.admission.discharged",
-      "m6.cti.signed",
-      "m6.election.period_ended",
-      "m6.f2f.attested",
-      "m6.loc.changed",
-      "m6.nor.acknowledged",
-      "m8.encounter.cosigned",
-    ],
-  },
-  {
-    module: "m27",
-    kind: "handlers-unbound",
-    reason:
-      "F-130 (#248) finished the per-event verification the prior pass's reason called for, against M27's own §1.1 relationship inventory and its manifest-patch dependsOn list ([1,2,3,4,6,8,12,13,22,23,26,36,38,40] — 21/24/37 conspicuously absent) — the F-101 rule that the CONSUMING module's own spec decides who consumes it, applied here at full group scale. 21 of the 23 pairs were dropped as misdeclared, redundant with a documented seam PULL M27's spec names explicitly by method: M6's `LevelOfCarePeriodReader`/`AdmissionCensusReader` (all 5 M6 events: `admission.activated`/`.discharged`, `election.period_started`/`.period_ended`, `loc.changed` — the last IS the exact table the reader pulls), M23's `PatientDaysProvider`/`ClaimSettlementProvider` (the 3 `m23.claim.*` events — M27's own text: \"forward-seam-deny-stubs at M27 lock and wire to live at M23 lock\"), M26's `CapAccrualReader`/`CapPeriodReader` (all 6 `m26.cap.*` events, same forward-seam-deny-stub framing). Three more had NO support anywhere in M27's spec, not even under deny-stub framing: the 3 `m24.medicaid_claim.*` events (Medicaid's billed-day contribution to the S-3 census arrives entirely through M23's PatientDaysProvider, by M27's own account of what that provider covers — \"by program (Medicare / Medicaid / other)\" — M24 itself is never named), the 3 `m37.*` events (M37 is named ONLY in the opposite direction — M37 consumes M27's `CostReportProvider.getInpatientCapPositionAtFiscalDate`, M27 never reads M37; GIP/IPU level of care is already covered via M6's LOC-period pull regardless of physical site), and `m8.mileage.captured` (M27's spec never mentions mileage; the event's own \"payroll/AP\" phrasing is Gusto-side, pulled by M27's separate `wage-data-pull` job, not this event). All 21 dropped at the source in each producing module's `events-by-mNN.ts`, not here. **The remaining 2 are a genuine, real, still-open forward seam, not a misdeclaration**: M21's own locked spec (§1.1, D16 — \"Does M21 own vendor invoice reconciliation?\") explicitly commits M21 to emitting `m21.supply_request.invoice_accrued`/`.invoice_reconciled` for an M27-side accrual/GL-reconciliation consumer, citing the precedent \"the M11 D6 / M13 D5 forward-seam precedent until M27 locks\" — a real cross-module decision on the PRODUCING side that M27's own spec simply never corroborates or builds a consumer for (M27's spec is silent on M21 entirely, the same asymmetry as M24/M37 above, but backed here by an explicit committed decision rather than an unsupported guess) — kept declared as the honest open question this asymmetry actually is, not dropped on the strength of M27's silence alone.",
-    events: ["m21.supply_request.invoice_accrued", "m21.supply_request.invoice_reconciled"],
-  },
-  {
-    module: "m26",
-    kind: "handlers-unbound",
-    reason:
-      "F-131 (#248) checked this group per-event against M26's own §4.4 consumer surface — `consumers/subscription-map.ts`'s `M26_SUBSCRIPTION_MAP` (the F-094/F-101 authoritative-consumer-list precedent) plus the module spec's exhaustive §3.1 file tree, which names exactly seven consumer files and no others — rather than trusting the six producing modules' `declaredConsumers` guesses. 15 of the 22 pairs were dropped as misdeclared. Two clusters are redundant with a documented seam PULL M26's own \"Depends on\" text names explicitly: all 6 `m6.*` events (`admission.activated`/`.discharged`, `discharge.created`, `election.period_started`/`.period_ended`, `loc.changed`) — M26's cap math is benefit-period-anchored via the `ElectionPeriodReader` PULL, and `loc.changed` additionally has no relevance at all to the INPATIENT cap either: D13 names M23 claim lines by revenue code (0655/0656) as that source, never M6 LOC periods; and 1 of 2 `m23.claim.paid` — M26's own text is explicit that \"M25 is the authoritative paid-amount source … every cent traces to an 835-derived remittance line\", so the claim-paid milestone itself carries no accrual fact the subscription-map keys on. `m23.claim.acknowledged` has no support anywhere in M26's consumer surface (an acknowledgment carries no paid amount, reversal, or inpatient-day fact). All 4 `m24.medicaid_claim.*` events have NO support of any kind — M26's own spec states outright: \"Medicaid payments are excluded from the Medicare aggregate cap (ADR-0017 D4)\" and \"M26's scope is strictly Medicare per 42 CFR §418.308\". All 3 `m37.*` events (`census.snapshot_taken`, `ipu_admission.discharged`/`.transferred`) have no support either — M37 is named nowhere in M26's \"Depends on\"/\"Consumed by\" text (M26's inpatient-day source is M23 revenue codes, physical-site-independent, the identical F-130 finding for M27 one module over). All 15 dropped at the source in each producing module's `events-by-mNN.ts`, not here. **The remaining 7 split into two kinds**: 5 are the real, confirmed §4.4 subscriptions M26's own map names — `m23.claim.line_finalized` (`record-inpatient-day-line`), `m23.claim.replaced`/`.voided` (`record-reversal-line`), `m25.remittance.advice_posted` (`record-accrual-line`), `m6.revocation.created`/`m6.transfer.created` (freeze / proportional-weight-init) — genuinely deferred behind the Drizzle `CapConsumerStore` bind (itself deferred behind the M5 MBI + M6 first-election readers), not misdeclared. The 7th, `m25.remittance.claim_recouped`, is a genuine gap rather than a misdeclaration in EITHER direction: M25's own locked §4.5 state-transition table names M26 outright — \"`remittance_line` reversed (CLP02 = 22) | Emit `m25.remittance.claim_recouped` (M23 consumer + M26 cap-reversal subscriber)\" (WARDENX_MODULE_25_REMITTANCE_SPEC §4.5) — but M26's own `M26_SUBSCRIPTION_MAP`/file tree never built the consumer, an honest oversight kept declared rather than dropped on the strength of M26's silence alone (the F-101 caution, same direction as F-130's M21 D16 exception). Checking it also surfaced a genuine, deeper, PRE-EXISTING defect this pass reports rather than fixes: `handleClaimReversed` (`consumers/handlers.ts`, the already-built `record-reversal-line` handler for `m23.claim.replaced`/`.voided`) reads `p.patientId`/`p.claimId`/`p.priorPaidAmountCents` off the payload, and NEITHER catalogued payload carries any of those fields (`{originalClaimId, replacementClaimId|voidClaimId, reason}` — no patient, no amount) — every real delivery would silently `recorded: false` forever, invisible because no test exercises this action with a catalog-shaped payload and the whole `CapConsumerStore` is unbound regardless. Wiring `claim_recouped` through the same handler would inherit the identical defect (its own payload has no `patientId` either). Fixing it needs either richer M23/M24/M25 payloads or a by-claim accrual-line lookup `CapConsumerStore` does not expose — new design, not a catalog fix, so left unbuilt and reported here.",
-    events: [
-      "m23.claim.line_finalized",
-      "m23.claim.replaced",
-      "m23.claim.voided",
-      "m25.remittance.advice_posted",
-      "m25.remittance.claim_recouped",
-      "m6.revocation.created",
-      "m6.transfer.created",
-    ],
-  },
+  // F-164 (#248) — the `m23` group is GONE, not merely emptied. `m25.taxonomy.unmapped_code_observed`,
+  // the group's last remaining pair (M23's own §11.A/D13 30-day-rolling-occurrence / 50-threshold alert),
+  // is now bound: a new per-row `unmapped_taxonomy_occurrence` table (migration 0255 — one row per
+  // delivered occurrence rather than a maintained counter, since a rolling window needs individual rows to
+  // age OUT, which a counter can never express), idempotent on `(organization_id, source_event_id)`, and a
+  // new consumer that inserts the occurrence then dispatches the existing `WorkerAlertPort` → M36
+  // `AlertEmitter` seam (the same mechanism M23's own cron alerts already use — no new alert-delivery
+  // mechanism invented) once the org's rolling 30-day count for that CARC code exceeds 50.
+  // F-207 (#248) — the `m27` group is GONE, not merely emptied. `m21.supply_request.invoice_accrued`/
+  // `.invoice_reconciled`, the group's last remaining pair, are now bound. F-130/F-167/F-174 sharpened the
+  // real blocker over three passes: M27's expense-input model is GL-account-level and period-aggregated
+  // (`trial_balance_import`/`cost_center_mapping`/Worksheet A), with no per-transaction accrual precedent
+  // except `bad_debt_record` (scoped to one already-created cost report) and no fiscal-year field on
+  // either M21 payload. The user has since decided this as a 4th cost-basis precedence tier, additive to
+  // D17's M13 administration -> M12 ordered -> manual entry chain (M27 spec D17), not a replacement of the
+  // GL-mapped Worksheet A figure. Built: a new `vendor_invoice_line` table (migration 0276) and
+  // `buildM27VendorInvoiceConsumer`, which resolves the fiscal-year `cost_report` by
+  // `(providerEntityId, factDate)`, inserts an idempotent accrual row (`ON CONFLICT DO NOTHING`), and
+  // updates the same row on reconciliation guarded on `status = 'accrued'` — dead-lettering (not guessing)
+  // when a fact falls outside every open report's window.
+  // F-164 (#248) — the `m26` group is GONE, not merely emptied. `m25.remittance.claim_recouped`, the
+  // group's last remaining pair, is now bound. The real blocker was three missing facts, not the two the
+  // prior reason named: `patientId` was genuinely absent from the payload; `priorPaidAmountCents` was
+  // never the right field to blame (`handleClaimReversed`'s `cents()` helper is a passthrough, not a
+  // dollars→cents conversion, so the real fix is a payload field ALREADY in cents, not a smarter reader);
+  // and `cap_beneficiary_accrual_line.service_from`/`.service_to` (NOT NULL) were also missing, found only
+  // by tracing the real insert path. Fixed by widening `m25.remittance.claim_recouped`'s payload at its one
+  // real emit site (`patientId` via the already-in-scope M23 `ClaimMatchCandidateProvider` seam —
+  // `postAdjustments`'s own PR-ledger seed already reads it two functions up in the same file —
+  // `recoupedAmountCents` computed directly from the same float dollars the existing `recoupedAmount`
+  // string already carries, `serviceFrom`/`serviceTo` from the 835's own optional DTM claim-service-period
+  // dates, honestly `null` when the payer's 835 omits them) and routing it to the SAME `record-reversal-line`
+  // action `m23.claim.replaced`/`.voided` already use. `m23.claim.replaced`/`.voided` themselves stay a
+  // documented, pre-existing no-op independent of this fix — neither of THEIR payloads carries `patientId`
+  // or any amount field under any of the names `handleClaimReversed` reads; a future pass could widen them
+  // the same way, using M23's own claim row (already in hand at their emit site, no cross-module seam call
+  // needed).
   {
     module: "m17",
     kind: "handlers-unbound",
     reason:
-      "F-133 (#248) checked this group per-event against M17's own §4.3/§4.4 spec text (the D3/D14 EVV-authoritative state machine, the `m17.reassignment_needed` cascade, the portal-scope consent gate, the D2 orphan-encounter reconciliation) rather than trusting the six producing modules' `declaredConsumers` guesses — the F-101 rule. 12 of the 14 pairs are genuine, real, still-unbuilt subscriptions, not misdeclarations: `consumers/index.ts`'s own header names this exact gap (\"the EVV `m18.evv.check_in/out_recorded` advance bindings land with M18\"), and `M17_OUTBOX_SUBSCRIPTIONS` currently carries none of them — the visit lifecycle's EVV-authoritative `published → en_route → in_visit → completed` transitions (D3/D14) are entirely unwired despite the spec calling EVV the authoritative driver. All 5 `m18.evv.*` events are explicit in M18's own catalog comments (\"drive M17's visit-state transitions (D14)\", \"the geofence-confirmation stream M17 Scheduling reads\", \"M8/M17 re-read the bracket\", \"flows to M17/M8/M23\"). `m15.volunteer.assignment_inactivated` is M15's own catalog comment (\"so M17 must drop the volunteer from the schedule\") feeding the day-view `m17.reassignment_needed` cascade (M17 spec D3) — no reassignment-scan cron exists in M17 at all yet, for PTO, credential, or volunteer-gate reasons alike. `m19.triage_call.visit_needed` is extensively documented on the M19 side (spec §1, §2.2, acceptance criteria at §7.1/§7.9, performance targets) as the trigger for M17's D5 proposal-worker path, even though M17's own spec (written first) never mentions the inbound direction — kept per the F-101 caution (a specific, cross-referenced, done-means-tested producing-side decision outweighs the consuming spec's silence, the same shape as F-131's `m25.remittance.claim_recouped`). `m20.safety.high_risk_area_entered` and `.visit_cancellation_requested` are both explicit in M20's own \"Consumed by 17\" text and §4.10 outbox table (\"M17 also consumes... to surface a visit-row warning badge\"; \"(M17 consumer cancels the visit)\"). Both `m39.consent.delegated_access.granted`/`.revoked` are explicit in M39's own §4.10/§4.7 tables (\"M17 (portal-upcoming scope check)\") — M17's `PortalVisitReader`/`ConsentEvaluator` caregiver-scope gate. `m8.encounter.orphan_recorded` is explicit in M17's own D2 decision row and §12 checklist (\"`m8.encounter.orphan_recorded` consumer present in M17 (deny-stub until M8 publisher exists)\"). **2 of the 14 were genuinely misdeclared and are dropped at the source, not here**: `m20.safety.check_in_recorded` — M20's own description says \"info severity, no fan-out\", and M20's own \"Consumed by 17\" text describes M17's day-view \"last check-in\" fact as a `SafetyDashboardProvider.clinicianStatusForLocation` seam PULL, never this push event (M20's §4.10 table also carries no \"(M17 consumer...)\" annotation on this row, unlike the two kept M20 events above); `m5.patient.address_changed` — M17's own spec (§7.10) states outright \"M17 NEVER geocodes; geocoding requests are M5's geocode job which runs on `patient.address_changed` outbox\" — M17 only ever reads the geocoded result afterward via the `PatientAddressReader` seam pull, never this push event; M5's own `jobs/index.ts` confirms the real consumer is M5's own `m5.geocode_address` job, not M17.",
+      "F-133 (#248) checked this group per-event against M17's own §4.3/§4.4 spec text rather than trusting the six producing modules' `declaredConsumers` guesses — the F-101 rule. 12 of the 14 pairs were genuine, real, still-unbuilt subscriptions; 2 were genuinely misdeclared and dropped at the source (`m20.safety.check_in_recorded` — a seam pull, not a push; `m5.patient.address_changed` — M17 never geocodes, per its own §7.10). **F-152 (#248) built three of the twelve**: `m18.evv.check_in_recorded` (`published → en_route`) and `m18.evv.at_patient_address` (`en_route → in_visit`), and `m20.safety.visit_cancellation_requested`. **F-158 (#248) built two more and dropped two as misdeclared, settling the two findings F-152 had flagged rather than left open.** `m18.evv.check_out_recorded` is BUILT, narrower than the catalog claimed: the event's own description said it 'drives `in_visit → completed`' — stale against the reconciled machine, since `visit-machine.ts`'s `complete` case hard-guards `isSystemActor` to the `m8.encounter.signed` consumer alone, confirmed against M17's own spec body three separate ways (§2.2 state diagram, §2.5 side-effects table, §7.1 'Done means'). What the spec DOES commit M17 to — 'M17 stores the pointer set on receipt of the M18 outbox event' — is what's built: `buildM17EvvCheckOutConsumer` stamps `visit.evv_check_out_event_id` only, no lifecycle transition, idempotent via `WHERE evv_check_out_event_id IS NULL`. The catalog's own description string is corrected at the source (`events-by-m18.ts`) rather than left overclaiming. `m18.evv.event_corrected` is BUILT too: the F-140 M8-side seam-pull reasoning does NOT transfer to M17, checked directly — M8 was dropped because its `EvvBracketResolver` re-derives the bracket fresh per call, a genuine pull, but M17 has no such seam anywhere in `17-scheduling/` (grep-confirmed) and learns EVV facts ONLY via the two push consumers that cache the pointer columns directly — so a correction-of-record left unhandled would leave M17's stored pointer referencing a superseded `evv_event` row forever. `buildM17EvvEventCorrectedConsumer` repoints whichever of the two pointer columns currently names the superseded event; idempotent by construction (a redelivery matches zero rows on both attempts). **Both `m39.consent.delegated_access.*` events are DROPPED as misdeclared**, the exact F-140 reasoning already applied to M19 for this identical pair, checked and confirmed to transfer: M17's own spec is decisive (twice — the portal scope is gated by 'M39 `family_caregiver_access` consent context' as a live seam pull) that this is M31's `ConsentEvaluator`-backed ABAC predicate, never a push to M17; `PortalVisitReader.upcomingForPatient` does no consent filtering at all; M17's manifest `dependsOn` excludes 39; and no M17 table stores anything delegated-access-shaped. Dropped at the source (`events-by-m39.ts`), leaving M31 as the sole, already-correctly-kept consumer (F-139). **`m8.encounter.orphan_recorded` is GONE (F-164, #248), dropped rather than built**: it has no production emitter anywhere in `08-encounters/` (grep-confirmed against all 13 real emit sites), so a consumer here would bind to an event nobody ever publishes; independently redundant even if it were built, since the identical fact — a just-signed encounter with no `visit_id` — is already delivered to M17 TODAY via the live `m17.m8-encounter-signed` consumer's own documented `no_visit_link` skip branch. Dropped at the source (`events-by-m8.ts`), `declaredConsumers: []`, no `seamConsumers` replacement." +
+      " **F-166 (#248) built two of the remaining four, re-checked each against the current schema rather than re-asserting the prior finding.** `m15.volunteer.assignment_inactivated` is BUILT, but not the literal reading M15's own catalog description implies: `visit.assigned_membership_id` is NOT NULL (checked directly against `visits.ts`) — there is no 'unassigned but still on the schedule' state, only a full cancel (destroys the visit) or a reassign to a specific NEW membership (needs a human to pick one; no automatic best-fit-replacement algorithm exists anywhere in this module to guess one honestly). What IS built is the platform's own designed answer for exactly this: M17 already carries a complete, catalogued, alert-wired `m17.reassignment_needed` event with a dedicated `volunteer_gate_expired` reason — published by NOTHING in production (the sibling PTO-approval path meant to trigger it, `time-off-machine.ts`'s `trigger_reassignment_scan` effect, has no interpreter anywhere either — `approveTimeOff` hardcodes `affectedPublishedVisitCount: 0` and never reads the transition's own `.effects`, a second unbuilt-mechanism finding alongside this one). `buildM17VolunteerAssignmentInactivatedConsumer` is the first real producer: it scans every non-terminal visit still assigned to the inactivated volunteer and emits the warning per visit, so a human scheduler sees the urgent need and reassigns through the existing route. `m19.triage_call.visit_needed` is BUILT too, and all three of F-133's named infrastructure gaps are resolved rather than worked around: migration 0258 adds `triage_dispatch_m19` to `visit_proposal_source` (additive-only, the migration-0239 precedent); a NEW, narrow M6 seam (`activeAdmissionSitingForPatientForOrg`, `06-admission/seams/drizzle-store.ts`) resolves patientId → admissionId/providerEntityId/locationId — deliberately NOT the existing `activeAdmissionDraftContextForPatient` M11/M12 already use, which THROWS when no physician is on file (irrelevant to a scheduling proposal, which needs siting, not an ordering physician); and 'M17's manifest excludes 6' turned out not to be a real blocker at all — the established org-explicit `...ForOrg` port-injection pattern (M13's draft-order consumer, F-162; M31's plan-opened consumer, F-165) needs no `dependsOn` edge, only a locally-declared structural type in the consumer file. Building it surfaced one more real gap and fixed it at the source rather than working around it: the payload's own non-null fields cannot tell `visit_dispatched_now` apart from `pronouncement_scheduled` (both set `requestedArrivalBy`, both leave `proposedForDate` null) — a new `visitKind` discriminator field (`events-by-m19.ts`, `packages/types/src/oncall.ts`, `write-service-drizzle.ts`'s `dispositionPayloads`) carries the fact M19 already has at the emit site rather than the consumer guessing from `reason`'s free text. `proposedVisitPurpose` maps `dispatch_now`/`first_light` → `prn` (the closest real vocabulary fit for an unscheduled, triage-driven visit) and `pronouncement` → the enum's own dedicated `pronouncement` value. **The other two stay genuinely blocked, both re-confirmed against the current code rather than re-asserted.** `m18.evv.late_check_resolved`: `evvBracketState` still has only two values (`evv_present`/`evv_missing_documented`, checked in `enums.ts`) with no third 'resolved' state, and `visit-machine.ts`'s states are unchanged (no `evv_missing_attested`) — a resolution is administratively real at M18's level but leaves nothing on the visit row that needs updating; building anything here still needs a product decision (what, if anything, M17 should show), not a bind. `m20.safety.high_risk_area_entered` stays doubly blocked, re-confirmed on both grounds: `grep`-confirmed zero emit sites anywhere in `20-field-safety/` (the catalog declaration and the alert-payload constructor are the only two mentions — no producer exists, the F-150 `m18.evv.visit_verified` 'a line to a house that was never built' shape), and `inHighRiskArea` still ships structurally `null` on every row per `seams/providers.ts`'s own header comment (no D12 polygon evaluator was ever built) — even a hypothetical producer would have nothing real to say, and M17 still has no target column for a warning-badge fact regardless." +
+      " **F-174 (#248) re-verified both events fresh against current code (2026-09-29) rather than re-asserting the F-133/F-166/F-167 findings, and both hold completely unchanged.** `m18.evv.late_check_resolved`: `evvBracketState` (`packages/db/src/enums.ts`) is still exactly `['evv_present','evv_missing_documented']` — no third value, and the enum's own comment still notes the struck M17-F03 `evv_missing_attested` vocabulary was never revived; `visit-machine.ts`'s (`packages/scheduling/src/lifecycle/visit-machine.ts`) eight-state graph and its two `set_evv_bracket` sites (`start`/`arrive`) are unchanged, and the `visit` table (`packages/db/src/schema/scheduling/visits.ts`) carries only `evvBracketState`/`evvCheckInEventId`/`evvCheckOutEventId`/`evvMissingReason` — no pointer or flag column a resolution would set. M23 built its own consumer for this identical event in the interim (F-162, `23-billing-medicare/outbox-consumers/m18-late-check-resolved.ts`), proving the payload is usable, but for a completely different purpose (claim revalidation) that says nothing about what M17 should DO with a resolution — whether a `closed_system_checkout_received`/`closed_clinician_attested` resolution should flip `evvBracketState` back to `evv_present`, clear `evvMissingReason`, or leave the visit row exactly as filed is still an undecided product call, not a schema gap this pass can close by widening a payload. `m20.safety.high_risk_area_entered`: still zero production emit sites anywhere in `20-field-safety/` — `buildHighRiskAreaEnteredAlert` (`alerts.ts`) has no call site anywhere in the module (grep-confirmed, not even a test), only the catalog declaration and the alert-payload constructor itself reference the event name. `inHighRiskArea` (`seams/providers.ts:677`) still ships structurally `null` on every row per its own unchanged header comment and `index.ts`'s own T06 summary — no D12 polygon evaluator, no geocoded-address seam, M18's coordinates still projected away before any composer sees them. `visits.ts` still has no risk/safety-flagged column of any kind (grep-confirmed). Both pairs stay exactly as filed: no producer to bind for the second, and a genuine unresolved product decision for the first." +
+      " **F-196 (#248) — `m18.evv.late_check_resolved` is BOUND, not merely re-confirmed.** M17's own" +
+      " `evv_bracket_state` is already push-maintained by two sibling EVV consumers" +
+      " (`m18-evv-check-in.ts`/`m18-evv-at-patient-address.ts`), so a push consumer is this module's" +
+      " established mechanism, not a seam-vs-push mismatch. M23's own live consumer for this identical" +
+      " event (F-162) proved the fact genuinely fires in production; migration 0269 adds 4 nullable" +
+      " columns to `visit` for the resolution stamp itself (`resolved_at`/`status`/`by_membership_id`/" +
+      "`reason`, the last denylisted per M17's own `evv_missing_reason` precedent) — a same-row" +
+      " informational stamp, not a `visit_state_history` transition (the resolution fires once the visit" +
+      " is already `completed`, never moving `status`), so the earlier framing (\"needs a product decision" +
+      " on what M17 should show\") was itself the thing blocking a build that a purely additive," +
+      " non-decision-shaped stamp resolves. `m20.safety.high_risk_area_entered` stays deferred, unchanged" +
+      " — no producer.",
     events: [
-      "m15.volunteer.assignment_inactivated",
-      "m18.evv.at_patient_address",
-      "m18.evv.check_in_recorded",
-      "m18.evv.check_out_recorded",
-      "m18.evv.event_corrected",
-      "m18.evv.late_check_resolved",
-      "m19.triage_call.visit_needed",
       "m20.safety.high_risk_area_entered",
-      "m20.safety.visit_cancellation_requested",
-      "m39.consent.delegated_access.granted",
-      "m39.consent.delegated_access.revoked",
-      "m8.encounter.orphan_recorded",
     ],
   },
   {
     module: "m16",
     kind: "handlers-unbound",
     reason:
-      "F-134 (#248) checked this group per-event against M16's own §4.5 \"Outbox Subscriptions (Consumers in M16)\" table and `lifecycle/cascades.ts`'s three pure deciders, rather than trusting five producing modules' `declaredConsumers` guesses — the F-101 rule, this time mostly confirming the group rather than overturning it. M16 now binds two live consumers: the IDG risk intake and, since F-105, the §4.3.1 bereavement intake on `m6.bereavement.eligible` — the only path by which a `bereavement_plan` row can exist. **6 of 12 pairs are genuine, real, still-unbuilt subscriptions**, matching M16's own §4.5 table or a documented producing-side decision: `m39.consent.revoked` (§2.6 opt-out cascade, backed by a real pure decider, `decideConsentRevocationCascade`) and `m39.consent.signed` (§4.5's \"post-death-grant handler\", under the spec's stale name `consent.created` — M39's own catalog description says outright \"the M16 post-mortem grant when bereavement\"); `m5.patient.bereavement_opt_out_changed` (§4.5 + D9, backed by the real pure decider `decidePatientOptOutFlip`); `m6.admission.discharged` (filtered to `reason='death'`) — explicitly named in §4.5 as a deliberate \"secondary verifier (redundant safety net)\" against M6 failing to emit `bereavement.eligible`, not an oversight; `m6.discharge.cosigned` — the one remaining WRITTEN decider (`decideCosignReceipt`, the D18 gate release), blocked producer-side twice over (M6's `discharge_event` models no external source, so its `DeathDischargeReader` returns `internal_clinician_recorded` for EVERY decedent and no plan can carry the `external_source_metadata` a receipt would release; and the payloads do not meet — M6 publishes `dischargeEventId` + `medicalDirectorCosignedAt`, the decider reads `sourceProposalId` + `cosignedAt` + `medicalDirectorMembershipId`); `m37.ipu_admission.death_recorded` — explicitly named three times in M37's own spec (its state-transition table, its outbox-catalog table, its §4.9 alert-payload table) as \"M16 (bereavement onboarding)\", kept on that asymmetric evidence despite M16's own spec being silent on M37 (the F-131 `m25.remittance.claim_recouped` \"kept, not dropped\" caution). **6 of 12 were genuinely misdeclared and dropped at the source, all variants of the same defect**: `m15.plan.discharged` and `m7.care_plan.discharged` each carried a producing-module description claiming to \"seed the bereavement plan\" — false on its face, since F-105 already established `m6.bereavement.eligible` is the ONLY creation path, and neither event appears in M16's own §4.5 table; `m6.admission.activated` — an admission ACTIVATION carries no fact the bereavement program (which starts at DEATH) needs, picked up only as part of that event's broad 15-consumer fan-out (F-101's own comment there already flags the shape); `m6.discharge.death` — co-emitted from the SAME `runEffects` transition as `m6.bereavement.eligible` (`admission-route-service-db.ts`'s single `t.effects` map), and `bereavement.eligible`'s own description says it IS \"the post-rule check on `m6.discharge.death`\" — M16's real consumer (`consumers/m6-eligibility.ts`) reads only the derived event, never this one; `m5.patient.deceased` — a THIRD hop downstream of the same transaction (M5's own §7.8 death cascade reacting to `m6.discharge.death`, itself reacting to the death-discharge transition), carrying no fact M16's intake decider reads; `m39.consent.renewed` — unlike `.signed`/`.revoked`, neither M16's spec nor its cascades file names a renewal-triggered action anywhere, and the declaration reads as a mechanical carry-over from the sibling consent-lifecycle events' consumer lists rather than an independent decision. All 6 dropped at the source in each producing module's `events-by-mNN.ts` (M5 ×1, M6 ×2, M7 ×1, M15 ×1, M39 ×1).",
-    events: [
-      "m37.ipu_admission.death_recorded",
-      "m39.consent.revoked",
-      "m39.consent.signed",
-      "m5.patient.bereavement_opt_out_changed",
-      "m6.admission.discharged",
-      "m6.discharge.cosigned",
-    ],
+      "F-159 (#248) built two of the four F-153 left blocked, after checking both prior findings against the actual code rather than re-asserting them. `m39.consent.signed` is now a live consumer (`outbox-consumers/m39-consent-signed.ts`, the §4.5 \"post-death-grant handler\"): two of the three prior blockers didn't hold up — `appendScore`'s membership restriction is a TS-parameter-type restriction on that one private closure, not a mechanism requirement (`scoreBereavementRisk` itself takes a nullable `assessedByUserId`, and the score table's own schema comment says \"NULL for the cron/system scorer\"), and the M38 relationship check the effect list needs is already performed at contact PROPOSAL time, not confirm time — only the SUD-disclosure gate (an M15 seam read) was real, fixed by wrapping the handler in `runWithRequestContext` (the F-158 M25 precedent) since that seam's Drizzle backing throws outside a request scope. **Verifying this build found a real, pre-existing production bug it had faithfully copied from the private `appendScore` it reimplements**: `BereavementRosterEvidence`'s real fields are `isPrimaryCaregiver`/`enrolledSurvivorCount`, and both the new consumer and the ALREADY-SHIPPED `appendScore` (`routes/write-service-drizzle.ts`) were constructing `{activeContactCount, relationshipCode}` under an `as never` cast — so `deriveRiskFactors` read `undefined` for both fields, always resolving `primaryCaregiverRole` as a definite non-caregiver (never falling back to the MSW-derived value its own `!== null` check exists to permit) and always resolving the roster half of `socialIsolation` as `false` (`undefined < number` is always false in JS) on every score ever appended through the real HTTP route. Fixed in both places: `enrolledSurvivorCount` is the same already-computed roster count under its correct name, and `isPrimaryCaregiver` is honestly `null` (no bound seam resolves M5's `patient_caregiver.is_primary`, the extract.ts header's own \"KNOWN GAP\" pattern) rather than guessed. `m5.patient.bereavement_opt_out_changed` is now a live consumer (`outbox-consumers/m5-patient-opt-out-changed.ts`, the §2.6/D9 patient-level opt-out cascade): the prior finding (\"the skip branch has no route case to mirror, the close_early branch needs two private closures\") was factually accurate but didn't block a build — both closures are small, self-contained SQL with no seam call and no membership requirement, reimplemented locally exactly mirroring the real production queries field-for-field. **2 stay genuinely blocked, both re-checked and found deeper than previously stated**: `m37.ipu_admission.death_recorded` — the prior \"no bridging seam\" framing was solvable on inspection (`ipu_admission` carries both `patient_id` and `admission_id` as plain columns), but that doesn't matter because the event has NO PRODUCER anywhere in the codebase — `transitionAdmission(..., {type: \"recordDeath\"})` is called nowhere outside its own unit test, and the M6-side consumer that would drive it (`m6-discharge-death.ts`, named in M37's own §4.5 table) was never built either; also functionally redundant even if built, since M16 already receives the IPU death fact through two already-built paths (`m6.discharge.death` primary intake, `m6.admission.discharged` reason=death secondary verifier). `m6.discharge.cosigned` — confirmed exactly as previously stated: the REAL catalogued payload (`{dischargeEventId, medicalDirectorCosignedAt}`) is a completely different event from what `decideCosignReceipt` needs (`{sourceProposalId, cosignedAt, medicalDirectorMembershipId}`) — this is the route-40 for-cause discharge cosign, not an external-source-death cosign release, and `discharge_event` genuinely has no source/cosign columns to ever populate the latter." +
+      " **F-167 (#248) re-verified both events fresh against current code rather than re-asserting F-159's findings, and both hold unchanged.** `m37.ipu_admission.death_recorded`: `transitionAdmission(..., {type: \"recordDeath\"})` (`packages/inpatient/src/machines/ipu-admission.ts`) is still called nowhere outside its own unit test (`packages/inpatient/__tests__/ipu-admission.test.ts`) — the M6-side consumer that would drive it, `37-ipu/consumers/m6-discharge-death.ts` (named in M37's own §4.5 table, and in its already-built sibling `37-ipu/consumers/m6-admission-discharged.ts`'s own header as \"the SEPARATE (still catalog-unbindable...) consumer\"), does not exist, and `m6.discharge.death`'s own catalog entry (`06-admission/events-by-m6.ts`) still declares only `[\"m5\"]` — m37 is not a declared consumer. Building that M37-side producer is out of scope for binding an M16 consumer and would not change the outcome regardless: M16 already receives every IPU death through two live-bound paths, confirmed by direct read of both files — `16-bereavement/outbox-consumers/m6-bereavement-eligible.ts` (the primary `m6.bereavement.eligible` intake) and `m6-admission-discharged-death.ts` (the documented \"secondary verifier (redundant safety net)\" on `m6.admission.discharged` reason='death') — so a third path off `death_recorded` would be strictly redundant even once built. `m6.discharge.cosigned`: the real catalogued payload is still exactly `{dischargeEventId, medicalDirectorCosignedAt}`, emitted from `cosignDischarge` (`06-admission/admission-route-service-db.ts:5019`, the route-40 for-cause-discharge medical-director cosign), while `decideCosignReceipt` (`16-bereavement/consumers/m6-eligibility.ts`) still requires `{sourceProposalId, cosignedAt, medicalDirectorMembershipId}` for its D18 external-source-plan gate release — confirmed `discharge_event`'s real schema (`packages/db/src/schema/admission/discharge-events.ts`) carries no source/proposal/cosign columns of any kind. No files changed; both stay genuinely blocked exactly as previously stated." +
+      " **F-172 (#248) — `m37.ipu_admission.death_recorded` is GONE from this group, not merely bound.** The real gap was the missing M6-side producer this reason has named since F-159: `transitionAdmission(..., {type: \"recordDeath\"})` now has its first real caller, `37-ipu/consumers/m6-discharge-death.ts`, bound live on `m6.discharge.death` (widened at the source with `deathCertifierId` — M37's `ipu_body_release.pronouncing_physician_id`, NOT NULL — already a required fact at that event's one real emit site, no new seam needed). But the redundancy half of this group's own long-standing finding was RIGHT, checked a third time by direct read rather than re-asserted: M16's `m6-bereavement-eligible.ts`/`m6-admission-discharged-death.ts` are both keyed off the M6 admission, not M37's IPU admission, and both already fire from the identical `m6.discharge.death` transaction this new M37 consumer itself reacts to — so `death_recorded` would arrive no earlier and carry no fact M16 doesn't already have. `m16` is dropped from `death_recorded`'s `declaredConsumers` at the source (`events-by-m37.ts`), the F-100/F-117/F-134 redundant-sibling shape, rather than bound to a consumer that would always no-op; `m30` stays declared there (F-149's finding, unrelated to this build). No M16 consumer was written for this event, and none should be.",
+    events: ["m6.discharge.cosigned"],
   },
-  {
-    module: "m25",
-    kind: "handlers-unbound",
-    reason:
-      "M25 binds one live consumer (`m25.parse-and-post`). The rest sit on its `consumers/` subscription-map surface, forward-declared and inert on the same footing as M26/M27.",
-    events: [
-      "m18.evv.aggregator_rejected",
-      "m23.claim.acknowledged",
-      "m23.claim.acknowledgment_partial",
-      "m23.claim.denied",
-      "m23.claim.rejected",
-      "m23.claim.submitted",
-      "m24.medicaid_claim.acknowledged",
-      "m24.medicaid_claim.acknowledgment_partial",
-      "m24.medicaid_claim.denied",
-      "m24.medicaid_claim.rejected",
-      "m24.medicaid_claim.submitted",
-    ],
-  },
+  // F-158 (#248) — the `m25` group is GONE, not merely emptied. Both remaining pairs are now BUILT:
+  // `m23.claim.rejected` and `m18.evv.aggregator_rejected` each seed a real `denial_case` row via
+  // `buildM23ClaimRejectedConsumer`/`buildM18EvvAggregatorRejectedConsumer`
+  // (`25-remittance/outbox-consumers/`). The two schema gaps F-153 found (no unique index backing
+  // either idempotency key shape; `DenialSeedStore.seedDenial` had no `taxonomyStatus` field) are
+  // fixed: migration 0249 adds `denial_case.source_idempotency_key` + a plain
+  // `UNIQUE(organization_id, source_idempotency_key)` constraint (Postgres's NULL-distinctness lets
+  // the pre-existing `remittance_adjustment`-sourced rows, which never set the column, coexist with no
+  // partial `WHERE` needed), and both handlers now resolve `taxonomyStatus` through a new
+  // `resolveDenialCategory` helper that reuses the existing `effectiveCategory` CARC-category
+  // resolution rather than re-deriving it. Building it surfaced a third, undocumented blocker: neither
+  // catalogued payload carries `providerEntityId`, which `denial_case` requires NOT NULL — resolved
+  // per event: M23's via a direct `@wardenx/billing` `ClaimRepository.findById` read (legal — M25's
+  // `dependsOn` includes 23); M18's via M17's `VisitReader` seam, wrapped in `runWithRequestContext`
+  // since `SchedulingSeamStore.visitById` opens `withOrgContextFromRequest` and a dispatcher tick is
+  // not a request (the same F-118 fix `19-oncall`/`20-field-safety` already apply for this identical
+  // M17 dependency). `denial_case` itself has no document-reference column at all (checked directly,
+  // not assumed), so `handlers.ts`'s header claim of a "resolution_letter ref" back-ref stays
+  // aspirational — reported, not built, since neither target event needed it.
   {
     module: "m31",
-    kind: "no-consumer-surface",
-    reason: "M31 has no consumer directory and binds nothing.",
-    events: [
-      "m12.medication_history_pulled",
-      "m12.medication_order.active",
-      "m12.medication_order.list_changed",
-      "m13.administration.recorded",
-      "m16.bereavement.contact_active",
-      "m17.caregiver_reminder_due",
-      "m17.visit.cancelled",
-      "m17.visit.rescheduled",
-      "m39.consent.delegated_access.granted",
-      "m39.consent.delegated_access.revoked",
-      "m8.encounter.signed",
-    ],
-  },
-  {
-    module: "m11",
     kind: "handlers-unbound",
     reason:
-      "M11 binds two live consumers (IDG decision intake, document back-ref) and carries four further handler files (admission-discharged-discontinue, assessment-trigger, hope-trigger, suggestion-banner) that no binding reaches.",
+      "F-139 (#248) checked every pair against M31's own authoritative §4.10 'M31 consumes' table (13 named source events, each with a real consumer-file name), its own `M31_SUBSCRIBED_EVENT_NAMES` mirror (`packages/types/src/portal.ts`), and — for two events the mirror flagged as aspirational — the PRODUCING module's own decisive text. The blanket 'M31 has no consumer directory and binds nothing' reason described the MECHANISM correctly (no `consumers/` directory exists anywhere in `31-portal/`) but said nothing about which declarations were real. 6 of the original 11 pairs are genuine, real, still-unbuilt subscriptions: `m16.bereavement.contact_active` (M16's OWN outbox table names M31 explicitly among its consumers — the F-131 'kept, not dropped' caution); `m17.visit.cancelled`/`.rescheduled` (telehealth-scoped, `m17-visit-cancelled-telehealth.ts`/`m17-visit-rescheduled-telehealth.ts` — force-end / re-mint the vendor room); `m39.consent.delegated_access.granted`/`.revoked` (the real, decided D10 mechanism for `family_caregiver_access` grant creation/cascade-revoke); `m8.encounter.signed` (telehealth-attached, `m8-encounter-signed-telehealth.ts`). 5 of 11 were genuinely misdeclared and dropped at the source: all three M12 events and `m13.administration.recorded` are each redundant with a documented SEAM PULL M31's own §4.4 dependency text names by method (`MedicationOrderProvider.getPortalMedicationSummary`, `MedicationAdministrationProvider.getPortalAdministrationSummary`); `m17.caregiver_reminder_due` is disclaimed outright by M31's own text ('visit-reminder opt-in is M22's domain … but exposed in M31's preference UI'). Checking the full §4.10 table surfaced the REVERSE defect too (F-102/F-106/F-129 shape): 6 events M31's own table names with a real consumer file had NO m31 declaration anywhere in the catalog — `m17.visit.published` (room-mint enqueue), `m6.admission.discharged` (both `reason` branches — bereaved transition / 30-day grace timer), `m22.document.rendered` (patient-facing kinds), `m16.bereavement.plan_opened`/`.plan_closed_completed` (plan-level bereaved-scope flip / grant revocation, distinct from the per-contact `contact_active` fact above), and `m39.consent.revoked` (the BROAD any-consent-type cascade, genuinely wider than `delegated_access.revoked`'s family-caregiver-only scope) — all six now declared at the source. Two of M31's OWN mirror-listed events were checked and NOT added, on the producing module's more decisive say-so: `m39.consent.created` — M39's own outbox table states its consumers as '(none — drafts are internal)', a first-party disclaimer stronger than M31's aspirational spec text; and `m4.legal_hold.applied`/`.released` — M4's own module spec (§M04-F03) commits this to a registered `HoldApplier` SEAM per data-owning module, never an outbox subscription, and `events-by-m4.ts`'s own header says declaring a consumer here 'would be a namespace lie'. Both stay exactly as `outbox-subscription-exceptions.ts` already filed them. **F-160 (#248) built M31's first outbox consumers — 3 of the 6 confirmed-genuine pairs — as a from-scratch `31-portal/outbox-consumers/` directory** (none existed before): `m17.visit.cancelled`/`.rescheduled` force-end/re-mint the `telehealth_visit` room by driving the existing pure `canTransitionTelehealth`/`TELEHEALTH_ENDED_STATES` machine directly under `withOrgContext`, and `m8.encounter.signed` reconciles an already-ended room once the encounter closes it out. The vendor-side `TelehealthProvider.endRoom` force-close call is deliberately NOT attempted — `telehealth_visit.vendor_room_id_cipher` has no decrypt path anywhere in this codebase (`portal-crypto.ts`'s own header: \"there is deliberately no decrypt here\", and it doesn't even cover this column), confirmed by reading the ONE production route with the identical need (`routes/telehealth.routes.ts`'s staff `/end` route never calls `adapter.endRoom` either) — the DB-side transition is still the load-bearing fix, since `foldParticipantJoin` refuses any join once the room is in an ended state, which is the actual enforcement point. No `m31.telehealth.visit_ended` is emitted by any of the three: that event's own catalog trigger is specifically the vendor `room_ended` webhook, and M31 currently emits ZERO `m31.*` outbox events anywhere in production (the webhook route verifies the HMAC and returns `{received:true}` with no publish at all) — inventing the platform's first `m31.*` emission from a pure consumer would repeat the exact \"declared a relationship nobody decided\" shape this arc exists to correct in the other direction. **2 of the 6 stay genuinely blocked on the same root cause, independently confirmed via two different code paths**: `m39.consent.delegated_access.granted`/`.revoked` — the catalogued payload carries `delegateCaregiverId` (an M5 `caregiver.id`), and no schema path from a caregiver row to a portal account/user id exists anywhere (`PatientCaregiverReader`'s own doc comment says so explicitly; the spec's own promised bridge table, `portal_caregiver_link`, does not exist in this codebase — grepped, zero hits); `delegated_access.delegateUserId` (nullable) would resolve it but is not exposed in the catalogued payload or any M39 seam. `.granted` would additionally need `sourceConsentRecordId`/`sourceConsentVersion` (both NOT NULL on `portal_access_grant`) that no M39 seam or event payload resolves. `m16.bereavement.contact_active` hits the identical `sourceConsentRecordId` wall from a completely different path — its payload DOES resolve the account directly (`portalAccountId`), but the pure `GrantInsertion` core it would drive (`bereaved-flip.ts`) has no field for a consent-record id either, and no published M16/M39 seam resolves a `bereavement_outreach_consent` record id for a contact — independent confirmation this is a real, platform-wide gap rather than a one-off. `m17.visit.published` (room MINT, not investigated in depth — the vendor `mintRoom` call is real per `packages/telehealth-client` but its full payload-resolvability wasn't verified), `m22.document.rendered`, and `m39.consent.revoked` (the broad cascade) were not investigated this pass. **F-162 (#248) investigated the two previously-unchecked pairs and found both genuinely blocked, deeper than the other M31 blockers above.** `m17.visit.published`: M31's spec names the trigger as 'with telehealth flag' — no such flag exists anywhere in M17's real schema (`VisitPurpose`/`VisitSetting`, `packages/types/src/scheduling.ts`, checked exhaustively) or the event's real catalogued payload (`events-by-m17.ts`); M31's own `TelehealthScheduledVisitSetting` wants a `patient_home_with_video` value M17's `VisitSetting` has no counterpart for. This is a missing upstream M17 data-model fact, not a missing binding — compounded by two more independent gaps even setting that aside: `telehealth_visit.providerEntityId` is NOT NULL while the M17 payload's is nullable (no seam re-resolves it), and `telehealth_visit.vendorRoomIdCipher`/`vendorRoomUrlCipher` need an envelope-encrypt capability that does not exist anywhere (the one M31 cipher, `portal-crypto.ts`, encrypts exactly one unrelated column); plus no BullMQ infrastructure exists for the `m31.telehealth-room-mint` job the spec names (zero grep hits repo-wide outside spec prose) — the same 'no jobs tier for this module' shape F-140 already found for M19. `m22.document.rendered`: the spec's target table, `portal_document_share`, does not exist — `portal/index.ts`'s own header states the manifest owns exactly three tables (`portal_account`/`portal_access_grant`/`telehealth_visit`) and explicitly excludes the spec's wider entities from ever materializing. Independent evidence this is a stale/misdeclared relationship rather than merely unbuilt: M31 already answers 'what documents can this patient's portal account see' via a live SEAM PULL (`resolveDocumentList` → `getSeam('PortalDocumentReader').documentsForPatient`, already wired into the dashboard's `unreadDocuments` count) — the seam-vs-push trap this arc's F-101/F-115/F-129/F-140 findings repeatedly document, applied to M31 for the first time. " +
+      "**F-164 (#248) investigated the last 4 previously-unchecked pairs and built 2 of them, re-typing this group `no-consumer-surface`→`handlers-unbound` now that a real directory exists (the F-163/M35 precedent).** `m16.bereavement.plan_closed_completed` (plan-level 'revoke bereaved grants', distinct from the already-kept per-contact `contact_active`) is now bound: the T03 pure planner `planBereavedWindowClose` (`lifecycle/bereaved-flip.ts`) had shipped unit-untested and uncalled since M31-T03; the patient id resolves via M16's registered `BereavementPlanProvider.planById` seam (wrapped in `runWithRequestContext`, the `19-oncall`/M16's-own-`m39-consent-signed.ts` 'a relay tick is not a request' precedent), and every column the revoke touches is nullable or event-derived, so — unlike `plan_opened` below — it needed no system-actor-membership convention. `m39.consent.revoked` (the BROAD, any-consent-type cascade) is ALSO now bound, and is a genuinely different, cleaner mechanism than M2's own already-built `m39.consent.revoked` consumer (F-158, which terminates `patient_portal` sessions and can only ever cover the `portal_access` scope, since `session.scope` carries a bare `patientId` with no way to disambiguate two concurrently-valid `family_caregiver_access` grants for different caregivers on the same patient): M31's own `portal_access_grant.source_consent_record_id` column is a direct, unambiguous match key the session table doesn't have, so this consumer revokes the grant by `WHERE source_consent_record_id = payload.consentRecordId` with zero cross-caregiver ambiguity. Deliberately does NOT also close M2's sessions (a cross-module write into a table M31 doesn't own) — the real fix for M2's ambiguity is a new M31-published read keyed on `sourceConsentRecordId`, reported for a future M2-side pass, not built here. **`m16.bereavement.plan_opened` stays blocked, on a SHARPER wall than the group's prior framing named**: the INSERT half of the flip (`planBereavedFlip`) needs `portal_access_grant.granted_by_membership_id` — NOT NULL, and UNLIKE `revoked_by_membership_id` on the same table, no nullable escape — the F-150 'no system-actor-membership convention' shape exactly. Compounding, independently: the real M39 mechanism this insert's `sourceConsentRecordId` should resolve from (`ConsentEvaluator.evaluate` against `bereavement_outreach_consent`) is `draft` immediately after death and only becomes `active` once separately signed, so even with the actor problem solved the overwhelming majority of real `plan_opened` deliveries would find no active consent to insert against yet. **`m6.admission.discharged` stays blocked too, on TWO separate reasons per branch** (a different M31 use of this event name from the one already blocked/genuine in the m14 group above — M31's relationship is portal-specific, not the inclusion-cache question): the `reason='death'` branch is redundant — M31 already receives the bereaved-transition fact via the separately-bound `m6.bereavement.eligible`→`m16.bereavement.plan_opened` chain, and no M31-owned column would be uniquely populated by THIS event as opposed to that one; the `reason!='death'` branch (a 30-day grace-timer enqueue) needs a BullMQ/cron tier that does not exist ANYWHERE in `31-portal/` (grep-confirmed, zero Queue/Worker/cron hits), and the spec's own §4.8 Queue Catalog names the real intended mechanism as a DAILY CRON scanning grants against M6's live discharge state, not an event-triggered delayed job — while the grace window's actual enforcement during the 30 days is already a live per-request seam pull (`write-paths/errors.ts`'s `PATIENT_DISCHARGED_READ_ONLY`), the seam-vs-push trap a third time in this same group. **Standing finding, not fixed, flagged prominently**: no production code path anywhere creates a `portal_account` or `portal_access_grant` row — both `POST /api/v1/admin/portal-invitations` and `.../invite-bereaved` are complete stubs that parse the request and return a canned success with no database write — so in every real deployment both of this round's new consumers' candidate-row queries find nothing to act on until that separate, larger gap (materializing accounts/grants from M2's magic-link accept flow) is built, the same shape F-097/F-105 already record for M2/M16. Both builds are still correct: they operate on whatever grant rows exist, however they got there, the same methodology this whole arc uses to test a consumer in isolation from an unrelated, separately-broken producer. " +
+      "**F-165 (#248) re-checked `m16.bereavement.plan_opened` against F-164's own BLOCKED verdict rather than re-asserting it, and both named blockers resolve.** The actor wall: migration 0257 nullable-widens `granted_by_membership_id` (the `order_discontinuation.actor_membership_id` precedent). The consent wall was right about WHEN `plan_opened` fires (before any contact confirms) but wrong that the fact is unresolvable — `bereaved_contact.status = 'active'` IS the per-contact 'this exact bereavement_outreach_consent signed' fact (M16's own `m39-consent-signed.ts` sets it, matching on `consent_record_id` directly), and the missing piece (the consent's VERSION) resolves via M39's real `ConsentEvaluator.evaluate`, cross-checked that the returned governing `consentRecordId` matches the contact's own — a mismatch skips that contact rather than fabricating a version. Bound (`31-portal/outbox-consumers/m16-bereavement-plan-opened.ts`), stated honestly: because `plan_opened` fires before any contact is confirmed, a FIRST delivery will almost always find zero already-active contacts and no-op, exactly as F-164 predicted — the value is in a REDELIVERY (or a future `m16.bereavement.contact_active` binding, still the real primary trigger, itself still unbuilt and listed below) finding a contact that has since confirmed. Also pre-guards the `BEREAVED_FLIP_GRANT_NOT_ACTIVE` throw `planBereavedFlip` raises when the account holds no live grant to flip — per F-164's own standing finding, no production path inserts a `portal_access_grant` row today, so this is commonly the actual no-op path, never a thrown/DLQ'd delivery. " +
+      "**F-167 (#248) re-verified every one of this group's remaining five claims against current code rather than trusting the summary, and built the one that had become buildable — `m16.bereavement.contact_active`, the per-contact-exact trigger `plan_opened`'s own header names as 'the real primary trigger.'** `M16ContactActivePayload` (`packages/types/src/bereavement.ts`) carries `{planId, contactId, portalAccountId}` directly — no plan-wide scan needed — but still no `patientId`/consent-version, so the new consumer (`31-portal/outbox-consumers/m16-bereavement-contact-active.ts`) reuses `plan_opened`'s exact two supporting reads (`BereavementPlanProvider.planById` for the decedent patient, M39's `ConsentEvaluator.evaluate` for the consent version, cross-checked against the contact's own `consent_record_id`) behind a NEW, narrower M16 org-explicit seam keyed by contactId (`bereavedContactFlipCandidateForOrg`, `16-bereavement/seams/plan-provider-entity-for-org.ts`) rather than filtering the whole-plan candidate list client-side — re-reading fresh by id is what makes a redelivery against a contact that has since left `active` an honest no-op rather than acting on the payload's stale snapshot. Both prior blockers this group recorded for the flip mechanism (the actor wall, the consent-version wall) were already resolved by F-165 for `plan_opened`'s identical per-contact branch and apply unchanged here — nothing new to re-derive. **The other four were re-verified and confirmed still blocked, none of the three prior findings had gone stale**: `m17.visit.published` — `VisitSetting` (`packages/types/src/scheduling.ts`) is still exactly `'patient_home'|'facility'|'inpatient_unit'|'telephonic'`, no telehealth-flag value exists, and `telehealth_visit.providerEntityId`/`vendorRoomIdCipher`/`vendorRoomUrlCipher` are still all NOT NULL with no re-resolution seam or generic envelope-encrypt capability (`portal-crypto.ts` still encrypts exactly the one `status_change_reason_cipher` column, AAD-hardcoded) and no BullMQ tier exists anywhere in `31-portal/`, confirmed by a fresh repo-wide grep. `m22.document.rendered` — the manifest's `ownedTables` for module 31 (`architecture/module-manifest.ts`) is still exactly `['portal_account','portal_access_grant','telehealth_visit']`, no `portal_document_share`, and `resolveDocumentList` (`read-surfaces/resolve.ts`) still live-pulls `PortalDocumentReader.documentsForPatient` fresh per request — the seam-vs-push trap, confirmed unchanged. `m39.consent.delegated_access.granted`/`.revoked` — `events-by-m39.ts`'s payloads still carry only `delegateCaregiverId` (an M5 caregiver id), `portal_account` (`packages/db/src/schema/portal/portal-accounts.ts`) still has no caregiver-linking column of any kind, `PatientCaregiverReader`'s doc comment still states outright 'no schema path from a caregiver row to a userId exists yet', and a fresh repo-wide grep for `portal_caregiver_link` still returns zero hits. `m6.admission.discharged` — the death branch is still redundant (the payload carries only `{admissionId, reason, dischargeDate}`, no `patientId` even, no fact the already-bound `m6.bereavement.eligible`→`plan_opened`/`contact_active` chain doesn't already carry) and the non-death branch still has no cron/BullMQ tier anywhere in `31-portal/` (grep-confirmed, zero Queue/Worker/cron hits) against the spec's own daily-cron design. None of the four were built; none needed a changed reason, only a confirmed one." +
+      "**F-174 (#248) re-verified all five remaining pairs against current code rather than trusting F-167's summary, per this arc's own standing 'prior findings can go stale' caution — four were reconfirmed unchanged and the fifth's characterization was corrected, but none crossed from blocked to buildable.** `m17.visit.published` — `VisitSetting` (`packages/types/src/scheduling.ts`) is still exactly `'patient_home'|'facility'|'inpatient_unit'|'telephonic'`, no telehealth value; `telehealth_visit.providerEntityId`/`vendorRoomIdCipher`/`vendorRoomUrlCipher` (`packages/db/src/schema/portal/telehealth-visits.ts`) are still all NOT NULL against the M17 payload's nullable `providerEntityId`; and `31-portal/` still has zero Queue/Worker/cron files (fresh grep). One prior sub-claim was overstated, though it changes no conclusion: 'no envelope-encrypt capability exists anywhere' is not quite right — the per-tenant DEK provider (`dekForOrg`/`getTenantKeyProvider`, M34's `tenant-kek.ts`) is a genuinely shared capability already reused by M39 (`consent-crypto.ts`), M8 (`hearthnote-crypto.ts`), M27 and M31's own one-column `portal-crypto.ts`; a cipher for the two telehealth columns could be built the same way. That correction doesn't unblock anything — the decisive wall is still the missing upstream M17 telehealth-setting value, a real product/data-model decision on M17's side this consumer cannot invent. `m22.document.rendered` — re-read the spec's own ERD (§3.3) rather than re-asserting F-162's 'seam-vs-push trap' framing, and that framing was WRONG, not merely stale: `portal_document_share` is a disclosure-VIEW-TRACKING table (`first_viewed_at`/`view_count`/`last_viewed_at`/`expires_at`/`revoked`, a §164.528 accounting-of-disclosures artifact) — a genuinely different fact from what the live `resolveDocumentList` → `PortalDocumentReader.documentsForPatient` SEAM PULL answers ('what CAN this account see' vs. 'did they actually view this specific share, how many times'), so this is not redundant with the seam pull the way the M12/m13 pairs this group dropped in F-139 actually were. It stays deferred anyway, for a different, real reason: building it means minting M31's first new PHI table since M31-T02 (ARCH-011 three-column tenancy, RLS, §3.6 audit-denylist shape all undecided for this table), a schema decision squarely out of a consumer-bind's scope, not a payload-additive widening — `architecture/module-manifest.ts`'s `ownedTables: ['portal_account','portal_access_grant','telehealth_visit']` is simply the current built state, not an architectural embargo, so this is corrected to 'real, spec-decided, schema-blocked' rather than 'misdeclared.' `m39.consent.delegated_access.granted`/`.revoked` — re-read `events-by-m39.ts` fresh: the `.granted` payload does carry `consentRecordId` (so `portal_access_grant.source_consent_record_id` is NOT actually unresolvable, correcting F-160's original over-broad claim) — but it's moot, because the decisive blocker is unchanged: `PatientCaregiverReader` (`packages/types/src/patient.ts`) is still deny-stub-only, its own doc comment still stating verbatim 'No schema path from a caregiver row to a userId exists yet,' and a fresh repo-wide grep for `portal_caregiver_link` still returns zero hits outside this deferral file itself — there is no way to resolve WHICH `portal_account` a `delegateCaregiverId` even belongs to, so the consent-record sub-question never gets reached. `m6.admission.discharged` — the `reason='death'` branch redundancy is reconfirmed (`events-by-m6.ts`'s payload is still bare `{admissionId, reason, dischargeDate}`, no `patientId`, and the bound `m6.bereavement.eligible`→M16 `plan_opened`/`contact_active` chain is confirmed live and wired in `16-bereavement/outbox-consumers/`). The `reason!='death'` branch is reconfirmed blocked, and re-reading the spec surfaced a sharper reason than 'no BullMQ tier exists' alone: the spec ITSELF is internally inconsistent about the mechanism — its §4.8 Queue Catalog names a `m31.post-discharge-grace.cron` DAILY sweep, while its own §7.6 Gherkin scenario describes a per-event 30-day DELAYED job that a re-admission explicitly CANCELS ('M31 cancels the delayed grace job, restores grant write capabilities') — a cancel-a-specific-job semantic that only makes sense under the delayed-job design, not the daily-sweep one. Picking between them is a real, undecided design question this consumer bind cannot resolve on its own, on top of `31-portal/` still having zero Queue/Worker/cron infrastructure of either shape (fresh grep, unchanged). Worth flagging precisely since it narrows the actual live gap: the write-side of the grace window is already enforced today via the live `PATIENT_DISCHARGED_READ_ONLY` seam check (`write-paths/document-upload.ts`/`amendment-request.ts`), so the only functional exposure from this staying unbuilt is that READ access to a discharged patient's chart via portal never actually expires — a real but narrower gap than 'the whole grace window is unenforced.' Net for this pass: 0 built, 0 dropped, 5 reconfirmed blocked — two on unchanged reasons, three (`m17.visit.published`'s crypto sub-claim, `m22.document.rendered`'s redundancy framing, `m6.admission.discharged`'s mechanism ambiguity) on corrected, more precise reasons that still land on the same verdict. **F-176 (#248) dropped both `m39.consent.delegated_access.*` events (5 → 3):** M31's §4.10 table names neither, M31's bound broad `m39.consent.revoked` consumer already revokes grants by `source_consent_record_id`, the granted-side projection is a forward-seam PULL (route 21), and nothing publishes either event. An optional daily post-discharge-grace sweep for the non-death branch of `m6.admission.discharged` was scoped (new M6 seam + `31-portal/jobs/` + live suite) but NOT built — it needs a sweep-vs-delayed-job decision and a grace-window default.",
     events: [
-      "m21.supply_request.cancel_no_op",
-      "m21.supply_request.cancelled",
-      "m21.supply_request.status_changed",
-      "m39.consent.dpoa.agent_appointed",
-      "m39.consent.dpoa.agent_removed",
-      "m6.admission.activated",
-      "m7.intervention.added",
-      "m7.intervention.discontinued",
-      "m7.intervention.updated",
-      "m9.assessment.significant_change",
+      "m17.visit.published",
+      "m22.document.rendered",
+      "m6.admission.discharged",
     ],
   },
-  {
-    module: "m19",
-    kind: "handlers-unbound",
-    reason:
-      "M19 binds its two D10 inbound triggers live (#204's sibling, F-043: the no-show and late-checkout welfare checks). `m36-delivery-failed.ts` is a written decider whose topic has no producer at all — M36 contributes no event catalog (F-094/#205) — and the eight events below are the §4.8 roster and safety-escalation intakes, forward-declared with no decider written.",
-    events: [
-      "m17.reassignment_needed",
-      "m17.time_off.approved",
-      "m17.visit.assigned",
-      "m17.visit.unassigned",
-      "m20.safety.check_in_escalated",
-      "m20.safety.sos_alert_raised",
-      "m39.consent.delegated_access.granted",
-      "m39.consent.delegated_access.revoked",
-    ],
-  },
+  // F-198 (#248) — the `m11` group is GONE, not merely emptied (the F-115/F-164 m28/m23 shape). Its last
+  // two pairs, `m39.consent.dpoa.agent_appointed`/`.agent_removed`, are DROPPED — the last holdout of the
+  // M7/M14 pattern already established (F-129/F-142 dropped both of those on the strength of a real,
+  // documented pull alternative each module had built: M7's write-time `acting_consent_id` attribution,
+  // M14's build-time packet read). M11 has neither: every order in M11's own catalog (`events-by-m11.ts`)
+  // carries only `orderingPhysicianMdmId`/`certifyingPhysicianMdmId` — every order is physician-signed,
+  // never patient/representative-signed — and an exhaustive grep of `11-orders/` and `packages/orders/`
+  // for any consent/authorization/decision-making concept returns nothing. There is no mechanism, at
+  // write time or read time, for "DPOA attribution refresh" to attach to. `declaredConsumers` corrected
+  // at the source (`events-by-m39.ts`). The group's own long history (F-137 through F-177) — the M21
+  // supply-cancellation split, the M7 intervention-linkage drop, the M29 lab-transmission-applier build —
+  // stays in `git log`/`docs/history/outbox-248-builds.md` rather than repeated here now that nothing in
+  // this group remains open.
   {
     module: "m5",
     kind: "handlers-unbound",
     reason:
-      "M5 binds two live consumers (proposal applier, death cascade). The remainder are forward declarations.",
-    events: [
-      "m17.visit.assigned",
-      "m17.visit.unassigned",
-      "m24.medicaid_eligibility.checked",
-      "m39.consent.expired",
-      "m39.consent.recipient_removed",
-      "m39.consent.renewed",
-      "m39.consent.revoked",
-      "m39.consent.signed",
-      "m39.consent.supersedes",
-      "m6.admission.activated",
-    ],
+      "F-138 (#248) checked every pair against M5's own spec text and, where M5 was silent, against the PRODUCING module's spec for a specific, decided, cross-referenced claim. 9 of 10 were genuine, real, still-unbound subscriptions; 1 of 10 (`m24.medicaid_eligibility.checked`) was genuinely misdeclared, running the relationship in the OPPOSITE direction, and dropped at the source. **F-152 (#248) built one of the nine**: `m6.admission.activated` — the §3.3/ARCH-011 denormalization of `provider_entity_id`/`location_id` onto `patient`, resolved through M6's registered `AdmissionStatusReader.getAdmissionSiting` seam (no `dependsOn` edge to M6 required; org-explicit, safe from a relay tick), scoped deliberately to ONLY the `patient` row — cascading onto the dozen-plus child tables that carry their own `provider_entity_id` (`patient_address`, `patient_payer`, …) is a separate, undecided product question this build does not guess at. **F-165 (#248) built the other genuinely-blocked pair**: `m17.visit.assigned`/`.unassigned`, the per-clinician Valkey shift-assignment cache `caseload-provider.ts`'s own header names as the union point (`05-patient/seams/shift-caseload-cache.ts` — one Hash per (org, clinician userId), field = visitId, per-entry expiry off `scheduledEndedAt` + a grace window, read-time filtered rather than relying on a whole-key TTL). The one real obstacle — M17's payload carries `assignedMembershipId`/`formerAssignedMembershipId` (a MEMBERSHIP id) while `CaseloadStore.isAssigned`/`.assignedPatientIds` key on the raw Better Auth `userId` — resolves with a single org-explicit lookup (`membershipUserIdForOrg`, `drizzle-stores.ts`) done ONCE at write time in the outbox consumer, never on the hot ABAC read path; `membership` is M1-owned but M5 already reads it directly via `schema.memberships` for `findPrimaryRnMembership` (GAP-022/#124), the established precedent rather than a new cross-module seam. The wrapped store degrades to Phase-1-only (`patient_assignment` alone) on a Redis read error rather than propagating — see the cache file's own header for why letting a Valkey hiccup fail every `caseload_membership`/`caseload_or_scope` check platform-wide would be a strictly worse blast radius than the shift cache itself going dark." +
+      " **F-167 (#248) re-checked the six `m39.consent.*` events from scratch rather than trusting F-138's blanket 'genuinely blocked' verdict, and found it was WRONG about the reason for four of them.** The claimed blocker — 'a real M39 consent-type→PrivacyFlag mapping that exists nowhere in the codebase' — does not describe the current repo: `apps/backend/src/modules/39-consent/consumers.ts`'s `TYPE_TO_PRIVACY_FLAG` map has existed since M39-T08/T09 (predating F-138 itself) and maps exactly `42_cfr_part_2_release` → `sud`, matching M39's own spec §4.3.1 verbatim ('Any `m39.consent.signed` or `m39.consent.revoked` on a consent type whose presence affects M5's `patient.privacy_flag_snapshot` (i.e., `42_cfr_part_2_release`) emits a snapshot-recompute event consumed by M5' — WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md:405) — it had simply never been called by anything. **Bound 4 of 6**: `m39.consent.signed`/`.revoked` directly (the spec's own two named triggers), plus `.supersedes`/`.renewed` — both checked against `consent-store-db.ts`'s real write paths and confirmed to write the NEW consent record `status: 'active'` in the SAME transaction that emits the event, the identical 'new active consent' fact `signed` represents; M22's own already-built `outbox-consumers/render-consumer.ts` independently treats these same three event names as one group for its own render trigger, the same grouping applied here for M5's recompute. `outbox-consumers/m39-consent-privacy.ts` (`buildM5ConsentPrivacyConsumer`) is the new consumer — a bare string-literal comparison against `typeKey` (not a cross-module import; M5's `dependsOn` excludes 39) plus a new `mergeConsentSignal` helper (`privacy/index.ts`) that merges the ONE touched category into whatever the persisted snapshot's OTHER flags currently hold, rather than overwriting the whole snapshot from a single-category signal — HIV/mental_health/genetic are 'M5-delegated' per the same spec section (computed from `hipaa_release` consent-recipient scope, a wholly different, unbuilt mechanism this consumer does not touch) and must round-trip untouched. **`m39.consent.expired` stays unbound: it has NO PRODUCER.** `packages/consent/src/jobs/index.ts`'s own header states the cron Worker/Queue construction 'lives in the composition root once a Valkey connection … exist[s]'; grepped `apps/backend/src/index.ts` for `M39_QUEUES`/`shouldExpire`/any M39 cron registration — zero hits. Binding a consumer to an event nothing in production ever publishes would be dead code (the F-150 `m18.evv.visit_verified` shape) — reported, not built; the whole M39 §4.9 cron tier (expiration ticks, reminder ticks, renewal-cycle close, draft housekeeping) is unwired, a from-scratch BullMQ-worker build out of scope for this consumer bind. **`m39.consent.recipient_removed` is dropped from `declaredConsumers` at the source, not deferred**: its own catalog description names the fact as being for 'disclosure-subsetter caches' (M22/M28's per-signed-URL cache invalidation), M5's `patient_privacy_flag_snapshot` schema (`packages/db/src/schema/patient/patient-privacy-flag-snapshots.ts`) carries no recipient dimension at all to invalidate, and the payload doesn't even carry `typeKey` — M22's own `render-consumer.ts` (F-161) independently reached the identical 'no persistent state to invalidate' conclusion for this exact event, under the exact same reasoning, on the OTHER consuming module. Net: 6 → 1 event remaining in this group. Proven by `m39-consent-privacy.live.test.ts`: a `42_cfr_part_2_release` sign lifts the `sud` restriction, a revoke re-imposes it, a supersede/renewal of a revoked Part-2 consent re-lifts it, a `portal_access` sign touches nothing, a pre-existing non-`sud` flag on the snapshot survives an unrelated sign/revoke untouched (the merge-not-overwrite proof), a cross-tenant patient id is a silent no-op, and a redelivery of the same event converges to the same flags (idempotent UPSERT).",
+    events: ["m39.consent.expired"],
   },
-  {
-    module: "m13",
-    kind: "handlers-unbound",
-    reason:
-      "M13 binds one live consumer (PDF-rendered back-ref) and carries a `consumers/` surface that no binding reaches.",
-    events: [
-      "m12.medication_order.active",
-      "m12.medication_order.discontinued",
-      "m21.comfort_kit.deployed_at_patient",
-      "m21.comfort_kit.replenished",
-      "m21.comfort_kit.return_reconciliation",
-      "m21.comfort_kit.returned",
-      "m37.iv_safety_overlay.required",
-      "m6.transfer.created",
-    ],
-  },
-  {
-    module: "m24",
-    kind: "handlers-unbound",
-    reason:
-      "M24 binds one live consumer (submission-request enqueue); the remainder sit on its forward-declared `consumers/` subscription-map surface.",
-    events: [
-      "m18.evv.aggregator_accepted",
-      "m18.evv.aggregator_cancelled",
-      "m18.evv.aggregator_submitted",
-      "m24.medicaid_claim.submission_failed",
-      "m24.medicaid_eligibility.refresh_requested",
-      "m5.patient.address_changed",
-      "m5.patient.payer_changed",
-      "m8.encounter.cosigned",
-    ],
-  },
-  {
-    module: "m8",
-    kind: "handlers-unbound",
-    reason:
-      "M8 binds one live consumer (visit-seeded encounter). The remainder are forward declarations.",
-    events: [
-      "m18.evv.check_in_recorded",
-      "m18.evv.check_out_recorded",
-      "m18.evv.event_corrected",
-      "m18.evv.late_check_resolved",
-      "m6.admission.activated",
-      "m7.care_plan.initial_overdue",
-      "m7.care_plan.review_overdue",
-      "m7.care_plan.version_signed",
-    ],
-  },
-  {
-    module: "m18",
-    kind: "handlers-unbound",
-    reason:
-      "M18 binds one live consumer (register-published-visit). The remainder are forward declarations.",
-    events: [
-      "m17.visit.cancelled",
-      "m17.visit.completed",
-      "m17.visit.late_check_out_suspected",
-      "m17.visit.rescheduled",
-      "m17.visit.started",
-      "m39.consent.delegated_access.granted",
-      "m39.consent.delegated_access.revoked",
-    ],
-  },
+  // F-166 (#248) — the m13 group (4 pairs, all M21 comfort-kit events) is now FULLY RESOLVED and
+  // deleted from this registry outright, the F-132/F-155(#m35)/etc. "group empties → delete, don't leave
+  // a hollow entry" precedent. Both real blockers this group's own text had accumulated across F-140/
+  // F-159/F-166 are fixed, not merely re-scoped a fourth time:
+  //   1. `m21.comfort_kit.returned` double-emission (`21-supplies/routes/write-service-drizzle.ts`'s
+  //      `createReturn`, which published this event at return-REQUEST time with placeholder empty-string
+  //      `disposalMethod`/`reconciledByMembershipId`) is DELETED at the source — checked against M21's
+  //      own spec (WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:48) first, which is
+  //      unambiguous that `.returned` fires only at reconciliation; no `.return_requested` (or any other
+  //      spelling) event was invented in its place, because no consumer anywhere needs a "return was
+  //      requested" signal (`comfort_kit_deployment.disposal_status` has no state between
+  //      `return_required` and `returned` to carry one) — inventing an unconsumed event would have been
+  //      the identical mistake being fixed, restated. `.returned`'s only real emission is now
+  //      `reconcileReturn`'s own `{ kind: "outbox", event: "m21.comfort_kit.returned" }` effect
+  //      (`21-supplies/lifecycle/return.ts`), which fires once a return actually reaches `reconciled`.
+  //   2. The nullable-`medicationOrderId` gap (`ComfortKitDispatchedContentPayload.medicationOrderId`,
+  //      null for an IPU-stock-kit-on-room line with no per-patient order — a real, documented M21
+  //      business concept, `WARDENX_MODULE_21...md:58`) was investigated fresh rather than re-asserted:
+  //      confirmed, by reading every M13 table (`administration_record`, `comfort_kit_drawdown`) and the
+  //      whole pure `@wardenx/emar` comfort-kit core, that NO precedent anywhere represents an order-less
+  //      drawdown/administration — inventing one now would be deciding unreviewed DEA-adjacent
+  //      controlled-substance-accounting semantics on the fly (the F-102 "a guessed provider entity is a
+  //      mis-stated cost report" lesson one module over). Resolved by SCOPING rather than guessing: the
+  //      four new consumers (`13-emar/outbox-consumers/m21-comfort-kit-{deployed,replenished,returned,
+  //      return-reconciliation}.ts`) track every ORDER-LINKED line for real — the documented "typical
+  //      case" per M21's own spec, a comfort-kit-deploy with the platform-floor medications prescribed at
+  //      admission — and DELIBERATELY, VISIBLY skip a null-order line (reported via
+  //      `skippedFloorStockLineCount` on the `m13.comfort_kit.deployed` ack, never silently dropped) — a
+  //      real, honestly-reported gap (per-line floor-stock tracking), not a fabricated schema fix.
+  // All four events are now live-bound: `m13.comfort_kit.deployed` completes a handshake M21's own
+  // `buildM21ComfortKitDeploymentAckConsumer` (F-153) had sat waiting on, unreachable, since it was
+  // built — nothing had ever published the event it subscribes to. A new pure `applyKitReplenishment`
+  // (`@wardenx/emar`) fills the one genuine gap in the domain core (no function existed for "apply a
+  // physically-arrived replenishment to a drawdown"), capped at `expected_quantity` rather than allowed
+  // to overshoot. Migration 0259 adds `comfort_kit_deployment`'s first-ever idempotency key
+  // (`(organization_id, m21_supply_dispatch_id)`, NULLS DISTINCT) — the table had no live writer before
+  // this pass, so no redelivery guard had ever been needed. `M13_OUTBOX_SUBSCRIPTIONS`
+  // (`13-emar/consumers/index.ts`) previously named only two of the four M21 events at all — corrected
+  // in the same change, the two missing entries (`.replenished`/`.return_reconciliation`) were simply
+  // never listed, not merely unbound. Proven by `m13-comfort-kit-deployment.live.test.ts` against a real
+  // disposable Postgres: an order-linked deployment creates the deployment + drawdown rows and acks
+  // M21's dispatch link for real end to end; a floor-stock-only line is skipped and reported, never
+  // fabricated; a redelivery of `.deployed_at_patient` is a true no-op; a replenishment tops up capped at
+  // `expected_quantity`; a reconciled return flips disposal status via `.returned` alone (never at
+  // request time — `createReturn` no longer emits it); `.return_reconciliation` closes each drawdown's
+  // `final_remaining_quantity_at_return`, flags a ≥5% controlled-substance delta via
+  // `m13.comfort_kit.controlled_substance_discrepancy`, and emits the aggregate `m13.comfort_kit.returned`
+  // ack; and cross-tenant isolation holds throughout.
   {
     module: "m21",
     kind: "handlers-unbound",
     reason:
-      "F-120 (#248) bound two of the three `consumers/m11-orders.ts` deciders (`outbox-consumers/m11-order-cascade.ts`) — the cancellation cascade and the DME monthly-rental close-out, both already emitted in production by M11's discharge cascade (F-102). `supply_fulfillment_requested` stays unbound: its own IO resolver (`consumers/order-context.ts`) says no platform seam answers 'which Location serves this patient' and `supply_request.location_id` is NOT NULL, so binding it today would either dead-letter every delivery or require inventing a Location-resolution heuristic nobody has decided on. `m11.order.signed` is redundant with the still-unbound specific event once that lands (the F-101 shape) and stays declared until then. M21 also carries the M13 comfort-kit handler file and the pharmacy-dispensed event that no binding reaches.",
+      "F-153 (#248) built live bindings for 2 of the 4 `consumers/m13-comfort-kit.ts` deciders: `m13.comfort_kit.deployed` (§2.5 deployment-ack, resolved by patient+admission — the whole point of the ack is that the M13 deploymentId link does not exist yet) and `.return_required` (§2.6 chain-of-custody return open) are now live in `outbox-consumers/m13-comfort-kit-cascade.ts`. **`m11.order.signed` is removed outright, not bound**: it was misdeclared, not merely unbound — redundant with the co-emitted, more specific `m11.order.supply_fulfillment_requested` sibling (same transaction, `emitDownstreamSignedEvent`), the F-117/F-101 co-emission shape; dropped from `events-by-m11.ts`'s `declaredConsumers` at the source. **F-161 (#248) built `m13.comfort_kit.replenishment_needed` (§2.1 intake)**: extracted the shared `insertRequest` write path (`write-service-drizzle.ts`'s `createDirect` seam call) to module scope as `insertSupplyRequest`, taking an explicit `outbox` port parameter instead of closing over one — the F-102 `patchSupplyRequest` precedent applied to the create side. The consumer resolves both the per-line pharmacy identity (from the original `comfort_kit_dispatched_content` dispatch row) and the delivery address (reused verbatim from the dispatch's originating `supply_request.data.deliveryAddress`) from M21's own tables, since M13's payload carries neither the full `ComfortKitReplenishRequestDataSchema` per-line pharmacy identity nor a delivery-address snapshot. An IPU-room-deployed kit's originating request carries no delivery address at all (optional/omitted for `ipu_room`) while the replenish schema requires one unconditionally — the consumer refuses (`M21_REPLENISHMENT_ADDRESS_UNRESOLVED`) rather than fabricate a street address on a DEA-perpetual-log-adjacent record, a real narrow schema gap flagged for a future scoped fix. **3 pairs remain genuinely blocked**: `m11.order.supply_fulfillment_requested` — still blocked, not misdeclared — its own IO resolver (`consumers/order-context.ts`) states no platform seam answers 'which Location serves this patient'; `m13.comfort_kit.controlled_substance_discrepancy` (§4.5.1) is payload-BLOCKED — the catalogued `m21.controlled_substance.discrepancy_detected` schema requires a non-nullable `returnId` + full custody chain, the shape a RECONCILIATION-time discrepancy carries, while M13's bedside re-emit fires at drug ADMINISTRATION time before any `comfort_kit_return` row exists; `m12.medication_order.dispensed_at_pharmacy` has no decider built anywhere in M21 (only referenced by spec line 66) — needs new DoseSpot-dispensed business logic, a correlation mechanism linking a pending `supply_request` to a specific M12 transmission id (none exists), and a dispatch-creation write path that bypasses `createDispatch`'s hub-fulfillment-only PAR-stock/dispatcher-eligibility logic. **F-166 (#248) re-checked all 3 against the current code rather than the prior finding, and found the `m11.order.supply_fulfillment_requested` serving-Location claim was stale — but fixing it surfaced a deeper, previously-undiscovered blocker that keeps the pair unbound anyway.** `AdmissionSummary.locationId` (task-11's M6 activation-siting anchor — the SAME fact `05-patient/outbox-consumers/m6-admission-activated.ts` denormalizes onto `patient.location_id`, F-152) has been on the `getAdmissionStatusReader().getAdmissionSummary` return type this file's own `resolveSupplyOrderContext` already calls for `admission`, unread — `order-context.ts`'s `resolveServingLocation` port (and its 'no platform seam answers this' header) is now GONE, not merely fixed in place: `toAdmissionContext` projects `summary.locationId` directly and `servingLocationId` reads `admission.locationId`, no second read, no port. **That resolves the location half honestly, but checking whether a consumer could actually be BOUND on top of it found the payload assembly was blocked at a level deeper than location for all three M11 sub-kinds, checked against each kind's real D1 TypeBox** (`packages/supplies/src/kinds/{dme,supply,comfort-kit-deploy}/typebox.ts`) **and each kind's real M11 order-data contract** (`packages/orders/src/kinds.ts`, `ORDER_KIND_CONTRACT_STATUS`): `dme`'s `DmeRequestDataSchema` requires `skuId` (an M21 `supply_item` uuid), `hcpcs` (an M38-resolved code) and `deliveryAddress: PatientAddressSnapshotSchema` (`line1`/`city`/`state`/`postalCode`/`capturedAt`) all NON-OPTIONAL, while M11's `dme` order kind is `contract_not_published` — a genuinely unconstrained `additionalProperties: true` blob with no guaranteed shape at all, confirmed by direct read rather than inferred from the contract-status label; `supply`'s schema is equally strict (`deliveryAddress` required, no optional escape) over the same unpublished `contract_not_published` M11 shape; `comfort_kit`'s M11 canonical schema (`canonical_contract_found`, so genuinely the full shape — `order_record.data` is validated against it at draft time, per `emitDownstreamSignedEvent`'s own comment) is exactly `{kitSku, deploymentSite, preferredDeliveryWindow?, notes?}`, while M21's `ComfortKitDeployRequestDataSchema` requires `contents: Type.Array(ComfortKitMedicationContentSchema, {minItems:…})` (a real per-medication line list) and `pharmacyDispatchMode` — fields the M11 side has never captured. No published M5 seam closes the gap either: `PatientAddressReader` (checked against its real interface, and against M12's own already-documented finding for the identical need in `12-dosespot/jobs/vendor-boundary.ts`) exposes only a 2-letter state code or a kind/facilityId/postalCode triple, never a full street address. So a bound consumer would throw `ValidationError` at `insertSupplyRequest`'s D1 gate on essentially every real `dme`/`supply`/`comfort_kit` delivery — dead-lettering by construction rather than filling a request — which is not a working binding, it is the F-150 'wiring a line to a house that was never built' shape restated at the SCHEMA level instead of the seam level. Not bound; the location-resolver fix is kept as real, verified, isolated progress (`consumers/order-context.ts`, `consumers/m11-orders.ts`) because it is independently correct and narrows the pair's true remaining gap precisely, but the pair itself stays deferred. `m12.medication_order.dispensed_at_pharmacy` and `m13.comfort_kit.controlled_substance_discrepancy` were re-verified unchanged: no DoseSpot webhook handler or credential resolver exists anywhere in the repository (`createUnboundDoseSpotClient` is a confirmed fail-closed stub, no `DOSESPOT_*` env var anywhere) so the first event has no producer and no M21 decider either; the second event's catalogued schema (`returnId` + full `returnedContent` reconciliation-math array) still cannot be satisfied by `decideControlledSubstanceReemit`'s own pure output (`ReemittedDiscrepantLine`, no `returnId`, no reconciliation quantities), confirmed by direct comparison of both TypeBox shapes. **F-168 (#248) re-checked fresh on 2026-09-28, all 3 specific blocking facts confirmed unchanged.** `dme`/`supply` M11 order-kind contract status: `packages/orders/src/kinds.ts`'s `ORDER_KIND_CONTRACT_STATUS` still lists both `\"contract_not_published\"`. `PatientAddressReader`: `packages/types/src/patient.ts` still exposes only `primaryResidenceState` (2-letter state code) and `residenceAt` (returns `PatientResidenceSnapshot`, whose only fields are `kind`/`facilityId`/`postalCode`) — no street-address field anywhere. DoseSpot infrastructure: `createUnboundDoseSpotClient` (`packages/dosespot/src/client/unbound.ts`) is still the Phase-1 deny-stub every call site resolves to, and no `DOSESPOT_*` credential/webhook handler exists outside test doubles. On the controlled-substance-discrepancy pair specifically: F-166 landed a real new M13 emitter for `m13.comfort_kit.controlled_substance_discrepancy` (`13-emar/outbox-consumers/m21-comfort-kit-return-reconciliation.ts`, triggered at true RECONCILIATION time via `m21.comfort_kit.return_reconciliation` rather than the old bedside-admin-time re-emit) — checked directly rather than assumed unchanged, since this looked like the one fact most likely to have moved. Its actual published payload is `{deploymentId, medicationOrderId, deltaQuantity, deltaPercent}` — still no `returnId`, still no `custodyChain` — and the file's own header says so explicitly: 'a pre-existing, separately-documented M21-side blocker this pass does not touch... stays deferred at the dispatcher until M21's side is fixed.' M21's own `decideControlledSubstanceReemit` (`21-supplies/consumers/m13-comfort-kit.ts`) and its non-binding rationale (`21-supplies/outbox-consumers/m13-comfort-kit-cascade.ts`'s header) are untouched. Not built; all 3 pairs stay deferred on the identical, freshly-confirmed reason." +
+      " **F-172 (#248) built `m13.comfort_kit.controlled_substance_discrepancy` — 1 of the group's 3 remaining pairs, group now 2.** F-168's own blocker text named the exact fix: `returnId` was missing from M13's wire payload despite already being in scope at the ONE emit site (`13-emar/outbox-consumers/m21-comfort-kit-return-reconciliation.ts` — that handler IS the `m21.comfort_kit.return_reconciliation` consumer, so `payload.returnId` on the INCOMING M21 event is the outgoing M13 event's own aggregate). Widened additively (`events-by-m13.ts`'s payloadSchema + the emit site), no new cross-module read invented. The `custodyChain` half was NOT a payload gap the same way — `decideControlledSubstanceReemit` is now widened to accept the REAL, already-persisted `comfort_kit_returned_content` row (via a new `returnId`-keyed join, resolved in the new live consumer `buildM21ComfortKitControlledSubstanceReemitConsumer`) plus the `comfort_kit_return` row's own `assigned_retrieving_membership_id`/`disposal_witness_membership_id`/`reconciled_by_membership_id` columns — both rows are guaranteed to already exist by the time M13's re-emit can ever fire, because M21's OWN `reconcileReturn` transaction writes them in the SAME commit that (via the outbox) triggers the M13 consumer this event is re-emitted from. Nothing is fabricated: the old `ReemittedDiscrepantLine`/`DispatchedLineIdentity` shapes (a synthesized partial line) are replaced outright by the real `ComfortKitReturnedContentPayload` — the exact type M21's OWN native `reconcileReturn`-driven `detectionSource: \"return_reconciliation\"` emission of the SAME event already uses, so both detection sources now share one shape. **Genuinely NOT redundant with that native emission**: M13's bedside administration-tracked accounting and M21's dispatched-vs-returned accounting are two independent discrepancy checks that can disagree (see the decider's own doc comment) — this is a second, real detection path, not a duplicate. **Re-checking the other two pairs found both blockers unchanged, fresh as of 2026-09-29**: `packages/orders/src/kinds.ts`'s `ORDER_KIND_CONTRACT_STATUS` still lists `dme`/`supply` as `contract_not_published`; `packages/types/src/patient.ts`'s `PatientAddressReader` still exposes no street-address field (`primaryResidenceState`/`residenceAt` only); `packages/dosespot/src/client/unbound.ts`'s `createUnboundDoseSpotClient` is still the only implementation anywhere and no `DOSESPOT_*` credential exists in the repository. Neither forced.",
     events: [
-      "m11.order.signed",
       "m11.order.supply_fulfillment_requested",
       "m12.medication_order.dispensed_at_pharmacy",
-      "m13.comfort_kit.controlled_substance_discrepancy",
-      "m13.comfort_kit.deployed",
-      "m13.comfort_kit.replenishment_needed",
-      "m13.comfort_kit.return_required",
     ],
   },
-  {
-    module: "m29",
-    kind: "no-consumer-surface",
-    reason: "M29 has no consumer directory and binds nothing.",
-    events: [
-      "m11.order.hl7_orm_requested",
-      "m11.order.signed",
-      "m20.safety.osha_reportable_incident_filed",
-      "m20.safety.workers_comp_claim_initiated",
-      "m35.invoice.paid",
-      "m35.refund.executed",
-      "m5.patient.archived",
-    ],
-  },
-  {
-    module: "m1",
-    kind: "no-consumer-surface",
-    reason:
-      "M1 owns the dispatcher itself and has no consumer directory; these declarations name the foundation module as a subscriber to downstream events.",
-    events: [
-      "m23.mac_portal.recovered",
-      "m23.mac_portal.unavailable",
-      "m24.medicaid_state_channel.recovered",
-      "m24.medicaid_state_channel.unavailable",
-      "m33.lag.exceeded",
-      "m33.lag.recovered",
-    ],
-  },
+  // F-175 (#248) — the m29 group (1 pair, `m11.order.hl7_orm_requested`) is now FULLY RESOLVED and deleted
+  // from this registry outright, the F-166 (m13 group) / F-176 (m11 group, m7.intervention.* trio)
+  // "group empties → delete, don't leave a hollow entry" precedent. `apps/backend/src/modules/
+  // 29-external-interfaces/outbound/dispatch-worker.ts` is the real T08 worker `dispatch-planner.ts`'s own
+  // header named and F-165/F-167 both confirmed still uncalled: it binds live on this event, resolves the
+  // feed + D16 BAA gate, envelope-encrypts under M34's tenant DEK, dispatches over the injected
+  // `MllpTransport`, and acts on every ack/retry/DLQ outcome — see the two NEW pairs this pass adds to the
+  // `m11` group instead (`m29.lab_order.transmitted`/`.transmission_failed`, M29's own new outbound
+  // production, declared-but-unbound on M11's *consuming* side; that gap is real and distinct from this one).
   {
     module: "m6",
     kind: "handlers-unbound",
     reason:
-      "M6 binds one live consumer (admission-event applier). The remainder are forward declarations.",
-    events: [
-      "m11.order.level_of_care_change_signed",
-      "m11.order.recertification_signed",
-      "m19.triage_call.gip_admission_proposed",
-      "m23.noe.accepted",
-      "m23.notr.accepted",
-      "m37.ipu_admission.bed_assigned",
-    ],
+      "F-159 (#248) built the first of the two F-155 left blocked. `m11.order.level_of_care_change_signed` is now a live consumer (`outbox-consumers/m11-level-of-care-change-signed.ts`): migration 0250 adds `level_of_care_period.source_order_id` (a LOGICAL uuid, M6's `dependsOn` excludes 11) + a plain `UNIQUE(organization_id, source_order_id)` — the M25/migration-0249 NULLS-DISTINCT precedent, so every clinician-initiated LOC change (which never sets the column) coexists freely and only order-triggered rows are ever constrained against each other. The consumer calls the SAME pure `transitionLevelOfCare` machine `changeLoc` calls directly (not `changeLoc` itself, which has no parameter for the new column — the F-158 M37 'call the pure machine' precedent) and translates M11's short LOC codes (`rhc`/`chc`/`irc`/`gip`) to M6's long-form enum. **A real, separate gap is refused rather than guessed at**: the catalogued payload carries no `facilityId`/`clinicalJustification`, both required by `transitionLevelOfCare`'s own guard for `irc`/`gip` (M11's order-kind schema has no facility field at all, and drops the clinical-justification text it DOES capture from the signed-event payload) — an IRC/GIP-directed signed order deterministically throws the machine's own typed guard and dead-letters, a correct refusal rather than a fabricated facility or padded justification string; RHC/CHC (which need neither fact) succeed. `m11.order.recertification_signed` stays genuinely blocked, and F-159 found the real blocker is deeper than the registry's prior 'needs an idempotency column' framing: M11's own locked spec (D10) requires M6 to validate F2F-window and CTI-narrative adequacy BEFORE sequencing the next benefit period, and no callable function anywhere answers either check — `state-machines/certification.ts`'s CTI machine is a multi-actor, multi-step human workflow, not a fact a single outbox handler can re-derive from the order's payload, and `createElectionPeriod` itself performs no F2F/CTI check of any kind. Wiring straight to it would let a recertification bypass the exact CoP-compliance gate (missed F2F / insufficient CTI narrative) D10 exists to enforce — needs a scoped design decision on what facts gate the sequencing and what 'escalate via M6's outbox' emits on failure, not a schema migration. " +
+      "**F-167 (#248) re-investigated this pair from scratch and confirmed the blocker holds exactly as F-159 found it, with no new callable check having appeared anywhere in the repo since.** `admission-route-service-db.ts`'s real `createElectionPeriod` (read directly, not inferred) still does nothing but resolve the admission, compute the next `sequenceNumber`, insert the row with `periodKind` derived from that sequence, and publish `m6.election.period_started` — zero F2F or CTI reads. `certification/window-math.ts` (M6-T08) is confirmed to be PURE calendar-day math only (`F2F_PRIOR_WINDOW`, `WRITTEN_CERT_DEADLINE_DAYS`, `computeCtiSignatureDueAt`) — it answers 'when is a deadline', never 'was this CTI/F2F adequate', and no `f2fWindowState`/`f2fAdequacy`/'window adequacy' function exists anywhere under `06-admission/` (grepped for both the concept and every plausible name). `state-machines/certification.ts` exports only `CERTIFICATION_GRAPH`/`transitionCertification`, the human multi-step CTI workflow machine, not a single-call adequacy predicate an outbox handler could invoke. Binding this pair therefore still means either inventing that adequacy check from scratch (a real clinical-compliance design decision — what exactly gates the sequencing, and what happens on failure) or wiring straight to `createElectionPeriod` and silently bypassing the CoP gate D10 names. Not built; the pair stays deferred on the identical, freshly-confirmed reason.",
+    events: ["m11.order.recertification_signed"],
   },
-  {
-    module: "m7",
-    kind: "handlers-unbound",
-    reason:
-      "M7 binds one live consumer (apply-IDG-decision). The remainder are forward declarations.",
-    events: [
-      "m19.triage_call.care_plan_change_indicated",
-      "m39.consent.dpoa.agent_appointed",
-      "m39.consent.dpoa.agent_removed",
-      "m9.assessment.recorded",
-      "m9.assessment.significant_change",
-    ],
-  },
-  {
-    module: "m35",
-    kind: "no-consumer-surface",
-    reason: "M35 has no consumer directory and binds nothing.",
-    events: [
-      "m32.capability.invoked",
-      "m32.tenant_opt_in.recorded",
-      "m32.tenant_opt_in.revoked",
-      "m34.tenant.offboarding_initiated",
-      "m34.tenant.provisioned",
-    ],
-  },
-  {
-    module: "m2",
-    kind: "no-consumer-surface",
-    reason: "M2 has no consumer directory and binds nothing.",
-    events: [
-      "m18.evv.device_approved",
-      "m18.evv.device_suspended",
-      "m39.consent.revoked",
-    ],
-  },
-  {
-    module: "m32",
-    kind: "no-consumer-surface",
-    reason: "M32 has no consumer directory and binds nothing.",
-    events: [
-      "m16.bereavement.risk_score_computed",
-      "m19.triage.summary_requested",
-      "m8.hearthnote.layer2_enhanced",
-    ],
-  },
+  // F-142 (#248) — the `m7` group is GONE, not merely emptied. All 5 pairs were checked against M7's own
+  // authoritative surface: `m39.consent.dpoa.agent_appointed`/`.agent_removed` and both `m9.assessment.*`
+  // events are redundant with documented build-time SEAM PULLS (M7's own D7 — a single ABAC seam to M39
+  // for DPOA attribution; M7's own spec — the registered `LatestAssessmentProvider` seam for M9 scores),
+  // dropped at the source with no m7 replacement. `m19.triage_call.care_plan_change_indicated` was a
+  // genuine misdeclaration, not merely unsupported: M19's own D8-cascade text (§11) names the real
+  // consumer as M14's IDG packet builder, not M7 — corrected at the source (declaredConsumers m7→m14) and
+  // the pair now lives in the m14 group below.
+  // F-172 (#248) — the `m35` group is GONE, not merely emptied. Two prior passes (F-142, F-167) declined
+  // to build `PseudonymKeyProvider.activeKey()`, reasoning M34's per-tenant DEK-wrap mechanism
+  // (`bootstrap/tenant-kek.ts`) "does not transfer" to a platform-singleton secret and that building one
+  // was "genuinely new security-critical infrastructure, not a wiring task." Re-investigated rather than
+  // re-asserted: it is the SAME already-ratified pattern (ADR-0038 app-layer AES-256-GCM envelope
+  // encryption, KEK custody as a fail-closed env-sourced port) applied a fifth time — the identical
+  // custody model `TWO_FACTOR_ENCRYPTION_KEY`/`M24_CREDENTIAL_ENCRYPTION_KEY`/`MESSAGING_ENCRYPTION_KEY`/
+  // `M34_TENANT_KEK` already use, and the module's OWN spec (§4.11 D15/§14.3) independently commits to
+  // "the standard WardenX KMS-wrapped DEK pattern" for this exact table. No real cloud KMS credential or
+  // new security decision was needed: the KEY MATERIAL is a CSPRNG mint (`randomBytes(32)`, the identical
+  // mechanism every DEK/KEK mint on this platform already uses — no human chooses or reviews the bytes),
+  // and the only operator-configured secret is the wrapping KEK, following the established shape exactly.
+  // Built: `packages/subscription-billing/src/pseudonym/key-envelope.ts` (the pure AES-256-GCM
+  // seal/open, AAD-bound to `(kekId, keyEpoch)` rather than an org id — the platform-singleton analogue of
+  // `tenant-kek.ts`'s tenant-binding AAD) + `35-subscription/pseudonym-key-provider.ts` (the real
+  // `PseudonymKeyProvider`, driven over the PLATFORM pool `DATABASE_PLATFORM_URL` already grants
+  // `patient_pseudonym_key` to — mint-on-first-use, race-safe via the table's own
+  // `patient_pseudonym_key_one_active_uq` partial index rather than an app-level lock) + a new
+  // `M35_PSEUDONYM_KEY_KEK` required-in-production env var (`bootstrap/env.ts`, the `M34_TENANT_KEK` rule
+  // verbatim, a SEPARATE secret never interchangeable with it). `m2.session.created`'s
+  // userId→membershipId gap F-142/F-167 both flagged is resolved the same way M5's own
+  // `membershipUserIdForOrg` already resolves the reverse direction one module over: `membership` is
+  // M1-owned (`architecture/module-manifest.ts`), M35 `dependsOn: [1]`, so M35 reads `schema.memberships`
+  // directly rather than needing a new cross-module seam. `m5.patient.merged`'s "re-pseudonymize on merge
+  // target" (§4.12) is the merge SURVIVOR's own raw patientId fed through the existing
+  // `recordPatientActive` shape; `m5.patient.deceased`'s "mark inactive with reason='died'" is a new,
+  // narrowly-scoped `markPatientInactiveForOrg` capability (NOT added to the pure `ActivePeriodStore`
+  // port — an extra Drizzle-store capability beyond the minimal port, the `CaseloadStore` shape) that
+  // deliberately leaves `was_active` untouched (a patient who died mid-period WAS active for part of it;
+  // see that function's own header). `m5.patient.created`/`.status_changed` — D21's other two
+  // `patient-active-period-aggregator` triggers — are OUT OF SCOPE: neither declares `m35` on its catalog
+  // entry today (only `.deceased`/`.merged` do), a separate, unscoped catalog question this pass does not
+  // answer. Proven live end to end (`m35-pseudonym-key-provider.live.test.ts`): mint-on-first-use is
+  // race-safe under two concurrent callers (exactly one epoch minted), the wrapped ciphertext at rest is
+  // never the plaintext, an unknown KEK id refuses with a stated reason, rotation retires the old epoch
+  // and historic rows keep their original epoch tag (never rewritten), `patient_pseudonym_key` is
+  // unreadable on the tenant `wardenx_app` credential (42501, the `tenant_key_ring`/M34-F02 shape), and
+  // all three consumers write real `patient_active_period`/`user_active_period` rows under RLS with
+  // cross-tenant isolation (org B's rows are untouched by an org A delivery).
+  // F-158 (#248) — the `m2` group is GONE, not merely emptied. `m39.consent.revoked` is now BUILT:
+  // `buildM2ConsentRevokedConsumer` terminates the patient's own `patient_portal` sessions when their
+  // `portal_access` consent is revoked — the exact mechanism M39's spec names, deliberately scoped to
+  // that ONE consent type. `family_caregiver_access` (also named in M39's per-type cascade table) is
+  // NOT handled: the spec's own worked walkthrough assumes a session model migration 0219/0220 already
+  // split into three classes, and — the real blocker — two independent, concurrently-active
+  // `family_caregiver_access` consent records can legitimately name different caregivers for the same
+  // patient with nothing in `consent-store-db.ts#createDraft` preventing it, so a blanket
+  // "every `caregiver_portal` session for this patientId" sweep would terminate an unrelated
+  // caregiver's still-valid session. The only disambiguating fact
+  // (`portal_access_grant.source_consent_record_id`) is M31-owned and not exposed by either of M31's
+  // published read seams, nor is `PortalAccessGrantReader` in the platform's `SeamName` union at all —
+  // a genuine missing cross-module read surface (a new M31 seam method + `SeamName`/`REQUIRED_SEAMS`
+  // registration), reported rather than guessed at.
+  // F-142 (#248) — the `m32` group is GONE, not merely emptied. `m16.bereavement.risk_score_computed`
+  // and `m8.hearthnote.layer2_enhanced` were both dropped on the identical shape: M32's own spec states
+  // the relationship runs the OPPOSITE direction — M16/M8 each call INTO M32's registered seam
+  // (`BereavementRiskNarrativeProvider.augment`/`NarrativeEnhancementProvider.enhance`) SYNCHRONOUSLY,
+  // and M32 already returns everything these events' payloads carry during that call; consuming its own
+  // announcement afterward would be redundant. `m19.triage.summary_requested` was a genuine
+  // misdeclaration, not merely unsupported: `events-by-m19.ts`'s own inline comment ("reserved for an
+  // M32 AI call-summary request") directly contradicted M19's own LOCKED spec, cited three separate ways
+  // (the "Consumed by" table, the §4.10 outbox table, and the Lock-status section, all naming M22 for a
+  // caregiver/attending PDF render) plus `packages/types/src/oncall.ts`'s own payload doc comment ("→ M22
+  // renders the caregiver/attending summary document"). Corrected at the source (declaredConsumers
+  // m32→m22) and the pair now lives in the m22 group above.
   {
     module: "m37",
     kind: "no-consumer-surface",
-    reason: "M37 has no consumer directory and binds nothing.",
+    reason:
+      "F-143 (#248) checked all three pairs against M37's own §4.5 'Outbox Subscriptions (Consumers)' table. **1 of 3 was genuinely misdeclared and dropped at the source**: `m6.admission.activated` is NOT in M37's §4.5 table at all — the table instead names two more granular M6 events that don't exist in M6's real catalog, and F-147 (#248) ran down the resulting naming-mismatch: neither `m6.loc.changed` (fires only at LOC-period CONFIRMATION, which M37 already learns via its own `assign-bed` route, a seam PULL not a push) nor any other real M6 event carries the intended fact — the spec's D2 handshake was simply never built on the M6 side (real, unbuilt M6-side infrastructure, reported not fixed). **`m6.admission.discharged` is now BUILT (F-158, #248)**: M37's own §4.5 table's designated (previously unbuilt) consumer file, `m6-admission-discharged.ts` — M37's FIRST outbox consumer. `transitionAdmission`'s `discharge` case (`@wardenx/inpatient`) was already the same pure, unit-tested machine the route-driven `discharge()` op calls; no cross-module seam read was needed, since `ipu_admission.admission_id` already holds the M6 admission id the payload carries. `reason === 'death'` is a deliberate no-op (M37's own catalog already reserves `.discharged` for non-death reasons, with the death path driven by the separate `m6-discharge-death.ts` consumer); a non-`active` open IPU state (pending/bed_pending/bed_assigned/transferring) throws the machine's own typed error and dead-letters rather than being guessed at; idempotency is a real CAS on `ipu_admission.version`. **Building it surfaced a real, separate, still-open gap**: M37's own §4.5 table also names a `m6-discharge-death.ts` consumer for `m6.discharge.death`, but that event's catalog entry (`events-by-m6.ts`) does not declare `m37` as a consumer at all (only `m5`) — `assertBindableAgainstCatalog` would refuse binding it today. Adding `m37` there is the prerequisite for that consumer ever being built; not done here (a catalog-declaration decision, not this pass's build). **`m19.triage_call.gip_admission_proposed` stays genuinely blocked, and more precisely than before**: re-checked directly against M37's own §4.5 table (its authoritative, exhaustively-13-row list, cross-checked against the spec's own '13 outbox consumers' file-tree count) and found the table does NOT include this event at all — it appears only in narrative prose (§1.1), with no consumer file name designated anywhere in M37's own spec (the prior framing's 'named, unbuilt consumer file' claim doesn't hold up). A real, deeper gap: no M37 schema exists to write to (`ipu_admission`'s `admission_id`/`level_of_care_period_id`/`provider_entity_id` are all NOT NULL and none of the three exist yet at the moment of a triage-call disposition, per M19's own spec — the LOC period is created later via a separate M11 order-draft mechanism), and M37's own UI screen spec describes the intake worklist as reading from three SEPARATE sources rather than one unified table — inventing a lightweight proposal/notification schema with no spec guidance on shape, retention, or dismissal semantics is a product decision, not a bind. " +
+      "**F-167 (#248) re-read M37's real §4.5 table (`docs/modules/WARDENX_MODULE_37_IPU_SPEC_v0_2.md` lines 1545-1567) directly rather than trusting the prior summary, and confirms the finding exactly: the table's 12 rows run `m6.level_of_care.requires_ipu_bed` through `m30.infection.outbreak_contained` and do not include this event under any spelling — it appears only in §1.1 prose (line 87: 'if a triage call results in a GIP admission proposal … M37 consumes `m19.triage_call.gip_admission_proposed`') and in the §4.4/D2 narrative, never in the authoritative consumer table.** M19's own spec (checked directly, not assumed) is explicit that this is still unbuilt on ITS side too — line 18's relationship inventory calls it 'deny-stub today', its §11 D-summary calls it 'M37 when M37 locks', and its own worked disposition-catalog entry (line 61) hedges 'M37 when M37 locks' rather than naming a live consumer. `packages/db/src/schema/ipu/admission.ts` still declares `admissionId`/`levelOfCarePeriodId`/`providerEntityId` all `.notNull()` on `ipu_admission` (re-read directly), and a repo-wide grep for `gip_admission_proposal`/`IntakeProposal`/any lightweight proposal-table name under `packages/db/src/schema` and `apps/backend/src/modules/37-ipu` returns nothing — no schema exists to write a proposal to, on either side, and none has been added since F-143/F-147. Not built; the pair stays deferred on the identical, freshly-confirmed reason.",
     events: [
       "m19.triage_call.gip_admission_proposed",
-      "m6.admission.activated",
-      "m6.admission.discharged",
     ],
   },
-  {
-    module: "m9",
-    kind: "no-consumer-surface",
-    reason: "M9 has no consumer directory and binds nothing.",
-    events: [
-      "m13.prn_administration_recorded",
-      "m8.encounter.signed",
-      "m8.vitals.captured",
-    ],
-  },
-  {
-    module: "m12",
-    kind: "handlers-unbound",
-    reason:
-      "M12 binds two live consumers (IDG decision intake, document back-ref) and carries three further handler files that no binding reaches.",
-    events: [
-      "m13.reconciliation.discontinue_requested",
-      "m13.reconciliation.draft_order_requested",
-    ],
-  },
-  {
-    module: "m10",
-    kind: "handlers-unbound",
-    reason:
-      "M10 binds one live consumer (admission timepoint scheduling). The remainder are forward declarations.",
-    events: [
-      "m8.encounter.signed",
-    ],
-  },
-  {
-    module: "m3",
-    kind: "no-consumer-surface",
-    reason: "M3 has no consumer directory and binds nothing.",
-    events: [
-      "m39.consent.supersedes",
-    ],
-  },
+  // F-143 (#248) — the `m9` group is GONE, not merely emptied. All 3 pairs were checked against M9's
+  // own spec: `m13.prn_administration_recorded` has no support anywhere in M9's "Depends on"/"Consumed
+  // by" relationship inventory or its §2.4 outbox table; `m8.encounter.signed` is M8 calling INTO M9's
+  // `recordAssessment` API synchronously (M9's own line 61), never a push M9 would subscribe to;
+  // `m8.vitals.captured` is the seam-vs-push trap — M9's own spec (line 75) states trending "may read
+  // the encounter vital series via M8's seam ... but M9 does not own vital signs," a documented pull
+  // M9 would perform, never an outbox push. All 3 dropped at the source (`m8.vitals.captured` moved to
+  // `seamConsumers` instead, recording the aspirational-but-unbuilt seam relationship).
+  // F-164 (#248) — the `m12` `handlers-unbound` group is GONE, not merely emptied: all 8 remaining pairs
+  // are now BUILT and live-bound. `m11.order.verbal_expired_unsigned` — all three stacked defects fixed:
+  // M12's `recordVerbal` now writes M11's polymorphic `verbal_order` row through the real
+  // `OrderSignatureProvider.recordVerbalOrder` seam (which itself gained a real per-org deadline read,
+  // `verbalPolicyForOrg`, fixing a latent bug where every deadline used the 48h platform default); the
+  // catalog payload gained the missing `targetKind` field; and M11's hourly `orders.verbal_timer` BullMQ
+  // fan-out now calls the real `OrderRouteService.expireOverdueVerbals` scan, with M12's
+  // `verbal-expired-binding.ts` consumer flipping the medication order to `expired_unsigned` on delivery.
+  // `m13.reconciliation.draft_order_requested` — M13's real emit site now sends genuine drug content
+  // (never the historical hardcoded `{}`), and M12's `draft-order-requested-binding.ts` mints a real
+  // draft `medication_order`, siting/attributing it via M6's `activeAdmissionDraftContextForPatient` seam,
+  // idempotent via a new non-partitioned ledger table (`medication_order_reconciliation_decision_
+  // application`, migration 0254 — `medication_order` is partitioned, so a direct unique constraint on
+  // the triggering decision id cannot exist). The 6 `sync-triggers.ts` events (`m5.patient.{created,
+  // updated,address_changed,payer_changed}`, `m6.admission.activated`, `m6.cti.signed`) now have the full
+  // job-queue tier this group's own reason said did not exist: a durable `dosespot_sync_queue` table
+  // (migration 0253, `12-dosespot/jobs/schema.ts` — chosen over pure BullMQ because a Postgres
+  // partial-unique index can debounce TWO DIFFERENT trigger events for the same patient close together,
+  // atomically with the outbox delivery, which a BullMQ `jobId` dedupe cannot) drained by a scheduled
+  // worker with an honest fail-closed `DoseSpotClient` boundary (no `DOSESPOT_*` credential exists
+  // anywhere in this repo) and a real M5 demographic-snapshot read (`dosespotSyncDemographicsForOrg`,
+  // M5's own org-explicit seam — `patient_address`/`patient_phone` are not in `check-table-ownership.ts`'s
+  // cross-module-read exemption set, so this could not be a direct schema read despite M5 being a
+  // declared dependency). `m6.cti.signed`'s missing `admissionId` resolves through M6's own org-explicit
+  // `electionPeriodContextForOrg` seam, injected as a port (M12's manifest has no `dependsOn` edge to 6).
+  // Two smaller gaps stay genuinely deferred, reported rather than fabricated: no RxBenefit cache exists
+  // anywhere in this repository (the `invalidateRxBenefitCache` flag is preserved on the queue row for a
+  // future cache layer to act on), and no table maps a WardenX patient to its DoseSpot-side id
+  // (`DosespotPatientIdResolver` stays an honest deny-stub — a MedHx fetch cannot name which vendor
+  // patient to pull history for until a successful patient-sync upsert has somewhere to record its
+  // response, and the vendor client itself is unbound regardless).
+  // F-143 (#248) — the `m10` group is GONE, not merely emptied. `m8.encounter.signed` was the sole
+  // member, and M10's own spec is decisive the relationship runs the OPPOSITE direction — line 9's
+  // "Consumed by" table and the spec's own re-lock note (explicitly correcting a prior encoding that
+  // "inverted the M8↔M10 dep direction") both state M8 CALLS M10's `recordHopeTimepoint` API
+  // synchronously; M10's two real outbox consumers (`apps/backend/src/modules/10-hope/outbox-consumers/`)
+  // are both M6-only. Dropped at the source with no `seamConsumers` replacement — the relationship is a
+  // synchronous API call, not a seam read either.
+  // F-143 (#248) — the `m3` group is GONE, not merely emptied. `m39.consent.supersedes` was the sole
+  // member; M3's own spec (line 74) states it consumes a consent attribute only via the boot-registered
+  // `ConsentEvaluator` seam PULL, consulted fresh per ABAC evaluation, never an outbox subscription — M3
+  // has no `consumers/` directory and no consent-keyed cache to rebind (its one cache invalidates only
+  // on role/permission changes). Dropped at the source; no `seamConsumers` replacement needed since the
+  // relationship the event's own description gestured at ("cache rebind") is already covered by the
+  // live `ConsentEvaluator` seam regardless of this declaration.
 ];

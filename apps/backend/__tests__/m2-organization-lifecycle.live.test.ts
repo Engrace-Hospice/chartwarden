@@ -22,7 +22,10 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
-import { createDrizzleOrganizationLifecycleWriter } from "../src/modules/02-identity/organization-lifecycle";
+import {
+  createDrizzleOrganizationLifecycleWriter,
+  type OrganizationLifecycleOutboxPort,
+} from "../src/modules/02-identity/organization-lifecycle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -81,10 +84,10 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
 
   function writer() {
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
-    const rawPublisher = {
-      publish: (tx: never, input: never) => publisher.publish(tx, { ...input, callerModule: "m2" } as never),
+    const rawPublisher: OrganizationLifecycleOutboxPort = {
+      publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
     };
-    return createDrizzleOrganizationLifecycleWriter(handle.db, rawPublisher as never);
+    return createDrizzleOrganizationLifecycleWriter(handle.db, rawPublisher);
   }
 
   it("suspend: writes status, revokes bound sessions, lands the outbox row, audits the transition", async () => {

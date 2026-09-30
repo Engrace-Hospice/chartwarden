@@ -40,8 +40,16 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       captureMethod: Type.String(),
       expiresAt: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m22", "m5", "m16", "m30"],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: M30's own spec (docs/modules/
+    // WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md's §8.1 Part-2-redisclosure text) and its own blanket
+    // §1.1 principle ("Outbox publication is the only cross-module communication M30 performs at the
+    // boundary") both frame the real relationship as `ConsentEvaluator.evaluate`/`.evaluateBulk`,
+    // consulted fresh per-actor on every access — confirmed ACTIVE, not aspirational:
+    // `apps/backend/src/modules/30-quality/abac-predicates.ts:407` calls
+    // `getSeam("ConsentEvaluator")` for the `part2Redisclosure` predicate. A live per-request seam pull
+    // has nothing to invalidate from a "consent was signed" push.
+    declaredConsumers: ["m22", "m5", "m16"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -58,7 +66,13 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; M28's D3 egress consent gate
     // reads M39 live at request time via `ConsentEvaluator`, not via subscription).
-    declaredConsumers: ["m22", "m5", "m3"],
+    // F-143 (#248) — m3 REMOVED: M3's own spec (line 74) states it CONSUMES a consent attribute only
+    // via the boot-registered `ConsentEvaluator` seam PULL, consulted fresh per ABAC evaluation — never
+    // an outbox subscription; M3 has no `consumers/` directory and no consent-keyed cache to rebind
+    // (its one cache, the effective-permission cache, invalidates only on role/permission changes per
+    // §4.5.1/D6). "cache rebind" in this event's own description reads as a carry-over from the
+    // sibling `consent.signed` consumer list rather than an independent M3 decision.
+    declaredConsumers: ["m22", "m5"],
     isOutboxOnly: true,
   },
   {
@@ -75,7 +89,23 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       cascadeKind: Type.String(),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m5", "m22", "m16", "m2"],
+    // F-139 (#248) — m31 ADDED: M31's own §4.10 "M31 consumes" table names this event ("any consent type
+    // backing an active grant") with a real consumer file (`m39-consent-revoked.ts`) that cascades
+    // grant revocation and closes active sessions — a genuinely broader fact than
+    // `m39.consent.delegated_access.revoked` (which covers only the `family_caregiver_access`
+    // projection row), so this is not redundant with that kept declaration.
+    // F-197 (#248) — m22 REMOVED. The #248 declared-but-unbound registry's prior reason for this pair
+    // ("`media_release` unseeded") was stale/unclear; the REAL gap, found and fixed this round, is that
+    // M22's §7.16 SUD-consent gate (`consent-gate.ts`'s `resolveSudConsentPresent`) only ever ran ONCE, at
+    // document RENDER time — nothing re-checked consent at any LATER signed-URL MINT, so a document
+    // rendered while consent was active stayed freely downloadable after a later revocation. That is a
+    // PULL at mint time (`signed-url-service.ts`'s `mint()`, and the portal `mintPortalDownloadUrl` path),
+    // not a push reaction to `.revoked` — the identical reasoning this event's siblings `.expired`/
+    // `.recipient_added`/`.recipient_removed` already used to drop `m22` here in F-176 ("M22 keeps no
+    // signed-URL/subsetter state a push could act on; the real control gap is a consent re-check at URL
+    // mint, in M22's mint path"). `m5`/`m16`/`m2`/`m31` are unaffected — each has its own real, separately
+    // verified reason to stay declared.
+    declaredConsumers: ["m5", "m16", "m2", "m31"],
     isOutboxOnly: true,
   },
   {
@@ -88,7 +118,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       typeKey,
       expiredAt: Type.String(),
     }),
-    declaredConsumers: ["m5", "m22"],
+    // F-176 (#248) — m22 REMOVED: M22 keeps no signed-URL/subsetter state a push could act on (the real control gap is a
+    // consent re-check at URL mint, in M22's mint path).
+    declaredConsumers: ["m5"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -157,7 +189,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       recipientEntityId: Type.Optional(Type.String()),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22"],
+    // F-176 (#248) — m22 REMOVED: M22 owns no disclosure-subsetter state to invalidate (`subsetter_dirty_at` is in no schema).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -171,7 +204,14 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       removedAt: Type.String(),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22", "m5"],
+    // F-167 (#248) — m5 removed: the fact is for M22/M28's per-signed-URL disclosure-subsetter cache
+    // (this event's own description), not M5's categorical, patient-level `patient_privacy_flag_
+    // snapshot` (no recipient dimension exists in that schema at all — `packages/db/src/schema/
+    // patient/patient-privacy-flag-snapshots.ts`), and the payload doesn't even carry `typeKey`.
+    // M22's own `outbox-consumers/render-consumer.ts` (F-161) independently reached the identical
+    // "no persistent state to invalidate" conclusion for this exact event.
+    // F-176 (#248) — m22 REMOVED: M22 owns no disclosure-subsetter state to invalidate (`subsetter_dirty_at` is in no schema).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -189,7 +229,16 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-129 (#248) — m14 dropped: the packet's `patientCover.activeDpoa` is documented in
     // `packages/idg/src/packet/builder.ts`'s `PacketCoverInput` as read fresh "from M5 `PatientReader` +
     // M6 recert/F2F reader + M7/M39 (raw, pre-redaction)" at build time — a seam pull, not a push cache.
-    declaredConsumers: ["m7", "m11"],
+    // F-142 (#248) — m7 dropped: M7's own D7 (locked) is decisive — "single ABAC seam to Module 39...
+    // DPOA attribution captured at write time via `acting_consent_id`" — the same seam-pull shape.
+    // F-198 (#248) — m11 dropped, the last holdout of this same pattern. Every order in M11's own catalog
+    // (`events-by-m11.ts`) carries only `orderingPhysicianMdmId`/`certifyingPhysicianMdmId` — every order
+    // is physician-signed, never patient/representative-signed, and an exhaustive grep of `11-orders/` and
+    // `packages/orders/` for any consent/authorization/decision-making concept returns nothing. Unlike M7
+    // (a real, wired `acting_consent_id` write-time field) and M14 (a real build-time seam pull), M11 has
+    // no analogous mechanism to point to, at write time or read time — there is nothing for this fact to
+    // attach to in an order-signing flow that never involves patient consent in the first place.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -204,7 +253,10 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       agentKind: Type.String(),
     }),
     // F-129 (#248) — m14 dropped: same reasoning as `dpoa.agent_appointed` above (build-time seam pull).
-    declaredConsumers: ["m7", "m11"],
+    // F-142 (#248) — m7 dropped: same D7 seam-pull reasoning as `dpoa.agent_appointed` above.
+    // F-198 (#248) — m11 dropped, same reasoning as `dpoa.agent_appointed` above (no consent/DPOA concept
+    // anywhere in M11's orders module).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -221,7 +273,19 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       effectiveFrom: Type.String(),
       effectiveUntil: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m31", "m17", "m18", "m19"],
+    // F-140 (#248) — m19 removed: M19's own spec gates portal-caregiver access via a live
+    // `ConsentEvaluator.isActive({consentKind: 'family_caregiver_access'})` SEAM PULL inside the
+    // `portal_session_consent_active` ABAC predicate, evaluated per-request — never an outbox push.
+    // F-141 (#248) — m18 removed: M18's own D16 manifest-patch text lists M39 among the modules it never
+    // dependsOn ("M18 reads from M1/2/3/4/5/17/36/38/40 ... M6/M7/M8/M14/M15/M22/M23/M24/M30/M31/M33 are
+    // *not* direct dependsOn"), and M18's exhaustive D14 consumed-events list never names an M39 event.
+    // F-158 (#248) — m17 removed: M17's own spec is decisive (twice) that portal-caregiver visit access
+    // is a live seam PULL via M31's `ConsentEvaluator`-backed ABAC predicate, never a push to M17; M17's
+    // manifest `dependsOn` excludes 39 entirely, and no M17 table stores anything delegated-access-shaped.
+    // F-176 (#248) — m31 moved to seamConsumers: M31's §4.10 table names no delegated_access event; the projection is a
+    // forward-seam PULL (route 21), and nothing publishes this event.
+    declaredConsumers: [],
+    seamConsumers: ["m31"],
     isOutboxOnly: true,
   },
   {
@@ -235,7 +299,13 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       delegateCaregiverId: Type.String(),
       revokedAt: Type.String(),
     }),
-    declaredConsumers: ["m31", "m17", "m18", "m19"],
+    // F-140 (#248) — m19 removed: same seam-pull reasoning as `.granted` above.
+    // F-141 (#248) — m18 removed: same D14/D16 reasoning as `.granted` above.
+    // F-158 (#248) — m17 removed: same seam-pull reasoning as `.granted` above (no M17-side grant state
+    // exists to invalidate either — the gate is a live M31 ABAC predicate, not an M17 cache).
+    // F-176 (#248) — m31 REMOVED: M31's §4.10 table names no delegated_access event, its bound broad
+    // `m39.consent.revoked` consumer already revokes grants by `source_consent_record_id`, and nothing publishes this.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

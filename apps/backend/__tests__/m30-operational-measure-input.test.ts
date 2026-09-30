@@ -1,7 +1,10 @@
 import {
   computeBereavementCoverageRate,
+  computeBereavementRiskScreeningCompletenessRate,
   computeCarePlan15DayAdherence,
   computeEvvComplianceRate,
+  computeF2fWindowOnTimeRate,
+  computeF2fWindowOverrideRate,
   computeIdgCadenceAdherence,
   computeLateEncounterEntryRate,
   computeMissedDoseRate,
@@ -81,12 +84,23 @@ const seamsWith = (
     async copOutreachCounts() {
       return lateEntry;
     },
+    async riskScreeningCompletenessCounts() {
+      return lateEntry;
+    },
   },
   disciplineCompliance: {
     async supervisoryOnTimeCounts() {
       return lateEntry;
     },
     async volunteerGateComplianceCounts() {
+      return lateEntry;
+    },
+  },
+  complianceWindow: {
+    async f2fWindowOnTimeCounts() {
+      return lateEntry;
+    },
+    async f2fWindowOverrideCounts() {
       return lateEntry;
     },
   },
@@ -261,6 +275,28 @@ describe("M30 operational measure inputs — counts, not rates", () => {
     expect(result.bandColor).toBe("insufficient_n");
   });
 
+  it("F-184: shapes M16's D17 screening-completeness tally into the bereavement_risk_screening_completeness_rate calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("bereavement_risk_screening_completeness_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 18, denominator: 19 }),
+    );
+    expect(input).toMatchObject({ screeningsDue: 19, screeningsCompleted: 18 });
+    expect(computeBereavementRiskScreeningCompletenessRate(input as never).rate).toBeCloseTo(
+      18 / 19,
+    );
+  });
+
+  it("F-184: no bereaved contacts owed a risk screen in the window suppresses rather than scoring perfect", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("bereavement_risk_screening_completeness_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeBereavementRiskScreeningCompletenessRate(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.rate).toBeNull();
+    expect(result.bandColor).toBe("insufficient_n");
+  });
+
   it("shapes M15's supervisory-visit timeliness tally into its calculator input", async () => {
     const input = await resolveOperationalMeasureInput(
       REQUEST("supervisory_visit_on_time"),
@@ -296,6 +332,46 @@ describe("M30 operational measure inputs — counts, not rates", () => {
       seamsWith({ numerator: 0, denominator: 0 }),
     );
     const result = computeVolunteerComplianceGateRate(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.rate).toBeNull();
+    expect(result.bandColor).toBe("insufficient_n");
+  });
+
+  it("F-178: shapes M6's F2F on-time-close tally into the f2f_window_on_time_rate calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("f2f_window_on_time_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 38, denominator: 40 }),
+    );
+    expect(input).toMatchObject({ f2fWindowsDue: 40, f2fClosedOnTime: 38 });
+    expect(computeF2fWindowOnTimeRate(input as never).rate).toBeCloseTo(0.95);
+  });
+
+  it("F-178: no F2F windows due in the window suppresses rather than scoring perfect", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("f2f_window_on_time_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeF2fWindowOnTimeRate(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.rate).toBeNull();
+    expect(result.bandColor).toBe("insufficient_n");
+  });
+
+  it("F-178: shapes M6's F2F override-close tally into the f2f_window_override_rate calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("f2f_window_override_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 2, denominator: 40 }),
+    );
+    expect(input).toMatchObject({ f2fWindowsDue: 40, f2fClosedViaOverride: 2 });
+    expect(computeF2fWindowOverrideRate(input as never).rate).toBeCloseTo(0.05);
+  });
+
+  it("F-178: no F2F windows due in the window suppresses the override rate too", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("f2f_window_override_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeF2fWindowOverrideRate(input as never);
     expect(result.denominator).toBe(0);
     expect(result.rate).toBeNull();
     expect(result.bandColor).toBe("insufficient_n");

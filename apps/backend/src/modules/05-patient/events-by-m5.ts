@@ -19,7 +19,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m5",
     description: "A patient chart was created (after the §2.3 match pipeline cleared).",
     payloadSchema: Type.Object({ ...corePatient, mrn: Type.String({ minLength: 1 }) }),
-    declaredConsumers: [],
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list (consumers/index.ts)
+    // names this event for `m12.patient-sync-created`, backed by a real pure decider
+    // (`decidePatientSyncTrigger`, sync-triggers.ts) per M12's D4 — the DoseSpot patient sync.
+    declaredConsumers: ["m12"],
     isOutboxOnly: true,
   },
   {
@@ -30,7 +33,12 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({ ...corePatient, changed: Type.Array(Type.String()) }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; M28's Patient projection reads
     // this live at request time via `PatientReader`).
-    declaredConsumers: [],
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event with a
+    // real handler (`trigger-revalidate` → `handleUpstreamChange`), re-validating a claim on any
+    // upstream demographic change.
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.patient-sync-updated` (D4).
+    declaredConsumers: ["m24", "m12"],
     isOutboxOnly: true,
   },
   {
@@ -56,7 +64,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // geocoding requests are M5's geocode job which runs on `patient.address_changed`
     // outbox" — M17 only ever reads the result afterward via the `PatientAddressReader`
     // seam PULL (`coordsForAddress`), never this push event.
-    declaredConsumers: ["m24"],
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.patient-sync-address-changed` (D4).
+    declaredConsumers: ["m24", "m12"],
     isOutboxOnly: true,
   },
   {
@@ -64,7 +74,16 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m5",
     description: "A coverage was added/updated/closed.",
     payloadSchema: Type.Object({ ...corePatient }),
-    declaredConsumers: ["m23", "m24"],
+    // F-136 (#248) — m23 REMOVED: M23's own spec describes `patient_payer` ranking + `coverage_kind` as
+    // CONSULTED (a seam pull) fresh at every claim assembly, never a push subscription — the next
+    // assembly picks up a payer change on its own, so there is nothing for a push event to invalidate.
+    // F-140 (#248) — m24 REMOVED: the identical shape one module over — redundant with
+    // `PatientPayerReader.coverageKindOn()`, a seam consumed at claim assembly (M24's own spec, the same
+    // D5/D10 substrate M23 reuses); not in `M24_SUBSCRIPTION_MAP`.
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.patient-sync-payer-changed` (D4, RxBenefit cache invalidation) — unlike M23/M24, M12 has a
+    // real still-unbound consumer for a payer change.
+    declaredConsumers: ["m12"],
     isOutboxOnly: true,
   },
   {
@@ -91,7 +110,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({ ...corePatient, flags: Type.Array(Type.String()) }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; SUD redaction is applied fresh
     // per read at D3 egress, not via a cached flag this event would invalidate).
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 removed: the identical shape one module over — M22's own spec (dependsOn text)
+    // states the privacy-flag snapshot is "consulted via M3's `sud_consent_present` predicate" fresh per
+    // read, not via a cached value this event would invalidate.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -104,7 +126,19 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // in M6's own death-discharge transaction) is the ONLY path a `bereavement_plan` row can come into
     // existence; this event is a downstream reaction to that SAME transaction two hops later and carries
     // no fact M16's intake decider (`consumers/m6-eligibility.ts`) reads.
-    declaredConsumers: ["m23"],
+    // F-141 (#248) — m29 ADDED: M29's own spec is decisive and explicit — "`m5.patient.deceased`
+    // consumed via outbox to freeze inbound ADT processing for the decedent and to refuse any
+    // post-death A01/A04 events with a typed OperationOutcome" — genuinely undeclared until now.
+    // F-142 (#248) — m35 ADDED: M35's own D21 (locked, exhaustive) names this event among its 8
+    // inbound subscriptions ("skipping `m5.patient.merged` — leaves pseudonym aggregates wrong
+    // post-merge" is D21's own rejected-alternative text for the sibling below, and `deceased` is a
+    // peer in the same D21 list).
+    // F-160 (#248) — m26 ADDED: M26's own `consumers/subscription-map.ts` (`M26_SUBSCRIPTION_MAP`)
+    // routes this topic to `freeze-patient` — the identical action, over the identical handler
+    // (`handleFreeze`), as the already-bound `m6.revocation.created` — to freeze the per-patient
+    // extrapolation denominator at death. Real routing logic, now live-bound in
+    // `26-cap/consumers/outbox-binding.ts`'s `BOUND_TOPICS`.
+    declaredConsumers: ["m23", "m26", "m29", "m35"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },
@@ -112,9 +146,25 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m5.patient.merged",
     moduleOwner: "m5",
     description:
-      "Two charts merged; document re-attach (M22) + FHIR Patient.link projection (M28, F-115/#248: at request time, not via this event).",
+      "Two charts merged (`patientId` = the SURVIVOR/target, `sourcePatientId` = the duplicate folded away); FHIR Patient.link projection (M28, F-115/#248: at request time, not via this event). Real producer: `merges-db.ts`'s `mergePatients` (F-171, #248) — the §4.3 direct-merge route.",
     payloadSchema: Type.Object({ ...corePatient, sourcePatientId: Type.String() }),
-    declaredConsumers: ["m22"],
+    // F-142 (#248) — m35 added: M35's own D21 (locked) names this event explicitly, with its own
+    // rejected-alternative text spelling out why: "skipping `m5.patient.merged` — leaves pseudonym
+    // aggregates wrong post-merge."
+    // F-171 (#248) — m22 MOVED to seamConsumers, not dropped: `22-documents/lifecycle/merge-redirect.ts`
+    // (`resolvePatientRedirect`/`applyPatientMergeCascade`, M22-T03) is a complete, unit-tested pure core
+    // whose OWN header states the real design — "M22 does NOT mutate `document.patient_id` eagerly on
+    // the merge event in the read path — on every fetch it resolves the document's stored `patient_id`
+    // through the merge chain to the surviving patient" — a SEAM PULL against live `patient.merged_into_id`
+    // state, never a push. The `outbox-deferred-consumers.ts` m22 group's prior framing ("a real per-
+    // document `UPDATE document SET patient_id = ...` M22 would have to perform") was checked against
+    // this file directly and found wrong: no such write exists or is designed, and this pure core has
+    // zero real callers anywhere in `22-documents/` (grepped outside its own barrel export + unit test) —
+    // the read-time redirect is itself still unwired (a real, separate M22-owned gap: a DB-backed
+    // `MergeFacts` + threading it through M22's document-fetch routes), reported here rather than built,
+    // since it touches M22's read surface broadly and is not an outbox-consumer build.
+    declaredConsumers: ["m35"],
+    seamConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
@@ -123,15 +173,21 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "A merge was reversed within the 30-day window.",
     payloadSchema: Type.Object({ ...corePatient, sourcePatientId: Type.String() }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 removed: M5's own locked D8 states merge "re-points all FK references through
+    // the `patient_resolver` (no destructive UPDATE on satellite tables)" — identity resolution is
+    // fresh-per-fetch via a live resolver, not a cached/pushed pointer this event would need to correct.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
     eventName: "m5.patient.archived",
     moduleOwner: "m5",
-    description: "A chart was archived; M29 expires related HL7 inbound proposals.",
+    description: "A chart was archived.",
     payloadSchema: Type.Object({ ...corePatient }),
-    declaredConsumers: ["m29"],
+    // F-141 (#248) — m29 dropped: this event's own description claimed "M29 expires related HL7 inbound
+    // proposals" — no support anywhere in M29's spec (zero mentions of patient archival; M29's own
+    // proposal-lifecycle documentation names exactly one expiry path, the 72h SLA timer). Record-only.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

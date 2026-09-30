@@ -91,6 +91,22 @@ export const M17_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "m6.admission.discharged", consumerName: "m17.m6-admission-lifecycle" },
   // M7 signed care-plan version — frequency proposals (`buildM17CarePlanProposalConsumer`).
   { eventName: "m7.care_plan.version_signed", consumerName: "m17.m7-care-plan-proposals" },
+  // F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
+  { eventName: "m18.evv.check_in_recorded", consumerName: "m17.m18-evv-check-in" },
+  { eventName: "m18.evv.at_patient_address", consumerName: "m17.m18-evv-at-patient-address" },
+  { eventName: "m20.safety.visit_cancellation_requested", consumerName: "m17.m20-safety-visit-cancellation" },
+  // F-158 (#248) — the §3.3 EVV checkout/correction provenance pointers.
+  { eventName: "m18.evv.check_out_recorded", consumerName: "m17.m18-evv-check-out" },
+  { eventName: "m18.evv.event_corrected", consumerName: "m17.m18-evv-event-corrected" },
+  // F-196 (#248) — the §4.10 missing-EVV resolution stamp, bound live.
+  { eventName: "m18.evv.late_check_resolved", consumerName: "m17.m18-evv-late-check-resolved" },
+  // F-166 (#248) — the §7.5 volunteer-gate scheduler warning and the §2.2.4 D5 after-hours triage
+  // dispatch proposal.
+  {
+    eventName: "m15.volunteer.assignment_inactivated",
+    consumerName: "m17.m15-volunteer-assignment-inactivated",
+  },
+  { eventName: "m19.triage_call.visit_needed", consumerName: "m17.m19-triage-visit-needed" },
 ] as const;
 
 export interface M17EncounterSignedOutboxPort {

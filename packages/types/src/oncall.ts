@@ -231,12 +231,15 @@ export type TriageEscalationState = "open" | "acknowledged" | "resolved";
 
 // ── §3.3 owned tables + the §3.6 audit denylist / retention class (M4 trigger arguments for M19-T02) ──
 
-/** The ten tables M19 owns per the manifest `ownedTables`. §12/§13 of the spec still say nine — they
- *  predate the M19-F08 BCP amendment that added `triage_paper_reentry_worklist`; the manifest wins. */
+/** The eleven tables M19 owns per the manifest `ownedTables`. §12/§13 of the spec still say nine — they
+ *  predate the M19-F08 BCP amendment that added `triage_paper_reentry_worklist`, and neither mentions
+ *  `on_call_roster_sync_queue` (F-165, #248 — the §4.8 `m19.shift-sync.debounced` debounce table); the
+ *  manifest wins. */
 export type M19TableName =
   | "tenant_oncall_policy"
   | "external_triage_vendor"
   | "on_call_shift"
+  | "on_call_roster_sync_queue"
   | "triage_protocol"
   | "triage_protocol_question"
   | "triage_call"
@@ -249,6 +252,7 @@ export const M19_TABLE_NAMES = [
   "tenant_oncall_policy",
   "external_triage_vendor",
   "on_call_shift",
+  "on_call_roster_sync_queue",
   "triage_protocol",
   "triage_protocol_question",
   "triage_call",
@@ -277,6 +281,7 @@ export const M19_AUDIT_DENYLIST: { readonly [K in M19TableName]: readonly string
   tenant_oncall_policy: [],
   external_triage_vendor: [],
   on_call_shift: ["cancellation_reason", "compensation_metadata"],
+  on_call_roster_sync_queue: [],
   triage_protocol: [],
   triage_protocol_question: [],
   triage_call: [
@@ -297,13 +302,14 @@ export const M19_AUDIT_DENYLIST: { readonly [K in M19TableName]: readonly string
  * indefinite), not a prose label: migration 0033's precedent maps the clinical record itself onto
  * `compliance` (CoP 418.104 six-year floor, standardized to seven per ADR-0004 / M4 D1).
  *
- * Every M19 table is `compliance`, and that uniformity is the considered answer rather than a default.
- * The call tables ARE the clinical record. `on_call_shift` is the CoP 418.100(c)(2) proof that a nurse
- * was reachable at 2 a.m. — the single most survey-load-bearing row M19 writes. `tenant_oncall_policy`
- * and the protocol pair hold the D7 mandatory-escalation floor, so an edit to them is exactly what a
- * suppression investigation reads. `external_triage_vendor` carries the BAA attestation.
- * `triage_paper_reentry_worklist` is the DR-013/066 BCP evidence that the paper-origin calls were
- * reconciled — its 72-hour operational LIFETIME says nothing about how long the audit of it must live.
+ * Every clinical/coverage table is `compliance`, and that uniformity is the considered answer rather
+ * than a default. The call tables ARE the clinical record. `on_call_shift` is the CoP 418.100(c)(2)
+ * proof that a nurse was reachable at 2 a.m. — the single most survey-load-bearing row M19 writes.
+ * `tenant_oncall_policy` and the protocol pair hold the D7 mandatory-escalation floor, so an edit to
+ * them is exactly what a suppression investigation reads. `external_triage_vendor` carries the BAA
+ * attestation. `triage_paper_reentry_worklist` is the DR-013/066 BCP evidence that the paper-origin
+ * calls were reconciled — its 72-hour operational LIFETIME says nothing about how long the audit of it
+ * must live. `on_call_roster_sync_queue` is the one exception (F-165, #248) — see its own entry below.
  */
 export const M19_AUDIT_RETENTION_CLASS: {
   readonly [K in M19TableName]: "operational" | "compliance" | "legal_hold";
@@ -311,6 +317,11 @@ export const M19_AUDIT_RETENTION_CLASS: {
   tenant_oncall_policy: "compliance",
   external_triage_vendor: "compliance",
   on_call_shift: "compliance",
+  // F-165 (#248) — the §4.8 debounce/catch-up queue backing the `m19.shift-sync.debounced` reconciler.
+  // `operational`, not `compliance`: it is process bookkeeping for a reconciliation PASS, not the
+  // clinical/coverage record itself (that's `on_call_shift`, immediately above) — the same distinction
+  // migration 0253's `dosespot_sync_queue` trigger already draws for the identical queue shape.
+  on_call_roster_sync_queue: "operational",
   triage_protocol: "compliance",
   triage_protocol_question: "compliance",
   triage_call: "compliance",
@@ -457,20 +468,19 @@ export const M19_EVENT_IDEMPOTENCY_KEYS = {
  * `m17.visit.assigned` is M17's canonical roster-change signal (M17 §4.11 emits no separate
  * `m17.roster.changed`), and is what the debounced Direct-model shift-sync reconciles on.
  */
+// F-140 (#248) checked every entry above the "not routed" split against M19's own spec text rather than
+// trusting the F-094 comparison at face value. `m17.visit.unassigned`/`.time_off.approved`/
+// `.reassignment_needed` and both `m20.safety.*` events are each a SEAM PULL M19's own spec describes at
+// the point of use (the shift-sync worker re-pulls the roster off `.assigned` alone; the "go on shift"
+// gate reads PTO/credential state fresh via an M17 reader; M20 pulls M19's `OnCallProvider` seam for its
+// after-hours recipient set) — never a push subscription, and no consumer file exists or is planned for
+// any of the five. Both `m39.consent.delegated_access.*` events are the same shape: portal-caregiver
+// access is gated by a live `ConsentEvaluator.isActive` seam pull, per request, not a cached push. All
+// seven removed at the source (`events-by-m17.ts`/`events-by-m20.ts`/`events-by-m39.ts`) and here.
 export const M19_SUBSCRIBED_EVENT_NAMES = [
   "m17.visit.no_show_detected",
   "m17.visit.assigned",
   "m18.evv.late_check_out_detected",
-  // F-094/#205 — catalogued AND declaring `m19`, and absent from this list until the two were first
-  // compared. The relay routes each of them here; §4.8's triage-intake, roster and safety-escalation
-  // consumers are what will answer them.
-  "m17.visit.unassigned",
-  "m17.time_off.approved",
-  "m17.reassignment_needed",
-  "m20.safety.sos_alert_raised",
-  "m20.safety.check_in_escalated",
-  "m39.consent.delegated_access.granted",
-  "m39.consent.delegated_access.revoked",
   // Subscribed and NOT routed here — each registered in `scripts/outbox-subscription-exceptions.ts`.
   "m36.notification.delivery_failed",
   "m8.encounter.signed",
@@ -539,13 +549,16 @@ export interface M19TriageCallDocumentedPayload extends M19TriageCallEventBase {
 }
 
 /** `m19.triage_call.visit_needed` → M17's proposal queue. `requestedArrivalBy` is set for
- *  `visit_dispatched_now`; `proposedForDate` for `visit_scheduled_first_light`. */
+ *  `visit_dispatched_now`; `proposedForDate` for `visit_scheduled_first_light`. `visitKind` (F-166,
+ *  #248) is the discriminator the M17 consumer needs: `visit_dispatched_now` and `pronouncement_scheduled`
+ *  are otherwise indistinguishable from the payload's own non-null fields alone. */
 export interface M19TriageCallVisitNeededPayload extends M19TriageCallEventBase {
   readonly patientId: PatientId;
   readonly requestedDiscipline: string;
   readonly requestedArrivalBy: IsoInstant | null;
   readonly proposedForDate: IsoDate | null;
   readonly reason: string;
+  readonly visitKind: "dispatch_now" | "first_light" | "pronouncement";
 }
 
 /** `m19.triage_call.gip_admission_proposed` → M37 when M37 locks. */

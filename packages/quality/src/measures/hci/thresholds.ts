@@ -67,11 +67,26 @@ export const HCI_THRESHOLDS_v2025: HciThresholdTable = {
       direction: "lte",
       label: "per-beneficiary spend vs benchmark ratio",
     },
-    // 8. Skilled Nursing Care Minutes per Routine Home Care day — higher is better (rate is RHC-days with
-    //    SN minutes at/above the per-day floor).
-    indicator_08: { value: 0.5, direction: "gte", label: "RHC days meeting SN-minutes floor" },
-    // 9. Skilled Nursing Minutes on Weekends — higher is better.
-    indicator_09: { value: 0.5, direction: "gte", label: "weekend days meeting SN-minutes floor" },
+    // 8. Skilled Nursing Care Minutes per Routine Home Care day — higher is better. CMS's value is the MEAN
+    //    skilled-nursing minutes per RHC day, so this cut is in MINUTES per RHC day, not a proportion
+    //    (`computeHciIndicator08` decides the verdict on the mean and rescales only the stored `rate`).
+    //    Approximation: CMS scores it against the national percentile distribution; 15 minutes per RHC
+    //    day is the platform's static stand-in (roughly two one-hour RN visits a week).
+    indicator_08: {
+      value: 15,
+      direction: "gte",
+      label:
+        "skilled-nursing minutes per RHC day (platform approximation of the CMS percentile cut)",
+    },
+    // 9. Skilled Nursing Minutes on Weekends — higher is better. The rate is the SHARE of skilled-nursing
+    //    minutes on RHC days delivered on a Saturday or Sunday. Approximation: CMS scores it by national
+    //    percentile; 5% is the platform's static stand-in.
+    indicator_09: {
+      value: 0.05,
+      direction: "gte",
+      label:
+        "share of skilled-nursing minutes on weekends (platform approximation of the CMS percentile cut)",
+    },
     // 10. Visits Near Death — higher is better.
     indicator_10: { value: 0.8, direction: "gte", label: "decedents visited in last days of life" },
   },
@@ -79,26 +94,17 @@ export const HCI_THRESHOLDS_v2025: HciThresholdTable = {
 
 // ── platform reduction constants (NOT CMS-published in this form) ───────────────────────────────────────
 //
-// Indicators 2, 8 and 9 are defined by CMS over the national claims distribution: 8 and 9 are a RATIO
-// (total skilled-nursing minutes ÷ routine-home-care days, and the same on weekends), scored by percentile,
-// not a count of days meeting a per-day cut. This platform's calculators take the day-count shape instead
-// (`rhcDaysMeetingSnMinuteFloor / totalRhcDays`), which needs two numbers CMS never publishes: what counts
-// as a day with skilled nursing on it, and how long a stretch without a nurse is a gap.
+// Indicator 2 is defined by CMS over the national claims distribution, scored by percentile, and needs one
+// number the platform has to choose: how long a stretch without a nurse is a gap. It is declared HERE,
+// beside the threshold table and under the same caveat, so it sits in one reviewed place rather than buried
+// in a worker — and so a reader can see that it is the platform's reading, not a spec value.
 //
-// They are declared HERE, beside the threshold table and under the same caveat, so the two invented numbers
-// in the HCI computation are in one reviewed place rather than buried in a worker — and so a reader can see
-// that they are the platform's reading, not a spec value. Both are single-constant edits.
-/**
- * ★ PLATFORM CONSTANT — minutes of skilled nursing that make a calendar day count as "delivered" for
- * indicators 8 and 9. 15 minutes is the shortest bracket that reads as a visit rather than a doorstep
- * check; CMS states no per-day figure at all, because its own indicator does not have a per-day arm.
- */
-export const HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR = 15;
-
+// (Indicators 8 and 9 need no such constant: they follow the CMS definitions directly — mean skilled-nursing
+// minutes per RHC day, and the weekend share of those minutes — see `skilled_nursing_minutes.ts`.)
 /**
  * ★ PLATFORM CONSTANT — days between skilled-nursing visits after which indicator 2 counts an election as
  * having a GAP. Seven days matches the CMS HCI narrative description ("more than seven days between skilled
- * nursing visits"), which is the one of the three numbers here with a published anchor; it is still listed
+ * nursing visits"), which is a published anchor; it is still listed
  * as a platform constant because the technical spec computes it over claim lines, not encounter records.
  */
 export const HCI_SKILLED_NURSING_GAP_DAYS = 7;

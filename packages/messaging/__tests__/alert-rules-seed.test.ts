@@ -39,6 +39,9 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m17.visit.rescheduled",
       "m17.visit.no_show_detected",
       "m17.stale_visit_detected",
+      // F-187 (#248) — a lab order superseded after its ORM may already be at the laboratory (T-29.08 defines no
+      // outbound cancel, so this alert is the only signal). A real emitter: M11's `lab-cancellation-required`.
+      "m11.order.lab_cancellation_required",
       "m8.encounter.unsigned",
       "m8.encounter.documentation_late",
       "m8.encounter.cosignature_routed",
@@ -52,6 +55,22 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "system.integration_failure",
       "system.ai_cost_threshold",
       "system.backup_failure",
+      // F-188 (#248) — M29's outbound operator alerts (spec §5.3); previously rule-less, so they reached nobody.
+      "hl7_outbound.transmission_failed",
+      // F-199 — the failure-storm escalation.
+      "hl7_outbound.transmission_storm",
+      "external_feed.baa_expired",
+      "external_feed.baa_missing",
+      // F-201 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
+      // sweep giving up.
+      "m11.order.transmission_held_aging",
+      "m11.order.transmission_auto_retry_exhausted",
+      // F-202 (#248) — the two-person lab-recovery control's compliance alerts.
+      "m11.order.recovery_executed",
+      "m11.order.recovery_expired",
+      "m11.order.recovery_cancelled",
+      // F-203 (#248) — the collusion / rate signal on that control (critical, deduplicated per window).
+      "m11.order.recovery_anomaly",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

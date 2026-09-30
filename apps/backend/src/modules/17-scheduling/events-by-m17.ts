@@ -94,7 +94,12 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     // F-043/#103 — `m20` was absent while M20's own `M20_SUBSCRIBED_EVENT_NAMES` has named this topic
     // since M20-T01. This is the trigger for `m20.materialize-cadence`, the ONLY producer of
     // `safety_check_in_schedule` rows: without the declaration the relay routes the row to nobody.
-    declaredConsumers: ["m8", "m18", "m20"],
+    // F-139 (#248) — `m31` ADDED: M31's own §4.10 "M31 consumes" table names this event (telehealth
+    // flag) with a real consumer file (`m17-visit-published-telehealth.ts`) that enqueues the room-mint
+    // job — the reverse of every other F-139 drop in this pass, a real relationship the catalog never
+    // declared at all. The stale "Phase 2" note in this event's OWN description above refers to M28's
+    // SMART user-launch (M31's spec §9 D20), not this room-mint flow, which M31's spec treats as current.
+    declaredConsumers: ["m8", "m18", "m20", "m31"],
     isOutboxOnly: true,
   },
   {
@@ -122,7 +127,10 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       formerAssignedMembershipId: id,
       patientId: id,
     }),
-    declaredConsumers: ["m5", "m19"],
+    // F-140 (#248) — m19 removed: M19's own spec names `.assigned` as the ONLY roster-change signal it
+    // needs ("M17 emits no separate `m17.roster.changed`") — the shift-sync worker re-pulls the full
+    // roster on that event, so a separate unassignment push is redundant with what `.assigned` covers.
+    declaredConsumers: ["m5"],
     isOutboxOnly: true,
   },
   // ── in-visit lifecycle (§2.2.1 / §4.11) ─────────────────────────────────────────────────────────────────
@@ -132,7 +140,10 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     description:
       "published → en_route (EVV check-in or self-attest start); M18 brackets the visit.",
     payloadSchema: Type.Object({ visitId: id, startedAt: isoInstant, evvBracketState: id }),
-    declaredConsumers: ["m18"],
+    // F-141 (#248) — m18 dropped: M18's own D14 (locked) names its exhaustive consumed-events list as
+    // exactly `m17.visit.published`/`.cancelled` — this event is not among them, and M18 brackets the
+    // visit through its own check-in/check-out route path, not by reacting to `.started`.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -150,7 +161,9 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     // F-043/#103 — M20 retires the mid-visit prompts a short visit outran (`m20.retire-cadence`).
     // F-115 (#248) — m30 moved to seamConsumers: reads visit on-time counts via
     // `VisitMetricsProvider.getOnTimeVisitCounts` (visit_on_time_rate) on its nightly cadence.
-    declaredConsumers: ["m18", "m20"],
+    // F-141 (#248) — m18 dropped: not in M18's D14 exhaustive consumed-events list (only `.published`/
+    // `.cancelled`); M18's own consumer table (task 26) names only those two upstream M17 subscriptions.
+    declaredConsumers: ["m20"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -181,7 +194,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       newStartedAt: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m8", "m18", "m31", "m36"],
+    // F-141 (#248) — m18 dropped: not in M18's D14 exhaustive consumed-events list.
+    declaredConsumers: ["m8", "m31", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -205,7 +219,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     eventName: "m17.visit.late_check_out_suspected",
     moduleOwner: "m17",
     description:
-      "The late-check sweep found an `in_visit` visit past scheduled_ended_at + grace with no checkout/encounter — M18 opens an evv_missing_resolution row (M18 §7 / D6).",
+      "The late-check sweep found an `in_visit` visit past scheduled_ended_at + grace with no checkout/encounter. F-141 (#248): this M17-spec gloss ('M18 opens an evv_missing_resolution row') conflicts with M18's OWN locked D14, which names its exhaustive consumed-events list as exactly `m17.visit.published`/`.cancelled` — this event is not among them. M18's own §7/D6 late-checkout detection is M18's OWN `late-check-sweep` cron (a listed M18 BullMQ worker), not a consumer of this event; M18's D6 auto-close path reacts to `m8.encounter.signed` instead. Record-only per the producing/consuming disagreement resolved in the consumer's favor (F-101).",
     payloadSchema: Type.Object({
       visitId: id,
       patientId: id,
@@ -213,7 +227,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       expectedCheckOutBy: isoInstant,
       suspectedAt: isoInstant,
     }),
-    declaredConsumers: ["m18"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── recurring + time-off (§2.2.3 / §2.2.6 / §4.11) ──────────────────────────────────────────────────────
@@ -257,7 +271,9 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       approvedBy: id,
       affectedPublishedVisitCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m19", "m36"],
+    // F-140 (#248) — m19 removed: M19's own spec checks PTO eligibility via a SEAM PULL at the "go on
+    // shift" gate ("not on PTO via M17 reader"), never a push subscription to this event.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -309,7 +325,9 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
         Type.Literal("volunteer_gate_expired"),
       ]),
     }),
-    declaredConsumers: ["m19", "m36"],
+    // F-140 (#248) — m19 removed: no support anywhere — M19's own spec never mentions "reassignment",
+    // and M17's own description above ("M19 triage") has no cross-reference or consumer file behind it.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -336,7 +354,11 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       channel: Type.Union([Type.Literal("sms"), Type.Literal("email")]),
       scheduledStartedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m31", "m36"],
+    // F-139 (#248) — m31 removed: M31's own spec (§4.4 "Depends on" item 17) says the opposite of a
+    // consumption relationship outright — "visit-reminder opt-in is M22's domain … but exposed in M31's
+    // preference UI" — a UI surface reading M22's data, not an M31 outbox subscriber. M31's own
+    // authoritative §4.10 "M31 consumes" table never names this event either.
+    declaredConsumers: ["m22", "m36"],
     isOutboxOnly: true,
   },
 ];

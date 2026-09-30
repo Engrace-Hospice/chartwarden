@@ -49,7 +49,15 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       archivesAt: Iso,
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22"],
+    // F-139 (#248) — m31 ADDED: M31's own §4.10 "M31 consumes" table names this event with a real
+    // consumer file (`m16-bereavement-plan-opened.ts`) that flips portal accounts of bereaved contacts
+    // to bereaved scope — a plan-level fact distinct from `m16.bereavement.contact_active`'s per-contact
+    // confirmation, both separately named in M31's own consumed-events table.
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `seedRosterAndSchedule`
+    // (`write-service-drizzle.ts`, "D14 — the M22 welcome-packet render handshake rides the
+    // plan-opened transition") co-emits `m16.bereavement.outreach_artifact_requested` in the SAME
+    // effects call, already M22's real, §4.11-table-listed render trigger.
+    declaredConsumers: ["m31"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -83,7 +91,13 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     // `BereavementComplianceProvider.planClosureCounts` method exists for this domain but no currently-
     // registered M30 measure calls it (only `copOutreachCounts`, for `bereavement_coverage_rate`, is
     // wired) — a dormant capability is not a seam relationship yet ("bound is not computing", F-042).
-    declaredConsumers: ["m22", "m30"],
+    // F-139 (#248) — m31 ADDED: M31's own §4.10 table names this event with a real consumer file
+    // (`m16-bereavement-plan-closed.ts`) that revokes bereaved grants.
+    // F-144 (#248) — m22 REMOVED: M22's own §4.11 table names only two M16 events
+    // (`outreach_artifact_requested`, `bereavement.anniversary_due`) — not this one — and
+    // `closeAt13Months` (`lifecycle/plan.ts`) emits only the closure event, no redundant render-request
+    // sibling; this description's "M22 renders the closeout summary" is unbuilt on both sides.
+    declaredConsumers: ["m30", "m31"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -94,7 +108,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       "EVERY enrollee opted out (D6) — distinct from `closed_completed` because the survey record must show the family refused, not that the program ran its course.",
     payloadSchema: Type.Object({ planId: Id, closedAt: Iso }),
     // F-115 (#248) — same as `plan_closed_completed` above: `planClosureCounts` exists, unused.
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: same as `plan_closed_completed` above — not in M22's own §4.11 table,
+    // and `closeOnAllContactsOptedOut` emits only this event, no render-request sibling.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -110,7 +126,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       cosignedByUserId: IdN,
     }),
     // F-115 (#248) — same as `plan_closed_completed` above: `planClosureCounts` exists, unused.
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: same as `plan_closed_completed` above — not in M22's own §4.11 table,
+    // and `closeEarly` emits only this event, no render-request sibling.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -120,11 +138,15 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "M6 declared the admission bereavement-eligible but the M5 patient-level directive said no (D9). Carries NO planId: nothing opened, and no M36 channel was created.",
     payloadSchema: Type.Object({ patientId: Id, admissionId: Id, deathDate: Str }),
-    // F-115 (#248) — m30 stays declared: whether an opt-out-skipped case belongs in
-    // `copOutreachCounts`'s denominator is a real product question (F-099 shape), not a settled seam
-    // relationship — left as a genuine gap rather than guessed.
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-206 (#248) — the F-115 open question is settled: the user decided an opt-out-skipped death counts
+    // as CoP 418.64(d) coverage SATISFIED. `copOutreachCounts` is a PULL (M30's nightly recompute calls it
+    // directly, no push registered anywhere for `bereavement_coverage_rate`) — this is a seam relationship,
+    // not an outbox-bound one, corrected here rather than left mis-declared. M16 records the fact durably
+    // in `bereavement_cop_opt_out_credit` at its one live emit site
+    // (`outbox-consumers/m5-patient-opt-out-changed.ts`'s `skip` branch) and `copOutreachCounts` sums it
+    // into both the numerator and denominator.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -216,9 +238,30 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m16.bereavement.contact_referred_external",
     moduleOwner: "m16",
     description:
-      "§7.7 — complicated grief / suicidal ideation routed to an M40 external mental-health resource. M36 raises the `clinical_urgent` alert; M30 treats it as incident-potential.",
+      "§7.7 — complicated grief / suicidal ideation routed to an M40 external mental-health resource. M36 raises the `clinical_urgent` alert.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, externalResourceId: Id }),
-    declaredConsumers: ["m30"],
+    // F-148 (#248) — m30 DROPPED: this event's own §4.10-table gloss ("M30 incident potential") is
+    // the only place M30 is named for it, and it is unsupported everywhere that would have to carry
+    // it if it were real. M30's OWN §1.1 relationship-inventory text scopes its ENTIRE M16 relationship
+    // to "consumes `BereavementComplianceProvider` for the CoP 418.64(d) … measure; M30 emits no
+    // bereavement data and writes nothing to M16" (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md
+    // §1.1) — no mention of an incident-drafting relationship. M30's own §4.10 upstream catalog
+    // (`packages/quality/src/consumers/subscription-map.ts`'s `M30_OUTBOX_SUBSCRIPTIONS`, its own header
+    // calls itself "the SINGLE SOURCE OF TRUTH" for M30's inbound topics) has exactly six keys and none
+    // of them is `m16.*` — contrast `m12.medication.error_reported`, which DOES carry a real
+    // `{ kind: "incident_draft", incidentKind: "medication_error" }` entry, the shape this event would
+    // need. M30's own `IncidentKind` enum (`packages/quality/src/contracts.ts`) has no member a
+    // complicated-grief/suicidal-ideation referral maps to (`fall` / `medication_error` / `complaint` /
+    // `allegation_of_abuse` / `exposure_event` / `other_safety_event`). And M16's OWN "Done means"
+    // worked example for this exact transition (§ walkthrough, "Sarah administers the PG-13-adapted
+    // screen…") narrates M36's alert and M22's referral-letter render in full and names no M30 action at
+    // all — the producing module's own most concrete evidence omits the relationship its terse table
+    // cell asserts, the F-108/F-136 shape. Not the F-131 "kept, not dropped" asymmetry: that caution
+    // applies when the consuming spec is merely SILENT; M30's spec here affirmatively narrows the
+    // relationship rather than saying nothing. No seamConsumers replacement — no `BereavementComplianceProvider`
+    // method (`copOutreachCounts`/`riskScreeningCompletenessCounts`/`planClosureCounts`) reads a referral
+    // fact, so there is no seam relationship to record either.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -299,13 +342,23 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       dataCompleteness: Str,
       confidenceBand: Str,
     }),
-    // F-115 (#248) — m30 stays declared, not moved to seamConsumers: `BereavementComplianceProvider.
-    // riskScreeningCompletenessCounts` exists for exactly this D17 filter, but no measure code in
-    // `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`'s registered set calls it yet — a screening-
-    // completeness measure is not among the eleven currently bound. The description's "M30's screening
-    // measure" describes a capability that exists on the seam, not one wired to a running recompute.
-    declaredConsumers: ["m30", "m32"],
-    seamConsumers: ["m33"],
+    // F-184 (#248) — `BereavementComplianceProvider.riskScreeningCompletenessCounts` now backs the real
+    // `bereavement_risk_screening_completeness_rate` operational measure (`m30-jobs.ts`'s
+    // `resolveOperationalMeasureInput`, the F-178 pattern: nightly-recompute PULLED off the seam, no
+    // bespoke outbox consumer for this event — the write this event announces lands in the same
+    // `bereavement_risk_score` table the nightly pull already reads). M30 moved from `declaredConsumers`
+    // to `seamConsumers` alongside M33: it consumes this fact by SEAM PULL, not by an outbox binding
+    // subscribed to this event (the identical shape M33 already had here) — no `OutboxConsumerBinding`
+    // for `m30` names this event type, so declaring it in `declaredConsumers` would leave a permanent
+    // declared-but-unbound pair (rule 4). The prior F-115 note (declared-but-unbound, no measure code
+    // consuming the seam) no longer applies now that a real measure calls it.
+    // F-142 (#248) — m32 dropped: M32's own spec is decisive the relationship runs the OPPOSITE
+    // direction — "`BereavementRiskNarrativeProvider.augment(...)` consumed when M16's tenant opt-in
+    // flag is on... produces the LLM-augmented risk narrative recorded on `bereavement_risk_score`
+    // ALONGSIDE the deterministic score" — M16 calls INTO M32 synchronously, before this event fires;
+    // M32 already knows everything this event's payload carries.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {

@@ -11179,6 +11179,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medication-orders/{id}/report-error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a clinician-initiated medication-error report against an order (F-205, #248) */
+        post: operations["postApiV1MedicationordersByIdReporterror"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medication-orders/{id}/request-signature": {
         parameters: {
             query?: never;
@@ -12107,6 +12124,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{id}/recover-transmission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (FILES a two-person request a different user must co-sign; nothing is re-dispatched until then) or DID (mark transmitted, send nothing) — 409 when not recoverable */
+        post: operations["postApiV1OrdersByIdRecovertransmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/recover-transmission/{requestId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a pending recovery request (either person) — 409 when it is no longer pending */
+        post: operations["postApiV1OrdersByIdRecovertransmissionByRequestIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/recover-transmission/{requestId}/cosign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Co-sign a pending not_received_by_lab recovery (the second person of the two-person control): re-dispatches once — 409 when the request is not pending, has lapsed (24 h), or was filed by the same user */
+        post: operations["postApiV1OrdersByIdRecovertransmissionByRequestIdCosign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/{id}/request-signature": {
         parameters: {
             query?: never;
@@ -12118,6 +12186,23 @@ export interface paths {
         put?: never;
         /** Draft -> pending_signature (resolves cosign requirement) */
         post: operations["postApiV1OrdersByIdRequestsignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/resend-transmission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-run the outbound lab HL7 request for a signed lab order whose request was refused (orm_refused:*) — 409 when not resendable */
+        post: operations["postApiV1OrdersByIdResendtransmission"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12184,6 +12269,23 @@ export interface paths {
         };
         /** RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5) */
         get: operations["getApiV1OrdersCosignpending"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/held-transmissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Held lab-order worklist — orders that failed AFTER their HL7 message was built (dlq_exhausted / application_reject / recovery_blocked:*) and wait for an operator to verify with the lab; oldest first, cursor-paginated, with age + escalation stage (orders.amend) */
+        get: operations["getApiV1OrdersHeldtransmissions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12503,6 +12605,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Direct patient merge (§2.4/§4.3, step-up + caseload_or_scope on both source + target) — folds :id into targetPatientId, no destructive UPDATE on satellite tables (F-171, #248) */
+        post: operations["postApiV1PatientsByIdMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/payers": {
         parameters: {
             query?: never;
@@ -12580,7 +12699,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one assessment row */
+        /** Read one assessment with ordered per-item responses */
         get: operations["getApiV1PatientsByPatientIdAssessmentsById"];
         put?: never;
         post?: never;
@@ -12618,6 +12737,23 @@ export interface paths {
         get: operations["getApiV1PatientsByPatientIdAssessmentsSummary"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/assessments/summary/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** F-208 explicit trigger — request a fresh printable assessment-summary render (M22 renders assessment_summary) */
+        post: operations["postApiV1PatientsByPatientIdAssessmentsSummaryDocument"];
         delete?: never;
         options?: never;
         head?: never;
@@ -17519,6 +17655,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/caregiver-signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** M21's own caregiver-signature capture (F-193, #248) — not a status transition, no outbox emission, refuses a second capture (If-Match) */
+        post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdCaregiversignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplies/supply-requests/{supplyRequestId}/confirm-received": {
         parameters: {
             query?: never;
@@ -19760,11 +19913,20 @@ export interface operations {
                     port: number;
                     protocol: "mllp_tls" | "mllp_plain";
                     channelCertPin?: string;
+                    channelCertPem?: string;
                     sendingFacilityAllowlist?: string[];
                     baaContractRef?: string;
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    inFlightLeaseSeconds?: number;
+                    /** Format: uuid */
+                    labDestinationFacilityId?: string;
+                    mshSendingApplication?: string;
+                    mshSendingFacility?: string;
+                    mshReceivingApplication?: string;
+                    mshReceivingFacility?: string;
+                    receiverDedupesControlId?: boolean;
                 };
             };
         };
@@ -19814,6 +19976,13 @@ export interface operations {
                             channelCertPin: string | null;
                             sendingFacilityAllowlist: string[];
                             rateLimitMsgPerSec: number;
+                            labDestinationFacilityId: string | null;
+                            mshSendingApplication: string | null;
+                            mshSendingFacility: string | null;
+                            mshReceivingApplication: string | null;
+                            mshReceivingFacility: string | null;
+                            receiverDedupesControlId: boolean;
+                            inFlightLeaseSeconds: number | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;
@@ -19842,11 +20011,20 @@ export interface operations {
                     displayName?: string;
                     host?: string;
                     channelCertPin?: string;
+                    channelCertPem?: string;
                     sendingFacilityAllowlist?: string[];
                     baaContractRef?: string;
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    inFlightLeaseSeconds?: number | null;
+                    /** Format: uuid */
+                    labDestinationFacilityId?: string;
+                    mshSendingApplication?: string;
+                    mshSendingFacility?: string;
+                    mshReceivingApplication?: string;
+                    mshReceivingFacility?: string;
+                    receiverDedupesControlId?: boolean;
                 };
             };
         };
@@ -19896,6 +20074,13 @@ export interface operations {
                             channelCertPin: string | null;
                             sendingFacilityAllowlist: string[];
                             rateLimitMsgPerSec: number;
+                            labDestinationFacilityId: string | null;
+                            mshSendingApplication: string | null;
+                            mshSendingFacility: string | null;
+                            mshReceivingApplication: string | null;
+                            mshReceivingFacility: string | null;
+                            receiverDedupesControlId: boolean;
+                            inFlightLeaseSeconds: number | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;
@@ -24398,6 +24583,9 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            holdReason: string | null;
+                            holdAt: string | null;
+                            releasedAt: string | null;
                         }[];
                         nextCursor: string | null;
                     };
@@ -50254,6 +50442,44 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MedicationordersByIdReporterror: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    errorCategory: string;
+                    summary?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        medicationErrorId: string;
+                        /** Format: uuid */
+                        orderId: string;
+                        /** Format: date-time */
+                        reportedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MedicationordersByIdRequestsignature: {
         parameters: {
             query?: never;
@@ -52457,6 +52683,31 @@ export interface operations {
                             status: "not_required" | "pending" | "satisfied";
                             deadlineAt?: string;
                         }[];
+                        transmissionAttestations: {
+                            id: string;
+                            attestation: "not_received_by_lab" | "received_by_lab";
+                            outcome: "redispatched" | "marked_transmitted";
+                            priorFailureReason: string;
+                            attestedByMembershipId: string | null;
+                            cosignedByMembershipId: string | null;
+                            attemptId: string | null;
+                            createdAt: string;
+                            labContactName: string | null;
+                            labReference: string | null;
+                        }[];
+                        pendingRecovery: {
+                            id: string;
+                            orderId: string;
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
+                            requestedByMembershipId: string | null;
+                            requestedAt: string;
+                            expiresAt: string;
+                            cosignedByMembershipId: string | null;
+                            resolvedAt: string | null;
+                            labContactName: string | null;
+                            labReference: string | null;
+                        } | null;
                         allowedActions: {
                             edit: boolean;
                             request_signature: boolean;
@@ -52768,6 +53019,368 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1OrdersByIdRecovertransmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    attestation: "not_received_by_lab" | "received_by_lab";
+                    contactName: string;
+                    labReference: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        outcome: "redispatched" | "marked_transmitted" | "still_refused" | "pending_cosign";
+                        refusalReason: string | null;
+                        order: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        } & {
+                            kindVersion: string;
+                            data: unknown;
+                            verbalOrder: {
+                                status: string;
+                                receivedAt: string;
+                                effectiveAt: string;
+                                deadlineAt: string;
+                                signedAt: string | null;
+                                readBackVerified: boolean;
+                                attestation: string;
+                            } | null;
+                            requirements: {
+                                code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+                                label: string;
+                                status: "not_required" | "pending" | "satisfied";
+                                deadlineAt?: string;
+                            }[];
+                            transmissionAttestations: {
+                                id: string;
+                                attestation: "not_received_by_lab" | "received_by_lab";
+                                outcome: "redispatched" | "marked_transmitted";
+                                priorFailureReason: string;
+                                attestedByMembershipId: string | null;
+                                cosignedByMembershipId: string | null;
+                                attemptId: string | null;
+                                createdAt: string;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            }[];
+                            pendingRecovery: {
+                                id: string;
+                                orderId: string;
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
+                                requestedByMembershipId: string | null;
+                                requestedAt: string;
+                                expiresAt: string;
+                                cosignedByMembershipId: string | null;
+                                resolvedAt: string | null;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            } | null;
+                            allowedActions: {
+                                edit: boolean;
+                                request_signature: boolean;
+                                record_verbal: boolean;
+                                sign: boolean;
+                                cosign: boolean;
+                                complete: boolean;
+                                discontinue: boolean;
+                                correct: boolean;
+                            };
+                        };
+                        recovery: {
+                            id: string;
+                            orderId: string;
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
+                            requestedByMembershipId: string | null;
+                            requestedAt: string;
+                            expiresAt: string;
+                            cosignedByMembershipId: string | null;
+                            resolvedAt: string | null;
+                            labContactName: string | null;
+                            labReference: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdRecovertransmissionByRequestIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        recovery: {
+                            id: string;
+                            orderId: string;
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
+                            requestedByMembershipId: string | null;
+                            requestedAt: string;
+                            expiresAt: string;
+                            cosignedByMembershipId: string | null;
+                            resolvedAt: string | null;
+                            labContactName: string | null;
+                            labReference: string | null;
+                        };
+                        order: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        } & {
+                            kindVersion: string;
+                            data: unknown;
+                            verbalOrder: {
+                                status: string;
+                                receivedAt: string;
+                                effectiveAt: string;
+                                deadlineAt: string;
+                                signedAt: string | null;
+                                readBackVerified: boolean;
+                                attestation: string;
+                            } | null;
+                            requirements: {
+                                code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+                                label: string;
+                                status: "not_required" | "pending" | "satisfied";
+                                deadlineAt?: string;
+                            }[];
+                            transmissionAttestations: {
+                                id: string;
+                                attestation: "not_received_by_lab" | "received_by_lab";
+                                outcome: "redispatched" | "marked_transmitted";
+                                priorFailureReason: string;
+                                attestedByMembershipId: string | null;
+                                cosignedByMembershipId: string | null;
+                                attemptId: string | null;
+                                createdAt: string;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            }[];
+                            pendingRecovery: {
+                                id: string;
+                                orderId: string;
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
+                                requestedByMembershipId: string | null;
+                                requestedAt: string;
+                                expiresAt: string;
+                                cosignedByMembershipId: string | null;
+                                resolvedAt: string | null;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            } | null;
+                            allowedActions: {
+                                edit: boolean;
+                                request_signature: boolean;
+                                record_verbal: boolean;
+                                sign: boolean;
+                                cosign: boolean;
+                                complete: boolean;
+                                discontinue: boolean;
+                                correct: boolean;
+                            };
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdRecovertransmissionByRequestIdCosign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        outcome: "redispatched" | "marked_transmitted" | "still_refused" | "pending_cosign";
+                        refusalReason: string | null;
+                        order: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        } & {
+                            kindVersion: string;
+                            data: unknown;
+                            verbalOrder: {
+                                status: string;
+                                receivedAt: string;
+                                effectiveAt: string;
+                                deadlineAt: string;
+                                signedAt: string | null;
+                                readBackVerified: boolean;
+                                attestation: string;
+                            } | null;
+                            requirements: {
+                                code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+                                label: string;
+                                status: "not_required" | "pending" | "satisfied";
+                                deadlineAt?: string;
+                            }[];
+                            transmissionAttestations: {
+                                id: string;
+                                attestation: "not_received_by_lab" | "received_by_lab";
+                                outcome: "redispatched" | "marked_transmitted";
+                                priorFailureReason: string;
+                                attestedByMembershipId: string | null;
+                                cosignedByMembershipId: string | null;
+                                attemptId: string | null;
+                                createdAt: string;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            }[];
+                            pendingRecovery: {
+                                id: string;
+                                orderId: string;
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
+                                requestedByMembershipId: string | null;
+                                requestedAt: string;
+                                expiresAt: string;
+                                cosignedByMembershipId: string | null;
+                                resolvedAt: string | null;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            } | null;
+                            allowedActions: {
+                                edit: boolean;
+                                request_signature: boolean;
+                                record_verbal: boolean;
+                                sign: boolean;
+                                cosign: boolean;
+                                complete: boolean;
+                                discontinue: boolean;
+                                correct: boolean;
+                            };
+                        };
+                        recovery: {
+                            id: string;
+                            orderId: string;
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
+                            requestedByMembershipId: string | null;
+                            requestedAt: string;
+                            expiresAt: string;
+                            cosignedByMembershipId: string | null;
+                            resolvedAt: string | null;
+                            labContactName: string | null;
+                            labReference: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1OrdersByIdRequestsignature: {
         parameters: {
             query?: never;
@@ -52819,6 +53432,111 @@ export interface operations {
                         signedBy: string | null;
                         completedAt: string | null;
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdResendtransmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        outcome: "requested" | "still_refused";
+                        refusalReason: string | null;
+                        order: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        } & {
+                            kindVersion: string;
+                            data: unknown;
+                            verbalOrder: {
+                                status: string;
+                                receivedAt: string;
+                                effectiveAt: string;
+                                deadlineAt: string;
+                                signedAt: string | null;
+                                readBackVerified: boolean;
+                                attestation: string;
+                            } | null;
+                            requirements: {
+                                code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+                                label: string;
+                                status: "not_required" | "pending" | "satisfied";
+                                deadlineAt?: string;
+                            }[];
+                            transmissionAttestations: {
+                                id: string;
+                                attestation: "not_received_by_lab" | "received_by_lab";
+                                outcome: "redispatched" | "marked_transmitted";
+                                priorFailureReason: string;
+                                attestedByMembershipId: string | null;
+                                cosignedByMembershipId: string | null;
+                                attemptId: string | null;
+                                createdAt: string;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            }[];
+                            pendingRecovery: {
+                                id: string;
+                                orderId: string;
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
+                                requestedByMembershipId: string | null;
+                                requestedAt: string;
+                                expiresAt: string;
+                                cosignedByMembershipId: string | null;
+                                resolvedAt: string | null;
+                                labContactName: string | null;
+                                labReference: string | null;
+                            } | null;
+                            allowedActions: {
+                                edit: boolean;
+                                request_signature: boolean;
+                                record_verbal: boolean;
+                                sign: boolean;
+                                cosign: boolean;
+                                complete: boolean;
+                                discontinue: boolean;
+                                correct: boolean;
+                            };
+                        };
                     };
                 };
             };
@@ -53047,6 +53765,44 @@ export interface operations {
                             completedAt: string | null;
                             createdAt: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersHeldtransmissions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            orderId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            reason: string;
+                            failedAt: string;
+                            ageSeconds: number;
+                            stage: "none" | "warn" | "critical";
+                            feedId: string | null;
+                        }[];
+                        nextCursor: string | null;
                     };
                 };
             };
@@ -53966,6 +54722,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1PatientsByIdMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targetPatientId: string;
+                    fieldResolutions?: {
+                        [key: string]: {
+                            keep: "source" | "target" | "custom";
+                            customValue?: unknown;
+                        };
+                    };
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mergeId: string;
+                        sourcePatientId: string;
+                        targetPatientId: string;
+                        targetFieldsApplied: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByIdPayers: {
         parameters: {
             query?: never;
@@ -54017,7 +54815,7 @@ export interface operations {
                 "application/json": {
                     payerId: string;
                     rank: number;
-                    coverageKind: string;
+                    coverageKind: "medicare_ffs" | "medicare_advantage" | "medicaid" | "commercial" | "hospice_carve_out" | "self_pay";
                     subscriberId: string;
                     groupNumber?: string | null;
                     binPcn?: string | null;
@@ -54252,6 +55050,13 @@ export interface operations {
                         correctionReason: string | null;
                         redacted: boolean;
                         version: number;
+                        items: {
+                            key: string;
+                            label: string;
+                            value: string | number | boolean;
+                            displayValue: string;
+                        }[];
+                        notes: string | null;
                     };
                 };
             };
@@ -54350,6 +55155,33 @@ export interface operations {
                             redacted: boolean;
                             version: number;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByPatientIdAssessmentsSummaryDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        requested: true;
                     };
                 };
             };
@@ -60643,10 +61475,20 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    lineKind: string;
+                    lineKind: "m12_active" | "m12_medhx" | "caregiver_reported";
                     sourceId: string;
                     decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
                     decisionNotes?: string;
+                    medicationDetails?: {
+                        drugName: string;
+                        strength: string;
+                        doseForm: string;
+                        route: string;
+                        medClass: "standard" | "controlled_substance" | "compounded";
+                        deaSchedule?: ("II" | "III" | "IV" | "V") | null;
+                        rxnormRxcui?: string | null;
+                        ndc?: string | null;
+                    };
                 };
             };
         };
@@ -60954,6 +61796,7 @@ export interface operations {
                 patientResolutionStatus?: string;
                 priority?: string;
                 assigned?: "mine" | "unassigned";
+                includeConverted?: boolean;
                 q?: string;
                 cursor?: string;
                 limit?: number;
@@ -68081,6 +68924,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68168,6 +69021,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68252,6 +69115,116 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1SuppliesSupplyrequestsBySupplyRequestIdCaregiversignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplyRequestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    captureMethod: "typed_signature_in_app" | "witnessed_verbal_documented" | "declined";
+                    typedSignatureName?: string;
+                    witnessName?: string;
+                    witnessAttestationText?: string;
+                    /** Format: uuid */
+                    evidenceDocumentId?: string;
+                    declinedReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68338,6 +69311,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68426,6 +69409,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68511,6 +69504,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68595,6 +69598,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68679,6 +69692,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };

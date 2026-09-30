@@ -108,6 +108,7 @@ export {
   type M23WorkerDeps,
   buildM23WorkerDeps,
   buildM23SubmissionQueuePort,
+  buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
   registerM23Workers,
   registerM23LaunchWorkers,
@@ -153,6 +154,26 @@ export {
   M23_REMITTANCE_CONSUMER,
 } from "./outbox-consumers/m25-remittance";
 
+// F-153 (#248) — the §4.8 `revalidate.consumer` producer side: six live bindings for the M6/M8 facts that
+// can re-open a VALIDATING/READY claim's validation.
+export {
+  type M23RevalidateTriggerConsumerDeps,
+  type M23RevalidateTriggerEventName,
+  M23_REVALIDATE_TRIGGER_EVENTS,
+  buildM23RevalidateTriggerConsumerFor,
+  buildM23RevalidateTriggerConsumers,
+  type RevalidateEnqueuePort,
+} from "./outbox-consumers/m23-revalidate-triggers";
+export { buildDrizzleRevalidationTargetResolver } from "./outbox-consumers/m23-revalidation-target-resolver";
+// F-162 (#248) — the seventh revalidate-trigger: m18.evv.late_check_resolved, resolved through an
+// injected M8 visitId→encounterId port (see the file for why this needed a new M8 seam function first).
+export {
+  M23_LATE_CHECK_RESOLVED_EVENT,
+  type M23LateCheckResolvedConsumerDeps,
+  type M8EncounterIdsForVisitsReader,
+  buildM23LateCheckResolvedConsumer,
+} from "./outbox-consumers/m18-late-check-resolved";
+
 // §4.4 — the M23→M27 cost-report published seam (PatientDaysProvider): the billed-and-accepted patient-day
 // census the cost-report Worksheet-D reconciliation reads. The composition root registers it into the M1
 // SeamRegistry in `wireModuleSeams` (the M26 `registerM26PublishedSeams` precedent — M23's first M1 publish).
@@ -197,3 +218,12 @@ export function getM23BootContracts() {
     permissionKeyList: M23_PERMISSION_KEY_LIST,
   } as const;
 }
+
+// F-164 (#248) — the m25.taxonomy.unmapped_code_observed consumer, M23's last originally
+// `handlers-unbound` pair: the §11.A/D13 30-day rolling occurrence tracker + threshold alert.
+export {
+  M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_ALERT_CODE,
+  M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_EVENT,
+  type M23TaxonomyUnmappedCodeConsumerDeps,
+  buildM23TaxonomyUnmappedCodeObservedConsumer,
+} from "./outbox-consumers/m25-taxonomy-unmapped-code-observed";

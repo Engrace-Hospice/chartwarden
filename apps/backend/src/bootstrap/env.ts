@@ -174,6 +174,31 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
+    // F-172 (#248) — the platform KEK that wraps M35's platform-singleton `patient_pseudonym_key`
+    // (`packages/subscription-billing/src/pseudonym/key-envelope.ts`). A SEPARATE secret from
+    // `M34_TENANT_KEK` (different key, different AAD, never interchangeable) — unset, `activeKey()`
+    // refuses per-delivery rather than silently pseudonymizing under a derived/zero key, so the D6
+    // `m2.session.created` / `m5.patient.{deceased,merged}` consumers dead-letter loudly instead of
+    // writing a wrong-key pseudonym into `patient_active_period`/`user_active_period`. Same
+    // `<kekId>:<base64 32 bytes>` shape as `M34_TENANT_KEK` for the same reason (the id travels beside
+    // the wrapped ciphertext in `patient_pseudonym_key.key_kms_ref`).
+    key: "M35_PSEUDONYM_KEY_KEK",
+    rule: (v) => {
+      const sep = v.indexOf(":");
+      if (sep <= 0) return "must be '<kekId>:<base64 32-byte key>'";
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(v.slice(0, sep))) {
+        return "kekId must be 1-64 chars of [A-Za-z0-9._-]";
+      }
+      try {
+        return Buffer.from(v.slice(sep + 1), "base64").length === 32
+          ? null
+          : "key must decode to 32 base64 bytes";
+      } catch {
+        return "key must be valid base64";
+      }
+    },
+  },
+  {
     // TASK-013/ARCH-008 — the shared secret an internal (non-interactive) caller presents to
     // authenticate as a system principal (`bootstrap/plugins/authenticate.ts`), the only way
     // `requireSystemPrincipal()`-gated routes (M23 #39/#40, M15's `/internal/...` seams) become
@@ -254,12 +279,29 @@ export function reservedPlaceholderProblem(value: string): string | null {
 }
 
 /**
+ * F-181 — switches that exist ONLY for non-production use and must be ABSENT in production. A production
+ * deployment that carries one is misconfigured in the dangerous direction, so the boot refuses rather than
+ * trusting the runtime guard alone (the M29 outbound worker and inbound listener also ignore `M29_ALLOW_MLLP_PLAIN` in
+ * production — this makes the mistake loud instead of silently inert).
+ */
+const FORBIDDEN_IN_PRODUCTION: readonly { readonly key: string; readonly problem: string }[] = [
+  {
+    key: "M29_ALLOW_MLLP_PLAIN",
+    problem:
+      "must not be set in production — it opts an HL7 feed (outbound sender or inbound listener) into cleartext `mllp_plain` (PHI on the wire) and is honoured only in non-production environments",
+  },
+];
+
+/**
  * Collect every unmet production requirement (empty array = OK). Pure, so the rules are unit-testable
  * without mutating the process environment. Returns [] for any non-production `NODE_ENV`.
  */
 export function collectEnvProblems(env: EnvLike): EnvProblem[] {
   if (env.NODE_ENV !== "production") return [];
   const problems: EnvProblem[] = [];
+  for (const { key, problem } of FORBIDDEN_IN_PRODUCTION) {
+    if (env[key]?.trim()) problems.push({ key, problem });
+  }
   for (const { key, rule } of REQUIREMENTS) {
     const value = env[key]?.trim();
     if (!value) {

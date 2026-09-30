@@ -24,6 +24,13 @@ const MIGRATIONS = join(__dirname, "..", "..", "..", "packages", "db", "migratio
 const tables = readFileSync(join(MIGRATIONS, "0107_oncall_m19_enums_tables.sql"), "utf8");
 const rls = readFileSync(join(MIGRATIONS, "0108_oncall_m19_rls_audit_triggers.sql"), "utf8");
 
+/** The original ten M19-T01 tables migrations 0107/0108 created — `on_call_roster_sync_queue`
+ *  (F-165, #248) is a later addition (migration 0256, its own separate trigger) this file's
+ *  0107/0108-scoped checks below cannot see. */
+const M19_T01_TABLE_NAMES = M19_TABLE_NAMES.filter(
+  (t): t is Exclude<M19TableName, "on_call_roster_sync_queue"> => t !== "on_call_roster_sync_queue",
+);
+
 /** The §3.2 Phase-A enum types, incl. the `paper_origin` value M19-T01 added to make §2.7 implementable. */
 const M19_ENUM_TYPES = [
   "oncall_model",
@@ -41,8 +48,10 @@ const M19_ENUM_TYPES = [
   "triage_ai_confidence",
 ] as const;
 
-/** The trigger function name 0108 generates per table (abbreviated where the 63-char limit bites). */
-const AUDIT_FN: Record<M19TableName, string> = {
+/** The trigger function name 0108 generates per table (abbreviated where the 63-char limit bites).
+ *  `on_call_roster_sync_queue` (F-165, #248) is excluded — it's a later addition (migration 0256), whose
+ *  own trigger this file's `tables`/`rls` reads (pinned to 0107/0108) cannot see. */
+const AUDIT_FN: Record<Exclude<M19TableName, "on_call_roster_sync_queue">, string> = {
   tenant_oncall_policy: "audit_phi_write_tenant_oncall_policy",
   external_triage_vendor: "audit_phi_write_external_triage_vendor",
   on_call_shift: "audit_phi_write_on_call_shift",
@@ -83,8 +92,8 @@ describe("M19-T02 migration 0107 — the ten owned tables", () => {
   });
 
   it("creates all ten manifest tables", () => {
-    expect(M19_TABLE_NAMES).toHaveLength(10);
-    for (const t of M19_TABLE_NAMES) {
+    expect(M19_T01_TABLE_NAMES).toHaveLength(10);
+    for (const t of M19_T01_TABLE_NAMES) {
       expect(tables, `table ${t}`).toContain(`CREATE TABLE IF NOT EXISTS "${t}"`);
     }
   });
@@ -127,7 +136,7 @@ describe("M19-T02 migration 0107 — the ten owned tables", () => {
 
 describe("M19-T02 migration 0108 — RLS, grants and the M4 write-audit denylists", () => {
   it("enables RLS on all ten tables and keys every policy on app.org_id alone", () => {
-    for (const t of M19_TABLE_NAMES) {
+    for (const t of M19_T01_TABLE_NAMES) {
       expect(rls, t).toContain(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
       expect(rls, t).toMatch(new RegExp(`CREATE POLICY "${t}_(org|read)"`));
     }
@@ -147,13 +156,13 @@ describe("M19-T02 migration 0108 — RLS, grants and the M4 write-audit denylist
   });
 
   it("mirrors M19_AUDIT_DENYLIST into the generated trigger bodies VERBATIM", () => {
-    for (const t of M19_TABLE_NAMES) {
+    for (const t of M19_T01_TABLE_NAMES) {
       expect(denylistOf(AUDIT_FN[t]), t).toEqual([...M19_AUDIT_DENYLIST[t]]);
     }
   });
 
   it("stamps the M19_AUDIT_RETENTION_CLASS on every table's audit row", () => {
-    for (const t of M19_TABLE_NAMES) {
+    for (const t of M19_T01_TABLE_NAMES) {
       const fnBody = rls.slice(rls.indexOf(`CREATE OR REPLACE FUNCTION ${AUDIT_FN[t]}()`));
       const upToEnd = fnBody.slice(0, fnBody.indexOf("END $$;"));
       expect(upToEnd, t).toContain(`'${M19_AUDIT_RETENTION_CLASS[t]}'`);

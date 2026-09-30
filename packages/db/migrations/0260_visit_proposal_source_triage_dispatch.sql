@@ -1,0 +1,11 @@
+-- 0260 — F-166 (#248), M17's `m19.triage_call.visit_needed` binding.
+--
+-- `visit_proposal.source` (`visit_proposal_source` pgEnum) named only the four already-decided producers
+-- (`frequency_driven_m7` / `supervisory_cadence_m15` / `order_required_m11` / `idg_decision_m14`) — none
+-- of which is M19's after-hours triage dispatch. F-133/F-152 (#248) scoped this pair as blocked partly on
+-- this missing enum member; adding it is the additive-only fix (the `document_aggregate_type` / migration
+-- 0239 precedent), not a re-decision of the other four.
+--
+-- Additive only (no removal, no existing row affected). Own migration: PG forbids using a value added
+-- earlier in the same transaction, so this stands alone ahead of any migration that reads or writes it.
+ALTER TYPE "public"."visit_proposal_source" ADD VALUE IF NOT EXISTS 'triage_dispatch_m19';

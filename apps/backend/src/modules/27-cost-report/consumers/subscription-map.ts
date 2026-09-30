@@ -45,7 +45,9 @@ export type M27SubscriptionEffect =
   /** Match a MAC rejection code against the rule library; auto-suggest a draft rule when uncovered (D20). */
   | { readonly kind: "rule_suggestion"; readonly note: string }
   /** Close the ProviderEntity's still-open cost reports on offboard (§2.2 → terminal `closed`). */
-  | { readonly kind: "close_cost_reports"; readonly note: string };
+  | { readonly kind: "close_cost_reports"; readonly note: string }
+  /** Record (or reconcile) the fiscal-year-resolved 4th cost-basis precedence tier on `vendor_invoice_line`. */
+  | { readonly kind: "vendor_invoice_accrual"; readonly note: string };
 
 /** The spec §2.2 / D3 documented M40 offboard topic (see EVENT-NAME PROVENANCE above). */
 export const M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC = "m40.provider_entity.offboarded" as const;
@@ -62,6 +64,20 @@ export const M27_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, readonly M27Subsc
       {
         kind: "artifact_back_reference",
         note: "M22 stored the ECR / PI / supporting-doc bytes and returned its document id — M27 records the back-reference on `ecr_submission` (ecr_file_document_id / pi_file_document_id / supporting_documents_document_ids) and emits `m27.artifact.stored_back_reference`.",
+      },
+    ],
+
+    // ── M21 supply-request vendor invoice — the 4th cost-basis precedence tier (F-207, #248) ─────────
+    "m21.supply_request.invoice_accrued": [
+      {
+        kind: "vendor_invoice_accrual",
+        note: "A vendor invoice was accrued against a supply request — resolved to the fiscal-year cost report by (providerEntityId, factDate) and recorded as an idempotent `vendor_invoice_line` row (migration 0276), the residual 4th tier below M13 administration / M12 ordered / manual entry.",
+      },
+    ],
+    "m21.supply_request.invoice_reconciled": [
+      {
+        kind: "vendor_invoice_accrual",
+        note: "The accrued vendor invoice was reconciled — the matching `vendor_invoice_line` row (status = 'accrued') is updated in place; a redelivery after reconciliation already landed is a no-op.",
       },
     ],
 

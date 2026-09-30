@@ -91,8 +91,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 15,
-        "enriched": 15
+        "routes": 16,
+        "enriched": 16
       },
       "screens": true,
       "tests": true,
@@ -171,8 +171,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 19,
-        "enriched": 19
+        "routes": 20,
+        "enriched": 20
       },
       "screens": true,
       "tests": true,
@@ -211,15 +211,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 28,
-        "enriched": 28
+        "routes": 34,
+        "enriched": 34
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 8,
-        "covered": 8
+        "tables": 10,
+        "covered": 10
       }
     },
     {
@@ -231,15 +231,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 31,
-        "enriched": 31
+        "routes": 32,
+        "enriched": 32
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 7,
-        "covered": 7
+        "tables": 9,
+        "covered": 9
       }
     },
     {
@@ -318,8 +318,8 @@
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 10,
-        "covered": 10
+        "tables": 11,
+        "covered": 11
       }
     },
     {
@@ -378,8 +378,8 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 10,
-        "covered": 10
+        "tables": 11,
+        "covered": 11
       }
     },
     {
@@ -411,8 +411,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 37,
-        "enriched": 37
+        "routes": 38,
+        "enriched": 38
       },
       "screens": true,
       "tests": true,
@@ -458,8 +458,8 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 17,
-        "covered": 17
+        "tables": 18,
+        "covered": 18
       }
     },
     {
@@ -538,8 +538,8 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 14,
-        "covered": 14
+        "tables": 15,
+        "covered": 15
       }
     },
     {

@@ -43,3 +43,4 @@ export * from "./bereavement-plan-closures"; // bereavement_plan_closure
 export * from "./bereavement-opt-outs"; // bereavement_opt_out
 export * from "./tenant-external-source-gate-overrides"; // tenant_bereavement_external_source_gate_override
 export * from "./bereavement-idg-risk-flags"; // bereavement_idg_risk_flag
+export * from "./bereavement-cop-opt-out-credits"; // bereavement_cop_opt_out_credit (F-206, #248)

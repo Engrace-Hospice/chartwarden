@@ -36,6 +36,9 @@ export type IncidentTriggerEvent =
       readonly type: "m12.medication.error_reported";
       /** WF-14 — the offending medication order (resolved against M12 at the route layer). */
       readonly medicationOrderId: string;
+      /** F-205 (#248) — M12's own correlation id for the report (no M12-owned persisted row exists; this
+       *  is the stable reference issued at report time, carried through for traceability). */
+      readonly medicationErrorId: string;
       /** Optional one-line summary the upstream module supplied (free-text; §3.6 denylisted on persist). */
       readonly summary?: string;
     })
@@ -43,6 +46,15 @@ export type IncidentTriggerEvent =
       readonly type: "m11.order.verbal_expired_unsigned";
       /** The verbal order that lapsed without a counter-signature (a §2.3 safety event). */
       readonly orderId: string;
+      readonly summary?: string;
+    })
+  | (IncidentTriggerBase & {
+      readonly type: "m37.restraint.applied";
+      /** F-185 (#248) — the thin-pointer design: M30 never widens M37's payload or reads M37's
+       *  audit-denylisted `restraint_justification_text`; the draft carries only the restraint event's
+       *  id and kind, plus an auto-generated narrativeText (below). */
+      readonly restraintEventId: string;
+      readonly restraintKind: string;
       readonly summary?: string;
     });
 
@@ -85,6 +97,7 @@ export function buildIncidentDraftFromEvent(event: IncidentTriggerEvent): schema
     case "m12.medication.error_reported": {
       const kindData: schema.IncidentKindData = {
         medicationOrderId: event.medicationOrderId,
+        medicationErrorId: event.medicationErrorId,
         narrativeText:
           event.summary ?? "Medication error reported by the medication-administration surface.",
         ...(event.summary !== undefined ? { summary: event.summary } : {}),
@@ -109,6 +122,22 @@ export function buildIncidentDraftFromEvent(event: IncidentTriggerEvent): schema
         ...base,
         kind: "other_safety_event",
         severity: INCIDENT_KIND_CATALOG.other_safety_event.defaultSeverity,
+        kindData,
+      };
+    }
+
+    case "m37.restraint.applied": {
+      const kindData: schema.IncidentKindData = {
+        restraintEventId: event.restraintEventId,
+        restraintKind: event.restraintKind,
+        narrativeText:
+          event.summary ?? "Restraint applied; see IPU restraint record for clinical detail.",
+        ...(event.summary !== undefined ? { summary: event.summary } : {}),
+      };
+      return {
+        ...base,
+        kind: "restraint_use",
+        severity: INCIDENT_KIND_CATALOG.restraint_use.defaultSeverity,
         kindData,
       };
     }

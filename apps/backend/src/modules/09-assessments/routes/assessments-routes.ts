@@ -4,7 +4,8 @@ import {
   scaleDefinitions,
 } from "@wardenx/assessments";
 // apps/backend/src/modules/09-assessments/routes/assessments-routes.ts — M9-T05 the §4.1 route inventory
-// (18 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// (18 routes, +1 F-208 (#248) explicit summary-document-request trigger) behind the REAL Authorization
+// Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
 // M3) on the §4.6 keys M9 registers into M3's catalog (M9_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected AssessmentRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -208,6 +209,23 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       const { organizationId } = actorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.summary(organizationId, patientId);
+    },
+  );
+
+  // 19 — F-208 (#248) explicit "download/print" trigger: unconditionally requests a fresh printable
+  // assessment-summary render (`m9.assessment.summary_requested`, M22 renders `assessment_summary`).
+  // Same guard as the summary read above — requesting the printable artifact is the same read-scoped
+  // action as viewing it, not a clinical write.
+  app.post(
+    "/api/v1/patients/:patientId/assessments/summary/document",
+    {
+      preHandler: [READ_SUMMARY, SCOPE_FOR("assessment.read_summary")],
+      config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      return service.requestSummaryDocument(organizationId, patientId);
     },
   );
 

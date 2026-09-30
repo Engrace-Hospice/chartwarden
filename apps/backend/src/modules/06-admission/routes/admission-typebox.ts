@@ -10,6 +10,7 @@ import { ValidationError } from "@wardenx/types";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
   AdmissionReadinessResult as ServiceAdmissionReadinessResult,
+  AdmissionSummary as ServiceAdmissionSummary,
   MutationResult as ServiceMutationResult,
   Page as ServicePage,
   PatientElectionCertificationView as ServicePatientElectionCert,
@@ -591,6 +592,25 @@ export const SummaryPageResponseSchema = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
 
+/** F-195 (#248) — `GET /api/v1/admissions`'s own row, widened with the hold/resume facts M6's spec
+ *  (line 2983) names as "M30's operational dashboard" data — a dedicated schema, not a `SummaryRowResponseSchema`
+ *  widening, since that shape is shared with the referral list (no hold concept). */
+export const AdmissionSummaryResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  holdReason: Type.Union([Type.String(), Type.Null()]),
+  holdAt: Type.Union([Type.String(), Type.Null()]),
+  releasedAt: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** `GET /api/v1/admissions`'s own paginated page. */
+export const AdmissionSummaryPageResponseSchema = Type.Object({
+  items: Type.Array(AdmissionSummaryResponseSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
 /** The bounded `{ items }` envelope the per-admission sub-list reads return (no cursor). */
 export const SummaryItemsResponseSchema = Type.Object({
   items: Type.Array(SummaryRowResponseSchema),
@@ -647,6 +667,10 @@ type _AdmissionReadiness = Conforms<
 type _SummaryPage = Conforms<
   Static<typeof SummaryPageResponseSchema>,
   ServicePage<ServiceSummaryRow>
+>;
+type _AdmissionSummaryPage = Conforms<
+  Static<typeof AdmissionSummaryPageResponseSchema>,
+  ServicePage<ServiceAdmissionSummary>
 >;
 type _SummaryItems = Conforms<
   Static<typeof SummaryItemsResponseSchema>,

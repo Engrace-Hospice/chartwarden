@@ -2115,6 +2115,7 @@ function dispositionPayloads(
       requestedArrivalBy: data.requestedArrivalBy,
       proposedForDate: null,
       reason: data.reason,
+      visitKind: "dispatch_now",
     };
   }
   if (data.disposition === "visit_scheduled_first_light") {
@@ -2125,6 +2126,7 @@ function dispositionPayloads(
       requestedArrivalBy: null,
       proposedForDate: data.proposedForDate,
       reason: data.reason,
+      visitKind: "first_light",
     };
   }
   if (data.disposition === "pronouncement_scheduled") {
@@ -2138,6 +2140,7 @@ function dispositionPayloads(
       requestedArrivalBy: data.expectedArrivalBy,
       proposedForDate: null,
       reason: "death pronouncement requested during after-hours triage call",
+      visitKind: "pronouncement",
     };
   }
   if (data.disposition === "gip_admission_proposed") {

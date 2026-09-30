@@ -208,8 +208,24 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
       return map;
     },
 
-    async persist(record: PersistedAlert): Promise<{ alertId: string }> {
+    async persist(record: PersistedAlert): Promise<{ alertId: string; occurrences?: number }> {
       return withOrgContext(db, { organizationId: record.orgId, userId: "" }, async (tx: Tx) => {
+        // F-199 — count an absorbed repeat. ONE atomic `UPDATE … RETURNING`: concurrent repeats serialize on the
+        // row lock and each RETURNS a distinct count, so exactly one caller ever sees any given value (the escalation
+        // in M29 keys on "count == threshold"). A repeat pages NOBODY — no delivery rows are written for it.
+        const bump = async (alertId: string): Promise<{ alertId: string; occurrences: number }> => {
+          const res = await tx.execute<{ occurrences: number }>(sql`
+            UPDATE alert
+               SET payload = jsonb_set(payload, '{occurrences}',
+                     to_jsonb(COALESCE((payload->>'occurrences')::int, 1) + 1))
+             WHERE id = ${alertId}
+         RETURNING (payload->>'occurrences')::int AS occurrences
+          `);
+          const occurrences = Number(res.rows[0]?.occurrences);
+          if (!Number.isInteger(occurrences)) throw new Error("alert occurrence bump returned no row");
+          return { alertId, occurrences };
+        };
+
         const [existing] = await tx
           .select({ id: AL.id })
           .from(AL)
@@ -217,7 +233,7 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
             and(eq(AL.organizationId, record.orgId), eq(AL.correlationId, record.correlationId)),
           )
           .limit(1);
-        if (existing) return { alertId: existing.id };
+        if (existing) return record.countRepeats ? bump(existing.id) : { alertId: existing.id };
 
         // F-109 — the §2.4.3 outcome is WRITTEN, not defaulted. The column used to be
         // `NOT NULL DEFAULT 'delivered'` and no code path ever set it, so every alert in every database
@@ -232,7 +248,8 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
             organizationId: record.orgId,
             eventType: record.eventType,
             severity: record.severity,
-            payload: record.payload,
+            // F-199 — a counted alert is born with `occurrences: 1`; `bump` increments it from there.
+            payload: record.countRepeats ? { ...record.payload, occurrences: 1 } : record.payload,
             correlationId: record.correlationId,
             outcome,
           })
@@ -246,7 +263,7 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
               and(eq(AL.organizationId, record.orgId), eq(AL.correlationId, record.correlationId)),
             )
             .limit(1);
-          if (raced) return { alertId: raced.id };
+          if (raced) return record.countRepeats ? bump(raced.id) : { alertId: raced.id };
           throw new Error("alert insert returned no row");
         }
         if (record.deliveries.length > 0) {

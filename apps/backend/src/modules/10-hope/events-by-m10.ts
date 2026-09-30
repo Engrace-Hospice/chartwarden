@@ -212,6 +212,10 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       "`iqies-reconcile-worker` recorded iQIES acceptance for a submission; M30 reads the acceptance rate for APU posture.",
     payloadSchema: Type.Object({
       submissionId: Type.String({ minLength: 1 }),
+      // F-150 (#248) — added: the real live-bound M30 consumer (`buildM30HopeSubmissionAcceptedConsumer`)
+      // needs the provider entity to enqueue the hope_derived recompute against; `hope_submission
+      // .provider_entity_id` is NOT NULL and the emit site already has the updated row in hand.
+      providerEntityId: Type.String({ minLength: 1 }),
       acceptedCount: Type.Integer({ minimum: 0 }),
       rejectedCount: Type.Integer({ minimum: 0 }),
     }),

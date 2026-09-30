@@ -20,7 +20,9 @@
 // pure-domain precedent.
 import type {
   AdmissionId,
+  DeaSchedule,
   IsoInstant,
+  MedClass,
   MedicationOrderId,
   PatientId,
   ReconciliationDecisionKind,
@@ -132,28 +134,51 @@ export function buildReconciliationWorksheet(
 /** §2.8 — a worksheet line's source: an M12 active order, an M12 medhx record, or a caregiver-reported home med. */
 export type ReconciliationLineKind = "m12_active" | "m12_medhx" | "caregiver_reported";
 
+/**
+ * §2.8 D17 (F-16x, #248) — the real drug content a minted draft `medication_order` needs, honestly sourced.
+ * There is NO `m12_medhx` record projection anywhere in this codebase yet (`medicationHistory()` is a
+ * permanent `{ records: [] }` stub — "no local projection until the [DoseSpot MedHx] store is threaded"),
+ * so this can only ever be populated from a real CALLER-supplied value today: the clinician reconciling a
+ * `caregiver_reported` home med, or authoring a `new_order`. It is never fabricated or defaulted — a
+ * `carry_forward`/`new_order` decision with no supplied content, or on an `m12_medhx` line, refuses rather
+ * than minting a placeholder (see `planReconciliationDecision` below).
+ */
+export interface ReconciliationMedicationDetails {
+  readonly drugName: string;
+  readonly strength: string;
+  readonly doseForm: string;
+  readonly route: string;
+  readonly medClass: MedClass;
+  /** Required when `medClass='controlled_substance'` — never defaulted (a wrong schedule is a DEA-relevant
+   *  misstatement, not a cosmetic gap). Must be omitted/null otherwise. */
+  readonly deaSchedule?: DeaSchedule | null;
+  readonly rxnormRxcui?: string | null;
+  readonly ndc?: string | null;
+}
+
 /** §2.8 — one per-line reconciliation decision the clinician records (mirrors `medication_reconciliation_decision`). */
 export interface ReconciliationDecisionInput {
-  readonly lineId: string;
   readonly lineKind: ReconciliationLineKind;
   readonly decisionKind: ReconciliationDecisionKind;
-  /** Present when the line is an M12 active order (`lineKind='m12_active'`) — back-link for the handshake. */
+  /** Present when the line is an M12 active order (`lineKind='m12_active'`) — back-link for the discontinue
+   *  handshake. Never read for a draft (an active order needs no draft; carry_forward of it is a no-op). */
   readonly medicationOrderId?: MedicationOrderId | null;
+  /** The real drug content for a line that would mint a draft (`carry_forward` of a non-active line, or
+   *  `new_order`). Required in that case; see the type doc for why it can never be derived automatically. */
+  readonly medicationDetails?: ReconciliationMedicationDetails | null;
 }
 
-/** §2.8 — the `m13.reconciliation.draft_order_requested` payload (M12 mints a draft + back-references). */
+/** §2.8 — the `m13.reconciliation.draft_order_requested` payload's mintable content (M12 mints a draft from
+ *  this; the caller adds `worksheetId`/`decisionId`/`patientId`/`decisionMadeByMembershipId` once the
+ *  decision row exists — this pure core runs BEFORE that row's id is assigned). */
 export interface DraftOrderRequestedSignal {
-  readonly worksheetId: ReconciliationWorksheetId;
-  readonly lineId: string;
   readonly lineKind: ReconciliationLineKind;
-  /** The medhx record back-link when the draft is seeded from an M12 medhx line (else null). */
-  readonly fromMedicationOrderId: MedicationOrderId | null;
+  readonly medicationOrderDraftPayload: ReconciliationMedicationDetails;
 }
 
-/** §2.8 — the `m13.reconciliation.discontinue_requested` payload (M12's reconciliation consumer stops the order). */
+/** §2.8 — the `m13.reconciliation.discontinue_requested` payload's mintable content (M12's reconciliation
+ *  consumer stops the order; the caller adds `worksheetId`/`decisionId`/`reason`). */
 export interface DiscontinueRequestedSignal {
-  readonly worksheetId: ReconciliationWorksheetId;
-  readonly lineId: string;
   readonly medicationOrderId: MedicationOrderId;
 }
 
@@ -169,17 +194,24 @@ export interface ReconciliationDecisionResult {
 
 /**
  * §2.8 D17 — plan one per-line decision: derive which M12-handshake event (if any) the decision emits.
- *   - `carry_forward` of a non-active line (medhx / caregiver-reported) mints a draft → `draft_order_requested`;
- *     of an already-`m12_active` line it stays active → no event.
- *   - `new_order` is a newly identified med → `draft_order_requested`; on an already-active order it is a
- *     contradiction → `RECONCILIATION_DECISION_INVALID`.
+ *   - `carry_forward` of an already-`m12_active` line stays active → no event (there is no drug content to
+ *     source, and none is needed — the order already exists).
+ *   - `carry_forward` of a `caregiver_reported` line mints a draft from the caller-supplied
+ *     `medicationDetails` → `draft_order_requested`. `RECONCILIATION_MEDICATION_DETAILS_REQUIRED` when none
+ *     was supplied — never a placeholder.
+ *   - `carry_forward` / `new_order` of an `m12_medhx` line is REFUSED with `RECONCILIATION_MEDHX_UNAVAILABLE`
+ *     — there is no medhx-record projection anywhere in this codebase to source real content from (see the
+ *     `ReconciliationMedicationDetails` doc), and minting a draft claiming "derived from history" with no
+ *     real history record behind it would misstate the order's provenance.
+ *   - `new_order` is a newly identified med → `draft_order_requested` from `medicationDetails`; on an
+ *     already-active order it is a contradiction → `RECONCILIATION_DECISION_INVALID`.
  *   - `discontinue` of an `m12_active` line stops it → `discontinue_requested`; of a non-active line it merely
  *     documents "not carried forward" → no event (there is no order to stop).
  *   - `hold` annotates only; `document_only` is informational → no event.
- * Pure — the worker persists the `medication_reconciliation_decision` row + emits the returned signal.
+ * Pure — the caller persists the `medication_reconciliation_decision` row + emits the returned signal(s)
+ * (merging in the worksheet/decision/patient/actor ids this core does not have).
  */
 export function planReconciliationDecision(
-  worksheetId: ReconciliationWorksheetId,
   decision: ReconciliationDecisionInput,
 ): ReconciliationDecisionResult {
   const isActive = decision.lineKind === "m12_active";
@@ -188,18 +220,35 @@ export function planReconciliationDecision(
     discontinueRequested: null,
     statusAfter: "in_progress",
   };
+  const planDraft = (): ReconciliationDecisionResult => {
+    require_(
+      decision.lineKind !== "m12_medhx",
+      "RECONCILIATION_MEDHX_UNAVAILABLE",
+      "no M12 medication-history record projection exists to source drug content from a medhx line " +
+        "(the DoseSpot MedHx fetch is not yet built) — record this decision against a caregiver-reported " +
+        "or new-order line with explicit drug content instead",
+    );
+    require_(
+      decision.medicationDetails != null,
+      "RECONCILIATION_MEDICATION_DETAILS_REQUIRED",
+      "a 'carry_forward' or 'new_order' decision on a non-active line requires explicit drug content " +
+        "(drugName/strength/doseForm/route/medClass) — it is never fabricated",
+    );
+    const details = decision.medicationDetails;
+    require_(
+      (details.medClass === "controlled_substance") === (details.deaSchedule != null),
+      "RECONCILIATION_MEDICATION_DETAILS_REQUIRED",
+      "deaSchedule is required when medClass='controlled_substance' and must be omitted otherwise",
+    );
+    return {
+      ...none,
+      draftOrderRequested: { lineKind: decision.lineKind, medicationOrderDraftPayload: details },
+    };
+  };
   switch (decision.decisionKind) {
     case "carry_forward": {
       if (isActive) return none; // already an active M12 order — no draft needed
-      return {
-        ...none,
-        draftOrderRequested: {
-          worksheetId,
-          lineId: decision.lineId,
-          lineKind: decision.lineKind,
-          fromMedicationOrderId: decision.medicationOrderId ?? null,
-        },
-      };
+      return planDraft();
     }
     case "new_order": {
       require_(
@@ -207,26 +256,11 @@ export function planReconciliationDecision(
         "RECONCILIATION_DECISION_INVALID",
         "a 'new_order' decision cannot target an already-active M12 medication order",
       );
-      return {
-        ...none,
-        draftOrderRequested: {
-          worksheetId,
-          lineId: decision.lineId,
-          lineKind: decision.lineKind,
-          fromMedicationOrderId: decision.medicationOrderId ?? null,
-        },
-      };
+      return planDraft();
     }
     case "discontinue": {
       if (!isActive || !decision.medicationOrderId) return none; // nothing to stop on a non-active line
-      return {
-        ...none,
-        discontinueRequested: {
-          worksheetId,
-          lineId: decision.lineId,
-          medicationOrderId: decision.medicationOrderId,
-        },
-      };
+      return { ...none, discontinueRequested: { medicationOrderId: decision.medicationOrderId } };
     }
     case "hold":
     case "document_only":

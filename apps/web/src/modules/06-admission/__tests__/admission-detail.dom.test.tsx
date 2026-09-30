@@ -226,13 +226,19 @@ describe("Admission intake workspace", () => {
       screen.getAllByText("Notice of Rights acknowledgment is required.").length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("Election Statement must be signed.").length).toBeGreaterThan(0);
-    expect(screen.getByText("HOPE Admission Assessment")).toBeTruthy();
+    // The admission is still "pending" (not yet active) — `HopeEntry` gates HOPE assessment access
+    // behind activation (`active={admission.state === "active"}`), so it shows this message rather
+    // than the "HOPE Admission Assessment" mini-widget + "Open HOPE" button, which only render once
+    // the admission is active.
+    expect(
+      screen.getAllByText("Activate this admission before accessing or creating HOPE assessments.")
+        .length,
+    ).toBeGreaterThan(0);
     const patientLinks = screen.getAllByRole("link", { name: "Elena Rivera" });
     expect(patientLinks.length).toBeGreaterThan(0);
     expect(patientLinks[0]?.getAttribute("href")).toBe("/patients/patient-1");
-    expect(screen.getAllByText("1 overdue or missed").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Due soon").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Open HOPE" })).toBeTruthy();
+    // "1 overdue or missed" / "Due soon" are `HopeMini` status pills, rendered only in the active-admission
+    // branch of `HopeEntry` — not reachable here since the admission under test is still "pending".
     expect(
       (screen.getByRole("button", { name: "Activate Admission" }) as HTMLButtonElement).disabled,
     ).toBe(true);

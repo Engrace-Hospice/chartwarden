@@ -81,6 +81,10 @@ interface NoticeRecordShape {
   readonly admissionId: string;
   readonly state: NoticeState;
   readonly version: number;
+  /** F-144 (#248) — the chart-target patient the `m23.billing.document_render_requested` render needs
+   * (§4.10). `noe_record.patient_id` / `notr_record.patient_id` are both NOT NULL, so this is never
+   * fabricated — it is the same M5 identity the notice was already filed under. */
+  readonly patientId: string;
 }
 
 export interface NoticeTransitionResult {
@@ -154,6 +158,23 @@ function buildNoticeEmissions(
             [n.idKey]: rec.id,
             submissionId: extra.submissionId,
             submittedAt: extra.submittedAt,
+          },
+        },
+        // F-144 (#248) — M23's §4.10 table names `m23.billing.document_render_requested` as the sole
+        // M22 handshake for the notice confirmation receipt (`buildNoeConfirmationReceiptRequest`/
+        // `buildNotrConfirmationReceiptRequest` in consumers/document-render.ts had no caller). Co-
+        // emitted in the SAME transition as `.submitted`, never a separate consumer of that event.
+        {
+          ...base,
+          eventName: "m23.billing.document_render_requested",
+          payload: {
+            kind: kind === "noe" ? "noe_confirmation_receipt" : "notr_confirmation_receipt",
+            aggregateId: rec.id,
+            payload: {
+              patientId: rec.patientId,
+              [n.ctrlKey]: controlNumber,
+              submittedAt: extra.submittedAt,
+            },
           },
         },
       ];

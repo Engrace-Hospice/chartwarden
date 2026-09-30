@@ -537,10 +537,20 @@ export function buildDrizzleM16WriteService(
         deathAt: (plan.deathTime
           ? iso(plan.deathTime)
           : `${localDate(plan.deathDate)}T00:00:00.000Z`) as IsoInstant,
+        // F-159 (#248) — `BereavementRosterEvidence`'s real fields are `isPrimaryCaregiver`/
+        // `enrolledSurvivorCount`; this object was `{activeContactCount, relationshipCode}` under an
+        // `as never` cast, so `deriveRiskFactors` read `undefined` for both `roster.isPrimaryCaregiver`
+        // (which its `!== null` check treats as a definite non-caregiver value, never falling back to
+        // the MSW-derived slot) and `roster.enrolledSurvivorCount` (whose `< SOCIAL_SUPPORT_ROSTER_FLOOR`
+        // comparison against `undefined` is always `false` in JS) — every score ever appended through this
+        // route silently mis-scored `primaryCaregiverRole` and the roster-fallback half of
+        // `socialIsolation`. No bound seam resolves M5's `patient_caregiver.is_primary` for a survivor, so
+        // `isPrimaryCaregiver` is honestly `null` (extract.ts's own "KNOWN GAP" pattern) rather than
+        // guessed; `enrolledSurvivorCount` is the same already-computed `rosterCount`, correctly named.
         roster: {
-          activeContactCount: rosterCount,
-          relationshipCode: contact?.relationshipCode ?? null,
-        } as never,
+          isPrimaryCaregiver: null,
+          enrolledSurvivorCount: rosterCount,
+        },
         sudDisclosureAllowed: await sudAllowed({
           organizationId: actor.organizationId,
           patientId: plan.patientId,

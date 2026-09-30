@@ -5,6 +5,7 @@
 // injected {@link WriteOutboxPort}. A failed transition → INVALID_TRANSITION; a stale version →
 // VERSION_CONFLICT; a missing row → NOT_FOUND. Free-text reason/narrative is stored in the audit-denylisted
 // columns (override_payload / appeal_narrative / assignment.reason), NEVER in an outbox payload.
+import { repositories } from "@wardenx/billing";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
@@ -82,7 +83,7 @@ export function buildDrizzleM25WriteService(
     to: DenialState,
     ifMatch: number,
     extra: Record<string, unknown>,
-    emit?: (tx: M25Tx) => Promise<void>,
+    emit?: (tx: M25Tx, cur: Awaited<ReturnType<typeof denialState>>) => Promise<void>,
   ): Promise<VersionedResult> {
     return withOrgContext(db, actor, async (tx) => {
       const cur = await denialState(tx, id);
@@ -93,7 +94,7 @@ export function buildDrizzleM25WriteService(
         .where(and(eq(DC.id, id), eq(DC.version, ifMatch)))
         .returning({ id: DC.id, version: DC.version });
       if (!updated[0]) throw new VersionConflictError(cur.version);
-      if (emit) await emit(tx);
+      if (emit) await emit(tx, cur);
       return { id: updated[0].id, version: updated[0].version };
     });
   }
@@ -205,10 +206,46 @@ export function buildDrizzleM25WriteService(
     },
 
     async resolveDenial(actor, id, _input: ReasonInput, ifMatch) {
-      return transitionDenial(actor, id, "resolved", ifMatch, {
-        resolvedAt: sql`now()`,
-        closureOutcome: "resolved_no_appeal",
-      });
+      return transitionDenial(
+        actor,
+        id,
+        "resolved",
+        ifMatch,
+        {
+          resolvedAt: sql`now()`,
+          closureOutcome: "resolved_no_appeal",
+        },
+        async (tx, cur) => {
+          // F-144 (#248) — `m25.denial_resolution_letter.render_requested` is catalogued
+          // (events-by-m25.ts) with a real M22 template descriptor and REQUEST_SHAPES adapter, and
+          // nothing ever emitted it: a manually-resolved denial produced no resolution letter for any
+          // tenant. The chart-target patient is resolved from M23's `claim` row (`patientId`, NOT
+          // NULL) — M25's manifest `dependsOn` includes 23, so a direct `repositories.ClaimRepository`
+          // read on this SAME tx crosses no boundary `arch:boundaries` polices, the identical legality
+          // `outbox-consumers/m23-claim-rejected.ts` already relies on for `providerEntityId`.
+          // `denial_case.claim_id` is nullable (277CA-pre-835 / EVV-sourced cases may have no claim
+          // yet); a denial resolved with no claim on it gets an honest `patientId: null` render rather
+          // than a fabricated one — the F-099 rule.
+          const claim = cur.claimId
+            ? await new repositories.ClaimRepository(tx).findById(cur.claimId)
+            : null;
+          await outbox.publish(tx, {
+            eventName: "m25.denial_resolution_letter.render_requested",
+            organizationId: actor.organizationId,
+            aggregateKind: "denial_case",
+            aggregateId: id,
+            payload: {
+              denialCaseId: id,
+              payload: {
+                patientId: claim?.patientId ?? null,
+                claimId: cur.claimId ?? null,
+                resolvedAt: new Date().toISOString(),
+                closureOutcome: "resolved_no_appeal",
+              },
+            },
+          });
+        },
+      );
     },
 
     async closeDenial(actor, id, ifMatch) {

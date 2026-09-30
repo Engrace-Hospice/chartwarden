@@ -12,6 +12,11 @@
 import net from "node:net";
 import tls from "node:tls";
 import { type MllpConnectionDeps, handleMllpConnection } from "./connection";
+import {
+  PlainListenerRefusedError,
+  inboundPlainAllowed,
+  listenerProtocolRefusal,
+} from "./protocol-policy";
 import type { ListenerRegistryPort, SupervisorFeedDescriptor } from "./supervisor";
 
 export * from "./supervisor";
@@ -19,6 +24,7 @@ export * from "./connection";
 export * from "./mllp-framing";
 export * from "./ack";
 export * from "./circuit-breaker";
+export * from "./protocol-policy";
 
 /** The per-feed mTLS material (decrypted from `external_feed_credential.secret_cipher` via M2 envelope KMS
  *  by the injected loader — the plaintext PEMs never persist). */
@@ -36,6 +42,9 @@ export interface TlsListenerRegistryDeps {
   /** The per-connection handler deps (the ingest sink, ACK minting, clock) for a feed. */
   connectionDeps(feed: SupervisorFeedDescriptor): MllpConnectionDeps;
   log(level: "info" | "warn", event: string, fields: Record<string, unknown>): void;
+  /** F-182 — may a `mllp_plain` listener bind? Omitted ⇒ `inboundPlainAllowed(process.env)` (never in
+   *  production, opt-in elsewhere) — FAIL CLOSED. */
+  allowPlainProtocol?: boolean;
 }
 
 /**
@@ -50,11 +59,19 @@ export function createTlsListenerRegistry(deps: TlsListenerRegistryDeps): Listen
   return {
     async start(feed: SupervisorFeedDescriptor): Promise<void> {
       if (servers.has(feed.id)) return;
+      // F-182 — the bind point is the last line of defence: a caller that bypassed the supervisor's gate still
+      // cannot open a cleartext socket the deployment forbids. Refuses BEFORE `net.createServer`.
+      const allowPlain = deps.allowPlainProtocol ?? inboundPlainAllowed(process.env);
+      if (listenerProtocolRefusal(feed.protocol, allowPlain) !== null) {
+        deps.log("warn", "hl7.listener.plain_refused", { feedId: feed.id });
+        throw new PlainListenerRefusedError(feed.id);
+      }
       const connDeps = deps.connectionDeps(feed);
 
       let server: net.Server;
       if (feed.protocol === "mllp_plain") {
-        // Test-only plain TCP (no PHI in a real deployment — the arch posture is mTLS, §8.7).
+        // Non-production plain TCP only (F-182: refused above unless the explicit opt-in is set outside
+        // production — the arch posture is mTLS, §8.7).
         server = net.createServer((socket) => handleMllpConnection(socket, feed, connDeps));
       } else {
         const cred = await deps.loadCredential(feed);

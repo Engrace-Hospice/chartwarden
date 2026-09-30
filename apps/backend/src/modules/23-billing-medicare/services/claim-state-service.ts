@@ -277,6 +277,27 @@ function buildClaimEmissions(
             payerClaimControlNumber: extra.payerClaimControlNumber,
           },
         },
+        // F-144 (#248) — the §4.10 table names `m23.billing.document_render_requested` as the SOLE
+        // M22 handshake for M23's four document kinds; nothing ever emitted it (the four
+        // `consumers/document-render.ts` builders had no caller). Co-emitted in the SAME transition
+        // that produces the underlying fact (the F-099/F-100/F-117 rule), never a separate consumer of
+        // `.acknowledged` itself. `patientId` is `claim.patientId` (NOT NULL) — already on the row this
+        // transition just persisted, never fabricated.
+        {
+          eventName: "m23.billing.document_render_requested",
+          aggregateKind: ak,
+          aggregateId: claimId,
+          payload: {
+            kind: "claim_acknowledgment_letter",
+            aggregateId: claimId,
+            payload: {
+              patientId: claim.patientId,
+              claimControlNumber: claim.claimControlNumber,
+              payerClaimControlNumber: extra.payerClaimControlNumber ?? null,
+              acknowledgedAt: claim.updatedAt.toISOString(),
+            },
+          },
+        },
       ];
     case "ack_277ca_partial":
       return [
@@ -294,7 +315,9 @@ function buildClaimEmissions(
         },
       ];
     case "ack_277ca_rejected":
-    case "ack_999_rejected":
+    case "ack_999_rejected": {
+      const rejectionStage = event === "ack_999_rejected" ? "999" : "277ca";
+      const rejectionCodes = [...(extra.rejectionCodes ?? [])];
       return [
         {
           eventName: "m23.claim.rejected",
@@ -303,11 +326,31 @@ function buildClaimEmissions(
           payload: {
             claimId,
             acknowledgmentId: extra.acknowledgmentId,
-            rejectionStage: event === "ack_999_rejected" ? "999" : "277ca",
-            rejectionCodes: [...(extra.rejectionCodes ?? [])],
+            rejectionStage,
+            rejectionCodes,
+          },
+        },
+        // F-144 (#248) — the §4.10 handshake's other named trigger: a claim rejection is what the
+        // denial-appeal COVER letter accompanies. Co-emitted alongside `.rejected` in the SAME
+        // transition — `patientId` is `claim.patientId` (NOT NULL), the claim row this rejection was
+        // just persisted onto.
+        {
+          eventName: "m23.billing.document_render_requested",
+          aggregateKind: ak,
+          aggregateId: claimId,
+          payload: {
+            kind: "denial_appeal_cover_letter",
+            aggregateId: claimId,
+            payload: {
+              patientId: claim.patientId,
+              claimControlNumber: claim.claimControlNumber,
+              rejectionStage,
+              rejectionCodes,
+            },
           },
         },
       ];
+    }
     case "remittance_paid":
     case "appeal_succeeded":
       return [

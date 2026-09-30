@@ -1,5 +1,6 @@
 import type { schema } from "@wardenx/db";
 import {
+  type BereavementPlanClosedEvent,
   type CahpsCandidateAddRequest,
   type ClaimAdjudicatedEvent,
   type DischargeDeathEvent,
@@ -17,12 +18,14 @@ import {
   type RecomputeEnqueueRequest,
   effectKindsForTopic,
   effectsForTopic,
+  handleBereavementPlanClosed,
   handleClaimAdjudicated,
   handleDischargeDeath,
   handleElectionSigned,
   handleEvvVisitVerified,
   handleHopeSubmissionAccepted,
   handleMedicationErrorReported,
+  handleRestraintApplied,
   measureCodesForFamilies,
 } from "@wardenx/quality";
 // @wardenx/quality — M30 §4.10 upstream-consumer unit tests (PURE; in-memory ports; no DB).
@@ -76,8 +79,12 @@ describe("M30 §4.10 outbox-subscription map", () => {
         "m6.election.signed",
         "m10.hope.submission_accepted",
         "m12.medication.error_reported",
+        "m16.bereavement.plan_closed_completed",
+        "m16.bereavement.plan_closed_declined",
+        "m16.bereavement.plan_closed_early",
         "m18.evv.visit_verified",
         "m23.claim.adjudicated",
+        "m37.restraint.applied",
       ].sort(),
     );
   });
@@ -90,8 +97,12 @@ describe("M30 §4.10 outbox-subscription map", () => {
     expect(effectKindsForTopic("m6.election.signed")).toEqual(["recompute"]);
     expect(effectKindsForTopic("m10.hope.submission_accepted")).toEqual(["recompute"]);
     expect(effectKindsForTopic("m12.medication.error_reported")).toEqual(["incident_draft"]);
+    expect(effectKindsForTopic("m16.bereavement.plan_closed_completed")).toEqual(["recompute"]);
+    expect(effectKindsForTopic("m16.bereavement.plan_closed_declined")).toEqual(["recompute"]);
+    expect(effectKindsForTopic("m16.bereavement.plan_closed_early")).toEqual(["recompute"]);
     expect(effectKindsForTopic("m18.evv.visit_verified")).toEqual(["hvldl_near_death_recompute"]);
     expect(effectKindsForTopic("m23.claim.adjudicated")).toEqual(["recompute"]);
+    expect(effectKindsForTopic("m37.restraint.applied")).toEqual(["incident_draft"]);
   });
 
   it("carries the right discriminator data on the typed effects", () => {
@@ -104,6 +115,12 @@ describe("M30 §4.10 outbox-subscription map", () => {
     expect(draft?.kind).toBe("incident_draft");
     if (draft?.kind === "incident_draft") {
       expect(draft.incidentKind).toBe("medication_error");
+    }
+
+    const restraint = effectsForTopic("m37.restraint.applied")[0];
+    expect(restraint?.kind).toBe("incident_draft");
+    if (restraint?.kind === "incident_draft") {
+      expect(restraint.incidentKind).toBe("restraint_use");
     }
 
     const evv = effectsForTopic("m18.evv.visit_verified")[0];
@@ -224,6 +241,40 @@ describe("M30 §4.10 upstream handlers", () => {
     expect(cap.recomputes[0]?.measureCodes).toEqual(measureCodesForFamilies(["hci"]));
   });
 
+  it.each([
+    "m16.bereavement.plan_closed_completed",
+    "m16.bereavement.plan_closed_declined",
+    "m16.bereavement.plan_closed_early",
+  ] as const)(
+    "%s → enqueues ONLY bereavement_coverage_rate, not the whole operational family",
+    async (sourceEventName) => {
+      const cap = capturePorts();
+      const event: BereavementPlanClosedEvent = {
+        eventId: "evt-plan-closed-1",
+        organizationId: "org-1",
+        providerEntityId: "pe-1",
+        planId: "plan-1",
+        sourceEventName,
+      };
+      const report = await handleBereavementPlanClosed(event, cap.ports);
+      expect(report.eventName).toBe(sourceEventName);
+      expect(report.effects).toEqual(["recompute"]);
+      expect(cap.recomputes).toHaveLength(1);
+      expect(cap.recomputes[0]).toMatchObject({
+        organizationId: "org-1",
+        providerEntityId: "pe-1",
+        triggeringEventId: "evt-plan-closed-1",
+      });
+      // Explicit measure code, NOT measureCodesForFamilies(["operational"]) — the whole point (see the
+      // handler's own doc comment): a plan closure has no data dependency on missed-dose rate, IDG
+      // cadence, etc.
+      expect(cap.recomputes[0]?.measureCodes).toEqual(["bereavement_coverage_rate"]);
+      expect(cap.recomputes[0]?.measureCodes.length).toBeLessThan(
+        measureCodesForFamilies(["operational"]).length,
+      );
+    },
+  );
+
   it("m10.hope.submission_accepted → enqueues a HOPE-derived (TFP) recompute", async () => {
     const cap = capturePorts();
     const event: HopeSubmissionAcceptedEvent = {
@@ -261,6 +312,7 @@ describe("M30 §4.10 upstream handlers", () => {
       triggeringEventOutboxId: "evt-med-err-1",
       reportedByMembershipId: "svc-membership",
       medicationOrderId: "mo-1",
+      medicationErrorId: "med-err-1",
       patientId: "patient-7",
     };
     const report = await handleMedicationErrorReported(event, cap.ports);
@@ -271,6 +323,61 @@ describe("M30 §4.10 upstream handlers", () => {
       lifecycle: "draft",
       mandatoryReportFlag: false,
       triggeringEventOutboxId: "evt-med-err-1",
+    });
+    expect(cap.incidentDrafts[0]?.kindData).toMatchObject({
+      medicationOrderId: "mo-1",
+      medicationErrorId: "med-err-1",
+    });
+  });
+
+  it("m37.restraint.applied → auto-files a draft restraint_use incident (D8, F-185)", async () => {
+    const cap = capturePorts();
+    const event: Extract<IncidentTriggerEvent, { type: "m37.restraint.applied" }> = {
+      type: "m37.restraint.applied",
+      organizationId: "org-1",
+      providerEntityId: "pe-1",
+      occurredAt: new Date("2025-02-14T09:00:00Z"),
+      triggeringEventOutboxId: "evt-restraint-1",
+      reportedByMembershipId: "svc-membership",
+      restraintEventId: "restraint-1",
+      restraintKind: "four_point",
+      patientId: "patient-11",
+    };
+    const report = await handleRestraintApplied(event, cap.ports);
+    expect(report.effects).toEqual(["incident_draft"]);
+    expect(cap.incidentDrafts).toHaveLength(1);
+    expect(cap.incidentDrafts[0]).toMatchObject({
+      kind: "restraint_use",
+      severity: "moderate",
+      lifecycle: "draft",
+      mandatoryReportFlag: false,
+      triggeringEventOutboxId: "evt-restraint-1",
+      patientId: "patient-11",
+      kindData: {
+        restraintEventId: "restraint-1",
+        restraintKind: "four_point",
+        narrativeText: "Restraint applied; see IPU restraint record for clinical detail.",
+      },
+    });
+  });
+
+  it("m37.restraint.applied → uses the upstream summary as narrativeText when supplied", async () => {
+    const cap = capturePorts();
+    const event: Extract<IncidentTriggerEvent, { type: "m37.restraint.applied" }> = {
+      type: "m37.restraint.applied",
+      organizationId: "org-1",
+      providerEntityId: "pe-1",
+      occurredAt: new Date("2025-02-14T09:05:00Z"),
+      triggeringEventOutboxId: "evt-restraint-2",
+      reportedByMembershipId: "svc-membership",
+      restraintEventId: "restraint-2",
+      restraintKind: "chemical",
+      summary: "Emergency chemical restraint per physician order.",
+    };
+    await handleRestraintApplied(event, cap.ports);
+    expect(cap.incidentDrafts[0]?.kindData).toMatchObject({
+      narrativeText: "Emergency chemical restraint per physician order.",
+      summary: "Emergency chemical restraint per physician order.",
     });
   });
 

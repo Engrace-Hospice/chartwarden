@@ -75,6 +75,52 @@ export {
 } from "./consumers/index";
 export { buildM17AdmissionLifecycleConsumer } from "./consumers/admission-lifecycle";
 export { buildM17CarePlanProposalConsumer } from "./consumers/care-plan-proposals";
+// F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation, bound live.
+export {
+  M17_EVV_CHECK_IN_CONSUMER,
+  buildM17EvvCheckInConsumer,
+  type EvvCheckInDeps,
+} from "./outbox-consumers/m18-evv-check-in";
+export {
+  M17_EVV_AT_PATIENT_ADDRESS_CONSUMER,
+  buildM17EvvAtPatientAddressConsumer,
+  type EvvAtPatientAddressDeps,
+} from "./outbox-consumers/m18-evv-at-patient-address";
+// F-196 (#248) — the §4.10 missing-EVV resolution stamp, bound live.
+export {
+  M17_EVV_LATE_CHECK_RESOLVED_CONSUMER,
+  buildM17EvvLateCheckResolvedConsumer,
+  type EvvLateCheckResolvedDeps,
+} from "./outbox-consumers/m18-evv-late-check-resolved";
+export {
+  M17_SOS_VISIT_CANCELLATION_CONSUMER,
+  buildM17SosVisitCancellationConsumer,
+  type SosVisitCancellationDeps,
+} from "./outbox-consumers/m20-safety-visit-cancellation";
+// F-158 (#248) — the §3.3 EVV checkout/correction provenance-pointer consumers, bound live.
+export {
+  M17_EVV_CHECK_OUT_CONSUMER,
+  buildM17EvvCheckOutConsumer,
+  type EvvCheckOutDeps,
+} from "./outbox-consumers/m18-evv-check-out";
+export {
+  M17_EVV_EVENT_CORRECTED_CONSUMER,
+  buildM17EvvEventCorrectedConsumer,
+  type EvvEventCorrectedDeps,
+} from "./outbox-consumers/m18-evv-event-corrected";
+// F-166 (#248) — the §7.5 volunteer-gate scheduler warning + the §2.2.4 D5 after-hours triage proposal.
+export {
+  M17_VOLUNTEER_ASSIGNMENT_INACTIVATED_CONSUMER,
+  buildM17VolunteerAssignmentInactivatedConsumer,
+  type VolunteerAssignmentInactivatedConsumerDeps,
+} from "./outbox-consumers/m15-volunteer-assignment-inactivated";
+export {
+  M17_TRIAGE_VISIT_NEEDED_CONSUMER,
+  buildM17TriageVisitNeededConsumer,
+  type TriageVisitNeededConsumerDeps,
+  type TriageVisitAdmissionSiting,
+  type TriageVisitAdmissionSitingReader,
+} from "./outbox-consumers/m19-triage-visit-needed";
 // M17-T07 — the four §4.7 pre-schedule ABAC predicate resolvers M17 owns + registers into M3.
 export {
   type SchedulingAbacDeps,

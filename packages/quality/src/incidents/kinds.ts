@@ -1,6 +1,7 @@
 // @wardenx/quality — M30 §2.3 / D8 incident-kind catalog + per-kind required-field rules (P2a).
 //
-// The six-kind incident taxonomy (V-14) as a PURE domain catalog: per-kind metadata, the required
+// The incident taxonomy (V-14; the module spec's six-kind V-14 lock plus `restraint_use`, added F-185
+// #248) as a PURE domain catalog: per-kind metadata, the required
 // `kind_data` members each kind must carry before submission, the allowed `exposure_event` subkinds, and
 // the sentinel-eligibility flag that drives the WF-11 alert path. There is NO Fastify TypeBox here — the
 // route-layer per-kind request schemas land in a later phase; this file is the framework-free domain
@@ -65,7 +66,7 @@ export interface IncidentKindDefinition {
 }
 
 /**
- * The six-kind incident catalog (V-14 / D8). Frozen: the kind list mirrors `m30_incident_kind` verbatim;
+ * The incident catalog (V-14 / D8). Frozen: the kind list mirrors `m30_incident_kind` verbatim;
  * a new kind is a schema + catalog change, never an ad-hoc string.
  */
 export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDefinition>> = {
@@ -122,6 +123,20 @@ export const INCIDENT_KIND_CATALOG: Readonly<Record<IncidentKind, IncidentKindDe
     sentinelEligible: false,
     alwaysMandatoryReport: false,
     defaultSeverity: "minor",
+  },
+  restraint_use: {
+    // F-185 (#248) — auto-filed from `m37.restraint.applied` (D8's thin-pointer design: M30 never widens
+    // M37's payload or reads `restraint_justification_text`, an M37-side audit-denylisted PHI field).
+    // `restraintEventId`/`restraintKind` are optional pointer fields present on the auto-created draft,
+    // not structurally required — the same posture `medicationOrderId` would have if it weren't itself
+    // already required by `medication_error`'s own catalog entry above; `restraint_use` instead follows
+    // the `fall`/`complaint`/`other_safety_event` convention of requiring only `narrativeText`.
+    kind: "restraint_use",
+    label: "Restraint use",
+    requiredKindDataFields: ["narrativeText"],
+    sentinelEligible: true,
+    alwaysMandatoryReport: false,
+    defaultSeverity: "moderate",
   },
 };
 

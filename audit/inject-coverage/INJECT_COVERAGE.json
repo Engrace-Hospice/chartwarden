@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1301,
-    "coveredRoutes": 1301,
-    "directRoutesReferenced": 1244
+    "routes": 1311,
+    "coveredRoutes": 1311,
+    "directRoutesReferenced": 1253
   },
   "modules": [
     {
@@ -52,7 +52,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 15,
+      "routes": 16,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -61,7 +61,7 @@
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 15
+      "directRoutesReferenced": 16
     },
     {
       "module": "06-admission",
@@ -100,13 +100,13 @@
     },
     {
       "module": "09-assessments",
-      "routes": 19,
+      "routes": 20,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/m9-assessments-write.live.test.ts"
       ],
-      "directRoutesReferenced": 14
+      "directRoutesReferenced": 15
     },
     {
       "module": "10-hope",
@@ -119,21 +119,24 @@
     },
     {
       "module": "11-orders",
-      "routes": 28,
+      "routes": 34,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/orders-routes.test.ts"
+        "apps/backend/__tests__/orders-routes.test.ts",
+        "apps/backend/__tests__/orm-recovery.test.ts",
+        "apps/backend/__tests__/orm-resend.test.ts",
+        "apps/backend/__tests__/stuck-recovery.test.ts"
       ],
-      "directRoutesReferenced": 22
+      "directRoutesReferenced": 27
     },
     {
       "module": "12-dosespot",
-      "routes": 31,
+      "routes": 32,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/dosespot-routes.test.ts"
       ],
-      "directRoutesReferenced": 19
+      "directRoutesReferenced": 20
     },
     {
       "module": "13-emar",
@@ -213,12 +216,12 @@
     },
     {
       "module": "21-supplies",
-      "routes": 37,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/supplies-inject.test.ts"
       ],
-      "directRoutesReferenced": 37
+      "directRoutesReferenced": 38
     },
     {
       "module": "22-documents",

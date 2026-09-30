@@ -196,3 +196,4 @@ export function mountAuthorizationRoutes(
   };
   _registerAuthzRoutes(app, deps);
 }
+export { type MembershipsHoldingPermissionReader, createMembershipsHoldingPermissionReader } from "./permission-holders";

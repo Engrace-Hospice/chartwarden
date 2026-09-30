@@ -70,6 +70,18 @@ export const denialCase = pgTable(
     agingBucketDays: smallint("aging_bucket_days").notNull().default(0),
     overridePayload: jsonb("override_payload"), // denylisted in audit (§3.6)
     taxonomyStatus: m25TaxonomyStatus("taxonomy_status").notNull(),
+    // F-153/F-156 (#248) — the pre-835 seed idempotency key the two upstream consumers' own header
+    // comment has always promised ("the 277CA seed dedupes on (claimId, source, UTC date); the EVV seed
+    // on the aggregator submission id … the store enforces the dedupe") while no column or index ever
+    // backed it — only non-unique indexes existed, so a redelivery or a dispatcher-tick race could
+    // double-seed a row silently. NULL for every `remittance_adjustment`-sourced row (the existing WX-
+    // PR-012 ingest path): that source is already naturally 1:1 with its `remittance_adjustment_id`
+    // (one CAS adjustment posts at most once inside one transactional 835 post), so it needs no key here.
+    // Populated only by the two pre-835 seed sources: `277ca:${claimId}:${utcDateOfOccurredAt}` /
+    // `evv:${aggregatorSubmissionId}` — computed by the caller (not derived from `opened_at`, which is
+    // insertion time, not the source event's `occurredAt`; a redelivery near a UTC midnight boundary
+    // would otherwise evade the dedupe).
+    sourceIdempotencyKey: varchar("source_idempotency_key", { length: 160 }),
     version: integer("version").notNull().default(1),
   },
   (t) => ({
@@ -80,6 +92,14 @@ export const denialCase = pgTable(
       .on(t.agingBucketDays, t.state)
       .where(sql`state IN ('open','in_progress','escalated')`),
     byProviderEntity: index("ix_denial_pe").on(t.providerEntityId, t.state),
+    // F-153/F-156 (#248) — the real dedupe guard: one denial_case per (org, idempotency key), only for
+    // rows that carry one. `.onConflictDoNothing()` against this (the `elevated-approvals.ts` grant() /
+    // `report_definition_system_org_base_uq` precedent) makes a redelivery or a concurrent dispatcher-tick
+    // race a genuine no-op re-select rather than a duplicate worklist row.
+    bySourceIdempotencyKey: unique("denial_case_source_idempotency_key_uq").on(
+      t.organizationId,
+      t.sourceIdempotencyKey,
+    ),
   }),
 );
 

@@ -85,6 +85,23 @@ export const AmendmentBodySchema = Type.Object({
   rationale: Type.String({ minLength: 1, maxLength: 2000 }),
 });
 
+// POST /api/v1/patients/:id/merge (§2.4/§4.3, F-171/#248 — direct admin-initiated merge)
+const PatientFieldResolutionSchema = Type.Object({
+  keep: Type.Union([Type.Literal("source"), Type.Literal("target"), Type.Literal("custom")]),
+  customValue: Type.Optional(Type.Unknown()),
+});
+export const MergeBodySchema = Type.Object({
+  targetPatientId: Type.String({ minLength: 1, maxLength: 64 }),
+  fieldResolutions: Type.Optional(Type.Record(Type.String(), PatientFieldResolutionSchema)),
+  reason: Type.String({ minLength: 10, maxLength: 2000 }),
+});
+export const MergeResponseSchema = Type.Object({
+  mergeId: Type.String(),
+  sourcePatientId: Type.String(),
+  targetPatientId: Type.String(),
+  targetFieldsApplied: Type.Array(Type.String()),
+});
+
 // POST /api/v1/amendments/:id/deny
 export const DenyBodySchema = Type.Object({
   denialReason: Type.String({ minLength: 1, maxLength: 500 }),

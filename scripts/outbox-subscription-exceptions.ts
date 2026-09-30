@@ -143,39 +143,8 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m31",
     kind: "record-only-target",
     reason:
-      "M39 catalogues `consent.created` record-only and M4 does the same for both legal-hold topics — published for the record, delivered to nobody. M31 would use them to gate portal access and to freeze a portal eraser, but adding the first consumer to a record-only event is the owning module's decision, and M31 has no consumer surface to put behind it.",
+      "F-139 (#248) re-checked this against M39's/M4's OWN spec text, not just the catalog shape. M39's own §4.10-equivalent outbox table states `consent.created`'s consumers as '(none — drafts are internal)' — a decisive first-party disclaimer, unlike M31's spec text which names it aspirationally; stays record-only, M31 not added. M4's own module spec (§M04-F03) is equally decisive the other way for the legal-hold pair: propagation is a registered `HoldApplier` SEAM per data-owning module (`applyHold`/`releaseHold`, the same pattern as `DataEraser`), never an outbox subscription — `events-by-m4.ts`'s own header says declaring a consumer here 'would be a namespace lie'. M31 registering a `HoldApplier` is real, unbuilt work, but it is not an outbox-catalog fix and does not belong in `outbox-deferred-consumers.ts` either.",
     events: ["m39.consent.created", "m4.legal_hold.applied", "m4.legal_hold.released"],
-  },
-  {
-    module: "m31",
-    kind: "no-handler",
-    reason:
-      "M31 has NO `consumers/` directory at all (`outbox-deferred-consumers.ts` files it `no-consumer-surface`), so its §4.10 list is an intent rather than a running subscription. Each of these events is already deferred by another unbound consumer, so declaring `m31` would cost nothing at runtime today — and would still be a declaration with no handler behind it, which is what this register exists to stop being silent about. Ends when M31 grows a consumer surface.",
-    events: [
-      "m6.admission.discharged",
-      "m16.bereavement.plan_closed_completed",
-      "m16.bereavement.plan_opened",
-      "m39.consent.revoked",
-    ],
-  },
-  {
-    module: "m31",
-    kind: "would-defer-a-bound-event",
-    reason:
-      "Both are delivered TODAY — `m17.visit.published` to m8, m18 and m20 (all bound as of #204) and `m22.document.rendered` to all five of its consumers. M31 has no consumer surface, so declaring it would convert two working deliveries into rows re-claimed every thirty minutes, for every other consumer as well. These two declarations must land in the same change as M31's bindings.",
-    events: ["m17.visit.published", "m22.document.rendered"],
-  },
-  {
-    module: "m35",
-    kind: "no-handler",
-    reason:
-      "M2 now catalogues and publishes all four (events-by-m2.ts, organization-lifecycle.ts, §11 D19 — #205 hard-half). Investigated and closed: M34's `tenant_account` lifecycle is a deliberately separate, platform-ops/compliance/destruction-driven state machine (provisioning/onboarding/BAA/DSAR/shred) with no equivalent of `session.created` at all, and the M35 spec's own D19 decision table explicitly rejects 'another module owns suspension authority' as splitting responsibility M2 should hold — redirecting was never the right fix. M35 has no `consumers/` directory (same reason as the `m5.patient.deceased`/`.merged` entry below), so these stay `no-handler` until it grows one.",
-    events: [
-      "m2.organization.activated",
-      "m2.organization.closed",
-      "m2.organization.suspended",
-      "m2.session.created",
-    ],
   },
   {
     module: "m35",
@@ -183,13 +152,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     reason:
       "M5 catalogues both record-only. M35 counts billable patients off them, which would make M5's patient lifecycle a billing input — a coupling M5 has not agreed to and cannot be given by its subscriber.",
     events: ["m5.patient.created", "m5.patient.status_changed"],
-  },
-  {
-    module: "m35",
-    kind: "no-handler",
-    reason:
-      "M35 has no `consumers/` directory. Both events are already deferred by other unbound consumers, so declaring `m35` would cost nothing today and would still be a declaration with nothing behind it. Ends when M35 grows a consumer surface.",
-    events: ["m5.patient.deceased", "m5.patient.merged"],
   },
   // ── F-095 (#208): the thirteen modules rule 6 could not see until discovery stopped being a naming
   // convention in one directory. Same register, same rules; the three kinds below were added for facts
@@ -200,39 +162,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     reason:
       "`consumers/hope-trigger.ts` is a written decider whose only caller is its own test. The event is already deferred by other unbound consumers, so declaring `m11` costs nothing at runtime today — and the declaration still belongs on the commit that binds the handler, not before it. F-102 removed `m6.admission.discharged` from this entry by doing exactly that: `consumers/bindings.ts` now binds `decideDischargeCascade` and M6's catalog declares m11.",
     events: ["m10.hope.j2051_trigger_fired"],
-  },
-  {
-    module: "m12",
-    kind: "handler-unbound",
-    reason:
-      "`consumers/sync-triggers.ts` (`decidePatientSyncTrigger` covers all four M5 demographic reasons, plus the M6 MedHx fetch) and `verbal-expired.ts` are written and bound by nothing (F-102 bound `admission-discharged-cascade.ts` and removed `m6.admission.discharged` from this list). Every one of these events is already deferred by another unbound consumer, so the declaration lands with the binding.",
-    events: [
-      "m5.patient.updated",
-      "m5.patient.address_changed",
-      "m5.patient.payer_changed",
-      "m6.admission.activated",
-      "m6.cti.signed",
-      "m11.order.verbal_expired_unsigned",
-    ],
-  },
-  {
-    module: "m12",
-    kind: "record-only-target",
-    reason:
-      "M5 catalogues `patient.created` record-only — published for the record and delivered to nobody. M12's `decidePatientSyncTrigger` handles the `created` reason, so unlike its siblings the handler is ready; adding the first consumer to a record-only event is still M5's decision, not M12's.",
-    events: ["m5.patient.created"],
-  },
-  {
-    module: "m13",
-    kind: "no-handler",
-    reason:
-      "M13's `consumers/` holds one decider — the M22 document back-ref — and nothing else. These four M6 lifecycle events are §4.5 eMAR-context inputs with no decider written; declaring them would defer events a dozen other modules are already waiting on and produce no handler.",
-    events: [
-      "m6.admission.activated",
-      "m6.discharge.created",
-      "m6.admission.discharged",
-      "m6.cti.signed",
-    ],
   },
   {
     module: "m13",
@@ -289,31 +218,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     events: ["m24.medicaid_claim.submit_requested"],
   },
   {
-    module: "m24",
-    kind: "handler-unbound",
-    reason:
-      "`M24_SUBSCRIPTION_MAP` routes each topic to a named effect and `consumers/handlers.ts` implements them, so the deciders exist and nothing binds them. All three events are already deferred by other unbound consumers.",
-    events: ["m23.claim.acknowledged", "m5.patient.updated", "m8.encounter.signed"],
-  },
-  {
-    module: "m24",
-    kind: "would-defer-a-bound-event",
-    reason:
-      "Both M25 remittance topics are delivered today — every module they declare binds them. M24's revalidate-on-remittance effect is mapped and unbound, so declaring `m24` would convert two working deliveries into rows re-claimed every thirty minutes, for the other consumers too.",
-    events: ["m25.remittance.claim_paid", "m25.remittance.claim_denied"],
-  },
-  {
-    module: "m24",
-    kind: "no-such-event",
-    reason:
-      "None of the three names exists in its owning module's landed catalog: M6 publishes no `admission.changed` (it publishes the specific transitions — activated, discharged, on_hold, resumed), M18 publishes no `evv.compliance_changed`, and M40's catalog carries `canonical.updated` and `canonical.deactivated` alone with no rate-schedule topic. Each is a §4.4 revalidate trigger whose intent is real and whose spelling never was.",
-    events: [
-      "m6.admission.changed",
-      "m18.evv.compliance_changed",
-      "m40.reference.rate_schedule_loaded",
-    ],
-  },
-  {
     module: "m25",
     kind: "self-consumption",
     reason:
@@ -326,20 +230,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     reason:
       "The appeal-packet / resolution-letter back-ref is `M25_SUBSCRIPTION_MAP`'s third effect and is bound by nothing, while the render handshake dispatches today for its five bound consumers.",
     events: ["m22.document.rendered"],
-  },
-  {
-    module: "m26",
-    kind: "handler-unbound",
-    reason:
-      "`consumers/handlers.ts` implements the patient-death cap effect and nothing binds it; the event is already deferred by other unbound consumers.",
-    events: ["m5.patient.deceased"],
-  },
-  {
-    module: "m26",
-    kind: "no-handler",
-    reason:
-      "M36 now catalogues this event (events-by-m36.ts, #205 follow-up; M19 and M20 are bound to it). M26's own `consumers/subscription-map.ts` names a handler (`surface-stuck-alert`) but it is a no-op stub (`dispatchM26UpstreamEvent`'s own comment: 'operational surfacing only; no ledger effect'), and M26's ENTIRE consumer relay is unbound — `consumers/index.ts`'s own header: 'NO live inbound relay loop exists yet … the composition root calls this with NO registrar', deferred pending the M5/M6 reader dependencies `CapConsumerStore` needs. Binding just this one topic would mean standing up the relay for a stub; the real producer (the out-of-band dispatch pipeline, events-by-m36.ts's header) doesn't exist yet either.",
-    events: ["m36.notification.delivery_failed"],
   },
   {
     module: "m27",

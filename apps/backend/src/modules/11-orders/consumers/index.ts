@@ -60,4 +60,23 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   // the catalog or the bindings. Same shape as F-094's `idg.decision_recorded` in M16 — the one event a
   // module binds live that its own subscription list did not name.
   { eventName: "m22.document.rendered", consumerName: "m11.document-backref" },
+  // F-152 (#248) — the D8 one-shot (`supply`/`comfort_kit`) auto-complete on M21 delivery.
+  { eventName: "m21.supply_request.status_changed", consumerName: "m11.m21-fulfillment-status" },
+  // F-166 (#248) — releases the still-in-flight source order on a staff-initiated M21 cancel (never
+  // through M11's own discharge cascade above, which already discontinues the order before asking M21).
+  { eventName: "m21.supply_request.cancelled", consumerName: "m11.m21-supply-cancelled" },
+  // F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events drive
+  // order_record.transmission_status and re-publish M11's own D16-decisive events.
+  { eventName: "m29.lab_order.transmitted", consumerName: "m11.lab-transmission-applier" },
+  { eventName: "m29.lab_order.transmission_failed", consumerName: "m11.lab-transmission-applier" },
+  // F-187 (#248) — the worker's "wrote NO row" refusals (no/unlinked feed, incomplete MSH identity, lapsed BAA):
+  // the order becomes `failed` (`dispatch_refused:<reason>`) instead of sitting `pending` forever.
+  { eventName: "m29.lab_order.dispatch_refused", consumerName: "m11.lab-transmission-applier" },
+  // F-187 (#248) — SELF-consumption: a lab order superseded after its ORM may be at the laboratory raises an
+  // operator alert (T-29.08 defines no outbound cancel). `outbox-consumers/lab-cancellation-required.ts`.
+  { eventName: "m11.order.discontinued", consumerName: "m11.lab-cancellation-required" },
+  { eventName: "m11.order.corrected", consumerName: "m11.lab-cancellation-required" },
+  // F-203 (#248) — SELF-consumption: the two-person lab-recovery control's compliance alerts, published in the
+  // recovery's own transaction and delivered to M36 here, so an emitter failure after commit is retried, not lost.
+  { eventName: "m11.order.recovery_alert_requested", consumerName: "m11.recovery-alert" },
 ] as const;

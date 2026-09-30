@@ -1849,6 +1849,7 @@ export function createDbEncounterRouteService(
             lateEntryTier: r.lateEntryTier,
             layer2Involved: false,
             evvBracketState,
+            evvMissingReason: r.evvMissingReason,
             requiresCosign: false,
             careplanLinks,
             documentRenderPayload: { final: finalPayload, addenda: [] },
@@ -1902,6 +1903,7 @@ export function createDbEncounterRouteService(
           lateEntryTier: r.lateEntryTier,
           layer2Involved: false,
           evvBracketState,
+          evvMissingReason: r.evvMissingReason,
           requiresCosign,
           careplanLinks,
           documentRenderPayload: { final: finalPayload, addenda: [] },
@@ -2319,6 +2321,10 @@ export function createDbEncounterRouteService(
           signedByMembershipId: actor.membershipId,
           signedAt: now.toISOString(),
           reason: a.reason,
+          // F-168 (#248) — the same PHI-safe stand-in `.signed` sends (`final: ""`; the pinned narrative
+          // never leaves the outbox in the clear). M22 appends a new `document_version` on the SAME
+          // `encounterId` from this.
+          documentRenderPayload: { final: "", addenda: [{ addendumId, reason: a.reason, text: "" }] },
         });
         return { status: "signed", signedAt: now.toISOString() };
       });

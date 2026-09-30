@@ -135,7 +135,11 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       zdrAcknowledged: Bool,
       pilotEnrollment: Bool,
     }),
-    declaredConsumers: ["m35"],
+    // F-142 (#248) — m35 dropped: M35's own D21 (locked) is exhaustive about its 8 inbound
+    // subscriptions and never names an M32 event; M35's own D24 states the AI-metering relationship is
+    // a SEAM — M32 calls `UsageMeteringIngest.ingest` directly into M35's own published seam, never an
+    // outbox push M35 consumes.
+    declaredConsumers: [],
     seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
@@ -152,7 +156,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       mode: Str,
       reason: StrOrNull,
     }),
-    declaredConsumers: ["m35"],
+    // F-142 (#248) — m35 dropped: same D21/D24 reasoning as `tenant_opt_in.recorded` above.
+    declaredConsumers: [],
     seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
@@ -189,7 +194,9 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Str,
       routingDecision: Str,
     }),
-    declaredConsumers: ["m35"],
+    // F-142 (#248) — m35 dropped: same D21/D24 reasoning as `tenant_opt_in.recorded` above — M32 calls
+    // INTO M35's `UsageMeteringIngest.ingest` seam directly (task T-21), never the other way round.
+    declaredConsumers: [],
     seamConsumers: ["m4"],
     isOutboxOnly: true,
   },

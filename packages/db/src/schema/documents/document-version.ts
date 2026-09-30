@@ -7,7 +7,16 @@ import { sql } from "drizzle-orm";
 // a tenant+patient prefix (structural), so it is DENYLISTED in the audit trigger (§3.6) along with
 // `byte_payload_cipher` (DEK-encrypted in-row PHI). `document_id` carries a SQL FK to the M22-owned
 // `document`; `replaces_version_id` / `render_form_fill_id` are plain uuid app-validated.
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { documents } from "./document";
 
@@ -34,6 +43,15 @@ export const documentVersions = pgTable(
     uploadedByMembershipId: uuid("uploaded_by_membership_id"), // nullable for system_render
     uploadedByKind: text("uploaded_by_kind").notNull(), // user|system_render|api|portal|fax
     renderFormFillId: uuid("render_form_fill_id"), // populated when source_kind=form_render
+    // F-168 (#248, migration 0261) — the specific delivered `outbox_event.id` that requested THIS version
+    // (null for manual uploads, DSAR/tenant-export renders, and every pre-migration row). Plain
+    // app-validated uuid, no FK (`outbox_event` rows are purged past retention; provenance must outlive
+    // the row that requested it) — the `render_form_fill_id` precedent two lines up. This is the
+    // idempotency key `decideDocumentRequest`'s `alreadyRendered` fact resolves against: written in the
+    // SAME insert as the version row, so a genuine redelivery of the identical outbox row is crash-safe
+    // (no separate receipt table with its own lost-write window), while a genuinely different request
+    // event — even against the same aggregate, even the same event TYPE — always gets its own version.
+    sourceEventId: uuid("source_event_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -50,6 +68,12 @@ export const documentVersions = pgTable(
     uploaderShape: check(
       "document_version_uploader_shape",
       sql`(uploaded_by_kind = 'user') = (uploaded_by_membership_id IS NOT NULL)`,
+    ),
+    // F-168 (#248, migration 0261) — NULLS DISTINCT (Postgres default): the many NULL-keyed
+    // non-request-driven rows coexist freely; only rows carrying the same (org, source_event_id) collide.
+    bySourceEvent: unique("document_version_source_event_uq").on(
+      t.organizationId,
+      t.sourceEventId,
     ),
   }),
 );

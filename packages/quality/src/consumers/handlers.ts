@@ -156,6 +156,57 @@ export async function handleElectionSigned(
   return { eventName: "m6.election.signed", effects: ["recompute"] };
 }
 
+/**
+ * The minimal `m16.bereavement.plan_closed_completed` / `.plan_closed_declined` / `.plan_closed_early`
+ * payload M30 reads (§4.10, F-160-follow-up / #248). `providerEntityId` is NOT on any of the three
+ * catalogued wire payloads (each carries only `{planId, ...}`) — the consumer BINDING resolves it via
+ * the new org-explicit `bereavementPlanSitingForOrg` read before calling this handler; the handler stays
+ * pure and never sees `planId` alone.
+ */
+export interface BereavementPlanClosedEvent {
+  readonly eventId: string;
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  /** The plan that closed (logical FK M16). */
+  readonly planId: string;
+  /** The catalogued source event name (one of the three `plan_closed_*` topics) — carried through into
+   *  the recompute-queue row's `triggering_event_name` provenance rather than a single hardcoded string. */
+  readonly sourceEventName: string;
+}
+
+/**
+ * `m16.bereavement.plan_closed_completed` / `.plan_closed_declined` / `.plan_closed_early` → enqueue a
+ * `bereavement_coverage_rate` recompute.
+ *
+ * NOT a family-wide fan-out (unlike every other `enqueueFamilyRecompute` caller in this file): the three
+ * `planClosureCounts` seam calls a plan closure would most directly answer feed NO currently-registered
+ * M30 measure ("bound is not computing" — F-115/F-148), so triggering the whole `operational` family
+ * here would recompute a dozen measures (missed-dose rate, IDG cadence, …) with no data dependency on a
+ * bereavement plan closing. The REAL, mechanically-verified dependency is narrower and indirect: every
+ * one of these three transitions runs a `cancel_future_outreach` effect
+ * (`apps/backend/src/modules/16-bereavement/lifecycle/plan.ts`) that flips every still-`scheduled`
+ * `bereavement_outreach` touchpoint to `cancelled` — and `cancelled` is EXCLUDED from both
+ * `COP_NUMERATOR_STATUSES` and `COP_DENOMINATOR_STATUSES` (`16-bereavement/seams/store.ts`), the exact
+ * counts `bereavement_coverage_rate`'s calculator reads via `copOutreachCounts`. A plan closure therefore
+ * measurably shrinks that measure's denominator for any recompute period whose window still includes the
+ * now-cancelled touchpoints' `dueAt`. `measureCodes` names only the one measure this fact actually
+ * feeds, rather than going through `measureCodesForFamilies`.
+ */
+export async function handleBereavementPlanClosed(
+  event: BereavementPlanClosedEvent,
+  ports: M30ConsumerPorts,
+): Promise<UpstreamConsumeReport> {
+  await ports.enqueueRecompute({
+    organizationId: event.organizationId,
+    providerEntityId: event.providerEntityId,
+    families: ["operational"],
+    measureCodes: ["bereavement_coverage_rate"],
+    reason: `${event.sourceEventName} — plan closure cancels future outreach touchpoints, shifting the CoP 418.64(d) coverage denominator`,
+    triggeringEventId: event.eventId,
+  });
+  return { eventName: event.sourceEventName, effects: ["recompute"] };
+}
+
 /** The minimal `m10.hope.submission_accepted` payload M30 reads (§4.10). */
 export interface HopeSubmissionAcceptedEvent {
   readonly eventId: string;
@@ -215,6 +266,22 @@ export async function handleMedicationErrorReported(
   const row = buildIncidentDraftFromEvent(event);
   await ports.createIncidentDraft(row);
   return { eventName: "m12.medication.error_reported", effects: ["incident_draft"] };
+}
+
+/**
+ * `m37.restraint.applied` → auto-file a `restraint_use` incident draft (F-185, #248, D8). Exact mirror of
+ * {@link handleMedicationErrorReported}: the consumer binding injects the resolved `occurredAt`, the M30
+ * service `reportedByMembershipId`, and the `triggeringEventOutboxId`, plus a `providerEntityId` resolved
+ * off M37's `ipu_admission` (the payload carries no `providerEntityId` — see the consumer binding's own
+ * doc comment); this handler reuses the pure {@link buildIncidentDraftFromEvent} and persists the draft.
+ */
+export async function handleRestraintApplied(
+  event: Extract<IncidentTriggerEvent, { type: "m37.restraint.applied" }>,
+  ports: M30ConsumerPorts,
+): Promise<UpstreamConsumeReport> {
+  const row = buildIncidentDraftFromEvent(event);
+  await ports.createIncidentDraft(row);
+  return { eventName: "m37.restraint.applied", effects: ["incident_draft"] };
 }
 
 /** The minimal `m18.evv.visit_verified` payload M30 reads (§4.10). */

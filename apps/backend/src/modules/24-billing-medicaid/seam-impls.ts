@@ -1,16 +1,21 @@
-// apps/backend/src/modules/24-billing-medicaid/seam-impls.ts — the eight §4.3 published reader-seam
+// apps/backend/src/modules/24-billing-medicaid/seam-impls.ts — the nine §4.3 published reader-seam
 // implementations over the M24 READ service + db. Each takes an `orgId` (cross-module callers:
 // M5/M25/M26/M27/M28/M30/M33/M34/M37) and wraps it in a synthetic system actor so withOrgContext scopes the
 // reads under RLS. Money crosses as cents-as-STRING (the seam contract: consumers must never parse to a lossy
 // float). The state Medicaid Recipient ID is NEVER on any surface (D12 / §3.6).
 //
-// REGISTRATION DEFERRED (the M26 unconsumed-seam posture): these are NOT yet registered into the M1
-// SeamRegistry — no live consumer calls `getSeam` on an M24 seam today (M27/M28/M30/M37 deny-stub or are
-// unbuilt). The published surface ships now; `wiring.ts` registers it once a consumer binds, following the
-// M26 precedent (add the SeamName to @wardenx/types + a deny-stub provider + REQUIRED_SEAMS at that point).
-// Until then M24 is reachable cross-module via its §4.11 outbox events. The seam interfaces are declared
-// locally (the medicaid-adapters pure package owns no seam-DTO module) — they ship to @wardenx/types at the
-// M24 lock, the subscription contract in §4.11.
+// REGISTRATION DEFERRED for eight of the nine (the M26 unconsumed-seam posture): these are NOT registered
+// into the M1 SeamRegistry — no live consumer calls `getSeam` on them today (M27/M28/M30/M37 deny-stub or
+// are unbuilt). The published surface ships now; `wiring.ts` registers each one once a consumer binds,
+// following the M26 precedent (add the SeamName to @wardenx/types + a deny-stub provider + REQUIRED_SEAMS
+// at that point). Until then those eight stay reachable cross-module via M24's §4.11 outbox events.
+//
+// `claimMatch` (`MedicaidClaimMatchProvider`) is the NINTH and is REGISTERED (F-172, #248, m24 group) —
+// M25's `postAdvice` auto-match is its first live consumer, routed by the advice's own `payerKind`
+// discriminator alongside M23's sibling `ClaimSubmissionReader` seam (never a Medicaid 835 matched
+// against M23's `claim` table, or the reverse). The seam interfaces are declared locally (the
+// medicaid-adapters pure package owns no seam-DTO module) — they ship to @wardenx/types at the M24 lock,
+// the subscription contract in §4.11.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
@@ -129,6 +134,34 @@ export interface MedicaidTradingPartnerAdmin {
   ): Promise<{ id: string; providerEntityId: string; serviceState: string; channel: string }[]>;
 }
 
+/** F-172 (#248, m24 group) — a WX-PR-012 candidate row, the M24 shape of M23's `ClaimMatchCandidateRow`
+ *  (`23-billing-medicare/cost-report-seams.ts`). No `payerIcn`/`patientMemberId` field: `medicaid_claim`
+ *  has no payer-assigned ICN column, and the state Medicaid Recipient ID is NEVER stored here (D12/§3.6)
+ *  — so only the claim-control-number exact-match strategy of M25's `autoMatch` can ever fire for a
+ *  Medicaid line, honestly (never a fabricated ICN or member id to widen the match surface). */
+export interface MedicaidClaimMatchCandidateRow {
+  readonly claimId: string;
+  readonly claimControlNumber: string;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+}
+
+/** F-172 (#248, m24 group) — the M24 → M25 835-to-claim match seam, the exact `ClaimSubmissionReader`
+ *  shape one module over (`23-billing-medicare/cost-report-seams.ts`): a candidate-list lookup scoped by
+ *  org+providerEntityId (never a bare state-wide scan — `MedicaidClaimReader.claimByControlNumber` above
+ *  is state-scoped only, which risks a cross-provider-entity collision within one org since
+ *  `medicaid_claim_control_per_pe_state` is an index, not a unique constraint) + a claim→patient
+ *  resolution for the PR-ledger seed. PHI: `patientIdForClaim` returns a patient id, `candidatesForLine`
+ *  does not. */
+export interface MedicaidClaimMatchProvider {
+  candidatesForLine(
+    orgId: string,
+    providerEntityId: string,
+    keys: { readonly claimControlNumber?: string },
+  ): Promise<MedicaidClaimMatchCandidateRow[]>;
+  patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
+}
+
 export interface M24SeamImpls {
   readonly claim: MedicaidClaimReader;
   readonly dayProjection: MedicaidClaimDayProjectionProvider;
@@ -138,6 +171,7 @@ export interface M24SeamImpls {
   readonly rateSchedule: StateRateScheduleReader;
   readonly roomAndBoard: RoomAndBoardReader;
   readonly tradingPartner: MedicaidTradingPartnerAdmin;
+  readonly claimMatch: MedicaidClaimMatchProvider;
 }
 
 const EMPTY_DAYS: DaysByLevelOfCare = { rhc: 0, chc: 0, irc: 0, gip: 0, nfRb: 0, total: 0 };
@@ -331,6 +365,47 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
     },
   };
 
+  const claimMatch: MedicaidClaimMatchProvider = {
+    async candidatesForLine(orgId, providerEntityId, keys) {
+      if (!keys.claimControlNumber) return [];
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const C = schema.medicaidClaim;
+        const rows = await tx
+          .select({
+            claimId: C.id,
+            claimControlNumber: C.medicaidClaimControlNumber,
+            serviceFrom: C.serviceFrom,
+            serviceTo: C.serviceTo,
+          })
+          .from(C)
+          .where(
+            and(
+              eq(C.organizationId, orgId),
+              eq(C.providerEntityId, providerEntityId),
+              eq(C.medicaidClaimControlNumber, keys.claimControlNumber as string),
+            ),
+          );
+        return rows.map((r) => ({
+          claimId: r.claimId,
+          claimControlNumber: r.claimControlNumber,
+          serviceFrom: r.serviceFrom.toISOString(),
+          serviceTo: r.serviceTo.toISOString(),
+        }));
+      });
+    },
+    async patientIdForClaim(orgId, claimId) {
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const C = schema.medicaidClaim;
+        const rows = await tx
+          .select({ patientId: C.patientId })
+          .from(C)
+          .where(and(eq(C.id, claimId), eq(C.organizationId, orgId)))
+          .limit(1);
+        return rows[0]?.patientId ?? null;
+      });
+    },
+  };
+
   return {
     claim,
     dayProjection,
@@ -340,6 +415,7 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
     rateSchedule,
     roomAndBoard,
     tradingPartner,
+    claimMatch,
   };
 }
 

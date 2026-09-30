@@ -46,7 +46,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       serviceFrom: isoInstant,
       serviceTo: isoInstant,
     }),
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 (self) REMOVED: the spec's own state-transition table (§2.2, "created (DRAFT)")
+    // names the real consumers as M33 (reporting) and M22 ("no render yet — wait for SUBMITTED") — never
+    // M23 itself. No handler anywhere reads its own draft-created event.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -110,7 +113,14 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       macJurisdiction: str,
       submittedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's own §4.4 spec text (the `boot.ts` subscribe list) and its real
+    // `consumers/subscription-map.ts` name exactly three inbound topics — `m23.claim.rejected`,
+    // `m18.evv.aggregator_rejected`, `m22.document.rendered` — and this is not one of them. A submission
+    // ack carries no CARC/denial fact for M25 to seed a worklist row from.
+    // F-144 (#248) — m22 REMOVED: M23's own spec (§4.10 outbox table) is decisive that M22 renders off
+    // exactly one trigger set — "NOE submitted / NOTR submitted / claim acknowledged" — via the
+    // dedicated `m23.billing.document_render_requested` event, never off plain submission.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -149,7 +159,16 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // names no `m23.claim.acknowledged` topic; the cap ledger's claim-side inputs are the paid amount
     // (`m25.remittance.advice_posted`), reversal (`.replaced`/`.voided`) and inpatient-day
     // (`.line_finalized`) events only — an acknowledgment carries no cap-relevant fact.
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's own §4.4 subscribe list names `m23.claim.rejected` as the sole
+    // pre-835 seed trigger, never a plain acceptance ack — an ACK_ACCEPTED carries no denial code.
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this exact event
+    // (`resolve-medicare-primary`) — the COB precondition for billing Medicaid secondary once Medicare
+    // paid primary — with a real handler (`handleMedicarePrimaryAck`) in `consumers/handlers.ts`.
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildClaimAcknowledgmentLetterRequest` fires off the same ACK_ACCEPTED transition via the
+    // dedicated `m23.billing.document_render_requested` event (M23's own §4.10 table names that event,
+    // not this one, as the M22 trigger).
+    declaredConsumers: ["m24"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -165,7 +184,9 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectedLineNumbers: Type.Array(int),
       rejectionCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: M25's real subscription-map has no key for a PARTIAL ack — only the
+    // full `m23.claim.rejected` topic seeds a denial worklist row before an 835 lands.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -180,7 +201,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: str,
       rejectionCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildDenialAppealCoverLetterRequest` fires off this exact transition (its payload
+    // `{claimId, claimControlNumber, rejectionStage, rejectionCodes}` matches only this event's fields)
+    // via the dedicated `m23.billing.document_render_requested` event, per M23's own §4.10 table.
+    declaredConsumers: ["m25"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -216,7 +241,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: id,
       denialCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: this event is M25's OWN OUTPUT reused — `ACK_ACCEPTED → DENIED` fires
+    // only after M25 posts a denial 835 (per the description above), so M25 is the producer here, not a
+    // consumer of its own downstream effect.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -327,17 +355,26 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The noe.submit worker uploaded the NOE to the MAC portal; READY → SUBMITTED.",
     payloadSchema: Type.Object({ noeId: id, submissionId: id, submittedAt: isoInstant }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildNoeConfirmationReceiptRequest` fires off this exact transition via the dedicated
+    // `m23.billing.document_render_requested` event, per M23's own §4.10 table.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
     eventName: "m23.noe.accepted",
     moduleOwner: "m23",
-    description:
-      "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOE compliance window.",
+    // F-155 (#248) — `m6` REMOVED (was misdeclared): no `compliance_window_kind` value, table, or
+    // column anywhere in M6's schema references NOE/NOTR (`notice_of_rights` is the unrelated CoP
+    // Notice of Rights document), M6's `dependsOn` excludes 23 so it has no seam to resolve which
+    // admission's window to touch even if one existed, and "closing the window" is already a side
+    // effect of THIS transition on the M23 side alone — `NoeRepository.listWindowWatchCandidates`
+    // filters `notInArray(N.state, NOE_TERMINAL_DB)`, so an `ACK_ACCEPTED` row self-excludes from
+    // every future watchdog scan with no cross-module handshake needed.
+    description: "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED.",
     payloadSchema: Type.Object({ noeId: id, acknowledgmentId: id, payerNoeControlNumber: str }),
-    declaredConsumers: ["m6"],
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -365,7 +402,16 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The day-5+1 NOE-window watchdog tick fired (the CMS filing window was breached).",
     payloadSchema: Type.Object({ noeId: id, admissionId: id, breachedAt: isoInstant }),
-    declaredConsumers: ["m30"],
+    // F-180 (#248) — m30 DROPPED: misdeclared, not a genuine gap. M30's own locked spec never names NOE,
+    // NOTR, or window_breached anywhere (its `risk_register_view` source union is `sra_finding`/
+    // `incident_report`/`qapi_project`/`cop_compliance_status` only). The breach fact this event announces
+    // is already fully served without any M30 involvement: `noe_record.windowBreachedAt` is a real,
+    // persisted column (`packages/db/src/schema/billing/noe-record.ts`), returned directly by
+    // `GET /api/v1/noe-records` (a frontend REST read, the same F-179 shape), alerted on by M36's critical
+    // severity binding (M23 spec §5), and dashboarded live via M33's bound
+    // `mv_noe_window_breach_org_month` materialized view (`outbox-subscription-map.ts`) — three real
+    // consumers, none of them M30.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -400,17 +446,23 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The notr.submit worker uploaded the NOTR to the MAC portal; READY → SUBMITTED.",
     payloadSchema: Type.Object({ notrId: id, submissionId: id, submittedAt: isoInstant }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildNotrConfirmationReceiptRequest` fires off this exact transition via the dedicated
+    // `m23.billing.document_render_requested` event, per M23's own §4.10 table.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
     eventName: "m23.notr.accepted",
     moduleOwner: "m23",
-    description:
-      "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOTR compliance window.",
+    // F-155 (#248) — `m6` REMOVED, the identical finding one event up (`m23.noe.accepted`): no M6
+    // mechanism, table, or seam exists to close a "NOTR compliance window," M6 cannot reach M23
+    // (`dependsOn` excludes 23), and the watchdog's own terminal-state exclusion already retires the
+    // row on the M23 side alone.
+    description: "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED.",
     payloadSchema: Type.Object({ notrId: id, acknowledgmentId: id, payerNotrControlNumber: str }),
-    declaredConsumers: ["m6"],
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -437,7 +489,12 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The day-5+1 NOTR-window watchdog tick fired (the filing window was breached).",
     payloadSchema: Type.Object({ notrId: id, admissionId: id, breachedAt: isoInstant }),
-    declaredConsumers: ["m30"],
+    // F-180 (#248) — m30 DROPPED: same reasoning as the `m23.noe.window_breached` sibling above — no M30
+    // spec support, and the fact is already served by `notr_record.windowBreachedAt` (REST-read via
+    // `GET /api/v1/notr-records`) + M36 alerting. NOTE: unlike its NOE sibling, this event is NOT yet
+    // actually bound in M33's `outbox-subscription-map.ts` despite carrying `seamConsumers: ["m33"]` here
+    // — a real M33-side asymmetry, out of scope for this pass, reported not fixed.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },

@@ -33,6 +33,11 @@ export {
   decideVerbalExpiry,
 } from "./verbal-expired";
 export {
+  type VerbalExpiredConsumerDeps,
+  M12_VERBAL_EXPIRED_CONSUMER,
+  buildM12VerbalExpiredConsumer,
+} from "./verbal-expired-binding";
+export {
   type AdmissionMedHxPayload,
   type MedHxFetchAction,
   type PatientChangedPayload,
@@ -40,6 +45,27 @@ export {
   decideMedHxFetch,
   decidePatientSyncTrigger,
 } from "./sync-triggers";
+export {
+  type AdmissionIdForElectionPeriodPort,
+  type MedHxFetchEnqueuePort,
+  type MedHxFetchJob,
+  type PatientSyncEnqueuePort,
+  type PatientSyncJob,
+  type SyncTriggerBindingDeps,
+  buildM12AdmissionActivatedMedHxConsumer,
+  buildM12PatientSyncAddressChangedConsumer,
+  buildM12PatientSyncCreatedConsumer,
+  buildM12PatientSyncPayerChangedConsumer,
+  buildM12PatientSyncUpdatedConsumer,
+  buildM12RecertificationMedHxConsumer,
+  buildM12SyncTriggerConsumers,
+  unboundAdmissionIdForElectionPeriod,
+} from "./sync-trigger-bindings";
+export {
+  createDrizzleAdmissionIdForElectionPeriodPort,
+  createDrizzleMedHxFetchEnqueuePort,
+  createDrizzlePatientSyncEnqueuePort,
+} from "./sync-trigger-queue-adapters";
 
 /** The §4.5 event → M12-consumer bindings. The live dispatcher wires each `eventName` to `consumerName`'s
  * handler at boot; the pure decider each handler runs ships above. Names mirror the §3.1 package layout. */
@@ -52,6 +78,14 @@ export const M12_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "m6.admission.activated", consumerName: "m12.admission-activated-medhx" },
   { eventName: "m6.cti.signed", consumerName: "m12.recertification-medhx" },
   { eventName: "m11.order.verbal_expired_unsigned", consumerName: "m12.verbal-expired" },
+  {
+    eventName: "m13.reconciliation.discontinue_requested",
+    consumerName: "m12.reconciliation-discontinue",
+  },
+  {
+    eventName: "m13.reconciliation.draft_order_requested",
+    consumerName: "m12.reconciliation-draft-order",
+  },
   { eventName: "m22.document.rendered", consumerName: "m12.document-backref" },
   { eventName: "idg.decision_recorded", consumerName: "m12.idg-decision-intake" },
 ] as const;

@@ -153,7 +153,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "hci",
     periodKind: ROLLING,
     activatesFy: 2025,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "HCI 8 — Skilled Nursing Minutes per RHC day",
   },
   {
@@ -161,7 +161,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "hci",
     periodKind: ROLLING,
     activatesFy: 2025,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "HCI 9 — Skilled Nursing Minutes on Weekends",
   },
   {
@@ -246,6 +246,17 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     activatesFy: 2025,
     calculatorVersion: "0.1.0",
     description: "Bereavement coverage rate (CoP 418.64(d))",
+  },
+  // F-184 (#248) — M16's `BereavementComplianceProvider.riskScreeningCompletenessCounts` (D17: excludes
+  // `minimal` data-completeness rows from the denominator), the F-178 pattern exactly (nightly-recompute
+  // pulled, no bespoke outbox consumer — see the m30-jobs.ts threshold-table comment).
+  {
+    code: "bereavement_risk_screening_completeness_rate",
+    family: "operational",
+    periodKind: ROLLING,
+    activatesFy: 2025,
+    calculatorVersion: "0.1.0",
+    description: "Bereavement risk-screening completeness rate (D17)",
   },
   {
     code: "volunteer_compliance_gate_rate",
@@ -338,6 +349,25 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     activatesFy: 2025,
     calculatorVersion: "0.1.0",
     description: "Cost-report filing compliance (CoP 418.310)",
+  },
+  // F-178 (#248) — M6's F2F compliance-window aggregate, nightly-batch pulled via
+  // `ComplianceWindowCountsProvider` (§7.5 W-OVR-02: on-time rate and override-usage rate are two
+  // separately tracked signals, not folded into one measure).
+  {
+    code: "f2f_window_on_time_rate",
+    family: "operational",
+    periodKind: ROLLING,
+    activatesFy: 2025,
+    calculatorVersion: "0.1.0",
+    description: "F2F window on-time rate (CoP 418.22)",
+  },
+  {
+    code: "f2f_window_override_rate",
+    family: "operational",
+    periodKind: ROLLING,
+    activatesFy: 2025,
+    calculatorVersion: "0.1.0",
+    description: "F2F window override rate (CoP 418.22)",
   },
 ];
 

@@ -97,6 +97,27 @@ export {
   buildM14ActionItemAutoCloseConsumer,
   planActionItemAutoClose,
 } from "./consumers/index";
+// F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9's two, M10's two, M11's
+// one, M12's one). The M6 inclusion-cache pair and the M15 trio stay unbound — a fresh investigation
+// found the evidence genuinely mixed rather than confidently misdeclared or confidently genuine; see
+// `scripts/outbox-deferred-consumers.ts`'s `m14` group reason for the detail.
+export {
+  type SinceLastIdgCacheEntry,
+  type WithDigestId,
+  SINCE_LAST_IDG_TTL_SEC,
+  appendSinceLastIdgEntry,
+  readSinceLastIdgEntry,
+} from "./consumers/since-last-idg-cache";
+export {
+  buildM14AssessmentRecordedConsumer,
+  buildM14AssessmentSignificantChangeConsumer,
+} from "./consumers/m9-since-last-idg";
+export {
+  buildM14HopeJ2051TriggerConsumer,
+  buildM14HopeSfvCreatedConsumer,
+} from "./consumers/m10-since-last-idg";
+export { buildM14OrderDiscontinuedConsumer } from "./consumers/m11-since-last-idg";
+export { buildM14MedicationOrderDiscontinuedConsumer } from "./consumers/m12-since-last-idg";
 // M14-T06 — the §4.10 M36 typed alert payloads M14 OWNS (packet-ready / action-item assigned + carry-forward
 // compliance / non-quorate decision / per-patient review-clock + review-floor override). Registered onto
 // M36's Foundation alert-payload registry at boot; composition + recipient resolution is M36's (ADR-0024).
@@ -139,4 +160,21 @@ export {
   runReviewClockSweepCron,
   scheduleM14Jobs,
 } from "./jobs/cron-workers";
+// F-171 (#248) — the LIVE §7.1 `idg.schedule-materialise` + §4.9.1 `idg.packets-cron` (`tminus-24h-build`)
+// T-24h packet-build worker: the real "does the worker exist" answer to the m14 `handlers-unbound`
+// group's standing F-129/F-164/F-167/F-169 finding.
+export {
+  type Idg1LocationTimezonePort,
+  type MaterialisePolicyRow,
+  computeOccurrenceDays,
+  runScheduleMaterialiseCron,
+} from "./jobs/schedule-materialise";
+export {
+  type Idg6PacketInclusionCandidate,
+  type Idg6PacketPort,
+  type Idg7PacketCarePlanContext,
+  type Idg7PacketPort,
+  type PacketBuildWorkerDeps,
+  runPacketBuildCron,
+} from "./jobs/packet-build";
 export { M14_PLATFORM_JOB_ID, wireM14Tenancy } from "./wiring";

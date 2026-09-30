@@ -3,7 +3,9 @@
 // aging rebucket + threshold alerts, the appeal-deadline boundary emit, and the PR-ledger eraser.
 import { describe, expect, it } from "vitest";
 import {
+  DENY_DENIAL_TERMINOLOGY,
   type DenialSeedStore,
+  type DenialTerminologyLookupPort,
   handleClaimRejected,
   handleDocumentRendered,
   handleEvvAggregatorRejected,
@@ -38,6 +40,15 @@ function fakeSeedStore(): DenialSeedStore & { seeds: string[]; backrefs: number 
   };
 }
 
+/** A fake M38 terminology port resolving CARC 29 to a known catalog category ("denial") and leaving every
+ *  other code unmapped (F-153/F-156, #248 — proves `effectiveCategory`'s resolution actually runs). */
+const fakeTerminology: DenialTerminologyLookupPort = {
+  async lookup(carcCode) {
+    if (carcCode === "29") return { category: "denial" };
+    return null;
+  },
+};
+
 describe("consumers — denial seeding (§2.4 / §2.6)", () => {
   it("m23.claim.rejected seeds once and dedupes by (claim, date)", async () => {
     const store = fakeSeedStore();
@@ -48,20 +59,41 @@ describe("consumers — denial seeding (§2.4 / §2.6)", () => {
       rejectionCodes: ["29"],
       occurredAt: "2026-06-20T10:00:00Z",
     };
-    const first = await handleClaimRejected(store, ev);
+    const first = await handleClaimRejected(store, ev, fakeTerminology);
     expect(first?.carcCode).toBe("29");
     expect(first?.source).toBe("claim_rejection_277ca");
-    const dup = await handleClaimRejected(store, { ...ev, occurredAt: "2026-06-20T22:00:00Z" });
+    expect(first?.category).toBe("denial");
+    expect(first?.taxonomyStatus).toBe("mapped");
+    const dup = await handleClaimRejected(
+      store,
+      { ...ev, occurredAt: "2026-06-20T22:00:00Z" },
+      fakeTerminology,
+    );
     expect(dup).toBeNull(); // same UTC date → deduped
     expect(store.seeds).toHaveLength(1);
+  });
+
+  it("m23.claim.rejected honestly degrades to unmapped with no real terminology port", async () => {
+    const store = fakeSeedStore();
+    const ev = {
+      organizationId: "o1",
+      providerEntityId: "pe1",
+      claimId: "c2",
+      rejectionCodes: ["29"],
+      occurredAt: "2026-06-20T10:00:00Z",
+    };
+    const first = await handleClaimRejected(store, ev, DENY_DENIAL_TERMINOLOGY);
+    expect(first?.category).toBe("unmapped");
+    expect(first?.taxonomyStatus).toBe("unmapped");
   });
 
   it("m18.evv.aggregator_rejected seeds with the EVV ref + default N365 RARC, dedupes per submission", async () => {
     const store = fakeSeedStore();
     const ev = { organizationId: "o1", providerEntityId: "pe1", aggregatorSubmissionId: "s1" };
-    const r = await handleEvvAggregatorRejected(store, ev);
+    const r = await handleEvvAggregatorRejected(store, ev, DENY_DENIAL_TERMINOLOGY);
     expect(r?.source).toBe("evv_aggregator_rejection");
-    expect(await handleEvvAggregatorRejected(store, ev)).toBeNull();
+    expect(r?.rarcCode).toBe("N365");
+    expect(await handleEvvAggregatorRejected(store, ev, DENY_DENIAL_TERMINOLOGY)).toBeNull();
     expect(store.seeds).toEqual(["evv:s1"]);
   });
 

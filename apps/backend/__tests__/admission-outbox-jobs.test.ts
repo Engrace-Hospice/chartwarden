@@ -49,7 +49,7 @@ describe("M6 outbox event contract (§4.4)", () => {
   it("the broad activation fan-out reaches the chain modules", () => {
     const activated = M6_OUTBOX_EVENTS.find((e) => e.eventName === "m6.admission.activated");
     expect(activated?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m5", "m7", "m8", "m10", "m23"]),
+      expect.arrayContaining(["m5", "m7", "m10", "m13"]),
     );
     // m36 used to be asserted here. It is not an outbox consumer and never was — its alert intake is
     // the synchronous `AlertEmitter` seam — and declaring it kept this event deferred forever (#103).
@@ -63,6 +63,17 @@ describe("M6 outbox event contract (§4.4)", () => {
     // (which starts at death, not admission) needs; M16's own §4.5 outbox-subscriptions table never
     // named this event.
     expect(activated?.declaredConsumers).not.toContain("m16");
+    // F-136 (#248) — m23 dropped: an admission ACTIVATION anchors no claim by itself — M23's own §4.4
+    // subscription surface names the full M6 outbox catalog BY EVENT (election/cti/f2f/loc/revocation/
+    // transfer/discharge), and admission.activated is not among them.
+    expect(activated?.declaredConsumers).not.toContain("m23");
+    // F-137 (#248) — m11 dropped: M11's own spec's authoritative consumed-events list never names this
+    // event, and no consumer file anywhere in `11-orders/` mentions admission activation.
+    expect(activated?.declaredConsumers).not.toContain("m11");
+    // F-140 (#248) — m8 dropped: M8's own spec states outright that outbox publication is the only
+    // cross-module communication M8 performs "at the boundary" — every upstream fact, including
+    // anything from M6, is an in-process seam call, never an outbox subscription.
+    expect(activated?.declaredConsumers).not.toContain("m8");
   });
 
   it("applier-reused events carry the optional provenance `source` marker", () => {
@@ -75,7 +86,13 @@ describe("M6 outbox event contract (§4.4)", () => {
       // optional → present without source validates; with the marker validates too.
       const base =
         name === "m6.discharge.death"
-          ? { dischargeEventId: "d1", admissionId: "a1", dischargeDate: "2026-01-01" }
+          ? {
+              dischargeEventId: "d1",
+              admissionId: "a1",
+              dischargeDate: "2026-01-01",
+              // F-172 (#248) — required: M37's `ipu_body_release.pronouncing_physician_id` (NOT NULL).
+              deathCertifierId: "phys-1",
+            }
           : name === "m6.discharge.created"
             ? {
                 dischargeEventId: "d1",

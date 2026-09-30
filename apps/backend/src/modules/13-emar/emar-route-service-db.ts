@@ -68,6 +68,7 @@ import {
   deriveIvSessionState,
   evaluateBarcodeScan,
   planIvSegment,
+  planReconciliationDecision,
   resolveLateEntryTier,
   verifyWitnessAttestationToken,
   witnessTokenDigest,
@@ -1044,6 +1045,46 @@ export function createDbEmarBackend(
               recommendedReassessmentScale: "esas_r",
             },
           );
+
+        // §2.2 — the pure `@wardenx/emar` machine (`administration-record.ts`'s `commit` case) has
+        // declared `{kind: "request_document"} + {kind: "outbox", event: "m13.administration_record
+        // .document_requested"}` on `perAdministrationPdfRequired` since M13-T03; nothing in this
+        // service ever read that effect list (this route reimplements the commit inline rather than
+        // calling `transitionAdministration`, the M11/M12 convention note at the top of the file), so
+        // the request was computed and thrown away (F-144, #248). The tenant policy this mirrors is
+        // `administration_policy.emar_per_administration_pdf_enabled` — read here rather than through
+        // `getPolicy()` (a separate read op) because the commit needs the flag INSIDE this transaction
+        // to decide the emit; default OFF (no row) matches `DEFAULT_POLICY.emarPdfOnCommit`.
+        const [policyRow] = await tx
+          .select({ pdf: POL.emarPerAdministrationPdfEnabled })
+          .from(POL)
+          .limit(1);
+        if (policyRow?.pdf)
+          await emit(
+            tx,
+            orgId,
+            "m13.administration_record.document_requested",
+            "administration_record",
+            inserted.id,
+            {
+              administrationRecordId: inserted.id,
+              formTemplate: "administration_record_v1",
+              // F-099 — the chart-target patient rides inside `renderPayload` (`Type.Unknown()` on the
+              // catalog, the M11/M12 shape M22's normalizer already reads as its `content.patientId`
+              // fallback), never fabricated: `patientId` here is the same resolved identity the
+              // administration row itself was just filed under.
+              renderPayload: {
+                patientId,
+                admissionId,
+                medicationOrderId: args.medicationOrderId,
+                mode: args.mode,
+                administeredAt: args.administeredAt,
+                drugNameSnapshot: identity?.drugName ?? "",
+                doseAmountSnapshot: args.doseAmount ?? null,
+                doseUnitSnapshot: args.doseUnit ?? null,
+              },
+            },
+          );
         return toAdminView(inserted, barcodeMatchResult);
       });
     },
@@ -1355,7 +1396,17 @@ export function createDbEmarBackend(
     // ── reconciliation worksheet writes ───────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, id, args: RecordDecisionArgs): Promise<WorksheetView> {
       return withOrg(orgId, async (tx) => {
-        await loadWorksheet(tx, id);
+        const worksheet = await loadWorksheet(tx, id);
+        // Plan BEFORE inserting: a decision that cannot legally produce its M12-handshake event (an
+        // m12_medhx carry_forward with no medhx projection to source content from, or a non-active
+        // carry_forward/new_order with no supplied drug content) throws and the whole transaction rolls
+        // back — never a half-recorded decision with no matching outbox event.
+        const plan = planReconciliationDecision({
+          lineKind: args.lineKind,
+          decisionKind: args.decision,
+          medicationOrderId: args.lineKind === "m12_active" ? args.sourceId : null,
+          medicationDetails: args.medicationDetails ?? null,
+        });
         const decision = (
           await tx
             .insert(RD)
@@ -1365,13 +1416,20 @@ export function createDbEmarBackend(
               lineKind: args.lineKind,
               m12MedicationOrderId: args.lineKind === "m12_active" ? args.sourceId : null,
               m12MedicationHistoryRecordId: args.lineKind === "m12_medhx" ? args.sourceId : null,
+              // The real, caller-typed drug content backing a caregiver_reported decision — persisted on
+              // the decision row itself (audit-relevant: what the clinician actually recorded), not only
+              // relayed on the wire.
+              caregiverReportedSnapshot:
+                args.lineKind === "caregiver_reported" && args.medicationDetails
+                  ? args.medicationDetails
+                  : null,
               decisionKind: args.decision,
               decisionMadeByMembershipId: userId,
             })
             .returning({ id: RD.id })
         )[0]!;
         await tx.update(WS).set({ status: "in_progress" }).where(eq(WS.id, id));
-        if (args.decision === "carry_forward" || args.decision === "new_order")
+        if (plan.draftOrderRequested)
           await emit(
             tx,
             orgId,
@@ -1381,11 +1439,16 @@ export function createDbEmarBackend(
             {
               worksheetId: id,
               decisionId: decision.id,
-              medicationOrderDraftPayload: {},
-              lineKind: args.lineKind,
+              patientId: worksheet.patientId,
+              decisionMadeByMembershipId: userId,
+              lineKind: plan.draftOrderRequested.lineKind,
+              medicationOrderDraftPayload: plan.draftOrderRequested.medicationOrderDraftPayload,
+              // Always null today — an m12_medhx line refuses before reaching this branch (see
+              // `planReconciliationDecision`'s doc), so there is never a real history record to link.
+              derivedFromHistoryId: null,
             },
           );
-        if (args.decision === "discontinue")
+        if (plan.discontinueRequested)
           await emit(
             tx,
             orgId,
@@ -1395,7 +1458,7 @@ export function createDbEmarBackend(
             {
               worksheetId: id,
               decisionId: decision.id,
-              medicationOrderId: args.sourceId,
+              medicationOrderId: plan.discontinueRequested.medicationOrderId,
               reason: "reconciled_discontinue",
             },
           );

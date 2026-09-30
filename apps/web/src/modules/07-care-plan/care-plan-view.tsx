@@ -1215,6 +1215,7 @@ function RevisionPanel({
 
   const candidate = snapshotOf(version);
   const readonly = version.status === "in_review";
+  const idgProposalRequired = version.kind === "idg_review" && !proposed?.changes.length;
   const blockers = uniqueBlockers(
     readiness,
     plan.problems.find((p) => p.kind === "terminal" && p.status === "active"),
@@ -1248,12 +1249,16 @@ function RevisionPanel({
           <div style={sectionHeader}>
             <div>
               <h3 style={smallTitle}>
-                {readiness?.canFinalize
+                {idgProposalRequired
+                  ? "Record IDG proposed changes"
+                  : readiness?.canFinalize
                   ? "Ready for manager review"
                   : "Before you can send this version"}
               </h3>
               <p style={muted}>
-                {readiness?.canFinalize
+                {idgProposalRequired
+                  ? "An IDG review must contain at least one proposed Care Plan change. Record the IDG decision first, then send this version for signature."
+                  : readiness?.canFinalize
                   ? "The current draft passes readiness checks. Sending it freezes the candidate version for hospice physician review and signature."
                   : "Resolve the remaining requirements, then review the candidate version."}
               </p>
@@ -1262,8 +1267,8 @@ function RevisionPanel({
             {canFinalize ? (
               <button
                 type="button"
-                style={readiness?.canFinalize ? primaryBtn : disabledBtn}
-                disabled={!readiness?.canFinalize || busy}
+                style={readiness?.canFinalize && !idgProposalRequired ? primaryBtn : disabledBtn}
+                disabled={!readiness?.canFinalize || idgProposalRequired || busy}
                 onClick={() => void onFinalize(version)}
               >
                 Send to hospice physician

@@ -91,6 +91,24 @@ export const NO_CLAIM_MATCH_CANDIDATES: ClaimMatchCandidateProvider = {
   },
 };
 
+/**
+ * F-172 (#248, m24 group) — the auto-match candidate lookup, ROUTED BY PAYER. `receiveAdvice`'s own
+ * `ReceiveAdviceInput.payerKind` discriminator has always been on the wire (§2.2), but `postAdvice`'s
+ * auto-match ignored it and matched EVERY advice — Medicare, Medicaid, commercial alike — against the
+ * single injected M23 `ClaimMatchCandidateProvider`. For a Medicaid 835 that means matching a real
+ * CLP01 control number against M23's `claim` table, which owns no Medicaid claims: an honest "no
+ * candidates" degrade at best, or (if a Medicare claim happened to carry the identical control number
+ * in the same provider entity — an X12-generated string, not guaranteed unique cross-payer) a
+ * misrouted match at worst. Keyed by the SAME three-value union the advice envelope itself carries, so
+ * routing needs no new matching scheme — only the discriminator already on the wire. A payer with no
+ * entry (today: `commercial`, and `medicaid`/`medicare` too until the composition root supplies them)
+ * degrades to {@link NO_CLAIM_MATCH_CANDIDATES} — every line queues for manual match, never a fabricated
+ * or cross-payer match.
+ */
+export type ClaimMatchCandidateProviderByPayer = Partial<
+  Record<ReceiveAdviceInput["payerKind"], ClaimMatchCandidateProvider>
+>;
+
 /** CARC/RARC → category lookup (reuses the M38 terminology port the read service already injects). */
 export interface TerminologyLookupPort {
   lookup(

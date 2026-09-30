@@ -1,0 +1,13 @@
+-- M22 `document_aggregate_type` — one new artifact type behind the M7 care-plan-PDF render handshake
+-- (F-161, #248; the 0239 F-099 / 0251 F-144 precedent, a third time).
+--
+-- M7's own §2.4 outbox catalog names `m7.care_plan.version_signed` as decisively M22-consumed ("drives
+-- the M8 encounter gate + M22 PDF"), and the Phase-boundary note is explicit: "the care-plan PDF
+-- generator (Module 22 owns the rendering; M7 emits a domain payload via outbox event for M22 to
+-- render)". No `document_aggregate_type` value existed for the rendered care-plan PDF itself — the
+-- render-request handshake (`M22_DOCUMENT_REQUEST_EVENTS` / `REQUEST_SHAPES` / `PLATFORM_TEMPLATE_TABLE`)
+-- had never been built for this event at all.
+--
+-- Additive only (no removal, no existing row affected). Own migration: PG forbids using a value added
+-- earlier in the same transaction, so this stands alone ahead of any migration that reads or writes it.
+ALTER TYPE "public"."document_aggregate_type" ADD VALUE IF NOT EXISTS 'care_plan';

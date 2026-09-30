@@ -18,7 +18,8 @@
 //   • `seams/`             — the §4.8 / D14 PUBLISHED seams (`SupplyFulfillmentProvider` ·
 //                            `ComfortKitDispatchProvider` · `SupplyCostProvider`) over one Drizzle store,
 //                            registered into the M1 registry before `validateSeams()`
-//   • `permission-keys.ts` — the twenty-eight §4.3 keys M21 contributes to M3's catalog
+//   • `permission-keys.ts` — the twenty-nine §4.3 keys M21 contributes to M3's catalog (F-193/#248 added
+//                            `supplies.request.caregiver_signature` beside `mark_delivered`)
 //   • `abac-predicates.ts` — the two §4.4 named predicates (`controlled_substance_dispatcher_eligible` ·
 //                            `comfort_kit_return_reconciler_eligible`), fail-CLOSED, with the Drizzle
 //                            subject-fact resolver beside them
@@ -94,3 +95,17 @@ export {
   buildM21OrderDiscontinuedConsumer,
   buildM21SupplyCancellationConsumer,
 } from "./outbox-consumers/m11-order-cascade";
+// F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
+// F-172 (#248) — the §4.5.1 controlled-substance re-emit joins them.
+export {
+  type M21ComfortKitCascadeDeps,
+  type M21ComfortKitReemitDeps,
+  buildM21ComfortKitControlledSubstanceReemitConsumer,
+  buildM21ComfortKitDeploymentAckConsumer,
+  buildM21ComfortKitReturnRequiredConsumer,
+} from "./outbox-consumers/m13-comfort-kit-cascade";
+// F-161 (#248) — M13's §2.1 comfort-kit replenishment intake.
+export {
+  type M21ComfortKitReplenishmentDeps,
+  buildM21ComfortKitReplenishmentIntakeConsumer,
+} from "./outbox-consumers/m13-comfort-kit-replenishment";

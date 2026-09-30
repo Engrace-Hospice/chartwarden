@@ -159,12 +159,23 @@ describe("DocumentReader", () => {
 });
 
 describe("PortalDocumentReader", () => {
-  function makePortal(seed = SEED, isSudVersion?: (v: string) => boolean) {
+  function makePortal(seed = SEED) {
     const { store } = createInMemoryDocumentReaderStore(seed);
     const objects = createInMemoryObjectStore().store;
     const consent = createInMemoryPortalConsentPort(seed.sudConsentByPatient);
-    return createPortalDocumentReader({ store, objects, consent, isSudVersion });
+    return createPortalDocumentReader({ store, objects, consent });
   }
+
+  // F-197 (#248) — a SUD-class variant of SEED: `d1`'s `retentionClass` flags it, the same signal
+  // `activeVersionForDocument` reads in production (`document.metadata.sudRedacted`, mirrored here as
+  // `compliance_42cfr_part2` per the in-memory store's own doc comment). Replaces the PRIOR `isSudVersion`
+  // callback injection, which had no real implementation anywhere in production.
+  const SUD_SEED: DocumentReaderSeed = {
+    ...SEED,
+    documents: (SEED.documents ?? []).map((d) =>
+      d.documentId === "d1" ? { ...d, retentionClass: "compliance_42cfr_part2" } : d,
+    ),
+  };
 
   it("returns only patient-facing documents as the portal-safe digest", async () => {
     const portal = makePortal();
@@ -217,7 +228,7 @@ describe("PortalDocumentReader", () => {
   });
 
   it("denies sud_consent_absent when the version is SUD-class and consent is missing", async () => {
-    const portal = makePortal(SEED, (v) => v === "d1-v1");
+    const portal = makePortal(SUD_SEED);
     const res = await portal.mintPortalDownloadUrl({
       documentVersionId: "d1-v1",
       portalSessionId: "s",
@@ -228,8 +239,8 @@ describe("PortalDocumentReader", () => {
   });
 
   it("allows a SUD-class download when consent is present", async () => {
-    const seed = { ...SEED, sudConsentByPatient: { "pat-1": true } };
-    const portal = makePortal(seed, (v) => v === "d1-v1");
+    const seed = { ...SUD_SEED, sudConsentByPatient: { "pat-1": true } };
+    const portal = makePortal(seed);
     const res = await portal.mintPortalDownloadUrl({
       documentVersionId: "d1-v1",
       portalSessionId: "s",

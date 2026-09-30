@@ -18,10 +18,14 @@
 // `triage_call.source` could only ever hold `manual` or `paper_origin`: no proactive welfare check had
 // ever been opened, and `source_outbox_event_id` — the column D10's redelivery guard is built on — had
 // never been written by anything.
+//
+// ./roster-sync-debounce §4.5 path 1 / §4.8 — the m19 `handlers-unbound` group's own `m17.visit.assigned`
+//   debounce-bump consumer (F-155/#248 — see `../jobs/` for the drain/catch-up workers this feeds).
 export * from "./bindings";
 export * from "./inbound-trigger";
 export * from "./m17-no-show";
 export * from "./m18-late-checkout";
 export * from "./m36-delivery-failed";
+export * from "./roster-sync-debounce";
 export * from "./trigger-context";
 export * from "./trigger-ports-drizzle";

@@ -16,6 +16,8 @@ import { ValidationError } from "@wardenx/types";
 import type {
   OrderDetailView as ServiceOrderDetailView,
   OrderView as ServiceOrderView,
+  RecoverLabTransmissionResult as ServiceRecoverLabTransmissionResult,
+  ResendLabTransmissionResult as ServiceResendLabTransmissionResult,
   StandingOrderView as ServiceStandingOrderView,
   VerbalPolicyView as ServiceVerbalPolicyView,
 } from "./service";
@@ -170,6 +172,26 @@ export const CompleteOrderRequest = Type.Object({
   reason: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 
+/**
+ * F-187 — POST /orders/:id/recover-transmission. The `attestation` is REQUIRED and has no default: it is the
+ * operator's statement of what the lab actually holds, which the system cannot know. A free-text note is
+ * deliberately not accepted (nothing PHI-shaped enters the audit diff).
+ */
+export const RecoverLabTransmissionRequest = Type.Object(
+  {
+    attestation: Type.Union([Type.Literal("not_received_by_lab"), Type.Literal("received_by_lab")]),
+    /**
+     * F-188 — STRUCTURED evidence, required with every attestation, shaped so it cannot carry a patient identifier:
+     * the lab contact's NAME (letters, spaces and `.'-` only — no digits) and the lab's own REFERENCE for the call or
+     * confirmation (`[A-Za-z0-9._#/-]`, no spaces). Do NOT enter a patient name, MRN, DOB or accession here — the
+     * fields reject digits in a name and spaces in a reference precisely so free text cannot be smuggled in.
+     */
+    contactName: Type.String({ pattern: "^[A-Za-z][A-Za-z .'-]{1,79}$" }),
+    labReference: Type.String({ pattern: "^[A-Za-z0-9][A-Za-z0-9._#/-]{2,63}$" }),
+  },
+  { additionalProperties: false },
+);
+
 export const CreateStandingOrderRequest = Type.Object({
   patientId: Type.String({ format: "uuid" }),
   admissionId: Type.String({ format: "uuid" }),
@@ -290,6 +312,45 @@ export const OrderViewResponseSchema = Type.Object({
 });
 
 /** Single-order detail only. List and work-queue reads deliberately omit clinical JSON payloads. */
+/**
+ * F-202 — the attested-recovery ledger row and the two-person request, as the order detail shows them. "Who" is a
+ * membership id, like every other actor on the view. The lab contact's NAME and the lab's reference are a third
+ * party's personal data: `null` unless the reader holds `orders.transmission.recover` (F-203; the recovery authority, no
+ * longer the broad `orders.amend`) or `orders.transmission.cosign_escalated`.
+ */
+export const TransmissionAttestationViewSchema = Type.Object({
+  id: Type.String(),
+  attestation: Type.Union([Type.Literal("not_received_by_lab"), Type.Literal("received_by_lab")]),
+  outcome: Type.Union([Type.Literal("redispatched"), Type.Literal("marked_transmitted")]),
+  priorFailureReason: Type.String(),
+  attestedByMembershipId: nullableString(),
+  cosignedByMembershipId: nullableString(),
+  attemptId: nullableString(),
+  createdAt: Type.String(),
+  labContactName: nullableString(),
+  labReference: nullableString(),
+});
+export const RecoveryRequestViewSchema = Type.Object({
+  id: Type.String(),
+  orderId: Type.String(),
+  status: Type.Union([
+    Type.Literal("pending_cosign"),
+    Type.Literal("executed"),
+    Type.Literal("cancelled"),
+    Type.Literal("expired"),
+    Type.Literal("superseded"),
+  ]),
+  /** F-203 — why a `superseded` request can no longer execute (a fixed token, e.g. `order_discontinued`); else `null`. */
+  supersededReason: nullableString(),
+  requestedByMembershipId: nullableString(),
+  requestedAt: Type.String(),
+  expiresAt: Type.String(),
+  cosignedByMembershipId: nullableString(),
+  resolvedAt: nullableString(),
+  labContactName: nullableString(),
+  labReference: nullableString(),
+});
+
 export const OrderDetailResponseSchema = Type.Intersect([
   OrderViewResponseSchema,
   Type.Object({
@@ -324,6 +385,8 @@ export const OrderDetailResponseSchema = Type.Intersect([
         deadlineAt: Type.Optional(Type.String()),
       }),
     ),
+    transmissionAttestations: Type.Array(TransmissionAttestationViewSchema),
+    pendingRecovery: Type.Union([RecoveryRequestViewSchema, Type.Null()]),
     allowedActions: Type.Object({
       edit: Type.Boolean(),
       request_signature: Type.Boolean(),
@@ -373,6 +436,35 @@ export const SuggestionsResponseSchema = Type.Object({
   patientId: Type.String(),
   suggestions: Type.Array(Type.Object({ kind: ORDER_KIND, reason: Type.String() })),
 });
+/** F-182 — POST /orders/:id/resend-transmission. `refusalReason` is a fixed producer token, never PHI. */
+export const ResendLabTransmissionResponseSchema = Type.Object({
+  outcome: Type.Union([Type.Literal("requested"), Type.Literal("still_refused")]),
+  refusalReason: nullableString(),
+  order: OrderDetailResponseSchema,
+});
+/** F-187 — POST /orders/:id/recover-transmission. `refusalReason` is a fixed producer token, never PHI. */
+export const RecoverLabTransmissionResponseSchema = Type.Object({
+  /** F-202 — `pending_cosign`: a `not_received_by_lab` attestation FILED a request a different person must co-sign. */
+  outcome: Type.Union([
+    Type.Literal("redispatched"),
+    Type.Literal("marked_transmitted"),
+    Type.Literal("still_refused"),
+    Type.Literal("pending_cosign"),
+  ]),
+  refusalReason: nullableString(),
+  order: OrderDetailResponseSchema,
+  recovery: Type.Union([RecoveryRequestViewSchema, Type.Null()]),
+});
+/** F-202 — cancel a pending recovery. */
+export const CancelLabTransmissionRecoveryResponseSchema = Type.Object({
+  recovery: RecoveryRequestViewSchema,
+  order: OrderDetailResponseSchema,
+});
+/** F-202 — the co-sign / cancel path params. */
+export const RecoveryRequestParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  requestId: Type.String({ format: "uuid" }),
+});
 /** Route 25 — the PRN manual-spawn result (the newly-minted order id). */
 export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 
@@ -380,6 +472,14 @@ export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 type Conforms<T extends V, V> = T;
 type _OrderView = Conforms<Static<typeof OrderViewResponseSchema>, ServiceOrderView>;
 type _OrderDetailView = Conforms<Static<typeof OrderDetailResponseSchema>, ServiceOrderDetailView>;
+type _ResendLabTransmission = Conforms<
+  Static<typeof ResendLabTransmissionResponseSchema>,
+  ServiceResendLabTransmissionResult
+>;
+type _RecoverLabTransmission = Conforms<
+  Static<typeof RecoverLabTransmissionResponseSchema>,
+  ServiceRecoverLabTransmissionResult
+>;
 type _StandingOrderView = Conforms<
   Static<typeof StandingOrderViewResponseSchema>,
   ServiceStandingOrderView

@@ -135,8 +135,7 @@ function epochDay(localDate: string): number {
  * §2.2.3 — recompute a proprietary scale's licensure status from its effective/expiry dates as of
  * `today` (the daily worker's job, D3). `active` while in force and > {@link LICENSE_RENEWAL_WINDOW_DAYS}
  * from expiry; `pending_renewal` inside the 30-day window; `expired` on/after expiry. A not-yet-effective
- * license (today < effective) is treated as `pending_renewal` — it is not yet in force for recording, and
- * the recording gate keys off `status === 'active'`. All inputs are `YYYY-MM-DD` calendar dates.
+ * license (today < effective) is treated as `pending_renewal`. All inputs are `YYYY-MM-DD` calendar dates.
  */
 export function computeScaleLicenseStatus(
   license: { readonly effectiveDate: string; readonly expiresAt: string },
@@ -151,13 +150,13 @@ export function computeScaleLicenseStatus(
   return "active";
 }
 
-/** D3 form-gating: only an `active` license permits recording a license-required scale; reads of
+/** D3 form-gating: an `active` or `pending_renewal` license permits recording a license-required scale; reads of
  * historical rows recorded under a prior active license are always preserved (enforced on the read path). */
 export function canRecordUnderLicense(status: ScaleLicenseStatus): boolean {
-  return status === "active";
+  return status === "active" || status === "pending_renewal";
 }
 
-/** Guard the recording path on an active license (raises `SCALE_LICENSE_MISSING` 403, §2.3 / §7.7). */
+/** Guard the recording path on a usable license (raises `SCALE_LICENSE_MISSING` 403, §2.3 / §7.7). */
 export function assertLicenseAllowsRecording(
   scaleType: ScaleType,
   status: ScaleLicenseStatus,
@@ -165,6 +164,6 @@ export function assertLicenseAllowsRecording(
   require_(
     canRecordUnderLicense(status),
     "SCALE_LICENSE_MISSING",
-    `Scale '${scaleType}' requires an active license to record (current status: ${status}).`,
+    `Scale '${scaleType}' requires a current license to record (current status: ${status}).`,
   );
 }

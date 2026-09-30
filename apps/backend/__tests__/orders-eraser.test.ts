@@ -51,6 +51,18 @@ describe("M11-T08 — order_record eraser (§7.7, D12, D7/D8)", () => {
     expect(counts.orders).toBe(3);
   });
 
+  it("F-202: the attested-recovery ledger and the two-person requests count toward what was erased", async () => {
+    // Both tables hold the lab contact's NAME and reference for a patient's order; a destruction certificate that
+    // omitted them would report success while leaving them behind.
+    const { store } = makeEraseStore({
+      counts: { orders: 2, transmissionAttestations: 3, recoveryRequests: 2 },
+    });
+    const { erased, counts } = await eraseOrderRecord("org_a", "pat_1", store, { now: () => NOW });
+    expect(erased).toBe(7); // 2 orders + 3 attestations + 2 recovery requests
+    expect(counts.transmissionAttestations).toBe(3);
+    expect(counts.recoveryRequests).toBe(2);
+  });
+
   it("retentionAsOf defaults to now() when the cert omits it", async () => {
     let seen: string | null = null;
     const store = {
@@ -63,6 +75,8 @@ describe("M11-T08 — order_record eraser (§7.7, D12, D7/D8)", () => {
           verbalOrders: 0,
           standingInstances: 0,
           discontinuations: 0,
+          transmissionAttestations: 0,
+          recoveryRequests: 0,
           standingOrders: 0,
           partitionsDropped: 0,
         };

@@ -25,7 +25,7 @@
 // record); M3's caseload ABAC predicate (deny-stubbed here) governs which patient an actor
 // may scope a link to.
 import type { DbClient } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { FastifyRequest } from "fastify";
 
 /**
@@ -67,7 +67,22 @@ export function createOrgScopedIdentityOutbox(
   },
 ): IdentityOutboxPort {
   return {
-    publish: (input) => withOrgContextFromRequest(db, (tx) => publisher.publish(tx as DbClient, input)),
+    publish: (input) => {
+      // `select-organization` binds the session to an org and THEN publishes `m2.session.created` in the SAME request:
+      // the ambient request context was resolved before the bind, so it carries no organizationId yet. Opening the
+      // publish transaction from that context set `app.org_id` to '' and `outbox_event`'s policy
+      // (`organization_id = current_setting('app.org_id', true)::uuid`) threw 22P02 — a 500 on every org selection
+      // through the real composition (the suite mounted no outbox and connected as a superuser, so it never saw it).
+      // The event's own organizationId IS the org just bound; use it ONLY when the request has none. A request that
+      // already carries an org keeps it, so an event for a DIFFERENT org still fails RLS closed, as before.
+      const ambient = requireRequestContext();
+      if (ambient.organizationId || input.organizationId === null) {
+        return withOrgContextFromRequest(db, (tx) => publisher.publish(tx as DbClient, input));
+      }
+      return withOrgContext(db, { organizationId: input.organizationId, userId: ambient.userId }, (tx) =>
+        publisher.publish(tx as DbClient, input),
+      );
+    },
   };
 }
 

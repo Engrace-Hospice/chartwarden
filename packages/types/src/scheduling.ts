@@ -75,7 +75,9 @@ export type VisitProposalSource =
   | "frequency_driven_m7"
   | "supervisory_cadence_m15"
   | "order_required_m11"
-  | "idg_decision_m14";
+  | "idg_decision_m14"
+  // F-166 (#248, migration 0260) — M19's after-hours triage dispatch, additive-only.
+  | "triage_dispatch_m19";
 
 /** The §2.2.3 D4 recurring-policy lifecycle (mirrors `recurring_visit_status`). */
 export type RecurringVisitStatus = "active" | "discontinued";
@@ -114,6 +116,7 @@ export const M17_AUDIT_DENYLIST: { readonly [K in M17TableName]: readonly string
     "reschedule_reason",
     "no_show_reason",
     "evv_missing_reason",
+    "evv_missing_resolution_reason", // F-196 (#248, mig 0269)
   ],
   visit_state_history: ["reason"],
   recurring_visit: [],

@@ -66,7 +66,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.incident.submitted",
     moduleOwner: "m30",
     description:
-      "An incident transitioned draft→submitted (R-54); M22 renders the PDF on request, M28 projects the FHIR AdverseEvent (F-115/#248: at request time, not via this event), M33 reflects it, M36 raises the sentinel/abuse §4.9 alerts.",
+      "An incident transitioned draft→submitted (R-54); M28 projects the FHIR AdverseEvent (F-115/#248: at request time, not via this event), M33 reflects it, M36 raises the sentinel/abuse §4.9 alerts.",
     payloadSchema: Type.Object({
       orgId: id,
       incidentId: id,
@@ -75,7 +75,12 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       reportedAt: isoInstant,
       hasPatientLink: Type.Boolean(),
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: "renders the PDF on request" is a synchronous/route-triggered
+    // mechanism, not an outbox subscription to this lifecycle event — M30's own spec (§ Document
+    // storage and PDF rendering) names a dedicated `m30.incident.render_requested` event for this
+    // purpose, never catalogued or emitted anywhere in the codebase (a producer-side gap, reported not
+    // fixed). Not in M22's own §4.11 table either.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -163,14 +168,19 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.qapi.project_chartered",
     moduleOwner: "m30",
     description:
-      "A new QAPI PI project was chartered from a triggered indicator (R-27); M33 reflects it, M22 renders the charter PDF on request.",
+      "A new QAPI PI project was chartered from a triggered indicator (R-27); M33 reflects it.",
     payloadSchema: Type.Object({
       orgId: id,
       projectId: id,
       indicatorId: id,
       phase: Type.Literal("planned"),
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: same shape as `m30.incident.submitted` above — "on request" is a
+    // route-triggered mechanism, not a push off this lifecycle event. M30's spec's document-rendering
+    // section names five dedicated `*.render_requested` events for its M22 handshakes (none ever
+    // catalogued or emitted); this project-chartering milestone isn't the render trigger either way.
+    // Not in M22's own §4.11 table.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -178,7 +188,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.qapi.pip_closed",
     moduleOwner: "m30",
     description:
-      "A PIP cycle was closed with the two-person co-sign (R-31); M33 reflects the closure, M22 renders the minutes/outcome PDF on request.",
+      "A PIP cycle was closed with the two-person co-sign (R-31); M33 reflects the closure.",
     payloadSchema: Type.Object({
       orgId: id,
       // `qapi_pip.linked_project_id` is a nullable FK — a PIP need not hang off a chartered project, so the
@@ -188,7 +198,11 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       outcome: id,
       closedAt: isoInstant,
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: "renders the minutes/outcome PDF on request" is a route-triggered
+    // mechanism, not a push off this lifecycle event — the same shape as `m30.incident.submitted` and
+    // `m30.qapi.project_chartered` above. `m30.qapi_minutes.render_requested`, M30 spec's own named
+    // event for this artifact, is never catalogued or emitted anywhere. Not in M22's own §4.11 table.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

@@ -114,11 +114,15 @@ export {
   type ReceiveAdviceResult,
   type PostAdviceResult,
   type ClaimMatchCandidateProvider,
+  type ClaimMatchCandidateProviderByPayer,
   type TerminologyLookupPort as IngestTerminologyLookupPort,
   NO_CLAIM_MATCH_CANDIDATES,
 } from "./ingest/service";
 export { type M25IngestDrizzleDeps, buildDrizzleM25IngestService } from "./ingest/service-drizzle";
-export { buildM23BackedClaimMatchCandidateProvider } from "./ingest/claim-match-adapter";
+export {
+  buildM23BackedClaimMatchCandidateProvider,
+  buildM24BackedClaimMatchCandidateProvider,
+} from "./ingest/claim-match-adapter";
 export {
   type M25X12WorkerConfig,
   createFetchX12835HttpPort,

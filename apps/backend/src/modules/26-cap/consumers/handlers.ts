@@ -67,22 +67,35 @@ export async function handleRemittancePosted(
   });
 }
 
-/** m23.claim.replaced / m23.claim.voided → record a negative reversal accrual line. */
+/**
+ * m23.claim.replaced / m23.claim.voided / m25.remittance.claim_recouped → record a negative reversal
+ * accrual line. `cap_beneficiary_accrual_line.service_from`/`.service_to` are NOT NULL (a real DB
+ * constraint, not merely an unread field) — a payload that cannot honestly supply them (the 835's DTM
+ * claim-service-period segments are optional; F-163, #248) is refused rather than fabricated, the same
+ * `ensureAccrualRow` "no MBI on file" posture one file over. `priorPaidAmountCents`/`paidAmountCents`/
+ * `recoupedAmountCents` are read as already-converted integer cents (`cents()` is a passthrough for a
+ * number, never a dollars→cents conversion) — every producer of this fact must supply cents under one of
+ * those three names, never a `money` decimal-string field directly.
+ */
 export async function handleClaimReversed(
   store: CapConsumerStore,
   p: Record<string, unknown>,
 ): Promise<{ recorded: boolean }> {
   const patientId = str(p.patientId);
   const sourceId = str(p.claimId);
-  if (!patientId || !sourceId) return { recorded: false };
+  const serviceFrom = str(p.serviceFrom);
+  const serviceTo = str(p.serviceTo);
+  if (!patientId || !sourceId || !serviceFrom || !serviceTo) return { recorded: false };
   return store.recordAccrualLine({
     organizationId: str(p.organizationId),
     patientId,
     sourceKind: "reversal",
     sourceId,
-    amountCents: -Math.abs(cents(p.priorPaidAmountCents ?? p.paidAmountCents)),
-    serviceFrom: str(p.serviceFrom),
-    serviceTo: str(p.serviceTo),
+    amountCents: -Math.abs(
+      cents(p.recoupedAmountCents ?? p.priorPaidAmountCents ?? p.paidAmountCents),
+    ),
+    serviceFrom,
+    serviceTo,
     postedAt: str(p.postedAt ?? new Date(0).toISOString()),
   });
 }

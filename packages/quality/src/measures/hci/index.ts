@@ -23,6 +23,7 @@ export * from "./indicator_07_per_beneficiary_spending";
 export * from "./indicator_08_skilled_nursing_minutes_per_rhc";
 export * from "./indicator_09_skilled_nursing_minutes_weekends";
 export * from "./indicator_10_visits_near_death";
+export * from "./skilled_nursing_minutes";
 
 /**
  * What the composite reports when an indicator could not contribute — see {@link computeHciScore}.

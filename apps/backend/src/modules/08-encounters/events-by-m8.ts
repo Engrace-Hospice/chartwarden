@@ -86,6 +86,13 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       lateEntryTier,
       layer2Involved: Type.Boolean(),
       evvBracketState,
+      /** F-146 (#248) — the fact M18's real `closed_documented_at_encounter` resolution decider
+       *  (`transitionMissingResolution`, `domain/missing-resolution.ts`) reads as
+       *  `event.encounterEvvMissingReason`; present only when `evvBracketState ===
+       *  'evv_missing_documented'` (`encounter_evv_missing_reason_len`, the same ≥20-char CHECK this
+       *  field mirrors). Was missing from this LOCKED payload since the event existed — M18's consumer
+       *  could not have closed a documented-missing resolution off this event without it. */
+      evvMissingReason: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
       requiresCosign: Type.Boolean(),
       hopeRelevant: Type.Optional(
         Type.Object({
@@ -114,7 +121,25 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-115 (#248) — m28/m30 removed: m28 never subscribes to anything (F-035, request-time-only reads);
     // m30 reads signed-encounter data via `SignedEncountersReader` (HVLDL / HCI-10 / the late-entry
     // tally) on its nightly cadence, not by reacting to this event.
-    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m31", "m36"],
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event with a
+    // real handler (`trigger-revalidate` → `handleUpstreamChange`); its `.cosigned` sibling below is NOT
+    // in that map (M24 revalidates on sign, not on the separate cosign event).
+    // F-141 (#248) — m18 ADDED: M18's own D6 (locked), job catalog (`m18.encounter-signed.consumer`, "on
+    // m8.encounter.signed outbox"), and its §10 task-26 checklist all name a real, decisive consumer that
+    // closes an open `evv_missing_resolution` row (`closed_documented_at_encounter`) when the encounter
+    // signs with `evv_missing_reason` populated — genuinely undeclared until now.
+    // F-146 (#248) — the payload gap F-141 flagged for a future pass is now fixed: `evvMissingReason` is
+    // on the wire (both `sign()` emit sites). M18's own consumer binding stays unbuilt regardless — this
+    // group is `handlers-unbound` for a reason, and wiring the live binding is composition-root work
+    // outside this catalog/payload triage's scope — but a binding built against this payload can now
+    // actually resolve the fact it needs, rather than being wired against a field that doesn't exist.
+    // F-143 (#248) — m9 REMOVED: M9's own spec (line 61) states the relationship runs the OPPOSITE
+    // direction — "M8 calls M9's `recordAssessment` API with `source_encounter_id`" and "encounter-sign
+    // workflow consults M9's 'required scale' rules" — M8 calling INTO M9 synchronously, never M9
+    // subscribing to this outbox event. m10 REMOVED: M10's own spec (line 9, and its own re-lock note
+    // explicitly correcting the dep direction) is equally decisive the relationship is M8 → M10 (M8
+    // calls M10's `recordHopeTimepoint` API), never a push M10 would consume.
+    declaredConsumers: ["m14", "m17", "m18", "m22", "m24", "m31", "m36"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -128,7 +153,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       cosignedByMembershipId: Type.String({ minLength: 1 }),
       cosignedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m23", "m24"],
+    // F-140 (#248) — m24 removed: `M24_SUBSCRIPTION_MAP`'s exhaustive trigger-revalidate list names only
+    // `m8.encounter.signed`, not `.cosigned` — M23 KEPT the same event (a different module with a
+    // different subscription-map entry; not a transferable precedent).
+    declaredConsumers: ["m23"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -143,6 +171,23 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       signedByMembershipId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
+      // F-168 (#248) — was missing from this LOCKED payload since the event existed, the same reason
+      // `.signed`'s `documentRenderPayload` field exists: M22's render-consumer needed CONTENT to append
+      // a new `document_version` with, and had nothing (the idempotency-granularity gate this bind
+      // needed fixing first meant it was never reachable regardless). `final` stays the SAME PHI-safe
+      // empty-string stand-in `.signed` already sends (the pinned narrative is DEK-sealed and never
+      // copied into the outbox in the clear) — this is not a new gap, just the existing one repeated on
+      // the append path rather than left unaddressed.
+      documentRenderPayload: Type.Object({
+        final: Type.String(),
+        addenda: Type.Array(
+          Type.Object({
+            addendumId: Type.String({ minLength: 1 }),
+            reason: Type.String(),
+            text: Type.String(),
+          }),
+        ),
+      }),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     declaredConsumers: ["m22"],
@@ -246,7 +291,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       voidedBy: Type.String({ minLength: 1 }),
       voidedReason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: `ENCOUNTER_GRAPH` legalizes `void` only from `draft` — a voided
+    // encounter can never have had a PDF rendered (M22 renders only off `.signed`), so there is nothing
+    // to suppress. Not in M22's own §4.11 table either.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -261,7 +309,19 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       organizationId: Type.String({ minLength: 1 }),
       recordedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m17"],
+    // F-164 (#248) — m17 REMOVED: this event has NO production emitter anywhere in `08-encounters/`
+    // (grep-confirmed against all 13 real `emit(...)` call sites), so binding an M17 consumer to it
+    // would wire a line to a house never built. Independently redundant even if it were built: the
+    // identical fact — a just-signed encounter with no `visit_id` — is already delivered to M17 TODAY
+    // via the live `m17.m8-encounter-signed` consumer (`17-scheduling/consumers/index.ts`), whose own
+    // `EncounterSignedConsumed` doc comment names this exact branch "M17 reconciliation, M8 D2" and
+    // whose `planVisitCompletionFromEncounter` already returns `{kind:"skip", reason:"no_visit_link"}`
+    // for it. M17's own later spec text additionally names the real reconciliation mechanism as a SEAM
+    // PULL (`BillableEncounterReader`, "for retroactive reconciliation only") rather than this push —
+    // registered at the M17 composition root but not yet called from any route, a separate, unrelated
+    // gap. No `seamConsumers` replacement: the relationship this event's name gestures at is already
+    // covered by `.signed`, not by the pulled seam.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── HearthNote Layer 2 (§2.6 D5) ──────────────────────────────────────────────────────────────────
@@ -280,7 +340,18 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       hardBlockedCount: Type.Integer({ minimum: 0 }),
       softWarnCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30", "m32"],
+    // F-142 (#248) — m32 dropped: M32's own spec is decisive the relationship runs the OPPOSITE
+    // direction — M8 calls `NarrativeEnhancementProvider.enhance(...)` synchronously ("this is the v1
+    // reason M32 exists") and M32 already returns the diff/token-count/model-id/template-version
+    // directly to M8 in that call; this event's payload is exactly what M32 already produced.
+    // F-149 (#248) — m30 dropped: unsupported. M30's own §1.1 entry for Module 8 names only
+    // `EncounterStatisticsProvider`/`SignedEncountersReader` for the HCI visits-near-death/HVLDL/
+    // late-entry-rate measures — no "AI involvement" tracking anywhere in M30's own text despite its
+    // 19 lettered decisions covering every compliance surface it owns, and this event is NOT among the
+    // D16 recompute-trigger list's ten named events (only the different, already-declared
+    // `m8.encounter.signed` is). The event's own single terse table-cell citation ("M30 AI involvement
+    // compliance register") is contradicted by M30's own more authoritative, structured D16 list.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -295,8 +366,11 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       fieldsCaptured: Type.Array(Type.String({ minLength: 1 })),
       abnormalFlags: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     }),
-    declaredConsumers: ["m9"],
-    seamConsumers: ["m36"],
+    // F-143 (#248) — m9 moved to seamConsumers: M9's own spec (line 75) states M9 trending "may read
+    // the encounter vital series via M8's seam ... but M9 does not own vital signs" — a documented
+    // seam PULL M9 would perform, never an outbox push (confirmed unbuilt on both sides).
+    declaredConsumers: [],
+    seamConsumers: ["m9", "m36"],
     isOutboxOnly: true,
   },
   {

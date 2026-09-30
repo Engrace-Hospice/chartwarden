@@ -206,6 +206,13 @@ export type SeamName =
   | "LevelOfCarePeriodReader" // M6 — election-period × CHC/GIP-day coverage counts (M30 HCI indicator 1)
   | "DischargeReader" // M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4)
   | "AdmissionOnsetReader" // M6 — admissions started in a period (M30 opioid_on_admission_rate denominator)
+  // M6's F2F/compliance-window aggregate (F-178, #248) follows the OPAQUE rich-seam pattern instead of its
+  // leaf-typed siblings above: the consumer-facing view interface lives in M30's own `@wardenx/quality`
+  // package (`ComplianceWindowCountsView`, packages/quality/src/seams/consumed/m6-compliance-window.ts,
+  // the `ClaimLineReader`/`PatientDaysProvider` precedent), so the registry holds the instance as `unknown`
+  // and M30 resolves it via `getSeam` + a cast to that view. Registered by M6 at boot over the fail-closed
+  // deny-stub.
+  | "ComplianceWindowCountsProvider" // M6 — F2F/compliance-window on-time + override rate counts (M30 batch pull)
   // M7 (Care Plan / IPOC) reader seam (§7.8) — also leaf-typed (interface in ./care-plan), so it is
   // typed here like M6's readers. M8 (encounter authoring + sign gate), M14 (IDG packet), M15
   // (discipline care plans) consume it instead of importing M7's schema.
@@ -349,6 +356,7 @@ export type SeamName =
   | "ClaimSettlementProvider" // M25 — actual interim Medicare payments (835 CLP04) for a FY (M27 settlement.e1_ties_to_d)
   | "ClaimLineReader" // M23 — per-LOC billed claim-line day rollup for a window (M30 HCI claims-derived indicators)
   | "ClaimSubmissionReader" // M23 — accepted-submission match candidates by payer/patient control number + claim->patient id, for M25 835-to-claim auto-match (D3) and PR-ledger patient resolution (WX-PR-012)
+  | "MedicaidClaimMatchProvider" // M24 — Medicaid claim-control-number match candidates + claim->patient id, for M25 835-to-claim auto-match routed by payerKind (F-172, #248 m24 group)
   | "CostReportFilingStatusReader" // M27 — cost-report filing posture per FY (M30 CoP 418.310 failure-to-file indicator)
   // M30 (HQRP & Quality) §4.3 — the five READ-ONLY seams M30 publishes. Before these, M30 was reachable
   // cross-module ONLY through its §4.10 outbox events, with no read path at all. GAP-066: registered and
@@ -1003,6 +1011,10 @@ export interface SeamContracts {
   // opaque rich-seam pattern; M25's ingest service resolves via `getSeam` + a cast to its own
   // ClaimMatchCandidateProvider view. Registered by M23 at boot over the fail-closed deny-stub.
   ClaimSubmissionReader: unknown;
+  // M24 → M25 — the Medicaid sibling of ClaimSubmissionReader above (F-172, #248 m24 group): M25's
+  // `postAdvice` picks between the two by the advice's own `payerKind` discriminator. Registered by M24
+  // at boot over the fail-closed deny-stub.
+  MedicaidClaimMatchProvider: unknown;
   CostReportFilingStatusReader: unknown;
   // M30's five §4.3 seams — the SAME opaque rich-seam pattern: the interfaces live in @wardenx/quality
   // (this leaf may not import it — `leaves-stay-leaves`), so the registry holds each instance as
@@ -1037,6 +1049,11 @@ export interface SeamContracts {
   LevelOfCarePeriodReader: LevelOfCarePeriodReader;
   DischargeReader: DischargeReader;
   AdmissionOnsetReader: AdmissionOnsetReader;
+  // M6's `ComplianceWindowCountsProvider` (F-178, #248) is OPAQUE (`unknown`) here — the consumer-facing
+  // interface lives in `@wardenx/quality` (M30's own package; see the SeamName union comment above), not
+  // in this leaf. M6 registers the real Drizzle-backed provider over the fail-closed deny-stub; M30 resolves
+  // it via `getSeam` + a cast to its own `ComplianceWindowCountsView`.
+  ComplianceWindowCountsProvider: unknown;
   // M7's reader seam (§7.8) is LEAF-TYPED too — its interface lives in ./care-plan (this package), so
   // the registry is statically typed against the real contract. M7 registers the real Drizzle-backed
   // reader over the deny-stub; consumers that list `7` in their manifest `dependsOn` resolve it through

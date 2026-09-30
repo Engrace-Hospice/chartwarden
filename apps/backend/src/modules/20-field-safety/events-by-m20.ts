@@ -106,7 +106,11 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       afterHours: Bool,
       tier: Str,
     }),
-    declaredConsumers: ["m19"],
+    // F-140 (#248) — m19 removed: M20's own locked D14 decision states the after-hours parallel-
+    // recipient set is composed by M20 PULLING M19's `OnCallProvider.currentOnCallForProviderEntity`
+    // seam at M36's `RecipientResolver`, explicitly "without M19 needing to know about safety alerts" —
+    // the relationship is real but runs the opposite direction via a seam, never an M19 push subscription.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -126,7 +130,9 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       deviceAttested: Bool,
       coordinatesCaptured: Bool,
     }),
-    declaredConsumers: ["m19"],
+    // F-140 (#248) — m19 removed: same reasoning as `check_in_escalated` above — M20's own D14 decision
+    // pulls M19's on-call seam rather than being pushed to by M19.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -286,7 +292,13 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       oshaReportable: Bool,
       linkedSosAlertId: IdOrNull,
     }),
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 removed: M30's own §1.1 relationship inventory is a flat, explicit denial —
+    // "Field safety. Module 20. No M30 consumption path — field-safety incidents flow through M30 as
+    // `incident_report` rows with `kind='other_safety_event'`… M30 does not directly read M20 schemas"
+    // (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:128) — confirmed against M30's own code
+    // (zero M20 references anywhere in `apps/backend/src/modules/30-quality/`). Every one of M20's
+    // three remaining `m30`-declared events shares this finding.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -300,7 +312,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       closedByMembershipId: Id,
       closedAt: Iso,
     }),
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 removed: see `incident_submitted` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -334,7 +347,11 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       stateCode: Str,
       reportingWindowHours: Count,
     }),
-    declaredConsumers: ["m29", "m30"],
+    // F-141 (#248) — m29 dropped: M29's own locked "four-pillar scope" (D1: HL7 inbound/outbound,
+    // NPPES, Xero/Gusto) never mentions OSHA or workers-comp anywhere; this event's own description
+    // already hedges the filing as "manual or M29's" — an aspiration, not a decided M29 mechanism.
+    // F-149 (#248) — m30 removed: see `incident_submitted` above.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -349,7 +366,9 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       initiatedByMembershipId: Id,
       initiatedAt: Iso,
     }),
-    declaredConsumers: ["m29"],
+    // F-141 (#248) — m29 dropped: same reasoning as `osha_reportable_incident_filed` above — no
+    // support anywhere in M29's locked scope.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

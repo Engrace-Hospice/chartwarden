@@ -542,6 +542,13 @@ export const claimReaderDenyStub: unknown = denyingSeamProxy("ClaimReader");
  *  candidates" (every line queues for manual match) rather than fabricating a match. */
 export const claimSubmissionReaderDenyStub: unknown = denyingSeamProxy("ClaimSubmissionReader");
 
+/** M24 — the Medicaid sibling of {@link claimSubmissionReaderDenyStub} (F-172, #248 m24 group): M25's
+ *  ingest pipeline resolves this one instead when the advice's `payerKind === "medicaid"`. Same degrade —
+ *  "no candidates" / "no patient id", never a fabricated or cross-payer match. */
+export const medicaidClaimMatchProviderDenyStub: unknown = denyingSeamProxy(
+  "MedicaidClaimMatchProvider",
+);
+
 /** M29 — the §4.11 DiagnosticReport result-value read M28 CONSUMES. Opaque rich-seam; M29 is a Phase-1
  *  placeholder, so this stays fail-closed and M28's DiagnosticReport projection refuses at egress until
  *  M29 registers the real reader. */
@@ -662,6 +669,13 @@ export const admissionOnsetReaderDenyStub: AdmissionOnsetReader = {
     throw new NotImplementedError("AdmissionOnsetReader");
   },
 };
+
+/** M6 — F2F/compliance-window on-time + override rate counts (F-178, #248; M30 batch pull). Opaque rich-seam
+ *  (interface in @wardenx/quality, `ComplianceWindowCountsView`); M30 resolves via `getSeam` + a cast.
+ *  Denies until M6 registers the real Drizzle-backed provider over this fail-closed deny-stub. */
+export const complianceWindowCountsProviderDenyStub: unknown = denyingSeamProxy(
+  "ComplianceWindowCountsProvider",
+);
 
 // M7 (Care Plan) reader seam (§7.8). LEAF-TYPED (interface in @wardenx/types), so — like M6's readers
 // — it gets a concrete typed deny-stub. Denies LOUDLY until M7 registers the real reader (M7-T04).

@@ -208,7 +208,8 @@ jobs:
               name: "M6 Admission",
               scripts:
                 "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
-                test:m6:t5:write:live test:m6:abac-scope:live test:m6:election-guards:live",
+                test:m6:t5:write:live test:m6:t5:counts:live test:m6:abac-scope:live
+                test:m6:election-guards:live",
             }
           - {
               name: "M7 Care Plan",
@@ -225,10 +226,65 @@ jobs:
           - { name: "M10 HOPE answer engine", scripts: "test:m10:answer-engine:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
+          # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.
+          - { name: "M11 M9/M21 outbox consumers", scripts: "test:m11:m9-m21-consumers:live" }
+          # F-166 (#248) — `m21.supply_request.cancelled`: releases the still-in-flight M11 order on the
+          # staff-initiated M21 cancel route; a true no-op on the M11-cascade-reply producer.
+          - { name: "M11 supply-cancelled consumer", scripts: "test:m11:supply-cancelled:live" }
+          # F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events drive
+          # order_record.transmission_status and re-publish M11's own D16-decisive events.
+          - { name: "M11 lab-transmission applier", scripts: "test:m11:lab-transmission-applier:live" }
+          - { name: "M11 lab ORM producer (F-181)", scripts: "test:m11:orm-requested:live" }
+          - { name: "M11 lab ORM resend (F-182)", scripts: "test:m11:orm-resend:live" }
+          - { name: "M11 lab ORM attested recovery + never-pending (F-187)", scripts: "test:m11:orm-recovery:live" }
+          - { name: "M11 stuck lab-order auto-retry + held worklist/aging (F-201)", scripts: "test:m11:stuck-recovery:live" }
+          - { name: "M11 lab-order supersession alert (F-187)", scripts: "test:m11:lab-cancellation:live" }
+          - { name: "M29 outbound alerts reach a person (F-188)", scripts: "test:m29:alert-routing:live" }
+          - { name: "M11 lab ORM duplicate windows (F-183)", scripts: "test:m11:orm-duplicate-windows:live" }
+          # F-164 (#248) — M11's hourly orders.verbal_timer fan-out + the M12 medication-order verbal
+          # target-kind discrimination it drives.
+          - { name: "M11 verbal-order expiry", scripts: "test:m11:verbal-order-expiry:live" }
+          - { name: "M11/M12 verbal expiry handshake", scripts: "test:m11:m12-verbal-expiry:live" }
           - { name: "M12 DoseSpot", scripts: "test:m12:read:live test:m12:write:live" }
+          # F-161 (#248) — the §2.8 D17 reconciliation-discontinue handshake.
+          - {
+              name: "M12 reconciliation discontinue",
+              scripts: "test:m12:reconciliation-discontinue:live",
+            }
+          # F-164 (#248) — the §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch job-queue tier
+          # (dosespot_sync_queue) draining the six m5.patient.*/m6.{admission.activated,cti.signed}
+          # triggers.
+          - { name: "M12 sync triggers", scripts: "test:m12:sync-triggers:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
+            }
+          # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
+          # trigger events.
+          - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }
+          # F-155 (#248) — the §2.5/§2.7 D14 admission-discharge cascade (cancel future doses, flag
+          # comfort kits for return).
+          - {
+              name: "M13 admission-discharged cascade",
+              scripts: "test:m13:admission-discharged-cascade:live",
+            }
+          # F-164 (#248) — the §2.8 D17 reconciliation draft-order-requested handshake (a real drug
+          # content payload, minting a real draft medication_order).
+          - {
+              name: "M13/M12 draft-order-requested",
+              scripts: "test:m13:m12-draft-order-requested:live",
+            }
+          # F-166 (#248) — the §2.3 D2 scheduled-dose materializer + order-discontinue cascade
+          # (m12.medication_order.active/.discontinued).
+          - {
+              name: "M13 scheduled-dose materialization",
+              scripts: "test:m13:scheduled-dose-materialization:live",
+            }
+          # F-166 (#248) — the §2.5/§2.7 D5 comfort-kit deployment/replenishment/return chain
+          # (m21.comfort_kit.deployed_at_patient/.replenished/.returned/.return_reconciliation).
+          - {
+              name: "M13 comfort-kit deployment",
+              scripts: "test:m13:comfort-kit-deployment:live",
             }
           - {
               name: "M14 IDG",
@@ -241,7 +297,24 @@ jobs:
                 "test:m17:read:live test:m17:write:live test:m17:visit-create-abac:live
                 test:m17:membership-credential:live",
             }
+          # F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
+          - { name: "M17 EVV/SOS outbox consumers", scripts: "test:m17:evv-sos-consumers:live" }
+          # F-196 (#248) — the §4.10 missing-EVV resolution stamp.
+          - { name: "M17 EVV late-check-resolved", scripts: "test:m17:evv-late-check-resolved:live" }
+          # F-158 (#248) — the §3.3 EVV checkout/correction provenance-pointer consumers.
+          - { name: "M17 EVV checkout/corrected consumers", scripts: "test:m17:evv-checkout-corrected:live" }
+          # F-166 (#248) — the §7.5 volunteer-gate scheduler warning + the §2.2.4 D5 after-hours triage proposal.
+          - {
+              name: "M17 volunteer/triage consumers",
+              scripts: "test:m17:volunteer-triage-consumers:live",
+            }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
+          # F-153 (#248) — the D14 `m17.visit.cancelled` bracket close + the D6/§2.2.4
+          # `m8.encounter.signed` missing-EVV auto-resolution.
+          - {
+              name: "M18 visit-cancelled/encounter-signed consumers",
+              scripts: "test:m18:visit-cancelled-encounter-signed:live",
+            }
           # F-043/#103: M20's field-safety visit consumers — the first producer `safety_check_in_schedule`
           # has ever had. Live because the materializer's idempotence, the `mark_overdue` stamp constraint
           # and the policy-version FK are all statements about Postgres, and because `readAnchors` reaches
@@ -251,6 +324,12 @@ jobs:
           # predicate over `state`, `on_call_shift_id` is NOT NULL (which is why `no_coverage` exists as an
           # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
           - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
+          # F-155 (#248): the m19 `handlers-unbound` group's own finding, now built — §4.5 path 1 / §4.8
+          # `m19.shift-sync.debounced` had no jobs/ tier anywhere in this module. Live because the true
+          # reset-the-delay debounce is an `ON CONFLICT ... DO UPDATE` against a partial-unique index and
+          # the `FOR UPDATE SKIP LOCKED` claim are both statements about Postgres, and cross-tenant
+          # isolation runs on the real NOBYPASSRLS `wardenx_app` role.
+          - { name: "M19 Roster-sync debounce", scripts: "test:m19:roster-sync-debounce:live" }
           - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
           # F-111 (#249): the §4.8 `m20.sos-sla-watchdog.cron` worker — decideSosWatchdog shipped with
           # M20-T03 and had no production caller anywhere. Live because the double-escalation lock is a
@@ -271,10 +350,18 @@ jobs:
             }
           - {
               name: "M24 Billing-Medicaid",
-              scripts: "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live",
+              scripts:
+                "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live
+                test:m24:revalidate-medicare-primary:live test:m24:remittance-feedback:live
+                test:m24:state-channel-health:live",
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
+          # F-165 (#248): the m5.patient.deceased proposal-freeze consumer.
+          - { name: "M29 patient-deceased freeze", scripts: "test:m29:patient-deceased-freeze:live" }
+          # F-175 (#248): the T08 outbound MLLP dispatch worker — real Postgres + a real in-process mock
+          # MLLP server over node:net.
+          - { name: "M29 outbound dispatch worker", scripts: "test:m29:outbound-dispatch:live" }
           # GAP-043: M27's approver gate over M2's real `membership_elevated_approval` designation —
           # the conjunct that was hardcoded false in the production resolver, blocking every cost-report
           # approve/submit/reopen in every tenant.
@@ -292,6 +379,12 @@ jobs:
           # org-less event reaching a real consumer, its org-less §4.11 receipt, and M40's canonical
           # write path (which had no SECURITY DEFINER function at all until migration 0202).
           - { name: "M1 platform outbox delivery", scripts: "test:m1:platform-outbox:live" }
+          # F-156 (#248) — the SECOND live `platformConsumers` binding (GAP-099): M33's replica-lag
+          # probe flips M1's shared, NON_ORG_SCOPED `system_status` row.
+          - { name: "M1 lag-probe system status", scripts: "test:m1:lag-probe-status:live" }
+          # F-161 (#248) — the THIRD live `platformConsumers` binding: M23's §4.8 MAC-portal health
+          # probe flips M1's shared, NON_ORG_SCOPED `system_status` row (one component per jurisdiction).
+          - { name: "M1 MAC-portal health status", scripts: "test:m1:mac-portal-health:live" }
           # F-020 (#49): the ORG-scoped relay's own live proof — delivery, retry/backoff, the `failed`
           # DLQ terminal, deferred routing, record-only completion and the retention purge, driven as
           # NOBYPASSRLS `wardenx_app`. It had existed since TASK-006 with no package.json script and no
@@ -304,6 +397,12 @@ jobs:
           # `ON CONFLICT` inference over it, and migration 0002's own-org-OR-global read policy — none
           # of which an in-memory double can be wrong about.
           - { name: "M1 feature flags", scripts: "test:m1:feature-flags:live" }
+          # F-173 (#248, m1 group) — the Drizzle-backed `SystemStatusReader` (`bootstrap/system-status-store.ts`).
+          # F-156 found the composition root always fell back to the in-memory reader, so `POST
+          # /admin/system/status` never persisted to the real table in any environment. LIVE by necessity:
+          # the claims are that `system_status` carries no RLS (a plain GRANT suffices for the NOBYPASSRLS
+          # app role) and that `ON CONFLICT (id)` upserts rather than duplicates.
+          - { name: "M1 system-status store", scripts: "test:m1:system-status-store:live" }
           - { name: "M1 locations lookup", scripts: "test:m1:locations-lookup:live" }
           # F-093: the §3.4.1 `system_locked` CoP floor existed only in the in-memory RoleStore the route
           # tests use; the Drizzle store production mounts had neither the floor check nor the delete
@@ -388,6 +487,15 @@ jobs:
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           - { name: "M37 RN coverage", scripts: "test:m37:coverage:live" }
+          # F-158 (#248) — M37's first outbox consumer, the §4.5 admission-discharged cascade.
+          - {
+              name: "M37 admission-discharged cascade",
+              scripts: "test:m37:admission-discharged-cascade:live",
+            }
+          # F-172 (#248) — M37's `recordDeath` producer, previously called nowhere outside its own unit
+          # test. Own runner because it exercises the widened `m6.discharge.death` payload schema
+          # directly against the M6 catalog alongside the M37 consumer.
+          - { name: "M37 death recorded", scripts: "test:m37:death-recorded:live" }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
           # the event id alone, so the invoker could approve their own emergency PHI grant and a
           # co-signature could resurrect a REVOKED one. Both guards are conjuncts in the UPDATE (a
@@ -408,6 +516,9 @@ jobs:
           # function; this drives `listForUser` (which had no live coverage) through the production
           # repository as wardenx_app, so the hand-written raw-query row mapping is proven too.
           - { name: "M2 pre-org membership picker", scripts: "test:m2:pre-org-picker:live" }
+          # F-158 (#248) — M2's first outbox consumer: the M39 consent-revocation session-termination
+          # cascade, `portal_access` scope.
+          - { name: "M2 consent-revoked session termination", scripts: "test:m2:consent-revoked:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.
@@ -421,19 +532,53 @@ jobs:
           # seam CLAUDE.md cites by filename, M31's right-to-erasure eraser, M36's real AlertEmitter.
           - { name: "M5 Patient death cascade", scripts: "test:m5:death-cascade:live" }
           - { name: "M5 census caseload scope (F-096)", scripts: "test:m5:census-scope:live" }
+          # F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`.
+          - { name: "M5 admission siting", scripts: "test:m5:admission-siting:live" }
+          # F-165 (#248) — the m5 `handlers-unbound` group's `m17.visit.assigned`/`.unassigned` pair:
+          # M17's shift-assignment Valkey cache unioned additively into the real CaseloadProvider read.
+          - {
+              name: "M5 visit-assignment shift cache",
+              scripts: "test:m5:visit-assignment-cache:live",
+            }
+          # F-167 (#248) — the m5 `handlers-unbound` group's `m39.consent.{signed,revoked,supersedes,
+          # renewed}` privacy-flag-snapshot recompute (§7.6/D10).
+          - { name: "M5 consent privacy-flag recompute", scripts: "test:m5:consent-privacy:live" }
+          # F-171 (#248) — the real §4.3 M5 direct patient-merge write path: POST /patients/:id/merge,
+          # field resolution, satellite-table preservation, m5.patient.merged emission.
+          - { name: "M5 patient merge", scripts: "test:m5:patient-merge:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
             }
-          - { name: "M26 Cap Management", scripts: "test:m26:cost-report-cap-seam:live" }
+          # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
+          # m18.evv.aggregator_rejected.
+          - {
+              name: "M25 denial-worklist seed consumers",
+              scripts: "test:m25:denial-seed-consumers:live",
+            }
+          # F-160 (#248) — the CapConsumerStore build: real MBI/first-election org-explicit seam reads
+          # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.
+          - {
+              name: "M26 Cap Management",
+              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live",
+            }
           - {
               name: "M30 HQRP & Quality",
               scripts:
-                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live test:m30:hci-inputs:live",
+                # F-161 (#248) adds test:m30:bereavement-plan-closed-consumer:live — the M16 bereavement
+                # plan-closure trio's `bereavement_coverage_rate` recompute enqueue.
+                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live test:m30:hci-inputs:live test:m30:upstream-consumers:live test:m30:bereavement-plan-closed-consumer:live",
             }
           - {
               name: "M31 Portal & Telehealth",
-              scripts: "test:m31:portal-eraser:live test:m31:care-team-sync:live",
+              scripts:
+                # F-164 (#248) adds test:m31:bereavement-consent-consumers:live — the plan-closure
+                # grant revocation + the broad m39.consent.revoked grant cascade.
+                # F-165 (#248) adds test:m31:bereavement-plan-opened:live — the D6 lateral flip's
+                # INSERT half, re-checked past F-164's BLOCKED verdict.
+                # F-167 (#248) adds test:m31:bereavement-contact-active:live — the per-contact-exact
+                # trigger `plan_opened`'s own header names as the real primary mechanism.
+                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live test:m31:bereavement-contact-active:live",
             }
           - {
               name: "M36 Messaging alerts",
@@ -444,19 +589,151 @@ jobs:
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
           - { name: "M22 render handshake", scripts: "test:m22:render-handshake:live" }
+          # F-160 (#248) — 4 more M22 render-request producer/consumer pairs (M13 eMAR PDF request, M23
+          # billing NOE/NOTR/claim/denial letters, M24 Medicaid claim ack letter, M25 denial resolution
+          # letter): each producer had every builder and no caller.
+          - { name: "M22 F-144 render requests", scripts: "test:f144:render-requests:live" }
+          # F-161 (#248) — M7's care-plan-signed PDF (new `care_plan` aggregate type, migration 0252)
+          # and M17's caregiver-reminder PDF (`visit_confirmation`, no producer yet on M17's side).
+          - {
+              name: "M22 F-161 render requests",
+              scripts: "test:f161:m7-m17-render-requests:live",
+            }
+          # F-166 (#248) — 5 more M22 render-request producer/consumer pairs, all GENESIS-only (never a
+          # re-render/append against an already-rendered aggregate): M8 encounter-signed note, M18 EVV
+          # verification PDF, M14 IDG packet + minutes, M15's four discipline plans by `kind`.
+          - {
+              name: "M22 F-166 render requests",
+              scripts: "test:f166:render-requests:live",
+            }
+          # F-168 (#248) — the idempotency-key-granularity fix (migration 0261,
+          # `document_version.source_event_id`): a genuinely different request against an already-rendered
+          # aggregate now appends a real new version (m8.encounter.addendum_signed, m14.minutes.amended,
+          # m12.medication_order.transmitted), while a genuine crash-retry redelivery of the IDENTICAL
+          # outbox row still does not double-render.
+          - {
+              name: "M22 F-168 document-request idempotency",
+              scripts: "test:f168:document-request-idempotency:live",
+            }
+          # F-171 (#248) — the medication-list render's own THIRD dedicated (non-generic) pipeline: M12's
+          # `MedicationOrderProvider.getActiveMedications` seam resolved fresh at delivery time (never
+          # from the delivered diff payload), appending a real new `document_version` per genuinely
+          # distinct `.list_changed` event.
+          - {
+              name: "M22 F-171 medication-list render",
+              scripts: "test:m22:medication-list-render:live",
+            }
+          # F-171 (#248) — the dedicated `lab-backref-consumer.ts`/`lab-backref-bindings.ts` pipeline:
+          # `m11.order.results_received` → `lab_results_pdf`, resolved live via M29's real
+          # `LabObservationReader.getByObservationId` (+ its new SUD-class flag), the D23 SUD-promotion
+          # retention override, and the F-168 per-request idempotency granularity (a new version per
+          # genuinely distinct lab result, never a duplicate on redelivery).
+          - {
+              name: "M22 F-171 lab-results back-ref",
+              scripts: "test:f171:m22-lab-backref:live",
+            }
+          # F-197 (#248) — the §7.16 SUD-consent MINT-TIME re-check (both the staff `signed-url-service.ts`
+          # `mint()` and the portal `mintPortalDownloadUrl` path), against the real M39 `ConsentEvaluator`:
+          # a document rendered while consent was active must refuse a later mint once that consent is
+          # revoked, never gates a non-SUD document, and RLS still isolates a cross-tenant mint attempt.
+          - {
+              name: "F-197 M22 mint-time SUD consent",
+              scripts: "test:f197:m22-mint-time-sud-consent:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
           - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
+          # F-192 (#248) — M6's seventh artifact, the transfer summary (`discharge_summary_transfer`,
+          # migration 0267): `m6.transfer.created` (both directions) through the identical F-100 chain,
+          # into `transfer_event.document_id`, the column M6 built for it and nothing ever wrote.
+          - {
+              name: "F-192 M6 transfer render request",
+              scripts: "test:f192:m6-transfer-render:live",
+            }
+          # F-194 (#248) — `m18.evv.visit_verified` end to end: a real check-in/check-out through M18's
+          # real Drizzle write service into a real outbox row, then the real M30 `hvldl` recompute consumer.
+          - {
+              name: "F-194 M18 visit verified",
+              scripts: "test:f194:m18-visit-verified:live",
+            }
+          # F-205 (#248) — `m12.medication.error_reported` end to end: a real clinician-initiated
+          # report-error action through M12's real Drizzle write service into a real outbox row, then the
+          # real M30 auto-incident-draft consumer.
+          - {
+              name: "F-205 M12 medication error reported",
+              scripts: "test:f205:m12-medication-error-reported:live",
+            }
+          # F-207 (#248) — the M21 vendor-invoice forward seam (M21 spec §1.1 D16), the 4th cost-basis
+          # precedence tier additive to D17's M13 administration ▸ M12 ordered ▸ manual entry chain: a
+          # real accrual/reconciliation through the catalog-validating publisher, the real dispatcher,
+          # into a real fiscal-year-resolved `vendor_invoice_line` row.
+          - {
+              name: "F-207 M27 vendor invoice",
+              scripts: "test:f207:m27-vendor-invoice:live",
+            }
+          # F-208 (#248) — M9's printable assessment summary (`assessment_summary`, migration 0277): the
+          # chart-open auto-refresh + the explicit download/print action, both through the identical
+          # render-handshake chain, proving the freshness throttle and the F-168 per-open append version.
+          - {
+              name: "F-208 M9 assessment summary render",
+              scripts: "test:f208:m9-assessment-summary-render:live",
+            }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
+          # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
+          - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }
           # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
           # close-out), both already live-emitted by the M6/M11 discharge cascade above.
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }
+          # F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
+          - { name: "M21 comfort-kit cascade", scripts: "test:m21:comfort-kit-cascade:live" }
+          # F-161 (#248) — §2.1 comfort-kit replenishment intake, the third of the four
+          # `consumers/m13-comfort-kit.ts` deciders.
+          - {
+              name: "M21 comfort-kit replenishment",
+              scripts: "test:m21:comfort-kit-replenishment:live",
+            }
+          # F-193 (#248) — M21's own caregiver-signature capture (D7's "optional via M22's signature
+          # flow" named a mechanism M22 was never going to build; F-191 dropped the misdeclared `m22`
+          # consumer, this is the real replacement capability).
+          - {
+              name: "M21 caregiver-signature capture",
+              scripts: "test:m21:caregiver-signature:live",
+            }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
+          # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
+          - { name: "M14 since-last-IDG cache", scripts: "test:m14:since-last-idg-cache:live" }
+          # F-171 (#248) — the real §7.1/§7.2 T-24h packet-build worker (schedule-materialise + packets-cron).
+          - { name: "M14 packet build", scripts: "test:m14:packet-build:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
+          - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
+          # F-171 (#248) — the consent-type-catalog seed rows that unblock the already-built M2/M16/M31
+          # m39.consent.revoked cascades end to end (portal_access, bereavement_outreach_consent).
+          - { name: "F-171 consent-type seed", scripts: "test:f171:consent-type-seed:live" }
+          # F-153 (#248) — the §4.5 death-discharge secondary verifier (redundant safety net).
+          - { name: "M16 discharge death secondary", scripts: "test:m16:discharge-death-secondary:live" }
+          # F-159 (#248) — the §4.5 post-death-grant handler (m39.consent.signed).
+          - { name: "M16 consent-signed", scripts: "test:m16:consent-signed:live" }
+          # F-159 (#248) — the §2.6/D9 patient-level opt-out cascade.
+          - { name: "M16 patient opt-out changed", scripts: "test:m16:opt-out-changed:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
+          # F-153 (#248) — the §4.8 revalidate.consumer producer side, six M6/M8 trigger events.
+          - { name: "M23 revalidate triggers", scripts: "test:m23:revalidate-triggers:live" }
+          # F-162 (#248) — the seventh revalidate trigger, m18.evv.late_check_resolved, over a new M8
+          # reverse visitId→encounterId seam.
+          - { name: "M23 late-check resolved", scripts: "test:m23:late-check-resolved:live" }
+          # #248 — M23's last remaining `handlers-unbound` pair, m25.taxonomy.unmapped_code_observed
+          # (D13): a new `unmapped_taxonomy_occurrence` occurrence tracker + a 30-day/50-occurrence
+          # threshold alert through the existing WorkerAlertPort — not the revalidate.consumer queue.
+          - { name: "M23 taxonomy occurrence", scripts: "test:m23:taxonomy-occurrence:live" }
+          # F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
+          # organization activate/suspend/close triggers.
+          - { name: "M35 org-lifecycle consumer", scripts: "test:m35:org-lifecycle-consumer:live" }
+          # F-172 (#248) — the real PseudonymKeyProvider (KEK envelope over the platform-singleton
+          # patient_pseudonym_key) + the 3 remaining D21 consumers it unblocks.
+          - { name: "M35 pseudonym-key provider", scripts: "test:m35:pseudonym-key-provider:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.

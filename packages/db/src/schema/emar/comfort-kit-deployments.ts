@@ -5,7 +5,7 @@
 // M21 supply dispatch) are plain uuid app-validated, NOT cross-module FKs. RLS + grants + the M4 write-audit trigger
 // land in the RLS migration.
 import { sql } from "drizzle-orm";
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { comfortKitDisposalStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -48,6 +48,12 @@ export const comfortKitDeployments = pgTable(
     activeReturnRequired: index("kit_deploy_return_required_idx")
       .on(t.organizationId, t.returnRequiredAt.asc())
       .where(sql`disposal_status = 'return_required'`),
+    // F-166 (#248, migration 0259) — the `m21.comfort_kit.deployed_at_patient` consumer's redelivery
+    // guard. NULLS DISTINCT (default): rows with no dispatch link coexist freely.
+    byM21Dispatch: unique("comfort_kit_deployment_m21_dispatch_uq").on(
+      t.organizationId,
+      t.m21SupplyDispatchId,
+    ),
   }),
 );
 

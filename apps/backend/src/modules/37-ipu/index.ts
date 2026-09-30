@@ -29,6 +29,21 @@ export type { IpuRouteService } from "./routes/service";
 // §7.7 — the `ipu_record` destruction eraser (registered over the Phase-0 deny-stub by the composition root).
 export { eraseIpuRecord, registerIpuErasers } from "./eraser";
 
+// F-158-followup (#248) — the §4.5 `m6.admission.discharged` cascade-discharge consumer, M37's first.
+export {
+  M37_ADMISSION_DISCHARGED_CONSUMER,
+  buildM37AdmissionDischargedConsumer,
+  type AdmissionDischargedConsumerDeps,
+} from "./consumers/m6-admission-discharged";
+
+// F-172 (#248) — the §2.2 `recordDeath` producer: `m6.discharge.death` → `transitionAdmission(...,
+// {type: "recordDeath"})` → `m37.ipu_admission.death_recorded` + the auto-opened `ipu_body_release` row.
+export {
+  M37_DEATH_RECORDED_CONSUMER,
+  buildM37DeathRecordedConsumer,
+  type DeathRecordedConsumerDeps,
+} from "./consumers/m6-discharge-death";
+
 // §4.11 — the eight published IPU reader seams (registered over the deny-stubs by the composition root).
 export {
   buildIpuSeams,

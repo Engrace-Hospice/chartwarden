@@ -210,7 +210,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M23->M25 ClaimSubmissionReader seam — LIVE
           throw new Error("not used in this test");
         },
       },
-      claims: buildM23BackedClaimMatchCandidateProvider(),
+      claims: { medicare: buildM23BackedClaimMatchCandidateProvider() },
       terminology: {
         async lookup(carcCode) {
           if (carcCode === "1")

@@ -96,6 +96,18 @@ export const orderRecords = pgTable(
     transmissionAckedAt: timestamp("transmission_acked_at", { withTimezone: true }),
     transmissionAckCode: text("transmission_ack_code"), // 'AA' | 'AE' | 'AR' once known
     transmissionFailureReason: text("transmission_failure_reason"),
+    // F-188 (mig 0266) — the id of the CURRENT outbound attempt, set in the same transaction as every
+    // `m11.order.hl7_orm_requested` (sign / resend / recovery). The applier applies a `dispatch_refused` only when the
+    // refusal names this attempt, so a stale refusal redelivered after an operator resend cannot flip the order again.
+    transmissionAttemptId: uuid("transmission_attempt_id"),
+    // F-201 (mig 0270) — bounded AUTO-RETRY state for an order refused before any outbound row existed. `count` is how
+    // many times the sweep RE-EMITTED the request (only an actual re-emission counts), `at` is the last re-emission (the
+    // backoff clock), `exhausted_at` is when the sweep gave up and raised its one "an operator must act" alert.
+    transmissionAutoRetryCount: integer("transmission_auto_retry_count").notNull().default(0),
+    transmissionAutoRetryAt: timestamp("transmission_auto_retry_at", { withTimezone: true }),
+    transmissionAutoRetryExhaustedAt: timestamp("transmission_auto_retry_exhausted_at", {
+      withTimezone: true,
+    }),
     resultsStatus: orderResultsStatus("results_status").notNull().default("not_expected"),
     resultsFirstReceivedAt: timestamp("results_first_received_at", { withTimezone: true }),
     lastLabObservationAttachedId: uuid("last_lab_observation_attached_id"), // M29 forward seam; NO SQL FK (D14)
@@ -140,6 +152,10 @@ export const orderRecords = pgTable(
     byTransmissionStatus: index("idx_order_transmission_status")
       .on(t.organizationId, t.transmissionStatus, t.signedAt)
       .where(sql`kind = 'lab' AND transmission_status IN ('pending', 'pending_retry')`),
+    // F-201 (mig 0270) — the OTHER end: `failed` lab orders, oldest first (the stuck-order sweeps + held worklist).
+    byTransmissionFailed: index("idx_order_transmission_failed")
+      .on(t.organizationId, t.updatedAt, t.id)
+      .where(sql`kind = 'lab' AND transmission_status = 'failed'`),
   }),
 );
 

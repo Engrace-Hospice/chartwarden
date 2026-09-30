@@ -5,17 +5,25 @@
 // active-org fan-out -> withOrgContext -> read -> pure planner ->
 // transactional outbox publish.
 
-import type { DbClient } from "@wardenx/db";
+import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
-import { ctiSignatureDueRowsForOrg, f2fDueRowsForOrg } from "./cron-store";
+import {
+  ctiSignatureDueRowsForOrg,
+  f2fDueRowsForOrg,
+  f2fWindowMissedCandidatesForOrg,
+} from "./cron-store";
 import {
   M6_JOB_SCHEDULES,
   M6_QUEUES,
   planDueReminder,
   planCtiSignatureReminder,
+  planF2fWindowMissedScan,
 } from "./index";
+
+const CW = schema.complianceWindows;
 
 const M6_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000006";
 
@@ -217,11 +225,85 @@ export async function runCtiSignatureNotifyCron(
 }
 
 /**
- * Construct the currently-live M6 cron workers.
+ * `admission.window_alert` (F2F half, F-178b/#248) — every 15 min, scan recert election periods whose
+ * CMS 418.22 F2F "prior-to" window has newly lapsed unattested and emit `m6.f2f.window_missed` exactly
+ * once per window. `M6_QUEUES.windowAlert` / `M6_JOB_SCHEDULES.windowAlert` were declared (§4.3) but had
+ * no runner or schedule registration anywhere — this is the first work on that queue; the OTHER
+ * compliance-window kinds `planWindowAlert`/`promoteWindowStatus` (./index) are still unwired (out of
+ * scope here — those assume an already-open `compliance_window` row, which `f2f_recert_30d_prior` never
+ * gets outside this scan; see ./index's own comment on `planF2fWindowMissedScan`).
  *
- * We only register f2fDueNotify here for now.
- * CTI signature scanning will be added immediately after
- * this path is wired and verified.
+ * Idempotent: `f2fWindowMissedCandidatesForOrg` excludes a period once its compliance_window row is
+ * open (opened here, in the same tx as the outbox publish); `attestF2f`'s existing `close_window`
+ * effect (admission-route-service-db.ts) closes it on a later attestation.
+ */
+export async function runF2fWindowMissedScanCron(deps: M6WorkerDeps): Promise<void> {
+  const now = (deps.now ?? (() => new Date()))();
+  const orgs = await activeOrgsOf(deps).listActiveOrgs();
+
+  for (const { organizationId } of orgs) {
+    await withOrgContext(
+      deps.db,
+      {
+        organizationId,
+        // "" (not M6_WORKER_SYSTEM_USER_ID) — unlike the two sibling scans above, this one INSERTs a
+        // real `compliance_window` row, which carries the M4 PHI write-audit trigger
+        // (`audit_phi_write_compliance_window`, 0027_admission_m6_rls_audit_triggers.sql). That trigger
+        // FK-references `app.user_id` into `user.id` when it is non-empty; `M6_WORKER_SYSTEM_USER_ID` is
+        // a synthetic id no migration/seed ever inserts into `user` (true of every `*_WORKER_SYSTEM_USER_ID`
+        // in this codebase — F-178b is simply the first M6 cron to touch an audited table), so using it
+        // here 23503s on the very first tick. `""` is the established system-write idiom
+        // (admission-route-service-db.ts's `withOrgContext(db, { organizationId, userId: "" }, ...)`
+        // throughout): `NULLIF(current_setting('app.user_id', true), '')::uuid` reads it as NULL, which
+        // the FK allows, and the audit row is still written (organization/resource/event scoped).
+        userId: "",
+      },
+      async (tx) => {
+        const t = tx as unknown as DbClient;
+
+        const orgTimeZone = await organizationTimezone(t, organizationId);
+        const today = localDateInTimeZone(now, orgTimeZone);
+
+        const candidates = await f2fWindowMissedCandidatesForOrg(t, organizationId);
+        const planned = planF2fWindowMissedScan(candidates, today, orgTimeZone);
+
+        for (const p of planned) {
+          const [row] = await t
+            .insert(CW)
+            .values({
+              organizationId,
+              admissionId: p.admissionId,
+              windowKind: "f2f_recert_30d_prior",
+              severity: "alert",
+              status: "overdue",
+              startsAt: new Date(`${p.windowStart}T00:00:00.000Z`),
+              mustCompleteBy: new Date(p.windowEndInstant),
+              payload: { electionPeriodId: p.electionPeriodId },
+            })
+            .onConflictDoNothing()
+            .returning({ id: CW.id });
+
+          // `onConflictDoNothing` (the `cw_adm_kind_open_idx` partial unique) means a race with another
+          // tick/replica loses the insert silently — only the tick that actually opened the row emits.
+          if (!row) continue;
+
+          await deps.outbox.publish(t, {
+            eventName: "m6.f2f.window_missed",
+            payload: {
+              electionPeriodId: p.electionPeriodId,
+            },
+            organizationId,
+            aggregateKind: "election_period",
+            aggregateId: p.electionPeriodId,
+          });
+        }
+      },
+    );
+  }
+}
+
+/**
+ * Construct the currently-live M6 cron workers.
  */
 export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
   return [
@@ -238,11 +320,20 @@ export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
         concurrency: 1,
       },
     ),
+
+    new Worker(
+      M6_QUEUES.windowAlert,
+      async () => runF2fWindowMissedScanCron(deps),
+      {
+        connection: deps.connection,
+        concurrency: 1,
+      },
+    ),
   ];
 }
 
 /**
- * Register the repeatable F2F due-reminder schedule.
+ * Register the repeatable F2F due-reminder / CTI-signature / window-alert schedules.
  */
 export async function scheduleM6Jobs(
   connection: ConnectionOptions,
@@ -255,6 +346,10 @@ export async function scheduleM6Jobs(
     {
       name: M6_QUEUES.ctiSignatureNotify,
       pattern: M6_JOB_SCHEDULES.ctiSignatureNotify,
+    },
+    {
+      name: M6_QUEUES.windowAlert,
+      pattern: M6_JOB_SCHEDULES.windowAlert,
     },
   ] as const;
 

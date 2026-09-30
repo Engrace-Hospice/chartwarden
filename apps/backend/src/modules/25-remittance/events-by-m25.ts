@@ -95,7 +95,13 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAmount: money,
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m23"],
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event
+    // (`mark-claim-paid`) with a real handler (`handleClaimPaid`) — the same remittance-posted signal
+    // both the Medicare (M23) and Medicaid (M24) claim lifecycles advance on. Reverses a stale exception
+    // (`would-defer-a-bound-event`) that assumed adding a second declared consumer would interrupt M23's
+    // live delivery — `buildOutboxRoutingPlan` delivers to every BOUND consumer regardless of what else
+    // is declared (verified directly against `outbox-dispatcher.ts`, the F-139/m31 precedent).
+    declaredConsumers: ["m23", "m24"],
     isOutboxOnly: true,
   },
   {
@@ -125,7 +131,9 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       carcCodes: Type.Array(str),
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m23"],
+    // F-140 (#248) — m24 ADDED: same reasoning as `.claim_paid` above (`mark-claim-denied` /
+    // `handleClaimDenied`).
+    declaredConsumers: ["m23", "m24"],
     isOutboxOnly: true,
   },
   {
@@ -135,9 +143,21 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       "A CLP02=22 reversal posted (42 CFR §424.526); reverses the M23 claim PAID + the M26 cap accrual.",
     payloadSchema: Type.Object({
       claimId: id,
+      // F-163 (#248) — widened for M26's `handleClaimReversed`, which reads `patientId` and a cents
+      // amount off this payload and previously found neither. `patientId` resolves through the real M23
+      // `ClaimMatchCandidateProvider` seam at emit time (the same seam `postAdjustments`' PR-ledger seed
+      // already reads two functions up in `service-drizzle.ts`); honestly `null` when unresolvable
+      // (deny-stub default, or a genuinely orphaned match) rather than fabricated. `serviceFrom`/`serviceTo`
+      // are the 835's own DTM claim-service-period dates (`ParsedClaim835`, optional on the wire) — also
+      // honestly `null` when the payer's 835 omits them, which `cap_beneficiary_accrual_line`'s NOT NULL
+      // service-date columns make a real (if rare) refusal case for M26's consumer, not a crash.
+      patientId: Type.Union([id, Type.Null()]),
       remittanceLineId: id,
       remittanceAdviceId: id,
       recoupedAmount: money,
+      recoupedAmountCents: Type.Integer(),
+      serviceFrom: Type.Union([str, Type.Null()]),
+      serviceTo: Type.Union([str, Type.Null()]),
       postedAt: isoInstant,
     }),
     declaredConsumers: ["m23", "m26"],
@@ -158,7 +178,14 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       source: str,
       dollarValue: money,
     }),
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 removed. M25's own spec (line 92) names a "denial-rate HQRP measure" reading
+    // M25's `DenialMetricsProvider`/`RemittanceReader` seams — but M30's own §1.1 relationship inventory
+    // is a flat, explicit denial: "Remittance posting. Module 25. No M30 consumption path."
+    // (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:133) — no conditional/forward-seam
+    // language, unlike its genuinely-aspirational entries for M19/M21. The consuming module's own
+    // decisive statement wins over the producing module's aspirational one (the F-101 rule), and M30's
+    // code confirms it: zero denial-related references anywhere in `apps/backend/src/modules/30-quality`.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -168,7 +195,11 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "An appeal decided favorably; the underlying denial resolved and M23 may re-post the original line.",
     payloadSchema: Type.Object({ denialCaseId: id, appealCaseId: id, claimId: id, tier: str }),
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 REMOVED: M23's own claim state machine (§2.2) is explicit that the PAID
+    // transition on a favorable appeal is driven by "M25 appeal succeeds + 835 RE-POSTED with payment" —
+    // the re-post is `m25.remittance.claim_paid` (already bound), which carries the actual amount. This
+    // event carries no payment fact of its own, so it is redundant with the transition M23 already reads.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -209,7 +240,10 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       tier: str,
       submittedAt: isoInstant,
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — the write service co-emits
+    // `m25.appeal_packet.render_requested` in the SAME transition, already M22's real, LIVE-BOUND
+    // render trigger (`M22_DOCUMENT_REQUEST_EVENTS`).
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

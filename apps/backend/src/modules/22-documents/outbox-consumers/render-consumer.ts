@@ -61,6 +61,24 @@ interface RequestShape {
   };
   /** Payload field holding the render content blob (passed through to the byte renderer). */
   readonly contentField?: string;
+  /**
+   * F-168 (#248) — true for the rare event that is meant to fire MORE THAN ONCE against the same
+   * aggregate, each time producing a genuinely NEW `document_version` (an addendum, an amendment, a
+   * transmission confirmation). Default (unset/false): the event is GENESIS-only — this source
+   * transition fires exactly once per real-world occurrence, so `alreadyRendered` stays keyed on
+   * `(aggregateType, aggregateId)` (`renderedDocumentForAggregate`), exactly the pre-F-168 behaviour.
+   * That is NOT merely the safer default, it is the semantically correct one for these events: an order
+   * is signed once, so `m11.order.document_requested` firing TWICE for the same order (a producer-side
+   * duplicate emission, a double-submitted request — never a real second signature) must still resolve
+   * to exactly ONE `order_record` document, proven by `gap-023-024-038-render-handshake.live.test.ts`'s
+   * own D14 "re-delivering the same request renders nothing new" cases, which key on a FRESH outbox row
+   * with identical content rather than a redelivery of the same row id — the aggregate-level dedup is
+   * what makes that scenario safe, and per-event-id dedup alone would NOT catch it (a fresh row has a
+   * fresh id). Setting `appends: true` keys `alreadyRendered` on `documentVersionForSourceEvent`
+   * instead (the specific delivered outbox event id) — correct ONLY for an event whose real-world
+   * source transition can legitimately recur against the same aggregate.
+   */
+  readonly appends?: boolean;
 }
 
 /** The §4.11 wire shapes, one per LIVE consumed event (see {@link M22_DOCUMENT_REQUEST_EVENTS}). */
@@ -201,15 +219,201 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["revocationEventId"],
     templateKey: "revocation",
   },
-  // `m6.discharge.cosigned` and `m6.transfer.created` are deliberately NOT here. The cosign fires on the
-  // SAME `discharge_event` id, so it is a new VERSION of this document rather than a new one, and the
-  // decider answers `idempotent_skip` — the W2 append path has to be built before it can be bound. The
-  // transfer wants what the M22 spec calls "discharge_summary (transfer variant)", and no variant exists;
-  // rendering the base template would file a document titled Discharge Summary for a patient who was
-  // transferred, not discharged.
   "m6.discharge.created": {
     aggregateIdFields: ["dischargeEventId"],
     templateKey: "discharge_summary",
+  },
+  // F-176 (#248) — M22 spec §4.11/§7.17: a for-cause cosign renders a NEW VERSION of the discharge summary. Fires on
+  // the SAME `discharge_event` id `.created` rendered, so it appends (F-168's per-request idempotency key). If the
+  // filing-time `.created` row is still undispatched, the cosign render becomes v1 and `.created` idempotent-skips
+  // (benign). The M6 back-ref stamps `document_id` only while NULL, so v2 never overwrites the v1 link.
+  "m6.discharge.cosigned": {
+    aggregateIdFields: ["dischargeEventId"],
+    templateKey: "discharge_summary",
+    appends: true,
+  },
+  // ── F-144 (#248) — four render requests M22's own §4.11 sweep found catalogued, spec-named, and never
+  // emitted (the producer-side gap, not a declaration gap). All emit `patientId` inside the content blob
+  // (the M11/M12/M16 shape), never on the envelope.
+  //
+  // M13 — `formTemplate` is M13's OWN form name (`administration_record_v1`), the `m13.reconciliation
+  // .document_requested` shape one row up: the M22 published key is fixed here, not read off the payload.
+  "m13.administration_record.document_requested": {
+    aggregateIdFields: ["administrationRecordId"],
+    templateKey: "medication_administration_record",
+    contentField: "renderPayload",
+  },
+  // M23 — ONE wire event, FOUR artifacts, discriminated by `kind` (the M27/M33 `templateKeyByField`
+  // shape). `aggregateId` rides the payload body (the `document-render.ts` builders' own field name),
+  // not the envelope: all four kinds share the ONE event name, so the envelope's own aggregate would be
+  // whatever the LAST emit in the same transaction happened to carry.
+  "m23.billing.document_render_requested": {
+    aggregateIdFields: ["aggregateId"],
+    templateKeyByField: {
+      field: "kind",
+      map: {
+        noe_confirmation_receipt: "noe_confirmation_receipt",
+        notr_confirmation_receipt: "notr_confirmation_receipt",
+        claim_acknowledgment_letter: "claim_acknowledgment_letter",
+        denial_appeal_cover_letter: "denial_appeal_cover_letter",
+      },
+    },
+    contentField: "payload",
+  },
+  // M24 — the identical shape one module over. Only `claim_acknowledgment_letter` has a live producer
+  // today (ACK_ACCEPTED, `jobs/submission-jobs.ts`); the other three kinds the M24 spec names have no
+  // emit site, so they carry no map entry — a `kind` this map does not recognize is a malformed request
+  // (retry-then-DLQ), never a guess.
+  "m24.medicaid_billing.document_render_requested": {
+    aggregateIdFields: ["aggregateId"],
+    templateKeyByField: {
+      field: "kind",
+      map: { claim_acknowledgment_letter: "medicaid_claim_acknowledgment_letter" },
+    },
+    contentField: "payload",
+  },
+  // M25 — the manual (no-appeal) denial-resolution letter. One artifact, so the key is fixed; the
+  // aggregate is the `denial_case`, matching `denial_case.claim_id`'s own nullability (a denial may
+  // resolve with no claim yet attached — `patientId` in the content blob is honestly null then, F-099).
+  "m25.denial_resolution_letter.render_requested": {
+    aggregateIdFields: ["denialCaseId"],
+    templateKey: "denial_resolution_letter",
+    contentField: "payload",
+  },
+  // ── F-161 (#248) — two of M22's own `handlers-unbound` group's seven "decisively named" SOURCE
+  // events that turned out to be real, buildable renders. The other five in that same group of seven
+  // were checked and are NOT document renders, despite the group's own reason text calling all seven
+  // "genuine, no catalog change needed": `m14.minutes.amended` wants a RE-render of the SAME
+  // `idg_minutes` aggregate `m14.minutes.signed` would first render — the identical "new VERSION, not a
+  // new document" gap `m6.discharge.cosigned` is deliberately NOT bound for, two sections up ("the W2
+  // append path has to be built before it can be bound"); `m21.supply_request.delivered`'s own catalog
+  // text is "M22 opens the optional caregiver-signature flow off `evidenceDocumentId`" — D7's "optional
+  // caregiver signature … via M22 form rendering" is an e-signature CAPTURE workflow, not a render from
+  // typed payload, and no such capability (route, seam, or FormFill consumer) exists anywhere in
+  // `22-documents/` to bind it to; and all three `m39.consent.{expired,recipient_added,recipient_removed}`
+  // events are M39's own catalog naming a "signed-URL revoke" / "disclosure-subsetter cache invalidation"
+  // that M22 has no state for — `consent-gate.ts`'s `resolveSudConsentPresent` (and the disclosure
+  // subsetter it mirrors) resolves M39's `ConsentEvaluator` FRESH on every signed-URL mint, the identical
+  // F-115/M28 seam-pull shape one module over, so there is no persistent access grant or cache to revoke
+  // or invalidate — the consent-lifecycle events need no M22-side consumer at all.
+  //
+  // M17 §4.11 D15 — the 24h-out caregiver visit-confirmation reminder. One artifact per visit, so the
+  // key is fixed; `patientId` rides the payload top level. NOTE (reported, not fixed): no producer
+  // exists anywhere in `17-scheduling/` for this event — `jobs/cron-workers.ts` registers only
+  // `recurringMaterialize` and `visitAttention`, no caregiver-reminder cron — so this consumer binding
+  // is real and tested against the real catalogued payload shape, but nothing in production emits the
+  // event yet.
+  "m17.caregiver_reminder_due": {
+    aggregateIdFields: ["visitId"],
+    templateKey: "visit_confirmation",
+  },
+  // M7 §2.4 — the care-plan PDF, rendered on every quorum-met sign (initial and each IDG review). One
+  // artifact per VERSION (`versionId`), never per plan — a superseding version is a new render, matching
+  // `care_plan_version`'s own append-only versioning model.
+  "m7.care_plan.version_signed": {
+    aggregateIdFields: ["versionId"],
+    templateKey: "care_plan",
+  },
+  // F-192 (#248) — M6 §2.3.6/§7.7 — the transfer summary. One artifact per `transferEventId`, GENESIS
+  // only (a benefit period allows at most one transfer-out per period, R-XFR-01; a transfer-in mints a
+  // brand-new `transfer_event` row on the new admission, never a re-render of the sending hospice's).
+  // Fires from BOTH `transferOut` and `transferIn` under the SAME event name/template — the payload's own
+  // `direction` field (widened onto the wire alongside `patientId`, at the two real emit sites) carries
+  // which. No `contentField`: the whole payload — `direction`/`effectiveAt`/`otherHospiceCcn` — is what
+  // the transfer summary renders, the F-100 M6-CoP-documents shape exactly (an admission id also rides
+  // the payload but is not the render aggregate — the transfer event itself is).
+  "m6.transfer.created": {
+    aggregateIdFields: ["transferEventId"],
+    templateKey: "discharge_summary_transfer",
+  },
+  // ── F-166 (#248) — five GENESIS-only source-event renders M22's own survey-then-build pass on the
+  // `handlers-unbound` group found buildable (see decide-document-request.ts's own comment on each).
+  //
+  // M8 §2 — the signed encounter note. `documentRenderPayload` (`{final, addenda}`) has carried the
+  // renderable content on the LOCKED payload since the event existed; `patientId` rides the top level.
+  "m8.encounter.signed": {
+    aggregateIdFields: ["encounterId"],
+    templateKey: "encounter",
+    contentField: "documentRenderPayload",
+  },
+  // M18 §4.11 D11 — the real (only-ever-emitted) EVV verification-PDF trigger; its declared
+  // `verification_pdf_requested` sibling is vapor (no emit site anywhere in `18-evv/`). No `patientId`
+  // on this payload — honestly null (see decide-document-request.ts's comment on this event).
+  "m18.evv.aggregator_accepted": {
+    aggregateIdFields: ["submissionId"],
+    templateKey: "evv_verification",
+  },
+  // M14 — both request-shaped, `renderPayload: Type.Unknown()` (the M11/M12 shape): the M22 template
+  // key is fixed per event, not read off the payload.
+  "m14.packet.render_requested": {
+    aggregateIdFields: ["packetId"],
+    templateKey: "idg_patient_packet",
+    contentField: "renderPayload",
+  },
+  "m14.minutes.signed": {
+    aggregateIdFields: ["minutesId"],
+    templateKey: "idg_minutes",
+    contentField: "renderPayload",
+  },
+  // M15 §2.4/D12 — ONE event, FOUR artifacts, discriminated by `kind` (the M23/M27/M33
+  // `templateKeyByField` shape). `versionId` is the aggregate — a genuinely new `discipline_care_plan_
+  // version` row per signature, never a collision with a prior kind's render.
+  "m15.plan.version_signed": {
+    aggregateIdFields: ["versionId"],
+    templateKeyByField: {
+      field: "kind",
+      map: {
+        aide_poc: "aide_poc",
+        msw_plan: "msw_plan",
+        spiritual_plan: "spiritual_plan",
+        volunteer_plan: "volunteer_plan",
+      },
+    },
+    contentField: "snapshot",
+  },
+  // ── F-168 (#248) — the three §4.11 render requests that were genuinely blocked ONLY by the
+  // idempotency-key-granularity gate (migration 0261 fixed it): each asks for a NEW VERSION of an
+  // aggregate its own GENESIS sibling (above) already rendered, which the OLD `(aggregateType,
+  // aggregateId)`-only check answered `idempotent_skip` for, silently, forever.
+  //
+  // M8 §2 — the addendum. Appends onto the SAME `encounterId` `.signed` genesis-rendered. Payload
+  // widened at the source (`signAddendum`) to carry `documentRenderPayload`, the exact `.signed` shape.
+  "m8.encounter.addendum_signed": {
+    aggregateIdFields: ["encounterId"],
+    templateKey: "encounter",
+    contentField: "documentRenderPayload",
+    appends: true,
+  },
+  // M14 §2.6 D10 — the minutes amendment. Appends onto the SAME `minutesId` `.signed` genesis-rendered.
+  // Payload widened at the source (`submitAmendment`) to carry `renderPayload`, the exact `.signed`
+  // shape (never the DENYLISTED `amendmentReason` plaintext — only its hash was ever on the wire).
+  "m14.minutes.amended": {
+    aggregateIdFields: ["minutesId"],
+    templateKey: "idg_minutes",
+    contentField: "renderPayload",
+    appends: true,
+  },
+  // M12 §4.4 — the transmit-to-pharmacy confirmation. Appends onto the SAME `orderId`
+  // `.document_requested` genesis-rendered. NOTE (reported, not fixed): this event is CATALOGUED with
+  // no producer anywhere in `12-dosespot/` — the `dosespot.transmit_newrx` worker its own catalog
+  // description names does not exist in this codebase (no DoseSpot vendor credential is configured
+  // anywhere either). The consumer binding is real and tested against the real catalogued payload
+  // shape, the `m17.caregiver_reminder_due` (F-161) posture — nothing emits the event yet. No
+  // `contentField`: the whole payload (the transmission facts) is what the appended version renders.
+  "m12.medication_order.transmitted": {
+    aggregateIdFields: ["orderId"],
+    templateKey: "medication_order",
+    appends: true,
+  },
+  // F-208 (#248) — M9's printable assessment summary. No per-request id on the payload
+  // (`{patientId, asOfDate, scales, lang}`), so `patientId` is the aggregate — the first patientId-keyed
+  // render this table binds. `appends: true`: every request (chart-open auto-refresh or the explicit
+  // download/print action) renders a NEW version of the SAME per-patient document, never a fresh
+  // aggregate per `asOfDate`. No `contentField`: the whole payload is what the summary renders from.
+  "m9.assessment.summary_requested": {
+    aggregateIdFields: ["patientId"],
+    templateKey: "assessment_summary",
+    appends: true,
   },
 };
 
@@ -387,14 +591,30 @@ export function buildM22DocumentRequestConsumer(
     eventTypes: [...M22_DOCUMENT_REQUEST_EVENTS],
     async handle(event: DispatchableOutboxEvent): Promise<void> {
       const { event: sourceEvent, payload } = normalizeDocumentRequest(event);
+      // F-168 (#248) — two-tier idempotency, per event shape. Most events are GENESIS-only (their real
+      // source transition fires exactly once per real-world occurrence — an order is signed once), so
+      // `alreadyRendered` stays keyed on `(aggregateType, aggregateId)`: this is what makes a PRODUCER-
+      // side duplicate emission (a fresh outbox row, same order, same content — never a real second
+      // signature) still resolve to exactly one `order_record` document, the pre-F-168 behaviour
+      // `gap-023-024-038-render-handshake.live.test.ts`'s own D14 cases prove and still require. Only the
+      // events whose real source transition CAN legitimately recur against the same aggregate
+      // (`RequestShape.appends`, e.g. `m8.encounter.addendum_signed`) use the finer per-request key
+      // (`documentVersionForSourceEvent`, keyed on the specific delivered outbox event id) — see that
+      // flag's own doc comment for why the two must not be conflated.
+      const appends = REQUEST_SHAPES[sourceEvent]?.appends === true;
 
       const descriptor = templates[payload.templateKey];
       const prior = descriptor
-        ? await deps.store.renderedDocumentForAggregate({
-            aggregateType: descriptor.aggregateType,
-            aggregateId: payload.aggregateId,
-            organizationId: payload.organizationId,
-          })
+        ? appends
+          ? await deps.store.documentVersionForSourceEvent({
+              sourceEventId: event.id,
+              organizationId: payload.organizationId,
+            })
+          : await deps.store.renderedDocumentForAggregate({
+              aggregateType: descriptor.aggregateType,
+              aggregateId: payload.aggregateId,
+              organizationId: payload.organizationId,
+            })
         : null;
 
       const facts: DocumentRequestFacts = {
@@ -504,14 +724,20 @@ export function buildM22DocumentRequestConsumer(
             patientId: render.patientId,
             ...(render.title ? { title: render.title } : {}),
             ...(render.sudRedacted ? { sudRedacted: true } : {}),
+            // F-168 (#248) — carried straight through renderer.ts's `RenderPayloadCore.sourceEventId` into
+            // `document_version.source_event_id`, so the crash-retry dedup and this write are ATOMIC (one
+            // insert), not a separate receipt that could itself be lost between the two. Resolved fields
+            // win over the content blob for the same F-100 reason as `aggregateId`/`patientId` above.
+            sourceEventId: event.id,
           });
-          // Re-read rather than trusting the renderer's `{documentId}`: the leaf-typed `DocumentRenderer`
-          // seam returns only that, and the back-ref event carries the version identity too. This read is
-          // the same row the render just wrote, under the same org.
+          // Re-read BY SOURCE EVENT rather than trusting the renderer's `{documentId}`: the leaf-typed
+          // `DocumentRenderer` seam returns only that, and the back-ref event carries the version identity
+          // too. Reading by `event.id` (not `renderedDocumentForAggregate`) is deliberate — it is the exact
+          // row this call just wrote, never a DIFFERENT version that happened to be active if another
+          // request for the same aggregate raced in between.
           if (deps.emitRendered && descriptor) {
-            const written = await deps.store.renderedDocumentForAggregate({
-              aggregateType: descriptor.aggregateType,
-              aggregateId: payload.aggregateId,
+            const written = await deps.store.documentVersionForSourceEvent({
+              sourceEventId: event.id,
               organizationId: payload.organizationId,
             });
             if (written) await announce(written);

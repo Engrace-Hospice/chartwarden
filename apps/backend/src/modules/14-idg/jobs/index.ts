@@ -16,9 +16,32 @@
 // floor stops advancing, so escalation is a one-time T-3/T-0/T+1 burst, not a permanent recurring alarm);
 // this is the same accepted bounded cut M9 made for its own cadence scan (`jobs/cron-store.ts`'s
 // `latestAssessmentsPerPatientScaleForOrg`).
+// F-171 (#248) adds the two crons `jobs/schedule-materialise.ts` / `jobs/packet-build.ts` document as
+// genuinely built and wired here — the §7.1 `materialise-future-meetings` worker (a prerequisite: without
+// it `idg_meeting` never gets a `scheduled` row for the packet-build cron to find) and the §7.2/§4.9.1
+// `tminus-24h-build` T-24h packet-build worker (the real "does the worker exist" answer to the m14
+// `handlers-unbound` group's standing F-129/F-164/F-167/F-169 finding).
+/** The system actor id every M14 cron stamps on its per-org `withOrgContext` tx (audit attribution).
+ * Grepped the repo for every `00000000-0000-0000-0000-0000000000xx` constant first: M7 uses `...07`, M9
+ * uses `...09`, M25 uses `...e5`, M26 uses `...e6` — `...14` (M14's own module number) is unused. Lives
+ * here (not `cron-workers.ts`, which imports `packet-build.ts`/`schedule-materialise.ts`) so those two
+ * files can import it without a `cron-workers.ts` → them → `cron-workers.ts` circular import
+ * (`arch:boundaries` no-circular, caught live). */
+export const M14_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000014";
+
+/** The M2 active-org enumerator every M14 cron's fan-out reads (runs under withPlatformContext when
+ * bound) — the same `cron-workers.ts`-avoiding-circularity reason as {@link M14_WORKER_SYSTEM_USER_ID}. */
+export interface ActiveOrgListPort {
+  listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
+}
+
 export const M14_QUEUES = {
   /** Daily scan: escalate patients past their per-patient 15-day review floor at T-3/T-0/T+1. */
   reviewClockSweep: "idg.review-clock-sweep",
+  /** Daily 90-day rolling materialization of `idg_meeting` rows from each `idg_recurring_policy` (§7.1). */
+  scheduleMaterialise: "idg.schedule-materialise",
+  /** Hourly T-24h packet build — the §4.9.1 `idg.packets-cron` (`tminus-24h-build`) sweep. */
+  packetsBuild: "idg.packets-cron",
 } as const;
 
 export type M14QueueName = (typeof M14_QUEUES)[keyof typeof M14_QUEUES];
@@ -26,17 +49,26 @@ export type M14QueueName = (typeof M14_QUEUES)[keyof typeof M14_QUEUES];
 /** BullMQ moves jobs here after `attempts` exhausted; ops alerts off depth (the M9/M10 convention). */
 export const M14_DLQ = {
   reviewClockSweep: "idg.review-clock-sweep.dlq",
+  scheduleMaterialise: "idg.schedule-materialise.dlq",
+  packetsBuild: "idg.packets-cron.dlq",
 } as const;
 
 /** The §4.8 cron cadence (the scheduler registers this repeatable). */
 export const M14_JOB_SCHEDULES = {
   reviewClockSweep: "0 6 * * *", // daily 06:00 (the M9 cadence-scan precedent)
+  scheduleMaterialise: "0 2 * * *", // §7.1 "job runs at 02:00 org-tz" (UTC here; see the file's own header)
+  packetsBuild: "0 * * * *", // hourly — the T-24h window tolerates an hour of slack either side
 } as const;
 
 /** Per-queue BullMQ parameters, declared as data so boot worker construction reads one source of truth
  * (the M09-F12 convention: every job declares full parameters). */
 export const M14_QUEUE_PARAMS = {
   reviewClockSweep: { priority: 3, attempts: 3, backoff: "exponential 120s", concurrency: 2 },
+  // §4.9.1 `idg.packets-cron` (`tminus-24h-build`) priority 7 / attempts 2 / fixed 60s / concurrency 1 —
+  // the sweep is a single-threaded per-org/per-meeting scan (per-patient failure isolation is INSIDE the
+  // tick, not across concurrent ticks), matching the spec's own §4.9.1 table row exactly.
+  packetsBuild: { priority: 7, attempts: 2, backoff: "fixed 60s", concurrency: 1 },
+  scheduleMaterialise: { priority: 5, attempts: 3, backoff: "exponential 300s", concurrency: 1 },
 } as const;
 
 // ── `idg.review-clock-sweep` (§4.8 daily / M14-F01 / ADR-0018 D2) ──────────────────────────────────────

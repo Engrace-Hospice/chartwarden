@@ -251,6 +251,41 @@ export function applyKitDrawdown(
   };
 }
 
+// ── Replenishment application (consumes `m21.comfort_kit.replenished`) ─────────────────────────────────────
+
+/** §2.7 — the current drawdown remaining + capacity the replenishment tops up against. */
+export interface KitReplenishmentState {
+  readonly medicationOrderId: MedicationOrderId;
+  readonly remainingQuantity: number;
+  readonly expectedQuantity: number;
+}
+
+/** §2.7 — the result of applying one physically-arrived replenishment line to its drawdown. */
+export interface KitReplenishmentResult {
+  readonly medicationOrderId: MedicationOrderId;
+  readonly newRemainingQuantity: number;
+}
+
+/**
+ * §2.7 — apply one `m21.comfort_kit.replenished` line to its drawdown: `remaining + replenished`, CAPPED
+ * at `expectedQuantity` (the deployed capacity). A kit's tracked remaining can never honestly exceed what
+ * it was deployed with — a replenishment that would overshoot means either a fulfillment overshoot or a
+ * drawdown M13 never decremented for, and silently letting `remaining` climb past `expected` would
+ * misstate the DEA perpetual log's own reference point. Pure — no clock, no IO.
+ */
+export function applyKitReplenishment(
+  state: KitReplenishmentState,
+  replenishedQuantity: number,
+): KitReplenishmentResult {
+  return {
+    medicationOrderId: state.medicationOrderId,
+    newRemainingQuantity: Math.min(
+      state.expectedQuantity,
+      state.remainingQuantity + replenishedQuantity,
+    ),
+  };
+}
+
 // ── Return + return reconciliation (consume `m21.comfort_kit.returned` / `.return_reconciliation`) ────────
 
 /** §2.7 — the `m21.comfort_kit.returned` envelope (M21 fixture today). */

@@ -45,6 +45,7 @@ import {
   claimSubmissionReaderDenyStub,
   comfortKitDispatchProviderDenyStub,
   complianceStatusProviderDenyStub,
+  complianceWindowCountsProviderDenyStub,
   consentEvaluatorDenyStub,
   copilotProviderDenyStub,
   costReportFilingStatusReaderDenyStub,
@@ -104,6 +105,7 @@ import {
   levelOfCarePeriodReaderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
+  medicaidClaimMatchProviderDenyStub,
   medicationAdministrationProviderDenyStub,
   medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
@@ -464,6 +466,16 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: claimSubmissionReaderDenyStub,
   },
+  // M24 → M25 — the Medicaid sibling of ClaimSubmissionReader above (F-172, #248 m24 group): claim-
+  // control-number exact-match candidates + claim->patient id resolution, for the SAME 835 auto-match
+  // pipeline, routed by the advice's own `payerKind`. PHI (patient id). Fail-closed until M24 registers
+  // the real reader — M25's adapter degrades the deny-stub throw to "no candidates" identically.
+  {
+    key: "MedicaidClaimMatchProvider",
+    ownerModule: 24,
+    phi: true,
+    denyStub: medicaidClaimMatchProviderDenyStub,
+  },
   // M27 → M30 — the cost-report filing posture per FY. M27's FIRST M1 publish (it was a pure consumer
   // before). CoP 418.310 makes failure to file grounds for termination, so M30's compliance indicator needs
   // the filing state + the statutory deadline, not the cost-report CONTENT. Metadata only → phi:false.
@@ -717,6 +729,18 @@ export const REQUIRED_SEAMS = [
     ownerModule: 6,
     phi: false,
     denyStub: admissionOnsetReaderDenyStub,
+  },
+  // M6 (Admission) F2F/compliance-window aggregate (F-178, #248) — org-level COUNTS ONLY (no patient id
+  // ever returned, same posture as LevelOfCarePeriodReader/DischargeReader above), consumed by M30's
+  // nightly measure-recompute worker as a batch pull over `compliance_window`, not an outbox push
+  // (`events-by-m6.ts`'s six `m6.compliance.window.*`/`m6.f2f.window_*` entries carry `seamConsumers:
+  // ["m30"]`, not `declaredConsumers`). Opaque rich-seam (`unknown`; interface in @wardenx/quality) per
+  // the `ClaimLineReader`/`PatientDaysProvider` precedent — phi: false matches those aggregate-only binds.
+  {
+    key: "ComplianceWindowCountsProvider",
+    ownerModule: 6,
+    phi: false,
+    denyStub: complianceWindowCountsProviderDenyStub,
   },
   // M7 (Care Plan / IPOC) reader seam (§7.8). A read-only DTO surface over M7's PHI tables
   // (problems/goals/interventions + the version clock), consumed by M8 (encounter authoring + sign

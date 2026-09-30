@@ -41,8 +41,10 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: Str,
       requiredSignerSet: RequiredSignerSet,
     }),
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m33"],
+    // F-176 (#248) — m14 moved to seamConsumers: M14's spec never names M15; M15's own spec makes the packet
+    // integration a `DisciplinePlanReader` PULL.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -53,6 +55,11 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       planId: Id,
       versionId: Id,
+      // F-166 (#248) — widened to carry the chart target: the M22 render-request `DocumentRequestPayload`
+      // resolves `patientId` off the payload (top-level or the content blob), and `plan.patientId` was
+      // already in scope at the one emit site — the F-099 "widen the payload, the fact is already in
+      // hand" precedent, not a new cross-module read.
+      patientId: Id,
       kind: Str,
       versionKind: Str,
       snapshot: Type.Unknown(),
@@ -66,10 +73,15 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       ),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; the CarePlan projection is read
-    // live at request time). m30 stays declared — no current M30 measure reads discipline-plan
-    // signing data, so this remains a genuine gap.
-    declaredConsumers: ["m22", "m14", "m30"],
-    seamConsumers: ["m33"],
+    // live at request time).
+    // F-176 (#248) — m14 moved to seamConsumers (same DisciplinePlanReader pull reasoning as `plan.bootstrapped`).
+    // F-180 (#248) — m30 DROPPED: fresh re-check, not merely re-asserted. M30's own locked spec (§1.2,
+    // binding) names exactly what it consumes from M15 — `DisciplineComplianceProvider`'s 4 measures
+    // (supervisory/MSW/chaplain on-time, volunteer-gate) — none touches plan signing. No measure code, no
+    // seam method, no spec text supports this declaration; the F-115 "genuine gap" framing was never itself
+    // checked against M30's own text, only M15's producer-side guess.
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -87,7 +99,14 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     // path a `bereavement_plan` row can come into existence (M16's own `consumers/index.ts`); this
     // description's "M16 seeds the bereavement plan from it" claim was never true, and M16's own
     // §4.5 outbox-subscriptions table never names this event.
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: M15's own Lock-status section makes the exhaustive, specific claim
+    // "M22 discipline-plan PDF rendering subscribes to `m15.plan.version_signed` when M22 locks" — naming
+    // only that sibling event, not this one. Discharge seals an existing already-rendered snapshot
+    // version rather than producing a new artifact.
+    // F-180 (#248) — m30 DROPPED: same reasoning as `m15.plan.version_signed` above — M30's own locked
+    // spec §1.2 names only the 4 `DisciplineComplianceProvider` measures as its real M15 consumption; plan
+    // discharge is not among them, no measure code or seam method reads it.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -199,6 +218,17 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursMinutes: Count,
       status: Str,
     }),
+    // F-180 (#248) — m30 STAYS declared, genuinely blocked (freshly re-verified, not stale): M30's real
+    // `DisciplineComplianceProvider.volunteerHourCostRatio` (`packages/types/src/discipline-plans.ts`)
+    // exists and is registered, but its `staffPatientCareMinutes` dep is hard-defaulted to `null`
+    // (`seams/drizzle-store.ts`) and the composition root (`apps/backend/src/index.ts`, own comment)
+    // never supplies it — M27 still ships no hours seam anywhere (`packages/quality/src/seams/consumed/`
+    // has no M27 entry; M27's own module has zero "hours" hits). Note M30's own spec never names THIS
+    // 5% ratio measure specifically (only the separate `volunteer_compliance_gate_rate`), and the
+    // denominator is resolved at READ time per M15's own spec (M15-F04) — so once M27 lands, this may
+    // resolve as a seam-pull at measurement time rather than genuine outbox consumption of this event,
+    // which could mean a future round drops it even after the M27 blocker clears. Today: correctly
+    // deferred, blocked on a real, confirmed-current gap.
     declaredConsumers: ["m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
@@ -221,7 +251,7 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m15.discipline_assessment.amended",
     moduleOwner: "m15",
     description:
-      "An append-only assessment amendment was signed (correction of record, M9 D9) — M22 re-renders, M30 re-measures.",
+      "An append-only assessment amendment was signed (correction of record, M9 D9) — M30 re-measures.",
     payloadSchema: Type.Object({
       planId: Id,
       assessmentId: Id,
@@ -229,7 +259,14 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       amendedFields: Type.Array(Str),
       attestation: Str,
     }),
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: same Lock-status claim as `plan.discharged` above — M22 subscribes
+    // only to `m15.plan.version_signed` for its discipline-plan PDF, not per-assessment amendments; no
+    // "Done means" walkthrough anywhere describes M22 rendering an assessment amendment.
+    // F-180 (#248) — m30 DROPPED: this description's own "M30 re-measures" is the producer's unverified
+    // guess — M30's own locked spec §1.2 names only the 4 `DisciplineComplianceProvider` measures as its
+    // real M15 consumption; assessment amendment is not among them (M30's only "amend" hit anywhere in its
+    // spec is an unrelated QAPI-minutes amendment).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
 ];

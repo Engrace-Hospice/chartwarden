@@ -368,7 +368,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     const service = buildDrizzleM25IngestService(handle.db, {
       client,
       terminology,
-      claims,
+      claims: { medicare: claims },
       outbox: {
         async publish(_tx, emission) {
           emissions.push(emission.eventName);
@@ -502,7 +502,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     };
     const service = buildDrizzleM25IngestService(handle.db, {
       client: fakeClient(new Map([[objectKey, parsed]])),
-      claims: fakeClaims({ "ICN-RECOUP": [{ claimId: CLAIM_RECOUP, payerIcn: "ICN-RECOUP" }] }, {}),
+      claims: { medicare: fakeClaims({ "ICN-RECOUP": [{ claimId: CLAIM_RECOUP, payerIcn: "ICN-RECOUP" }] }, {}) },
     });
     const received = await service.receiveAdvice(actor, {
       providerEntityId: PE_A,
@@ -613,7 +613,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     };
     const service = buildDrizzleM25IngestService(handle.db, {
       client: fakeClient(new Map([[objectKey, parsed]])),
-      claims: throwingOnNthClaims(2), // first claim's candidate lookup succeeds, second throws
+      claims: { medicare: throwingOnNthClaims(2) }, // first claim's candidate lookup succeeds, second throws
     });
     const received = await service.receiveAdvice(actor, {
       providerEntityId: PE_A,
@@ -727,7 +727,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const service = buildDrizzleM25IngestService(handle.db, {
         client: fakeClient(new Map([[objectKey, parsed]])),
         terminology,
-        claims,
+        claims: { medicare: claims },
       });
 
       const received = await service.receiveAdvice(
@@ -798,7 +798,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const claims = buildM23BackedClaimMatchCandidateProvider();
       const service = buildDrizzleM25IngestService(handle.db, {
         client: fakeClient(new Map([[objectKey, parsed]])),
-        claims,
+        claims: { medicare: claims },
       });
 
       // Received under ORG_A (a different tenant than the seeded claim) + PE_A (a different provider

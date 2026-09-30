@@ -413,3 +413,36 @@ export async function encounterVisitIdsForOrg(
     },
   );
 }
+
+/**
+ * F-162 (#248) — the reverse of {@link encounterVisitIdsForOrg}: given a set of M17 visit ids, returns the
+ * (at most one) M8 encounter attached to each. The mapping is genuinely 1:1, never a fan-out —
+ * `encounter_org_visit_unique` (this table's own schema) is a partial UNIQUE index on
+ * `(organization_id, visit_id) WHERE visit_id IS NOT NULL`. A visit with no attached encounter (a real,
+ * legal state — an EVV correction on a visit that was never converted into a clinical encounter) is simply
+ * ABSENT from the returned map, not present with a null value, since there is no encounter id to represent.
+ * Org-explicit for the same reason as `encounterVisitIdsForOrg` — a relay tick / boot-time seam adapter has
+ * no ambient request context to read through withOrgContextFromRequest.
+ */
+export async function encounterIdsForVisitsForOrg(
+  db: DbClient,
+  organizationId: string,
+  visitIds: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  if (visitIds.length === 0) return new Map();
+  return withOrgContext(
+    db,
+    { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const rows = await tx
+        .select({ encounterId: E.id, visitId: E.visitId })
+        .from(E)
+        .where(and(eq(E.organizationId, organizationId), inArray(E.visitId, visitIds as string[])));
+      return new Map(
+        rows
+          .filter((r): r is { encounterId: string; visitId: string } => r.visitId !== null)
+          .map((r) => [r.visitId, r.encounterId]),
+      );
+    },
+  );
+}

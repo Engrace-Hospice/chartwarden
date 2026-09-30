@@ -48,6 +48,9 @@ const AssessmentSummary = lazy(() =>
 const AssessmentTimeline = lazy(() =>
   import("./assessment-timeline").then((m) => ({ default: m.AssessmentTimeline })),
 );
+const AssessmentDetail = lazy(() =>
+  import("./assessment-detail").then((m) => ({ default: m.AssessmentDetail })),
+);
 const ScaleLicenseRegistry = lazy(() =>
   import("./scale-license-registry").then((m) => ({ default: m.ScaleLicenseRegistry })),
 );
@@ -70,6 +73,14 @@ export const assessmentScreens: ScreenRegistryModule<ComponentType> = {
       title: "Assessments",
       requiredPermission: "assessment.read",
       screen: AssessmentTimeline,
+    },
+    {
+      // Full read-only capture detail; item values are projected by the server-side scale registry.
+      id: "assessment.detail",
+      path: "/patients/:patientId/assessments/:assessmentId",
+      title: "Assessment Detail",
+      requiredPermission: "assessment.read",
+      screen: AssessmentDetail,
     },
     {
       // Per-scale trend — reached from a timeline row; param path (no nav).

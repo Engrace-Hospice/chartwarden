@@ -1,0 +1,15 @@
+-- 0257 — F-150/F-164 shape (#248), M31's `m16.bereavement.plan_opened` binding.
+--
+-- `portal_access_grant.granted_by_membership_id` was NOT NULL with no nullable escape, unlike its own
+-- sibling `revoked_by_membership_id` on the same table. The D6 bereaved-mode lateral flip
+-- (`planBereavedFlip`, `31-portal/lifecycle/bereaved-flip.ts`) is a system cascade off
+-- `m16.bereavement.plan_opened` — nobody clicked a button to INSERT the new `bereaved_family` grant, an
+-- outbox consumer did, on nobody's authority but M16's own roster/consent facts. The
+-- `order_discontinuation.actor_membership_id` precedent (nullable, "NULL for system-actor cascades") is
+-- the established shape for exactly this: a NOT NULL `*_membership_id` column with no way to attribute a
+-- consumer-driven write to a real human actor.
+--
+-- Existing rows are unaffected: dropping NOT NULL never invalidates data, and per F-164's own standing
+-- finding no production code path anywhere has ever inserted a `portal_access_grant` row (both admin
+-- portal-invitation routes are stubs), so there are no rows to migrate either.
+ALTER TABLE "portal_access_grant" ALTER COLUMN "granted_by_membership_id" DROP NOT NULL;

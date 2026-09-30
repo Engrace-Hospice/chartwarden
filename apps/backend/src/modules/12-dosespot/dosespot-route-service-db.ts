@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/12-dosespot — PRODUCTION MedicationOrderRouteService + §4.7 ABAC resolver
 // (M12L reads + writes over Drizzle+RLS). No route is left at 501.
@@ -37,6 +39,7 @@ import type { DeaSchedule, MedClass } from "@wardenx/types";
 import { NotFoundError, ValidationError } from "@wardenx/types";
 import { type SQL, and, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { getOrderSignatureProvider } from "../11-orders";
 import { prescriberEligible } from "./prescriber-eligibility";
 import type {
   ControlledSubstancePolicyView,
@@ -635,6 +638,49 @@ export function createDbDoseSpotBackend(
       });
     },
     async recordVerbal(organizationId, userId, id, args) {
+      // Pre-check (read-only) so a request against an order that cannot legally record a verbal order
+      // (wrong status / med class / short attestation) never writes M11's polymorphic `verbal_order` row
+      // at all — the real refusal still happens again under the write tx below (a concurrent transition in
+      // the gap raises the same typed error rather than silently racing).
+      const pre = await withOrg(organizationId, (tx) => loadOrder(tx, id));
+      transitionMedicationOrder(pre.status, {
+        type: "recordVerbal",
+        medClass: pre.medClass,
+        containsControlled: pre.isControlledSubstance,
+        recorderEligible: true,
+        namedPrescriberPresent: args.namedPrescriberMdmId.length > 0,
+        attestationRecorded: args.verbalAttestation.length >= 100,
+      });
+
+      // M11 owns `verbal_order` (§2.8 D14 — the polymorphic verbal-order receipt + 48h deadline timer;
+      // `target_kind='medication_order'` for an M12 row). Write it through M11's published
+      // OrderSignatureProvider seam, never M11's Drizzle table directly — a direct cross-module schema
+      // read/write is a table-ownership violation (`arch:tables`); "access it through the owner's exported
+      // repository/service" is the sanctioned pattern this seam exists for (D4). Called OUTSIDE `withOrg`,
+      // mirroring the `caseloadPatientIds`/`patientInCaseload` precedent above: the seam opens its own
+      // ambient-request-scoped transaction (`withOrgContextFromRequest`), and nesting one `withOrgContext`
+      // inside another would rebind the GUC on an already-bound connection.
+      //
+      // Written BEFORE the local status flip, deliberately: if the write tx below then fails, the result is
+      // an orphaned `verbal_order` row M11's expiry worker and M12's own `decideVerbalExpiry` consumer both
+      // treat as a harmless skip (the medication order never actually reached `verbal_pending`). The
+      // reverse order — flip the local status first — would leave a medication order sitting in
+      // `verbal_pending` with no deadline row ever created to expire it, which is the worse failure mode
+      // this write order exists to avoid.
+      //
+      // The deadline itself comes from M11's real per-org `order_verbal_policy` (via `verbalPolicyForOrg`,
+      // not a second, DoseSpot-local computation) — the identical 48h-default/tenant-tightened math M11's
+      // own `orders-route-service-db.ts` uses for its own verbal orders.
+      await getOrderSignatureProvider().recordVerbalOrder({
+        organizationId,
+        targetKind: "medication_order",
+        targetId: id,
+        recordingMembershipId: userId,
+        orderingPhysicianMdmId: args.namedPrescriberMdmId,
+        verbalAttestation: args.verbalAttestation,
+        receivedAt: args.receivedAt,
+      });
+
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
         transitionMedicationOrder(r.status, {
@@ -713,6 +759,35 @@ export function createDbDoseSpotBackend(
           },
         );
         return readOrder(tx, id);
+      });
+    },
+    // F-205 (#248) — the user's decided trigger for M30's previously-unbound `m12.medication.error_reported`:
+    // a new explicit clinician-initiated report action (not auto-derived from any order transition). Not a
+    // status transition — the order's lifecycle/version is untouched, matching `recordVerbal`'s "an added
+    // fact, not a state change" shape more than `discontinueOrder`'s. `reportedByMembershipId` carries the
+    // REAL filing clinician (the F-165 correction — never a fictional M30-service sentinel).
+    async reportMedicationError(organizationId, userId, id, args) {
+      return withOrg(organizationId, async (tx) => {
+        const r = await loadOrder(tx, id);
+        const medicationErrorId = randomUUID();
+        const reportedAt = new Date();
+        await emit(
+          tx,
+          organizationId,
+          "m12.medication.error_reported",
+          "medication_order",
+          id,
+          {
+            medicationErrorId,
+            orderId: id,
+            patientId: r.patientId,
+            errorCategory: args.errorCategory,
+            reportedByMembershipId: userId,
+            reportedAt: reportedAt.toISOString(),
+            ...(args.summary !== undefined ? { summary: args.summary } : {}),
+          },
+        );
+        return { medicationErrorId, orderId: id, reportedAt: reportedAt.toISOString() };
       });
     },
     async completeOrder(organizationId, _userId, id, reason) {

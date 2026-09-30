@@ -23,6 +23,8 @@ export * from "./cost-report-validation-override";
 
 // bad-debt / statistics / imports / mapping / submission / compliance-window
 export * from "./bad-debt-record";
+// M21 vendor-invoice forward seam, 4th cost-basis precedence tier (F-207, #248).
+export * from "./vendor-invoice-line";
 export * from "./statistic-data";
 export * from "./trial-balance-import";
 export * from "./wage-data-import";

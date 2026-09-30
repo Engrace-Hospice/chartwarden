@@ -39,6 +39,8 @@ export * from "./enums";
 export * from "./domain";
 // §D6 HMAC pseudonym computation (M35-T03).
 export * from "./pseudonym/hasher";
+// §3.3/D6/D15 `patient_pseudonym_key` platform-singleton KEK envelope (F-172, #248).
+export * from "./pseudonym/key-envelope";
 // §2 pure lifecycle SERVICES over injected ports (M35-T03).
 export * from "./service";
 // §4.13/§4.14/§8.7 outbox-only Stripe adapter — SDK-free client, redactor, idempotency, HMAC webhook

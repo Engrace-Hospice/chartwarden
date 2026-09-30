@@ -184,6 +184,42 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(page.nextCursor).toBeNull();
   });
 
+  // F-195 (#248) — `holdReason`/`holdAt`/`releasedAt` were write-only until this round; `listAdmissions`
+  // (M30's own `?state=on_hold` dashboard read) now projects them. Holds then resumes within one test so
+  // later tests in this file still find the seeded admission `active`, as they assume.
+  it("listAdmissions surfaces holdReason/holdAt/releasedAt after a real hold and resume", async () => {
+    const before = await service.listAdmissions(ORG_A, { patientId: PATIENT });
+    const preRow = before.items.find((i) => i.id === seeded[ORG_A].admission);
+    expect(preRow?.holdReason ?? null).toBeNull();
+    expect(preRow?.holdAt ?? null).toBeNull();
+    expect(preRow?.releasedAt ?? null).toBeNull();
+
+    const held = await service.holdAdmission(
+      ORG_A,
+      seeded[ORG_A].admission,
+      "family request",
+      preRow!.version,
+    );
+    expect(held.state).toBe("on_hold");
+
+    const onHold = await service.listAdmissions(ORG_A, { patientId: PATIENT });
+    const heldRow = onHold.items.find((i) => i.id === seeded[ORG_A].admission);
+    expect(heldRow?.holdReason).toBe("family request");
+    expect(heldRow?.holdAt).not.toBeNull();
+    expect(heldRow?.releasedAt).toBeNull();
+
+    const resumed = await service.resumeAdmission(ORG_A, seeded[ORG_A].admission, held.version);
+    expect(resumed.state).toBe("active");
+
+    const afterResume = await service.listAdmissions(ORG_A, { patientId: PATIENT });
+    const resumedRow = afterResume.items.find((i) => i.id === seeded[ORG_A].admission);
+    // holdReason/holdAt are never cleared by a resume (the D7-adjacent "what happened and when" facts
+    // are historical, not a live status flag — `admission.status` is the live flag); releasedAt is set.
+    expect(resumedRow?.holdReason).toBe("family request");
+    expect(resumedRow?.holdAt).not.toBeNull();
+    expect(resumedRow?.releasedAt).not.toBeNull();
+  });
+
   it("getAdmission returns AdmissionDetail with the R-AC-01 activation gate computed from period-1", async () => {
     const detail = await service.getAdmission(ORG_A, seeded[ORG_A].admission);
     expect(detail).not.toBeNull();

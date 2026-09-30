@@ -112,6 +112,29 @@ export type DocumentAggregateType =
   | "patient_amendment_statement_of_disagreement"
   | "consent_record"
   | "intake_source"
+  // F-144 (#248, mig 0251) — the four M23 §4.10 document kinds behind
+  // `m23.billing.document_render_requested`, the M24 §4.10 equivalent behind
+  // `m24.medicaid_billing.document_render_requested`, and M25's `m25.denial_resolution_letter
+  // .render_requested`. All six were catalogued render-request events with a published-in-spec
+  // template and no producer emit site anywhere — a producer-side gap distinct from (and found by the
+  // same sweep as) the catalog-declaration gaps F-099/F-100 fixed.
+  | "noe_confirmation_receipt"
+  | "notr_confirmation_receipt"
+  | "claim_acknowledgment_letter"
+  | "denial_appeal_cover_letter"
+  | "medicaid_claim_acknowledgment_letter"
+  | "denial_resolution_letter"
+  // F-161 (#248, mig 0252) — the M7 care-plan PDF behind `m7.care_plan.version_signed`, whose own
+  // catalog comment ("drives the M8 encounter gate + M22 PDF") was decisive and had no template at all.
+  | "care_plan"
+  // F-192 (#248, mig 0267) — the M6 transfer document behind `m6.transfer.created`, the M22 spec's own
+  // "discharge_summary (transfer variant)" — a distinct type from `discharge_summary`, never a second
+  // version of it.
+  | "discharge_summary_transfer"
+  // F-208 (#248, mig 0277) — the M9 printable assessment summary behind `m9.assessment.summary_requested`.
+  // Distinct from `hope_summary` (M10's per-assessment render): no per-request id on the wire, so this
+  // renders as one evolving per-patient document, versioned via the F-168 append mechanism.
+  | "assessment_summary"
   | "other";
 
 /** §3.2 / §2.2.1 — the document lifecycle (mirrors `document_status`). */

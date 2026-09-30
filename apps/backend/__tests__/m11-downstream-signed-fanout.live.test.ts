@@ -9,8 +9,8 @@
  * signed level-of-care-change/recertification order never told M6 — despite two of those five events'
  * own catalog descriptions (`events-by-m11.ts`) asserting "M11 emits the typed event today".
  *
- * This proves the three now-wired kinds emit the real catalogued payload (`hl7_orm_requested` stays
- * unbound — see `orders-route-service-db.ts`'s header) built from `order_record.data`, which the ROUTE
+ * This proves the three now-wired kinds emit the real catalogued payload (`hl7_orm_requested` is F-181's,
+ * wired through injected ports — `m11-orm-requested.live.test.ts`) built from `order_record.data`, which the ROUTE
  * validated at draft time against the exact per-kind TypeBox `packages/orders/src/kinds.ts` uses.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m11:downstream-signed:live
@@ -196,7 +196,7 @@ describe.skipIf(!DB_URL)("F-120 — M11 downstream signed fan-out, LIVE Postgres
     expect(payload).toMatchObject({ orderId: id, kind: "dme", deploymentSite: null });
   });
 
-  it("a signed lab order does NOT emit supply_fulfillment_requested or hl7_orm_requested (still unbound)", async () => {
+  it("a signed lab order does NOT emit supply_fulfillment_requested, and emits no hl7_orm_requested WITHOUT the F-181 ORM ports (this suite builds the service bare — m11-orm-requested.live proves the wired path)", async () => {
     const id = await signedOrder(
       "lab",
       { testCodes: [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }], fastingRequired: false },

@@ -32,9 +32,12 @@ export { createMedicationOrderProvider, createRefillInboxProvider } from "./prov
 // the same typed refusal with the priced/unpriced counts — `costBasisOfLines` is its pure honesty kernel.
 export {
   type CostBasisLine,
+  type MedicationOrderScheduleContext,
   DoseSpotSeamGapError,
   costBasisOfLines,
   createDrizzleDoseSpotSeamStore,
+  medicationOrderPatientAndDrugForOrg,
+  medicationOrderScheduleContextForOrg,
 } from "./drizzle-store";
 
 /** Deps for M12's owned-seam registration (slice defaults to the in-memory store). */

@@ -145,7 +145,14 @@ async function terminalizeSubmissionAndTransition(
       toState: reduced.state,
       reason: event,
       triggerSource: "system",
-      actorMembershipId: M24_WORKER_SYSTEM_USER_ID,
+      // F-144 (#248) — `medicaid_claim_state_history.actor_membership_id` is a NULLABLE uuid, commented
+      // "null when worker/cron"; this reused `M24_WORKER_SYSTEM_USER_ID` (`""`, the `withOrgContext`
+      // `userId` GUC sentinel one call below) for a column that is not a session GUC — every single
+      // worker-driven claim transition threw 22P02 ("invalid input syntax for type uuid") on this
+      // INSERT, so `runClaimSubmit`/`runClaimPoll` had never completed a single tick in any environment.
+      // Found writing this suite's first live test of this file (it has none). `null` is the honest,
+      // already-documented value for a system-driven transition.
+      actorMembershipId: null,
     });
     fromState = reduced.state;
     version += 1;
@@ -312,6 +319,7 @@ export async function runClaimSubmit(
         payerClaimControlNumber: ack?.payerClaimControlNumber ?? null,
       },
     });
+    await publishAcknowledgmentLetterRequest(deps, tx, claim, ack?.payerClaimControlNumber ?? null);
   } else if (result.result === "pending_async") {
     await terminalizeSubmissionAndTransition(
       tx,
@@ -409,6 +417,36 @@ async function publishSubmissionFailed(
   });
 }
 
+/**
+ * F-144 (#248) — M24's own §4.10 transition table gives ACK_ACCEPTED exactly one document-relevant
+ * effect ("Document render request to M22"), routed through the dedicated
+ * `m24.medicaid_billing.document_render_requested` event M23's §4.10 sibling already established the
+ * shape for. Co-emitted in the SAME transaction as `m24.medicaid_claim.acknowledged`, never a separate
+ * consumer of that event. `patientId` is `claim.patientId` (NOT NULL) — the same identity the claim row
+ * was already filed under, never fabricated (F-099).
+ */
+async function publishAcknowledgmentLetterRequest(
+  deps: M24SubmissionWorkerDeps,
+  tx: Tx,
+  claim: typeof schema.medicaidClaim.$inferSelect,
+  payerClaimControlNumber: string | null,
+): Promise<void> {
+  await deps.outbox.publish(tx, {
+    eventName: "m24.medicaid_billing.document_render_requested",
+    payload: {
+      organizationId: claim.organizationId,
+      kind: "claim_acknowledgment_letter",
+      aggregateId: claim.id,
+      payload: {
+        patientId: claim.patientId,
+        medicaidClaimControlNumber: claim.medicaidClaimControlNumber,
+        payerClaimControlNumber,
+        acknowledgedAt: new Date().toISOString(),
+      },
+    },
+  });
+}
+
 /** `medicaid-claim.poll` (§4.9): drain a `pending_async` submission — poll the adapter and drive
  * POLLING → {ACK_ACCEPTED|ACK_REJECTED|ACK_TIMEOUT|POLLING (re-enqueued by the cron)}. */
 export async function runClaimPoll(
@@ -469,6 +507,12 @@ export async function runClaimPoll(
         payerClaimControlNumber: result.ack.payerClaimControlNumber ?? null,
       },
     });
+    await publishAcknowledgmentLetterRequest(
+      deps,
+      tx,
+      claim,
+      result.ack.payerClaimControlNumber ?? null,
+    );
   } else if (result.result === "rejected") {
     await terminalizeSubmissionAndTransition(
       tx,

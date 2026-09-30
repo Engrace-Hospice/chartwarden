@@ -196,13 +196,31 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     for (const seam of entry?.seamConsumers ?? []) {
       expect(entry?.declaredConsumers).not.toContain(seam);
     }
-    for (const clinical of ["m5", "m7", "m8", "m10", "m11", "m14", "m15", "m23", "m37"]) {
+    // F-176 (#248) — m14 dropped: D9 inclusion is a build-time PULL (`idgPacketInclusionForOrg`, F-171).
+    for (const clinical of ["m5", "m7", "m10", "m13", "m15", "m12"]) {
       expect(entry?.declaredConsumers).toContain(clinical);
     }
+    expect(entry?.declaredConsumers).not.toContain("m14");
+    // F-143 (#248) — m37 dropped: M37's own §4.5 "Outbox Subscriptions" table names two more granular
+    // M6 events it actually wants (`m6.level_of_care.requires_ipu_bed`/`.activated`, neither of which
+    // M6's real catalog publishes) and never names `admission.activated`. m12 added: M12's own live
+    // `M12_OUTBOX_SUBSCRIPTIONS` list names this event for `m12.admission-activated-medhx` (D10).
+    expect(entry?.declaredConsumers).not.toContain("m37");
     // F-134 (#248) — m16 dropped: an admission ACTIVATION carries no fact M16's bereavement program
     // (which starts at death, not admission) needs; M16's own §4.5 outbox-subscriptions table never
     // named this event.
     expect(entry?.declaredConsumers).not.toContain("m16");
+    // F-136 (#248) — m23 dropped: an admission ACTIVATION anchors no claim by itself — M23's own §4.4
+    // subscription surface names the full M6 outbox catalog BY EVENT, and admission.activated is not
+    // among them.
+    expect(entry?.declaredConsumers).not.toContain("m23");
+    // F-137 (#248) — m11 dropped: M11's own spec's authoritative "Outbox events consumed" list never
+    // names this event, and no consumer file, decider, or comment anywhere in `11-orders/` mentions
+    // admission activation — the same broad-fan-out-no-rationale shape as m16/m23 above.
+    expect(entry?.declaredConsumers).not.toContain("m11");
+    // F-140 (#248) — m8 dropped: M8's own spec states outbox publication is the only cross-module
+    // communication M8 performs "at the boundary" — every upstream fact is a seam call, never a push.
+    expect(entry?.declaredConsumers).not.toContain("m8");
   });
 });
 
@@ -245,10 +263,11 @@ describe("F-101 — m6 events that declare m22 render nothing", () => {
     }
   });
 
-  it("the two the M22 spec names but cannot render yet keep m22 — they are deferred, not wrong", () => {
-    // `m6.discharge.cosigned` is a new VERSION of an existing document (W2 append path), and
-    // `m6.transfer.created` wants a `discharge_summary` transfer variant M22 does not publish. Both
-    // stay in scripts/outbox-deferred-consumers.ts, where a reason that will expire belongs.
+  it("m6.discharge.cosigned keeps m22 — a new VERSION of an existing document, deferred not wrong", () => {
+    // `m6.discharge.cosigned` is a new VERSION of an existing document (W2 append path) — it stays in
+    // scripts/outbox-deferred-consumers.ts, where a reason that will expire belongs. `m6.transfer.created`
+    // used to sit here too (it wanted a `discharge_summary` transfer variant M22 did not publish); F-192
+    // published `discharge_summary_transfer` and bound it, so it now belongs beside the six above.
     expect(catalog.get("m6.discharge.cosigned")?.declaredConsumers).toContain("m22");
     expect(catalog.get("m6.transfer.created")?.declaredConsumers).toContain("m22");
   });

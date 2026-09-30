@@ -201,6 +201,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // F-187 (#248) — a lab order superseded (discontinued / replaced by a corrected order) after its ORM may already
+  // be at the laboratory. T-29.08 defines no outbound cancel, so this is the ONLY signal — the care team has to
+  // cancel it with the lab. Ids only in the payload (`patientId` is the care-team resolver path).
+  {
+    eventType: "m11.order.lab_cancellation_required",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m8.encounter.unsigned",
     category: "clinical_routine",
@@ -331,6 +344,132 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     resolverArgs: {},
     channelsOverride: null,
     systemLocked: true,
+    enabled: true,
+  },
+  // ── M29 outbound lab-order transmission (F-188, #248; spec §5.3) ────────────────────────────────────────
+  // Until F-188 none of these three kinds had a rule: the worker's alerts (also mis-typed, see
+  // `29-external-interfaces/outbound/alert-routing.ts`) reached nobody. Audiences follow the §5.3 table: a failed
+  // outbound ORM → "operator-on-call, M11 owners" (a tenant's operator is its `org_admin`; M11's owners are the
+  // clinical leads who own lab orders); a BAA refusal on outbound → "compliance officer", with `org_admin` as the
+  // backstop for a tenant that has no compliance-officer role assigned (a lapse blocks EVERY lab send for the feed).
+  {
+    eventType: "hl7_outbound.transmission_failed",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // F-199 — the ESCALATION for a failure storm: raised once per (feed, window) when the count of failures crosses the
+  // threshold. Same audience as the failure it escalates, floor `critical`; a separate kind because the failure alert
+  // of that window has already paged and M36 (rightly) never re-pages a deduped alert.
+  {
+    eventType: "hl7_outbound.transmission_storm",
+    category: "operational",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "external_feed.baa_expired",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "external_feed.baa_missing",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // ── M11 stuck lab-order recovery (F-201, #248) ─────────────────────────────────────────────────────────────────────
+  // A lab order that failed AFTER its HL7 message was built (`dlq_exhausted`, F-183's "held, delivery unverified",
+  // `application_reject`, `recovery_blocked:*`) may already be at the laboratory, so it is never retried automatically: a
+  // person verifies with the lab and attests (F-188). Before F-201 nothing said one was waiting. The audience is the people
+  // who can act — a tenant's operator (`org_admin`) and the clinical leads who own lab orders (the §5.3 "operator, M11
+  // owners" pairing F-188 used for the outbound-failure alert). Warn at 4 h, critical at 24 h (the emit severity carries the
+  // stage; ids + a fixed reason token only in the payload).
+  {
+    eventType: "m11.order.transmission_held_aging",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // The auto-retry sweep gave up on an order refused before any outbound row existed (attempts or window used up): the
+  // configuration cause it was waiting out never cleared, so a person must fix it and resend. Raised ONCE per order.
+  {
+    eventType: "m11.order.transmission_auto_retry_exhausted",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // F-202 (#248) — the two-person control on the attested lab-transmission recovery. Every EXECUTED
+  // `not_received_by_lab` recovery (a re-dispatch that orders the test twice if the attestation was wrong) and every
+  // lapsed / cancelled pending request goes to compliance, with `org_admin` as the backstop for a tenant that has no
+  // compliance-officer role assigned. The emitter routes at max(input, floor): an executed recovery warns, and the
+  // producer raises it to `critical` when the same requester keeps filing them. Ids and counts only in the payload.
+  {
+    eventType: "m11.order.recovery_executed",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.recovery_expired",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.recovery_cancelled",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // F-203 (#248) — the collusion / rate signal on the two-person lab-recovery control: a requester/co-signer pair that keeps
+  // executing `not_received_by_lab` recoveries, or a high org-wide rate. Always critical (the floor), deduplicated per
+  // window by the emit's correlation id, ids and counts only. Same audience as the other recovery alerts.
+  {
+    eventType: "m11.order.recovery_anomaly",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
     enabled: true,
   },
 ];

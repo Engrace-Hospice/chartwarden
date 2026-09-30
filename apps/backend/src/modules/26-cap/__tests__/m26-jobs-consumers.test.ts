@@ -11,10 +11,60 @@ import { createCapEraser, createInMemoryCapRedactStore } from "../erasers/cap-er
 import { runCapYearClose, runNightlyProjection, runPsrVarianceWatchdog } from "../jobs/m26-jobs";
 
 describe("M26 §4.4 consumer dispatch", () => {
-  it("subscribes the eight upstream topics", () => {
+  it("subscribes the nine upstream topics", () => {
     expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m25.remittance.advice_posted");
     expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m23.claim.line_finalized");
-    expect(M26_UPSTREAM_SUBSCRIPTIONS).toHaveLength(8);
+    expect(M26_UPSTREAM_SUBSCRIPTIONS).toContain("m25.remittance.claim_recouped");
+    expect(M26_UPSTREAM_SUBSCRIPTIONS).toHaveLength(9);
+  });
+
+  it("routes m25.remittance.claim_recouped → recordAccrualLine with a negative reversal amount (F-163)", async () => {
+    const calls: unknown[] = [];
+    const store: CapConsumerStore = {
+      ...createInMemoryCapConsumerStore(),
+      async recordAccrualLine(line) {
+        calls.push(line);
+        return { recorded: true };
+      },
+    };
+    const r = await dispatchM26UpstreamEvent(
+      {
+        topic: "m25.remittance.claim_recouped",
+        payload: {
+          organizationId: "o1",
+          patientId: "p1",
+          claimId: "c1",
+          recoupedAmountCents: 12345,
+          serviceFrom: "2025-01-01",
+          serviceTo: "2025-01-31",
+          postedAt: "2025-02-01T00:00:00Z",
+        },
+      },
+      store,
+    );
+    expect(r.handled).toBe(true);
+    expect(calls[0]).toMatchObject({
+      sourceKind: "reversal",
+      sourceId: "c1",
+      patientId: "p1",
+      amountCents: -12345,
+    });
+  });
+
+  it("m23.claim.replaced/.voided still no-op today — neither payload carries patientId or an amount (F-131)", async () => {
+    const store: CapConsumerStore = {
+      ...createInMemoryCapConsumerStore(),
+      recordAccrualLine: vi.fn(async () => ({ recorded: true })),
+    };
+    const r = await dispatchM26UpstreamEvent(
+      {
+        topic: "m23.claim.replaced",
+        payload: { organizationId: "o1", originalClaimId: "c1", replacementClaimId: "c2", reason: "x" },
+      },
+      store,
+    );
+    expect(r.handled).toBe(false);
+    expect(store.recordAccrualLine).not.toHaveBeenCalled();
   });
 
   it("routes remittance.advice_posted → recordAccrualLine with the paid amount (D4)", async () => {

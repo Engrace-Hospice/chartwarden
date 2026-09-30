@@ -39,9 +39,20 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m37.ipu_admission.bed_assigned",
     moduleOwner: "m37",
-    description: "A bed was assigned; M6 confirms the LCP, M23 writes the place-of-service Q-code.",
+    description: "A bed was assigned; M6's own confirm route verifies it via a seam read.",
     payloadSchema: Type.Object({ ...admissionCore, bedId: id, levelOfCarePeriodId: id }),
-    declaredConsumers: ["m6", "m23"],
+    // F-136 (#248) — m23 REMOVED: the description's "M23 writes the place-of-service Q-code" claim is
+    // false — F-127 already found `placeOfService` genuinely unbound: no table anywhere records which
+    // physical site (home/ALF/SNF/hospital/IPU) a patient is currently receiving care in, so
+    // `place_of_service_consistency` fails honestly for every claim. M23's own spec never names M37 as
+    // a consumed event either (the only M37↔M23 relationship runs the other way — M37 reads M23's
+    // `ClaimReader.gipDaysForPatientInPeriod`).
+    // F-143 (#248) — m6 REMOVED: the real mechanism is the OPPOSITE of a push — M6's own
+    // `confirmLocBedAssignment` route (admission-route-service-db.ts) verifies the bed via a SEAM READ
+    // (`ipuBedAssignmentReader.activeBedAssignmentForLevelOfCarePeriod`), never an outbox subscription.
+    // M6's own spec (line 621) names exactly one inbound external event it consumes
+    // (`m29.hl7_inbound_proposal.accepted`), and this is not it.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -72,7 +83,9 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: M26's own "Depends on" / "Consumed by" text never names M37 either —
     // its D13 inpatient-day (20% rule) source is M23 claim lines by revenue code (0655/0656), the same
     // physical-site-independent path F-130 found for M27, and its subscription-map has no M37 topic.
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 REMOVED: same reasoning — M23's own spec never names M37 as a consumed event;
+    // the only M37↔M23 relationship runs the other way (M37 reads M23's `ClaimReader`).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -82,15 +95,55 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({ ...admissionCore, reason: id }),
     // F-130 (#248) — m27 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
     // F-131 (#248) — m26 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
-    declaredConsumers: ["m23", "m30"],
+    // F-136 (#248) — m23 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
+    // F-149 (#248) — m30 REMOVED: redundant sibling — M37's own outbox table conditions M30's
+    // inclusion on "mortality if death is the discharge reason — but use `death_recorded` for death",
+    // and the death case already has its own dedicated, correctly-declared sibling
+    // (`m37.ipu_admission.death_recorded`, `declaredConsumers: ["m30","m16"]` below). `.discharged`
+    // fires for every OTHER discharge reason with no independent M30 rationale once the death case is
+    // carved out — the redundant-sibling shape this series has found repeatedly (F-108/F-117/F-134).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
     eventName: "m37.ipu_admission.death_recorded",
     moduleOwner: "m37",
-    description: "A death was recorded in the IPU (opens body release; M22 magic-link).",
+    description: "A death was recorded in the IPU (opens body release).",
     payloadSchema: Type.Object({ ...admissionCore, deathEventId: id }),
-    declaredConsumers: ["m22", "m30", "m16"],
+    // F-144 (#248) — m22 REMOVED: M22's own spec never mentions a magic-link/external-collaborator
+    // surface anywhere, and elsewhere explicitly disclaims a related mechanism ("M2 funeral magic-link
+    // is NOT how external reviewers authenticate — external reviewer access is M31 portal + M39
+    // grant").
+    // F-147 (#248) — the "internally inconsistent" framing F-144 left open is resolved, not merely
+    // corrected: this event's own "Consumed by"/§4.10 table row ("M22 (funeral-home magic-link session
+    // creation)") is the ONE imprecise citation against 15+ other places in M37's own spec — the D12
+    // rationale, the §2.11 prose, the detailed workflow walkthrough (steps 4-7), the test plan, the
+    // acceptance checklist — that unanimously tie the magic-link session to the LATER
+    // `m37.body_release.funeral_home_identified` transition, never to `death_recorded` itself (which
+    // only opens the body-release record). This event genuinely has no magic-link consumer of its own;
+    // the "M2 vs M22" question F-144 flagged is also resolved — the spec is unambiguous the consumer is
+    // M22's own external-collaborator surface (architecture §7.8), never M2 directly. See
+    // `m37.body_release.funeral_home_identified` below for what remains genuinely unbuilt.
+    // F-172 (#248) — `m16` REMOVED, redundant sibling (the F-100/F-117/F-134 shape): M37's own spec
+    // names M16 here three times ("bereavement onboarding"), but M16's real bereavement-intake
+    // mechanism is keyed off the M6 admission, not off M37's IPU admission — it already fires from
+    // `m6.discharge.death` (primary, `16-bereavement/outbox-consumers/m6-bereavement-eligible.ts` via
+    // the co-emitted `m6.bereavement.eligible`) and `m6.admission.discharged` reason=death (secondary
+    // verifier, `m6-admission-discharged-death.ts`) — the SAME `m6.discharge.death` transaction that
+    // now (F-172) drives `recordDeath` itself, so a third M16 path off `death_recorded` would arrive no
+    // earlier and carry no fact (patientId, admissionId) M16 doesn't already have from the M6 event.
+    // Confirmed by direct read of both M16 consumer files, not assumed from the prior finding's
+    // (F-134/F-147) own re-assertion.
+    // F-184 (#248) — `m30` ALSO DROPPED, reversing F-149's own conclusion: F-149 never checked this
+    // relationship against M30's actual trigger design, only against M37's spec citation. M30's
+    // mortality-review auto-draft (`createMortalityReviewDraft`) is keyed EXCLUSIVELY to
+    // `m6.discharge.death` — and `death_recorded` (`recordDeath`) fires strictly DOWNSTREAM of, and only
+    // because of, that same `m6.discharge.death` event (M37's own consumer file: "recordDeath is driven
+    // by the M6 death consumer"). A hypothetical M30 consumer here would fire no earlier and carry no
+    // fact `m6.discharge.death` doesn't already supply — the identical redundant-sibling shape already
+    // used to drop `m16` from this exact event three lines up. The real, already-tracked gap is binding
+    // `m6.discharge.death` itself (F-150), not this downstream sibling.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -214,7 +267,13 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "An IV-continuous safety overlay was created for a signed order (M13 consumes).",
     payloadSchema: Type.Object({ ...admissionCore, orderId: id, isSedationClass: Type.Boolean() }),
-    declaredConsumers: ["m13"],
+    // F-140 (#248) — m13 moved to seamConsumers: both this module's own text and M13's own spec are
+    // decisive this is a SEAM PULL — M37 publishes the overlay via `IpuIvSafetyOverlayProvider
+    // .getOverlayForOrder(orderId)`, and M13's pre-administration gate consults it fresh; M13's own
+    // live `M13_OUTBOX_SUBSCRIPTIONS` list never names this event (or any M37 event) at all. The
+    // "M13 consumes" wording above describes the seam relationship, not an outbox subscription.
+    declaredConsumers: [],
+    seamConsumers: ["m13"],
     isOutboxOnly: true,
   },
   {
@@ -314,6 +373,17 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // `m37.body_release.document_requested` in the SAME transition (ipu-body-release.ts), the
     // actual live-bound M22 render request that issues the magic-link session this description
     // describes.
+    // F-147 (#248) — checked precisely rather than left as a loose end: the DOCUMENT RENDER and the
+    // MAGIC-LINK SESSION are two distinct architecture §7.8 facts M37's own spec describes separately
+    // (§2.11: "M22 issues the funeral-home magic-link session" off THIS event; "M22 renders the
+    // body-release-form payload" off the sibling `document_requested`) — F-117 only established that
+    // the render half is covered. The session half is genuinely unbuilt on every side: no M22 route,
+    // consumer, or `external-collaborator` surface exists anywhere in `22-documents/` (the Better Auth
+    // `magicLink` plugin itself lives entirely in M2's `packages/auth/src/identity/auth.ts`, whose own
+    // comment already anticipates an "auditor / external-collaborator / funeral-home magic-link class"
+    // but has no M22-side caller). Still record-only — there is no consumer to declare this to, only a
+    // real, reportable feature gap (the M22 external-collaborator/magic-link surface, architecture
+    // §7.8) one layer deeper than a catalog declaration can fix.
     declaredConsumers: [],
     isOutboxOnly: true,
   },
@@ -362,7 +432,9 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // M37 reads M27's output, not the reverse).
     // F-131 (#248) — m26 REMOVED: the description's "M26 cap" claim is equally unsupported — M26's D13
     // inpatient-day source is M23 claim lines by revenue code, and M26's own text never names M37.
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 REMOVED: the description's "M23 per-diem" claim is equally unsupported — M23's
+    // own spec never names M37 as a consumed event; the only M37↔M23 relationship runs the other way.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

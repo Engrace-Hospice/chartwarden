@@ -58,6 +58,10 @@ export {
   getPatientHopeAdmissionPrefillReader,
   getPatientPrivacyFlagReader,
   registerPatientSeams,
+  membershipUserIdForOrg,
+  createCaseloadStoreWithShiftCache,
+  readShiftAssignedPatientIds,
+  readShiftIsAssigned,
 } from "./seams/index";
 
 // M5-T09 — the §4.2 route inventory behind requirePermission on the §4.7 keys + the route service.
@@ -76,6 +80,38 @@ export {
 
 // M5-T10 — outbox events (§4.6), jobs (§4.5 geocode), privacy-flag recompute + SUD enforcement (§7.6).
 export { M5_OUTBOX_EVENTS } from "./events-by-m5";
+
+// M12 job-queue infra (#248) — the org-explicit, worker-callable demographic read M12's
+// `dosespot_sync_queue` drain needs, injected as a port rather than read via a direct cross-module
+// schema import (see the file for why `patient_address`/`patient_phone` are not in
+// `check-table-ownership.ts`'s exempt set the way bare `patient` is).
+export {
+  type DosespotSyncDemographics,
+  dosespotSyncDemographicsForOrg,
+} from "./seams/dosespot-sync-snapshot-for-org";
+
+// F-181 (#248) — the minimum-necessary PID facts + fail-closed SUD flag M11's outbound lab-ORM producer reads,
+// on the caller's transaction, injected as a port (M11 has no `dependsOn` edge to 5).
+export { type Hl7OrmDemographics, hl7OrmDemographicsInTx } from "./seams/hl7-orm-demographics";
+
+// F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
+export {
+  M5_ADMISSION_SITING_CONSUMER,
+  buildM5AdmissionSitingConsumer,
+  type AdmissionSitingDeps,
+} from "./outbox-consumers/m6-admission-activated";
+// F-165 (#248) — the M17 shift-assignment caseload cache write path.
+export {
+  type VisitAssignmentDeps,
+  buildM5VisitAssignedConsumer,
+  buildM5VisitUnassignedConsumer,
+} from "./outbox-consumers/m17-visit-assignment";
+// F-167 (#248) — the §7.6/D10 privacy-flag-snapshot recompute off M39's signed/revoked/supersedes/
+// renewed consent lifecycle.
+export {
+  M5_CONSENT_PRIVACY_CONSUMER,
+  buildM5ConsentPrivacyConsumer,
+} from "./outbox-consumers/m39-consent-privacy";
 export {
   M5_QUEUES,
   M5_JOB_SCHEDULES,
@@ -92,6 +128,7 @@ export {
   SudConsentRequiredError,
   M39_CONSENT_CONSUMER_DEFERRED,
   recomputePrivacyFlags,
+  mergeConsentSignal,
   isSudReadAllowed,
   assertSudReadAllowed,
   applyConsentChanged,
@@ -134,6 +171,34 @@ export {
   buildM5DeathCascadeConsumer,
 } from "./outbox-consumers/m6-discharge-death";
 
+// F-171 (#248) — the real §2.4/§4.3 direct patient-merge write path (`POST /patients/:id/merge`):
+// folds a duplicate into a survivor, applies field resolutions to the survivor, and emits the real
+// `m5.patient.merged` event this event's catalog entry had zero producers for.
+export {
+  MERGEABLE_PATIENT_FIELDS,
+  MERGEABLE_SOURCE_STATUSES,
+  SelfMergeError,
+  SourceAlreadyMergedError,
+  TargetAlreadyMergedError,
+  UnknownMergeFieldError,
+  UnmergeableSourceStatusError,
+  planMerge,
+  type FieldResolution,
+  type FieldResolutionKeep,
+  type FieldResolutions,
+  type MergeablePatientField,
+  type MergedFieldDiffEntry,
+  type PatientMergeSubject,
+  type PlanMergeInput,
+  type PlannedMerge,
+} from "./merges";
+export {
+  PatientNotFoundError,
+  mergePatients,
+  type MergePatientsInput,
+  type MergePatientsResult,
+} from "./merges-db";
+
 // M5-T12 — the `clinical_record` destruction eraser (§8/§10, D7/D8). Screens DEFER (no apps/web
 // codePath in the M5 manifest — the entity/admit/merge screens are tracked for the ADR-0030 UI
 // follow-up). DR Tier 1 (the patient spine is on every clinical/billing critical path) — see
@@ -152,16 +217,23 @@ export { createDbPatientRouteService } from "./patient-route-service-db";
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import type { M5OutboxPort } from "./deceased-db";
+import { mergePatients as _mergePatients } from "./merges-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 
 /**
- * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments) on a
- * server (composition root, when a DB client is present). The READS (list / getPatient) run on the real
- * Drizzle PatientRouteService over `patient` under RLS; the WRITES are still in-memory (the Drizzle
- * admission store is a follow-up). Backs the Patient List/Census + the Patient Chart banner with real
- * data.
+ * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments, the
+ * §4.3 direct merge) on a server (composition root, when a DB client is present). The READS
+ * (list / getPatient) and the writes this file mounts all run on the real Drizzle PatientRouteService
+ * / `mergePatients` over `patient` under RLS. Backs the Patient List/Census + the Patient Chart banner
+ * with real data. `outbox` is the module-scoped `m5` outbox port (F-171, #248) `mergePatients` emits
+ * `m5.patient.merged` through — required, not optional, so a caller cannot silently mount a merge
+ * route with no way to ever publish the event a survivor needs.
  */
-export function mountPatientRoutes(app: FastifyInstance, db: DbClient): void {
-  _registerPatientRoutes(app, { service: _dbPatientService(db) });
+export function mountPatientRoutes(app: FastifyInstance, db: DbClient, outbox: M5OutboxPort): void {
+  _registerPatientRoutes(app, {
+    service: _dbPatientService(db),
+    mergePatients: (input) => _mergePatients(db, outbox, input),
+  });
 }

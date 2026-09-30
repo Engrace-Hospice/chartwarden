@@ -4,9 +4,32 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
 import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
+import type { OrmRequestedPorts } from "./orm-request/orm-requested";
+import type { RecoveryControls } from "./orm-request/orm-recovery-dual-control";
 import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
 
+export { buildM11OrmRequestedPorts } from "./orm-request/ports";
+export {
+  RECOVERY_ALERT_KINDS,
+  RECOVERY_ANOMALY_THRESHOLD,
+  RECOVERY_ANOMALY_WINDOW_MS,
+  RECOVERY_ESCALATION_THRESHOLD,
+  RECOVERY_ORG_RATE_THRESHOLD,
+  RECOVERY_REQUEST_TTL_MS,
+  parseRecoveryBound,
+  type RecoveryAlertKind,
+  type RecoveryAlertPort,
+  type RecoveryControls,
+} from "./orm-request/orm-recovery-dual-control";
 export type { OrderWriteOutboxPort } from "./orders-route-service-db";
+export type {
+  OrmDestinationPort,
+  OrmDestinationResult,
+  OrmPatientFacts,
+  OrmPhysicianFacts,
+  OrmRefusalReason,
+  OrmRequestedPorts,
+} from "./orm-request/orm-requested";
 export { createDbOrderBackend } from "./orders-route-service-db";
 export {
   M11_PLATFORM_JOB_ID,
@@ -15,7 +38,41 @@ export {
   registerM11StandingSpawnWorker,
   runStandingSpawnFanout,
   scheduleM11StandingSpawn,
+  M11_VERBAL_TIMER_PLATFORM_JOB_ID,
+  M11_VERBAL_TIMER_QUEUE,
+  M11_VERBAL_TIMER_SCHEDULE,
+  registerM11VerbalOrderExpiryWorker,
+  runVerbalOrderExpiryFanout,
+  scheduleM11VerbalOrderExpiry,
+  // F-201 (#248) — the stuck lab-order recovery tick (auto-retry of row-less refusals + held-order aging).
+  M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
+  M11_STUCK_TRANSMISSION_QUEUE,
+  M11_STUCK_TRANSMISSION_SCHEDULE,
+  registerM11StuckTransmissionWorker,
+  runStuckTransmissionFanout,
+  scheduleM11StuckTransmission,
 } from "./jobs";
+// F-201 (#248) — auto-retry of orders refused before any outbound row existed, and the held-order worklist + escalation.
+export {
+  type HeldAgingSweepSummary,
+  type HeldTransmissionItem,
+  type HeldTransmissionPage,
+  type AutoRetrySweepSummary,
+  type StuckOrderAlertPort,
+  type StuckTransmissionRecovery,
+  type StuckTransmissionRecoveryDeps,
+  createStuckTransmissionRecovery,
+} from "./stuck-transmission-recovery";
+export { registerHeldTransmissionRoutes } from "./routes/held-transmissions-routes";
+export {
+  AUTO_RETRY_BACKOFF_MS,
+  AUTO_RETRY_MAX_ATTEMPTS,
+  AUTO_RETRY_WINDOW_MS,
+  DEFAULT_HELD_THRESHOLDS,
+  M11_STUCK_ORDER_ALERT_KINDS,
+  assertHeldThresholds,
+  heldThresholdsFromEnv,
+} from "./orm-request/stuck-recovery";
 
 /**
  * M11L — mount the M11 order routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
@@ -28,8 +85,12 @@ export function mountOrderRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: OrderWriteOutboxPort,
+  /** F-181 (#248) — the lab-ORM producer's ports (M5 demographics, M40 physician, M29-aware destination). */
+  orm?: OrmRequestedPorts,
+  /** F-202 (#248) — the two-person recovery control's alert port / TTL / repeat-attester knobs. */
+  recovery?: RecoveryControls,
 ): void {
-  const backend = createDbOrderBackend(db, outbox);
+  const backend = createDbOrderBackend(db, outbox, orm, recovery);
   _registerM11Abac({ resolver: backend });
   _registerM11Routes(app, { service: backend });
 }
@@ -56,6 +117,7 @@ export {
   getOrderProvider,
   getOrderSignatureProvider,
   getOrderTerminologyValidator,
+  orderPatientAndKindForOrg,
   registerOrderSeams,
 } from "./seams/index";
 // M11-T06 — the §4.1 route inventory over an in-memory backend + the §4.7 ABAC predicates M11 owns
@@ -146,3 +208,47 @@ export {
   M11_DOCUMENT_BACKREF_CONSUMER,
   buildM11DocumentBackrefConsumer,
 } from "./outbox-consumers/m22-document-rendered";
+// F-152 (#248) — the §2.7 D7 order-suggestion banner + the D8 one-shot auto-complete, bound live.
+export {
+  M11_ASSESSMENT_SUGGESTION_CONSUMER,
+  buildM11AssessmentSuggestionConsumer,
+  type AssessmentSuggestionDeps,
+} from "./outbox-consumers/m9-assessment-significant-change";
+export {
+  M11_FULFILLMENT_STATUS_CONSUMER,
+  buildM11FulfillmentStatusConsumer,
+  type FulfillmentStatusDeps,
+} from "./outbox-consumers/m21-fulfillment-status";
+// F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events
+// (`m29.lab_order.transmitted`/`.transmission_failed`, live since F-175) drive `order_record.transmission_status`
+// and re-publish M11's own D16-decisive `m11.order.transmission_status_changed`/`.transmission_terminal_failed`.
+export {
+  M11_LAB_TRANSMISSION_APPLIER_CONSUMER,
+  buildM11LabTransmissionApplierConsumer,
+  type LabTransmissionApplierDeps,
+} from "./outbox-consumers/m29-lab-transmission-applier";
+// F-187 (#248) — the operator alert for a lab order superseded after its ORM may already be at the lab.
+export {
+  M11_LAB_CANCELLATION_ALERT_TYPE,
+  M11_LAB_CANCELLATION_CONSUMER,
+  type LabCancellationAlertPort,
+  type LabCancellationDeps,
+  type LabCancellationFacts,
+  type LabCancellationState,
+  buildM11LabCancellationConsumer,
+  decideLabCancellation,
+} from "./outbox-consumers/lab-cancellation-required";
+// F-203 (#248) — durable delivery of the two-person lab-recovery control's compliance alerts.
+export {
+  M11_RECOVERY_ALERT_CONSUMER,
+  M11_RECOVERY_ALERT_TYPES,
+  type RecoveryAlertDeps,
+  buildM11RecoveryAlertConsumer,
+} from "./outbox-consumers/recovery-alert";
+// F-166 (#248) — the m21 `handlers-unbound` group's other real event: a staff-initiated
+// `m21.supply_request.cancelled` releases the still-in-flight M11 order it never touched.
+export {
+  M11_SUPPLY_CANCELLED_CONSUMER,
+  buildM11SupplyCancelledConsumer,
+  type SupplyCancelledDeps,
+} from "./outbox-consumers/m21-supply-cancelled";

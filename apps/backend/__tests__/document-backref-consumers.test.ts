@@ -69,7 +69,16 @@ describe("m22.document.rendered — the event that did not exist", () => {
     // F-100 — m6 joined on the commit that bound its stamper. Six `document_id` columns, one consumer.
     // F-108 — m27 on the commit that bound `m27.document-backref`: the ECR file, the Print Image and the
     // supporting-doc bundle, three columns off one event discriminated by `aggregateType`.
-    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m27", "m33"]);
+    // F-139 (#248) — m31 ADDED without a binding in this commit, unlike every entry above: M31's own
+    // §4.10 table names this event (patient-facing kinds) with a real consumer file
+    // (`m22-document-rendered-patient-facing.ts`), a genuine declared-but-unbound gap the catalog never
+    // recorded at all (`outbox-deferred-consumers.ts`, `m31` group). `buildOutboxRoutingPlan` still
+    // delivers live to every bound consumer regardless of what else is declared — m31 having no binding
+    // marks the row `deferred` (kept pending for the relay's 30-minute retry) without blocking the six
+    // bound consumers — proven generally by `clinical-consumer-contracts.test.ts`'s
+    // "fully binds the three M17 visit-publication command consumers, with m31 still deferred" and by
+    // `outbox-dispatcher.live.test.ts`'s partial-fan-out coverage.
+    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m27", "m31", "m33"]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {
@@ -142,6 +151,10 @@ describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
     "m6.nor.acknowledged": "nor",
     "m6.revocation.created": "revocation",
     "m6.discharge.created": "discharge_summary",
+    // F-176 (#248) — a for-cause cosign appends a new version of the same discharge_summary document.
+    "m6.discharge.cosigned": "discharge_summary",
+    // F-192 (#248) — the transfer summary, the M22 spec's own "discharge_summary (transfer variant)".
+    "m6.transfer.created": "discharge_summary_transfer",
   };
 
   it("every m6 event M22 subscribes to resolves to a published template", () => {
@@ -155,9 +168,12 @@ describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
   });
 
   it("the stamp table is exactly the aggregate types those templates file under", () => {
-    const rendered = Object.values(M6_TEMPLATE_BY_EVENT)
-      .map((key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType)
-      .sort();
+    // Distinct: F-176's `m6.discharge.cosigned` files under the SAME `discharge_summary` aggregate as `.created`.
+    const rendered = [
+      ...new Set(
+        Object.values(M6_TEMPLATE_BY_EVENT).map((key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType),
+      ),
+    ].sort();
     expect([...M6_BACKREF_AGGREGATE_TYPES].sort()).toEqual(rendered);
   });
 });

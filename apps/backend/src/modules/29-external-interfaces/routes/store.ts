@@ -66,6 +66,16 @@ export interface FeedDetail extends FeedSummary {
   readonly channelCertPin: string | null;
   readonly sendingFacilityAllowlist: readonly string[];
   readonly rateLimitMsgPerSec: number;
+  /** F-181 — outbound routing + MSH identity (null when unset). */
+  readonly labDestinationFacilityId: string | null;
+  readonly mshSendingApplication: string | null;
+  readonly mshSendingFacility: string | null;
+  readonly mshReceivingApplication: string | null;
+  readonly mshReceivingFacility: string | null;
+  /** F-183 — the operator's statement that the receiver dedupes on MSH-10 (default false: a lost send is HELD,
+   *  never auto-re-sent), and the feed's own `in_flight` lease in seconds (null = the platform default). */
+  readonly receiverDedupesControlId: boolean;
+  readonly inFlightLeaseSeconds: number | null;
   readonly proposedByMembershipId: string;
   readonly approvedByOpId: string | null;
   readonly approvedByComplId: string | null;
@@ -302,6 +312,13 @@ export interface CreateFeedArgs {
   readonly baaContractRef?: string;
   readonly baaExpiresOn?: string;
   readonly rateLimitMsgPerSec?: number;
+  readonly labDestinationFacilityId?: string;
+  readonly mshSendingApplication?: string;
+  readonly mshSendingFacility?: string;
+  readonly mshReceivingApplication?: string;
+  readonly mshReceivingFacility?: string;
+  readonly receiverDedupesControlId?: boolean;
+  readonly inFlightLeaseSeconds?: number;
 }
 export interface UpdateFeedArgs {
   readonly displayName?: string;
@@ -311,6 +328,14 @@ export interface UpdateFeedArgs {
   readonly baaContractRef?: string;
   readonly baaExpiresOn?: string;
   readonly rateLimitMsgPerSec?: number;
+  readonly labDestinationFacilityId?: string;
+  readonly mshSendingApplication?: string;
+  readonly mshSendingFacility?: string;
+  readonly mshReceivingApplication?: string;
+  readonly mshReceivingFacility?: string;
+  readonly receiverDedupesControlId?: boolean;
+  /** `null` clears the per-feed lease back to the platform default. */
+  readonly inFlightLeaseSeconds?: number | null;
 }
 
 /** The route-facing repo the §4.1/§4.2 routes run against. Every method is org-scoped by its first arg. */
@@ -584,6 +609,13 @@ export function createInMemoryM29Store(
       channelCertPin: feed.channelCertPin ?? null,
       sendingFacilityAllowlist: feed.sendingFacilityAllowlist ?? [],
       rateLimitMsgPerSec: feed.rateLimitMsgPerSec ?? 50,
+      labDestinationFacilityId: feed.labDestinationFacilityId ?? null,
+      mshSendingApplication: feed.mshSendingApplication ?? null,
+      mshSendingFacility: feed.mshSendingFacility ?? null,
+      mshReceivingApplication: feed.mshReceivingApplication ?? null,
+      mshReceivingFacility: feed.mshReceivingFacility ?? null,
+      receiverDedupesControlId: feed.receiverDedupesControlId ?? false,
+      inFlightLeaseSeconds: feed.inFlightLeaseSeconds ?? null,
       proposedByMembershipId: feed.proposedByMembershipId ?? "seed-op",
       approvedByOpId: feed.approvedByOpId ?? null,
       approvedByComplId: feed.approvedByComplId ?? null,
@@ -700,6 +732,13 @@ export function createInMemoryM29Store(
         channelCertPin: args.channelCertPin ?? null,
         sendingFacilityAllowlist: args.sendingFacilityAllowlist ?? [],
         rateLimitMsgPerSec: args.rateLimitMsgPerSec ?? 50,
+        labDestinationFacilityId: args.labDestinationFacilityId ?? null,
+        mshSendingApplication: args.mshSendingApplication ?? null,
+        mshSendingFacility: args.mshSendingFacility ?? null,
+        mshReceivingApplication: args.mshReceivingApplication ?? null,
+        mshReceivingFacility: args.mshReceivingFacility ?? null,
+        receiverDedupesControlId: args.receiverDedupesControlId ?? false,
+        inFlightLeaseSeconds: args.inFlightLeaseSeconds ?? null,
         proposedByMembershipId: membershipId,
         approvedByOpId: membershipId,
         createdAt: ts,
@@ -719,6 +758,14 @@ export function createInMemoryM29Store(
         baaContractRef: args.baaContractRef ?? f.baaContractRef,
         baaExpiresOn: args.baaExpiresOn ?? f.baaExpiresOn,
         rateLimitMsgPerSec: args.rateLimitMsgPerSec ?? f.rateLimitMsgPerSec,
+        labDestinationFacilityId: args.labDestinationFacilityId ?? f.labDestinationFacilityId,
+        mshSendingApplication: args.mshSendingApplication ?? f.mshSendingApplication,
+        mshSendingFacility: args.mshSendingFacility ?? f.mshSendingFacility,
+        mshReceivingApplication: args.mshReceivingApplication ?? f.mshReceivingApplication,
+        mshReceivingFacility: args.mshReceivingFacility ?? f.mshReceivingFacility,
+        receiverDedupesControlId: args.receiverDedupesControlId ?? f.receiverDedupesControlId,
+        inFlightLeaseSeconds:
+          args.inFlightLeaseSeconds === undefined ? f.inFlightLeaseSeconds : args.inFlightLeaseSeconds,
       });
       return feedDetailOf(f);
     },

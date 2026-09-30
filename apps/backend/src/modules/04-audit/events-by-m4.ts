@@ -29,6 +29,11 @@ export const M4_OUTBOX_EVENTS: ModuleEventContribution = [
       "audit_event rows at apply time — no other module's data is physically flipped yet (see " +
       "legal-holds.ts's file header).",
     payloadSchema: HoldEventPayload,
+    // F-139 (#248) — considered adding `m31` (its spec names this event with a real consumer file that
+    // suspends eraser execution) and reverted: this module's OWN header above and `legal-holds.ts`'s
+    // (M04-F03) are decisive that propagation is a registered `HoldApplier` SEAM per data-owning module,
+    // never an outbox subscription — "Declaring a consumer that doesn't exist would be a namespace lie."
+    // M31 registering a `HoldApplier` is real, unbuilt work, but it is not an outbox catalog fix.
     declaredConsumers: [],
     isOutboxOnly: true,
   },
@@ -38,6 +43,7 @@ export const M4_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A legal hold was released (§10.6, M04-F03); `matched` mirrors the apply-time count.",
     payloadSchema: HoldEventPayload,
+    // F-139 (#248) — same reversal as `.applied` above: `HoldApplier` seam, not an outbox consumer.
     declaredConsumers: [],
     isOutboxOnly: true,
   },

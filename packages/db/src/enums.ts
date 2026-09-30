@@ -1465,6 +1465,11 @@ export const orderDiscontinuationReason = pgEnum("order_discontinuation_reason",
   "standing_order_discontinued",
   "corrected_replacement",
   "expired_verbal",
+  // F-166 (#248) — the M21 `m21.supply_request.cancelled` cascade: a staff member cancelled the supply/
+  // DME/comfort-kit fulfillment request directly at M21 (never through M11's own discharge cascade, which
+  // already discontinues the order itself before asking M21), so M11 releases the still-in-flight source
+  // order it never touched.
+  "supply_request_cancelled",
 ]);
 
 /** `order_transmission_status` — the §2.2 / §4.10 orthogonal lab-wire dispatch state (M29-driven). */
@@ -1865,6 +1870,8 @@ export const visitProposalSource = pgEnum("visit_proposal_source", [
   "supervisory_cadence_m15",
   "order_required_m11",
   "idg_decision_m14",
+  // F-166 (#248, migration 0260) — M19's after-hours triage dispatch, additive-only.
+  "triage_dispatch_m19",
 ]);
 
 /** `recurring_visit_status` — the §2.2.3 D4 policy lifecycle; `discontinued` cascade-cancels future children. */
@@ -2046,6 +2053,26 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "patient_amendment_statement_of_disagreement",
   "consent_record",
   "intake_source",
+  // F-144 (#248, mig 0251) — the six document kinds behind `m23.billing.document_render_requested`,
+  // `m24.medicaid_billing.document_render_requested`, and `m25.denial_resolution_letter
+  // .render_requested`, all three catalogued and none ever emitted (see packages/types/src/documents.ts).
+  "noe_confirmation_receipt",
+  "notr_confirmation_receipt",
+  "claim_acknowledgment_letter",
+  "denial_appeal_cover_letter",
+  "medicaid_claim_acknowledgment_letter",
+  "denial_resolution_letter",
+  // F-161 (#248, mig 0252) — the M7 care-plan PDF. `m7.care_plan.version_signed`'s own catalog comment
+  // ("drives the M8 encounter gate + M22 PDF") was decisive and no template existed for it at all.
+  "care_plan",
+  // F-192 (#248, mig 0267) — the M6 transfer document. `m6.transfer.created`'s own render request is the
+  // M22 spec's own "discharge_summary (transfer variant)" — a distinct type, not a second version of
+  // `discharge_summary`, since a transfer is not a discharge for cause/death/routine.
+  "discharge_summary_transfer",
+  // F-208 (#248, mig 0277) — the M9 printable assessment summary. Distinct from `hope_summary` (M10's
+  // per-assessment HOPE timepoint PDF): `m9.assessment.summary_requested` carries no per-request id, so
+  // this renders as ONE evolving per-patient document, versioned via the F-168 append mechanism.
+  "assessment_summary",
   "other",
 ]);
 
@@ -2691,6 +2718,20 @@ export const comfortKitDispatchStatus = pgEnum("m21_comfort_kit_dispatch_status"
   "reconciled",
   "reconciled_with_discrepancy",
 ]);
+
+/** `m21_caregiver_signature_capture_method` — F-193 (#248). D7's spec line ("caregiver signature is
+ *  optional via M22's signature flow, triggered when policy or tenant config requires it") named a
+ *  capture mechanism M22 was never going to build (M22's own spec disclaims signature capture; F-191
+ *  dropped the misdeclared `m22` consumer off `m21.supply_request.delivered`). This is M21's OWN capture,
+ *  synchronous and always optional — mirrors the SHAPE (not the type; M21's manifest `dependsOn` has no
+ *  edge to M39) of `@wardenx/consent`'s proven `ConsentCaptureEvidence.captureMethod`, narrowed to what is
+ *  plausible for a courier-delivery caregiver signature: no portal session, no uploaded PDF, no notary —
+ *  just typed-in-app, a witnessed verbal account, or an explicit decline (still evidence: "asked, refused"
+ *  is worth recording even though nothing downstream gates on it). */
+export const supplyCaregiverSignatureCaptureMethod = pgEnum(
+  "m21_caregiver_signature_capture_method",
+  ["typed_signature_in_app", "witnessed_verbal_documented", "declined"],
+);
 
 // ── Module 19 — On-Call Triage (§3.2 Phase A, M19-T01) ───────────────────────────────────────────────
 //

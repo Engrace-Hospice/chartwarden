@@ -32,6 +32,7 @@ import {
   DEFAULT_COSIGN_POLICY,
   DEFAULT_VERBAL_POLICY,
   type OrderCosignPolicy,
+  type VerbalDeadlinePolicy,
   lpnCosignRequired,
   planCosignAttest,
   transitionOrder,
@@ -186,6 +187,27 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
     };
   }
 
+  /** The per-org verbal-deadline policy projection (default-filled when unseeded) — same-tx, RLS pins the
+   * org. Copied from `orders-route-service-db.ts`'s `verbalPolicyOf` (its helper is a closure inside
+   * `createDbOrderBackend`) so a seam caller (M12/M19) computes the identical deadline M11's own route
+   * would for the same org, rather than a second, platform-default-only computation. */
+  async function verbalPolicyOf(tx: Tx): Promise<VerbalDeadlinePolicy> {
+    const [r] = (await tx
+      .select({
+        windowHours: VP.windowHours,
+        businessHoursOnly: VP.businessHoursOnly,
+        policyVersion: VP.policyVersion,
+      })
+      .from(VP)
+      .limit(1)) as { windowHours: number; businessHoursOnly: boolean; policyVersion: string }[];
+    if (!r) return DEFAULT_VERBAL_POLICY;
+    return {
+      windowHours: Number(r.windowHours),
+      businessHoursOnly: r.businessHoursOnly,
+      policyVersion: r.policyVersion,
+    };
+  }
+
   return {
     // ── reads (OrderProvider) — consumer's ambient request scope, RLS pins the tenant ─────────────────
     async getOrder(orderId) {
@@ -317,6 +339,10 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
       );
     },
 
+    async verbalPolicyForOrg() {
+      return withOrgContextFromRequest(db, async (tx) => verbalPolicyOf(tx));
+    },
+
     // ── writes (OrderSignatureProvider — polymorphic by targetKind, D4; caller's request scope) ────────
     async insertSignature(input) {
       const { organizationId } = requireRequestContext();
@@ -384,9 +410,9 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
             effectiveAt: new Date(input.effectiveAt),
             receivedAt: new Date(input.receivedAt),
             deadlineAt: new Date(input.deadlineAt),
-            // The provider computed `deadlineAt` with the DEFAULT platform-floor policy (it reads no
-            // per-org policy row) — stamping any other version here would mis-attribute the math.
-            deadlinePolicyVersion: DEFAULT_VERBAL_POLICY.policyVersion,
+            // The provider computed `deadlineAt` (and this version) from `verbalPolicyForOrg` — the org's
+            // real `order_verbal_policy` row, defaulting to the platform floor when unseeded.
+            deadlinePolicyVersion: input.deadlinePolicyVersion,
             status: "pending",
           })
           .returning({ id: V.id });
@@ -555,4 +581,25 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
       });
     },
   };
+}
+
+/**
+ * F-164 (#248) — the org-explicit `patientId`/`kind` lookup M14's "since last IDG" cache consumer needs
+ * for `m11.order.discontinued` (whose payload carries neither): a relay tick is not a request, so the
+ * published `OrderProvider` seam (which opens every read under `withOrgContextFromRequest`) cannot be
+ * called from here — the `encounterIdsForVisitsForOrg` (M8) precedent applied to this module.
+ */
+export async function orderPatientAndKindForOrg(
+  db: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<{ readonly patientId: string; readonly kind: string } | null> {
+  return withOrgContext(db, { organizationId, userId: ORDER_READER_SYSTEM_USER_ID }, async (tx) => {
+    const [row] = await tx
+      .select({ patientId: OR.patientId, kind: OR.kind })
+      .from(OR)
+      .where(and(eq(OR.organizationId, organizationId), eq(OR.id, orderId)))
+      .limit(1);
+    return row ?? null;
+  });
 }

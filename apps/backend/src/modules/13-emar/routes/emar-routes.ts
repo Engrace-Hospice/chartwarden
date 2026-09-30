@@ -454,6 +454,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         lineKind: b.lineKind,
         sourceId: b.sourceId,
         decision: b.decision as ReconciliationDecisionKind,
+        medicationDetails: b.medicationDetails,
       });
       return reply.code(201).send(res);
     },

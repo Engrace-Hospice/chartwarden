@@ -34,16 +34,29 @@ const hl7Priority = Type.Union([
   Type.Literal("A"),
   Type.Literal("T"),
 ]);
+// §2.8 D14 — the polymorphic verbal-order/signature discriminator (mirrors the DB's
+// `order_signature_target_kind` enum): 'order' → the M11 `order_record` timer; 'medication_order' → an M12
+// `medication_order` recorded through M11's published OrderSignatureProvider seam.
+const orderSignatureTargetKind = Type.Union([
+  Type.Literal("order"),
+  Type.Literal("medication_order"),
+]);
 
 // The §4.4 pinned `m11.order.hl7_orm_requested` payload (M11 produces, M29 consumes). Mirrors the
 // `OrmRequestedPayload` interface in @wardenx/types — the contract shared with the T-29.08 ORM builder.
 // Demographics are INTENTIONALLY MINIMAL (no SSN / NK1 / IN1 / GT1 per the T-29.08 §3.6 PHI denylist).
-const ormRequestedPayloadSchema = Type.Object({
+// F-181 (#248) — exported so the M11 producer can `Value.Check` its payload BEFORE publishing: a payload the
+// catalog refuses would otherwise throw out of the sign transaction and block signing the order itself.
+export const ormRequestedPayloadSchema = Type.Object({
   orderId: id,
   organizationId: id,
   labDestinationFacilityId: id,
   priority: hl7Priority,
   requestedAt: isoInstant,
+  // F-187 — present only on an operator-attested re-dispatch (see `OrmRequestedPayload.redispatchAttestationId`).
+  redispatchAttestationId: Type.Optional(id),
+  // F-188 — the id of this outbound attempt (see `OrmRequestedPayload.attemptId`).
+  attemptId: Type.Optional(id),
   labOrderPayload: Type.Object({
     orderId: id,
     patientId: id,
@@ -85,7 +98,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: orderKind,
       drafterMembershipId: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-176 (#248) — m22 REMOVED: M11's spec names only `.document_requested` for M22 and this payload carries no form
+    // content; a render here would take the genesis-only `(order_record, orderId)` key and make the signed render an
+    // `idempotent_skip`.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -165,16 +181,33 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // on this event, and this list did not name m14, so `assertBindableAgainstCatalog` would
       // have refused the binding for three of the six D8 sources while accepting the other three.
       "m14",
-      "m21",
+      // F-153 (#248) — m21 removed: emitted from the SAME transaction as the more specific
+      // `m11.order.supply_fulfillment_requested` (`emitDownstreamSignedEvent`, this file) for every
+      // supply/dme/comfort_kit-kind order — the fact M21 actually needs, one hop downstream, and the
+      // pair genuinely M21 cares about (still deferred there, blocked on the Location-resolution gap
+      // `consumers/order-context.ts` documents). The F-117/F-101 co-emission shape a module over.
       // F-117 (#248) — m22 removed: `signOrder`/`signOnBehalf` also emits
       // `m11.order.document_requested` in the SAME transaction (orders-route-service-db.ts) —
       // the actual live-bound M22 render request. Declaring m22 here too was the same handshake
       // named twice.
       // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-      "m29",
-      "m30",
+      // F-141 (#248) — m29 removed: M29's own spec names only the specific
+      // `m11.order.hl7_orm_requested` event (its rich PID/ORC/OBR/NTE payload), never the broader
+      // `.signed` — redundant with the sibling event once it lands, the F-101 shape.
     ],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED here from declaredConsumers, along with all seven of its M11 siblings
+    // below: M30's own §1.1 relationship inventory states flatly "Outbox publication is the only
+    // cross-module communication M30 performs at the boundary. M30 *calls* … M11 … reader seams as
+    // in-process function calls" (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353) — M30
+    // never subscribes to an upstream module's outbox. The order-completion/discontinuation-timeliness/
+    // lab-transmission/results-lifecycle measures M11's own spec cites (§D14, line 2844) as the M30
+    // destination are real but genuinely unbound one layer deeper than the catalog declaration: the
+    // published `OrderProvider` seam (`packages/types/src/orders.ts`) has no `getOrderCompletionRate`
+    // and no transmission/results method at all — only `getOrdersSince`/`getDiscontinuationReason`/
+    // `getVerbalOrderTimeliness` — and `OPERATIONAL_BOUND_MEASURE_CODES`
+    // (`apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`) currently registers none of these order
+    // measures. "Bound is not computing" (F-042) one further step back: not even bound.
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -188,8 +221,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       onBehalfOfMembershipId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m4", "m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -214,16 +248,24 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.verbal_expired_unsigned",
     moduleOwner: "m11",
     description:
-      "The `verbal-timer` worker flipped a `verbal_pending` order past the 48h deadline to `expired_unsigned`; M36 raises the high-severity alert, M30 counts the 418.104(b) violation.",
+      "The `verbal-order-expiry-worker` (§2.3/§2.6, the `orders.verbal_timer` cron) flipped a `verbal_pending` verbal_order row past its 48h deadline to `expired_unsigned` — `targetKind='order'` for an M11 `order_record`, `targetKind='medication_order'` for an M12 `medication_order` (§2.8 D14, the polymorphic `verbal_order` table); M36 raises the high-severity alert, M30 counts the 418.104(b) violation.",
     payloadSchema: Type.Object({
       orderId: id,
       verbalOrderId: id,
+      // Added (previously absent) — the polymorphic discriminator M12's own `decideVerbalExpiry` decider
+      // has always needed to tell an M11 order from an M12 medication order apart; the event could not
+      // previously be delivered to a real M12 consumer because nothing on the wire said which table
+      // `orderId` names. Additive on a never-actually-emitted event — see the worker header for why.
+      targetKind: orderSignatureTargetKind,
       expiredAt: isoInstant,
       hoursOverdue: Type.Number(),
       orderingPhysicianMdmId: id,
     }),
     // F-115 (#248) — m30 moved to seamConsumers (same `getVerbalTimelinessCountsForOrg` seam).
-    declaredConsumers: [],
+    // F-143 (#248) — m12 ADDED: this event IS `M12_OUTBOX_SUBSCRIPTIONS`'s own entry for
+    // `m12.verbal-expired`, backed by a real pure decider (`decideVerbalExpiry`,
+    // consumers/verbal-expired.ts) — genuinely undeclared until now.
+    declaredConsumers: ["m12"],
     seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
@@ -239,13 +281,20 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       actorMembershipId: Type.Union([id, Type.Null()]),
       effectiveAt: isoInstant,
     }),
-    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared — this fact
-    // is not part of any current M30 seam (order discontinuation isn't verbal-timeliness data).
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     // F-129 (#248) — m14 added: M14's own `consumers/index.ts` and §4.5 spec table have named this event
     // (the "since last IDG" projection-cache update) since M14-T06; this catalog simply never declared it,
     // which would have made a future live binding fail `assertBindableAgainstCatalog` outright.
-    declaredConsumers: ["m14", "m21", "m22", "m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-144 (#248) — m22 REMOVED: not in M22's own §4.11 consumer table, and no code path co-emits a
+    // `document_requested` sibling for a discontinuation (`discontinueOrder`/the discharge cascade emit
+    // only this event) — unsupported by any M22-side evidence.
+    // F-149 (#248) — m30 MOVED to seamConsumers (the `.signed` finding above — M30 never subscribes to
+    // an M11 outbox event; this fact would arrive, if ever bound, via the unbuilt order-completion seam).
+    // F-187 (#248) — m11 added (SELF-consumption): `lab-cancellation-required.ts` raises an operator alert when a
+    // lab order that may already be at the laboratory is discontinued. T-29.08 defines no outbound cancel, so
+    // this is the only signal the lab-side discrepancy ever produces.
+    declaredConsumers: ["m11", "m14", "m21"],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -263,25 +312,28 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // on this event, and this list did not name m14, so `assertBindableAgainstCatalog` would
       // have refused the binding for three of the six D8 sources while accepting the other three.
       "m14",
-      // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared —
-      // "completed" isn't verbal-order-timeliness data, so no current seam covers it either.
-      "m30",
+      // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     ],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
     eventName: "m11.order.corrected",
     moduleOwner: "m11",
     description:
-      "`correctOrder` (via the supersede trigger, §164.526) created a replacement `order_record` and discontinued the original; M22 re-renders, M28 re-projects (F-115/#248: at request time, not via this event).",
+      "`correctOrder` (via the supersede trigger, §164.526) created a replacement `order_record` and discontinued the original.",
     payloadSchema: Type.Object({
       newOrderId: id,
       replacedOrderId: id,
       kind: orderKind,
       drafterMembershipId: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: not in M22's own §4.11 consumer table; `correctOrder`
+    // (`orders-route-service-db.ts`) emits only this event, no `document_requested` sibling.
+    // F-187 (#248) — m11 added (SELF-consumption): the supersede trigger discontinues the ORIGINAL without a
+    // `m11.order.discontinued`, so this is the only event that says a possibly-transmitted lab order was replaced.
+    declaredConsumers: ["m11"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -290,7 +342,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.level_of_care_change_signed",
     moduleOwner: "m11",
     description:
-      "A signed `level_of_care_change` order (§418.108); M6 ends the prior LCP and starts the new one (M11 never writes `level_of_care_period`), M22/M23/M30 follow.",
+      "A signed `level_of_care_change` order (§418.108); M6 ends the prior LCP and starts the new one (M11 never writes `level_of_care_period`), M30 follows.",
     payloadSchema: Type.Object({
       orderId: id,
       fromLevel: id,
@@ -298,7 +350,19 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       effectiveAt: isoInstant,
       admissionId: id,
     }),
-    declaredConsumers: ["m6", "m22", "m23", "m30"],
+    // F-136 (#248) — m23 REMOVED: "M23 follows" describes the downstream effect of M6's OWN re-emission
+    // (this event's own description says M6 ends/starts the LCP), not a direct subscription — the fact
+    // M23 actually needs arrives as the already-bound `m6.loc.changed`, redundant with this upstream
+    // order-signed trigger. M23's own §4.4/dependsOn text names only the M6 outbox catalog as consumed.
+    // F-144 (#248) — m22 REMOVED, checked against the same standard as the m23 removal above: M11's own
+    // "Done means" walkthrough claims "M22 renders the LOC-change form" off M6's downstream
+    // `m6.loc.changed` — but that event's own catalog entry (events-by-m6.ts) already carries a standing
+    // F-101 finding that no such M22 template exists (`PLATFORM_TEMPLATE_TABLE` has no LOC-change entry)
+    // and `m6.loc.changed` correctly still defers only on m23. This upstream order-signed event has no
+    // stronger claim than the downstream one already refuted.
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: ["m6"],
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -312,7 +376,13 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       periodEndDate: id,
       certifyingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m6", "m22", "m23"],
+    // F-136 (#248) — m23 REMOVED: M6's own resulting `m6.cti.signed` / `m6.election.period_started`
+    // (both already bound live) carry the fact M23 needs; this upstream order-signed event is redundant
+    // with them, the same shape as `.level_of_care_change_signed` above.
+    // F-144 (#248) — m22 REMOVED, redundant with the same downstream event: `m6.cti.signed` already
+    // declares `m22` (bound to the `cti` template per M22's own §4.11 table) — this upstream
+    // order-signed event carries nothing the downstream signal does not.
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
   {
@@ -327,7 +397,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       preferredDeliveryWindow: Type.Optional(Type.Union([id, Type.Null()])),
       deploymentSite: Type.Optional(Type.Union([id, Type.Null()])),
     }),
-    declaredConsumers: ["m21", "m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `signInternal` co-emits
+    // `m11.order.document_requested` unconditionally for every signed order (all kinds, including
+    // dme/supply/comfort_kit), already M22's real live-bound `order_record` render trigger.
+    declaredConsumers: ["m21"],
     isOutboxOnly: true,
   },
   {
@@ -366,8 +439,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       failureReason: Type.Optional(id),
       sourceM29EventId: id,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -383,8 +457,25 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       lastAttemptAt: isoInstant,
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m11.order.recovery_alert_requested",
+    moduleOwner: "m11",
+    description:
+      "F-203 — the two-person lab-recovery control's compliance alert INTENT (executed / cancelled / expired / repeated-pair / org-rate), published in the recovery's OWN transaction so a failure after commit cannot lose it; M11's own consumer hands it to M36's AlertEmitter and the alert's correlation id makes the redelivery idempotent.",
+    // IDS, COUNTS AND FLAGS ONLY — never the lab contact's name, the lab reference or a patient id.
+    payloadSchema: Type.Object({
+      alertType: id,
+      severity: Type.Union([Type.Literal("info"), Type.Literal("warn"), Type.Literal("critical")]),
+      correlationId: id,
+      alertPayload: Type.Record(Type.String(), Type.Unknown()),
+    }),
+    // SELF-consumption (the F-187 `lab-cancellation-required` shape): `outbox-consumers/recovery-alert.ts`.
+    declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
@@ -432,8 +523,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursOverdue: Type.Number(),
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m36"],
     isOutboxOnly: true,
   },
   // ── IDG intake (§4.4 / W-IDG-01 — M14 forward seam) ───────────────────────────────────────────────────

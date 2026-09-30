@@ -31,8 +31,11 @@ import {
   type ThresholdRule,
   buildMeasureRegistry,
   // operational subset
+  computeBereavementRiskScreeningCompletenessRate,
   computeComfortKitDeploymentToAdminMinutes,
   computeEvvComplianceRate,
+  computeF2fWindowOnTimeRate,
+  computeF2fWindowOverrideRate,
   computeHciIndicator01,
   computeHciIndicator02,
   computeHciIndicator07,
@@ -738,6 +741,118 @@ describe("operational measures (representative subset)", () => {
     expect(r.rate).toBe(0.3);
     expect(r.thresholdMet).toBe(true); // 0.3 ≤ 0.4
   });
+
+  it("F-178: F2F window on-time rate (higher-is-better) bands on the gte threshold", () => {
+    const met = computeF2fWindowOnTimeRate({
+      ...BASE,
+      f2fWindowsDue: 40,
+      f2fClosedOnTime: 39,
+      threshold: gte,
+    });
+    expect(met.rate).toBeCloseTo(0.975);
+    expect(met.thresholdMet).toBe(true); // 0.975 ≥ 0.9
+    expect((met.computationSnapshot as { measure: string }).measure).toBe(
+      "f2f_window_on_time_rate",
+    );
+    const missed = computeF2fWindowOnTimeRate({
+      ...BASE,
+      f2fWindowsDue: 40,
+      f2fClosedOnTime: 30,
+      threshold: gte,
+    });
+    expect(missed.thresholdMet).toBe(false); // 0.75 < 0.9
+  });
+
+  it("F-178: F2F window override rate (lower-is-better) bands on the lte threshold", () => {
+    const met = computeF2fWindowOverrideRate({
+      ...BASE,
+      f2fWindowsDue: 40,
+      f2fClosedViaOverride: 1,
+      threshold: lte,
+    });
+    expect(met.rate).toBeCloseTo(0.025);
+    expect(met.thresholdMet).toBe(true); // 0.025 ≤ 0.05
+    expect((met.computationSnapshot as { measure: string }).measure).toBe(
+      "f2f_window_override_rate",
+    );
+    const red = computeF2fWindowOverrideRate({
+      ...BASE,
+      f2fWindowsDue: 40,
+      f2fClosedViaOverride: 6,
+      threshold: lte,
+    });
+    expect(red.thresholdMet).toBe(false); // 0.15 > 0.05
+    expect(red.bandColor).toBe("red");
+  });
+
+  it("F-178: both F2F measures share the same denominator population but track different numerators", () => {
+    const onTime = computeF2fWindowOnTimeRate({
+      ...BASE,
+      f2fWindowsDue: 20,
+      f2fClosedOnTime: 17,
+      threshold: gte,
+    });
+    const override = computeF2fWindowOverrideRate({
+      ...BASE,
+      f2fWindowsDue: 20,
+      f2fClosedViaOverride: 2,
+      threshold: lte,
+    });
+    expect(onTime.denominator).toBe(override.denominator);
+    // on-time + override + (late, neither) accounts for the same population without double-counting.
+    expect(onTime.numerator + override.numerator).toBeLessThanOrEqual(onTime.denominator);
+  });
+
+  it("F-178: an empty F2F window population suppresses both measures rather than scoring perfect", () => {
+    const onTime = computeF2fWindowOnTimeRate({
+      ...BASE,
+      f2fWindowsDue: 0,
+      f2fClosedOnTime: 0,
+      threshold: gte,
+    });
+    const override = computeF2fWindowOverrideRate({
+      ...BASE,
+      f2fWindowsDue: 0,
+      f2fClosedViaOverride: 0,
+      threshold: lte,
+    });
+    expect(onTime.bandColor).toBe("insufficient_n");
+    expect(onTime.rate).toBeNull();
+    expect(override.bandColor).toBe("insufficient_n");
+    expect(override.rate).toBeNull();
+  });
+
+  it("F-184: bereavement risk-screening completeness rate (higher-is-better) bands on the gte threshold", () => {
+    const met = computeBereavementRiskScreeningCompletenessRate({
+      ...BASE,
+      screeningsDue: 40,
+      screeningsCompleted: 39,
+      threshold: gte,
+    });
+    expect(met.rate).toBeCloseTo(0.975);
+    expect(met.thresholdMet).toBe(true); // 0.975 ≥ 0.9
+    expect((met.computationSnapshot as { measure: string }).measure).toBe(
+      "bereavement_risk_screening_completeness_rate",
+    );
+    const missed = computeBereavementRiskScreeningCompletenessRate({
+      ...BASE,
+      screeningsDue: 40,
+      screeningsCompleted: 30,
+      threshold: gte,
+    });
+    expect(missed.thresholdMet).toBe(false); // 0.75 < 0.9
+  });
+
+  it("F-184: an empty risk-screening population suppresses rather than scoring perfect", () => {
+    const empty = computeBereavementRiskScreeningCompletenessRate({
+      ...BASE,
+      screeningsDue: 0,
+      screeningsCompleted: 0,
+      threshold: gte,
+    });
+    expect(empty.bandColor).toBe("insufficient_n");
+    expect(empty.rate).toBeNull();
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -776,9 +891,9 @@ describe("measure-period math (periods.ts, D14)", () => {
 // -----------------------------------------------------------------------------
 
 describe("measure catalog + registry FY-activation gate", () => {
-  it("the catalog has 30 entries with unique codes", () => {
-    expect(MEASURE_CATALOG.length).toBe(30);
-    expect(new Set(MEASURE_CATALOG.map((e) => e.code)).size).toBe(30);
+  it("the catalog has 33 entries with unique codes", () => {
+    expect(MEASURE_CATALOG.length).toBe(33);
+    expect(new Set(MEASURE_CATALOG.map((e) => e.code)).size).toBe(33);
   });
 
   it("buildMeasureRegistry resolves a callable calculator for EVERY catalog entry", () => {

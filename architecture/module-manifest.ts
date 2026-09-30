@@ -498,6 +498,8 @@ export const MODULES: ModuleDef[] = [
       "order_discontinuation",
       "order_verbal_policy",
       "order_idg_decision_application",
+      "order_transmission_attestation",
+      "order_recovery_request",
     ],
   },
   {
@@ -516,7 +518,9 @@ export const MODULES: ModuleDef[] = [
       "medication_order",
       "medication_order_transmission",
       "medication_order_idg_decision_application",
+      "medication_order_reconciliation_decision_application",
       "refill_request",
+      "dosespot_sync_queue",
     ],
   },
   {
@@ -598,6 +602,7 @@ export const MODULES: ModuleDef[] = [
       "bereaved_contact",
       "bereavement_anniversary_reminder",
       "bereavement_contact_log",
+      "bereavement_cop_opt_out_credit",
       "bereavement_opt_out",
       "bereavement_outreach",
       "bereavement_plan",
@@ -666,6 +671,7 @@ export const MODULES: ModuleDef[] = [
     // codePaths (no `packages/oncall`), which is unchanged.
     ownedTables: [
       "external_triage_vendor",
+      "on_call_roster_sync_queue", // §4.8 m19.shift-sync.debounced debounce table (F-155, #248)
       "on_call_shift",
       "tenant_oncall_policy",
       "triage_call",
@@ -793,6 +799,7 @@ export const MODULES: ModuleDef[] = [
       "notr_record",
       "sequestration_policy",
       "sia_calculation",
+      "unmapped_taxonomy_occurrence",
       "validation_override",
       "validation_result",
       "validation_rule_config",
@@ -910,6 +917,7 @@ export const MODULES: ModuleDef[] = [
       "ecr_submission",
       "statistic_data",
       "trial_balance_import",
+      "vendor_invoice_line",
       "wage_data_import",
     ],
   },

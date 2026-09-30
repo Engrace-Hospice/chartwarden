@@ -36,7 +36,7 @@
 //     THROWS the same typed refusal and points the consumer at M13's
 //     `MedicationAdministrationProvider.getComfortKitDeploymentTimeline`, which computes the real timeline.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { MedicationOrderDto, RefillRequestDto, SigStructuredDto } from "@wardenx/types";
 import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import type { DoseSpotSeamStore } from "./store";
@@ -378,4 +378,79 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
       });
     },
   };
+}
+
+/**
+ * F-164 (#248) — the org-explicit `patientId`/`drugName` lookup M14's "since last IDG" cache consumer
+ * needs for `m12.medication_order.discontinued` (neither payload carries them). A relay tick is not a
+ * request, so the published `MedicationOrderProvider.getMedicationOrder` seam (which opens every read
+ * under `withOrgContextFromRequest`) cannot be called from here — the `encounterIdsForVisitsForOrg` (M8)
+ * precedent applied to this module.
+ */
+export async function medicationOrderPatientAndDrugForOrg(
+  db: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<{ readonly patientId: string; readonly drugName: string } | null> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [row] = await tx
+      .select({ patientId: MO.patientId, drugName: MO.drugName })
+      .from(MO)
+      .where(and(eq(MO.organizationId, organizationId), eq(MO.id, orderId)))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/**
+ * F-166 (#248) — the order facts M13's §2.3 D2 scheduled-dose materializer (`materializeForOrder`,
+ * `@wardenx/emar`) needs, org-explicit for the same reason as {@link medicationOrderPatientAndDrugForOrg}
+ * immediately above (a relay tick is not a request, so the published `MedicationOrderProvider` seam —
+ * every read under `withOrgContextFromRequest` — cannot be called from here). `sigStructured` reuses the
+ * SAME allowlist projection `toMedicationOrderDto` uses (`sigStructuredOf`) — the clinician free-text
+ * `data` jsonb never crosses this seam either way, D14/§7.6.
+ *
+ * `providerEntityId`/`locationId` are deliberately NOT read off this row: `medication_order.provider_
+ * entity_id`/`location_id` are nullable (mig 0132) and NOTHING in `dosespot-route-service-db.ts` has
+ * ever written either column (confirmed by direct read — no assignment site exists), so the columns are
+ * NULL on every order in every deployment. The consumer resolves tenancy through M6's own
+ * `admissionSchedulingContextForOrg` instead (the F-152/F-155 precedent for this exact gap), keyed off
+ * this function's `admissionId`.
+ */
+export interface MedicationOrderScheduleContext {
+  readonly orderId: string;
+  readonly patientId: string;
+  readonly admissionId: string;
+  readonly status: string;
+  readonly medClass: string;
+  readonly isControlledSubstance: boolean;
+  readonly route: string;
+  readonly activatedAt: string | null;
+  readonly sigStructured: SigStructuredDto;
+}
+
+export async function medicationOrderScheduleContextForOrg(
+  db: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<MedicationOrderScheduleContext | null> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(MO)
+      .where(and(eq(MO.organizationId, organizationId), eq(MO.id, orderId)))
+      .limit(1);
+    if (!row) return null;
+    return {
+      orderId: row.id,
+      patientId: row.patientId,
+      admissionId: row.admissionId,
+      status: row.status,
+      medClass: row.medClass,
+      isControlledSubstance: row.isControlledSubstance,
+      route: row.route,
+      activatedAt: isoN(row.activatedAt),
+      sigStructured: sigStructuredOf(row.data, row.route),
+    };
+  });
 }

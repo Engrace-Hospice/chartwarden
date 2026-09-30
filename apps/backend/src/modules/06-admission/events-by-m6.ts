@@ -219,13 +219,26 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [
       "m5",
       "m7",
-      "m8",
+      // F-140 (#248) — `m8` REMOVED: M8's own spec (line 387) states outright that outbox publication is
+      // the only cross-module communication M8 performs "at the boundary" — every upstream fact,
+      // including anything from M6, is an in-process SEAM call, never an outbox subscription. M8's only
+      // M6 seam is `FaceToFaceWriter`, unrelated to activation.
       // #48 — M10 materializes the three admission-anchored HOPE timepoint windows here. It was absent
       // from this list for the same reason nothing ever inserted a `hope_timepoint_schedule` row: the
       // handshake the planners were written for had no consumer end.
       "m10",
-      "m11",
-      "m14",
+      // F-140 (#248) — `m13` ADDED: on M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list, with a real
+      // decider (`m13.reconciliation-admission`) that opens the admission's medication-reconciliation
+      // worksheet.
+      "m13",
+      // F-137 (#248) — `m11` REMOVED: no support anywhere — M11's own spec's authoritative "Outbox
+      // events consumed" list (line 2859) names `m6.admission.discharged`/`.loc.changed`, M9's
+      // significant-change, M10's J2051 trigger, the M14/M22 back-refs and the M21 forward seam, and
+      // never this event; M11's codebase carries no consumer file, decider, or even a comment
+      // mentioning "activated" or "activation" anywhere. It was part of this event's broad fan-out
+      // with no order-specific rationale, the same shape F-134/F-136 already found for m16/m23 on this
+      // identical event.
+      // F-176 (#248) — m14 REMOVED: F-171's T-24h packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg` reads `admission` at build time; no inclusion cache exists to write into), so there is nothing for this push to update.
       // F-103 — M15 bootstraps the three CoP discipline plans here (§1.1 D10), and this list did not name
       // it, so the consumer could not be bound and NOTHING in the repository has ever inserted a
       // `discipline_care_plan` row. Every M15 write route is `/discipline-plans/:planId/…`, so that
@@ -241,8 +254,22 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // f2f.attested, nor.acknowledged, revocation.created, discharge.created) plus the two still
       // deferred below, and this is not among them. Unlike the three that went record-only, this entry
       // still defers — on the other eleven unbound consumers, which is the true reason.
-      "m23",
-      "m37",
+      // F-136 (#248) — `m23` REMOVED: an ACTIVATION anchors no claim by itself — M23's own §4.4/
+      // dependsOn text subscribes to the full M6 outbox catalog by NAME (election.signed/
+      // period_started/period_ended, cti.signed, f2f.attested, loc.changed, revocation.created,
+      // transfer.created, discharge.created, discharge.death) and admission.activated is not among
+      // them; it was part of this event's broad fan-out with no billing-specific rationale, the same
+      // shape F-134 already found for m16 on this identical event.
+      // F-143 (#248) — `m37` REMOVED: M37's own §4.5 "Outbox Subscriptions" table names two more
+      // granular M6 events it actually wants (`m6.level_of_care.requires_ipu_bed`/`.activated`, neither
+      // of which M6's real catalog publishes) and never names `admission.activated` — the same broad
+      // fan-out with no module-specific rationale F-134/F-136/F-137 already found repeatedly on this
+      // event.
+      // F-143 (#248) — `m12` ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list
+      // (consumers/index.ts) names this event for `m12.admission-activated-medhx`, backed by a real
+      // pure decider (`decideMedHxFetch`, sync-triggers.ts) per M12's D10 — genuinely undeclared until
+      // now, surviving five prior sweeps of this same event (F-101/F-134/F-136/F-137/F-140).
+      "m12",
     ],
     // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory + manifest-patch dependsOn list
     // ([1,2,3,4,6,8,12,13,22,23,26,36,38,40]) names M6's `AdmissionCensusReader`/`LevelOfCarePeriodReader`
@@ -273,7 +300,15 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
       heldAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m17", "m30"],
+    // F-145 (#248) — m14 REMOVED: not in M14's own exhaustive build-description (the "Done means"
+    // walkthrough names the eleven seam reads + the four Valkey-projected outbox topics M14 actually
+    // consumes, and M6's own "Consumed by 14" text names only `m6.referral.withdrawn` for M14) —
+    // no packet field or readiness check references hold status anywhere.
+    // F-195 (#248) — m30 REMOVED: M6's own spec (line 2983) names `holdReason`/`holdAt`/`releasedAt` as
+    // "surfaced in M30's operational dashboard" — the F-179 REST-resolution shape, not a push. Those
+    // columns were write-only until this round; `GET /api/v1/admissions` (org-wide, `?state=on_hold`
+    // filterable) now projects all three, the real dashboard read the spec describes.
+    declaredConsumers: ["m17"],
     isOutboxOnly: true,
   },
   {
@@ -284,7 +319,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
       resumedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m17", "m30"],
+    // F-145 (#248) — m14 REMOVED: same as `.on_hold` above.
+    // F-195 (#248) — m30 REMOVED: same REST-resolution correction as `.on_hold` above — see that entry's
+    // comment for the full citation.
+    declaredConsumers: ["m17"],
     isOutboxOnly: true,
   },
   {
@@ -309,16 +347,28 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // patient was discharged stayed in flight forever.
       "m11",
       "m12",
-      "m14",
+      // F-140 (#248) — `m13` ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with
+      // a real decider (`m13.admission-discharged-cascade`) that enqueues the D14 cancel-future-schedule
+      // cascade.
+      "m13",
+      // F-176 (#248) — m14 REMOVED: F-171's T-24h packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg` reads `admission` at build time; no inclusion cache exists to write into), so there is nothing for this push to update.
       "m7",
       "m16",
       "m17",
       // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which
       // carries the `discharge_event` id M22 back-refs; this event carries the ADMISSION id and no
       // renderable artifact. Still defers, on the other seven.
-      "m23",
+      // F-136 (#248) — `m23` REMOVED: the same redundancy one module over — M23's real NOTR-draft
+      // trigger is `m6.discharge.created` (already bound in `consumers/subscription-map.ts`), which
+      // carries the `discharge_event` id the NOTR draft back-refs; this broader admission-lifecycle
+      // event carries no fact M23 needs beyond what discharge.created already delivers.
       "m37",
       "m36",
+      // F-139 (#248) — `m31` ADDED: M31's own §4.10 "M31 consumes" table names this event TWICE, filtered
+      // by `reason` — `reason='death'` triggers the M16-coordinated bereaved-portal transition
+      // (`m6-admission-discharged-death.ts`), `reason!='death'` enqueues the 30-day post-discharge grace
+      // timer (`m6-admission-discharged-non-death.ts`) — a real relationship the catalog never declared.
+      "m31",
     ],
     // F-130 (#248) — m27 REMOVED: same reasoning as `m6.admission.activated` above — M27's S-3 census is
     // a seam pull, refreshed on demand, never a push subscription to admission lifecycle events.
@@ -462,7 +512,13 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23"],
+    // F-140 (#248) — m13 ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with a
+    // real decider (`m13.reconciliation-recertification-signed`) that opens the recertification
+    // medication-reconciliation worksheet.
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.recertification-medhx`, backed by the same `decideMedHxFetch` decider per M12's D10 — the
+    // MedHx pull also fires "at each F2F window," and a signed CTI is the trigger.
+    declaredConsumers: ["m13", "m22", "m23", "m12"],
     isOutboxOnly: true,
   },
   {
@@ -630,7 +686,15 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
     }),
     // F-129 (#248) — m14 dropped: same reasoning as `m6.cti.drafted` above (build-time seam pull).
-    declaredConsumers: ["m30"],
+    // F-178 (#248) — m30 MOVED to seamConsumers: M30 now pulls this fact via the real
+    // `ComplianceWindowCountsProvider` seam (`f2fWindowOverrideCounts` — override_reason IS NOT NULL among
+    // F2F windows due in the scope period), a nightly batch read over `compliance_window`, not a reaction
+    // to this push (M6 §7.5 W-OVR-02 is decisive M30's dashboard "Overrides count" is fed by this fact, but
+    // names no event handler). This event is F2F-SPECIFIC (`f2fId`, not `complianceWindowId`), so the
+    // F2F-scoped seam's coverage is complete for it — unlike its four `m6.compliance.window.*` siblings
+    // below, which are generic across all 11 window kinds and stay genuinely unbound (see their own notes).
+    declaredConsumers: [],
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -642,7 +706,15 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       electionPeriodId: Type.String({ minLength: 1 }),
     }),
     // F-129 (#248) — m14 dropped: same reasoning as `m6.cti.drafted` above (build-time seam pull).
-    declaredConsumers: ["m30"],
+    // F-178 (#248) — m30 MOVED to seamConsumers: M30's `ComplianceWindowCountsProvider` reads
+    // `compliance_window` table state directly (the F2F window's due date + closed/override status), not
+    // this push. F-178b (#248) — HAS A REAL PRODUCER as of this round: `runF2fWindowMissedScanCron`
+    // (`jobs/cron-workers.ts`, on the previously-unwired `M6_QUEUES.windowAlert` schedule) opens the
+    // `f2f_recert_30d_prior` compliance_window row and publishes this event the moment
+    // `decideF2fWindowStatus` first reads "missed" for a recert election period; before this round the
+    // event was catalogued but never emitted anywhere (`decideF2fWindowStatus` had zero callers).
+    declaredConsumers: [],
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -745,6 +817,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  paperwork was filed, not the day the transfer took effect. Both emit sites have it in hand. */
       effectiveAt: Type.String({ minLength: 1 }),
       otherHospiceCcn: Type.Optional(Type.String({ minLength: 1 })),
+      /** F-192 (#248) — the chart M22 files the rendered transfer-summary document against (F-100's
+       *  "every one of these artifacts is patient-scoped by definition — there is no defensible null"
+       *  reasoning, one event over). Widened onto both real emit sites (`transferOut`/`transferIn`,
+       *  `admission-route-service-db.ts`), which already resolve the admission's patient in the same
+       *  transaction. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m13", "m22", "m23", "m26"],
     isOutboxOnly: true,
@@ -773,7 +851,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: an ordinary discharge (this event) is a benefit-period boundary M26
     // reads via the `ElectionPeriodReader` PULL, not a push subscription; M26's own §4.4 subscription-map
     // names only `m6.revocation.created`/`m6.transfer.created` from M6.
-    declaredConsumers: ["m22", "m23"],
+    // F-140 (#248) — m13 ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with a
+    // real decider (`m13.reconciliation-discharge-executed`) that opens the discharge worksheet and
+    // emits `m13.comfort_kit.return_required`.
+    declaredConsumers: ["m13", "m22", "m23"],
     isOutboxOnly: true,
   },
   {
@@ -781,12 +862,20 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m6",
     description:
       "Discharge reason was death (route 39 / recordExternalDeath) — via " +
-      "M5's §7.8 death cascade (GAP-004), flips patient.status='deceased'.",
+      "M5's §7.8 death cascade (GAP-004), flips patient.status='deceased'; also drives M37's own " +
+      "`recordDeath` transition for an IPU-facility death (F-172/#248).",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       dischargeDate: Type.String({ minLength: 1 }),
       source: applierSource,
+      // F-172 (#248) — widened at the source rather than resolved through a new seam: `dischargeType
+      // === "death"` requires `deathCertifierId` be present (`checkDischargeNarrative`, enforced before
+      // `dischargeAdmissionTx` ever runs), so the fact is already in hand at the one real emit site
+      // (`admission-route-service-db.ts`'s `dischargeAdmissionTx`) — the F-099/F-100 "the artifact is
+      // already at the emit site" shape. M37's `ipu_body_release.pronouncing_physician_id` (NOT NULL)
+      // is the consumer this widening exists for.
+      deathCertifierId: Type.String({ minLength: 1 }),
     }),
     // F-134 (#248) — `m16` removed: this event is co-emitted with `m6.bereavement.eligible` from the
     // SAME `runEffects` call on the SAME death-discharge transition (`admission-route-service-db.ts`
@@ -794,7 +883,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // description says it IS the "post-rule check on `m6.discharge.death`" — so `discharge.death` is
     // the source and `bereavement.eligible` is the already-bound, already-correct M16 handshake.
     // M16's own `consumers/m6-eligibility.ts` reads only `bereavement.eligible`, never this event.
-    declaredConsumers: ["m5"],
+    // F-172 (#248) — `m37` ADDED: the real, previously-missing producer for `transitionAdmission(...,
+    // {type: "recordDeath"})` (`packages/inpatient`), which §2.2 documents as "driven by the M6 death
+    // consumer (system actor)". M16 is deliberately NOT added here even though it is a declared
+    // consumer of the DOWNSTREAM `m37.ipu_admission.death_recorded` event — see that event's own entry
+    // in `events-by-m37.ts` for why that declaration is being dropped as redundant in the same change.
+    declaredConsumers: ["m5", "m37"],
     isOutboxOnly: true,
   },
   {
@@ -805,6 +899,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       medicalDirectorCosignedAt: Type.String({ minLength: 1 }),
+      // F-176 (#248) — widened for M22's cosign render (a new VERSION of the discharge summary, M22 spec §4.11/§7.17).
+      // The renderer files the document against the chart and renders the same facts `m6.discharge.created` carried.
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      dischargeDate: Type.String({ minLength: 1 }),
+      reason: Type.String({ minLength: 1 }),
     }),
     // F-094/#205 — M16's `consumers/m6-eligibility.ts` carries `decideCosignReceipt`, the D18
     // gate-release decider for exactly this topic, and the catalog named only m22.
@@ -824,7 +924,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23"],
+    // F-136 (#248) — m23 REMOVED: the Notice of Rights is never mentioned anywhere in M23's own spec —
+    // no dependsOn text, no §4.4 subscription, no NOE/NOTR/claim mechanism references it. M22 remains
+    // the real consumer (the rendered CoP document, per F-100).
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   // ── compliance windows ──────────────────────────────────────────────────────────────────────────
@@ -841,7 +944,26 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       severity: windowSeverity,
       source: applierSource,
     }),
-    declaredConsumers: ["m14", "m30"],
+    // F-145 (#248) — m14 REMOVED: same as `m6.admission.on_hold` above — no support in M14's own
+    // exhaustive build-description; M6's own text (line 599) assigns the real overdue-window consumer to
+    // M36's escalation chain, not M14.
+    // F-178 (#248) — m30 investigated, genuinely unbound at the time: this event is GENERIC across all 11
+    // `complianceWindowKind` values (payload carries `windowType`, not just F2F) — M6's spec (line 3868)
+    // confirms non-F2F kinds are real and actively created (`concurrent_hospital_admission`,
+    // `external_discharge_notice`, `hl7_admission_cancellation` informational windows). The
+    // `ComplianceWindowCountsProvider` seam F-178 built is hardcoded to `windowKind = 'f2f_recert_30d_prior'`
+    // only (by design — Phase 1 was scoped to the F2F cluster), so it resolves NOTHING for the other 10
+    // window kinds.
+    // F-179 (#248) — m30 DROPPED: the "M30 dashboard pulls open windows"/"Overrides — last 30 days" text
+    // M6's spec (line 2322/2330/3047) describes for this GENERIC, all-window-kind fact is already satisfied
+    // by `GET /api/v1/compliance-windows` (`admission-routes.ts` route 44 — org-wide, all window kinds,
+    // filterable, gated by `compliance.read`/`compliance.scope`, explicitly "org-wide for
+    // compliance_officer"). This is a direct frontend-to-M6 REST read, not a backend module-to-module
+    // relationship — no M30 route, seam registration, or UI screen spec for an M30-owned dashboard exists
+    // anywhere (grepped); the `ComplianceReader`/`listOpenWindows` interface `packages/types/src/admission.ts`
+    // pre-declares for exactly this shape has zero registrations/implementations/callers, a pure aspirational
+    // leftover. Nothing for the outbox/seam registry to track: misdeclared, not merely unbuilt.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -854,7 +976,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       closedAt: Type.String({ minLength: 1 }),
       closedVia: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m30"],
+    // F-178/F-179 (#248) — m30 investigated then DROPPED — same reasoning as `m6.compliance.window.opened`
+    // above: this is the GENERIC, all-window-kind close event; the real "M30 reads this" fact is already
+    // satisfied by `GET /api/v1/compliance-windows`, a direct frontend REST read, not a backend relationship.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -866,7 +991,13 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       complianceWindowId: Type.String({ minLength: 1 }),
       severity: Type.Literal("alert"),
     }),
-    declaredConsumers: ["m14", "m30"],
+    // F-145 (#248) — m14 REMOVED: M6's own spec (line 599) is decisive and names the OPPOSITE
+    // consumer for this exact fact: "`compliance_window.overdue` (for any window) → M36 escalating
+    // alert chain (clinician → supervisor → DON)" — not mere silence, an affirmative counter-claim.
+    // F-178/F-179 (#248) — m30 investigated then DROPPED — same reasoning as `m6.compliance.window.opened`
+    // above: generic across all window kinds; already satisfied by the direct `GET /api/v1/compliance-windows`
+    // REST read, not a backend relationship.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -878,7 +1009,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       complianceWindowId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m30"],
+    // F-178/F-179 (#248) — m30 investigated then DROPPED — same reasoning as `m6.compliance.window.opened`
+    // above: this generic route-46 override event fires for ANY window kind, already satisfied by the direct
+    // `GET /api/v1/compliance-windows` REST read. Not to be confused with the F2F-specific
+    // `m6.f2f.window_overridden` sibling above, which the F-178 seam genuinely does bind as a real backend
+    // relationship.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── bereavement / applier ───────────────────────────────────────────────────────────────────────
@@ -906,7 +1042,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
       refusedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m30"],
+    // F-180 (#248) — m30 DROPPED: M6's own spec places this beside a Prometheus gauge
+    // (`m6_applier_refused_total`, "dashboard data source") — its own framing is ops/observability, not a
+    // cross-module business-fact handoff. M30's own locked spec never mentions "applier"/"external-event"
+    // anywhere (0 hits), including its compile-checked §4.4 consumed-seams table. The refusal is already
+    // durably recorded independent of any consumer, via the live `m6.applier.contract_violation_refused`
+    // audit action (compliance retention). If a real gap remains, it's the never-built
+    // `m6_applier_refused_total` counter on the M6 side — metrics, not an outbox consumer.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
 ];

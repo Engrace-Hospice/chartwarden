@@ -277,7 +277,10 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     // F-115 (#248) — m28 removed (never subscribes, F-035); m30 moved to seamConsumers: reads IDG
     // cadence via `IdgScheduleProvider.getCadenceCountsForOrg` (idg_cadence_adherence) on its nightly
     // cadence, not by reacting to this event.
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `idg-route-service-db.ts` co-emits
+    // `m14.minutes.signed` in the SAME transition ("Adjournment-time mirror of `meeting.adjourned` —
+    // asks M22 to render the minutes PDF"), already M22's real, §4.11-table-listed render trigger.
+    declaredConsumers: [],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -323,8 +326,16 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       breachingPatients: Type.Array(Type.Object({ patientId: id, floorAt: isoInstant })),
       overriddenAt: isoInstant,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, along with its `review_clock.escalated` sibling below:
+    // M30's own spec (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:122) names the real
+    // mechanism decisively — "M30 consumes `IdgScheduleProvider.getCadenceAdherence` for the
+    // IDG-cadence-compliance measure … it does not write to M14" — confirmed ACTIVE, not merely
+    // aspirational: `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts` calls
+    // `getSeam("IdgScheduleProvider")`, feeding `idg_cadence_adherence`, one of the currently-registered
+    // `OPERATIONAL_BOUND_MEASURE_CODES`. Never an outbox push, matching M30's own blanket §1.1
+    // principle.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -345,8 +356,10 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       ]),
       severity: Type.Union([Type.Literal("clinical_routine"), Type.Literal("critical")]),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: same active `IdgScheduleProvider` seam — see
+    // `review_floor.override_recorded` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   // ── minutes finalize + amendment + packet freeze (§2.2 / §4.4) ──────────────────────────────────────────
@@ -375,6 +388,11 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       requestedByMembershipId: id,
       approvedByMembershipId: id,
       amendmentReasonHash: id,
+      // F-168 (#248) — the same `renderPayload` shape `.signed` sends (the three minutes snapshot
+      // columns, re-read post-amendment), so M22's render-consumer has content to append a new
+      // `idg_minutes` `document_version` with. `amendmentReason` itself stays OFF the wire — it is
+      // DENYLISTED free-text (§3.3); only its hash (above) was ever published.
+      renderPayload: Type.Unknown(),
     }),
     declaredConsumers: ["m22"],
     seamConsumers: ["m33"],

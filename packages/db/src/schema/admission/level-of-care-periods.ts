@@ -5,7 +5,7 @@
 // `ipu_bed_assignment_id` (M37) are plain uuid app-validated. One open LOC per admission (partial
 // unique). RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
 import { sql } from "drizzle-orm";
-import { bigint, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { levelOfCare, levelOfCarePeriodStatus } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
@@ -34,6 +34,12 @@ export const levelOfCarePeriods = pgTable(
     qCode: text("q_code"), // Q5001..Q5010 — derived (M38)
     facilityId: uuid("facility_id"), // M40 facility (app-validated)
     ipuBedAssignmentId: uuid("ipu_bed_assignment_id"), // M37 bed assignment (logical)
+    // F-155 (#248), migration 0250 — the triggering M11 `order_record.id` for an order-driven LOC change
+    // (§2.3.5 / M11 D9). Logical, not a SQL FK (M6's `dependsOn` excludes 11, the same posture as
+    // facilityId/ipuBedAssignmentId above). NULL for every clinician-initiated LOC change (the ordinary
+    // route) and every pre-existing row; the redelivery guard for `m11.order.level_of_care_change_signed`
+    // is the plain UNIQUE(organization_id, source_order_id) below (NULLS DISTINCT by default).
+    sourceOrderId: uuid("source_order_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
@@ -41,6 +47,10 @@ export const levelOfCarePeriods = pgTable(
   (t) => ({
     admEffIdx: index("lcp_adm_effective_idx").on(t.admissionId, t.effectiveAt),
     admOpenUnique: uniqueIndex("lcp_adm_open_idx").on(t.admissionId).where(sql`ended_at IS NULL`),
+    sourceOrderUnique: unique("level_of_care_period_source_order_id_uq").on(
+      t.organizationId,
+      t.sourceOrderId,
+    ),
   }),
 );
 

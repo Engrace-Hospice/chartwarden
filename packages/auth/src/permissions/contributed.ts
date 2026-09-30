@@ -1321,6 +1321,34 @@ export const M11_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_or_scope",
   },
+  // F-203 (#248) — the lab-transmission recovery authority, split OUT of `orders.amend`. `orders.amend` (correct an
+  // order) is granted to nearly every prescribing/nursing role; the actions below re-disclose a signed order to a lab,
+  // attest to a fact about a third party, and can order a test TWICE, so they are a NARROW grant a tenant makes on
+  // purpose (org_admin / administrator by default; a DON or clinical lead when the tenant chooses).
+  // File / cancel a recovery, resend a refused order, co-sign a recovery, and read the lab contact's name + reference.
+  "orders.transmission.recover": {
+    resource: "order_transmission",
+    action: "recover",
+    category: "admin",
+    abac: "none",
+  },
+  // Read the held-transmission worklist (patient ids + reasons) without being able to act on it.
+  "orders.transmission.view_held": {
+    resource: "order_transmission",
+    action: "view_held",
+    category: "admin",
+    abac: "none",
+  },
+  // The HIGH-TRUST co-signer: once a requester or a requester/co-signer pair has reached the recovery bound
+  // (default 3 executed `not_received_by_lab` recoveries in 24 h) the next co-signature must come from a holder of this
+  // key (org_admin / administrator by default; a compliance officer when the tenant grants it). It also lets that
+  // holder co-sign and read the evidence without holding `orders.transmission.recover`.
+  "orders.transmission.cosign_escalated": {
+    resource: "order_transmission",
+    action: "cosign_escalated",
+    category: "admin",
+    abac: "none",
+  },
   // Manual completion (incl. lab "Mark reviewed", D17).
   "orders.complete": {
     resource: "order",
@@ -1378,7 +1406,8 @@ export type M11ContributedPermissionKey = keyof typeof M11_CONTRIBUTED_PERMISSIO
  * admin roster/policy/EPCS-certification keys are pure RBAC (`none`; org-admin / compliance / platform-ops
  * reference rows, step-up enforced at the route). Keys carry a `prescribing.` NAMESPACE prefix on top of the
  * `resource.action` decomposition (like M11's `orders.` / M10's `hope.`), so `key` is the full dotted
- * permission string used at `requirePermission(...)`. Fourteen keys total (§4.6). Kept in a dedicated const
+ * permission string used at `requirePermission(...)`. Fifteen keys total (§4.6; F-205, #248, added
+ * `prescribing.report_error`). Kept in a dedicated const
  * for §3.3 attributability.
  */
 export const M12_CONTRIBUTED_PERMISSIONS = {
@@ -1428,6 +1457,13 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
   "prescribing.discontinue": {
     resource: "medication_order",
     action: "discontinue",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  // F-205 (#248) — file a clinician-initiated medication-error report against an order (`reportMedicationError`).
+  "prescribing.report_error": {
+    resource: "medication_order",
+    action: "report_error",
     category: "clinical",
     abac: "caseload_or_scope",
   },
@@ -3831,9 +3867,9 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
 /**
- * M21-T05 — the twenty-eight Supplies / DME / Comfort-Kit permission keys Module 21 registers into M3's
- * catalog: §4.3's twenty-six, plus the two the §4.1 route inventory needs and §4.3 never named (see the
- * last block).
+ * M21-T05 — the twenty-nine Supplies / DME / Comfort-Kit permission keys Module 21 registers into M3's
+ * catalog: §4.3's twenty-six, plus the three the §4.1 route inventory needs and §4.3 never named (see the
+ * last block plus `caregiver_signature` beside `mark_delivered`, F-193/#248).
  *
  * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
  * actually binds a guard, and it may bind a different (or no) predicate per route. Both §4.4 predicate
@@ -3889,6 +3925,16 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
   "supplies.request.mark_delivered": {
     resource: "supply_request",
     action: "mark_delivered",
+    category: "clinical",
+    abac: "none",
+  },
+  // F-193 (#248) — the M21-owned caregiver-signature capture (§4.1 has no row for it; D7's "optional via
+  // M22's signature flow" named a mechanism M22 was never going to build). Gated the same way
+  // `mark_delivered` is: RBAC only, no ABAC — the route further requires the request to already be
+  // `delivered` (a lifecycle guard, not an authorization predicate).
+  "supplies.request.caregiver_signature": {
+    resource: "supply_request",
+    action: "caregiver_signature",
     category: "clinical",
     abac: "none",
   },
@@ -4047,7 +4093,7 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
   },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M21 contributed permission keys (twenty-eight). */
+/** Union of the M21 contributed permission keys (twenty-nine). */
 export type M21ContributedPermissionKey = keyof typeof M21_CONTRIBUTED_PERMISSIONS;
 
 /**

@@ -208,6 +208,8 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
             patientId: DOC.patientId,
             patientFacing: DOC.patientFacing,
             activeVersionId: DOC.activeVersionId,
+            // F-197 (#248) — §7.16 portal mint-time SUD-consent re-check.
+            metadata: DOC.metadata,
           })
           .from(DV)
           .innerJoin(DOC, eq(DOC.id, DV.documentId))
@@ -216,10 +218,12 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
         const row = rows[0];
         // The mint targets the ACTIVE version only — a superseded version resolves to nothing.
         if (!row || row.activeVersionId !== args.documentVersionId) return null;
+        const metadata = (row.metadata ?? null) as { sudRedacted?: boolean } | null;
         return {
           documentId: row.documentId,
           patientId: row.patientId,
           patientFacing: row.patientFacing,
+          isSudClass: metadata?.sudRedacted === true,
         };
       });
     },

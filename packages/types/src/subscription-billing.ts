@@ -217,20 +217,21 @@ export type M35EventName = (typeof M35_EVENT_NAMES)[number];
  * `check-outbox-bindings.ts` (F-094/#205) is the first thing to check it, and found that HALF of what this
  * list named does not exist: **M2 contributes no event catalog to the boot dispatcher** — there is no
  * `M2_OUTBOX_EVENTS` — so the four `m2.*` topics the §4.12 seat-count and suspension logic are specified
- * against have no producer. They are registered in `scripts/outbox-subscription-exceptions.ts` rather than
- * deleted, because M35's whole per-seat billing model is specified on them and the absence is M2's to
- * close.
+ * against have no producer. That absence is now resolved (#205 — M2 catalogues 16 identity-lifecycle
+ * events).
  *
- * M35 has no `consumers/` directory either, so the rest are intents. The split is what the catalog says.
+ * F-142 (#248) corrected the OTHER half of this list, which was wrong in the opposite direction: it named
+ * `m32.tenant_opt_in.*`/`m32.capability.invoked`/`m34.tenant.provisioned`/`.offboarding_initiated` as
+ * subscribed, but M35's own D21 (locked, exhaustive — "8 inbound subscriptions") never names any of the
+ * five, and D24 states the M32/M34 relationships are both SEAMS (`UsageMeteringIngest.ingest` called INTO
+ * M35; `OnboardingStatusProvider` consumed FROM M34 as a forward-seam deny-stub), never outbox pushes. This
+ * list is now exactly D21's 8 — all catalogued and declaring `m35` except the two M5 events D21 itself
+ * marks record-only-target (`m5.patient.created`/`.status_changed` — M5 has refused that coupling; see
+ * `outbox-subscription-exceptions.ts`).
+ *
+ * M35 still has no `consumers/` directory, so all 8 are intents rather than live bindings.
  */
 export const M35_SUBSCRIBED_EVENT_NAMES = [
-  // Catalogued AND declaring `m35`.
-  "m32.tenant_opt_in.recorded",
-  "m32.tenant_opt_in.revoked",
-  "m32.capability.invoked",
-  "m34.tenant.provisioned",
-  "m34.tenant.offboarding_initiated",
-  // Subscribed and NOT routed here — the four `m2.*` have no producer at all.
   "m2.organization.activated",
   "m2.organization.suspended",
   "m2.organization.closed",

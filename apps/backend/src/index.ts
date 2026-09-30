@@ -6,6 +6,7 @@ import { auditPlatformEvent } from "@wardenx/audit";
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
+  LAB_RECOVERY_KEYS,
   createCredentialThrottle,
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
@@ -33,6 +34,7 @@ import type { AdmissionStatusReader } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
@@ -43,6 +45,7 @@ import {
   createDrizzleFeatureFlagAdmin,
   createDrizzleFeatureFlagReader,
 } from "./bootstrap/feature-flag-store";
+import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import {
   DEFAULT_RATE_LIMIT_TIERS,
   assertNoInMemoryBindingsOnDbBoot,
@@ -76,6 +79,8 @@ import {
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
 import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
+import { buildM1LagProbeStatusConsumer } from "./bootstrap/outbox-consumers/m33-lag-probe";
+import { buildM1MacPortalHealthConsumer } from "./bootstrap/outbox-consumers/m23-mac-portal-health";
 import {
   M1_OUTBOX_DISPATCHER_JOB_ID,
   type OutboxDispatcher,
@@ -102,11 +107,17 @@ import {
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
 } from "./bootstrap/provider-entity-resolver";
+// F-166 (#248) — M13's `m12.medication_order.active` materializer needs the order's location timezone.
+import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
+// F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
+// M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
+// the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
+import { loadPseudonymKekRing, type PseudonymKeyProvider } from "@wardenx/subscription-billing";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -137,6 +148,7 @@ import type { QualityHopeConsumer } from "@wardenx/quality";
 import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 import {
   M2_OUTBOX_EVENTS,
+  buildM2ConsentRevokedConsumer,
   createDrizzleIdentityEraserStore,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
@@ -146,6 +158,7 @@ import {
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import {
+  createMembershipsHoldingPermissionReader,
   createDbProposedRoleAttacher,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
@@ -161,15 +174,23 @@ import {
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
+  buildM5AdmissionSitingConsumer,
+  buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
+  buildM5VisitAssignedConsumer,
+  buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
+  createCaseloadStoreWithShiftCache,
   createDrizzleCareTeamStore,
   createDrizzleCaseloadStore,
   createDrizzlePatientEraseStore,
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
+  dosespotSyncDemographicsForOrg,
   getPatientCoverageReader,
   getPatientReader,
+  hl7OrmDemographicsInTx,
+  membershipUserIdForOrg,
   mountPatientRoutes,
   registerPatientErasers,
   registerPatientSeams,
@@ -179,9 +200,13 @@ import {
   M6_OUTBOX_EVENTS,
   M6_PLATFORM_JOB_ID,
   activeAdmissionDraftContextForPatient,
+  activeAdmissionSitingForPatientForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
+  idgCurrentLevelOfCareForOrg,
+  idgPacketInclusionForOrg,
   buildM6DocumentBackrefConsumer,
+  buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
@@ -207,6 +232,7 @@ import {
   createDbCarePlanAbacResolver,
   createDrizzleCarePlanEraseStore,
   createDrizzleCarePlanReaderStore,
+  idgPacketCarePlanContextForOrg,
   mountCarePlanRoutes,
   registerCarePlanAbacPredicates,
   registerCarePlanErasers,
@@ -225,6 +251,7 @@ import {
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
   createHearthnoteCiphers,
+  encounterIdsForVisitsForOrg,
   encounterVisitIdsForOrg,
   mountEncounterRoutes,
   registerEncounterAbacPredicates,
@@ -262,43 +289,90 @@ import {
   registerHopeRoutes,
   registerHopeSeams,
   registerM10CronWorkers,
+  hopeAssessmentPatientIdForOrg,
   scheduleM10Jobs,
   wireM10Tenancy,
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
+  M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
+  M11_VERBAL_TIMER_PLATFORM_JOB_ID,
+  buildM11AssessmentSuggestionConsumer,
   buildM11DischargeCascadeConsumer,
   buildM11DocumentBackrefConsumer,
+  buildM11FulfillmentStatusConsumer,
   buildM11IdgDecisionConsumer,
+  buildM11LabCancellationConsumer,
+  buildM11LabTransmissionApplierConsumer,
+  buildM11OrmRequestedPorts,
+  buildM11RecoveryAlertConsumer,
+  RECOVERY_ESCALATION_THRESHOLD,
+  RECOVERY_ORG_RATE_THRESHOLD,
+  parseRecoveryBound,
+  buildM11SupplyCancelledConsumer,
   createDbOrderBackend,
+  createStuckTransmissionRecovery,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
   createMedicationOrderSignatureCascade,
+  heldThresholdsFromEnv,
   mountOrderRoutes,
+  orderPatientAndKindForOrg,
+  registerHeldTransmissionRoutes,
   registerM11StandingSpawnWorker,
+  registerM11StuckTransmissionWorker,
+  registerM11VerbalOrderExpiryWorker,
   registerOrderAbacPredicates,
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
   scheduleM11StandingSpawn,
+  scheduleM11StuckTransmission,
+  scheduleM11VerbalOrderExpiry,
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
+  M12_PLATFORM_JOB_ID,
+  buildM12AdmissionActivatedMedHxConsumer,
   buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
+  buildM12DraftOrderRequestedConsumer,
   buildM12IdgDecisionConsumer,
+  buildM12PatientSyncAddressChangedConsumer,
+  buildM12PatientSyncCreatedConsumer,
+  buildM12PatientSyncPayerChangedConsumer,
+  buildM12PatientSyncUpdatedConsumer,
+  buildM12ReconciliationDiscontinueConsumer,
+  buildM12RecertificationMedHxConsumer,
+  buildM12VerbalExpiredConsumer,
+  createDrizzleAdmissionIdForElectionPeriodPort,
   createDrizzleDoseSpotSeamStore,
+  createDrizzleMedHxFetchEnqueuePort,
   createDrizzleMedicationOrderEraseStore,
+  createDrizzlePatientSyncEnqueuePort,
+  medicationOrderPatientAndDrugForOrg,
+  medicationOrderScheduleContextForOrg,
   mountDoseSpotRoutes,
   registerDoseSpotAbacPredicates,
   registerDoseSpotErasers,
   registerDoseSpotRoutes,
   registerDoseSpotSeams,
+  registerDoseSpotSyncQueueWorker,
+  scheduleDoseSpotSyncQueueDrain,
+  wireM12Tenancy,
 } from "./modules/12-dosespot/index";
 import {
   M13_OUTBOX_EVENTS,
+  buildM13AdmissionDischargedCascadeConsumer,
+  buildM13CancelFutureScheduleConsumer,
+  buildM13ComfortKitDeployedConsumer,
+  buildM13ComfortKitReplenishedConsumer,
+  buildM13ComfortKitReturnedConsumer,
+  buildM13ComfortKitReturnReconciliationConsumer,
   buildM13DocumentBackrefConsumer,
+  buildM13MaterializeScheduleConsumer,
+  buildM13ReconciliationTriggerConsumer,
   createDrizzleEmarEraseStore,
   createDrizzleEmarSeamStore,
   mountEmarRoutes,
@@ -311,6 +385,12 @@ import {
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
   buildM14ActionItemAutoCloseConsumer,
+  buildM14AssessmentRecordedConsumer,
+  buildM14AssessmentSignificantChangeConsumer,
+  buildM14HopeJ2051TriggerConsumer,
+  buildM14HopeSfvCreatedConsumer,
+  buildM14MedicationOrderDiscontinuedConsumer,
+  buildM14OrderDiscontinuedConsumer,
   buildM14WorkerDeps,
   createDrizzleIdgEraseStore,
   createDrizzleIdgSeamStore,
@@ -343,7 +423,11 @@ import {
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
+  buildM16ConsentRevokedConsumer,
+  buildM16ConsentSignedConsumer,
+  buildM16DischargeDeathSecondaryConsumer,
   buildM16IdgDecisionConsumer,
+  buildM16PatientOptOutChangedConsumer,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
   denyStubBereavementAbacResolver,
@@ -352,11 +436,26 @@ import {
   registerBereavementErasers,
   registerBereavementSeams,
 } from "./modules/16-bereavement/index";
+// F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
+// plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
+import {
+  bereavedContactFlipCandidateForOrg,
+  bereavedContactFlipCandidatesForPlanForOrg,
+  bereavementPlanSitingForOrg,
+} from "./modules/16-bereavement/seams/plan-provider-entity-for-org";
 import {
   M17_OUTBOX_EVENTS,
   buildM17AdmissionLifecycleConsumer,
   buildM17CarePlanProposalConsumer,
   buildM17EncounterSignedConsumer,
+  buildM17EvvAtPatientAddressConsumer,
+  buildM17EvvCheckInConsumer,
+  buildM17EvvLateCheckResolvedConsumer,
+  buildM17EvvCheckOutConsumer,
+  buildM17EvvEventCorrectedConsumer,
+  buildM17SosVisitCancellationConsumer,
+  buildM17TriageVisitNeededConsumer,
+  buildM17VolunteerAssignmentInactivatedConsumer,
   buildM17WorkerDeps,
   createDrizzleCredentialStore,
   createDrizzleSchedulingSeamStore,
@@ -369,6 +468,8 @@ import {
 } from "./modules/17-scheduling/index";
 import {
   M18_OUTBOX_EVENTS,
+  buildM18EncounterSignedConsumer,
+  buildM18VisitCancelledConsumer,
   buildM18VisitPublishedConsumer,
   complianceStatesForVisitsForOrg,
   createDrizzleEvvSeamStore,
@@ -377,21 +478,29 @@ import {
   registerEvvRoutes,
   registerEvvSeams,
 } from "./modules/18-evv/index";
+// F-194 (#248) — M18's org-explicit EVV-visit-provider-entity seam, injected as a port into M30's
+// visit-verified consumer (M30's manifest `dependsOn` excludes 18, the F-160 `CapConsumerStore` shape).
+import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-provider-entity-for-org";
 import {
   M19_OUTBOX_EVENTS,
+  M19_PLATFORM_JOB_ID,
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
   buildDrizzleOncallAbacResolver,
   buildDrizzleOncallSeamStore,
   buildDrizzleVendorSessionBindReader,
+  buildOncallRosterSyncDebounceConsumer,
   buildOncallTriggerConsumers,
   createDrizzleInboundTriggerPorts,
   createDrizzleTriageEraseStore,
   denyStubOncallAbacResolver,
   mountM19Routes,
+  registerM19CronWorkers,
   registerOncallAbacPredicates,
   registerOncallSeams,
   registerTriageErasers,
+  scheduleM19Jobs,
+  wireM19Tenancy,
 } from "./modules/19-oncall/index";
 import {
   M20_OUTBOX_EVENTS,
@@ -421,6 +530,10 @@ import {
   buildDrizzleM21WriteService,
   buildDrizzleSuppliesAbacResolver,
   buildDrizzleSuppliesSeamStore,
+  buildM21ComfortKitControlledSubstanceReemitConsumer,
+  buildM21ComfortKitDeploymentAckConsumer,
+  buildM21ComfortKitReplenishmentIntakeConsumer,
+  buildM21ComfortKitReturnRequiredConsumer,
   buildM21DocumentBackrefConsumer,
   buildM21OrderDiscontinuedConsumer,
   buildM21SupplyCancellationConsumer,
@@ -435,6 +548,8 @@ import {
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
+  buildM22LabBackrefConsumer,
+  buildM22MedicationListConsumer,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
@@ -442,6 +557,7 @@ import {
   createS3ObjectStore,
   createS3TenantStorageProvisioner,
   createSignedUrlService,
+  createSudConsentEvaluatorPortalConsentPort,
   deriveTenantBucket,
   getDocumentRenderer,
   mountDocumentRoutes,
@@ -463,22 +579,28 @@ import {
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildM23BootAssemblyService,
+  buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
   buildM23NotrDraftConsumer,
   buildM23OutboxBackedSubmissionGate,
   buildM23RemittanceConsumer,
+  buildM23RevalidateEnqueuePort,
+  buildM23RevalidateTriggerConsumers,
   buildM23SubmissionQueuePort,
   buildM23SubmissionRequestConsumer,
+  buildM23TaxonomyUnmappedCodeObservedConsumer,
   buildM23WorkerDeps,
+  buildDrizzleRevalidationTargetResolver,
   createDrizzleBillingEraseStore,
   createM23LaunchGateway,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
   registerBillingErasers,
   registerM23AbacPredicates,
+  registerM23CronWorkers,
   registerM23LaunchWorkers,
   registerM23PublishedSeams,
-  scheduleM23LaunchJobs,
+  scheduleM23Jobs,
 } from "./modules/23-billing-medicare/index";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -489,20 +611,32 @@ import {
 // are deferred follow-ups (the M26 posture — the adapter wire I/O lands later).
 import {
   M24_OUTBOX_EVENTS,
+  M24_PLATFORM_JOB_ID,
   M24_SUBMISSION_REQUEST_EVENTS,
   buildCredentialCipherPort,
+  buildDrizzleActivePeStatesLister,
   buildDrizzleCredentialResolver,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
+  buildDrizzleStateChannelCredentialResolver,
+  buildM24MedicarePrimaryAckConsumer,
+  buildM24RemittanceConsumer,
+  buildM24RevalidateEnqueuePort,
+  buildM24RevalidateTriggerConsumers,
   buildM24SubmissionQueuePort,
   buildM24SubmissionRequestConsumer,
   buildM24SubmissionWorkerDeps,
+  buildStateChannelHealthProbe,
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
   registerM24AbacPredicates,
   registerM24LaunchWorkers,
   registerM24PublishedSeams,
+  registerM24RevalidateWorker,
+  registerM24StateChannelHealthWorker,
   registerMedicaidErasers,
+  scheduleM24StateChannelHealthJob,
+  wireM24Tenancy,
 } from "./modules/24-billing-medicaid/index";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
@@ -518,6 +652,7 @@ import {
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
   buildM23BackedClaimMatchCandidateProvider,
+  buildM24BackedClaimMatchCandidateProvider,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
   createDrizzleRemittanceEraseStore,
@@ -546,6 +681,24 @@ import {
   registerM26PublishedSeams,
   scheduleM26Jobs,
 } from "./modules/26-cap/index";
+// F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
+// group, fed by two new org-explicit seam reads (M5's MBI, M6's first-election-in-range) injected as
+// ports since M26's manifest dependsOn is [1, 23, 36] — it cannot import M5 or M6 directly.
+import { mbiNormalizedForPatient } from "./modules/05-patient/seams/mbi-reader";
+import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
+import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
+import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-binding";
+// F-160 (#248) — M31's first outbox consumers: the telehealth force-end/re-mint/reconcile trio over
+// `telehealth_visit`, M31's own owned table.
+import { buildM31VisitCancelledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-cancelled-telehealth";
+import { buildM31VisitRescheduledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-rescheduled-telehealth";
+import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
+import { buildM31BereavementPlanClosedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-closed";
+import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-opened";
+// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
+// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
+import { buildM31BereavementContactActiveConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-contact-active";
+import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/outbox-consumers/m39-consent-revoked";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). WX-PR-013 bound the recompute-enqueue producer + the outbox/alerts/active-org worker
@@ -564,6 +717,7 @@ import {
   buildM27DocumentBackrefConsumer,
   buildM27RecomputeEnqueue,
   buildM27ValidationContext,
+  buildM27VendorInvoiceConsumer,
   buildM27WorkerDeps,
   createDrizzleCostReportEraseStore,
   m27CapSeamResolver,
@@ -600,24 +754,41 @@ import {
 // a lazy M5 CaseloadProvider adapter.
 import {
   M29_OUTBOX_EVENTS,
+  M29_PLATFORM_JOB_ID,
   NPPES_SYNC_SCHEDULE,
   buildDrizzleM29AbacResolver,
+  buildDrizzleOutboundFeedResolver,
+  buildM29OutboundDispatchConsumer,
+  buildM29PatientDeceasedConsumer,
   buildNppesManualSyncTrigger,
   createDrizzleM29PublishedSeamStore,
+  ormOutboundEvidenceForOrder,
+  ormOutboundFeedsForOrders,
+  outboundBaaCleared,
   createDrizzleM29Store,
+  createFeedRateLimiter as createM29OutboundRateLimiter,
   denyStubM29AbacResolver,
   mountM29Routes,
   registerM29AbacPredicates,
+  registerM29OutboundRetrySweepWorker,
   registerM29PublishedSeams,
   registerNppesSyncWorker,
+  scheduleM29OutboundRetrySweepJob,
   scheduleNppesSyncJob,
+  wireM29Tenancy,
 } from "./modules/29-external-interfaces/index";
 import {
   M30_OUTBOX_EVENTS,
   M30_PLATFORM_JOB_ID,
   buildDrizzleM30ReadService,
   buildDrizzleM30WriteService,
+  buildM30BereavementPlanClosedConsumer,
+  buildM30ClaimAdjudicatedConsumer,
+  buildM30HopeSubmissionAcceptedConsumer,
+  buildM30MedicationErrorReportedConsumer,
   buildM30RecomputeEnqueue,
+  buildM30RestraintAppliedConsumer,
+  buildM30VisitVerifiedConsumer,
   buildM30WorkerDeps,
   createDrizzleQualityEraseStore,
   mountM30Routes,
@@ -729,6 +900,10 @@ import {
 import {
   M35_OUTBOX_EVENTS,
   buildDrizzleM35RouteService,
+  buildM35OrgLifecycleConsumer,
+  buildM35PatientActivePeriodConsumer,
+  buildM35SessionCreatedConsumer,
+  createDrizzlePseudonymKeyProvider,
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
@@ -752,6 +927,8 @@ import {
   M37_OUTBOX_EVENTS,
   M37_PLATFORM_JOB_ID,
   buildDrizzleIpuRouteService,
+  buildM37AdmissionDischargedConsumer,
+  buildM37DeathRecordedConsumer,
   buildM37WorkerDeps,
   getIpuAdmissionStatusReader,
   getIpuOrderReader,
@@ -766,6 +943,9 @@ import {
   validateIpuAIBlock,
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
+// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
+// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
+import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
 import {
   createDbTerminologyStore,
   createDrizzleTerminologyEraseStore,
@@ -841,6 +1021,10 @@ export function wireModuleSeams(
     /** The catalog-validating tx outbox publisher (TASK-002) — the M5 PatientMutator's §4.6
      * `m5.patient.updated` emit rides it. Absent on slice/test boots (mutator stays in-memory). */
     outboxPublisher?: OutboxPublishPort;
+    /** F-165 (#248, m24 group) — the dedicated Redis/Valkey client M5's `CaseloadStore` shift-assignment cache
+     * reads/writes through. Absent on slice/test boots (no `queueConnection`) or when Redis is
+     * unconfigured; `CaseloadStore` then stays Phase-1 (`patient_assignment` alone). */
+    caseloadShiftCacheRedis?: Redis | null;
   } = {},
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
@@ -895,7 +1079,17 @@ export function wireModuleSeams(
     deps.db
       ? {
           db: deps.db,
-          caseload: { store: createDrizzleCaseloadStore(deps.db) },
+          // F-165 (#248, m24 group) — the shift-assignment Valkey cache is unioned in additively ONLY when a
+          // dedicated Redis client is configured; a slice/test boot (or Redis genuinely unconfigured)
+          // keeps the Phase-1 `patient_assignment`-only store.
+          caseload: {
+            store: deps.caseloadShiftCacheRedis
+              ? createCaseloadStoreWithShiftCache(
+                  createDrizzleCaseloadStore(deps.db),
+                  deps.caseloadShiftCacheRedis,
+                )
+              : createDrizzleCaseloadStore(deps.db),
+          },
           careTeam: { store: createDrizzleCareTeamStore(deps.db) },
           readerStore: createDrizzlePatientReaderStore(deps.db),
           ...(deps.outboxPublisher
@@ -1316,6 +1510,11 @@ export function wireModuleSeams(
   // even when the S3 object write succeeded for real (MINIO_* present), the catalog row landed in a
   // private per-process Map no reader seam could ever see — not a restart-loses-data bug, a permanently
   // disconnected write path.
+  // F-197 (#248) — `portalConsent:` was NEVER passed here, even when `deps.db` is present, so it silently
+  // fell back to `registerDocumentSeams`'s in-memory default in every real deployment — `DocumentSeamDeps`'s
+  // own doc comment always said "M39 ConsentEvaluator in prod," but no production call site ever supplied
+  // one. Mirrors `registerConsentSeams`'s own adjacent, already-correct pattern immediately below: a
+  // real seam-backed port when `deps.db` is present, the in-memory default only in the slice/tests.
   const s3Config = deps.db ? s3ObjectStoreConfigFromEnv(process.env) : null;
   registerDocumentSeams(
     deps.db
@@ -1325,6 +1524,7 @@ export function wireModuleSeams(
           objects: s3Config
             ? createS3ObjectStore(s3Config)
             : createRefusingObjectStore(),
+          portalConsent: createSudConsentEvaluatorPortalConsentPort(),
         }
       : {},
   );
@@ -1426,7 +1626,9 @@ export function wireModuleSeams(
   // wireM33Tenancy / wireM34Tenancy precedent.
   wireM30Tenancy();
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
+  wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
+  wireM29Tenancy(); // F-175 (#248) — allowlist the cron job id so the outbound-dispatch retry sweep may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
   wireM6Tenancy();
   wireM7Tenancy();
@@ -1435,6 +1637,10 @@ export function wireModuleSeams(
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
+  registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
+  registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
+  wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
+  wireM19Tenancy(); // F-155 (#248) — allowlist the cron job id so the on_call_roster_sync_queue drain + catch-up-seed workers may enter withPlatformContext
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
   // Without the watchdog nothing ever wrote `ipu_rn_coverage_window`, and the four write paths that read
   // it treat an absent row as uncovered — so every GIP and respite admission was refused at open.
@@ -2180,6 +2386,29 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const platformDbHandle = process.env.DATABASE_PLATFORM_URL
     ? createDbClient({ connectionString: process.env.DATABASE_PLATFORM_URL })
     : undefined;
+  // F-172 (#248) — `PseudonymKeyProvider.activeKey()`'s first real implementation. `patient_pseudonym_key`
+  // is one of the six platform-only M35 tables the comment above already names, so this rides the SAME
+  // `platformDbHandle` credential; the KEK ring is a SEPARATE secret (`M35_PSEUDONYM_KEY_KEK`) from
+  // `M34_TENANT_KEK`. Absent either half, `pseudonymKeyProvider` fails closed with a stated reason —
+  // never silently returns a zero/derived key — so the two consumers below dead-letter loudly rather than
+  // pseudonymizing under a key nobody configured.
+  const pseudonymKeyRing = loadPseudonymKekRing(process.env);
+  const pseudonymKeyProvider: PseudonymKeyProvider =
+    platformDbHandle && pseudonymKeyRing
+      ? createDrizzlePseudonymKeyProvider(platformDbHandle.db, pseudonymKeyRing)
+      : {
+          activeKey() {
+            return Promise.reject(
+              new Error(
+                "PseudonymKeyProvider unbound: requires both DATABASE_PLATFORM_URL and M35_PSEUDONYM_KEY_KEK to be configured",
+              ),
+            );
+          },
+        };
+  // F-175 (#248) — the M29 outbound-dispatch per-feed rate limiter (`external_feed.rate_limit_msg_per_sec`),
+  // constructed ONCE and shared between the fresh-dispatch `OutboxConsumerBinding` and the retry-sweep
+  // worker (both below) so the throttle budget is genuinely shared across both send paths, not doubled.
+  const m29OutboundRateLimiter = createM29OutboundRateLimiter();
   // TASK-003 follow-up — the DESTRUCTION credential (a login role IN ROLE wardenx_destruction,
   // migration 0157: DELETE/UPDATE grants scoped to exactly what the erase stores execute, org-pinned
   // RLS policies — never BYPASSRLS). The append-only clinical/billing tables grant wardenx_app no
@@ -2241,6 +2470,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     queueConnection && m23LaunchGateway
       ? buildM23SubmissionQueuePort(queueConnection)
       : null;
+  // F-153 (#248) — the `revalidate.consumer` producer, unlike submission, needs no MAC/X12 launch
+  // gateway — only the Valkey connection the worker itself already requires to run. Built unconditionally
+  // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
+  const m23RevalidateEnqueue = buildM23RevalidateEnqueuePort(queueConnection);
   // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
   // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
   // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
@@ -2253,6 +2486,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     queueConnection && m24OregonGateway
       ? buildM24SubmissionQueuePort(queueConnection)
       : null;
+  // F-165 (#248, m24 group) — the `medicaid-revalidate` producer, mirroring M23's `revalidate.consumer` port
+  // above: needs no Oregon launch gateway, only the Valkey connection. Built unconditionally
+  // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
+  const m24RevalidateEnqueue = buildM24RevalidateEnqueuePort(queueConnection);
   // M29 D11 (GAP-045) — the §4.1.4 manual NPPES-sync enqueue. Built here (not in the worker-runner
   // section) because the ROUTE needs it and the route mount runs first; the nightly repeatable + the
   // Worker that drains this same queue are registered further below. Absent REDIS_URL → the trigger route
@@ -2317,8 +2554,47 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         maxRetriesPerRequest: null,
       })
     : null;
+  // F-152 (#248) — M11's §2.7 D7 order-suggestion banner (`orders:suggestion:<patientId>`, 7-day TTL).
+  // A dedicated connection rather than reusing `stepUpRedisClient`: low-traffic and non-hot-path like
+  // that one, but a distinct concern per this file's own one-connection-per-concern convention (see
+  // `rateLimitRedisClient` below) — mixing concerns on one connection couples their failure/retry
+  // tuning together for no shared benefit.
+  const orderSuggestionRedisClient = queueConnection
+    ? new Redis({
+        ...(queueConnection as RedisOptions),
+        maxRetriesPerRequest: null,
+      })
+    : null;
+
+  // F-164 (#248) — M14's §4.5 "since last IDG" per-patient projection cache
+  // (`wardenx:m14:idg:since-last-idg:<patientId>`, 30-day TTL). A dedicated connection, the
+  // `orderSuggestionRedisClient` shape immediately above: low-traffic, non-hot-path, and a distinct
+  // concern from every other client on this file's one-connection-per-concern convention.
+  const m14SinceLastIdgRedisClient = queueConnection
+    ? new Redis({
+        ...(queueConnection as RedisOptions),
+        maxRetriesPerRequest: null,
+      })
+    : null;
+
+  // F-165 (#248, m24 group) — M5's `CaseloadStore` shift-assignment cache
+  // (`wardenx:m5:caseload-cache:<org>:<userId>`, per-entry TTL off each visit's own scheduled end). A
+  // dedicated connection, the `orderSuggestionRedisClient`/`m14SinceLastIdgRedisClient` shape
+  // immediately above: this one sits on the `CaseloadProvider` ABAC read path (see
+  // `05-patient/seams/shift-caseload-cache.ts`'s header for why a read error there degrades rather
+  // than propagates), a distinct failure/retry concern from every other client on this file's
+  // one-connection-per-concern convention.
+  const m5CaseloadShiftCacheRedisClient = queueConnection
+    ? new Redis({
+        ...(queueConnection as RedisOptions),
+        maxRetriesPerRequest: null,
+      })
+    : null;
 
   stepUpRedisClient?.on("error", () => {});
+  orderSuggestionRedisClient?.on("error", () => {});
+  m14SinceLastIdgRedisClient?.on("error", () => {});
+  m5CaseloadShiftCacheRedisClient?.on("error", () => {});
   redisHealthClient?.on("error", () => {});
   // WX-PR-017 — the SD-055 rate limiter's cluster-wide counter store. A DEDICATED connection, not a
   // reuse of `redisHealthClient` above: that one is tuned for a periodic /ready ping (lazyConnect,
@@ -2549,6 +2825,27 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
   const m2OutboxPublisher = bindCallerModule(txOutboxPublisher, "m2");
+  // F-202/F-203 (#248) — M11's two-person lab-recovery control. Its compliance alerts are DURABLE (F-203): the service
+  // publishes `m11.order.recovery_alert_requested` in the recovery's own transaction and
+  // `buildM11RecoveryAlertConsumer` (registered with the outbox consumers below) delivers it to M36's AlertEmitter, so
+  // there is no alert port here. The bound that forces a high-trust co-signer, and the org-rate alert threshold, are
+  // env-overridable; an invalid value FALLS BACK to the default rather than disabling the bound.
+  const m11RecoveryControls = {
+    escalationThreshold: parseRecoveryBound(
+      process.env.M11_RECOVERY_ESCALATION_THRESHOLD,
+      RECOVERY_ESCALATION_THRESHOLD,
+    ),
+    orgRateThreshold: parseRecoveryBound(process.env.M11_RECOVERY_ORG_RATE_THRESHOLD, RECOVERY_ORG_RATE_THRESHOLD),
+    // F-205 — refuse to file a recovery nobody else can co-sign. M11 does not own the membership/role tables, so the
+    // count is answered here, in the composition root, under the caller's org context (RLS-scoped).
+    countEligibleCosigners: dbHandle
+      ? buildM11CosignerCounter(
+          dbHandle.db,
+          createMembershipsHoldingPermissionReader(dbHandle.db),
+          [LAB_RECOVERY_KEYS.recover, LAB_RECOVERY_KEYS.cosignEscalated],
+        )
+      : undefined,
+  };
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -2792,10 +3089,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // three surfaces that consume it, so the tenant read route and the module gates cannot disagree about
   // what a tenant's flags are. Undefined on a no-db boot, where the empty default remains correct.
   const featureFlagReader = dbHandle ? createDrizzleFeatureFlagReader(dbHandle.db) : undefined;
+  // F-173 (#248, m1 group) — the Drizzle-backed `SystemStatusReader` (`bootstrap/system-status-store.ts`).
+  // F-156 found the composition root never overrode the in-memory boot default, so `POST
+  // /admin/system/status` had never once persisted to the real `system_status` table in any environment.
+  // Same `dbHandle`-gated swap shape as `featureFlagReader` immediately above; `system_status` carries no
+  // RLS, so the reader is safe on the same handle with no org envelope (see the store file's own header).
+  const systemStatusReader = dbHandle ? createDrizzleSystemStatusReader(dbHandle.db) : undefined;
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
     ...(featureFlagReader ? { featureFlagReader } : {}),
+    ...(systemStatusReader ? { systemStatusReader } : {}),
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
     // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
     // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").
@@ -2946,7 +3250,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // had no UPDATE anywhere in the codebase before this.
           mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
-          mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
+          mountPatientRoutes(app, dbHandle.db, m5OutboxPublisher); // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248)
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
           registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
           mountAdmissionRoutes(
@@ -2983,7 +3287,25 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
-          mountOrderRoutes(app, dbHandle.db, m11OutboxPublisher); // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox
+          // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox. F-181 (#248): the
+          // fourth argument is what lets a signed lab order request its outbound HL7 ORM (M5 demographics, M40
+          // physician + facility, M29's single active `orm_outbound` feed) — refused-not-fabricated when unresolvable.
+          mountOrderRoutes(
+            app,
+            dbHandle.db,
+            m11OutboxPublisher,
+            buildM11OrmRequestedPorts({
+              patient: hl7OrmDemographicsInTx,
+              feeds: buildDrizzleOutboundFeedResolver(),
+              // F-188 — the evidence the attested recovery checks a `not_received_by_lab` against.
+              outboundEvidence: ormOutboundEvidenceForOrder,
+            }),
+            // F-202 — the two-person recovery control's compliance alerts. The seam is resolved LAZILY (at emit time):
+            // it is registered during boot, after the routes mount.
+            m11RecoveryControls,
+          );
+          // F-201 (#248) — the held-order worklist: lab orders waiting on a human's verification with the lab.
+          registerHeldTransmissionRoutes(app, { recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher) });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
@@ -3307,14 +3629,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `NO_X12_835_PORT`) unless M25_X12_WORKER_URL is configured — no Python x12-worker sidecar is
           // deployed anywhere yet, so this stays unreachable in every environment today, same as M23's own
           // `x12-837-client` transport; the CODE is real and will call out for real once ops points it at a
-          // live sidecar. `claims` binds M23's real ClaimSubmissionReader seam (degrades to "no
-          // candidates"/"no patient id" — never fabricates a match — until M23 registers it, which now
-          // happens automatically at this same boot via `registerM23PublishedSeams`).
+          // live sidecar. `claims` binds M23's real ClaimSubmissionReader seam for Medicare advices and
+          // M24's real MedicaidClaimMatchProvider seam for Medicaid advices (F-172, #248 m24 group) —
+          // routed by each advice's own `payerKind` inside `service-drizzle.ts`; each degrades to "no
+          // candidates"/"no patient id" — never fabricates or cross-routes a match — until its owning
+          // module registers it, which now happens automatically at this same boot via
+          // `registerM23PublishedSeams` / `registerM24PublishedSeams`.
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(m25X12Port),
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
-            claims: buildM23BackedClaimMatchCandidateProvider(),
+            claims: {
+              medicare: buildM23BackedClaimMatchCandidateProvider(),
+              medicaid: buildM24BackedClaimMatchCandidateProvider(),
+            },
           });
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(
@@ -3700,6 +4028,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         organizationDb: platformDbHandle?.db,
         platformDb: platformDbHandle?.db,
         outboxPublisher: txOutboxPublisher,
+        // F-165 (#248, m24 group) — see the client's own construction comment above.
+        caseloadShiftCacheRedis: m5CaseloadShiftCacheRedisClient,
       }),
     registerModuleErasers: () =>
       wireModuleErasers({
@@ -3715,11 +4045,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       );
     });
   }
+  app.addHook("onClose", async () => {
+    await Promise.all(m23RevalidateEnqueue.queues.map((queue) => queue.close()));
+  });
   if (m24SubmissionQueues) {
     app.addHook("onClose", async () => {
       await Promise.all(
         m24SubmissionQueues.queues.map((queue) => queue.close()),
       );
+    });
+  }
+  if (m24RevalidateEnqueue.queue) {
+    const m24RevalidateQueue = m24RevalidateEnqueue.queue;
+    app.addHook("onClose", async () => {
+      await m24RevalidateQueue.close();
     });
   }
   if (m34ProvisionQueue)
@@ -4398,35 +4737,72 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // are follow-ups.
     let m23Workers: Worker[] = [];
     if (m23LaunchGateway) {
+      // F-161 (#248) — the §4.9 MAC-portal-health/window-watch alert routing, over the live M36
+      // AlertEmitter seam (the M27 `WX-PR-013` pattern). Was never bound: every real
+      // `alerts.dispatch()` call threw `unboundWorkerPort`.
+      const m23AlertEmitter = getSeam("AlertEmitter") as {
+        emit(
+          orgId: string,
+          input: {
+            eventType: string;
+            payload: Record<string, unknown>;
+            severity: string;
+            correlationId: string;
+          },
+        ): Promise<unknown>;
+      };
       const m23WorkerDeps = buildM23WorkerDeps({
         connection: queueConnection,
         db: dbHandle.db,
         outbox: m23OutboxPublisher,
+        alerts: {
+          dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+            await m23AlertEmitter.emit(organizationId, {
+              eventType: alertCode,
+              payload,
+              severity,
+              correlationId: `m23-cron:${alertCode}`,
+            });
+          },
+        },
         x12: m23LaunchGateway.x12,
         macPortal: m23LaunchGateway.macPortal,
         jurisdictions: {
           listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }],
         },
+        // F-153 (#248) — the real target resolver for the `revalidate.consumer` worker (was fail-closed
+        // unbound; every job would have thrown the moment it ran).
+        revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       });
-      m23Workers = registerM23LaunchWorkers(m23WorkerDeps);
+      m23Workers = [
+        ...registerM23LaunchWorkers(m23WorkerDeps),
+        // F-161 (#248) — `registerM23CronWorkers` (NOE/NOTR window-watch, eligibility-stale-watch,
+        // and MAC-portal health) was never called anywhere in this file — only the narrower
+        // `registerM23LaunchWorkers` (claim/NOE/NOTR submit + the two ack-pull crons) was wired, so
+        // all four of these crons were unregistered and never ran a single tick in any deployment.
+        // Their remaining unbound ports (`noticeWindow`/`hets`/`activeOrgs`/`validationRunner`) stay
+        // RULE-4 fail-closed and throw only when a job actually runs.
+        ...registerM23CronWorkers(m23WorkerDeps),
+      ];
       attachDlqAlertsToAll(m23Workers, "m23");
       app.addHook("onClose", async () => {
         await Promise.all(m23Workers.map((worker) => worker.close()));
       });
       try {
-        const m23ScheduleQueues = await scheduleM23LaunchJobs(queueConnection);
+        // F-161 (#248) — `scheduleM23Jobs` is a superset of `scheduleM23LaunchJobs` (it schedules the
+        // same `ackPull999`/`ackPull277ca` repeat patterns plus the 4 crons `scheduleM23LaunchJobs`
+        // never covered) — BullMQ dedupes an identical repeat pattern re-added to the same queue, but
+        // there is no reason to call both; this one call now covers all six.
+        const m23ScheduleQueues = await scheduleM23Jobs(queueConnection);
         app.addHook("onClose", async () => {
           await Promise.all(m23ScheduleQueues.map((queue) => queue.close()));
         });
       } catch (err) {
-        app.log.error(
-          err,
-          "M23 launch acknowledgment schedule registration failed",
-        );
+        app.log.error(err, "M23 cron schedule registration failed");
       }
       app.log.info(
         { queues: m23Workers.length },
-        "M23 launch submission workers constructed",
+        "M23 launch submission + cron workers constructed",
       );
     } else {
       app.log.warn(
@@ -4459,6 +4835,94 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.warn(
         "M24 launch workers disabled: configure M24_LAUNCH_GATEWAY_ENABLED and M24_CREDENTIAL_ENCRYPTION_KEY",
       );
+    }
+    // F-165 (#248, m24 group) — the `medicaid-revalidate` worker, unlike the submit/poll pair above, needs no
+    // Oregon launch gateway or credential resolver (it only re-runs the rule engine + drives the pure
+    // machine's `revalidate` edge) — constructed whenever a queue connection exists, independent of
+    // `m24OregonGateway`/`m24CredentialResolver`.
+    const m24RevalidateWorker = registerM24RevalidateWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m24OutboxPublisher,
+    });
+    app.addHook("onClose", async () => {
+      await m24RevalidateWorker.close();
+    });
+    // F-172 (#248, m1 group) — the `state-channel-health` §4.9 cron: genuinely unbuilt before now
+    // (`M24_CRON_QUEUES.stateChannelHealth` was declared with no worker/schedule/handler anywhere — not
+    // merely unwired). Requires the §8.7 credential cipher port (to decrypt trading-partner credentials —
+    // the same RULE-4 gate the submit/poll workers use); the Oregon gateway probe itself degrades to a
+    // permanent no-op (StateChannelHealthProbePort returns null for every state) rather than throwing when
+    // `m24OregonGateway` is unconfigured, so this cron constructs whenever a queue connection + the cipher
+    // exist — it will simply observe and report nothing until Oregon's launch gateway is also configured.
+    if (m24CredentialCipher) {
+      const m24ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: dbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M24_PLATFORM_JOB_ID,
+        reason: "M24 §4.9 state-channel-health cron fan-out (active-org enumeration)",
+      });
+      const m24StateChannelHealthWorker = registerM24StateChannelHealthWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        activeOrgs: m24ActiveOrgs,
+        listPeStates: buildDrizzleActivePeStatesLister(),
+        credentials: buildDrizzleStateChannelCredentialResolver(m24CredentialCipher),
+        probe: buildStateChannelHealthProbe(m24OregonGateway),
+        outbox: m24OutboxPublisher,
+      });
+      app.addHook("onClose", async () => {
+        await m24StateChannelHealthWorker.close();
+      });
+      try {
+        const m24StateChannelHealthQueue = await scheduleM24StateChannelHealthJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m24StateChannelHealthQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M24 state-channel-health cron schedule registration failed");
+      }
+      app.log.info("M24 state-channel-health cron worker constructed");
+    } else {
+      app.log.warn(
+        "M24 state-channel-health cron disabled: configure M24_CREDENTIAL_ENCRYPTION_KEY",
+      );
+    }
+    // F-175 (#248) — the M29 outbound-dispatch retry sweep: a poll-based cron over `idx_hmo_next_retry`
+    // (`status='queued' AND nextRetryAt<=now`), the mechanism `./outbound/queues.ts`'s own header decides
+    // on and justifies over a per-row BullMQ delayed job. Needs only a queue connection + the tenant DEK
+    // seam (both unconditionally available whenever `dbHandle` exists, per the comment on the fresh-
+    // dispatch consumer above) — constructs whenever `queueConnection` exists, the `m24RevalidateWorker`
+    // "no extra credential needed" shape.
+    if (queueConnection) {
+      const m29ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: dbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M29_PLATFORM_JOB_ID,
+        reason: "M29 §4.9-shaped outbound-dispatch retry-sweep cron fan-out (active-org enumeration)",
+      });
+      const m29RetrySweepWorker = registerM29OutboundRetrySweepWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m29OutboxPublisher,
+        keys: getTenantKeyProvider(),
+        rateLimiter: m29OutboundRateLimiter,
+        activeOrgs: m29ActiveOrgs,
+      });
+      app.addHook("onClose", async () => {
+        await m29RetrySweepWorker.close();
+      });
+      try {
+        const m29RetrySweepQueue = await scheduleM29OutboundRetrySweepJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m29RetrySweepQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M29 outbound-dispatch retry-sweep cron schedule registration failed");
+      }
+      app.log.info("M29 outbound-dispatch retry-sweep cron worker constructed");
+    } else {
+      app.log.warn("M29 outbound-dispatch retry-sweep cron disabled: configure REDIS_URL");
     }
     // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
@@ -4807,19 +5271,41 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       "M10 §4.8 BullMQ HOPE crons constructed (watchdogs; iQIES submission is the manual package flow)",
     );
 
-    // ── M14 §4.8 `idg.review-clock-sweep` cron (GAP-092 — the M9/M10/M25 worker-runner shape) ────────────
+    // ── M14 §4.8 crons: `idg.review-clock-sweep` (GAP-092), `idg.schedule-materialise` (§7.1) and
+    // `idg.packets-cron` (§4.9.1 `tminus-24h-build`, F-171 — the real T-24h packet-build worker) — the
+    // M9/M10/M25 worker-runner shape. `m6`/`m7` are the org-explicit ports `packet-build.ts` needs
+    // (`idgPacketInclusionForOrg`/`idgCurrentLevelOfCareForOrg` on M6, `idgPacketCarePlanContextForOrg` on
+    // M7), wired here rather than imported by M14 directly — a locally-declared structural port type on
+    // the M14 side, the `arch:boundaries` type-only-import rule (F-165's `m16-plan-closed.ts` precedent).
     const m14ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: dbHandle.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M14_PLATFORM_JOB_ID,
       reason:
-        "M14 §4.8 idg.review-clock-sweep cron fan-out (active-org enumeration)",
+        "M14 §4.8 idg.review-clock-sweep / idg.schedule-materialise / idg.packets-cron fan-out (active-org enumeration)",
     });
     const m14WorkerDeps = buildM14WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
       outbox: m14OutboxPublisher,
       activeOrgs: m14ActiveOrgs,
+      redis: m14SinceLastIdgRedisClient ?? undefined,
+      m6: {
+        inclusionForOrg: (organizationId, locationId, asOfIso, wrapUpDays) =>
+          idgPacketInclusionForOrg(dbHandle.db, organizationId, locationId, asOfIso, wrapUpDays),
+        currentLevelOfCareForOrg: (organizationId, admissionId, asOfIso) =>
+          idgCurrentLevelOfCareForOrg(dbHandle.db, organizationId, admissionId, asOfIso),
+      },
+      m7: {
+        carePlanContextForOrg: (organizationId, patientId, asOfIso) =>
+          idgPacketCarePlanContextForOrg(dbHandle.db, organizationId, patientId, asOfIso),
+      },
+      locationTimezone: {
+        locationTimezone: (organizationId, locationId) =>
+          withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+            buildFoundationSiteReader().locationTimezone(tx as unknown as DbClient, locationId),
+          ),
+      },
     });
     const m14Workers = registerM14CronWorkers(m14WorkerDeps);
     attachDlqAlertsToAll(m14Workers, "m14");
@@ -4863,6 +5349,120 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       });
     } catch (err) {
       app.log.error(err, "M11 standing-spawn schedule registration failed");
+    }
+    // M11 §2.3 D3 — the verbal-order-expiry hourly sweep. Fans out over active orgs the same way the
+    // standing-spawn worker above does; the real scan/write logic lives on `OrderRouteService
+    // .expireOverdueVerbals`, this is a thin fan-out wrapper (F-164, #248).
+    const m11VerbalTimerActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M11_VERBAL_TIMER_PLATFORM_JOB_ID,
+      reason: "M11 §2.3 D3 verbal-order-expiry hourly sweep fan-out",
+    });
+    const m11VerbalTimerWorker = registerM11VerbalOrderExpiryWorker({
+      connection: queueConnection,
+      activeOrgs: m11VerbalTimerActiveOrgs,
+      // F-202 — the same tick lapses stale two-person recovery requests, so the backend needs the alert port too.
+      service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher, undefined, m11RecoveryControls),
+    });
+    attachDlqAlertsToAll([m11VerbalTimerWorker], "m11");
+    app.addHook("onClose", async () => {
+      await m11VerbalTimerWorker.close();
+    });
+    try {
+      const m11VerbalTimerQueue = await scheduleM11VerbalOrderExpiry(queueConnection);
+      app.addHook("onClose", async () => {
+        await m11VerbalTimerQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M11 verbal-order-expiry schedule registration failed");
+    }
+    // F-201 (#248) — the stuck lab-order recovery tick (every 15 minutes): auto-retry of orders refused before any
+    // outbound row existed (bounded — attempts, backoff, window) and the held-order aging escalation (warn, then
+    // critical). Fans out over active orgs like the two M11 sweeps above; each service call opens its own tenant/RLS
+    // transaction. Grep this factory: a worker that is bound but never constructed is dead code.
+    const m11StuckTransmissionActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
+      reason: "M11 stuck lab-order recovery (auto-retry + held-order aging) fan-out",
+    });
+    const m11StuckTransmissionWorker = registerM11StuckTransmissionWorker({
+      connection: queueConnection,
+      activeOrgs: m11StuckTransmissionActiveOrgs,
+      service: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher, (event, fields) =>
+        app.log.warn({ event, ...fields }, event),
+      ),
+    });
+    attachDlqAlertsToAll([m11StuckTransmissionWorker], "m11");
+    app.addHook("onClose", async () => {
+      await m11StuckTransmissionWorker.close();
+    });
+    try {
+      const m11StuckTransmissionQueue = await scheduleM11StuckTransmission(queueConnection);
+      app.addHook("onClose", async () => {
+        await m11StuckTransmissionQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M11 stuck-transmission schedule registration failed");
+    }
+    // M12 §2.6 D4 / §2.8 D10 — the `dosespot_sync_queue` drain (patient-sync + MedHx-fetch). Scheduled
+    // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real
+    // outbound vendor I/O, so it runs as its own scheduled worker (F-164, #248).
+    const m12SyncActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M12_PLATFORM_JOB_ID,
+      reason: "M12 §2.6/§2.8 dosespot_sync_queue drain fan-out",
+    });
+    const m12SyncWorker = registerDoseSpotSyncQueueWorker({
+      db: dbHandle.db,
+      activeOrgs: m12SyncActiveOrgs,
+      outbox: m12OutboxPublisher,
+      connection: queueConnection,
+      demographicsForOrg: (organizationId, patientId) =>
+        dosespotSyncDemographicsForOrg(dbHandle.db, organizationId, patientId),
+    });
+    attachDlqAlertsToAll([m12SyncWorker], "m12");
+    app.addHook("onClose", async () => {
+      await m12SyncWorker.close();
+    });
+    try {
+      const m12SyncQueue = await scheduleDoseSpotSyncQueueDrain(queueConnection);
+      app.addHook("onClose", async () => {
+        await m12SyncQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M12 dosespot_sync_queue drain schedule registration failed");
+    }
+    // M19 §4.5 path 1 / §4.8 — the `on_call_roster_sync_queue` drain (`m19.shift-sync.debounced`) +
+    // catch-up-seed workers (m19 `handlers-unbound` group, #248; F-155's own finding, now built).
+    // `reconcileOnCallRoster`/`decideRosterSyncTrigger` (`roster/shift-sync.ts`) were complete and unit-
+    // tested since M19-T04 with no jobs/ tier anywhere in this module to run them — no proactive Direct-
+    // model roster sync had ever executed. The drain reads no PHI and performs no outbound vendor I/O
+    // (unlike M12's), so it needs no dedicated outbox publisher of its own here.
+    const m19ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M19_PLATFORM_JOB_ID,
+      reason: "M19 §4.5/§4.8 on_call_roster_sync_queue drain + catch-up-seed fan-out",
+    });
+    const m19Workers = registerM19CronWorkers({
+      db: dbHandle.db,
+      activeOrgs: m19ActiveOrgs,
+      connection: queueConnection,
+    });
+    attachDlqAlertsToAll(m19Workers, "m19");
+    app.addHook("onClose", async () => {
+      await Promise.all(m19Workers.map((w) => w.close()));
+    });
+    try {
+      const m19Queues = await scheduleM19Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m19Queues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M19 on_call_roster_sync_queue schedule registration failed");
     }
     // ── M37 §4.8 `ipu.rn-coverage-watchdog` cron (F-071/#174 — the M14 worker-runner shape) ──────────────
     //
@@ -5075,6 +5675,84 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
+          // F-151 — the §2.6 / D6 M39 consent-revocation cascade. M39 is the source of truth for
+          // consent; M16 never gate-keeps, it cascades a revoked bereavement-outreach consent into a
+          // contact opt-out.
+          buildM16ConsentRevokedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // F-158 (#248) — M2's half of the same M39 cascade: terminates the patient's own
+          // `patient_portal` sessions when their `portal_access` consent is revoked. Deliberately
+          // scoped to that one consent type only — see the consumer file's header for why
+          // `family_caregiver_access` needs a new M31 read seam this pass does not build.
+          buildM2ConsentRevokedConsumer({ db: dbHandle.db }),
+          // F-153 (#248) — the §4.5 death-discharge SECONDARY verifier (a redundant safety net, not a
+          // second creation path): re-runs the same §4.3.1 intake decider off `m6.admission.discharged`
+          // (filtered to reason='death') for the case `m6.bereavement.eligible` fails to fire or land.
+          buildM16DischargeDeathSecondaryConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
+          // F-159 (#248) — the §4.5 post-death-grant handler: confirms a proposed bereaved contact onto
+          // the roster once M39 signs the exact bereavement-outreach consent requested for them.
+          buildM16ConsentSignedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // F-159 (#248) — the §2.6/D9 patient-level opt-out cascade: honoring a directive the patient
+          // already gave (cosign-exempt, unlike the five D7 clinical-judgment closure reasons).
+          buildM16PatientOptOutChangedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // F-160 (#248) — M26's CapConsumerStore, 8 of 9 `handlers-unbound` events now live-bound.
+          buildM26UpstreamConsumer(
+            createDrizzleCapConsumerStore(dbHandle.db, {
+              mbi: {
+                mbiNormalizedForPatient: (organizationId, patientId) =>
+                  mbiNormalizedForPatient(dbHandle.db, organizationId, patientId),
+              },
+              firstElection: {
+                firstElectionEffectiveDateInRange: (organizationId, patientId, from, to) =>
+                  firstElectionEffectiveDateInRangeForOrg(
+                    dbHandle.db,
+                    organizationId,
+                    patientId,
+                    from,
+                    to,
+                  ),
+              },
+            }),
+          ),
+          // F-160 (#248) — M31's telehealth trio: force-end on M17 visit cancel/reschedule, reconcile
+          // on the M8 encounter that closed out the call.
+          buildM31VisitCancelledTelehealthConsumer({ db: dbHandle.db }),
+          buildM31VisitRescheduledTelehealthConsumer({ db: dbHandle.db }),
+          buildM31EncounterSignedTelehealthConsumer({ db: dbHandle.db }),
+          // F-164 (#248) — 2 more of M31's confirmed-genuine F-139 pairs: the bereavement-window
+          // plan-closure grant revocation and the broad m39.consent.revoked grant cascade.
+          buildM31BereavementPlanClosedConsumer({ db: dbHandle.db }),
+          buildM31ConsentRevokedGrantCascadeConsumer({ db: dbHandle.db }),
+          // F-165 (#248) — the D6 bereaved-mode lateral flip's INSERT half, re-checked past F-164's
+          // BLOCKED verdict: migration 0257 nullable-widens granted_by_membership_id, and the consent
+          // version resolves via bereaved_contact.status + M39's ConsentEvaluator. The candidate read
+          // goes through M16's org-explicit bereavedContactFlipCandidatesForPlanForOrg seam (arch:tables).
+          buildM31BereavementPlanOpenedConsumer({
+            db: dbHandle.db,
+            bereavedContactFlipCandidatesForPlan: bereavedContactFlipCandidatesForPlanForOrg,
+          }),
+          // F-167 (#248) — the per-contact-exact D6 lateral-flip trigger: `contact_active` fires once per
+          // CONTACT at the moment its own bereavement_outreach_consent is verified, the real primary
+          // trigger `plan_opened`'s own header names (that one fires per-PLAN, before any contact
+          // confirms, so its own per-contact loop almost always no-ops). The candidate read goes through
+          // M16's new single-contact org-explicit seam (`bereavedContactFlipCandidateForOrg`).
+          buildM31BereavementContactActiveConsumer({
+            db: dbHandle.db,
+            bereavedContactFlipCandidateForContact: bereavedContactFlipCandidateForOrg,
+          }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
             outbox: m8OutboxPublisher,
@@ -5097,6 +5775,40 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m17OutboxPublisher,
           }),
+          // F-152 — the D14 EVV-authoritative `published → en_route → in_visit` advances. EVV is the
+          // spec's own AUTHORITATIVE driver of the visit lifecycle; nothing ever bound either event.
+          buildM17EvvCheckInConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+          }),
+          buildM17EvvAtPatientAddressConsumer({ db: dbHandle.db }),
+          // F-196 (#248) — the §4.10 missing-EVV resolution stamp. Informational only; does not move
+          // `status` (the visit is already `completed` by the time this fires).
+          buildM17EvvLateCheckResolvedConsumer({ db: dbHandle.db }),
+          // F-158 (#248) — the §3.3 EVV checkout/correction provenance pointers. `check_out_recorded`
+          // stamps `evv_check_out_event_id` only (deliberately no lifecycle transition — completion is
+          // `m8.encounter.signed`-only, per M17's own spec and `visit-machine.ts`'s `isSystemActor` guard);
+          // `event_corrected` repoints whichever pointer column named the superseded event.
+          buildM17EvvCheckOutConsumer({ db: dbHandle.db }),
+          buildM17EvvEventCorrectedConsumer({ db: dbHandle.db }),
+          // F-152 — the §7.5 SOS-resolution visit cancellation. M20's own catalog entry says M20 never
+          // writes an M17 row; this event IS the request and M17's D3 handler decides.
+          buildM17SosVisitCancellationConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+          }),
+          // F-166 (#248) — the §7.5 volunteer-gate scheduler warning (M15's own catalog entry: "so M17
+          // must drop the volunteer from the schedule") and the §2.2.4 D5 after-hours triage proposal
+          // (M19's own worked example names this as the D5 proposal-worker trigger).
+          buildM17VolunteerAssignmentInactivatedConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+          }),
+          buildM17TriageVisitNeededConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+            admissionSitingForPatient: activeAdmissionSitingForPatientForOrg,
+          }),
           buildM36ClinicalAlertConsumer(
             getSeam("AlertEmitter") as AlertEmitter,
           ),
@@ -5108,6 +5820,65 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             ) as AdmissionStatusReader,
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
+          // F-153 (#248) — D14's other named consumed event: cancel pending aggregator submissions +
+          // void open missing-resolution rows for the cancelled visit.
+          buildM18VisitCancelledConsumer({
+            db: dbHandle.db,
+            outbox: m18OutboxPublisher,
+          }),
+          // F-153 (#248) — D6/§2.2.4: the encounter's own documented EVV-missing reason auto-resolves
+          // (or, if no sweep/detector ever opened one, creates already-closed) the missing-resolution row.
+          buildM18EncounterSignedConsumer({
+            db: dbHandle.db,
+            outbox: m18OutboxPublisher,
+          }),
+          // F-150 (#248) — M30's §4.10 upstream-event handlers had been pure, unit-tested and
+          // completely unbound since the package shipped (RULE 3(d) — "the live inbound dispatcher is a
+          // later platform phase" never landed). These two are the ones fully ready to bind today: both
+          // consume only the real `enqueueRecompute` port (`outbox-consumers/upstream-consumer-ports.ts`).
+          buildM30HopeSubmissionAcceptedConsumer({ db: dbHandle.db }),
+          buildM30ClaimAdjudicatedConsumer({ db: dbHandle.db }),
+          // F-161 (#248) — the M16 bereavement plan-closure trio. All three closure transitions run a
+          // `cancel_future_outreach` effect that shrinks `bereavement_coverage_rate`'s denominator.
+          // `bereavementPlanSitingForOrg` is M16's seam, injected as a port — M30's manifest `dependsOn`
+          // excludes 16 (the F-160 `CapConsumerStore` shape).
+          buildM30BereavementPlanClosedConsumer({
+            db: dbHandle.db,
+            bereavementPlanSitingForOrg,
+          }),
+          // F-185 (#248) — the M37 restraint-application consumer. Auto-files a `restraint_use` incident
+          // draft (D8, thin-pointer payload). `restraintAdmissionSitingForOrg` is M37's seam, injected as
+          // a port — M30's manifest `dependsOn` excludes 37 (the same F-160 `CapConsumerStore` shape).
+          buildM30RestraintAppliedConsumer({
+            db: dbHandle.db,
+            restraintAdmissionSitingForOrg,
+          }),
+          // F-194 (#248) — the M18 EVV visit-verified consumer. Enqueues an HVLDL recompute (the
+          // already-built `handleEvvVisitVerified`/`hvldl_near_death_recompute` pure logic, previously
+          // unwired). `evvVisitProviderEntityForOrg` is M18's seam, injected as a port — M30's manifest
+          // `dependsOn` excludes 18 (the same F-160 `CapConsumerStore` shape).
+          buildM30VisitVerifiedConsumer({
+            db: dbHandle.db,
+            evvVisitProviderEntityForOrg,
+          }),
+          // F-205 (#248) — the M12 medication-error-reported consumer. Auto-files a `medication_error`
+          // incident draft (D8). `medicationOrderScheduleContextForOrg`/`admissionSchedulingContextForOrg`
+          // are M12's/M6's seams, injected as ports — M30's manifest `dependsOn` excludes both 12 and 6
+          // (the same F-160 `CapConsumerStore` shape), the identical two-step chain
+          // `buildM13MaterializeScheduleConsumer` (F-166) already uses at this same composition root.
+          buildM30MedicationErrorReportedConsumer({
+            db: dbHandle.db,
+            medicationOrderScheduleContextForOrg,
+            admissionSchedulingContextForOrg,
+          }),
+          // F-158 (#248) — M37's §4.5 "If patient has open `ipu_admission` → cascade-discharge", M37's
+          // first outbox consumer. Death discharges are a deliberate no-op here (see the file header) —
+          // that path is the separate `m6-discharge-death.ts` consumer, below.
+          buildM37AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m37OutboxPublisher }),
+          // F-172 (#248) — the §2.2 `recordDeath` producer, previously called nowhere outside its own
+          // unit test. Drives `m6.discharge.death` → `transitionAdmission(..., {type: "recordDeath"})`
+          // → `m37.ipu_admission.death_recorded` + the auto-opened `ipu_body_release` row.
+          buildM37DeathRecordedConsumer({ db: dbHandle.db, outbox: m37OutboxPublisher }),
           // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
           // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
           // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole
@@ -5151,6 +5922,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // which M36 resolves through its seam. Binding one here and not there would give the same
             // alert two carriers with different retry semantics.
           }),
+          // §4.5 path 1 / §4.8 `m19.shift-sync.debounced` (m19 `handlers-unbound` group, #248; F-155's own
+          // finding, now built). Bumps the org's `on_call_roster_sync_queue` debounce window forward; the
+          // reconciliation itself runs on the separate scheduled drain worker registered above — see
+          // `consumers/roster-sync-debounce.ts`'s own header.
+          buildOncallRosterSyncDebounceConsumer({ db: dbHandle.db }),
           ...buildFieldSafetyConsumers({
             db: dbHandle.db,
             policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
@@ -5167,6 +5943,29 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           ...(m24SubmissionQueues
             ? [buildM24SubmissionRequestConsumer(m24SubmissionQueues.port)]
             : []),
+          // F-165 (#248, m24 group) — the m24 `handlers-unbound` group's "trigger-revalidate" + "resolve-medicare
+          // -primary" live bindings.
+          ...buildM24RevalidateTriggerConsumers({ enqueue: m24RevalidateEnqueue.port }),
+          buildM24MedicarePrimaryAckConsumer({ db: dbHandle.db, outbox: m24OutboxPublisher }),
+          // F-172 (#248, m24 group) — the m24 `handlers-unbound` group's last two events:
+          // `mark-claim-paid` / `mark-claim-denied`, the Medicaid sibling of M23's own GAP-037
+          // `m25-remittance.ts` consumer above. Both `m25.remittance.claim_paid`/`.claim_denied` already
+          // declare `m24` a consumer; only the `M24ConsumerStore` implementation was missing.
+          buildM24RemittanceConsumer({
+            db: dbHandle.db,
+            outbox: m24OutboxPublisher,
+            onSkipped: (info) =>
+              app.log.warn(
+                {
+                  reason: info.reason,
+                  event: info.eventType,
+                  org: info.organizationId,
+                  claim: info.claimId,
+                  state: info.currentState,
+                },
+                "M24 remittance transition skipped",
+              ),
+          }),
           ...(m34ProvisionQueue
             ? [buildM34ProvisionStartedConsumer(m34ProvisionQueue.port)]
             : []),
@@ -5177,6 +5976,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // DeathDischargeReader seam and flips patient.status='deceased' + emits
           // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
           buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
+          // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
+          buildM5AdmissionSitingConsumer({ db: dbHandle.db }),
+          // F-165 (#248, m24 group) — the m5 `handlers-unbound` group's `m17.visit.assigned`/`.unassigned` pair:
+          // M17's shift-assignment Valkey cache, unioned additively into `CaseloadProvider`'s read
+          // (see `wireModuleSeams`'s `caseloadShiftCacheRedis` wiring above). Gated on the dedicated
+          // `m5CaseloadShiftCacheRedisClient` the same way F-152's order-suggestion banner gates on
+          // its own dedicated client (no Redis in dev/test without `queueConnection`).
+          ...(m5CaseloadShiftCacheRedisClient
+            ? [
+                buildM5VisitAssignedConsumer({
+                  redis: m5CaseloadShiftCacheRedisClient,
+                  membershipUserId: (organizationId, membershipId) =>
+                    membershipUserIdForOrg(dbHandle.db, organizationId, membershipId),
+                }),
+                buildM5VisitUnassignedConsumer({
+                  redis: m5CaseloadShiftCacheRedisClient,
+                  membershipUserId: (organizationId, membershipId) =>
+                    membershipUserIdForOrg(dbHandle.db, organizationId, membershipId),
+                }),
+              ]
+            : []),
+          // F-167 (#248, m5 group) — the §7.6/D10 privacy-flag-snapshot recompute off M39's
+          // signed/revoked/supersedes/renewed consent lifecycle (the one real relationship: M39's own
+          // spec §4.3.1 names `42_cfr_part_2_release` → `sud` and no other type).
+          buildM5ConsentPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // M10 §2.2.1 (#48): the HOPE timepoint-schedule write path is `buildM10AdmissionWorkflowConsumer`
           // above. The lost-history `buildM10AdmissionSchedulingConsumer` handled the same two events and
           // wrote the same rows; only one may be bound (restored 2026-09-25, see the force-push recovery audit).
@@ -5226,6 +6051,60 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                   }),
               ),
           }),
+          // F-171 (#248) — the LIVE `m12.medication_order.list_changed` → `patient_medication_list`
+          // render. NOT part of the generic REQUEST_SHAPES pipeline above: the diff payload
+          // (`{patientId, addedOrderIds, removedOrderIds}`) carries no renderable content, so this
+          // consumer resolves the CURRENT active-medication set fresh, at delivery time, via M12's real
+          // `MedicationOrderProvider` seam instead (see medication-list-bindings.ts's own header for why
+          // and for the ambient-request-context wrap the underlying seam read needs).
+          buildM22MedicationListConsumer({
+            store: createDrizzleDocumentSeamStore(dbHandle.db),
+            onRefusal: (r) =>
+              app.log.warn(
+                { event: r.eventType, org: r.organizationId, patient: r.patientId, detail: r.detail },
+                `M22 medication-list render refused: ${r.detail}`,
+              ),
+            emitRendered: ({ organizationId, ...payload }) =>
+              withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: "" },
+                (tx) =>
+                  m22OutboxPublisher.publish(tx as never, {
+                    eventName: M22_DOCUMENT_RENDERED_EVENT,
+                    payload,
+                    organizationId,
+                    aggregateKind: "document",
+                    aggregateId: payload.documentId,
+                  }),
+              ),
+          }),
+          // F-171 (#248) — the LIVE `m11.order.results_received` → `lab_results_pdf` render. NOT part of
+          // the generic REQUEST_SHAPES pipeline above (deliberately — see lab-backref-consumer.ts's own
+          // header for why: `lab_results_pdf` shares its aggregateType with the order-FORM render, so
+          // aggregate-level idempotency would silently skip it forever once an order's form had rendered).
+          // `store:` is a THIRD `createDrizzleDocumentSeamStore` instance, the same one-per-consumer
+          // pattern the two consumers above use.
+          buildM22LabBackrefConsumer({
+            store: createDrizzleDocumentSeamStore(dbHandle.db),
+            onDeferred: (d) =>
+              app.log.warn(
+                { org: d.organizationId, order: d.orderId, observation: d.observationId },
+                "M22 lab-results render deferred: M29 observation not yet resolved",
+              ),
+            emitRendered: ({ organizationId, ...payload }) =>
+              withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: "" },
+                (tx) =>
+                  m22OutboxPublisher.publish(tx as never, {
+                    eventName: M22_DOCUMENT_RENDERED_EVENT,
+                    payload,
+                    organizationId,
+                    aggregateKind: "document",
+                    aggregateId: payload.documentId,
+                  }),
+              ),
+          }),
           // The requesting modules' back-ref consumers — the columns each built for exactly this
           // (`order_record.document_id`, `medication_order.document_id`,
           // `medication_reconciliation_worksheet.document_id`, `comfort_kit_dispatch.bol_document_id` /
@@ -5237,8 +6116,51 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // statement, the face-to-face, the notice of rights, the revocation and the discharge summary,
           // all six commented "M22 document" since M6's schema landed and all six NULL in every database.
           buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
+          // Migration 0250 adds the `source_order_id` idempotency key a genuine redelivery needs.
+          buildM6LevelOfCareChangeSignedConsumer({
+            db: dbHandle.db,
+            outbox: m6OutboxPublisher,
+          }),
           buildM11DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-152 (#248) — the §2.7 D7 order-suggestion banner. Needs `orderSuggestionRedisClient`
+          // (only present when `queueConnection` is configured), the same optional-worker posture
+          // `m34ProvisionQueue` below uses.
+          ...(orderSuggestionRedisClient
+            ? [
+                buildM11AssessmentSuggestionConsumer({
+                  db: dbHandle.db,
+                  redis: orderSuggestionRedisClient,
+                  outbox: m11OutboxPublisher,
+                }),
+              ]
+            : []),
+          // F-152 — the D8 one-shot (`supply`/`comfort_kit`) auto-complete on M21 delivery. `dme`
+          // stays open — it completes on receipt via a separate monthly-rental close-out.
+          buildM11FulfillmentStatusConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          // F-177 (#248) — `LabTransmissionApplier`: the m11 group's `m29.lab_order.transmitted`/
+          // `.transmission_failed` pairs F-175 surfaced when it built M29's real T08 dispatch worker.
+          // Drives `order_record.transmission_status` per D16 and re-publishes M11's own decisive
+          // `m11.order.transmission_status_changed`/`.transmission_terminal_failed`.
+          buildM11LabTransmissionApplierConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          // F-187 (#248) — a lab order discontinued/replaced after its ORM may already be at the laboratory:
+          // nothing withdraws the ORM (T-29.08 defines no outbound cancel), so this raises the M36 alert that
+          // tells the care team to cancel it with the lab. The M11-side self-consumption of
+          // `m11.order.discontinued` / `m11.order.corrected`.
+          buildM11LabCancellationConsumer({
+            db: dbHandle.db,
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+          }),
+          // F-203 (#248) — the two-person lab-recovery control's compliance alerts, DURABLE: the recovery's own
+          // transaction publishes the intent, this hands it to M36, a failure is retried by the relay and the alert's
+          // correlation id makes the redelivery idempotent.
+          buildM11RecoveryAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
+          // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never through M11's own
+          // discharge cascade above, which already discontinues the order before asking M21) releases
+          // the still-in-flight source order M11 never touched. Safe for the cascade-reply producer too
+          // (a true no-op — the order is already `discontinued` by then).
+          buildM11SupplyCancelledConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           // F-102 — the M6 discharge cascade, both halves. Each decider has been complete, exported and
           // unit-tested since M11-T07 / M12-T08 with no caller but its own test, and neither COULD be
           // bound: `m6.admission.discharged` did not declare m11 or m12, and
@@ -5247,6 +6169,53 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // including `queued_for_transmission`, an order waiting to reach the e-prescribing vendor.
           buildM11DischargeCascadeConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           buildM12DischargeCascadeConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-161 (#248) — the §2.8 D17 reconciliation-discontinue handshake: an M13 reconciliation
+          // decision to discontinue an `m12_active` line now actually reaches the medication order.
+          buildM12ReconciliationDiscontinueConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-164 (#248) — the §2.8 D17 reconciliation "draft order" handshake: a real `medication_order`
+          // draft minted from a reconciliation decision, never the historical hardcoded `{}` payload.
+          buildM12DraftOrderRequestedConsumer({
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+            resolveAdmissionContext: (organizationId, patientId) =>
+              activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
+          }),
+          // F-164 (#248) — the §2.3 D3 verbal-order-expiry backref: M11's polymorphic `verbal_order`
+          // sweep (above) flips a medication order to `expired_unsigned` once its deadline passes.
+          buildM12VerbalExpiredConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-164 (#248) — the six §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch triggers. Each enqueues
+          // a debounced row onto `dosespot_sync_queue` (the scheduled drain worker above), never a direct
+          // vendor call — the outbox consumer's own transaction is where the debounce is atomic with the
+          // delivery. `m6.cti.signed`'s missing `admissionId` resolves through M6's own org-explicit
+          // `electionPeriodContextForOrg` seam rather than a schema import (M6 is not in M12's `dependsOn`).
+          buildM12PatientSyncCreatedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12PatientSyncUpdatedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12PatientSyncAddressChangedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12PatientSyncPayerChangedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12AdmissionActivatedMedHxConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12RecertificationMedHxConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+            admissionIdForElectionPeriod: createDrizzleAdmissionIdForElectionPeriodPort(
+              dbHandle.db,
+              electionPeriodContextForOrg,
+            ),
+          }),
           // F-103 — the §1.1 D10 discipline-plan bootstrap, and the ONLY path by which a
           // `discipline_care_plan` row has ever been created: `bootstrapDisciplinePlan`'s own doc names
           // "the `m6.admission.activated` consumer" and there was none, m15 was not declared on the
@@ -5259,6 +6228,35 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // matches on, was written by no code path at all, so binding alone would have matched nothing
           // forever. An action item saying "sign this care plan" stayed open after the plan was signed.
           buildM14ActionItemAutoCloseConsumer({ db: dbHandle.db, outbox: m14OutboxPublisher }),
+          // F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers, gated on the
+          // dedicated `m14SinceLastIdgRedisClient` the same way F-152's M11 suggestion-banner consumer
+          // gates on its own dedicated client (no Redis in dev/test without `queueConnection`).
+          ...(m14SinceLastIdgRedisClient
+            ? [
+                buildM14AssessmentRecordedConsumer({ redis: m14SinceLastIdgRedisClient }),
+                buildM14AssessmentSignificantChangeConsumer({ redis: m14SinceLastIdgRedisClient }),
+                buildM14HopeJ2051TriggerConsumer({
+                  redis: m14SinceLastIdgRedisClient,
+                  patientIdForHopeAssessment: (orgId, hopeAssessmentId) =>
+                    hopeAssessmentPatientIdForOrg(dbHandle.db, orgId, hopeAssessmentId),
+                }),
+                buildM14HopeSfvCreatedConsumer({
+                  redis: m14SinceLastIdgRedisClient,
+                  patientIdForHopeAssessment: (orgId, hopeAssessmentId) =>
+                    hopeAssessmentPatientIdForOrg(dbHandle.db, orgId, hopeAssessmentId),
+                }),
+                buildM14OrderDiscontinuedConsumer({
+                  redis: m14SinceLastIdgRedisClient,
+                  orderPatientAndKind: (orgId, orderId) =>
+                    orderPatientAndKindForOrg(dbHandle.db, orgId, orderId),
+                }),
+                buildM14MedicationOrderDiscontinuedConsumer({
+                  redis: m14SinceLastIdgRedisClient,
+                  medicationOrderPatientAndDrug: (orgId, orderId) =>
+                    medicationOrderPatientAndDrugForOrg(dbHandle.db, orgId, orderId),
+                }),
+              ]
+            : []),
           buildM15PlanBootstrapConsumer({
             db: dbHandle.db,
             outbox: m15OutboxPublisher,
@@ -5268,6 +6266,82 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four of
+          // M6's trigger events. The admission siting comes from M6's ORG-EXPLICIT seam (a relay tick
+          // is not a request), the same `admissionSchedulingContextForOrg` template as M15's/M16's
+          // consumers above.
+          buildM13ReconciliationTriggerConsumer({
+            db: dbHandle.db,
+            outbox: m13OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) => {
+              const ctx = await admissionSchedulingContextForOrg(
+                dbHandle.db,
+                organizationId,
+                admissionId,
+              );
+              return ctx
+                ? {
+                    patientId: ctx.patientId,
+                    providerEntityId: ctx.providerEntityId,
+                    locationId: ctx.locationId,
+                  }
+                : null;
+            },
+          }),
+          // F-155 (#248) — the §2.5/§2.7 D14 admission-discharge cascade: cancels future pending
+          // scheduled doses, flags active comfort-kit deployments for return. Same org-explicit M6
+          // seam template as the reconciliation-trigger consumer just above.
+          buildM13AdmissionDischargedCascadeConsumer({
+            db: dbHandle.db,
+            outbox: m13OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) => {
+              const ctx = await admissionSchedulingContextForOrg(
+                dbHandle.db,
+                organizationId,
+                admissionId,
+              );
+              return ctx ? { patientId: ctx.patientId } : null;
+            },
+          }),
+          // F-166 (#248) — the §2.3 D2 scheduled-dose materializer. Order siting comes from the same
+          // org-explicit M6 seam as the two consumers just above; the order's own facts come from a new
+          // M12 org-explicit seam (`medicationOrderScheduleContextForOrg`, the F-164
+          // `medicationOrderPatientAndDrugForOrg` precedent widened); the order's location timezone
+          // resolves through M1's `FoundationSiteReader` (the sanctioned direct-import path for a module
+          // that already depends on module 1).
+          buildM13MaterializeScheduleConsumer({
+            db: dbHandle.db,
+            outbox: m13OutboxPublisher,
+            orderContext: (organizationId, orderId) =>
+              medicationOrderScheduleContextForOrg(dbHandle.db, organizationId, orderId),
+            resolveAdmission: async (organizationId, admissionId) => {
+              const ctx = await admissionSchedulingContextForOrg(
+                dbHandle.db,
+                organizationId,
+                admissionId,
+              );
+              return ctx ? { providerEntityId: ctx.providerEntityId, locationId: ctx.locationId } : null;
+            },
+            locationTimezone: (organizationId, locationId) =>
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                buildFoundationSiteReader().locationTimezone(tx as unknown as DbClient, locationId),
+              ),
+          }),
+          // F-166 (#248) — the order-level scheduled-dose cancellation cascade. Reads only M13's own
+          // `scheduled_dose` table (the catalogued payload already carries `effectiveAt`); no cross-module
+          // seam needed.
+          buildM13CancelFutureScheduleConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
+          // F-166 (#248) — M13's §2.5/§2.7 D5 comfort-kit deployment/replenishment/return chain, bound
+          // live for the first time. `m21.comfort_kit.deployed_at_patient`'s producer-side defect (a
+          // premature/wrong `.returned` emission at return-REQUEST time, not reconcile time) is fixed at
+          // its source in `21-supplies/routes/write-service-drizzle.ts`'s `createReturn`, in the same
+          // change. See each consumer file's own header for what stayed blocked (a nullable
+          // `medicationOrderId` for IPU-floor-stock lines — a real, documented M21 business concept M13
+          // has no schema representation for anywhere) and how it was scoped.
+          buildM13ComfortKitDeployedConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
+          buildM13ComfortKitReplenishedConsumer({ db: dbHandle.db }),
+          buildM13ComfortKitReturnedConsumer({ db: dbHandle.db }),
+          buildM13ComfortKitReturnReconciliationConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-120 (#248) — the OTHER two of the three M11 cascade deciders `consumers/m11-orders.ts` has
           // carried since M21-T04 ("the live outbox binding … land with the §4.6 workers alongside the
@@ -5279,12 +6353,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // patient", and `supply_request.location_id` is NOT NULL — see the file header.
           buildM21SupplyCancellationConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           buildM21OrderDiscontinuedConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          // F-153 (#248) — M13's §2.5 deployment-ack link (resolved by patient+admission, since the
+          // whole point of the ack is that the link does not exist yet) and §2.6 return-required
+          // chain-of-custody open (no outbox effect of its own — the return row's own state is the fact).
+          buildM21ComfortKitDeploymentAckConsumer({ db: dbHandle.db }),
+          buildM21ComfortKitReturnRequiredConsumer({ db: dbHandle.db }),
+          // F-161 (#248) — §2.1 comfort-kit replenishment intake, the third of the four
+          // `consumers/m13-comfort-kit.ts` deciders. Resolves the per-line pharmacy identity and
+          // delivery-address snapshot from M21's own tables (M13's payload carries neither).
+          buildM21ComfortKitReplenishmentIntakeConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          // F-172 (#248) — §4.5.1 controlled-substance re-emit, the fourth and last of the
+          // `consumers/m13-comfort-kit.ts` deciders. Joins M13's bedside discrepancy signal to M21's
+          // dispatch/return custody chain via the `returnId` M13's payload now carries.
+          buildM21ComfortKitControlledSubstanceReemitConsumer({
+            db: dbHandle.db,
+            outbox: m21OutboxPublisher,
+          }),
           // F-108 — M27's. Unlike the five clinical ones it stamps THREE columns off one event, resolved
           // from `aggregateType`: M27 fans the ECR file, the Print Image and the supporting-doc bundle out
           // under ONE request event name, so the aggregate type is the only discriminator on the wire —
           // and the pure handler's declared payload named an `artifactKind` M22 does not publish, so a
           // binding written to its stated shape would have no-op'd on every delivery.
           buildM27DocumentBackrefConsumer({ db: dbHandle.db, outbox: m27OutboxPublisher }),
+          // F-207 (#248) — the M21 vendor-invoice forward seam (M21 spec §1.1 D16), the 4th cost-basis
+          // precedence tier additive to D17's M13 administration ▸ M12 ordered ▸ manual entry chain.
+          // No dependsOn edge to 21; both event names read structurally off the wire.
+          buildM27VendorInvoiceConsumer({ db: dbHandle.db }),
           // GAP-051 — M33's half. Unlike the four above it does more than stamp a column: a rendered
           // scheduled report settles its occurrence `delivered` and emits the §4.9 fan-out, which is why
           // it composes the package's own decider/applier rather than a one-line UPDATE. The ad-hoc
@@ -5314,13 +6408,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
           // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same
           // env-gated `m25X12Port` posture as the routes-mount binding above; the terminology lookup and
-          // the M23 claim-match adapter are both reconstructed here (each resolves its seam lazily per
-          // call, so a duplicate binding across two composition-root scopes is harmless).
+          // the M23/M24 claim-match adapters are all reconstructed here (each resolves its seam lazily
+          // per call, so a duplicate binding across two composition-root scopes is harmless).
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(m25X12Port),
               outbox: m25OutboxPublisher,
-              claims: buildM23BackedClaimMatchCandidateProvider(),
+              claims: {
+                medicare: buildM23BackedClaimMatchCandidateProvider(),
+                medicaid: buildM24BackedClaimMatchCandidateProvider(),
+              },
               terminology: {
                 async lookup(carcCode) {
                   const concept = await (
@@ -5438,32 +6535,118 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 "M23 remittance transition skipped",
               ),
           }),
+          // F-153 (#248) — the §4.8 `revalidate.consumer` PRODUCER side: six M6/M8 facts that can
+          // re-open a VALIDATING/READY claim's validation, each enqueuing the raw event onto the
+          // already-registered `runRevalidateConsumer` worker (only runs when `m23LaunchGateway` is
+          // configured, same as every other M23 launch worker).
+          ...buildM23RevalidateTriggerConsumers({ enqueue: m23RevalidateEnqueue.port }),
+          // F-162 (#248) — the seventh revalidate trigger: m18.evv.late_check_resolved, resolved through
+          // M8's new reverse visitId→encounterId seam (encounterIdsForVisitsForOrg), injected as a port
+          // per this module's established no-package-import posture for M8 bridges.
+          buildM23LateCheckResolvedConsumer({
+            resolveEncounterForVisit: {
+              forVisits: (orgId, visitIds) => encounterIdsForVisitsForOrg(dbHandle.db, orgId, visitIds),
+            },
+            enqueue: m23RevalidateEnqueue.port,
+          }),
+          // F-164 (#248) — M23's last originally-deferred pair: the §11.A/D13 unmapped-CARC occurrence
+          // tracker + threshold alert, over the same live M36 `AlertEmitter` seam every other consumer in
+          // this array resolves inline (the seam registers earlier in boot, but well after this file's
+          // TOP-LEVEL statements run — a `getSeam` call at module-body scope throws "requested before
+          // registration"; every other caller in this codebase resolves it here, inside the consumer
+          // array, for the same reason).
+          buildM23TaxonomyUnmappedCodeObservedConsumer({
+            db: dbHandle.db,
+            alerts: {
+              dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+                const emitter = getSeam("AlertEmitter") as {
+                  emit(
+                    orgId: string,
+                    input: {
+                      eventType: string;
+                      payload: Record<string, unknown>;
+                      severity: string;
+                      correlationId: string;
+                    },
+                  ): Promise<unknown>;
+                };
+                await emitter.emit(organizationId, {
+                  eventType: alertCode,
+                  payload,
+                  severity,
+                  correlationId: `m23-taxonomy:${alertCode}`,
+                });
+              },
+            },
+          }),
+          // F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
+          // organization activate/suspend/close triggers (3 of D21's 8 exhaustive inbound subscriptions).
+          buildM35OrgLifecycleConsumer({ db: dbHandle.db, outbox: m35OutboxPublisher }),
+          // F-172 (#248) — the remaining 3 of D21's 8: `m2.session.created` (user-active-period-aggregator)
+          // and `m5.patient.{deceased,merged}` (patient-active-period-aggregator), unblocked by the real
+          // `pseudonymKeyProvider` built above. Each fails closed per-delivery (dead-letters, never
+          // silently pseudonymizes under nothing) when `pseudonymKeyProvider` is the unbound stub.
+          buildM35SessionCreatedConsumer({ db: dbHandle.db, keyProvider: pseudonymKeyProvider }),
+          buildM35PatientActivePeriodConsumer({ db: dbHandle.db, keyProvider: pseudonymKeyProvider }),
+          // F-165 (#248, m24 group) — M29's `m5.patient.deceased` freeze: every still-`pending` `hl7_inbound_proposal`
+          // matched to the decedent is expired via the same pure `expireProposal` decider the (also
+          // unbuilt) §2.2 SLA sweep would use, with its own distinct `decision_rationale`. Builds only the
+          // "freeze what is already staged" half of M29's own spec sentence — the real-time "refuse future
+          // post-death A01/A04" half needs a new M5 PatientReader field/seam or a new persistent marker
+          // plus match-cascade consultation logic, neither of which exists; see the consumer file header.
+          buildM29PatientDeceasedConsumer({ db: dbHandle.db, outbox: m29OutboxPublisher }),
+          // F-175 (#248) — the real T08 outbound MLLP dispatch worker: `dispatch-planner.ts`'s own header
+          // named this worker's job precisely ("mint the ids + clock, resolve the BAA seam, envelope-
+          // encrypt the wire into payload_cipher, do the insert, and dispatch over MLLP") and F-165/F-167
+          // both confirmed nothing called it. `getTenantKeyProvider()` is safe to call unconditionally here
+          // (the `createHearthnoteCiphers(getTenantKeyProvider())` precedent immediately above this array's
+          // sibling consumers) — M34's `validateModule34Seams()` guarantees SOME registration (a real one,
+          // or the fail-closed deny-stub) exists by the time any consumer runs; an unconfigured KEK fails
+          // closed per-call (`dekForOrg` throws), never at construction. `m29OutboundRateLimiter` is shared
+          // with the retry-sweep worker below (constructed once, passed to both) so the per-feed throttle
+          // budget is shared across the fresh-dispatch and retry paths.
+          buildM29OutboundDispatchConsumer({
+            db: dbHandle.db,
+            outbox: m29OutboxPublisher,
+            keys: getTenantKeyProvider(),
+            rateLimiter: m29OutboundRateLimiter,
+          }),
         ],
         // GAP-099 — the PLATFORM (`organization_id IS NULL`) binding list. Until now this list did not
         // exist and `pollPlatform()` could only claim a row and defer it, so M29's NPPES sync published
         // `m29.nppes.provider_synced` into a queue with no reachable consumer: every row sat pending on
         // the 30-minute deferred clock forever while M40's canonical went stale. These two appliers were
         // written and unit-tested in M40-T09 and have been waiting on the delivery path ever since.
-        platformConsumers: buildM29NppesPlatformConsumers({
-          db: dbHandle.db,
-          outbox: m40OutboxPublisher,
-          // The live M36 seam — the §4.7.2 per-tenant "your preferred physician was deactivated" alert.
-          alerts: getSeam("AlertEmitter") as {
-            emit(
-              organizationId: string,
-              input: {
-                eventType: string;
-                payload: Record<string, unknown>;
-                severity: string;
-                correlationId: string;
-              },
-            ): Promise<unknown>;
-          },
-          // The same audited enumerator the relay polls with — the deactivation fan-out asks each active
-          // org's overlay whether it marked this provider preferred (one RLS-scoped read per org; there
-          // is no legitimate single statement that spans tenants).
-          orgs: outboxRelayOrgs,
-        }),
+        platformConsumers: [
+          ...buildM29NppesPlatformConsumers({
+            db: dbHandle.db,
+            outbox: m40OutboxPublisher,
+            // The live M36 seam — the §4.7.2 per-tenant "your preferred physician was deactivated" alert.
+            alerts: getSeam("AlertEmitter") as {
+              emit(
+                organizationId: string,
+                input: {
+                  eventType: string;
+                  payload: Record<string, unknown>;
+                  severity: string;
+                  correlationId: string;
+                },
+              ): Promise<unknown>;
+            },
+            // The same audited enumerator the relay polls with — the deactivation fan-out asks each active
+            // org's overlay whether it marked this provider preferred (one RLS-scoped read per org; there
+            // is no legitimate single statement that spans tenants).
+            orgs: outboxRelayOrgs,
+          }),
+          // F-156 (#248) — M33's §4.10 replica-lag probe (`m33.lag.exceeded`/`.recovered`, emitted with
+          // `organizationId: null` since GAP-099 landed) flips M1's shared, NON_ORG_SCOPED `system_status`
+          // row. `system_status` carries no RLS, so this needs no org envelope.
+          buildM1LagProbeStatusConsumer({ db: dbHandle.db }),
+          // F-161 (#248) — M23's §4.8 MAC-portal health probe (`m23.mac_portal.unavailable`/`.recovered`,
+          // emitted with `organizationId: null` — a MAC jurisdiction serves many tenants). One
+          // `system_status` component PER JURISDICTION, not a platform-wide singleton.
+          buildM1MacPortalHealthConsumer({ db: dbHandle.db }),
+        ],
         eventCatalog: bootOutboxCatalog,
         options: {
           log: (m) => app.log.warn(m),
@@ -5534,6 +6717,39 @@ if ((import.meta as { main?: boolean }).main) {
   await bootWardenX(
     (process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all",
   );
+}
+
+/**
+ * F-201 (#248) — M11's stuck lab-order recovery, wired over the real ports. The composition root is the only place that
+ * may see M11, M29 and M36 together (M11 has no `dependsOn` edge to either): the re-emission is F-182's OWN
+ * `resendLabTransmission` (so a sweep and an operator's click share one row lock, one conditional update and one attempt
+ * id), the BAA pre-check is M29's own gate, and the alert goes out through the M36 `AlertEmitter` seam. `resend` passes no
+ * acting user — the M4 audit trigger records the change with a null actor and the order's auto-retry counters say it was
+ * the sweep. Called from both the route mount (the worklist reads) and the worker (the sweeps): the service is stateless.
+ */
+function buildM11StuckRecovery(
+  db: DbClient,
+  outbox: Parameters<typeof createDbOrderBackend>[1],
+  log?: (event: string, fields: Record<string, unknown>) => void,
+) {
+  const backend = createDbOrderBackend(
+    db,
+    outbox,
+    buildM11OrmRequestedPorts({
+      patient: hl7OrmDemographicsInTx,
+      feeds: buildDrizzleOutboundFeedResolver(),
+      outboundEvidence: ormOutboundEvidenceForOrder,
+    }),
+  );
+  return createStuckTransmissionRecovery({
+    db,
+    resend: (organizationId, orderId) => backend.resendLabTransmission(organizationId, "", orderId),
+    baaCleared: outboundBaaCleared,
+    alerts: getSeam("AlertEmitter") as AlertEmitter,
+    feedsForOrders: ormOutboundFeedsForOrders,
+    thresholds: heldThresholdsFromEnv(process.env),
+    ...(log ? { log } : {}),
+  });
 }
 
 /**

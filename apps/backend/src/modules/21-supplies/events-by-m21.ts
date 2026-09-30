@@ -159,14 +159,26 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m21.supply_request.delivered",
     moduleOwner: "m21",
     description:
-      "The row reached `delivered` with its D7 courier attestation. M22 opens the optional caregiver-signature flow off `evidenceDocumentId`.",
+      "The row reached `delivered` with its D7 courier attestation. The optional caregiver-signature capture is M21's own (F-191, #248) — synchronous, not an outbox consumer.",
     payloadSchema: Type.Object({
       ...patientScoped,
       supplyRequestId: Id,
       kind: Str,
       courierAttestation,
     }),
-    declaredConsumers: ["m22"],
+    // F-191 (#248) — m22 DROPPED from declaredConsumers, misdeclared: M22's own spec explicitly
+    // disclaims owning signature capture (`WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:126`, "M22 does
+    // not capture signatures — the source module does"; line 2383 lists it as a non-goal even for
+    // M39 consent, the nearest structural analog), and no capture route/seam/FormFill consumer
+    // exists anywhere in `22-documents/` (confirmed by direct read, `render-consumer.ts:292-297`
+    // already independently reached the same conclusion). Every signature flow in this codebase is
+    // captured synchronously inside its OWNING module (M11/M12 orders, M7/M8/M15 attestations, M39
+    // consent's `ConsentCaptureEvidence`) — never via an M22 outbox consumer. D7's "caregiver
+    // signature is optional via M22's signature flow" describes a capability M22 was never going to
+    // build; the real, still-unbuilt gap is a small M21-owned capture (mirroring M39's
+    // `captureMethod`/`captureEvidence`/witness-evidence-document-reference shape), a scoped
+    // proposal — not decided here — not an outbox binding.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -191,7 +203,7 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m21.supply_request.cancel_no_op",
     moduleOwner: "m21",
     description:
-      "§7.7 — an `m11.order.supply_cancellation_requested` cascade reached an already-terminal request. Emitted so M11 learns the cascade ARRIVED: silence would be indistinguishable from a lost event, and M11 would hold the order open forever. Carries no tenancy block beyond `orgId` because nothing was mutated.",
+      "§7.7 — an `m11.order.supply_cancellation_requested` cascade reached an already-terminal request. Carries no tenancy block beyond `orgId` because nothing was mutated.",
     payloadSchema: Type.Object({
       orgId: Id,
       supplyRequestId: Id,
@@ -199,7 +211,19 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       terminalStatus: Str,
       occurredAt: Iso,
     }),
-    declaredConsumers: ["m11"],
+    // F-166 (#248) — m11 REMOVED: checked against the code rather than the old description's "M11 would
+    // hold the order open forever" fear. This event has exactly one producer
+    // (`outbox-consumers/m11-order-cascade.ts`'s reply to M11's OWN `m11.order.supply_cancellation_
+    // requested`), and by the time M21 emits it M11's order is ALREADY `discontinued` — the discharge
+    // cascade (`11-orders/consumers/bindings.ts`, F-102) discontinues its order SYNCHRONOUSLY before it
+    // ever asks M21. There is no second producer the way `.cancelled` has one (see the m11 group's F-166
+    // paragraph), so a bound consumer here would always find a terminal order and always no-op — the
+    // "hold the order open forever" scenario the old description named cannot occur given the real
+    // cascade sequencing. Record-only — `seamConsumers: ["m33"]` matches every other record-only m21
+    // event in this file (reporting reads the outbox stream regardless of whether a live consumer acts
+    // on it).
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -372,8 +396,18 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       perMedicationReconciliation: Type.Array(returnedContent),
       reconciledAt: Iso,
     }),
-    declaredConsumers: ["m13", "m30"],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, along with all four of its M21 siblings below: M21's
+    // own spec (docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:9,72) names the
+    // real mechanism decisively — "30 (HQRP & Quality — … controlled-substance-discrepancy rate,
+    // kit-return-on-time rate, par-stock-stockout rate; all read M21 via `SupplyFulfillmentProvider` and
+    // `ComfortKitDispatchProvider`)" and "M21 publishes … seams; M30 consumes and computes" — never an
+    // outbox push, matching M30's own blanket §1.1 principle that it never subscribes to an upstream
+    // module's outbox (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353). Both seams are
+    // already registered at boot (`apps/backend/src/modules/21-supplies/seams/index.ts`); M30's side of
+    // the call is what remains unbuilt — this event's own "M30 files the survey record" claim describes
+    // a mechanism M30's spec never corroborates anywhere.
+    declaredConsumers: ["m13"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -391,8 +425,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       containsControlledSubstance: Bool,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: maps to M21's own named "kit-return-on-time rate" —
+    // see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -415,8 +451,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       }),
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: maps to M21's own named
+    // "controlled-substance-discrepancy rate" — see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
 
@@ -427,8 +465,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "§2.7 — the nightly per-Location par monitor found stock at or below the reorder point. The CRON emits; a mid-day dispatch decrement does not, so a busy Location raises one alert a night rather than one per kit.",
     payloadSchema: parThreshold,
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: maps to M21's own named "par-stock-stockout rate" —
+    // see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -437,8 +477,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "§2.7 — stock fell to or below `min_safety_stock`, the band under `below_threshold`. Distinct event rather than a severity field: a depleted hub cannot fill the next dispatch at all, and M36 routes it to a different recipient set.",
     payloadSchema: parThreshold,
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: same "par-stock-stockout rate" measure, the severity
+    // band under `below_threshold` — see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
 ];

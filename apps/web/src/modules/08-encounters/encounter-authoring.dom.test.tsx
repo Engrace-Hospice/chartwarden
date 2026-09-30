@@ -235,7 +235,7 @@ describe("#91 — the note can be composed", () => {
   it("selecting a phrase PATCHes it into its template section with the version as If-Match", async () => {
     mountCompose();
     fireEvent.click(await waitFor(() => screen.getByLabelText(/Dyspnea at rest/i)));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() =>
       expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
     );
@@ -255,7 +255,7 @@ describe("#91 — the note can be composed", () => {
     fireEvent.change(await waitFor(() => screen.getByLabelText("Pain Score")), {
       target: { value: "4" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() =>
       expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
     );
@@ -270,7 +270,7 @@ describe("#91 — the note can be composed", () => {
     fireEvent.change(await waitFor(() => screen.getByLabelText(/Additional notes/i)), {
       target: { value: "Family present; no new concerns raised." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() =>
       expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
     );
@@ -280,8 +280,8 @@ describe("#91 — the note can be composed", () => {
 
   it("an empty section is NOT sent — assembly omits it, so storing it would persist an unrenderable row", async () => {
     mountCompose();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save draft" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() =>
       expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
     );
@@ -291,7 +291,7 @@ describe("#91 — the note can be composed", () => {
   it("the narrative shown is the SERVER's assembly, never composed in the client", async () => {
     mountCompose();
     fireEvent.click(await waitFor(() => screen.getByLabelText(/Dyspnea at rest/i)));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     // The preview text comes back from the PATCH; nothing here builds a sentence out of the labels.
     expect(await screen.findByText("Patient reports dyspnea at rest.")).toBeTruthy();
   });
@@ -301,7 +301,7 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
   it("Finalize SAVES first, so the gate reads the tree the clinician is looking at", async () => {
     mountCompose();
     fireEvent.click(await waitFor(() => screen.getByLabelText(/Dyspnea at rest/i)));
-    fireEvent.click(screen.getByRole("button", { name: "Finalize" }));
+    fireEvent.click(screen.getByRole("button", { name: "Finalize note" }));
     await waitFor(() =>
       expect(writes()).toContain(`POST /api/v1/encounters/${ENCOUNTER}/finalize`),
     );
@@ -315,16 +315,16 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     // "required sections are non-empty", so a client that guessed would either block a legal note or
     // promise an illegal one.
     mountCompose();
-    const button = await waitFor(() => screen.getByRole("button", { name: "Finalize" }));
+    const button = await waitFor(() => screen.getByRole("button", { name: "Finalize note" }));
     expect((button as HTMLButtonElement).disabled).toBe(false);
-    expect(await screen.findByText(/Still empty: Assessment/i)).toBeTruthy();
+    expect(await screen.findByText(/Complete Assessment before finalization/i)).toBeTruthy();
   });
 
   it("a 412 reads as a concurrent save, not as a generic error", async () => {
     writeFailure = { status: 412, body: { error: { code: "VERSION_CONFLICT", message: "stale" } } };
     mountCompose();
     fireEvent.click(await waitFor(() => screen.getByLabelText(/Dyspnea at rest/i)));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     expect((await screen.findByText(/Someone else saved this note/i)).textContent).toMatch(
       /discard/i,
     );
@@ -337,16 +337,16 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     };
     mountCompose();
     fireEvent.click(await waitFor(() => screen.getByLabelText(/Dyspnea at rest/i)));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     expect(await screen.findByText(/clinical vocabulary was updated/i)).toBeTruthy();
   });
 
   it("a signed encounter offers no authoring controls at all", async () => {
     encounterStatus = "signed";
     mountCompose();
-    const save = await waitFor(() => screen.getByRole("button", { name: "Save" }));
+    const save = await waitFor(() => screen.getByRole("button", { name: "Save draft" }));
     expect((save as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Finalize" }) as HTMLButtonElement).disabled).toBe(
+    expect((screen.getByRole("button", { name: "Finalize note" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
     expect((screen.getByRole("button", { name: "Vitals" }) as HTMLButtonElement).disabled).toBe(

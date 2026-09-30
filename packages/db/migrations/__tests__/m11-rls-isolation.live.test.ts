@@ -169,9 +169,9 @@ describe.skipIf(!DB_URL)("M11 Orders — RLS cross-tenant denial — LIVE Postgr
     const verbalOrder = (
       await db.query(
         `INSERT INTO verbal_order (organization_id, provider_entity_id, location_id, target_kind, target_id,
-           recording_membership_id, ordering_physician_mdm_id, verbal_attestation, received_at, deadline_at,
-           deadline_policy_version)
-         VALUES ($1,$2,$3,'medication_order',$4,$5,$6,'read back', now(), now() + interval '48 hours','v1')
+           recording_membership_id, ordering_physician_mdm_id, verbal_attestation, received_at, effective_at,
+           deadline_at, deadline_policy_version)
+         VALUES ($1,$2,$3,'medication_order',$4,$5,$6,'read back', now(), now(), now() + interval '48 hours','v1')
          RETURNING id`,
         [org, providerEntity, location, orderRecord, membership, PHYSICIAN_MDM],
       )

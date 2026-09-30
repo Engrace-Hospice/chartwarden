@@ -135,7 +135,13 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       mcoId: Type.Union([Str, Type.Null()]),
       submittedAt: Iso,
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's own §4.4 spec text and real `consumers/subscription-map.ts` name
+    // exactly three inbound topics, none M24-scoped — M25 pulls the Medicaid 835 itself over M24's
+    // per-state channel (D9) rather than subscribing to any M24 claim-lifecycle event.
+    // F-144 (#248) — m22 REMOVED: M24's own transition table gives SUBMITTED no document-relevant
+    // effect ("medicaid_submission row inserted; X12 file... generated") — the render only fires at
+    // ACK_ACCEPTED, via `medicaid_billing.document_render_requested`.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -150,7 +156,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptIndex: Type.Integer(),
       reason: Str,
     }),
-    declaredConsumers: ["m24"],
+    // F-140 (#248) — self-declared `m24` removed: `consumers/handlers.ts` has no handler for this event,
+    // and the real retry is BullMQ job-level exponential backoff on the ORIGINAL submit job, never a
+    // second outbox round-trip.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -182,7 +191,13 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: M26's own spec is explicit — "Medicaid payments are excluded from the
     // Medicare aggregate cap (ADR-0017 D4)" and "M26's scope is strictly Medicare per 42 CFR §418.308";
     // its subscription-map has no M24 topic of any kind.
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25 has no M24 subscription of any kind (see `.submitted` above) —
+    // it pulls the Medicaid 835 itself; a plain acceptance ack carries no denial code either way.
+    // F-144 (#248) — m22 REMOVED: redundant sibling — M24's own transition table gives ACK_ACCEPTED
+    // exactly one document-relevant effect, "Document render request to M22", which routes through the
+    // dedicated (currently unemitted) `m24.medicaid_billing.document_render_requested` event, not this
+    // one.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -199,7 +214,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectedLineNumbers: Type.Array(Type.Integer()),
       errorCodes: StrArr,
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: no M24 subscription of any kind (see `.submitted` above).
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -214,7 +230,13 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: Str,
       rejectionCodes: StrArr,
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's §4.4 subscribe list names only `m23.claim.rejected` as the
+    // pre-835 denial-worklist seed — the Medicare 277CA path, not this Medicaid sibling. M25's own text
+    // is explicit that it is "payer-source-agnostic past the [payerProgram] discriminator" once the 835
+    // itself arrives, but nothing subscribes to the per-state ack-rejection event itself.
+    // F-144 (#248) — m22 REMOVED: M24's own transition table gives ACK_REJECTED's effect as "M36 alert
+    // critical; biller assigned" — no document render named.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -263,7 +285,9 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: Id,
       denialCodes: StrArr,
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: this event is M25's OWN OUTPUT reused — "driven by M25" per the
+    // description above — so M25 is the producer here, not a consumer of its own downstream effect.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -326,7 +350,9 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       patientPayerId: Id,
       asOfServiceDate: Iso,
     }),
-    declaredConsumers: ["m24"],
+    // F-140 (#248) — self-declared `m24` removed: never emitted anywhere in the codebase —
+    // `refreshEligibility` runs fully synchronously and publishes `.checked` directly.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -343,7 +369,14 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       checkedAt: Iso,
       staleAt: Iso,
     }),
-    declaredConsumers: ["m5"],
+    // F-138 (#248) — `m5` dropped: the relationship runs the OPPOSITE direction. M5's own spec (D5,
+    // §2 "Addresses with history") states M5's `patient.address_changed` triggers M24 to "re-check
+    // state-Medicaid eligibility" — M24 is the reader of M5's address, not the other way round. M24's
+    // own spec names M5's `PatientPayerReader`/`state_at()` as a PULL at claim-assembly and
+    // eligibility-check time (§ "Eligibility (state 270/271 or portal)"), and M5's own spec text never
+    // names M24 or "medicaid_eligibility" as something it consumes — the reversed-direction shape
+    // F-131/F-102 warn against, confirmed here rather than assumed.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -424,7 +457,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       lastSeenUpAt: Iso,
       downedAt: Iso,
     }),
-    declaredConsumers: ["m1"],
+    // F-176 (#248) — m1 REMOVED: `system_status` is platform-global with no tenant column and a session-gated
+    // read route, while this fact is per-org Medicaid-credential health; writing it there would show one org's
+    // channel state to every tenant. The M1 lag-probe / MAC-portal writers are unaffected.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -439,7 +475,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       downedAt: Iso,
       recoveredAt: Iso,
     }),
-    declaredConsumers: ["m1"],
+    // F-176 (#248) — m1 REMOVED: `system_status` is platform-global with no tenant column and a session-gated
+    // read route, while this fact is per-org Medicaid-credential health; writing it there would show one org's
+    // channel state to every tenant. The M1 lag-probe / MAC-portal writers are unaffected.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },

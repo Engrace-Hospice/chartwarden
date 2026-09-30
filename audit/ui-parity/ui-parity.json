@@ -340,6 +340,14 @@
       "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
+      "id": "assessment.detail",
+      "path": "/patients/:patientId/assessments/:assessmentId",
+      "permission": "assessment.read"
+    },
+    {
+      "app": "web",
+      "module": "09-assessments",
+      "moduleId": 9,
       "id": "assessment.scale-trend",
       "path": "/patients/:patientId/scales/:scaleType",
       "permission": "assessment.read_trend"

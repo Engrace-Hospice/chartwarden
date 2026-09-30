@@ -80,6 +80,40 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m6.nor.acknowledged",
       "m6.revocation.created",
       "m6.discharge.created",
+      "m6.discharge.cosigned",
+      // F-144 (#248) — four render requests catalogued, spec-named by their producing module's own
+      // document-request table, and never emitted anywhere (the producer-side gap): the M13 machine's
+      // effect list was never read, and M23/M24/M25 had every typed builder and no caller.
+      "m13.administration_record.document_requested",
+      "m23.billing.document_render_requested",
+      "m24.medicaid_billing.document_render_requested",
+      "m25.denial_resolution_letter.render_requested",
+      // F-16x (#248) — two render requests M22's own spec names as producer-side commitments, corrected
+      // from the misattributions F-144 found (M17's own catalog: "M22 renders the reminder"; M7's own
+      // catalog: "drives … M22 PDF").
+      "m17.caregiver_reminder_due",
+      "m7.care_plan.version_signed",
+      // F-192 (#248) — the last of that same group-of-seven: M22's own spec calls it "discharge_summary
+      // (transfer variant)" — a distinct `document_aggregate_type` (migration 0267), not a second version
+      // of the base template.
+      "m6.transfer.created",
+      // F-166 (#248) — five GENESIS-only render requests, all real `document_aggregate_type` enum
+      // values since migration 0048 that had never gotten a TemplateDescriptor or a subscription.
+      "m8.encounter.signed",
+      "m18.evv.aggregator_accepted",
+      "m14.packet.render_requested",
+      "m14.minutes.signed",
+      "m15.plan.version_signed",
+      // F-168 (#248) — three requests genuinely blocked ONLY by the idempotency-key-granularity gate
+      // (migration 0261, `document_version.source_event_id`): each asks for a NEW VERSION of an
+      // aggregate its own GENESIS sibling above already rendered.
+      "m8.encounter.addendum_signed",
+      "m14.minutes.amended",
+      "m12.medication_order.transmitted",
+      // F-208 (#248) — M9's printable assessment summary. No per-request id on the payload, so
+      // `patientId` is the aggregate; every request (chart-open auto-refresh or the explicit
+      // download/print action) appends a new version of one evolving per-patient document.
+      "m9.assessment.summary_requested",
     ]);
   });
 

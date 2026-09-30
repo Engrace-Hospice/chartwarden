@@ -64,22 +64,30 @@ describe("M8 outbox event contract (§4.4)", () => {
     // F-115 (#248) — m28/m30 removed from declaredConsumers: m28 never subscribes to anything
     // (request-time-only FHIR reads, F-035); m30 reads this fact via `SignedEncountersReader` on its
     // nightly recompute cadence, so it moved to seamConsumers instead.
+    // F-141 (#248) — m18 added: M18's own locked D6 + job catalog name a real, decisive consumer that
+    // closes an open `evv_missing_resolution` row on encounter sign.
+    // F-143 (#248) — m9/m10 removed: both are M8 CALLING INTO the other module's API synchronously
+    // (M9's `recordAssessment`, M10's `recordHopeTimepoint`), never a push either would subscribe to.
     expect(signed?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m9", "m10", "m14", "m22", "m31", "m36"]),
+      expect.arrayContaining(["m14", "m18", "m22", "m31", "m36"]),
     );
+    expect(signed?.declaredConsumers).not.toEqual(expect.arrayContaining(["m9", "m10"]));
     // m33 (MetricsProvider pull) and m30 (measure-recompute seam) receive this synchronously, not from
     // the outbox.
     expect(signed?.seamConsumers).toEqual(["m30", "m33"]);
   });
 
-  it("`m8.encounter.cosigned` reaches the billing readers (§7.2 billable flip)", () => {
+  it("`m8.encounter.cosigned` reaches the M23 billing reader (§7.2 billable flip)", () => {
     const cosigned = M8_OUTBOX_EVENTS.find((e) => e.eventName === "m8.encounter.cosigned");
-    expect(cosigned?.declaredConsumers).toEqual(expect.arrayContaining(["m23", "m24"]));
+    expect(cosigned?.declaredConsumers).toEqual(expect.arrayContaining(["m23"]));
+    // F-140 (#248) — m24 dropped: `M24_SUBSCRIPTION_MAP`'s exhaustive trigger-revalidate list names
+    // only `m8.encounter.signed`, not `.cosigned`.
+    expect(cosigned?.declaredConsumers).not.toContain("m24");
   });
 
-  it("`m8.encounter.orphan_recorded` routes to M17 reconciliation (D2)", () => {
+  it("`m8.encounter.orphan_recorded` is record-only (F-164, #248) — no production emitter, and the identical fact already reaches M17 via the live `.signed` no_visit_link branch", () => {
     const orphan = M8_OUTBOX_EVENTS.find((e) => e.eventName === "m8.encounter.orphan_recorded");
-    expect(orphan?.declaredConsumers).toEqual(["m17"]);
+    expect(orphan?.declaredConsumers).toEqual([]);
   });
 
   it("validates the locked `m8.encounter.signed` payload and rejects one missing a required key", () => {

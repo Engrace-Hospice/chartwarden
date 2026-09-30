@@ -102,3 +102,27 @@ export async function applyConsentChanged(
 /** True in Phase 1 (Wave C): M39 ships in the same wave; until its consumer is wired live the
  *  snapshot is seeded by admit/admin resync, not the event. */
 export const M39_CONSENT_CONSUMER_DEFERRED = true;
+
+/**
+ * Merge ONE flag's new active-state into a snapshot's CURRENT flag set (D10, F-167/#248) — the
+ * signals list {@link applyConsentChanged} actually needs to recompute correctly.
+ *
+ * M39 only ever tells this consumer about ONE category at a time (`sud`, the only flag
+ * `42_cfr_part_2_release` drives — see the M39-side `TYPE_TO_PRIVACY_FLAG` map,
+ * `apps/backend/src/modules/39-consent/consumers.ts`). The other five categories
+ * (hiv/mental_health/genetic/minor_restricted/abuse_victim) are "M5-delegated" per M39 spec §4.3.1 —
+ * computed by a DIFFERENT, unbuilt mechanism, not pushed by any `m39.consent.*` event. Calling
+ * {@link recomputePrivacyFlags} with ONLY the touched signal would silently CLEAR every other flag
+ * a future producer sets, because the pure function has no notion of "unchanged" — every category
+ * absent from its input reads as "not restricted". This merges the touched signal into the
+ * currently-persisted set so every other category round-trips untouched.
+ */
+export function mergeConsentSignal(
+  currentFlags: readonly PrivacyFlag[],
+  touched: ConsentSignal,
+): ConsentSignal[] {
+  const preserved: ConsentSignal[] = currentFlags
+    .filter((flag) => flag !== touched.flag)
+    .map((flag) => ({ flag, active: false }));
+  return [...preserved, touched];
+}
