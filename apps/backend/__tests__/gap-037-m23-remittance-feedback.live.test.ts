@@ -27,6 +27,7 @@ import {
   M23_OUTBOX_EVENTS,
   buildM23RemittanceConsumer,
 } from "../src/modules/23-billing-medicare/index";
+import { M23_REMITTANCE_CONSUMER } from "../src/modules/23-billing-medicare/outbox-consumers/m25-remittance";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -141,6 +142,27 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
         await admin.query(
           "SELECT count(*)::int AS n FROM outbox_event WHERE event_type=$1 AND status='pending'",
           [eventType],
+        )
+      ).rows[0].n,
+    );
+
+  /**
+   * Rows of one event type M23's consumer has NOT settled: still `pending` AND no
+   * `outbox_consumer_receipt` for `m23.m25-remittance`. `pendingRows` alone cannot prove M23 settled
+   * `m25.remittance.claim_paid`: since F-140 that event declares `["m23","m24"]`, and this suite binds
+   * only M23, so the dispatcher deliberately re-pends every row ("completed live bindings; one or more
+   * declared consumers are not live") even after M23 handled it. The receipt is the per-consumer
+   * settlement record; a row M23 left un-handled (retry storm) has no receipt and is still counted.
+   */
+  const m23UnsettledRows = async (eventType: string) =>
+    Number(
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM outbox_event e
+            WHERE e.event_type=$1 AND e.status='pending'
+              AND NOT EXISTS (SELECT 1 FROM outbox_consumer_receipt r
+                               WHERE r.event_id=e.id AND r.consumer_name=$2)`,
+          [eventType, M23_REMITTANCE_CONSUMER.consumerName],
         )
       ).rows[0].n,
     );
@@ -332,8 +354,9 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
     expect(await stateOf(CLAIM.redelivered)).toBe("PAID");
     expect(skips).toContainEqual({ reason: "already_applied", claimId: CLAIM.redelivered });
     // Completed, not left pending — a permanently-retrying row would degrade the readiness probe's
-    // outbox-depth check.
-    expect(await pendingRows("m25.remittance.claim_paid")).toBe(0);
+    // outbox-depth check. Scoped to M23's own settlement (receipt): M24 is also a declared consumer of
+    // claim_paid and is unbound in this suite, so the source rows legitimately stay pending for M24.
+    expect(await m23UnsettledRows("m25.remittance.claim_paid")).toBe(0);
     const history = await admin.query("SELECT 1 FROM claim_state_history WHERE claim_id=$1", [
       CLAIM.redelivered,
     ]);
@@ -351,7 +374,7 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
     });
     expect(await stateOf(CLAIM.notLegal)).toBe("DRAFT");
     expect(skips).toContainEqual({ reason: "transition_not_legal", claimId: CLAIM.notLegal });
-    expect(await pendingRows("m25.remittance.claim_paid")).toBe(0);
+    expect(await m23UnsettledRows("m25.remittance.claim_paid")).toBe(0);
   });
 
   it("cannot pay another tenant's claim — the consumer runs under the EVENT's org (RLS)", async () => {
