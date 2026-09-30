@@ -71,6 +71,8 @@ function bodyFor(method: string, path: string): unknown {
         attendanceCount: minutesStatus === "final" ? 4 : null,
         decisionCount: minutesStatus === "final" ? 2 : null,
         actionItemCount: minutesStatus === "final" ? 1 : null,
+        disciplineNoteCount: minutesStatus === "final" ? 7 : null,
+        disciplineAddendumCount: minutesStatus === "final" ? 3 : 0,
       };
     return {
       id: MEETING,
@@ -486,8 +488,8 @@ describe("#91 — the pre-meeting lifecycle", () => {
 describe("#91 — the minutes are the §418.56(d) evidence", () => {
   it("in-progress minutes distinguish 'nothing frozen yet' from 'nothing happened'", async () => {
     mountMinutes();
-    // Three counts, all "not frozen yet" — the assertion is that none of them reads as a zero.
-    expect((await screen.findAllByText(/not frozen yet/i)).length).toBe(3);
+    // Four counts (attendance, decisions, action items, discipline notes), all "not frozen yet" — the assertion is that none of them reads as a zero.
+    expect((await screen.findAllByText(/not frozen yet/i)).length).toBe(4);
     expect(screen.queryByRole("button", { name: "Request an amendment" })).toBeNull();
   });
 
@@ -498,6 +500,20 @@ describe("#91 — the minutes are the §418.56(d) evidence", () => {
     // read projected 3 of 13 columns and the adjourn transaction left all three NULL.
     expect(await screen.findByText("4")).toBeTruthy();
     expect(screen.getByText("membership-1")).toBeTruthy();
+    // The discipline-note count is shown (text is not on this view — a link points back to the meeting page).
+    expect(screen.getByText("Discipline notes")).toBeTruthy();
+    expect(screen.getByText("7")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Read the notes on the meeting page" }).getAttribute("href"),
+    ).toBe(`/idg/meetings/${MEETING}/live#discipline-notes`);
+    // The live late-addenda count sits beside the frozen note count and links back to the panel.
+    expect(screen.getByText("Late addenda")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Read the addenda in the notes panel" })
+        .getAttribute("href"),
+    ).toBe(`/idg/meetings/${MEETING}/live#discipline-notes`);
   });
 
   it("an amendment REQUEST is filed against final minutes rather than editing them", async () => {

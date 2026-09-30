@@ -10,6 +10,7 @@
 // `quorate_decision` / `per_patient_review_floor_clear`) resolve over the same dataset (M12/M13-T08 precedent:
 // the backend is both the route service and the ABAC resolver).
 import {
+  DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS,
   evaluateQuorum,
   planActionItemCreate,
   planDecisionRecord,
@@ -30,7 +31,7 @@ import type {
   IdgMeetingStatus,
   QuorumSnapshot,
 } from "@wardenx/types";
-import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
 import { type PacketContentView, mapPacketContent } from "./packet-content";
 
@@ -136,7 +137,196 @@ export interface MinutesView {
   readonly attendanceCount: number | null;
   readonly decisionCount: number | null;
   readonly actionItemCount: number | null;
+  /**
+   * Discipline notes frozen at adjournment — a COUNT, like the other snapshots (the text is read through
+   * `GET /idg/meetings/:id/discipline-notes`, which applies Part 2 redaction per caller). Null while `in_progress`.
+   */
+  readonly disciplineNoteCount: number | null;
+  /**
+   * LATE ADDENDA recorded after adjournment — a LIVE count of `idg_discipline_note` rows with `is_addendum`
+   * (NOT read from the frozen snapshot, which never changes after adjournment). Count only: the text is read
+   * through `GET .../discipline-notes` with the same Part 2 redaction. 0 while `in_progress`.
+   */
+  readonly disciplineAddendumCount: number;
 }
+/**
+ * One per-discipline meeting note (`idg_discipline_note`). `patientId` null = a meeting-level note for that
+ * discipline. `bodyText` is free-text PHI: for a patient carrying an active SUD flag (or one the packet cannot
+ * vouch for) the READ elides it for a caller without a Part 2 release — `bodyText: null` +
+ * `bodyWithheld: true` (fail-closed; the metadata still shows that a note exists). The POST/PATCH echo returns
+ * the text the caller just submitted. `authorName` is attached by the route (membership-display seam).
+ */
+export interface DisciplineNoteView {
+  readonly id: string;
+  readonly meetingId: string;
+  readonly patientId: string | null;
+  readonly discipline: string;
+  readonly bodyText: string | null;
+  readonly bodyWithheld: boolean;
+  readonly authorMembershipId: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  /** True for a LATE ADDENDUM (written after the meeting was adjourned; append-only, outside the frozen snapshot). */
+  readonly isAddendum: boolean;
+  /** Server time the addendum was recorded (== `createdAt`); null for an original (live) note. */
+  readonly addendumRecordedAt: string | null;
+  /** The addendum's required reason (free-text PHI): withheld (null) under Part 2 exactly like `bodyText`; null for originals. */
+  readonly reason: string | null;
+}
+/** The acting principal of a note write: the membership + whether it holds `idg.coordinate` (any-discipline). */
+export interface DisciplineNoteActor {
+  readonly membershipId: string;
+  readonly isCoordinator: boolean;
+}
+export interface CreateDisciplineNoteArgs {
+  /** Null/absent = a meeting-level note; otherwise the patient MUST be on the meeting's agenda/packet set. */
+  readonly patientId?: string | null;
+  readonly discipline: string;
+  readonly bodyText: string;
+  /** REQUIRED (non-blank, ≤500) when the meeting is adjourned (=> the note is a late addendum); refused on a live meeting. */
+  readonly reason?: string | null;
+}
+/** The per-discipline notes a meeting's minutes froze at adjournment (only for the M22 render payload). */
+export interface DisciplineNoteSnapshotEntry {
+  readonly noteId: string;
+  readonly patientId: string | null;
+  readonly discipline: string;
+  readonly bodyText: string | null;
+  readonly bodyWithheld: boolean;
+  readonly authorMembershipId: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** Statuses of an attendance row that count as "in the room" for writing a discipline note. */
+export const NOTE_PRESENT_STATUSES: readonly IdgAttendanceStatus[] = [
+  "present",
+  "tardy",
+  "partial",
+];
+
+/** The 422 for a note write on a meeting that is neither `live` nor (in-window) `adjourned`. */
+export function noteMeetingNotLiveError(): WardenXError {
+  return new WardenXError(
+    "MEETING_NOT_LIVE",
+    "discipline notes may only be written while the meeting is live, or as a late addendum after it is adjourned",
+    422,
+  );
+}
+/** The 422 for an edit of a note that is FROZEN (original note of an adjourned meeting) or of a non-live meeting. */
+export function noteFrozenError(): WardenXError {
+  return new WardenXError(
+    "MEETING_NOT_LIVE",
+    "the meeting is no longer live: its notes are frozen; record a late addendum instead",
+    422,
+  );
+}
+/** The 422 for a PATCH of a late addendum (append-only; a correction is a further addendum). */
+export function addendumImmutableError(): WardenXError {
+  return new WardenXError(
+    "ADDENDUM_IMMUTABLE",
+    "a late addendum cannot be edited; record a further addendum to correct it",
+    422,
+  );
+}
+/** The 422 for an addendum attempted after {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days past adjournment. */
+export function addendumWindowClosedError(): WardenXError {
+  return new WardenXError(
+    "ADDENDUM_WINDOW_CLOSED",
+    `late addenda are only accepted within ${DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days of adjournment`,
+    422,
+  );
+}
+/** The 422 for an addendum without a (non-blank) reason. */
+export function addendumReasonRequiredError(): WardenXError {
+  return new WardenXError("ADDENDUM_REASON_REQUIRED", "a late addendum requires a reason", 422);
+}
+/** The 422 for a reason supplied on a note of a LIVE meeting (reasons belong to late addenda only). */
+export function noteReasonNotApplicableError(): WardenXError {
+  return new WardenXError(
+    "NOTE_REASON_NOT_APPLICABLE",
+    "a reason is only accepted on a late addendum (after adjournment)",
+    422,
+  );
+}
+/** Result of {@link planDisciplineNoteCreate}. */
+export interface DisciplineNoteCreatePlan {
+  readonly isAddendum: boolean;
+  readonly addendumRecordedAt: Date | null;
+  readonly reason: string | null;
+}
+/**
+ * Pure state matrix for creating a discipline note: `live` => an ordinary note (no reason); `adjourned` =>
+ * a late ADDENDUM iff within {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days of `adjournedAt` (inclusive) and
+ * a non-blank reason is given (server clock `now` is the recorded-at); any other status => MEETING_NOT_LIVE.
+ * An adjourned meeting with no recorded end time is treated as out of window (fail-closed).
+ */
+export function planDisciplineNoteCreate(input: {
+  readonly status: string;
+  readonly adjournedAt: Date | null;
+  readonly now: Date;
+  readonly reason?: string | null;
+}): DisciplineNoteCreatePlan {
+  const reason = input.reason?.trim() ?? "";
+  if (input.status === "live") {
+    if (reason.length > 0) throw noteReasonNotApplicableError();
+    return { isAddendum: false, addendumRecordedAt: null, reason: null };
+  }
+  if (input.status !== "adjourned") throw noteMeetingNotLiveError();
+  const windowMs = DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  if (input.adjournedAt === null || input.now.getTime() > input.adjournedAt.getTime() + windowMs) {
+    throw addendumWindowClosedError();
+  }
+  if (reason.length === 0) throw addendumReasonRequiredError();
+  return { isAddendum: true, addendumRecordedAt: input.now, reason };
+}
+/** The 422 for a note about a patient who is not on the meeting's caseload (URL-tamper defense, §2.3 D9). */
+export function noteInclusionError(): WardenXError {
+  return new WardenXError(
+    "INCLUSION_CRITERIA_FAILED",
+    "the patient is not on this meeting's agenda",
+    422,
+  );
+}
+/**
+ * Pure authorization for one note write: a coordinator (`idg.coordinate`) may write any discipline; anyone
+ * else must be an attendee recorded present/tardy/partial FOR THE NOTE'S DISCIPLINE. 403 otherwise.
+ */
+export function assertMayWriteDisciplineNote(
+  actor: DisciplineNoteActor,
+  discipline: string,
+  attendance: ReadonlyArray<{
+    readonly membershipId: string;
+    readonly discipline: string;
+    readonly status: string;
+  }>,
+): void {
+  if (actor.isCoordinator) return;
+  const ok = attendance.some(
+    (a) =>
+      a.membershipId === actor.membershipId &&
+      a.discipline === discipline &&
+      (NOTE_PRESENT_STATUSES as readonly string[]).includes(a.status),
+  );
+  if (!ok) {
+    throw new ForbiddenError(
+      "a discipline note may only be written by an attendee recorded present for that discipline, or by a coordinator",
+    );
+  }
+}
+/** 412 STALE_VERSION when the `If-Match` version no longer matches the row (optimistic concurrency, §7.7). */
+export function assertNoteVersion(expected: number, current: number): void {
+  if (expected !== current) {
+    throw new WardenXError(
+      "STALE_VERSION",
+      `stale write: expected row version ${expected} but current is ${current}`,
+      412,
+    );
+  }
+}
+
 export interface PacketDigestView {
   readonly packetId: string;
   readonly meetingId: string;
@@ -444,6 +634,37 @@ export interface IdgRouteService {
     userId: string,
     q: { assignee?: string; status?: IdgActionItemStatus },
   ): Promise<ActionItemView[]>;
+  // discipline notes (spec extension)
+  /**
+   * The meeting's discipline notes, oldest first, optionally for one patient. Readable in ANY meeting status
+   * (after adjournment they are simply frozen). W-SUD-01: for a patient with an active SUD flag — or whom the
+   * packet cannot vouch for — the text is withheld (`bodyWithheld`) unless `viewer` proves a Part 2 release;
+   * an ABSENT viewer withholds (fail-closed).
+   */
+  listDisciplineNotes(
+    orgId: string,
+    meetingId: string,
+    q: { patientId?: string },
+    viewer?: PacketViewer,
+  ): Promise<DisciplineNoteView[]>;
+  /** Write a note. 422 MEETING_NOT_LIVE unless `live`; 422 INCLUSION_CRITERIA_FAILED for a patient off the agenda;
+   * 403 unless the actor is a coordinator or is present for `args.discipline`. */
+  createDisciplineNote(
+    orgId: string,
+    actor: DisciplineNoteActor,
+    meetingId: string,
+    args: CreateDisciplineNoteArgs,
+  ): Promise<DisciplineNoteView>;
+  /** Edit a note's text (same guards; a non-coordinator may edit only their OWN note; 412 on stale `If-Match`). */
+  updateDisciplineNote(
+    orgId: string,
+    actor: DisciplineNoteActor,
+    id: string,
+    bodyText: string,
+    ifMatchVersion: number,
+  ): Promise<DisciplineNoteView>;
+  /** The owning meeting id of a note (null when absent/cross-tenant) — for the route's per-meeting ABAC. */
+  disciplineNoteMeetingId(orgId: string, id: string): Promise<string | null>;
   // minutes
   getMinutes(orgId: string, meetingId: string): Promise<MinutesView>;
   submitAmendment(
@@ -535,6 +756,20 @@ interface ActionItemRow {
   linkedArtifactKind: IdgActionItemLinkedKind | null;
   linkedArtifactId: string | null;
 }
+interface NoteRow {
+  id: string;
+  meetingId: string;
+  patientId: string | null;
+  discipline: string;
+  bodyText: string;
+  authorMembershipId: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  isAddendum: boolean;
+  addendumRecordedAt: string | null;
+  addendumReason: string | null;
+}
 interface MinutesRow {
   id: string;
   meetingId: string;
@@ -545,6 +780,7 @@ interface MinutesRow {
   attendanceCount: number | null;
   decisionCount: number | null;
   actionItemCount: number | null;
+  disciplineNoteCount: number | null;
 }
 interface RecurringPolicyRow {
   id: string;
@@ -604,6 +840,7 @@ export function createInMemoryIdgBackend(
   }
   const attendance = new Map<string, AttendanceRow>();
   const agenda = new Map<string, AgendaRow>();
+  const notes = new Map<string, NoteRow>();
   const decisions = new Map<string, DecisionRow>();
   const actionItems = new Map<string, ActionItemRow>();
   const minutes = new Map<string, MinutesRow>(); // keyed by meetingId
@@ -633,6 +870,23 @@ export function createInMemoryIdgBackend(
       coordinatorMembershipId: m.coordinatorMembershipId,
     };
   }
+  function toNoteView(n: NoteRow, withheld: boolean): DisciplineNoteView {
+    return {
+      id: n.id,
+      meetingId: n.meetingId,
+      patientId: n.patientId,
+      discipline: n.discipline,
+      bodyText: withheld ? null : n.bodyText,
+      bodyWithheld: withheld,
+      authorMembershipId: n.authorMembershipId,
+      version: n.version,
+      createdAt: n.createdAt,
+      updatedAt: n.updatedAt,
+      isAddendum: n.isAddendum,
+      addendumRecordedAt: n.addendumRecordedAt,
+      reason: withheld ? null : n.addendumReason,
+    };
+  }
   /** The disciplines PRESENT (present/tardy/partial) at the meeting right now (the quorum present-set). */
   function presentDisciplinesFor(meetingId: string): string[] {
     return [...attendance.values()]
@@ -652,6 +906,7 @@ export function createInMemoryIdgBackend(
         attendanceCount: null,
         decisionCount: null,
         actionItemCount: null,
+        disciplineNoteCount: null,
       };
       minutes.set(meetingId, row);
       minutesById.set(row.id, row);
@@ -868,6 +1123,7 @@ export function createInMemoryIdgBackend(
       min.attendanceCount = [...attendance.values()].filter((a) => a.meetingId === id).length;
       min.decisionCount = [...decisions.values()].filter((d) => d.meetingId === id).length;
       min.actionItemCount = [...actionItems.values()].filter((a) => a.meetingId === id).length;
+      min.disciplineNoteCount = [...notes.values()].filter((n) => n.meetingId === id).length;
       emit("m14.meeting.adjourned", { meetingId: id, adjournedAt: m.adjournedAt });
       emit("m14.minutes.signed", { minutesId: min.id, meetingId: id });
       return toMeetingView(m);
@@ -1164,6 +1420,95 @@ export function createInMemoryIdgBackend(
         .map((a) => ({ ...a }));
     },
 
+    // ── discipline notes ─────────────────────────────────────────────────────────────────────────────────
+    async listDisciplineNotes(orgId, meetingId, q, viewer) {
+      meetingOf(orgId, meetingId);
+      const rows = [...notes.values()]
+        .filter((n) => n.meetingId === meetingId)
+        .filter((n) => q.patientId === undefined || n.patientId === q.patientId)
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+      const packets = packetSeeds.get(meetingId) ?? {};
+      const allowed = new Map<string, boolean>();
+      for (const n of rows) {
+        if (n.patientId === null || allowed.has(n.patientId)) continue;
+        const cover = (
+          packets[n.patientId]?.builtSnapshot as
+            | { patientCover?: { activeSudFlag?: unknown } }
+            | undefined
+        )?.patientCover;
+        // The slice mirrors the DB rule: flagged, or no packet to vouch for the patient => needs a release.
+        const needsRelease = cover === undefined || cover.activeSudFlag !== false;
+        allowed.set(
+          n.patientId,
+          needsRelease ? (viewer ? await viewer.sudDisclosureAllowed(n.patientId) : false) : true,
+        );
+      }
+      return rows.map((n) => {
+        const withheld = n.patientId !== null && allowed.get(n.patientId) === false;
+        return toNoteView(n, withheld);
+      });
+    },
+    async createDisciplineNote(orgId, actor, meetingId, args) {
+      const m = meetingOf(orgId, meetingId);
+      const at = now();
+      const plan = planDisciplineNoteCreate({
+        status: m.status,
+        adjournedAt: m.adjournedAt === null ? null : new Date(m.adjournedAt),
+        now: new Date(at),
+        reason: args.reason,
+      });
+      const patientId = args.patientId ?? null;
+      if (patientId !== null && !m.includedPatientIds.has(patientId)) throw noteInclusionError();
+      assertMayWriteDisciplineNote(
+        actor,
+        args.discipline,
+        [...attendance.values()].filter((a) => a.meetingId === meetingId),
+      );
+      const row: NoteRow = {
+        // A real uuid: `PATCH /idg/discipline-notes/:id` validates its param as one (the other slice ids are not).
+        id: crypto.randomUUID(),
+        meetingId,
+        patientId,
+        discipline: args.discipline,
+        bodyText: args.bodyText,
+        authorMembershipId: actor.membershipId,
+        version: 0,
+        createdAt: at,
+        updatedAt: at,
+        isAddendum: plan.isAddendum,
+        addendumRecordedAt: plan.addendumRecordedAt === null ? null : at,
+        addendumReason: plan.reason,
+      };
+      notes.set(row.id, row);
+      return toNoteView(row, false);
+    },
+    async updateDisciplineNote(orgId, actor, id, bodyText, ifMatchVersion) {
+      const row = notes.get(id);
+      if (!row) throw new NotFoundError("idg_discipline_note");
+      const m = meetingOf(orgId, row.meetingId);
+      if (row.isAddendum) throw addendumImmutableError();
+      if (m.status !== "live") throw noteFrozenError();
+      assertMayWriteDisciplineNote(
+        actor,
+        row.discipline,
+        [...attendance.values()].filter((a) => a.meetingId === row.meetingId),
+      );
+      if (!actor.isCoordinator && row.authorMembershipId !== actor.membershipId) {
+        throw new ForbiddenError("only the note's author or a coordinator may edit it");
+      }
+      assertNoteVersion(ifMatchVersion, row.version);
+      row.bodyText = bodyText;
+      row.version += 1;
+      row.updatedAt = now();
+      return toNoteView(row, false);
+    },
+    async disciplineNoteMeetingId(orgId, id) {
+      const row = notes.get(id);
+      if (!row) return null;
+      const m = meetings.get(row.meetingId);
+      return m && m.organizationId === orgId ? row.meetingId : null;
+    },
+
     // ── minutes ──────────────────────────────────────────────────────────────────────────────────────────
     async getMinutes(orgId, meetingId) {
       meetingOf(orgId, meetingId);
@@ -1176,6 +1521,9 @@ export function createInMemoryIdgBackend(
             );
       return {
         ...row,
+        disciplineAddendumCount: [...notes.values()].filter(
+          (n) => n.meetingId === meetingId && n.isAddendum,
+        ).length,
         renderStatus: minutesRenderStatus(row.status, row.minutesDocumentId),
         finalizedByDiscipline: finalizerAttendance?.discipline ?? null,
       };

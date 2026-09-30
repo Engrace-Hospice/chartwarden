@@ -97469,6 +97469,213 @@
         }
       }
     },
+    "/api/v1/idg/discipline-notes/{id}": {
+      "patch": {
+        "operationId": "patchApiV1IdgDisciplinenotesById",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Edit a discipline note's text (live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "meetingId",
+                    "patientId",
+                    "discipline",
+                    "bodyText",
+                    "bodyWithheld",
+                    "authorMembershipId",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "isAddendum",
+                    "addendumRecordedAt",
+                    "reason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discipline": {
+                      "type": "string"
+                    },
+                    "bodyText": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bodyWithheld": {
+                      "type": "boolean"
+                    },
+                    "authorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "authorName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "isAddendum": {
+                      "type": "boolean"
+                    },
+                    "addendumRecordedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "bodyText"
+                ],
+                "properties": {
+                  "bodyText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "pattern": "\\S",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/idg/meetings": {
       "post": {
         "operationId": "postApiV1IdgMeetings",
@@ -99717,6 +99924,410 @@
         }
       }
     },
+    "/api/v1/idg/meetings/{id}/discipline-notes": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdDisciplinenotes",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "The meeting's per-discipline notes, oldest first (optionally one patient) — readable in any status; text withheld (`bodyWithheld`) for a 42 CFR Part 2 patient the caller has no release for",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "meetingId",
+                      "patientId",
+                      "discipline",
+                      "bodyText",
+                      "bodyWithheld",
+                      "authorMembershipId",
+                      "version",
+                      "createdAt",
+                      "updatedAt",
+                      "isAddendum",
+                      "addendumRecordedAt",
+                      "reason"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "discipline": {
+                        "type": "string"
+                      },
+                      "bodyText": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "bodyWithheld": {
+                        "type": "boolean"
+                      },
+                      "authorMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "authorName": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "isAddendum": {
+                        "type": "boolean"
+                      },
+                      "addendumRecordedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdDisciplinenotes",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_REASON_REQUIRED / NOTE_REASON_NOT_APPLICABLE",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "meetingId",
+                    "patientId",
+                    "discipline",
+                    "bodyText",
+                    "bodyWithheld",
+                    "authorMembershipId",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "isAddendum",
+                    "addendumRecordedAt",
+                    "reason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discipline": {
+                      "type": "string"
+                    },
+                    "bodyText": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bodyWithheld": {
+                      "type": "boolean"
+                    },
+                    "authorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "authorName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "isAddendum": {
+                      "type": "boolean"
+                    },
+                    "addendumRecordedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "discipline",
+                  "bodyText"
+                ],
+                "properties": {
+                  "patientId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "discipline": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "bodyText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/idg/meetings/{id}/minutes": {
       "get": {
         "operationId": "getApiV1IdgMeetingsByIdMinutes",
@@ -99752,7 +100363,9 @@
                     "finalizedByDiscipline",
                     "attendanceCount",
                     "decisionCount",
-                    "actionItemCount"
+                    "actionItemCount",
+                    "disciplineNoteCount",
+                    "disciplineAddendumCount"
                   ],
                   "properties": {
                     "id": {
@@ -99876,6 +100489,21 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "disciplineNoteCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "disciplineAddendumCount": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }

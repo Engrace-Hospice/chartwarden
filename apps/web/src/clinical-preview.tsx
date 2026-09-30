@@ -1369,7 +1369,12 @@ const idgMembers: [string, string, string][] = [
   ["m4", "David Kim", "chaplain"],
   ["m5", "Linda Torres, LVN", "aide"],
 ];
-const idgStatus = idgQ.get("status") ?? (idgScreen === "detail" ? "packets_ready" : "live");
+// &adjourned=1 = shorthand for &status=adjourned (late-addendum variant); &addwindow=closed puts adjournment 20 days back.
+const idgStatus =
+  idgQ.get("status") ??
+  (idgQ.has("adjourned") ? "adjourned" : idgScreen === "detail" ? "packets_ready" : "live");
+const idgAddWindowClosed = idgQ.get("addwindow") === "closed";
+const idgAdjournedHoursAgo = idgAddWindowClosed ? 20 * 24 : 24.6;
 const idgCf = Math.max(0, Number(idgQ.get("cf") ?? 2) || 0);
 const idgNoQuorum = idgQ.has("noquorum");
 const idgMeeting = {
@@ -1381,7 +1386,7 @@ const idgMeeting = {
   scheduledEnd: hoursFromNow(
     idgStatus === "live" ? 0.75 : idgStatus === "adjourned" ? -24.5 : 21.5,
   ),
-  adjournedAt: idgStatus === "adjourned" ? hoursFromNow(-24.6) : null,
+  adjournedAt: idgStatus === "adjourned" ? hoursFromNow(-idgAdjournedHoursAgo) : null,
 };
 const idgPackets =
   idgStatus === "scheduled"
@@ -1802,6 +1807,174 @@ const idgPacketBody = (pid: string) => {
       };
   return { content, appliedSudRedaction: sud, redactionNotice: sud ? notice : null };
 };
+// Discipline notes (?idg=live): default = a few notes across disciplines/patients; &notes=0 = none;
+// ADJOURNED (late addenda): &adjourned=1 (or &status=adjourned) = frozen originals + 2 addenda, composer becomes
+// "Add late addendum"; add &addwindow=closed for the closed window; add &notes=sud for a withheld Part 2 note+addendum.
+// &notes=sud = one Part 2 withheld note (text hidden) on Barbara P.; &note412=1 makes every edit return 412.
+// POST/PATCH mutate this in-memory list so the composer / edit flows can be exercised without a backend.
+const idgNoteRow = (
+  n: number,
+  pi: number | null,
+  discipline: string,
+  membershipId: string,
+  authorName: string,
+  bodyText: string | null,
+  ago: number,
+  version = 1,
+  withheld = false,
+  addendumReason: string | null = null,
+) => ({
+  id: idgUuid(1300 + n),
+  meetingId: IDG_MEET,
+  patientId: pi === null ? null : idgPid(pi),
+  discipline,
+  bodyText,
+  bodyWithheld: withheld,
+  isAddendum: addendumReason !== null,
+  addendumRecordedAt: addendumReason !== null ? hoursFromNow(-ago) : null,
+  reason: addendumReason !== null && !withheld ? addendumReason : null,
+  authorMembershipId: membershipId,
+  authorName,
+  version,
+  createdAt: hoursFromNow(-ago),
+  updatedAt: hoursFromNow(-ago + (version > 1 ? 0.1 : 0)),
+  patient: pi === null ? null : idgRef(idgPid(pi)),
+});
+const idgNotesMode = idgQ.get("notes") ?? "";
+const idgNotes: ReturnType<typeof idgNoteRow>[] =
+  idgNotesMode === "0"
+    ? []
+    : [
+        idgNoteRow(
+          1,
+          0,
+          "rn_case_manager",
+          "m2",
+          "Sarah Bennett, RN",
+          "Pain controlled on scheduled morphine; two PRN doses in 72h. Skin intact. Daughter present at last visit and engaged in care.",
+          0.6,
+        ),
+        idgNoteRow(
+          2,
+          0,
+          "msw",
+          "m3",
+          "Marcus Odum, MSW",
+          "Daughter reports caregiver strain. Respite options reviewed; referral to volunteer program agreed.",
+          0.5,
+          2,
+        ),
+        idgNoteRow(
+          3,
+          0,
+          "hospice_physician",
+          "m1",
+          "Dr. Elena Ruiz",
+          "Increasing dyspnea. Consider level-of-care review at next visit.",
+          0.4,
+        ),
+        idgNoteRow(
+          4,
+          1,
+          "rn_case_manager",
+          "m2",
+          "Sarah Bennett, RN",
+          "New wound on left heel, stage 2. Offloading in place.",
+          0.3,
+        ),
+        idgNoteRow(
+          5,
+          null,
+          "chaplain",
+          "m4",
+          "David Kim",
+          "Bereavement follow-up list reviewed for the month.",
+          0.2,
+        ),
+        ...(idgNotesMode === "sud"
+          ? [idgNoteRow(6, 1, "msw", "m3", "Marcus Odum, MSW", null, 0.1, 1, true)]
+          : []),
+        // Late addenda (adjourned variants): two on Henry N. (RN + MSW); with &notes=sud the Part 2 patient's
+        // addendum is withheld too (text AND reason).
+        ...(idgStatus === "adjourned"
+          ? [
+              idgNoteRow(
+                7,
+                0,
+                "rn_case_manager",
+                "m2",
+                "Sarah Bennett, RN",
+                "Lab result returned after the meeting: potassium 3.1. Physician notified; order for supplement received.",
+                5,
+                1,
+                false,
+                "Result arrived after adjournment and changes the plan discussed.",
+              ),
+              idgNoteRow(
+                8,
+                0,
+                "msw",
+                "m3",
+                "Marcus Odum, MSW",
+                "Daughter called to confirm respite start date, Monday.",
+                2,
+                1,
+                false,
+                "Family follow-up call the next morning.",
+              ),
+              ...(idgNotesMode === "sud"
+                ? [idgNoteRow(9, 1, "msw", "m3", "Marcus Odum, MSW", null, 1, 1, true, "withheld")]
+                : []),
+            ]
+          : []),
+      ];
+const idgNoteWrite = (
+  method: "POST" | "PATCH",
+  p: string,
+  o?: {
+    params?: { path?: { id?: string } };
+    body?: { patientId?: string | null; discipline?: string; bodyText?: string; reason?: string };
+  },
+) => {
+  if (p === "/api/v1/idg/meetings/{id}/discipline-notes" && method === "POST") {
+    const b = o?.body ?? {};
+    const isAdd = idgStatus === "adjourned";
+    const row = idgNoteRow(
+      50 + idgNotes.length,
+      b.patientId ? idgPatients.findIndex((_, k) => idgPid(k) === b.patientId) : null,
+      b.discipline ?? "rn",
+      "mada",
+      "Ada Administrator",
+      b.bodyText ?? "",
+      0,
+      1,
+      false,
+      isAdd ? (b.reason ?? "") : null,
+    );
+    idgNotes.push(row);
+    return Promise.resolve({
+      data: row,
+      error: undefined,
+      response: new Response(null, { status: 201 }),
+    });
+  }
+  if (p === "/api/v1/idg/discipline-notes/{id}" && method === "PATCH") {
+    if (idgQ.has("note412"))
+      return Promise.resolve({
+        data: undefined,
+        error: { error: { code: "STALE_VERSION", message: "stale write" } },
+        response: new Response(null, { status: 412 }),
+      });
+    const row = idgNotes.find((n) => n.id === o?.params?.path?.id);
+    if (row) {
+      row.bodyText = o?.body?.bodyText ?? row.bodyText;
+      row.version += 1;
+      row.updatedAt = hoursFromNow(0);
+    }
+    return Promise.resolve({ data: row, error: undefined, response: new Response() });
+  }
+  return res({});
+};
 const idgGet = (p: string, o?: { params?: { path?: Record<string, string> } }): unknown => {
   switch (p) {
     case "/api/v1/idg/meetings/{id}":
@@ -1828,6 +2001,8 @@ const idgGet = (p: string, o?: { params?: { path?: Record<string, string> } }): 
       return idgWithPt(idgDecisions);
     case "/api/v1/idg/action-items":
       return idgWithPt(idgActions);
+    case "/api/v1/idg/meetings/{id}/discipline-notes":
+      return idgNotes.map((n) => ({ ...n }));
     case "/api/v1/idg/meetings/{id}/minutes":
       return {
         id: idgUuid(800),
@@ -1839,6 +2014,9 @@ const idgGet = (p: string, o?: { params?: { path?: Record<string, string> } }): 
         attendanceCount: idgAttendance.length,
         decisionCount: idgDecisions.length,
         actionItemCount: idgActions.filter((a) => a.meetingId === IDG_MEET).length,
+        disciplineNoteCount:
+          idgStatus === "adjourned" ? idgNotes.filter((n) => !n.isAddendum).length : null,
+        disciplineAddendumCount: idgNotes.filter((n) => n.isAddendum).length,
       };
     case "/api/v1/idg/schedule":
       return idgSchedule;
@@ -1947,8 +2125,8 @@ const client = {
                           ? homeRoutes[p]
                           : routes[p],
     ),
-  PATCH: () => res({}),
-  POST: () => res({}),
+  PATCH: (p: string, o?: never) => (isIdg ? idgNoteWrite("PATCH", p, o) : res({})),
+  POST: (p: string, o?: never) => (isIdg ? idgNoteWrite("POST", p, o) : res({})),
 } as unknown as ApiClient;
 const homePerms = [
   "patient.read",
@@ -1981,6 +2159,7 @@ if (isIdg) {
           organizationId: IDG_ORG,
           displayName: "Ada Administrator",
           permissions: idgPerms,
+          membershipId: "mada",
           roles: ["administrator"],
           isAdmin: true,
         } as never

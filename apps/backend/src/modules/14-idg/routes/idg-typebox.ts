@@ -8,6 +8,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@wardenx/idg";
 import { ValidationError } from "@wardenx/types";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "../decision-payload-schema";
 import type {
@@ -15,6 +16,7 @@ import type {
   AgendaItemView as ServiceAgendaItemView,
   AttendanceView as ServiceAttendanceView,
   DecisionView as ServiceDecisionView,
+  DisciplineNoteView as ServiceDisciplineNoteView,
   MeetingScheduleView as ServiceMeetingScheduleView,
   MeetingView as ServiceMeetingView,
   MinutesView as ServiceMinutesView,
@@ -159,6 +161,23 @@ export const AddAgendaItemRequest = Type.Object({
   kind: AGENDA_KIND,
   patientId: Type.Optional(Type.String({ format: "uuid" })),
   noteText: Type.Optional(Type.String({ maxLength: 4000 })),
+});
+/** Per-discipline meeting notes (spec extension). `discipline` is the attendance roster's free-text vocabulary. */
+const NOTE_BODY = Type.String({ minLength: 1, maxLength: 4000, pattern: "\\S" });
+export const CreateDisciplineNoteRequest = Type.Object({
+  /** Absent/null = a meeting-level note for the discipline; else a patient on the meeting's agenda. */
+  patientId: Type.Optional(Nullable(Type.String({ format: "uuid" }))),
+  discipline: Type.String({ minLength: 1, maxLength: 64 }),
+  bodyText: NOTE_BODY,
+  /**
+   * REQUIRED (non-blank, ≤500) when the meeting is ADJOURNED — the note is then recorded as a late addendum and
+   * needs a reason (422 ADDENDUM_REASON_REQUIRED); refused on a live meeting (422 NOTE_REASON_NOT_APPLICABLE).
+   */
+  reason: Type.Optional(Nullable(Type.String({ maxLength: DISCIPLINE_NOTE_ADDENDUM_REASON_MAX }))),
+});
+export const UpdateDisciplineNoteRequest = Type.Object({ bodyText: NOTE_BODY });
+export const DisciplineNoteListQuerySchema = Type.Object({
+  patientId: Type.Optional(Type.String({ format: "uuid" })),
 });
 export const UpdateAgendaItemRequest = Type.Object({
   noteText: Type.Optional(Type.String({ maxLength: 4000 })),
@@ -480,6 +499,10 @@ export const MinutesViewSchema = Type.Object({
   attendanceCount: Nullable(Type.Integer({ minimum: 0 })),
   decisionCount: Nullable(Type.Integer({ minimum: 0 })),
   actionItemCount: Nullable(Type.Integer({ minimum: 0 })),
+  /** Discipline notes frozen at adjournment (count only; text via GET .../discipline-notes). Null while in_progress. */
+  disciplineNoteCount: Nullable(Type.Integer({ minimum: 0 })),
+  /** LIVE count of late addenda recorded after adjournment (not from the frozen snapshot; text via GET .../discipline-notes). */
+  disciplineAddendumCount: Type.Integer({ minimum: 0 }),
 });
 
 /** A recurring-policy view (POST/PATCH /idg/recurring-policies). */
@@ -511,6 +534,33 @@ export const AgendaItemViewSchema = Type.Object({
   patientId: Nullable(Type.String({ format: "uuid" })),
   patient: PatientDisplayField,
 });
+
+/**
+ * One discipline note (GET/POST /idg/meetings/:id/discipline-notes, PATCH /idg/discipline-notes/:id). `bodyText`
+ * is null + `bodyWithheld` true when 42 CFR Part 2 content is withheld for THIS caller on THIS read. `authorName`
+ * is the author's display NAME only (identity seam; absent when no port is bound, null when unresolvable).
+ */
+export const DisciplineNoteViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  meetingId: Type.String({ format: "uuid" }),
+  patientId: Nullable(Type.String({ format: "uuid" })),
+  discipline: Type.String(),
+  bodyText: Nullable(Type.String()),
+  bodyWithheld: Type.Boolean(),
+  authorMembershipId: Type.String({ format: "uuid" }),
+  authorName: Type.Optional(Nullable(Type.String())),
+  version: Type.Integer({ minimum: 0 }),
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
+  /** True for a LATE ADDENDUM recorded after the meeting was adjourned (append-only; outside the frozen minutes). */
+  isAddendum: Type.Boolean(),
+  /** Server time the addendum was recorded; null for an original (live) note. */
+  addendumRecordedAt: Nullable(Type.String({ format: "date-time" })),
+  /** The addendum's reason; null for originals and withheld (null) under 42 CFR Part 2 exactly like `bodyText`. */
+  reason: Nullable(Type.String()),
+  patient: PatientDisplayField,
+});
+export const DisciplineNoteListResponseSchema = Type.Array(DisciplineNoteViewSchema);
 
 /** The meeting's ordered agenda (GET /idg/meetings/:id/agenda). */
 export const AgendaListResponseSchema = Type.Array(AgendaItemViewSchema);
@@ -613,6 +663,7 @@ type _RecurringPolicy = Conforms<
 >;
 type _Attendance = Conforms<Static<typeof AttendanceViewSchema>, ServiceAttendanceView>;
 type _AgendaItem = Conforms<Static<typeof AgendaItemViewSchema>, ServiceAgendaItemView>;
+type _DisciplineNote = Conforms<Static<typeof DisciplineNoteViewSchema>, ServiceDisciplineNoteView>;
 type _Decision = Conforms<Static<typeof DecisionViewSchema>, ServiceDecisionView>;
 type _Removed = Conforms<
   Static<typeof RemovedResponseSchema>,

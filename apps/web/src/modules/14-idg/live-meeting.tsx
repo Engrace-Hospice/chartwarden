@@ -48,18 +48,21 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { DisciplineNotesPanel, type NotesState } from "./discipline-notes";
 import {
   type ActionItemView,
   type AgendaItemView,
   type AttendanceStatus,
   type AttendanceView,
   type DecisionView,
+  type DisciplineNoteView,
   type MeetingView,
   type PacketDigestView,
   excuseAttendance,
   loadAgenda,
   loadAttendance,
   loadDecisions,
+  loadDisciplineNotes,
   supersedeDecision,
   updateAttendance,
 } from "./idg-api";
@@ -72,6 +75,7 @@ import {
 } from "./idg-meeting-modals";
 import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
 import "./live-meeting.css";
+import { useSession } from "../../shell/session";
 import { PacketCompact, usePacketDetail } from "./packet-content";
 import { useLiveRefresh } from "./use-live-refresh";
 
@@ -194,6 +198,7 @@ type Dialog =
 export function LiveMeeting(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const session = useSession();
   const { id } = useParams<{ id: string }>();
   const [meeting, setMeeting] = useState<MeetingView | null>(null);
   const [packets, setPackets] = useState<PacketDigestView[]>([]);
@@ -210,6 +215,7 @@ export function LiveMeeting(): JSX.Element {
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const [recert, setRecert] = useState<RecertState>({ state: "loading" });
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
+  const [notes, setNotes] = useState<NotesState>({ state: "loading" });
 
   const loadRecert = useCallback(
     async (signal?: AbortSignal) => {
@@ -235,6 +241,26 @@ export function LiveMeeting(): JSX.Element {
     [client, id],
   );
 
+  /** The meeting's discipline notes. A failed re-read keeps what is shown; only a first failure is "unavailable". */
+  const loadNotes = useCallback(
+    async (signal?: AbortSignal): Promise<DisciplineNoteView[] | null> => {
+      if (!id) return null;
+      try {
+        const r = await loadDisciplineNotes(client, id, undefined, signal);
+        if (signal?.aborted) return null;
+        if (r.ok) {
+          setNotes(keep<NotesState>({ state: "ok", notes: r.value }));
+          return r.value;
+        }
+      } catch {
+        if (signal?.aborted) return null;
+      }
+      setNotes((prev) => (prev.state === "ok" ? prev : { state: "unavailable" }));
+      return null;
+    },
+    [client, id],
+  );
+
   const loadActionItems = useCallback(async () => {
     if (!id) return;
     try {
@@ -251,6 +277,7 @@ export function LiveMeeting(): JSX.Element {
     setLoading(true);
     setError(null);
     void loadRecert();
+    void loadNotes();
     const [m, p] = await Promise.all([
       client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } } }),
       client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } } }),
@@ -273,7 +300,7 @@ export function LiveMeeting(): JSX.Element {
     setLoading(false);
     setLoadedAt(Date.now());
     void loadActionItems();
-  }, [client, id, loadActionItems, loadRecert]);
+  }, [client, id, loadActionItems, loadNotes, loadRecert]);
 
   /** One live poll: every ledger re-read with the abort signal; rejects when a core read fails (→ backoff). */
   const pollLedgers = useCallback(
@@ -295,9 +322,9 @@ export function LiveMeeting(): JSX.Element {
       setRoster(keep((att.data ?? []) as AttendanceView[]));
       setAgenda(keep((agd.data ?? []) as AgendaItemView[]));
       setDecisions(keep((dec.data ?? []) as DecisionView[]));
-      await Promise.all([loadActionItems(), loadRecert(signal)]);
+      await Promise.all([loadActionItems(), loadRecert(signal), loadNotes(signal)]);
     },
-    [client, id, loadActionItems, loadRecert],
+    [client, id, loadActionItems, loadNotes, loadRecert],
   );
   const live = useLiveRefresh({ enabled: meeting?.status === "live", refresh: pollLedgers });
 
@@ -825,6 +852,37 @@ export function LiveMeeting(): JSX.Element {
                     </p>
                   ) : null}
                 </Panel>
+              </Region>
+            </div>
+
+            {/* ── Discipline notes ─────────────────────────────────────────────────── */}
+            <div id="discipline-notes">
+              <Region title="Discipline notes">
+                {id ? (
+                  <DisciplineNotesPanel
+                    meetingId={id}
+                    live={isLive}
+                    adjourned={meeting?.status === "adjourned"}
+                    adjournedAt={meeting?.adjournedAt ?? null}
+                    statusLabel={meeting ? stateLabel(meeting.status) : ""}
+                    notes={notes}
+                    onReload={() => loadNotes()}
+                    patientId={activePatient}
+                    patientName={
+                      activePatient
+                        ? (patientRefs.get(activePatient)?.displayName ??
+                          `Patient ${short(activePatient)}`)
+                        : null
+                    }
+                    roster={roster}
+                    callerMembershipId={session?.membershipId ?? null}
+                    canEditAny={
+                      Boolean(session?.isAdmin) ||
+                      (coordinatorId !== undefined && coordinatorId === session?.membershipId)
+                    }
+                    who={who}
+                  />
+                ) : null}
               </Region>
             </div>
 

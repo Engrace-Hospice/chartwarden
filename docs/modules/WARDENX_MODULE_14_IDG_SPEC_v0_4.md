@@ -1859,6 +1859,27 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
    M36 (SD-017). Refinements on locale support, template versioning, and composer surfaces are
    tracked in M36's spec, not M14's.
 
+2. **Per-discipline meeting notes and late addenda (implementation extension; migrations 0282 / 0283).** The
+   spec records only agenda-item body text and the minutes closing note; a live IDG is run by disciplines that
+   each keep their own notes, so the implementation adds `idg_discipline_note` (M14-owned; org-scoped `app.org_id`
+   RLS ENABLED + FORCED; `wardenx_app` SELECT/INSERT/UPDATE, no DELETE; `body_text` denylisted in the M4 audit
+   trigger). A note is about one agenda patient or the meeting as a whole, for one discipline
+   (`GET/POST /idg/meetings/{id}/discipline-notes`, `PATCH /idg/discipline-notes/{id}`; `idg.attend` or
+   `idg.coordinate`; a non-coordinator must be present/tardy/partial for that discipline; `idg_meeting_scope` ABAC
+   unchanged; 42 CFR Part 2 text withheld on read, fail-closed). Live notes are editable (If-Match) only while the
+   meeting is `live` and are frozen at adjournment into `idg_minutes.discipline_note_snapshot` (D10).
+   **Late addenda.** After adjournment the frozen snapshot and final minutes are never modified. A note POSTed to an
+   `adjourned` meeting is instead recorded as an **addendum**: a new append-only row with `is_addendum = true`,
+   `addendum_recorded_at` (server clock) and a REQUIRED `addendum_reason` (non-blank, at most 500 characters; free
+   text, so denylisted in the audit trigger and withheld under Part 2 like the body; a DB CHECK ties the three
+   columns together). Addenda are accepted only within `DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS` (14, `@wardenx/idg`
+   policy) of adjournment (`ADDENDUM_WINDOW_CLOSED` beyond it), cannot be edited (`ADDENDUM_IMMUTABLE`; a correction
+   is a further addendum) and original notes of an adjourned meeting stay frozen (`MEETING_NOT_LIVE`). Other
+   states give `MEETING_NOT_LIVE`; a missing reason gives `ADDENDUM_REASON_REQUIRED`. The minutes read exposes
+   `disciplineAddendumCount` (a live count, separate from the frozen `disciplineNoteCount`; text is read through
+   the notes route). No outbox event is emitted and the minutes PDF is not re-rendered automatically; the M4 write
+   audit records every addendum insert.
+
 -----
 
 **End of Module 14 — Interdisciplinary Group Specification v0.4 (Consolidated)**

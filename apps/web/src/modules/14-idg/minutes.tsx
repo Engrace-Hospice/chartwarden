@@ -37,11 +37,11 @@ import {
 // and the idg.amend_minutes permission (ADR-0030 — no frontend authz). Reads
 // GET /api/v1/idg/meetings/:id/minutes via the typed client.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { MinutesView } from "./idg-api";
 import { AmendmentModal } from "./idg-meeting-modals";
-import { IdgPageHead, IdgStat } from "./idg-page-kit";
+import { IdgPageHead } from "./idg-page-kit";
 import { MINUTES_TONE, stateLabel } from "./idg-status";
 
 /**
@@ -196,12 +196,30 @@ export function Minutes(): JSX.Element {
           <FrozenStat icon="users" label="Attendance" value={minutes.attendanceCount} />
           <FrozenStat icon="clipboard-check" label="Decisions" value={minutes.decisionCount} />
           <FrozenStat icon="check-circle" label="Action items" value={minutes.actionItemCount} />
-          <IdgStat
-            icon={isFinal ? "lock" : "clock"}
-            label="Record"
-            value={isFinal ? "Final" : "Draft"}
-            hint={isFinal ? "Immutable" : "Finalizes on adjournment"}
-            color={isFinal ? t.success : undefined}
+          <FrozenStat
+            icon="message-square"
+            label="Discipline notes"
+            value={minutes.disciplineNoteCount ?? null}
+            footer={
+              id ? (
+                <Link to={`/idg/meetings/${id}/live#discipline-notes`}>
+                  Read the notes on the meeting page
+                </Link>
+              ) : null
+            }
+          />
+          <FrozenStat
+            icon="clock"
+            label="Late addenda"
+            value={minutes.disciplineAddendumCount ?? null}
+            caption="live count — recorded after adjournment"
+            footer={
+              id ? (
+                <Link to={`/idg/meetings/${id}/live#discipline-notes`}>
+                  Read the addenda in the notes panel
+                </Link>
+              ) : null
+            }
           />
         </div>
 
@@ -370,10 +388,15 @@ function FrozenStat({
   icon,
   label,
   value,
+  footer,
+  caption,
 }: {
   icon: GlyphName;
   label: string;
   value: number | null;
+  footer?: ReactNode;
+  /** Overrides the default "frozen at adjournment" sub-label (for a live, non-frozen count). */
+  caption?: string;
 }): JSX.Element {
   return (
     <div className="wx-stat-card">
@@ -388,8 +411,9 @@ function FrozenStat({
         <div className="wx-stat-label">{label}</div>
         <strong className="wx-stat-value wx-nums">{value ?? "—"}</strong>
         <div className="wx-stat-label">
-          {value === null ? "not frozen yet" : "frozen at adjournment"}
+          {caption ?? (value === null ? "not frozen yet" : "frozen at adjournment")}
         </div>
+        {footer ? <div className="wx-stat-label">{footer}</div> : null}
       </div>
     </div>
   );

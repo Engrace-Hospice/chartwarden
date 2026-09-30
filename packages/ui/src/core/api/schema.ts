@@ -8980,6 +8980,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/idg/discipline-notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a discipline note's text (live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE */
+        patch: operations["patchApiV1IdgDisciplinenotesById"];
+        trace?: never;
+    };
     "/api/v1/idg/meetings": {
         parameters: {
             query?: never;
@@ -9113,6 +9130,24 @@ export interface paths {
         put?: never;
         /** Record a decision (quorate_decision ABAC) */
         post: operations["postApiV1IdgMeetingsByIdDecisions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/idg/meetings/{id}/discipline-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The meeting's per-discipline notes, oldest first (optionally one patient) — readable in any status; text withheld (`bodyWithheld`) for a 42 CFR Part 2 patient the caller has no release for */
+        get: operations["getApiV1IdgMeetingsByIdDisciplinenotes"];
+        put?: never;
+        /** Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_REASON_REQUIRED / NOTE_REASON_NOT_APPLICABLE */
+        post: operations["postApiV1IdgMeetingsByIdDisciplinenotes"];
         delete?: never;
         options?: never;
         head?: never;
@@ -44604,6 +44639,65 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    patchApiV1IdgDisciplinenotesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bodyText: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        discipline: string;
+                        bodyText: string | null;
+                        bodyWithheld: boolean;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        authorName?: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        isAddendum: boolean;
+                        addendumRecordedAt: string | null;
+                        reason: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IdgMeetings: {
         parameters: {
             query?: never;
@@ -45177,6 +45271,116 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IdgMeetingsByIdDisciplinenotes: {
+        parameters: {
+            query?: {
+                patientId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        discipline: string;
+                        bodyText: string | null;
+                        bodyWithheld: boolean;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        authorName?: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        isAddendum: boolean;
+                        addendumRecordedAt: string | null;
+                        reason: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IdgMeetingsByIdDisciplinenotes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId?: string | null;
+                    discipline: string;
+                    bodyText: string;
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        discipline: string;
+                        bodyText: string | null;
+                        bodyWithheld: boolean;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        authorName?: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        isAddendum: boolean;
+                        addendumRecordedAt: string | null;
+                        reason: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1IdgMeetingsByIdMinutes: {
         parameters: {
             query?: never;
@@ -45209,6 +45413,8 @@ export interface operations {
                         attendanceCount: number | null;
                         decisionCount: number | null;
                         actionItemCount: number | null;
+                        disciplineNoteCount: number | null;
+                        disciplineAddendumCount: number;
                     };
                 };
             };

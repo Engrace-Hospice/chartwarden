@@ -110,6 +110,31 @@ export async function withFinalizerName<
   }
 }
 
+/**
+ * Attach `authorName` to discipline notes (ONE batched lookup for the response). No port => untouched; a port
+ * failure degrades to the untouched list (logged) — an unresolvable staff name must never 500 the notes pane.
+ * An unknown / nameless membership yields `authorName: null`.
+ */
+export async function withAuthorNames<T extends { readonly authorMembershipId: string }>(
+  port: IdgMembershipDisplayPort | undefined,
+  organizationId: string,
+  items: readonly T[],
+  log?: FastifyBaseLogger,
+): Promise<Array<T | (T & { readonly authorName: string | null })>> {
+  if (port === undefined || items.length === 0) return [...items];
+  const ids = [...new Set(items.map((i) => i.authorMembershipId))];
+  try {
+    const byId = await port.displayForMemberships(organizationId, ids);
+    return items.map((i) => ({
+      ...i,
+      authorName: byId.get(i.authorMembershipId)?.displayName ?? null,
+    }));
+  } catch (err) {
+    log?.warn({ err }, "idg: author display enrichment failed; returning ids only");
+    return [...items];
+  }
+}
+
 /** The wire projection: only the two minimum-necessary fields, never the port's incidental extras. */
 export interface IdgPatientDisplayView {
   readonly displayName: string;

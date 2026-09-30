@@ -1421,8 +1421,12 @@ import {
   AttendanceViewSchema as M14AttendanceViewSchema,
   CancelMeetingRequest as M14CancelMeetingRequest,
   CreateActionItemRequest as M14CreateActionItemRequest,
+  CreateDisciplineNoteRequest as M14CreateDisciplineNoteRequest,
   DecisionListResponseSchema as M14DecisionListResponseSchema,
   DecisionViewSchema as M14DecisionViewSchema,
+  DisciplineNoteListQuerySchema as M14DisciplineNoteListQuerySchema,
+  DisciplineNoteListResponseSchema as M14DisciplineNoteListResponseSchema,
+  DisciplineNoteViewSchema as M14DisciplineNoteViewSchema,
   MeetingViewSchema as M14MeetingViewSchema,
   MinutesViewSchema as M14MinutesViewSchema,
   PacketDetailViewSchema as M14PacketDetailViewSchema,
@@ -1443,6 +1447,7 @@ import {
   UpdateAgendaItemRequest as M14UpdateAgendaItemRequest,
   UpdateAttendanceRequest as M14UpdateAttendanceRequest,
   UpdateDecisionRequest as M14UpdateDecisionRequest,
+  UpdateDisciplineNoteRequest as M14UpdateDisciplineNoteRequest,
 } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 import {
   ApproveTimeOffRequest as M17ApproveTimeOffRequest,
@@ -4872,6 +4877,27 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "List action items (assignee self-scoped)",
     query: M14ActionItemListQuerySchema,
     response: M14ActionItemListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/discipline-notes": {
+    summary:
+      "The meeting's per-discipline notes, oldest first (optionally one patient) — readable in any status; text withheld (`bodyWithheld`) for a 42 CFR Part 2 patient the caller has no release for",
+    query: M14DisciplineNoteListQuerySchema,
+    response: M14DisciplineNoteListResponseSchema,
+  },
+  "POST /api/v1/idg/meetings/:id/discipline-notes": {
+    summary:
+      "Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_REASON_REQUIRED / NOTE_REASON_NOT_APPLICABLE",
+    body: M14CreateDisciplineNoteRequest,
+    response: M14DisciplineNoteViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "PATCH /api/v1/idg/discipline-notes/:id": {
+    summary:
+      "Edit a discipline note's text (live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE",
+    body: M14UpdateDisciplineNoteRequest,
+    response: M14DisciplineNoteViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "GET /api/v1/idg/meetings/:id/minutes": {
     summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",

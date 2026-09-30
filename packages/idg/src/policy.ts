@@ -71,3 +71,11 @@ export const DISCIPLINE_VIEW_POLICY: { readonly [K in DisciplineKey]: Discipline
   medical_director: ["encounter", "assessment", "order", "medication", "hope", "flag"],
   volunteer: ["encounter", "action_item"],
 } as const;
+
+/** M14 spec extension — the bounded window (days after adjournment) in which a per-discipline note may still be
+ * added as a LATE ADDENDUM. The adjourned minutes + their discipline-note snapshot stay frozen (D10); an addendum
+ * is a separate append-only row. Beyond the window the write is refused (`ADDENDUM_WINDOW_CLOSED`) so late edits
+ * cannot undermine survey reconstruction. Inclusive of the boundary instant. */
+export const DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS = 14 as const;
+/** Max length of the required addendum reason (free text; denylisted in the audit trigger). */
+export const DISCIPLINE_NOTE_ADDENDUM_REASON_MAX = 500 as const;

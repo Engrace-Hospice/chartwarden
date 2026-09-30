@@ -42,6 +42,7 @@ type SeedIds = {
   meeting: string;
   attendance: string;
   agendaItem: string;
+  disciplineNote: string;
   decision: string;
   actionItem: string;
   minutes: string;
@@ -54,6 +55,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "idg_meeting", key: "meeting" },
   { table: "idg_attendance", key: "attendance" },
   { table: "idg_agenda_item", key: "agendaItem" },
+  { table: "idg_discipline_note", key: "disciplineNote" },
   { table: "idg_decision", key: "decision" },
   { table: "idg_action_item", key: "actionItem" },
   { table: "idg_minutes", key: "minutes" },
@@ -160,6 +162,15 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       )
     ).rows[0].id as string;
 
+    const disciplineNote = (
+      await db.query(
+        `INSERT INTO idg_discipline_note (organization_id, provider_entity_id, location_id, idg_meeting_id,
+           patient_id, discipline, body_text, author_membership_id)
+         VALUES ($1,$2,$3,$4,$5,'rn','isolation probe',$6) RETURNING id`,
+        [org, providerEntity, location, meeting, PATIENT, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+
     const decision = (
       await db.query(
         `INSERT INTO idg_decision (organization_id, provider_entity_id, location_id, idg_meeting_id,
@@ -212,6 +223,7 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       meeting,
       attendance,
       agendaItem,
+      disciplineNote,
       decision,
       actionItem,
       minutes,
@@ -249,11 +261,16 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
   });
 
   it("every M14 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(join(MIGRATIONS_DIR, "0043_idg_m14_rls_audit_triggers.sql"), "utf8");
+    // 0043 holds the original nine; 0282 adds idg_discipline_note (its wardenx_destruction policy is a
+    // different role's and is excluded — only the wardenx_app tenant policy is judged here).
+    const rls =
+      readFileSync(join(MIGRATIONS_DIR, "0043_idg_m14_rls_audit_triggers.sql"), "utf8") +
+      readFileSync(join(MIGRATIONS_DIR, "0282_m14_idg_discipline_note.sql"), "utf8");
+    // (0283 adds columns + a CHECK + a trigger-function replacement to the same table: no new policy.)
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
-      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
+      (b) => b.includes("TO wardenx_app") && COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
-    // All nine M14 tables carry a direct app.org_id policy — the partitioned idg_patient_packet's policy
+    // All ten M14 tables carry a direct app.org_id policy — the partitioned idg_patient_packet's policy
     // lives on the parent (0043) and is inherited by every leaf, so it counts here too.
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {
@@ -308,5 +325,56 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind = 'idg_decision'",
     );
     expect(r.rows[0].n).toBeGreaterThan(0);
+  });
+
+  // 0283 — late addenda on idg_discipline_note, judged as the real NOBYPASSRLS wardenx_app role.
+  describe("idg_discipline_note late addenda (0283)", () => {
+    const insertAddendum = (org: string, ids: SeedIds, reason: string | null, flag = true) =>
+      db.query(
+        `INSERT INTO idg_discipline_note (organization_id, idg_meeting_id, discipline, body_text,
+           author_membership_id, is_addendum, addendum_recorded_at, addendum_reason)
+         VALUES ($1,$2,'rn','late text',$3,$4,$5,$6) RETURNING id`,
+        [org, ids.meeting, MEMBERSHIP, flag, flag ? new Date() : null, reason],
+      );
+
+    it("the app role can INSERT an addendum in its own org, the tenant B context cannot see or forge one", async () => {
+      const ins = await withOrg(ORG_A, () => insertAddendum(ORG_A, a, "missed vitals"));
+      const id = ins.rows[0].id as string;
+      const seenByB = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM idg_discipline_note WHERE id=$1", [id]),
+      );
+      expect(seenByB.rows[0].n).toBe(0);
+      await expect(withOrg(ORG_B, () => insertAddendum(ORG_A, a, "forged"))).rejects.toThrow();
+    });
+
+    it("the addendum CHECK refuses an addendum without a reason and an original carrying one", async () => {
+      await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, null))).rejects.toThrow(
+        /idg_discipline_note_addendum_chk/,
+      );
+      await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, "   "))).rejects.toThrow(
+        /idg_discipline_note_addendum_chk/,
+      );
+      await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, "sneaky", false))).rejects.toThrow(
+        /idg_discipline_note_addendum_chk/,
+      );
+    });
+
+    it("the app role still has no DELETE on the table; the audit trigger scrubs addendum_reason", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query("DELETE FROM idg_discipline_note WHERE id=$1", [a.disciplineNote]),
+        ),
+      ).rejects.toThrow(/permission denied/i);
+      const ins = await withOrg(ORG_A, () => insertAddendum(ORG_A, a, "REASON-PHI-PROBE"));
+      const audit = await db.query(
+        "SELECT after::text AS after FROM audit_event WHERE resource_kind='idg_discipline_note' AND resource_id=$1",
+        [ins.rows[0].id],
+      );
+      expect(audit.rows.length).toBeGreaterThan(0);
+      for (const r of audit.rows) {
+        expect(r.after).not.toContain("REASON-PHI-PROBE");
+        expect(r.after).not.toContain("late text");
+      }
+    });
   });
 });

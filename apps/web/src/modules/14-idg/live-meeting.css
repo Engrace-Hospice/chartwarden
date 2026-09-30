@@ -310,3 +310,113 @@ button.wx-idg-pick:focus-visible {
   font-size: 0.8125rem;
   color: var(--color-on-surface-variant);
 }
+
+/* Discipline notes (discipline-notes.tsx) — scope toggle, per-discipline tabs, note list, composer. */
+.wx-idg-notes {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.wx-idg-notes-body {
+  display: grid;
+  gap: 0.875rem;
+  min-width: 0;
+}
+.wx-idg-notes-empty [role="note"] {
+  padding: 1rem 0.5rem !important;
+}
+.wx-idg-notes-empty [role="note"] > p:first-child {
+  font-size: 1.0625rem !important;
+}
+.wx-idg-notes-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-idg-note {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-card-border);
+  min-width: 0;
+}
+.wx-idg-note:first-child {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+.wx-idg-note-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+}
+.wx-idg-note-head > button {
+  margin-left: auto;
+}
+.wx-idg-note-text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-on-surface);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wx-idg-note[data-addendum="true"] {
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--color-primary);
+}
+.wx-idg-note-reason {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.wx-idg-note-edit,
+.wx-idg-note-composer {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.wx-idg-note-composer {
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--color-card-border);
+}
+.wx-idg-note-edit textarea,
+.wx-idg-note-composer textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.wx-idg-note-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+.wx-idg-note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.625rem;
+}
+.wx-idg-note-actions > span {
+  margin-right: auto;
+}
+.wx-idg-note-actions > span[data-over="true"] {
+  color: var(--color-error);
+}
+.wx-idg-note-latest {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--color-card-border);
+  background: var(--color-surface-low);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+fieldset.wx-seg {
+  margin: 0;
+  min-width: 0;
+}

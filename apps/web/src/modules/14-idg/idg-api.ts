@@ -64,6 +64,7 @@ export type DecisionView = Ok<operations["getApiV1IdgMeetingsByIdDecisions"]>[nu
 export type ActionItemView = Ok<operations["getApiV1IdgActionitems"]>[number];
 export type MinutesView = Ok<operations["getApiV1IdgMeetingsByIdMinutes"]>;
 export type PacketDigestView = Ok<operations["getApiV1IdgMeetingsByIdPackets"]>[number];
+export type DisciplineNoteView = Ok<operations["getApiV1IdgMeetingsByIdDisciplinenotes"]>[number];
 
 export type RecordAttendanceBody = ReqBody<operations["postApiV1IdgMeetingsByIdAttendance"]>;
 export type AddAgendaItemBody = ReqBody<operations["postApiV1IdgMeetingsByIdAgenda"]>;
@@ -419,4 +420,97 @@ export async function scheduleMeeting(
             ? detail.message
             : "The meeting could not be scheduled. Try again.";
   return { ok: false, status: detail.status, message };
+}
+
+// ── per-discipline meeting notes (live meeting only) ───────────────────────────────────────────────────
+
+/** The wire error code of a refusal (`{ error: { code } }`), when the server sent one. */
+const noteErrorCode = (body: unknown): string | null => {
+  const err =
+    body && typeof body === "object" && "error" in body
+      ? (body as { error?: { code?: unknown } }).error
+      : undefined;
+  return typeof err?.code === "string" ? err.code : null;
+};
+
+/**
+ * Copy for a refused note write. The server owns every rule (ADR-0030): 403 = not present for that
+ * discipline / not the author, 422 = meeting not live or patient not on the agenda, 412 = the note
+ * changed since it was read, 428 = the version precondition was missing.
+ */
+function noteFailure(status: number | undefined, body: unknown): WriteResult<never> {
+  const base = failure(status, body);
+  if (base.ok) return base;
+  const code = noteErrorCode(body);
+  const byCode: Record<string, string> = {
+    MEETING_NOT_LIVE: "This meeting is no longer live, so notes can no longer be added or edited.",
+    ADDENDUM_REASON_REQUIRED: "A reason is required for a late addendum.",
+    ADDENDUM_WINDOW_CLOSED: "The window for late addenda on this meeting has closed.",
+    NOTE_REASON_NOT_APPLICABLE:
+      "A reason applies only to late addenda, not to notes on a live meeting.",
+    ADDENDUM_IMMUTABLE: "A late addendum cannot be edited once recorded.",
+    INCLUSION_CRITERIA_FAILED:
+      "That patient is not on this meeting's agenda, so a note cannot be recorded for them.",
+  };
+  const message =
+    status === 412 || code === "STALE_VERSION"
+      ? "This note was changed by someone else since you opened it."
+      : status === 428
+        ? "The note version was missing from the request. Reload the meeting and try again."
+        : ((code ? byCode[code] : undefined) ?? base.message);
+  return { ok: false, status: base.status, message };
+}
+
+/** The meeting's discipline notes, oldest first. Readable in any status; Part 2 text arrives withheld. */
+export async function loadDisciplineNotes(
+  client: ApiClient,
+  id: string,
+  patientId?: string,
+  signal?: AbortSignal,
+): Promise<WriteResult<DisciplineNoteView[]>> {
+  const { data, error, response } = await client.GET("/api/v1/idg/meetings/{id}/discipline-notes", {
+    params: { path: { id }, query: patientId ? { patientId } : {} },
+    signal,
+  });
+  if (error || !Array.isArray(data)) return failure(response?.status, error);
+  return ok(data as DisciplineNoteView[]);
+}
+
+/**
+ * Write a note (`patientId` null/omitted = meeting-level). A `live` meeting takes an ordinary note (NEVER send
+ * `reason` — the server answers 422 NOTE_REASON_NOT_APPLICABLE); an `adjourned` one takes a LATE ADDENDUM, which
+ * requires a non-blank `reason` and only opens for a bounded window after adjournment.
+ */
+export async function createDisciplineNote(
+  client: ApiClient,
+  id: string,
+  body: { patientId: string | null; discipline: string; bodyText: string; reason?: string },
+): Promise<WriteResult<DisciplineNoteView>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/idg/meetings/{id}/discipline-notes",
+    {
+      params: { path: { id }, header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
+      body,
+    },
+  );
+  if (error || !data) return noteFailure(response?.status, error);
+  return ok(data as DisciplineNoteView);
+}
+
+/** Edit a note's text. `version` is the row version the caller last read (sent as `If-Match`). */
+export async function updateDisciplineNote(
+  client: ApiClient,
+  noteId: string,
+  version: number,
+  bodyText: string,
+): Promise<WriteResult<DisciplineNoteView>> {
+  const { data, error, response } = await client.PATCH("/api/v1/idg/discipline-notes/{id}", {
+    params: {
+      path: { id: noteId },
+      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
+    },
+    body: { bodyText },
+  });
+  if (error || !data) return noteFailure(response?.status, error);
+  return ok(data as DisciplineNoteView);
 }

@@ -11,15 +11,22 @@
 // `idg.override_review_floor` + step-up — is composed at the route). The location-scoped list routes
 // (`GET /idg/schedule`, `GET /idg/action-items`) scope server-side (caller org/location/assignee) rather than
 // through the meeting-specific predicate.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
+import {
+  type AbacTarget,
+  requireAbac,
+  requirePermission,
+  resolveActorPermissions,
+} from "@wardenx/auth";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
-import { NotFoundError, UnauthorizedError, ValidationError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
+import { ifMatchVersionOf, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import {
   type IdgRecertWindowFact,
   type IdgRouteEnrichmentPorts,
+  withAuthorNames,
   withFinalizerName,
   withPatientDisplay,
 } from "./idg-enrichment";
@@ -29,6 +36,8 @@ import {
   AdjournMeetingRequest,
   CancelMeetingRequest,
   CreateActionItemRequest,
+  CreateDisciplineNoteRequest,
+  DisciplineNoteListQuerySchema,
   IdParamsSchema,
   MeetingPacketParamsSchema,
   PatientIdParamsSchema,
@@ -44,6 +53,7 @@ import {
   UpdateAgendaItemRequest,
   UpdateAttendanceRequest,
   UpdateDecisionRequest,
+  UpdateDisciplineNoteRequest,
   parse,
 } from "./idg-typebox";
 import {
@@ -94,6 +104,21 @@ const AMEND = P("idg.amend_minutes");
 // §4.7 ABAC guards. `idg_meeting_scope` defaults its target to the route params (`:id` / `:meetingId`).
 const SCOPE = (action: string): PreHandler =>
   requireAbac(action, "idg_meeting_scope") as PreHandler;
+/**
+ * Discipline-note WRITE gate (spec extension): the caller needs `idg.attend` (a participant) OR `idg.coordinate`
+ * (any-discipline). Which of the two they hold decides {@link DisciplineNoteActor.isCoordinator}; the finer
+ * "present for THIS discipline" rule is enforced in the service against the attendance roster.
+ */
+const NOTE_WRITE: PreHandler = async (request) => {
+  const ctx = request.context;
+  if (!ctx?.organizationId) throw new UnauthorizedError();
+  const granted = await resolveActorPermissions(ctx);
+  if (!granted.has("idg.attend") && !granted.has("idg.coordinate")) {
+    throw new ForbiddenError("requires permission 'idg.attend' or 'idg.coordinate'");
+  }
+};
+const IF_MATCH = requireIfMatch();
+const IDEMPOTENCY_KEY = requireIdempotencyKey();
 const ABAC_QUORATE = requireAbac("idg.decide", "quorate_decision") as PreHandler;
 
 // The cancel/reschedule target pins the transition from the ROUTE (cancel route => "cancel", reschedule route
@@ -644,6 +669,129 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
         generatedAt: new Date().toISOString(),
         items: await withPatientDisplay(patientDisplay, organizationId, rows, request.log),
       };
+    },
+  );
+
+  // 24c — per-discipline meeting notes (spec extension; the M14 spec has only agenda body text + the closing
+  // note). Reads: idg.read + idg_meeting_scope (404 non-leak), any meeting status (frozen after adjourn). The
+  // W-SUD-01 caller verdict is resolved lazily per SUD-flagged/undeterminable patient; without a Part 2 release
+  // the note's text is withheld (`bodyWithheld`), fail-closed. The audit row is the M4 read log (`auditRead`).
+  app.get(
+    "/api/v1/idg/meetings/:id/discipline-notes",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: {
+        auditRead: { resourceKind: "idg_discipline_note", resourceIdParam: "id", list: true },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const q = parse(DisciplineNoteListQuerySchema, request.query);
+      const membershipId = request.context?.attributes.membershipId;
+      const roles = request.context?.roles ?? [];
+      const notes = await service.listDisciplineNotes(
+        organizationId,
+        id,
+        { patientId: q.patientId },
+        {
+          sudDisclosureAllowed: (pid) =>
+            sudDisclosureAllowedForPacket(sudDisclosure, {
+              organizationId,
+              patientId: pid,
+              membershipId: typeof membershipId === "string" ? membershipId : null,
+              roles,
+            }),
+          onSudRedaction: ({ patientId: pid }) =>
+            request.log.info(
+              {
+                event: "idg.sud_redaction_applied",
+                meetingId: id,
+                patientId: pid,
+                surface: "discipline_note",
+              },
+              "idg: discipline note text withheld per 42 CFR Part 2",
+            ),
+        },
+      );
+      return withAuthorNames(
+        membershipDisplay,
+        organizationId,
+        await withPatientDisplay(patientDisplay, organizationId, notes, request.log),
+        request.log,
+      );
+    },
+  );
+
+  // 24d — write a discipline note. A `live` meeting takes ordinary notes; an `adjourned` one (within the addendum
+  // window, with a required `reason`) takes a LATE ADDENDUM — a new append-only row that never touches the frozen
+  // minutes snapshot; other states => 422 MEETING_NOT_LIVE, out of window => 422 ADDENDUM_WINDOW_CLOSED, missing
+  // reason => 422 ADDENDUM_REASON_REQUIRED. A coordinator may write any
+  // discipline, everyone else only for a discipline they are recorded present for (403); a patient must be on
+  // the meeting's agenda/packet set (422). Idempotency-Key required.
+  app.post(
+    "/api/v1/idg/meetings/:id/discipline-notes",
+    { preHandler: [NOTE_WRITE, SCOPE("idg.attend"), IDEMPOTENCY_KEY] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(CreateDisciplineNoteRequest, request.body);
+      const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
+      const note = await service.createDisciplineNote(
+        organizationId,
+        { membershipId: userId, isCoordinator },
+        id,
+        {
+          patientId: b.patientId ?? null,
+          discipline: b.discipline,
+          bodyText: b.bodyText,
+          reason: b.reason ?? null,
+        },
+      );
+      const [out] = await withAuthorNames(membershipDisplay, organizationId, [note], request.log);
+      return reply.code(201).send(out);
+    },
+  );
+
+  // 24e — edit a note's text (If-Match = the version read; 412 on skew; no delete). Only while the meeting is
+  // `live`: original notes of an adjourned meeting are frozen (422 MEETING_NOT_LIVE) and addenda are append-only
+  // (422 ADDENDUM_IMMUTABLE — a correction is a further addendum). The note id carries no
+  // meeting id, so the SAME `idg_meeting_scope` predicate is evaluated here against the note's OWNING meeting
+  // (resolved first; an unknown/cross-tenant note is the non-leaking 404).
+  app.patch(
+    "/api/v1/idg/discipline-notes/:id",
+    {
+      preHandler: [
+        NOTE_WRITE,
+        IDEMPOTENCY_KEY,
+        IF_MATCH,
+        async (request, reply) => {
+          const { organizationId } = actorOf(request);
+          const { id } = parse(IdParamsSchema, request.params);
+          const meetingId = await service.disciplineNoteMeetingId(organizationId, id);
+          if (meetingId === null) throw new NotFoundError("idg_discipline_note");
+          await (
+            requireAbac("idg.attend", "idg_meeting_scope", {
+              getTarget: () => ({ meetingId }),
+            }) as PreHandler
+          )(request, reply);
+        },
+      ],
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(UpdateDisciplineNoteRequest, request.body);
+      const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
+      const note = await service.updateDisciplineNote(
+        organizationId,
+        { membershipId: userId, isCoordinator },
+        id,
+        b.bodyText,
+        ifMatchVersionOf(request),
+      );
+      const [out] = await withAuthorNames(membershipDisplay, organizationId, [note], request.log);
+      return out;
     },
   );
 

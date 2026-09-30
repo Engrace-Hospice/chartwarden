@@ -506,6 +506,7 @@ exports.MODULES = [
       "idg_recurring_policy",
       "idg_attendance",
       "idg_agenda_item",
+      "idg_discipline_note",
       "idg_decision",
       "idg_action_item",
       "idg_minutes",

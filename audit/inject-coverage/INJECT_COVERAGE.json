@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1318,
-    "coveredRoutes": 1318,
-    "directRoutesReferenced": 1260
+    "routes": 1321,
+    "coveredRoutes": 1321,
+    "directRoutesReferenced": 1263
   },
   "modules": [
     {
@@ -150,16 +150,17 @@
     },
     {
       "module": "14-idg",
-      "routes": 32,
+      "routes": 35,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/idg-discipline-notes.test.ts",
         "apps/backend/__tests__/idg-enrichment.test.ts",
         "apps/backend/__tests__/idg-inject.test.ts",
         "apps/backend/__tests__/idg-packet-content.test.ts",
         "apps/backend/__tests__/idg-routes.test.ts",
         "apps/backend/__tests__/idg-schedule-meeting.test.ts"
       ],
-      "directRoutesReferenced": 32
+      "directRoutesReferenced": 35
     },
     {
       "module": "15-discipline-care-plans",
