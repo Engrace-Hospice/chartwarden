@@ -1782,6 +1782,7 @@ export const idgDecisionKind = pgEnum("idg_decision_kind", [
   "bereavement_risk_flag",
   "referral",
   "team_note",
+  "discipline_plan_update",
 ]);
 
 /** `idg_decision_status` — `open` at record-time; flips to `emitted` in the adjournment outbox burst;

@@ -161,6 +161,7 @@ export function createDrizzleDisciplinePlanEraseStore(db: DbClient): DisciplineP
   const A = schema.disciplineAssessment;
   const SV = schema.aideSupervisoryVisit;
   const VA = schema.volunteerAssignment;
+  const APP = schema.disciplinePlanIdgDecisionApplication;
 
   /** The patient's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
   const planIdsFor = async (tx: Tx, patientId: string): Promise<string[]> =>
@@ -214,6 +215,9 @@ export function createDrizzleDisciplinePlanEraseStore(db: DbClient): DisciplineP
             )
             .returning({ id: SIG.id }),
         );
+        // F-232 — IDG-decision application records (metadata) FK the plan/version; clear them before the
+        // versions they reference (they are not part of the destruction-cert tally).
+        await tx.delete(APP).where(inArray(APP.planId, planIds));
         const versions = await del(() =>
           tx
             .delete(V)

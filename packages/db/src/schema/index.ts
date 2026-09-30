@@ -417,6 +417,7 @@ export * from "./idg/idg-meetings";
 export * from "./idg/idg-attendance";
 export * from "./idg/idg-agenda-items";
 export * from "./idg/idg-discipline-notes"; // per-discipline live-meeting notes (migration 0282)
+export * from "./idg/idg-decision-application-acks"; // downstream "decision applied" acknowledgements (migration 0305)
 export * from "./idg/idg-decisions";
 export * from "./idg/idg-action-items";
 export * from "./idg/idg-minutes";

@@ -27,6 +27,7 @@ export {
   claimDiagnosesForOrg,
   createDrizzleCarePlanReaderStore,
   type IdgPacketCarePlanContext,
+  activeProblemIdsForOrg,
   idgPacketCarePlanContextForOrg,
 } from "./drizzle-store";
 

@@ -255,7 +255,7 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     eventName: "idg.decision_recorded",
     moduleOwner: "m14",
     description:
-      "ADJOURNMENT-time emitter (one per actionable decision) — the canonical M7/M11/M12/M16-future consumer contract carrying the schema-versioned `IdgDecisionRecordedPayload`.",
+      "ADJOURNMENT-time emitter (one per actionable decision) — the canonical M7/M11/M12/M15/M16 consumer contract carrying the schema-versioned `IdgDecisionRecordedPayload`.",
     payloadSchema: Type.Object({
       decisionId: id,
       meetingId: id,
@@ -270,7 +270,7 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       wasQuorate: Type.Boolean(),
       quorumSnapshot: Type.Unknown(),
     }),
-    declaredConsumers: ["m7", "m11", "m12", "m16"],
+    declaredConsumers: ["m7", "m11", "m12", "m15", "m16"],
     isOutboxOnly: true,
   },
   // ── adjournment + cancel/reschedule (§2.2 / §4.4) ───────────────────────────────────────────────────────

@@ -234,6 +234,7 @@ import {
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
+  activeProblemIdsForOrg,
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
   buildM7IdgDecisionConsumer,
@@ -404,6 +405,7 @@ import {
   buildM14ActionItemAutoCloseConsumer,
   buildM14AssessmentRecordedConsumer,
   buildM14AssessmentSignificantChangeConsumer,
+  buildM14DecisionAppliedConsumer,
   buildM14DocumentBackrefConsumer,
   buildM14HopeJ2051TriggerConsumer,
   buildM14HopeSfvCreatedConsumer,
@@ -426,6 +428,7 @@ import {
   buildDrizzleDisciplinePlanAbacResolver,
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
+  buildM15IdgDecisionConsumer,
   buildM15PlanBootstrapConsumer,
   createDrizzleDisciplinePlanEraseStore,
   createDrizzleDisciplinePlanSeamStore,
@@ -6562,6 +6565,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             resolveSiting: (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
+          // F-232 (#248) — M15's side of the M14 IDG-decision contract (M15 spec §7.7): a
+          // `discipline_plan_update` decision opens a draft next version on the named discipline plan and
+          // applies its mutations. The M7 parent-problem check is an org-explicit port (a relay tick is not
+          // a request, so `CarePlanReader`'s id-keyed reads cannot run here).
+          buildM15IdgDecisionConsumer({
+            db: dbHandle.db,
+            outbox: m15OutboxPublisher,
+            activeProblemIds: (organizationId, patientId) =>
+              activeProblemIdsForOrg(dbHandle.db, organizationId, patientId),
+          }),
+          // F-232 (#248) — the return leg: M14 records M15's `m15.idg_decision.applied` acknowledgement.
+          buildM14DecisionAppliedConsumer({ db: dbHandle.db }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four of
           // M6's trigger events. The admission siting comes from M6's ORG-EXPLICIT seam (a relay tick

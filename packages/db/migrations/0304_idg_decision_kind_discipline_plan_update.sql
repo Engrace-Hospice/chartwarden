@@ -1,0 +1,13 @@
+-- M14 `idg_decision_kind` — the tenth decision kind, `discipline_plan_update` (F-232, #248).
+--
+-- M15's spec (§1.1, §7.7, M15-F07 / ADR-0023) has always had IDG decisions revise the four discipline plans
+-- (aide_poc / msw_plan / spiritual_plan / volunteer_plan): "IDG decisions emit `idg.decision_recorded` outbox
+-- events that M15's consumer applies as add/update/discontinue". M14's locked envelope had no arm that could
+-- NAME a discipline plan — `care_plan_update` targets the M7 IPOC and nothing else — so `m15.idg_decision.applied`
+-- (M15's acknowledgement that it applied such a decision) had no producer and no consumer. ADR-0023 proposed
+-- the `discipline_plan_update` discriminator; this adds it to the enum. The wire arm is ADDITIVE inside
+-- `payloadSchemaVersion` "2026-01-v1": the M7/M11/M12/M16 consumers each `return` on a `kind` they do not own.
+--
+-- Additive only. Own migration: PG forbids using a value added earlier in the same transaction (the
+-- 0239 / 0251 / 0252 / 0267 / 0277 additive-enum precedent).
+ALTER TYPE "public"."idg_decision_kind" ADD VALUE IF NOT EXISTS 'discipline_plan_update';

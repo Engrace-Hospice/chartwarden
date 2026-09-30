@@ -126,6 +126,7 @@
     "test:m6:cop-documents:live": "vitest run apps/backend/__tests__/m6-cop-document-renders.live.test.ts",
     "test:m6:discharge-cascade:live": "vitest run apps/backend/__tests__/m6-discharge-cascade.live.test.ts",
     "test:m15:plan-bootstrap:live": "vitest run apps/backend/__tests__/m15-plan-bootstrap.live.test.ts",
+    "test:m15:idg-decision:live": "vitest run apps/backend/__tests__/m15-idg-decision-apply.live.test.ts",
     "test:m14:autoclose:live": "vitest run apps/backend/__tests__/m14-action-item-autoclose.live.test.ts",
     "test:m14:since-last-idg-cache:live": "vitest run apps/backend/__tests__/m14-since-last-idg-cache.live.test.ts",
     "test:m14:packet-build:live": "vitest run apps/backend/__tests__/m14-packet-build.live.test.ts",

@@ -45082,6 +45082,41 @@ export interface operations {
                         })[];
                     } | {
                         /** @constant */
+                        kind: "discipline_plan_update";
+                        planKind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                        mutations: ({
+                            /** @constant */
+                            op: "goal_add";
+                            /** Format: uuid */
+                            parentProblemId: string;
+                            source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
+                            originalText: string;
+                            measurableOutcome: string | null;
+                        } | {
+                            /** @constant */
+                            op: "goal_update";
+                            /** Format: uuid */
+                            goalId: string;
+                            event: "start" | "meet" | "missTarget" | "revise" | "discontinue";
+                            revisedText?: string;
+                            reason?: string;
+                        } | {
+                            /** @constant */
+                            op: "intervention_add";
+                            goalRefs: string[];
+                            discipline: string;
+                            scopeText: string;
+                            frequencyText: string;
+                            frequencyValue: string;
+                        } | {
+                            /** @constant */
+                            op: "intervention_discontinue";
+                            /** Format: uuid */
+                            interventionId: string;
+                            reason: string;
+                        })[];
+                    } | {
+                        /** @constant */
                         kind: "order_request";
                         requestedOrders: {
                             kindHint: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
@@ -45159,7 +45194,7 @@ export interface operations {
                             mrnSuffix: string | null;
                         } | null;
                         agendaItemId: string | null;
-                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note" | "discipline_plan_update";
                         status: "open" | "emitted" | "superseded";
                         wasQuorate: boolean;
                         /** Format: uuid */
@@ -45167,6 +45202,15 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        applications?: {
+                            /** @constant */
+                            module: "m15";
+                            planId: string | null;
+                            versionId: string | null;
+                            mutationsApplied: number;
+                            /** Format: date-time */
+                            acknowledgedAt: string;
+                        }[];
                     };
                 };
             };
@@ -45208,7 +45252,7 @@ export interface operations {
                             mrnSuffix: string | null;
                         } | null;
                         agendaItemId: string | null;
-                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note" | "discipline_plan_update";
                         status: "open" | "emitted" | "superseded";
                         wasQuorate: boolean;
                         /** Format: uuid */
@@ -45216,6 +45260,15 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        applications?: {
+                            /** @constant */
+                            module: "m15";
+                            planId: string | null;
+                            versionId: string | null;
+                            mutationsApplied: number;
+                            /** Format: date-time */
+                            acknowledgedAt: string;
+                        }[];
                     };
                 };
             };
@@ -45714,7 +45767,7 @@ export interface operations {
                             mrnSuffix: string | null;
                         } | null;
                         agendaItemId: string | null;
-                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note" | "discipline_plan_update";
                         status: "open" | "emitted" | "superseded";
                         wasQuorate: boolean;
                         /** Format: uuid */
@@ -45722,6 +45775,15 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        applications?: {
+                            /** @constant */
+                            module: "m15";
+                            planId: string | null;
+                            versionId: string | null;
+                            mutationsApplied: number;
+                            /** Format: date-time */
+                            acknowledgedAt: string;
+                        }[];
                     }[];
                 };
             };
@@ -45787,6 +45849,41 @@ export interface operations {
                             op: "intervention_add";
                             /** Format: uuid */
                             problemId: string;
+                            goalRefs: string[];
+                            discipline: string;
+                            scopeText: string;
+                            frequencyText: string;
+                            frequencyValue: string;
+                        } | {
+                            /** @constant */
+                            op: "intervention_discontinue";
+                            /** Format: uuid */
+                            interventionId: string;
+                            reason: string;
+                        })[];
+                    } | {
+                        /** @constant */
+                        kind: "discipline_plan_update";
+                        planKind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                        mutations: ({
+                            /** @constant */
+                            op: "goal_add";
+                            /** Format: uuid */
+                            parentProblemId: string;
+                            source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
+                            originalText: string;
+                            measurableOutcome: string | null;
+                        } | {
+                            /** @constant */
+                            op: "goal_update";
+                            /** Format: uuid */
+                            goalId: string;
+                            event: "start" | "meet" | "missTarget" | "revise" | "discontinue";
+                            revisedText?: string;
+                            reason?: string;
+                        } | {
+                            /** @constant */
+                            op: "intervention_add";
                             goalRefs: string[];
                             discipline: string;
                             scopeText: string;
@@ -45878,7 +45975,7 @@ export interface operations {
                             mrnSuffix: string | null;
                         } | null;
                         agendaItemId: string | null;
-                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note" | "discipline_plan_update";
                         status: "open" | "emitted" | "superseded";
                         wasQuorate: boolean;
                         /** Format: uuid */
@@ -45886,6 +45983,15 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        applications?: {
+                            /** @constant */
+                            module: "m15";
+                            planId: string | null;
+                            versionId: string | null;
+                            mutationsApplied: number;
+                            /** Format: date-time */
+                            acknowledgedAt: string;
+                        }[];
                     };
                 };
             };

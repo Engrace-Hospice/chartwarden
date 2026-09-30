@@ -94,6 +94,7 @@ export {
   createInMemoryCarePlanReaderStore,
   getCarePlanReader,
   type IdgPacketCarePlanContext,
+  activeProblemIdsForOrg,
   idgPacketCarePlanContextForOrg,
   registerCarePlanSeams,
 } from "./seams/index";

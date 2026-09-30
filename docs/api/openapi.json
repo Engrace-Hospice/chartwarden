@@ -98063,6 +98063,10 @@
                         {
                           "const": "team_note",
                           "type": "string"
+                        },
+                        {
+                          "const": "discipline_plan_update",
+                          "type": "string"
                         }
                       ]
                     },
@@ -98103,6 +98107,55 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "applications": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "module",
+                          "planId",
+                          "versionId",
+                          "mutationsApplied",
+                          "acknowledgedAt"
+                        ],
+                        "properties": {
+                          "module": {
+                            "const": "m15",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "versionId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mutationsApplied": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "acknowledgedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -98408,6 +98461,221 @@
                                     "frequencyValue": {
                                       "minLength": 1,
                                       "maxLength": 255,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "interventionId",
+                                    "reason"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_discontinue",
+                                      "type": "string"
+                                    },
+                                    "interventionId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "reason": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "planKind",
+                          "mutations"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "discipline_plan_update",
+                            "type": "string"
+                          },
+                          "planKind": {
+                            "anyOf": [
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_plan",
+                                "type": "string"
+                              },
+                              {
+                                "const": "spiritual_plan",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_plan",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "mutations": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "parentProblemId",
+                                    "source",
+                                    "originalText",
+                                    "measurableOutcome"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_add",
+                                      "type": "string"
+                                    },
+                                    "parentProblemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "source": {
+                                      "anyOf": [
+                                        {
+                                          "const": "clinical",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "patient_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "family_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agent_stated",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "originalText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "measurableOutcome": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "goalId",
+                                    "event"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_update",
+                                      "type": "string"
+                                    },
+                                    "goalId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "event": {
+                                      "anyOf": [
+                                        {
+                                          "const": "start",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "meet",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "missTarget",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "revise",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "discontinue",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "revisedText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "reason": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "goalRefs",
+                                    "discipline",
+                                    "scopeText",
+                                    "frequencyText",
+                                    "frequencyValue"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_add",
+                                      "type": "string"
+                                    },
+                                    "goalRefs": {
+                                      "type": "array",
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "discipline": {
+                                      "minLength": 1,
+                                      "maxLength": 64,
+                                      "type": "string"
+                                    },
+                                    "scopeText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "frequencyText": {
+                                      "minLength": 1,
+                                      "maxLength": 1000,
+                                      "type": "string"
+                                    },
+                                    "frequencyValue": {
+                                      "pattern": "^[0-9]+:(visit|day|week|month|prn|continuous):(day|week|month|episode|prn)$",
                                       "type": "string"
                                     }
                                   }
@@ -98981,6 +99249,10 @@
                         {
                           "const": "team_note",
                           "type": "string"
+                        },
+                        {
+                          "const": "discipline_plan_update",
+                          "type": "string"
                         }
                       ]
                     },
@@ -99021,6 +99293,55 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "applications": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "module",
+                          "planId",
+                          "versionId",
+                          "mutationsApplied",
+                          "acknowledgedAt"
+                        ],
+                        "properties": {
+                          "module": {
+                            "const": "m15",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "versionId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mutationsApplied": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "acknowledgedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -100636,6 +100957,10 @@
                           {
                             "const": "team_note",
                             "type": "string"
+                          },
+                          {
+                            "const": "discipline_plan_update",
+                            "type": "string"
                           }
                         ]
                       },
@@ -100676,6 +101001,55 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "applications": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "module",
+                            "planId",
+                            "versionId",
+                            "mutationsApplied",
+                            "acknowledgedAt"
+                          ],
+                          "properties": {
+                            "module": {
+                              "const": "m15",
+                              "type": "string"
+                            },
+                            "planId": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "versionId": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "mutationsApplied": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "acknowledgedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        }
                       }
                     }
                   }
@@ -100823,6 +101197,10 @@
                         {
                           "const": "team_note",
                           "type": "string"
+                        },
+                        {
+                          "const": "discipline_plan_update",
+                          "type": "string"
                         }
                       ]
                     },
@@ -100863,6 +101241,55 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "applications": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "module",
+                          "planId",
+                          "versionId",
+                          "mutationsApplied",
+                          "acknowledgedAt"
+                        ],
+                        "properties": {
+                          "module": {
+                            "const": "m15",
+                            "type": "string"
+                          },
+                          "planId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "versionId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mutationsApplied": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "acknowledgedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -101184,6 +101611,221 @@
                                     "frequencyValue": {
                                       "minLength": 1,
                                       "maxLength": 255,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "interventionId",
+                                    "reason"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_discontinue",
+                                      "type": "string"
+                                    },
+                                    "interventionId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "reason": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "planKind",
+                          "mutations"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "discipline_plan_update",
+                            "type": "string"
+                          },
+                          "planKind": {
+                            "anyOf": [
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_plan",
+                                "type": "string"
+                              },
+                              {
+                                "const": "spiritual_plan",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_plan",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "mutations": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "parentProblemId",
+                                    "source",
+                                    "originalText",
+                                    "measurableOutcome"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_add",
+                                      "type": "string"
+                                    },
+                                    "parentProblemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "source": {
+                                      "anyOf": [
+                                        {
+                                          "const": "clinical",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "patient_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "family_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agent_stated",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "originalText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "measurableOutcome": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "goalId",
+                                    "event"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_update",
+                                      "type": "string"
+                                    },
+                                    "goalId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "event": {
+                                      "anyOf": [
+                                        {
+                                          "const": "start",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "meet",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "missTarget",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "revise",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "discontinue",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "revisedText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "reason": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "goalRefs",
+                                    "discipline",
+                                    "scopeText",
+                                    "frequencyText",
+                                    "frequencyValue"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_add",
+                                      "type": "string"
+                                    },
+                                    "goalRefs": {
+                                      "type": "array",
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "discipline": {
+                                      "minLength": 1,
+                                      "maxLength": 64,
+                                      "type": "string"
+                                    },
+                                    "scopeText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "frequencyText": {
+                                      "minLength": 1,
+                                      "maxLength": 1000,
+                                      "type": "string"
+                                    },
+                                    "frequencyValue": {
+                                      "pattern": "^[0-9]+:(visit|day|week|month|prn|continuous):(day|week|month|episode|prn)$",
                                       "type": "string"
                                     }
                                   }
