@@ -19050,7 +19050,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** F-217 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending) */
+        /** F-224 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending) */
         post: operations["postApiV1TriagecallsByTriageCallIdRequestsummary"];
         delete?: never;
         options?: never;
