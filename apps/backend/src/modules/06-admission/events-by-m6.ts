@@ -444,6 +444,20 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       startDate: Type.Optional(Type.String({ minLength: 1 })),
       endDate: Type.Optional(Type.String({ minLength: 1 })),
       admissionId: Type.String({ minLength: 1 }),
+      // F-217 — the F2F/CTI adequacy decision (certification/adequacy.ts) that gated this ACTIVATION.
+      // Additive and optional: present only on the recert-activation emission (the one path that runs the
+      // gate); absent on the pending-period creation emission and the period-1 seed. A period that reaches
+      // this event on the gated path is always `adequate` (an inadequate one refuses and rolls back), so the
+      // value a consumer gains is the non-blocking `flags` (late CTI, overridden F2F window) — never PHI,
+      // only machine-readable codes.
+      adequacy: Type.Optional(
+        Type.Object({
+          verdict: Type.Union([Type.Literal("adequate"), Type.Literal("inadequate")]),
+          f2fRequired: Type.Boolean(),
+          reasonCodes: Type.Array(Type.String({ minLength: 1 })),
+          flags: Type.Array(Type.String({ minLength: 1 })),
+        }),
+      ),
     }),
     // F-101 — `m22` was first in this list. A recertification period starting is a billing and cap
     // fact, not a document: the recert artifact is the CTI, rendered from `m6.cti.signed`. Still

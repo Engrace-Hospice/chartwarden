@@ -86,6 +86,16 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
 }
 
 /**
+ * The org-local calendar date (`yyyy-mm-dd`) of the instant `instant` in `timeZone` (D8 — "stored
+ * `*_date` fields are the org-local calendar date"). Used to classify a signature as same-day/late
+ * against a period start date.
+ */
+export function localDateOfInstant(instant: string, timeZone: string): LocalDate {
+  const utcMs = Date.parse(instant);
+  return toLocalDate(new Date(utcMs + tzOffsetMs(utcMs, timeZone)));
+}
+
+/**
  * The UTC instant for the END of calendar day `date` in `timeZone` (23:59:59.999 org-local; D8). The
  * zone offset is resolved at the end-of-day wall instant (past any early-morning DST transition) and
  * applied once, preserving the millisecond precision of the boundary moment.

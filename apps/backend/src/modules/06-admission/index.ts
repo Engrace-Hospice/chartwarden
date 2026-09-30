@@ -230,6 +230,18 @@ export {
   isF2fScheduledWithinWindow,
   decideF2fWindowStatus,
   decideRecertSign,
+  ADEQUACY_FLAG_CODES,
+  ADEQUACY_REASON_CODES,
+  type AdequacyDecisionSummary,
+  type AdequacyFlagCode,
+  type AdequacyInput,
+  type AdequacyReasonCode,
+  type AdequacyResult,
+  evaluatePeriodAdequacy,
+  f2fRequiredForSequence,
+  pickCertification,
+  pickFaceToFace,
+  summarizeAdequacy,
 } from "./certification";
 
 // M6-T07 — referral & intake (§7.1) + admission wizard (§7.2). The R-AC-01 activation gate is the
