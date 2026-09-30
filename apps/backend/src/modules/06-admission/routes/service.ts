@@ -379,6 +379,13 @@ export interface DischargeInput {
   readonly forCauseReason?: string;
   /** R-DC-01 — required when `reason === 'death'` (`checkDischargeNarrative` enforces it). */
   readonly deathCertifierId?: string;
+  /**
+   * F-227 (#248) — set ONLY by the M29 proposal applier (`recordExternalDeath`, W-M6-31): the death was
+   * reported by an external facility, so R-DC-01's pronouncing-certifier capture does not apply at intake
+   * (M6 §4.8.4's recordExternalDeath inserts directly) and the row is stamped `hl7_external` +
+   * `cosign_required` with the M29 proposal it came from. Never reachable from the HTTP route body.
+   */
+  readonly externalSource?: { readonly proposalId: string };
 }
 
 /** §4.2.7 route 37 body (TransferOutSchema) — the receiving hospice's identity + the transfer narrative. */

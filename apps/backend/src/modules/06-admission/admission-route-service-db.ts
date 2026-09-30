@@ -54,16 +54,7 @@ import {
   evaluatePeriodAdequacy,
   summarizeAdequacy,
 } from "./certification/adequacy";
-import {
-  assertPlausibleEncounterDate,
-  expectedStartFromPriorEnd,
-  resolveF2fWindowStart,
-} from "./certification/f2f-window";
-import {
-  computeCtiSignatureDueAt,
-  computeWrittenCertDeadline,
-  localDateOfInstant,
-} from "./certification/window-math";
+import { computeCtiSignatureDueAt, computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
   type DischargeReason,
@@ -277,16 +268,6 @@ export async function openNextElectionPeriodInTx(
     .from(EP)
     .where(eq(EP.admissionId, admissionId));
   const nextSequence = Number(max?.seq ?? 0) + 1;
-  // F-226 - the pending period's EXPECTED START = the preceding period's scheduled_end_at + 1 day (benefit
-  // periods are contiguous). Persisted so the F2F prior-to window can be computed against a real date when
-  // the encounter is completed, long before activation stamps `effective_at`. NULL when the preceding
-  // period has no scheduled end yet (not derivable; the window is then unverifiable and fails closed).
-  const [prior] = await tx
-    .select({ scheduledEndAt: EP.scheduledEndAt })
-    .from(EP)
-    .where(and(eq(EP.admissionId, admissionId), eq(EP.sequenceNumber, nextSequence - 1)))
-    .limit(1);
-  const expectedStart = expectedStartFromPriorEnd(prior?.scheduledEndAt ?? null);
   const insert = tx.insert(EP).values({
     organizationId,
     admissionId,
@@ -296,7 +277,6 @@ export async function openNextElectionPeriodInTx(
     // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
     // number, and the kind is what `scheduled_end_at` is derived from.
     periodKind: electionPeriodKindForSequence(nextSequence),
-    ...(expectedStart ? { expectedStart } : {}),
     ...(sourceOrderId ? { sourceOrderId } : {}),
   });
   const returning = { id: EP.id, status: EP.status, version: EP.version };
@@ -772,50 +752,11 @@ export function createDbAdmissionRouteService(
   }
 
   /**
-   * F-226 - the start a period's F2F window is anchored to (see `resolveF2fWindowStart`): its stored
-   * `expected_start`, else the preceding period's `scheduled_end_at` + 1, else its own `effective_at`.
-   */
-  async function resolvePeriodF2fWindowStart(
-    tx: DbClient,
-    periodId: string,
-  ): Promise<{ start: string; source: string } | null> {
-    const [ep] = await tx
-      .select({
-        admissionId: EP.admissionId,
-        sequenceNumber: EP.sequenceNumber,
-        expectedStart: EP.expectedStart,
-        effectiveAt: EP.effectiveAt,
-      })
-      .from(EP)
-      .where(eq(EP.id, periodId))
-      .limit(1);
-    if (!ep) return null;
-    const [prior] = await tx
-      .select({ scheduledEndAt: EP.scheduledEndAt })
-      .from(EP)
-      .where(
-        and(
-          eq(EP.admissionId, ep.admissionId),
-          eq(EP.sequenceNumber, Number(ep.sequenceNumber) - 1),
-        ),
-      )
-      .limit(1);
-    return resolveF2fWindowStart({
-      expectedStart: ep.expectedStart,
-      priorScheduledEnd: prior?.scheduledEndAt ?? null,
-      effectiveAt: ep.effectiveAt,
-    });
-  }
-
-  /**
    * F-217 — load every fact the F2F/CTI adequacy predicate (`certification/adequacy.ts`) needs for one
    * election period, org-scoped (RLS via the caller's `withOrgContext`), and evaluate it. `startDate` is
    * the org-local start the period is ABOUT to be stamped with (the recert path activates "today").
-   * F-226 - `windowBasis: 'strict'`: the gate recomputes the R-F2F-02 window from the REAL `encounter_date`
-   * against the period's EXPECTED start (`resolvePeriodF2fWindowStart`: stored expected_start, else the
-   * preceding period's scheduled end + 1) and ALSO requires the persisted `within_window` to be `true`;
-   * a NULL/false flag, a missing date or an undeterminable start fails closed. The CTI late-signature math
-   * keeps `startDate` (the activation day) as before.
+   * `windowBasis: 'recorded'` — `completeF2f` does not yet capture the real encounter/period dates (it
+   * stamps a placeholder), so the persisted R-F2F-02 `within_window` is the only honest window evidence.
    */
   async function evaluateAdequacyForPeriod(
     tx: DbClient,
@@ -838,7 +779,6 @@ export function createDbAdmissionRouteService(
       .from(ADM)
       .where(eq(ADM.id, ep.admissionId))
       .limit(1);
-    const f2fStart = await resolvePeriodF2fWindowStart(tx, periodId);
     const ctis = await tx
       .select({
         electionPeriodId: CTI.electionPeriodId,
@@ -875,11 +815,10 @@ export function createDbAdmissionRouteService(
         sequenceNumber: Number(ep.sequenceNumber),
         periodKind: ep.periodKind,
         startDate,
-        f2fWindowStart: f2fStart?.start ?? null,
       },
       admissionHospicePhysicianId: adm?.hospicePhysicianId ?? null,
       timeZone: DEFAULT_ORG_TZ,
-      windowBasis: "strict",
+      windowBasis: "recorded",
       ctis: ctis.map((c) => ({
         ...c,
         hospiceMdSignedAt: c.hospiceMdSignedAt ? c.hospiceMdSignedAt.toISOString() : null,
@@ -1681,6 +1620,10 @@ export function createDbAdmissionRouteService(
       // fix above, no longer need to.
       dischargeEventId?: string;
       reason?: string;
+      /** F-227 — an external (M29) death: the certifier is the sending facility's, attested later by the
+       *  medical-director cosign (M6 §4.8.4), so R-DC-01's credentialed-certifier guard is satisfied by
+       *  provenance rather than an identified `deathCertifierId`. */
+      externalDeath?: boolean;
     },
   ): Promise<{ state: AdmissionState; version: number }> {
     const [row] = await tx
@@ -1716,7 +1659,10 @@ export function createDbAdmissionRouteService(
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: now().toISOString().slice(0, 10),
-      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
+      deathCertifierCredentialed:
+        ev.dischargeType === "death"
+          ? !!ev.deathCertifierId || ev.externalDeath === true
+          : undefined,
     });
     const t = transitionAdmission(row.status as AdmissionState, {
       type: "executeDischarge",
@@ -1726,7 +1672,10 @@ export function createDbAdmissionRouteService(
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: ev.effectiveAt,
-      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
+      deathCertifierCredentialed:
+        ev.dischargeType === "death"
+          ? !!ev.deathCertifierId || ev.externalDeath === true
+          : undefined,
     } satisfies AdmissionEvent);
     const r = firstOrThrow(
       await tx
@@ -1776,14 +1725,17 @@ export function createDbAdmissionRouteService(
                 // `dischargeType === "death"`, and `checkDischargeNarrative` already refused the
                 // discharge request upstream if `deathCertifierId` was absent for that reason — so
                 // this is a real, already-verified fact at this point, never a guess.
+                // F-227 — absent (by design) for an external death: the sending facility pronounced it.
                 deathCertifierId:
                   ev.dischargeType === "death"
                     ? (ev.deathCertifierId ??
-                      (() => {
-                        throw conflict(
-                          "m6.discharge.death cannot be emitted without deathCertifierId",
-                        );
-                      })())
+                      (ev.externalDeath
+                        ? undefined
+                        : (() => {
+                            throw conflict(
+                              "m6.discharge.death cannot be emitted without deathCertifierId",
+                            );
+                          })()))
                     : undefined,
               },
             }
@@ -4271,7 +4223,8 @@ export function createDbAdmissionRouteService(
           if (adequacy && adequacy.verdict === "inadequate") {
             throw new WardenXError(
               "ELECTION_PERIOD_ADEQUACY_FAILED",
-              `The election period cannot start: its certification of terminal illness and/or face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
+              "The election period cannot start: its certification of terminal illness and/or " +
+                `face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
               409,
               adequacy.reasonCodes.map((code) => ({ code, message: code })),
             );
@@ -4480,12 +4433,7 @@ export function createDbAdmissionRouteService(
         return { id: f2f.id, state: f2f.status, version: Number(f2f.version) };
       });
     },
-    async completeF2f(
-      organizationId,
-      id,
-      ifVersion,
-      encounterDate,
-    ): Promise<MutationResult> {
+    async completeF2f(organizationId, id, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4500,36 +4448,28 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
-        // F-226 - the REAL encounter date (validated: a calendar date, not in the future, not absurdly old)
-        // against the period's REAL expected start (prior end + 1, see `resolvePeriodF2fWindowStart`).
-        // Before this the body's `encounterDate` was dropped, "today" was stamped, and the window was
-        // computed against today + 7, so `within_window` was true on every production write. Same-day and
-        // later dates are outside [start-30, start-1] (R-F2F-02) and are refused unless a window override
-        // (R-F2F-03, `overrideF2fWindow`, legal from `scheduled`) is already on file.
-        assertPlausibleEncounterDate(
-          encounterDate,
-          localDateOfInstant(now().toISOString(), DEFAULT_ORG_TZ),
-        );
-        const windowStart = await resolvePeriodF2fWindowStart(tx as DbClient, cur.epId);
+        // The completion route does not capture the encounter/period dates, so the CMS-418.22 window is
+        // computed against the completion instant (encounter today, period start +7d → 7 days prior,
+        // inside the [1,30]-day window). The real dates bind when the complete route captures them.
+        const encounterDate = new Date().toISOString().slice(0, 10);
+        const periodStart = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
         const t = transitionFaceToFace(cur.status as FaceToFaceState, {
           type: "recordCompletion",
           performerRole: cur.role,
-          periodStart: windowStart?.start ?? null,
+          periodStart,
           encounterDate,
           hasOverride: cur.override,
         });
-        const withinWindow: boolean | null = t.effects.some(
-          (e) => e.kind === "set_flag" && e.field === "within_window_unknown",
-        )
-          ? null
-          : t.effects.some((e) => e.kind === "set_flag" && e.field === "within_window_true");
+        const withinWindow = t.effects.some(
+          (e) => e.kind === "set_flag" && e.field === "within_window_true",
+        );
         const r = firstOrThrow(
           await tx
             .update(F2F)
             .set({
               status: t.to,
               encounterDate,
-              withinWindow, // null = unverified (override on file, start not derivable): the gate fails closed
+              withinWindow,
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),
             })
@@ -4558,8 +4498,7 @@ export function createDbAdmissionRouteService(
               f2fId: id,
               electionPeriodId: cur.epId,
               encounterDate,
-              // The catalog schema is a required boolean; "unverified" (null) is reported as not-within.
-              withinWindow: withinWindow === true,
+              withinWindow,
             },
           },
         );
@@ -5058,10 +4997,6 @@ export function createDbAdmissionRouteService(
         // W-DC-03 / D9 — inherit the carried sequence as the ACTIVE period (no CTI required from us) and
         // open the next PENDING period (our CTI required). The sequence counter never restarts.
         const plan = planTransferIn(input);
-        const inheritedWindow = electionPeriodWindow(
-          new Date(`${input.priorElectionStartDate}T00:00:00.000Z`),
-          plan.inherited.sequence,
-        );
         const inheritedPeriod = firstOrThrow(
           await tx
             .insert(EP)
@@ -5077,7 +5012,10 @@ export function createDbAdmissionRouteService(
               // `TransferInInput` as "anchors the inherited active period's start" and was read by the
               // in-memory slice alone; the Drizzle path discarded it, leaving the one period a receiving
               // hospice cannot re-derive a start for with no start at all.
-              ...inheritedWindow,
+              ...electionPeriodWindow(
+                new Date(`${input.priorElectionStartDate}T00:00:00.000Z`),
+                plan.inherited.sequence,
+              ),
             })
             .returning({ id: EP.id }),
           "election period insert returned no row",
@@ -5091,8 +5029,6 @@ export function createDbAdmissionRouteService(
               sequenceNumber: plan.next.sequence,
               periodKind: electionPeriodKindForSequence(plan.next.sequence),
               status: plan.next.state,
-              // F-226 - the next (pending) period starts the day after the inherited period ends.
-              expectedStart: expectedStartFromPriorEnd(inheritedWindow.scheduledEndAt),
             })
             .returning({ id: EP.id }),
           "election period insert returned no row",
@@ -5212,11 +5148,18 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
         // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
+        if (input.externalSource && input.reason !== "death")
+          throw new AdmissionStateError(
+            "DEATH_CERTIFIER_INVALID",
+            "an external-source discharge is only ever a death",
+          );
+        // F-227 — an external (M29-accepted) death names no pronouncing certifier at intake (R-DC-01's
+        // capture is the medical-director cosign's job, M6 §4.8.4); every other gate still applies.
         const issue = checkDischargeNarrative(
           input.reason,
           input.narrative,
           input.forCauseReason,
-          input.deathCertifierId,
+          input.externalSource ? "external-facility" : input.deathCertifierId,
         );
         if (issue) throw new AdmissionStateError(issue.code, issue.message);
         const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
@@ -5234,6 +5177,7 @@ export function createDbAdmissionRouteService(
                 admissionId,
                 dischargeType: dbType,
                 status: "pending_cosign",
+                cosignRequired: true, // D11 — `medical_director_cosign_required`
                 effectiveAt: input.dischargeDate,
                 narrative: input.narrative,
                 forCauseReason: input.forCauseReason ?? null,
@@ -5291,6 +5235,14 @@ export function createDbAdmissionRouteService(
               deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
               deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
               bereavementEligible: input.reason === "death",
+              // F-227 — W-M6-31 provenance: completed NOW, flagged for the after-the-fact cosign.
+              ...(input.externalSource
+                ? {
+                    source: "hl7_external" as const,
+                    sourceProposalId: input.externalSource.proposalId,
+                    cosignRequired: true,
+                  }
+                : {}),
             })
             .returning({ id: DE.id, status: DE.status, version: DE.version }),
           "discharge insert returned no row",
@@ -5302,6 +5254,7 @@ export function createDbAdmissionRouteService(
           deathCertifierId: input.reason === "death" ? input.deathCertifierId : undefined,
           dischargeEventId: de.id,
           reason: input.reason,
+          externalDeath: input.externalSource !== undefined,
         });
         return {
           id: de.id,
@@ -5327,12 +5280,76 @@ export function createDbAdmissionRouteService(
             version: DE.version,
             admissionId: DE.admissionId,
             effectiveAt: DE.effectiveAt,
+            source: DE.source,
+            sourceProposalId: DE.sourceProposalId,
+            cosignedAt: DE.cosignedAt,
           })
           .from(DE)
           .where(eq(DE.id, id))
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
+        // F-227 (#248) — W-M6-31: an EXTERNAL-source death is already `completed` (admission discharged at
+        // intake); the director's cosign is the after-the-fact attestation, not the completion.
+        if (cur.source === "hl7_external") {
+          if (cur.status !== "completed" || cur.cosignedAt !== null)
+            throw conflict(
+              cur.cosignedAt !== null
+                ? `discharge ${id} was already cosigned`
+                : `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
+            );
+          const cosignedAt = now();
+          const r = firstOrThrow(
+            await tx
+              .update(DE)
+              .set({
+                cosignedAt,
+                medicalDirectorMembershipId: actorUserId,
+                version: sql`${DE.version} + 1`,
+                updatedAt: cosignedAt,
+              })
+              .where(and(eq(DE.id, id), eq(DE.version, ifVersion), isNull(DE.cosignedAt)))
+              .returning({ id: DE.id, status: DE.status, version: DE.version }),
+            "discharge not found",
+          );
+          // Close the W-M6-31 `external_discharge_notice` prompt that asked for exactly this attestation.
+          await tx
+            .update(CW)
+            .set({
+              status: "closed",
+              closedAt: cosignedAt,
+              closeReason: "external_death_cosigned",
+              closedBy: actorUserId,
+              version: sql`${CW.version} + 1`,
+              updatedAt: cosignedAt,
+            })
+            .where(
+              and(
+                eq(CW.admissionId, cur.admissionId),
+                eq(CW.windowKind, "external_discharge_notice"),
+                ne(CW.status, "closed"),
+                sql`${CW.payload} ->> 'dischargeEventId' = ${id}`,
+              ),
+            );
+          await outbox.publish(tx, {
+            eventName: "m6.discharge.cosigned",
+            payload: {
+              dischargeEventId: id,
+              medicalDirectorCosignedAt: cosignedAt.toISOString(),
+              admissionId: cur.admissionId,
+              patientId: await patientForAdmission(tx, cur.admissionId),
+              dischargeDate: cur.effectiveAt,
+              reason: "death",
+              // F-227 — everything M16's D18 gate-release (`decideCosignReceipt`) correlates on.
+              sourceProposalId: cur.sourceProposalId ?? undefined,
+              medicalDirectorMembershipId: actorUserId,
+            },
+            organizationId,
+            aggregateKind: "discharge_event",
+            aggregateId: id,
+          });
+          return { id: r.id, state: r.status, version: Number(r.version) };
+        }
         if (cur.status !== "pending_cosign")
           throw conflict(
             `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
@@ -5345,6 +5362,9 @@ export function createDbAdmissionRouteService(
             .update(DE)
             .set({
               status: outcome.dischargeState,
+              // F-227 — record the director's cosign facts on the row too (columns exist since 0300).
+              cosignedAt: now(),
+              medicalDirectorMembershipId: actorUserId,
               version: sql`${DE.version} + 1`,
               updatedAt: now(),
             })
