@@ -889,7 +889,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // (`admission-route-service-db.ts`'s `dischargeAdmissionTx`) — the F-099/F-100 "the artifact is
       // already at the emit site" shape. M37's `ipu_body_release.pronouncing_physician_id` (NOT NULL)
       // is the consumer this widening exists for.
-      deathCertifierId: Type.String({ minLength: 1 }),
+      // F-227 (#248) — OPTIONAL now: an external (M29-accepted) death names no pronouncing certifier at
+      // intake (M6 §4.8.4 recordExternalDeath; the sending facility pronounced, the medical-director
+      // cosign attests). M37's body-release opener needs the physician and skips when it is absent.
+      deathCertifierId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     // F-134 (#248) — `m16` removed: this event is co-emitted with `m6.bereavement.eligible` from the
     // SAME `runEffects` call on the SAME death-discharge transition (`admission-route-service-db.ts`
@@ -909,7 +912,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m6.discharge.cosigned",
     moduleOwner: "m6",
     description:
-      "A for-cause discharge was cosigned by the medical director (route 40).",
+      "A discharge was cosigned by the medical director (route 40): completes a for-cause " +
+      "discharge, or attests an external-source death (F-227; carries `sourceProposalId`).",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       medicalDirectorCosignedAt: Type.String({ minLength: 1 }),
@@ -919,6 +923,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       dischargeDate: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
+      // F-227 (#248) — the D18 release facts for an EXTERNAL-source death's cosign (M16 spec §4.3.1
+      // `receiveCosignAndReleaseGate` needs `{sourceProposalId, cosignedAt, medicalDirectorMembershipId}`;
+      // `cosignedAt` is `medicalDirectorCosignedAt`). Additive + optional: absent on a for-cause cosign
+      // (route 40 over a `pending_cosign` row), which is not an external-source plan's gate.
+      sourceProposalId: Type.Optional(Type.String({ minLength: 1 })),
+      medicalDirectorMembershipId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     // F-094/#205 — M16's `consumers/m6-eligibility.ts` carries `decideCosignReceipt`, the D18
     // gate-release decider for exactly this topic, and the catalog named only m22.

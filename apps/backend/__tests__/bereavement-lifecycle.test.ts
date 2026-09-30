@@ -955,13 +955,38 @@ describe("§4.3.1 m6.bereavement.eligible intake", () => {
   });
 
   it("D16 — an hl7_external death stamps provenance whose cosign defaults to PENDING", () => {
-    const external = { ...DEATH_FACT, source: "hl7_external" as const };
+    const external = {
+      ...DEATH_FACT,
+      source: "hl7_external" as const,
+      sourceProposalId: "00000000-0000-4000-8000-0000000000aa",
+    };
     const metadata = externalSourceMetadataFor(external);
     expect(metadata?.cosignStatus).toBe("pending");
+    // F-227 — the REAL proposal id, never one fabricated from the admission id.
+    expect(metadata?.sourceProposalId).toBe("00000000-0000-4000-8000-0000000000aa");
+    expect(metadata?.sourceProposalId).not.toBe(external.admissionId);
     expect(externalSourceMetadataFor(DEATH_FACT)).toBeNull();
 
-    const cosigned = externalSourceMetadataFor({ ...external, cosignStatus: "cosigned" });
+    // `cosigned` WITHOUT the attestation facts stays pending (fail-closed) ...
+    expect(externalSourceMetadataFor({ ...external, cosignStatus: "cosigned" })?.cosignStatus).toBe(
+      "pending",
+    );
+    // ... and with them it carries the director attestation.
+    const cosigned = externalSourceMetadataFor({
+      ...external,
+      cosignStatus: "cosigned",
+      cosignedAt: "2026-03-03T00:00:00.000Z" as never,
+      medicalDirectorMembershipId: "md-1",
+    });
     expect(cosigned?.cosignStatus).toBe("cosigned");
+    expect(cosigned?.cosignedAt).toBe("2026-03-03T00:00:00.000Z");
+    expect(cosigned?.medicalDirectorMembershipId).toBe("md-1");
+  });
+
+  it("F-227 — an hl7_external death with no source proposal id is refused, not invented", () => {
+    expect(() =>
+      externalSourceMetadataFor({ ...DEATH_FACT, source: "hl7_external" as const }),
+    ).toThrow(/no source proposal id/);
   });
 
   it("D18 — the cosign receipt is idempotent: a redelivery never re-stamps the attestation", () => {

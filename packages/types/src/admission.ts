@@ -430,6 +430,11 @@ export interface DeathDischargeRow {
   readonly deathAt: IsoInstant;
   readonly source: "internal_clinician_recorded" | "hl7_external";
   readonly cosignStatus?: "cosigned" | "pending";
+  /** F-227 — the M29 proposal an `hl7_external` death came from (M16 D18 correlates the cosign on it). */
+  readonly sourceProposalId?: string;
+  /** F-227 — the cosign facts once the medical director attested (absent while `pending`). */
+  readonly cosignedAt?: IsoInstant;
+  readonly medicalDirectorMembershipId?: string;
 }
 
 /**

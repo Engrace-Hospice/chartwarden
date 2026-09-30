@@ -439,6 +439,7 @@ import {
   buildM16BereavementIntakeConsumer,
   buildM16ConsentRevokedConsumer,
   buildM16ConsentSignedConsumer,
+  buildM16DischargeCosignedConsumer,
   buildM16DischargeDeathSecondaryConsumer,
   buildM16IdgDecisionConsumer,
   buildM16PatientOptOutChangedConsumer,
@@ -5927,6 +5928,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-159 (#248) — the §4.5 post-death-grant handler: confirms a proposed bereaved contact onto
           // the roster once M39 signs the exact bereavement-outreach consent requested for them.
           buildM16ConsentSignedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // F-227 (#248) — the D18 external-source gate release: an `m6.discharge.cosigned` that names a
+          // `sourceProposalId` flips the matching plan's `cosignStatus` to `cosigned` and unlocks the
+          // counselor's first contact. A for-cause cosign (no source proposal) is a no-op here.
+          buildM16DischargeCosignedConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
           }),

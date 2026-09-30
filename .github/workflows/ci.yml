@@ -734,6 +734,7 @@ jobs:
           # F-171 (#248) — the real §7.1/§7.2 T-24h packet-build worker (schedule-materialise + packets-cron).
           - { name: "M14 packet build", scripts: "test:m14:packet-build:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
+          - { name: "M6/M16 external death cosign", scripts: "test:m6-m16:external-death-cosign:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
           # F-171 (#248) — the consent-type-catalog seed rows that unblock the already-built M2/M16/M31
           # m39.consent.revoked cascades end to end (portal_access, bereavement_outreach_consent).
