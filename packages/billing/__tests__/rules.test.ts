@@ -533,6 +533,64 @@ describe("icd10_sequencing", () => {
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
   });
+  it("F-214: HOLDS (error) when a diagnosis was withheld pending Part 2 consent, even if the rest is valid; message carries no code", () => {
+    const ctx = passingContext();
+    const r = run(icd10Sequencing, {
+      ...ctx,
+      claim: { ...ctx.claim, diagnosesWithheldForConsent: 2 },
+    });
+    expect(r.passed).toBe(false);
+    expect(r.severity).toBe("error");
+    expect(r.message).toContain("defect");
+    expect(JSON.stringify(r)).not.toContain("G30.9");
+    expect(JSON.stringify(r.annotations?.observed)).toContain(
+      "withheld pending 42 CFR Part 2 consent",
+    );
+  });
+  it("F-214: a withheld TERMINAL fails with its own reason and never promotes a related diagnosis", () => {
+    const ctx = passingContext();
+    const r = run(icd10Sequencing, {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        icd10Sequence: [{ position: 1, code: "G30.9", relationship: "related" }],
+        diagnosesWithheldForConsent: 1,
+        terminalDiagnosisWithheldForConsent: true,
+      },
+    });
+    expect(r.passed).toBe(false);
+    expect(r.annotations?.observed?.firstDefect).toContain(
+      "principal (terminal) diagnosis is withheld",
+    );
+    // exactly the two withholding defects — no extra "principal is not the terminal diagnosis" line
+    expect(r.annotations?.observed?.defectCount).toBe(2);
+  });
+  it("F-214: still fails (never skips) when terminology is unbound and a diagnosis was withheld", () => {
+    const ctx = passingContext();
+    const r = run(icd10Sequencing, {
+      ...ctx,
+      seams: { ...ctx.seams, terminologyBound: false },
+      claim: { ...ctx.claim, diagnosesWithheldForConsent: 1 },
+    });
+    expect(isSkip(r)).toBe(false);
+    expect(r.passed).toBe(false);
+  });
+  it("F-214: an empty sequence with everything withheld reports the withholding, not just 'no diagnosis'", () => {
+    const ctx = passingContext();
+    const r = run(icd10Sequencing, {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        icd10Sequence: [],
+        diagnosesWithheldForConsent: 1,
+        terminalDiagnosisWithheldForConsent: true,
+      },
+    });
+    expect(r.passed).toBe(false);
+    expect(JSON.stringify(r.annotations?.observed)).toContain(
+      "withheld pending 42 CFR Part 2 consent",
+    );
+  });
   it("fails when a code is not billable per M38", () => {
     const ctx = passingContext();
     const r = run(icd10Sequencing, {

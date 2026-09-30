@@ -29,7 +29,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { CMS_HOSPICE_MODIFIER_VALUE_SET } from "@wardenx/billing";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET, icd10Sequencing } from "@wardenx/billing";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { runWithRequestContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
@@ -67,6 +67,7 @@ import {
   createDbTerminologyStore,
   registerTerminologySeams,
 } from "../src/modules/38-terminology/index";
+import { createDbConsentStore, registerConsentSeams } from "../src/modules/39-consent/index";
 import {
   createDbMdmStore,
   facilityKindsForIds,
@@ -417,6 +418,24 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     // call), so `buildM23TerminologyAdapter()`'s `getSeam("TerminologyProvider")` default resolves
     // for real rather than needing its own `resolve` override.
     registerTerminologySeams({ store: createDbTerminologyStore(handle.db) });
+    // F-214 (#251) — M39's REAL `ConsentEvaluator` over the REAL Drizzle consent store, exactly as `index.ts`
+    // registers it, so M7's Part 2 billing gate is proven against real `consent_record` rows (not a stub).
+    registerConsentSeams({ store: createDbConsentStore(handle.db) });
+    // M39's platform-floor catalog rows `consent_record.type_key` FKs to (the gap-061 precedent).
+    await admin.query(
+      `INSERT INTO consent_type_catalog (type_key, display_name_en, scope_discriminator,
+         default_expiration_seconds, max_term_seconds, capture_method_floor,
+         reminder_cadence_floor, revocation_cascade_kind, is_per_recipient, is_per_named_agent,
+         is_post_mortem_eligible, requires_jurisdiction_code, cfr_42_part_2_compliant,
+         hipaa_164_508_compliant, body_text_template_key, m22_template_version)
+       VALUES
+         ('42_cfr_part_2_release','42 CFR Part 2 Release','per_recipient',31536000,31536000,
+          ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'part_2_release',
+          true,false,false,false,true,false,'consent_record','v1'),
+         ('hipaa_release','HIPAA Release','per_recipient',31536000,31536000,
+          ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'hipaa_release',
+          true,false,false,false,false,true,'consent_record','v1')`,
+    );
     // `cms_hospice_modifiers` (GV/GW) did not exist as real curated data before F-124 — seeded here
     // the same way the seam's own migration-less curation file describes it: two rows in `value_set`
     // + `value_set_member`, no RLS (platform-shared reference data, §3.7).
@@ -1153,14 +1172,16 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         onset?: string | null;
         resolved?: string | null;
         createdAt?: string;
+        /** F-214 — `problem.sud_related` (42 CFR Part 2). */
+        sud?: boolean;
       },
     ): Promise<void> {
       const loc = (await admin.query("SELECT location_id FROM care_plan WHERE id=$1", [planId]))
         .rows[0].location_id as string;
       await admin.query(
         `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, icd10_code,
-           description, kind, status, onset_at, resolved_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,'F-209 fixture problem',$6,$7::problem_status,$8,$9, COALESCE($10::timestamptz, now()))`,
+           description, kind, status, onset_at, resolved_at, created_at, sud_related)
+         VALUES ($1,$2,$3,$4,$5,'F-209 fixture problem',$6,$7::problem_status,$8,$9, COALESCE($10::timestamptz, now()), $11)`,
         [
           orgId,
           pe,
@@ -1172,6 +1193,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
           p.onset ?? null,
           p.resolved ?? null,
           p.createdAt ?? null,
+          p.sud ?? false,
         ],
       );
     }
@@ -1201,7 +1223,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         kind: "terminal",
         createdAt: "2026-03-01",
       });
-      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
       expect(seq).toEqual([
         { position: 1, code: "C34.90", relationship: "terminal" },
         { position: 2, code: "E11.9", relationship: "related" },
@@ -1220,7 +1242,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       await seedProblem(ORG_A, plan, pe, { code: null, kind: "related" });
       await seedProblem(ORG_A, plan, pe, { code: "  ", kind: "related" });
       await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "related" }); // same code again
-      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
       expect(seq).toEqual([{ position: 1, code: "C34.90", relationship: "terminal" }]);
     });
 
@@ -1259,7 +1281,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         onset: "2026-01-01T00:00:00Z",
         resolved: "2026-06-10T00:00:00Z",
       });
-      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
       expect(seq.map((d) => d.code)).toEqual(["C34.90", "J44.9", "L89.90"]);
     });
 
@@ -1275,7 +1297,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
           createdAt: `2026-02-${String(i + 1).padStart(2, "0")}`,
         });
       }
-      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
       expect(seq).toHaveLength(12);
       expect(seq.map((d) => d.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
       expect(seq[0]).toEqual({ position: 1, code: "C34.90", relationship: "terminal" });
@@ -1295,13 +1317,13 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       await seedProblem(ORG_A, planOther, peA, { code: "J44.9", kind: "terminal" });
       await seedProblem(ORG_B, planB, peB, { code: "I10", kind: "terminal" });
       // Org A's patient, asked as org A: only its own row.
-      expect(await claimDiagnosesForOrg(handle.db, ORG_A, patientA, RANGE)).toEqual([
+      expect((await claimDiagnosesForOrg(handle.db, ORG_A, patientA, RANGE)).sequence).toEqual([
         { position: 1, code: "C34.90", relationship: "terminal" },
       ]);
       // Org B asking about org A's patient id: nothing (RLS + explicit organization_id predicate).
-      expect(await claimDiagnosesForOrg(handle.db, ORG_B, patientA, RANGE)).toEqual([]);
+      expect((await claimDiagnosesForOrg(handle.db, ORG_B, patientA, RANGE)).sequence).toEqual([]);
       // Org A asking about org B's patient id: nothing.
-      expect(await claimDiagnosesForOrg(handle.db, ORG_A, patientB, RANGE)).toEqual([]);
+      expect((await claimDiagnosesForOrg(handle.db, ORG_A, patientB, RANGE)).sequence).toEqual([]);
     });
 
     it("the explicit organization_id predicate is a second wall: it holds even where RLS does not apply (superuser handle)", async () => {
@@ -1313,11 +1335,227 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // so the assertion isolates the query's own organization_id predicate from the row-level policy.
       const superHandle = createDbClient({ connectionString: DB_URL! });
       try {
-        expect(await claimDiagnosesForOrg(superHandle.db, ORG_B, patientA, RANGE)).toEqual([]);
-        expect(await claimDiagnosesForOrg(superHandle.db, ORG_A, patientA, RANGE)).toHaveLength(1);
+        expect(
+          (await claimDiagnosesForOrg(superHandle.db, ORG_B, patientA, RANGE)).sequence,
+        ).toEqual([]);
+        expect(
+          (await claimDiagnosesForOrg(superHandle.db, ORG_A, patientA, RANGE)).sequence,
+        ).toHaveLength(1);
       } finally {
         await superHandle.close();
       }
+    });
+
+    // ── F-214 (#251): the 42 CFR Part 2 consent gate, against REAL consent rows on the app role ──────────
+    describe("F-214: sud_related diagnoses are consent-gated (42 CFR Part 2)", () => {
+      async function seedConsent(
+        orgId: string,
+        patientId: string,
+        o: {
+          type?: string;
+          status?: "active" | "revoked";
+          effective?: string;
+          expires?: string | null;
+          recipient?: boolean;
+        } = {},
+      ): Promise<string> {
+        const status = o.status ?? "active";
+        const row = await admin.query(
+          `INSERT INTO consent_record (organization_id, patient_id, type_key, scope_descriptor, grantor_kind,
+             effective_at, expires_at, status, capture_method, capture_evidence_jsonb, created_by_id, version,
+             signed_at, signed_by_id, revoked_at, revoked_via_id)
+           VALUES ($1,$2,$3::consent_type_key,'{}'::jsonb,'patient_self', $4::timestamptz, $5::timestamptz,
+             $6::consent_status,'typed_signature_in_app','{}'::jsonb,$7,1, now() - interval '400 days', $7,
+             $8::timestamptz, $9)
+           RETURNING id`,
+          [
+            orgId,
+            patientId,
+            o.type ?? "42_cfr_part_2_release",
+            o.effective ?? "2020-01-01T00:00:00Z",
+            o.expires === undefined ? null : o.expires,
+            status,
+            U,
+            status === "revoked" ? "2026-01-01T00:00:00Z" : null,
+            status === "revoked" ? U : null,
+          ],
+        );
+        const id = row.rows[0].id as string;
+        if (o.recipient !== false) {
+          await admin.query(
+            `INSERT INTO consent_record_recipient (organization_id, consent_record_id, recipient_kind,
+               recipient_free_text, recipient_resolved_display_name, added_by_id)
+             VALUES ($1,$2,'free_text','Medicare Administrative Contractor','Medicare Administrative Contractor',$3)`,
+            [orgId, id, U],
+          );
+        }
+        return id;
+      }
+
+      /** Terminal non-SUD + one SUD related + one plain related, for a fresh patient. */
+      async function seedSudPatient(orgId: string, ccn: string): Promise<string> {
+        const patientId = await seedPatient(orgId);
+        const pe = await seedProviderEntity(orgId, ccn);
+        const plan = await seedPlan(orgId, patientId, pe);
+        await seedProblem(orgId, plan, pe, {
+          code: "C34.90",
+          kind: "terminal",
+          createdAt: "2026-01-01",
+        });
+        await seedProblem(orgId, plan, pe, {
+          code: "F11.20",
+          kind: "related",
+          sud: true,
+          createdAt: "2026-02-01",
+        });
+        await seedProblem(orgId, plan, pe, {
+          code: "J44.9",
+          kind: "related",
+          createdAt: "2026-03-01",
+        });
+        return patientId;
+      }
+
+      const CODES = (r: { sequence: readonly { code: string }[] }) => r.sequence.map((d) => d.code);
+
+      it("valid active Part 2 release => the SUD code IS included; nothing withheld", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381910");
+        await seedConsent(ORG_A, patientId);
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "F11.20", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(0);
+        expect(r.terminalWithheldForConsent).toBe(false);
+      });
+
+      it("no consent on file => code omitted, positions re-ranked, flag raised (count only)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381911");
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(r.sequence).toEqual([
+          { position: 1, code: "C34.90", relationship: "terminal" },
+          { position: 2, code: "J44.9", relationship: "related" },
+        ]);
+        expect(r.withheldForConsentCount).toBe(1);
+        expect(JSON.stringify(r)).not.toContain("F11.20");
+      });
+
+      it("EXPIRED release => omitted + flagged", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381912");
+        await seedConsent(ORG_A, patientId, {
+          effective: "2024-01-01T00:00:00Z",
+          expires: "2025-01-01T00:00:00Z",
+        });
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+      });
+
+      it("REVOKED release => omitted + flagged (revocation blocks future disclosure)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381913");
+        await seedConsent(ORG_A, patientId, { status: "revoked" });
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+      });
+
+      it("wrong-scope: a DIFFERENT consent type (hipaa_release), or a Part 2 release with no active recipient, does not cover it", async () => {
+        const wrongType = await seedSudPatient(ORG_A, "381914");
+        await seedConsent(ORG_A, wrongType, { type: "hipaa_release" });
+        const a = await claimDiagnosesForOrg(handle.db, ORG_A, wrongType, RANGE);
+        expect(CODES(a)).toEqual(["C34.90", "J44.9"]);
+        expect(a.withheldForConsentCount).toBe(1);
+
+        const noRecipient = await seedSudPatient(ORG_A, "381915");
+        await seedConsent(ORG_A, noRecipient, { recipient: false });
+        const b = await claimDiagnosesForOrg(handle.db, ORG_A, noRecipient, RANGE);
+        expect(CODES(b)).toEqual(["C34.90", "J44.9"]);
+        expect(b.withheldForConsentCount).toBe(1);
+      });
+
+      it("a release for a DIFFERENT patient does not cover this one", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381916");
+        const other = await seedPatient(ORG_A);
+        await seedConsent(ORG_A, other);
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+      });
+
+      it("a release in ANOTHER ORG (even keyed to the same patient id) does not cover it (cross-tenant, app role)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381917");
+        await seedConsent(ORG_B, patientId); // org B holds a consent naming org A's patient id
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+        // And org B, asking about that patient, sees none of org A's problems (RLS) and withholds nothing.
+        const asB = await claimDiagnosesForOrg(handle.db, ORG_B, patientId, RANGE);
+        expect(asB.sequence).toEqual([]);
+        expect(asB.withheldForConsentCount).toBe(0);
+      });
+
+      it("withheld TERMINAL: flagged, NOT replaced — a related diagnosis is never promoted to principal", async () => {
+        const patientId = await seedPatient(ORG_A);
+        const pe = await seedProviderEntity(ORG_A, "381918");
+        const plan = await seedPlan(ORG_A, patientId, pe);
+        await seedProblem(ORG_A, plan, pe, { code: "F11.20", kind: "terminal", sud: true });
+        await seedProblem(ORG_A, plan, pe, { code: "J44.9", kind: "related" });
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(r.sequence).toEqual([{ position: 1, code: "J44.9", relationship: "related" }]);
+        expect(r.terminalWithheldForConsent).toBe(true);
+        // ...and M23's icd10_sequencing rule fails on exactly that context (real rule, real seam output).
+        const verdict = icd10Sequencing.check(
+          {
+            seams: { terminologyBound: true },
+            claim: {
+              claimId: "claim-f214",
+              icd10Sequence: r.sequence,
+              diagnosesWithheldForConsent: r.withheldForConsentCount,
+              terminalDiagnosisWithheldForConsent: r.terminalWithheldForConsent,
+            },
+            terminology: { icd10Billable: { "J44.9": true } },
+          } as never,
+          {},
+        );
+        expect(verdict.passed).toBe(false);
+        expect(verdict.annotations?.observed?.firstDefect).toContain(
+          "principal (terminal) diagnosis is withheld",
+        );
+        // With a valid release the same patient's claim has its terminal back.
+        await seedConsent(ORG_A, patientId);
+        const ok = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(ok)).toEqual(["F11.20", "J44.9"]);
+        expect(ok.terminalWithheldForConsent).toBe(false);
+      });
+
+      it("FAILS CLOSED when the consent evaluator throws (even with a valid release on file)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381919");
+        await seedConsent(ORG_A, patientId);
+        registerSeam("ConsentEvaluator", {
+          evaluate: async () => {
+            throw new Error("consent store down");
+          },
+        });
+        try {
+          const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+          expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+          expect(r.withheldForConsentCount).toBe(1);
+        } finally {
+          registerConsentSeams({ store: createDbConsentStore(handle.db) });
+        }
+        // and restored: the same patient's code is released again
+        expect(CODES(await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE))).toContain(
+          "F11.20",
+        );
+      });
+
+      it("the adapter carries the flag through to M23's diagnoses port (count + terminal flag, no codes)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381920");
+        const res = await buildM23DiagnosesAdapter({
+          forRange: (orgId, pid, range) => claimDiagnosesForOrg(handle.db, orgId, pid, range),
+        }).forRange(ORG_A, patientId, RANGE);
+        expect(res.withheldForConsentCount).toBe(1);
+        expect(res.terminalWithheldForConsent).toBe(false);
+        expect(res.sequence.map((d) => d.code)).toEqual(["C34.90", "J44.9"]);
+      });
     });
 
     it("M7 diagnoses feed M38 billability: a billable terminal leaf and a non-leaf header resolve distinctly", async () => {
@@ -1332,7 +1570,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const terminology = await buildM23TerminologyAdapter().resolveForClaim(
         ORG_A,
         RANGE.from,
-        seq.map((d) => d.code),
+        seq.sequence.map((d) => d.code),
       );
       expect(terminology.icd10Billable).toEqual({ "C34.90": true, C34: false });
     });
@@ -1490,7 +1728,10 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       ["psych", "psych"],
     ] as const)("facility kind %s -> POS_BY_QCODE label %s", async (kind, label) => {
       const patientId = await rhcPatient(ORG_A, nextCcn());
-      await seedAddress(ORG_A, patientId, { kind: "facility", facilityId: await seedFacility(kind) });
+      await seedAddress(ORG_A, patientId, {
+        kind: "facility",
+        facilityId: await seedFacility(kind),
+      });
       const { range } = futureClaimRange();
       const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
       expect(r.placeOfService).toBe(label);
@@ -1745,7 +1986,14 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
            rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents,
            gip_per_diem_cents, chc_hourly_rate_cents, labor_share_rhc, labor_share_chc, labor_share_irc, labor_share_gip, entered_by_membership_id)
          VALUES ($1,$2,$3,$4,$5, 21500, 17000, 105600, 49000, 118000, 4400, 0.66, 0.68, 0.54, 0.64, $6)`,
-        [ORG_A, pe, fiscalYearStarting, `${fiscalYearStarting}-10-01`, `${fiscalYearStarting + 1}-09-30`, U],
+        [
+          ORG_A,
+          pe,
+          fiscalYearStarting,
+          `${fiscalYearStarting}-10-01`,
+          `${fiscalYearStarting + 1}-09-30`,
+          U,
+        ],
       );
       await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
 

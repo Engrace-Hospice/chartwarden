@@ -27,6 +27,8 @@ export function passingContext(): ValidationContext {
       serviceTo: "2026-03-31",
       replacesClaimId: null,
       icd10Sequence: [{ position: 1, code: "G30.9", relationship: "terminal" }],
+      diagnosesWithheldForConsent: 0,
+      terminalDiagnosisWithheldForConsent: false,
       totalChargeCents: 200_00,
       priorClaimTob: null,
       priorClaimServiceTo: null,

@@ -85,6 +85,7 @@ export {
   type CarePlanReaderStore,
   type CarePlanSeamDeps,
   type ClaimDiagnosisRecord,
+  type ClaimDiagnosisResult,
   type NowClock,
   type StoredRelevantProblem,
   claimDiagnosesForOrg,
