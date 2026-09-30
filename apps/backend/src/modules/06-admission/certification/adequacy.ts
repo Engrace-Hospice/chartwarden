@@ -39,10 +39,11 @@
 //     does not re-decide WHO may override (that is the route permission); it accepts any row that carries the
 //     override facts the DB CHECK requires, plus the ≥ 20-char reason R-F2F-03 names.
 //   · `windowBasis`: 'recorded' trusts `face_to_face_encounter.within_window` (the value R-F2F-02 persisted at
-//     completion) and refuses NULL as unverified; 'dates' recomputes from `encounter_date` + the period start.
-//     The production `completeF2f` does not yet capture the real encounter/period dates (it stamps "today"
-//     and a placeholder start), so the activation gate uses 'recorded' — recomputing from those placeholder
-//     dates would refuse every legitimate same-day flow. 'dates' is the strict mode for when they are real.
+//     completion) and refuses NULL as unverified; 'dates' recomputes from `encounter_date` + the window start;
+//     'strict' (F-226, what the recert activation gate uses) does BOTH and fails closed on any disagreement:
+//     the recomputed verdict must be inside the window AND the persisted flag must be exactly `true`.
+//     The window start is `period.f2fWindowStart` (the period's EXPECTED start, prior end + 1) when given,
+//     else `period.startDate`. `null` = the start is not derivable: unverifiable, fail closed.
 import type { LocalDate } from "@wardenx/types";
 import {
   RECERT_SEQUENCE_FLOOR,
@@ -104,6 +105,12 @@ export interface AdequacyPeriodFact {
   readonly periodKind?: string | null;
   /** Org-local calendar date the period starts (effective) — the anchor of the F2F window and late math. */
   readonly startDate: LocalDate;
+  /**
+   * F-226 — the start the F2F prior-to window [start-30, start-1] is anchored to, when it differs from
+   * `startDate` (a pending recert period activates "today" but its benefit period started at prior end + 1).
+   * `undefined` = use `startDate`; `null` = not derivable (unverifiable, fail closed).
+   */
+  readonly f2fWindowStart?: LocalDate | null;
 }
 
 export interface AdequacyCtiFact {
@@ -136,7 +143,7 @@ export interface AdequacyF2fFact {
   readonly attestationSignedAt: string | null;
 }
 
-export type F2fWindowBasis = "recorded" | "dates";
+export type F2fWindowBasis = "recorded" | "dates" | "strict";
 
 export interface AdequacyInput {
   readonly period: AdequacyPeriodFact;
@@ -293,13 +300,22 @@ function f2fSection(input: AdequacyInput): {
     else reasons.push("F2F_OVERRIDE_INVALID");
     return { reasons, flags };
   }
-  if ((input.windowBasis ?? "recorded") === "dates") {
+  const basis = input.windowBasis ?? "recorded";
+  if (basis === "dates" || basis === "strict") {
+    const windowStart =
+      period.f2fWindowStart === undefined ? period.startDate : period.f2fWindowStart;
     if (f2f.encounterDate === null) {
       reasons.push("F2F_ENCOUNTER_DATE_MISSING");
+    } else if (windowStart === null) {
+      reasons.push("F2F_WINDOW_UNVERIFIED");
     } else {
-      const window = computeF2fWindow(period.startDate, input.timeZone);
-      if (!isF2fScheduledWithinWindow(f2f.encounterDate, window))
+      const window = computeF2fWindow(windowStart, input.timeZone);
+      if (!isF2fScheduledWithinWindow(f2f.encounterDate, window)) {
         reasons.push("F2F_OUTSIDE_WINDOW");
+      } else if (basis === "strict" && f2f.withinWindow !== true) {
+        // Recomputed inside but the persisted verdict is false/NULL: the two disagree -> unverified.
+        reasons.push("F2F_WINDOW_UNVERIFIED");
+      }
     }
   } else if (f2f.withinWindow === null) {
     reasons.push("F2F_WINDOW_UNVERIFIED");

@@ -137,8 +137,9 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
     const periodId = (
       await admin.query(
         // `pending` — a recertification period is never re-elected, so it never passes through `signed`.
-        `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind)
-         VALUES ($1,$2,$3,$4) RETURNING id`,
+        // F-226 - a pending period carries its EXPECTED START (the F2F window anchor): 10 days out.
+        `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind, expected_start)
+         VALUES ($1,$2,$3,$4, current_date + 10) RETURNING id`,
         [ORG_A, admissionId, sequence, sequence <= 2 ? "ninety_day" : "sixty_day"],
       )
     ).rows[0].id as string;
@@ -156,7 +157,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
                                            performer_role, encounter_date, within_window, status, attestation_signed_at,
                                            attestation_narrative)
-       VALUES ($1,$2,$3,'hospice_md', now()::date, true, 'attested', now(), $4)`,
+       VALUES ($1,$2,$3,'hospice_md', current_date, true, 'attested', now(), $4)`, // encounter today: 10 days before the start
       [ORG_A, periodId, MD, "x".repeat(120)],
     );
   }

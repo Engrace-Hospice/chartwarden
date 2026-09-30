@@ -16,7 +16,7 @@ export type FaceToFaceEvent =
   | {
       readonly type: "recordCompletion";
       readonly performerRole: "hospice_md" | "hospice_np" | "attending";
-      readonly periodStart: LocalDate;
+      readonly periodStart: LocalDate | null;
       readonly encounterDate: LocalDate;
       readonly hasOverride: boolean;
     }
@@ -33,7 +33,10 @@ export type FaceToFaceTransition = TransitionResult<FaceToFaceState, FaceToFaceE
 export const FACE_TO_FACE_GRAPH: Readonly<
   Record<FaceToFaceState, ReadonlyArray<FaceToFaceEvent["type"]>>
 > = {
-  scheduled: ["recordCompletion"],
+  // F-226 - `requestWindowOverride` is ALSO legal from `scheduled` (a self-loop): completion now computes
+  // the window from the real encounter date and refuses an outside date unless an override is on file
+  // (R-F2F-02), so an override reachable only AFTER completion could never rescue an outside-window F2F.
+  scheduled: ["recordCompletion", "requestWindowOverride"],
   completed: ["requestWindowOverride", "attest"],
   attested: [],
 };
@@ -56,7 +59,15 @@ export function transitionFaceToFace(
         hasOverride: event.hasOverride,
       });
       return result(from, event.type, "completed", [
-        { kind: "set_flag", field: withinWindow ? "within_window_true" : "within_window_false" },
+        {
+          kind: "set_flag",
+          field:
+            withinWindow === null
+              ? "within_window_unknown"
+              : withinWindow
+                ? "within_window_true"
+                : "within_window_false",
+        },
         { kind: "audit" },
         // F-100 — this said `m6.f2f.scheduled`: the COMPLETION transition re-announcing that the
         // encounter had been scheduled. Wrong on both counts. Semantically it tells every consumer the
@@ -70,7 +81,7 @@ export function transitionFaceToFace(
     }
     case "requestWindowOverride": {
       checkF2fOverride({ isMedicalDirector: event.isMedicalDirector, reason: event.reason });
-      return result(from, event.type, "completed", [
+      return result(from, event.type, from, [
         { kind: "set_flag", field: "window_override" },
         { kind: "audit" },
         { kind: "outbox", event: "m6.f2f.window_overridden" },

@@ -49,6 +49,13 @@ export const electionPeriods = pgTable(
     // F-223 — the triggering M11 `order_record.id` (logical uuid, no SQL FK: M6's dependsOn excludes M11).
     // NULL for every period opened by the HTTP route; only the order-triggered consumer sets it.
     sourceOrderId: uuid("source_order_id"),
+    // F-226 — the benefit period's EXPECTED first day (org-local calendar date): the preceding period's
+    // `scheduled_end_at` + 1 day, stamped when a PENDING period is opened (benefit periods are contiguous,
+    // 42 CFR 418.21(a); M6 §2.3.2 `setActive`: "previous period.actual_end_at + 1 day"). A pending period
+    // has no `effective_at` until activation, so this is the only anchor the F2F prior-to window
+    // [start-30, start-1] (R-F2F-02) can be computed against at F2F-completion time. NULL when the
+    // preceding period has no scheduled end yet (not derivable) and for every activated/legacy period.
+    expectedStart: date("expected_start"),
   },
   (t) => ({
     admSeqUnique: uniqueIndex("election_period_admission_seq_idx").on(
