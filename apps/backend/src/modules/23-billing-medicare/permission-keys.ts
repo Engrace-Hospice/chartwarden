@@ -218,6 +218,19 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  // --- tenant-entered wage index (F-211) ---
+  "billing.wage_index.read": {
+    resource: "billing_wage_index",
+    action: "read",
+    category: "billing",
+    abac: "inOrg",
+  },
+  "billing.wage_index.admin": {
+    resource: "billing_wage_index",
+    action: "admin",
+    category: "billing",
+    abac: "inOrg",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of every §4.6 permission key M23 owns. Kept in lock-step with `@wardenx/billing` (P3 reconcile). */
@@ -255,6 +268,8 @@ export const M23_PERMISSION_KEY_LIST: readonly M23PermissionKey[] = [
   "billing.mac_credential.admin",
   "billing.rate_table.read",
   "billing.rate_table.admin",
+  "billing.wage_index.read",
+  "billing.wage_index.admin",
 ];
 
 export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;

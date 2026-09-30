@@ -578,7 +578,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("resolves a loaded CMS wage-index factor for (ccn, fiscal year)", async () => {
       await seedWageIndex("381237", 2026, "0.9234", "38900");
       const adapter = buildM23ReferenceDataAdapter(handle.db);
-      expect(await adapter.wageIndexForCcn("381237", 2026)).toEqual({
+      expect(await adapter.wageIndexForCcn("381237", 2026, ORG_A)).toEqual({
         factorDecimal: "0.9234",
         cbsaCode: "38900",
       });
@@ -589,7 +589,17 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // FY2026 (010001, 050002, 380001, 450003, 999999 — explicitly marked "not authoritative"), so a
       // real null-path proof must use a CCN/FY outside that fixed set, not assume the table is empty.
       const adapter = buildM23ReferenceDataAdapter(handle.db);
-      expect(await adapter.wageIndexForCcn("777777", 2026)).toBeNull();
+      expect(await adapter.wageIndexForCcn("777777", 2026, ORG_A)).toBeNull();
+    });
+
+    it("NEVER prices from a non-authoritative migration-0080 placeholder row (F-211)", async () => {
+      // 0280 flips the 5 placeholder rows to is_authoritative = false; they exist (checked) but do not resolve.
+      const seeded = await admin.query(
+        "SELECT ccn FROM wage_index_factor WHERE ccn = '010001' AND fiscal_year_starting = 2026 AND is_authoritative = false",
+      );
+      expect(seeded.rowCount).toBe(1);
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
+      expect(await adapter.wageIndexForCcn("010001", 2026, ORG_A)).toBeNull();
     });
   });
 
@@ -1414,6 +1424,51 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       });
     });
 
+    it("with NO wage index for the CCN the wall is the typed WAGE_INDEX_UNAVAILABLE naming the entry endpoint, and a tenant entry moves it to RATE_TABLE_MISSING (F-211)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
+      const pe = await seedProviderEntity(ORG_A, "381299");
+      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      const { range, fiscalYearStarting } = futureClaimRange();
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
+      const service = buildM23BootAssemblyService(handle.db, {
+        providerCcn: testProviderCcnPort,
+        m6ClaimRange: {
+          forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+        },
+      });
+      const assemble = () =>
+        service.assemble(
+          { organizationId: ORG_A, userId: M6_USER, membershipId: M6_USER, actorKind: "user" },
+          {
+            providerEntityId: pe,
+            patientId,
+            serviceFrom: range.from,
+            serviceTo: range.to,
+            tob: "811",
+          },
+        );
+      await expect(assemble()).rejects.toMatchObject({
+        code: "WAGE_INDEX_UNAVAILABLE",
+        statusCode: 422,
+        message: expect.stringContaining("/api/v1/billing/wage-indexes"),
+      });
+      // ANOTHER tenant's entry for the same CCN + year must not satisfy this tenant's assembly.
+      await admin.query(
+        `INSERT INTO tenant_wage_index (organization_id, ccn, fiscal_year_starting, factor_decimal, source_reference, entered_by_membership_id)
+         VALUES ($1,'381299',$2,1.0,'other tenant',$3)`,
+        [ORG_B, fiscalYearStarting, U],
+      );
+      await expect(assemble()).rejects.toMatchObject({ code: "WAGE_INDEX_UNAVAILABLE" });
+      // This tenant's own entry moves the wall on to the rate table.
+      await admin.query(
+        `INSERT INTO tenant_wage_index (organization_id, ccn, fiscal_year_starting, factor_decimal, source_reference, entered_by_membership_id)
+         VALUES ($1,'381299',$2,0.95,'CMS wage index table',$3)`,
+        [ORG_A, fiscalYearStarting, U],
+      );
+      await expect(assemble()).rejects.toMatchObject({ code: "RATE_TABLE_MISSING" });
+    });
+
     it("with a tenant-entered rate table + sequestration policy the wall MOVES PAST hippsRateTable/activeSequestrationPolicy to billableEncounters (F-210)", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
@@ -1425,8 +1480,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       await admin.query(
         `INSERT INTO hospice_rate_table (organization_id, provider_entity_id, fiscal_year_starting, effective_from, effective_to,
            rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents,
-           gip_per_diem_cents, chc_hourly_rate_cents, entered_by_membership_id)
-         VALUES ($1,$2,$3,$4,$5, 21500, 17000, 105600, 49000, 118000, 4400, $6)`,
+           gip_per_diem_cents, chc_hourly_rate_cents, labor_share_rhc, labor_share_chc, labor_share_irc, labor_share_gip, entered_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5, 21500, 17000, 105600, 49000, 118000, 4400, 0.66, 0.68, 0.54, 0.64, $6)`,
         [ORG_A, pe, fiscalYearStarting, `${fiscalYearStarting}-10-01`, `${fiscalYearStarting + 1}-09-30`, U],
       );
       await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");

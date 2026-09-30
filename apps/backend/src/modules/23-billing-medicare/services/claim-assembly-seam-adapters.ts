@@ -10,7 +10,8 @@
 // (`06-admission/seams/drizzle-store.ts`) — and this file is the adapter over it, not the read itself.
 import {
   CMS_HOSPICE_MODIFIER_VALUE_SET,
-  applyWageIndexFactor,
+  applyWageIndexToLaborShare,
+  hasLaborShares,
   repositories,
   toHippsRateTable,
 } from "@wardenx/billing";
@@ -19,6 +20,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
+import { resolveWageIndexForOrg } from "../routes/wage-index-service";
 import type { ProviderCcnPort } from "../routes/write-service";
 import type {
   AdmissionContextReader,
@@ -303,31 +305,24 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
  * and fail CLOSED with the typed, actionable `RATE_TABLE_MISSING` (422) — never a guess, never `SEAM_UNBOUND` —
  * when no table covers the date. The CHC hourly rate is wage-adjusted here with the SAME factor the per-diems get.
  *
- * `wageIndexForCcn` reads `wage_index_factor` — a real, migrated, PLATFORM-SHARED table
- * (`WageIndexFactorRepository.findByCcnAndFiscalYear`) whose own doc comment already names the exact
- * failure mode this binds to: "Returns `null` when CMS has not loaded a factor for that CCN/year (the
- * calculator then fails closed / surfaces a validation error)". The real annual CMS wage-index file has
- * never been loaded by the platform loader in any environment, BUT the table is not actually empty:
- * migration `0080_billing_m23_seed.sql` pre-seeds 5 REPRESENTATIVE placeholder rows for FY2026 (CCNs
- * 010001/050002/380001/450003/999999), its own `load_source_ref` explicitly marked "TODO(cms-fixture) …
- * not authoritative" — checked live rather than assumed empty (`m23-claim-assembly-seams.live.test.ts`
- * originally asserted null for CCN 999999 and got back that exact placeholder row instead). So this
- * resolves a REAL (if non-authoritative) factor for those 5 CCN/FY2026 pairs today, and `null` — the
- * documented, correctly-typed `WAGE_INDEX_UNAVAILABLE` (422) `claim-assembly.ts` already throws for it,
- * line ~464-470, not the generic `SEAM_UNBOUND` (503) infrastructure-absent signal — for every other
- * CCN/year. Binding the real table is what makes loading the actual annual CMS file turn assembly on
- * broadly, rather than requiring a second code change alongside that data load.
+ * `wageIndexForCcn` (F-211) resolves, org-explicitly (`resolveWageIndexForOrg`, pure precedence
+ * `resolveWageIndex`): the tenant's own live `tenant_wage_index` row (a billing administrator keys the CMS
+ * value through `POST /billing/wage-indexes`; ORG-SCOPED because the platform-shared `wage_index_factor`
+ * must never take a tenant write), else a platform `wage_index_factor` row ONLY when `is_authoritative`
+ * (nothing loads real CMS rows today). The 5 migration-0080 placeholder rows are `is_authoritative = false`
+ * and never price a claim. `null` — the documented, correctly-typed `WAGE_INDEX_UNAVAILABLE` (422)
+ * `claim-assembly.ts` throws for it, not the generic `SEAM_UNBOUND` (503) — when neither exists.
+ *
+ * The labor share (F-211, audit M23-F02): the wage index adjusts ONLY the labor share of each rate
+ * (`applyWageIndexToLaborShare`); the four labor shares are tenant-entered on the rate table, and a rate
+ * version without them (entered before migration 0280) fails closed `RATE_TABLE_LABOR_SHARE_MISSING`.
  *
  * `activeSequestrationPolicy` reads `sequestration_policy` — ORG-SCOPED, admin-settable through the real
  * `sequestration-policy.routes.ts` surface (an operational fact, never CMS-loaded), via
  * `SequestrationPolicyRepository.findEffectiveOn`.
  */
 // Same boot-time-closure reasoning as the MDM adapter above: no ambient/`tx` handle reaches an object
-// built once at boot, so each read opens its own explicit `withOrgContext`. `wage_index_factor`'s RLS is
-// `SELECT USING (true)` (platform-shared, no org predicate) — its own repository header nonetheless says
-// "the service still runs them under withOrgContext for uniformity", which this preserves; the org id used
-// there is a fixed platform-reads sentinel since the read is not actually org-scoped.
-const PLATFORM_READ_ORG = "00000000-0000-0000-0000-000000000000";
+// built once at boot, so each read opens its own explicit `withOrgContext`.
 
 /** F-210 — the fail-closed error when no tenant-entered rate table covers the claim's service date. */
 function rateTableMissing(scope: RateLookupScope): WardenXError {
@@ -335,6 +330,16 @@ function rateTableMissing(scope: RateLookupScope): WardenXError {
     "RATE_TABLE_MISSING",
     `no hospice rate table covers service date ${scope.serviceFrom} for provider entity ${scope.providerEntityId}; ` +
       "enter the CMS hospice per-diem rates for that fiscal year (POST /api/v1/billing/rate-tables, permission billing.rate_table.admin) and retry",
+    422,
+  );
+}
+
+/** F-211 — fail closed on a rate version entered before migration 0280 (no labor shares); never guess a share. */
+function laborSharesMissing(rateTableId: string): WardenXError {
+  return new WardenXError(
+    "RATE_TABLE_LABOR_SHARE_MISSING",
+    `hospice rate table ${rateTableId} carries no labor shares (entered before they were required); the wage index adjusts only the ` +
+      "labor share of each rate. Supersede it with the CMS-published labor shares (POST /api/v1/billing/rate-tables/:id/supersede) and retry",
     422,
   );
 }
@@ -349,6 +354,7 @@ export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDat
         scope.serviceFrom,
       );
       if (!row) throw rateTableMissing(scope);
+      if (!hasLaborShares(row)) throw laborSharesMissing(row.id);
       return toHippsRateTable(row);
     },
     async chcHourlyRateCents(_fiscalYearStarting, wageIndexFactorDecimal, scope) {
@@ -359,15 +365,16 @@ export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDat
         scope.serviceFrom,
       );
       if (!row) throw rateTableMissing(scope);
-      return applyWageIndexFactor(row.chcHourlyRateCents, wageIndexFactorDecimal);
+      if (row.laborShareChc === null) throw laborSharesMissing(row.id);
+      // The wage index adjusts the CHC hourly rate's LABOR SHARE only (F-211), like every other rate.
+      return applyWageIndexToLaborShare(row.chcHourlyRateCents, wageIndexFactorDecimal, row.laborShareChc);
     },
-    async wageIndexForCcn(ccn, fiscalYearStarting) {
-      return withOrgContext(db, { organizationId: PLATFORM_READ_ORG, userId: "" }, async (tx) => {
-        const wageIndexFactors = new repositories.WageIndexFactorRepository(tx);
-        const row = await wageIndexFactors.findByCcnAndFiscalYear(ccn, fiscalYearStarting);
-        if (!row) return null;
-        return { factorDecimal: row.factorDecimal, cbsaCode: row.cbsaCode };
-      });
+    async wageIndexForCcn(ccn, fiscalYearStarting, orgId) {
+      // F-211: the tenant's own `tenant_wage_index` row, else a platform AUTHORITATIVE `wage_index_factor` row; a
+      // non-authoritative placeholder (migration 0080) never prices a claim, so this returns null and assembly fails
+      // closed `WAGE_INDEX_UNAVAILABLE`.
+      const resolved = await resolveWageIndexForOrg(db, orgId, ccn, fiscalYearStarting);
+      return resolved ? { factorDecimal: resolved.factorDecimal, cbsaCode: resolved.cbsaCode } : null;
     },
     async activeSequestrationPolicy(orgId, providerEntityId, serviceFrom) {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {

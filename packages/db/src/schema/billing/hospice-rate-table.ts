@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 // All rates are PRE-wage-index whole cents; the wage index is applied at assembly from `wage_index_factor`.
 // CROSS-MODULE FK POLICY: only organization_id gets a real `.references(...)`; provider_entity_id (M40) and
 // entered_by_membership_id (core memberships) are LOGICAL FKs, as `sequestration_policy`.
-import { date, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const hospiceRateTable = pgTable(
@@ -37,6 +37,16 @@ export const hospiceRateTable = pgTable(
     gipPerDiemCents: integer("gip_per_diem_cents").notNull(),
     /** PRE-wage-index CHC hourly rate (the SIA add-on's rate) — 24 x this agrees with `chc_per_diem_cents`. */
     chcHourlyRateCents: integer("chc_hourly_rate_cents").notNull(),
+
+    /**
+     * F-211 (migration 0280) — the CMS-published LABOR SHARE per level of care, decimal strings in [0.30, 0.90]. The wage
+     * index adjusts only this share of a rate. All four set or all four NULL (a version entered under 0279, before the
+     * columns existed): assembly fails closed on a NULL set rather than guessing a share.
+     */
+    laborShareRhc: numeric("labor_share_rhc", { precision: 5, scale: 4 }),
+    laborShareChc: numeric("labor_share_chc", { precision: 5, scale: 4 }),
+    laborShareIrc: numeric("labor_share_irc", { precision: 5, scale: 4 }),
+    laborShareGip: numeric("labor_share_gip", { precision: 5, scale: 4 }),
 
     enteredByMembershipId: uuid("entered_by_membership_id").notNull(), // logical FK → memberships
     entryReason: text("entry_reason"),

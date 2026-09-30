@@ -44,7 +44,22 @@ export interface RateTableEntry {
   readonly ircPerDiemCents: Cents;
   readonly gipPerDiemCents: Cents;
   readonly chcHourlyRateCents: Cents;
+  /**
+   * F-211 — the CMS-published LABOR SHARE per level of care as decimal strings (`"0.6871"`, four places at most). The wage
+   * index adjusts only this share of each rate (ADR-0016 D1). Tenant-entered: no repository document states a value.
+   */
+  readonly laborShareRhc: string;
+  readonly laborShareChc: string;
+  readonly laborShareIrc: string;
+  readonly laborShareGip: string;
 }
+
+/** Plausibility band for a labor share (a fraction): CMS labor shares are roughly 0.5-0.7; 68.71 (percent) is rejected. */
+export const LABOR_SHARE_MIN = 0.3;
+export const LABOR_SHARE_MAX = 0.9;
+
+/** `"0.6871"`-shaped: a single-digit decimal with at most four fraction digits (matches `numeric(5,4)`). */
+const LABOR_SHARE_SHAPE = /^\d(\.\d{1,4})?$/;
 
 export type RateTableValidation =
   | { readonly ok: true; readonly effectiveTo: IsoDate }
@@ -86,6 +101,19 @@ export function validateRateTableEntry(entry: RateTableEntry): RateTableValidati
     errors.push(
       `chcHourlyRateCents (${h}) is outside the plausible band ${RATE_HOURLY_MIN_CENTS}-${RATE_HOURLY_MAX_CENTS} cents; rates are WHOLE CENTS`,
     );
+  }
+
+  for (const [name, v] of [
+    ["laborShareRhc", entry.laborShareRhc],
+    ["laborShareChc", entry.laborShareChc],
+    ["laborShareIrc", entry.laborShareIrc],
+    ["laborShareGip", entry.laborShareGip],
+  ] as const) {
+    if (typeof v !== "string" || !LABOR_SHARE_SHAPE.test(v)) {
+      errors.push(`${name} must be a decimal fraction with at most four places, e.g. "0.6871" (not a percent)`);
+    } else if (Number(v) < LABOR_SHARE_MIN || Number(v) > LABOR_SHARE_MAX) {
+      errors.push(`${name} (${v}) is outside the plausible band ${LABOR_SHARE_MIN}-${LABOR_SHARE_MAX}`);
+    }
   }
 
   if (
@@ -155,15 +183,45 @@ export interface RateTableRates {
   readonly ircPerDiemCents: Cents;
   readonly gipPerDiemCents: Cents;
   readonly chcHourlyRateCents: Cents;
+  /** NULL on a version entered before migration 0280 (no labor shares): such a row cannot price a claim. */
+  readonly laborShareRhc: string | null;
+  readonly laborShareChc: string | null;
+  readonly laborShareIrc: string | null;
+  readonly laborShareGip: string | null;
 }
 
-/** Project a stored rate set onto the `HippsRateTable` the HIPPS calculator injects. */
+/** True iff the stored version carries all four labor shares (a pre-0280 row does not). */
+export function hasLaborShares(r: RateTableRates): boolean {
+  return (
+    r.laborShareRhc !== null &&
+    r.laborShareChc !== null &&
+    r.laborShareIrc !== null &&
+    r.laborShareGip !== null
+  );
+}
+
+/**
+ * Project a stored rate set onto the `HippsRateTable` the HIPPS calculator injects. THROWS when a labor share is NULL
+ * (a pre-0280 version): callers check {@link hasLaborShares} first and fail closed with a typed error.
+ */
 export function toHippsRateTable(r: RateTableRates): HippsRateTable {
+  if (
+    r.laborShareRhc === null ||
+    r.laborShareChc === null ||
+    r.laborShareIrc === null ||
+    r.laborShareGip === null
+  ) {
+    throw new RangeError("toHippsRateTable: the rate table carries no labor shares (entered before migration 0280)");
+  }
   return {
     rhcDays1to60PerDiemCents: r.rhcDays1to60PerDiemCents,
     rhcDays61PlusPerDiemCents: r.rhcDays61PlusPerDiemCents,
-    chcPerDiemCents: r.chcPerDiemCents,
+    chcHourlyRateCents: r.chcHourlyRateCents,
     ircPerDiemCents: r.ircPerDiemCents,
     gipPerDiemCents: r.gipPerDiemCents,
+    rhcLaborShare: r.laborShareRhc,
+    chcLaborShare: r.laborShareChc,
+    ircLaborShare: r.laborShareIrc,
+    gipLaborShare: r.laborShareGip,
   };
 }

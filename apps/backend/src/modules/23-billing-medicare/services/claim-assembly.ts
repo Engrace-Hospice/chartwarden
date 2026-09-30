@@ -39,6 +39,7 @@ import {
   type Icd10Pointer,
   type IsoDate,
   type LevelOfCare,
+  ChcHoursError,
   type LevelOfCarePeriodSnapshot,
   type MdmResolution,
   POS_BY_QCODE,
@@ -279,7 +280,16 @@ export interface BillingReferenceDataReader {
     wageIndexFactorDecimal: string,
     scope: RateLookupScope,
   ): Promise<Cents>;
-  wageIndexForCcn(ccn: string, fiscalYearStarting: number): Promise<WageIndexResolution | null>;
+  /**
+   * The CMS hospice wage index for a CCN + fiscal year, or `null` (the caller fails closed `WAGE_INDEX_UNAVAILABLE`).
+   * F-211: `orgId` lets the reader prefer the TENANT-ENTERED value (`tenant_wage_index`) over a platform AUTHORITATIVE
+   * `wage_index_factor` row; a non-authoritative placeholder row never qualifies.
+   */
+  wageIndexForCcn(
+    ccn: string,
+    fiscalYearStarting: number,
+    orgId: string,
+  ): Promise<WageIndexResolution | null>;
   activeSequestrationPolicy(
     orgId: string,
     providerEntityId: string,
@@ -496,11 +506,16 @@ export function buildClaimAssemblyService(
         );
       }
       const fiscalYearStarting = hospiceFiscalYearStarting(serviceFrom);
-      const wageIndex = await seams.referenceData.wageIndexForCcn(pe.ccn, fiscalYearStarting);
+      const wageIndex = await seams.referenceData.wageIndexForCcn(
+        pe.ccn,
+        fiscalYearStarting,
+        orgId,
+      );
       if (!wageIndex) {
         throw new WardenXError(
           "WAGE_INDEX_UNAVAILABLE",
-          `no wage-index factor is loaded for CCN ${pe.ccn} FY${fiscalYearStarting} (D12)`,
+          `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${fiscalYearStarting} (D12); ` +
+            "enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry",
           422,
         );
       }
@@ -623,20 +638,30 @@ export function buildClaimAssemblyService(
         });
 
         // ── 3. HIPPS per-diem math (D7) — lines are derived, never client-supplied ───────────────────
-        const hipps = calculateHipps({
-          claimServiceFrom: serviceFrom,
-          claimServiceTo: serviceTo,
-          hospiceAdmissionDate: admission.hospiceAdmissionDate,
-          levelOfCarePeriods: resolvedLoc.map((p) => ({
-            levelOfCare: p.levelOfCare,
-            from: p.from,
-            to: p.to,
-          })),
-          rateTable,
-          wageIndexCcn: pe.ccn,
-          wageIndexFiscalYear: fiscalYearStarting,
-          wageIndexFactorDecimal: wageIndex.factorDecimal,
-        });
+        let hipps: ReturnType<typeof calculateHipps>;
+        try {
+          hipps = calculateHipps({
+            claimServiceFrom: serviceFrom,
+            claimServiceTo: serviceTo,
+            hospiceAdmissionDate: admission.hospiceAdmissionDate,
+            levelOfCarePeriods: resolvedLoc.map((p) => ({
+              levelOfCare: p.levelOfCare,
+              from: p.from,
+              to: p.to,
+              chcDocumentedHours: p.chcDocumentedHours,
+            })),
+            rateTable,
+            wageIndexCcn: pe.ccn,
+            wageIndexFiscalYear: fiscalYearStarting,
+            wageIndexFactorDecimal: wageIndex.factorDecimal,
+          });
+        } catch (err) {
+          // F-211 — CHC is paid hourly; an undocumented / sub-8h / >24h / non-quarter-hour CHC day cannot be priced.
+          if (err instanceof ChcHoursError) {
+            throw new WardenXError("CHC_HOURS_UNPRICEABLE", err.message, 422);
+          }
+          throw err;
+        }
 
         const placeOfService = qCodeForPlaceOfService(mdmResolution.placeOfService);
         const lineInputs: repositories.NewClaimLineInput[] = hipps.segments.map((seg, idx) => {

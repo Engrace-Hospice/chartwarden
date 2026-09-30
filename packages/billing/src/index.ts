@@ -49,6 +49,8 @@ export * from "./hipps";
 export * from "./sia";
 // F-210 the tenant-entered hospice rate table's pure validation / overlap / lookup rules.
 export * from "./rate-table";
+// F-211 the tenant-entered wage index's pure validation + tenant-then-authoritative-platform precedence.
+export * from "./wage-index";
 // D11 the pure sequestration applier (active-policy-or-platform-default percentage over money.ts).
 export * from "./sequestration";
 // D4 / D14 the pure Type-of-Bill derivation (811/812/813/814/817/818 from admission + claim cadence).

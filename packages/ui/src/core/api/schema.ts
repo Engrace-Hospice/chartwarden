@@ -4153,6 +4153,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/wage-indexes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history) */
+        get: operations["getApiV1BillingWageindexes"];
+        put?: never;
+        /** Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211) */
+        post: operations["postApiV1BillingWageindexes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one tenant-entered wage-index version (F-211) */
+        get: operations["getApiV1BillingWageindexesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211) */
+        post: operations["postApiV1BillingWageindexesByIdSupersede"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live tenant-entered wage index for a CCN + fiscal year, or null (F-211) */
+        get: operations["getApiV1BillingWageindexesEffective"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/breakglass": {
         parameters: {
             query?: never;
@@ -30879,6 +30948,10 @@ export interface operations {
                             ircPerDiemCents: number;
                             gipPerDiemCents: number;
                             chcHourlyRateCents: number;
+                            laborShareRhc: string | null;
+                            laborShareChc: string | null;
+                            laborShareIrc: string | null;
+                            laborShareGip: string | null;
                             enteredByMembershipId: string;
                             entryReason: string | null;
                             supersededAt: string | null;
@@ -30919,6 +30992,14 @@ export interface operations {
                     ircPerDiemCents: number;
                     gipPerDiemCents: number;
                     chcHourlyRateCents: number;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareRhc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareChc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareIrc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareGip: string;
                     entryReason?: string;
                 };
             };
@@ -30943,6 +31024,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -30987,6 +31072,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -31028,6 +31117,14 @@ export interface operations {
                     ircPerDiemCents: number;
                     gipPerDiemCents: number;
                     chcHourlyRateCents: number;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareRhc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareChc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareIrc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareGip: string;
                     entryReason?: string;
                 };
             };
@@ -31052,6 +31149,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -31095,6 +31196,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -31433,6 +31538,230 @@ export interface operations {
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexes: {
+        parameters: {
+            query?: {
+                ccn?: string;
+                fiscalYearStarting?: number;
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexes: {
+                            wageIndexId: string;
+                            organizationId: string;
+                            ccn: string;
+                            fiscalYearStarting: number;
+                            cbsaCode: string | null;
+                            factorDecimal: string;
+                            sourceReference: string;
+                            enteredByMembershipId: string;
+                            entryReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingWageindexes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 6-character CMS Certification Number. */
+                    ccn: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    cbsaCode?: string;
+                    /** @description The published hospice wage index as a decimal string with at most four places, e.g. "1.0342". */
+                    factorDecimal: string;
+                    /** @description Where the value was keyed from (CMS wage-index table / Federal Register notice). */
+                    sourceReference: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingWageindexesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 6-character CMS Certification Number. */
+                    ccn: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    cbsaCode?: string;
+                    /** @description The published hospice wage index as a decimal string with at most four places, e.g. "1.0342". */
+                    factorDecimal: string;
+                    /** @description Where the value was keyed from (CMS wage-index table / Federal Register notice). */
+                    sourceReference: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexesEffective: {
+        parameters: {
+            query: {
+                ccn: string;
+                fiscalYearStarting: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
                 };
             };
             "4XX": components["responses"]["Error"];
