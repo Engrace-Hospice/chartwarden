@@ -1,6 +1,6 @@
 # M23 claim-assembly seams (#250 / #251)
 
-> F-119, F-121–F-128 and F-210: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, M25's 835 pipeline scoping, and the tenant-entered hospice rate table (F-210). Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
+> F-119, F-121–F-128, F-210 and F-213: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, M25's 835 pipeline scoping, and the tenant-entered hospice rate table (F-210). Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
 
 **#250's own scoping investigation was itself checked rather than trusted, and it was wrong about M25
 and half-wrong about M23 (F-119).** A first-pass agent read `boot-assembly.ts`'s header and #250's issue
@@ -375,3 +375,22 @@ per-diem); it does affect a DRAFT that is re-assembled afterwards. Proven live: 
 NOBYPASSRLS role, cross-tenant, overlap incl. the EXCLUDE backstop, append-only, lookup boundaries, adapter),
 `m23-claim-assembly-seams.live.test.ts` (wall now `RATE_TABLE_MISSING`, and moves past it with data), and the route
 smoke `m23-rate-table-routes.test.ts`.
+
+**`placeOfService` bound to M5 address history + M40 `facility.kind` (F-213, #252).** Verified, not assumed: the
+F-210 note above is right that a producer exists, but it is **M5's, not M24's** — `PatientAddressReader.residenceAt`
+(`05-patient/address-reader.ts`) over `patient_address` (effective-dated, `is_primary`), with `facility_id` -> M40
+`facility.kind`. Migration 0183 extended `facility_kind` to `hospital|alf|snf|nf|ipu|ltch|psych|clinic|other`, the
+taxonomy F-127 believed absent. `residenceAt` is a POINT read, though, and a claim spans a range, so F-213 added
+`PatientAddressReader.residencesBetween` (kind + facility id + effective window only, org-explicit predicate on top of
+RLS) and `40-mdm/facility-kind-reader.ts` (`facilityKindsForIds`, chases `merged_into_id` to the survivor's kind).
+M23 imports neither module (no `dependsOn` edge): `place-of-service-resolver.ts` declares structural ports injected by
+`index.ts` (`ports.placeOfService`); `resolveClinicalParticipants` gained an optional `range` argument.
+**Mapping (target `POS_BY_QCODE`, F-125):** address `home` -> Q5001; facility kind `alf` -> Q5002, `nf` -> Q5003
+(`ltc`), `snf` -> Q5004, `hospital` -> Q5005, `ipu` -> Q5006, `ltch` -> Q5007, `psych` -> Q5008. **Left null (Q5009):**
+`clinic`, `other`, address kinds `mailing`/`temporary`/`prior`, a facility address with no/unknown facility, Q5010
+(no facility kind exists for a hospice residential home). **Also null, by design:** (a) any level-of-care period in the
+range that is not routine/continuous home care — GIP/IRC are delivered in an inpatient bed the LOC period names, a
+home address says nothing about it, and M6's range read does not yet carry the LOC `facility_id`/`ipu_bed_assignment_id`
+(follow-up: extend it, as M24's `LevelOfCarePeriodReaderPort` does); (b) a range not covered end to end by primary
+address history; (c) a range spanning a move between DIFFERENT sites — one claim-level Q-code cannot be honest (splitting
+lines at the move date is the proper fix). Proven live on the real NOBYPASSRLS role in `m23-claim-assembly-seams.live.test.ts`.

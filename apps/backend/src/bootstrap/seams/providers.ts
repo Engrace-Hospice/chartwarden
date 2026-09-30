@@ -250,6 +250,9 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
   residenceAt() {
     throw new NotImplementedError("PatientAddressReader");
   },
+  residencesBetween() {
+    throw new NotImplementedError("PatientAddressReader");
+  },
 };
 
 /**

@@ -30,7 +30,7 @@ import {
   withPlatformContext,
 } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
-import type { AdmissionStatusReader } from "@wardenx/types";
+import type { AdmissionStatusReader, PatientAddressReader } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -975,6 +975,7 @@ import {
   createDbMdmStore,
   createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
+  facilityKindsForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
   registerMdmErasers,
@@ -3595,6 +3596,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m18Compliance: {
                 forVisits: (orgId, visitIds) =>
                   complianceStatesForVisitsForOrg(dbHandle.db, orgId, visitIds),
+              },
+              // F-213 (#252) - mdm placeOfService: M5's effective-dated address history (the registered
+              // PatientAddressReader seam, resolved lazily per call so boot registration order never
+              // matters) + M40's merge-resolved facility.kind. M23 imports neither module.
+              placeOfService: {
+                residence: {
+                  residencesBetween: (orgId, patientId, from, to) =>
+                    (
+                      getSeam("PatientAddressReader") as PatientAddressReader
+                    ).residencesBetween(orgId, patientId, from, to),
+                },
+                facilityKinds: {
+                  kindsFor: (facilityIds) => facilityKindsForIds(dbHandle.db, facilityIds),
+                },
               },
             }),
           });

@@ -432,6 +432,19 @@ export interface PatientResidenceSnapshot {
   readonly postalCode: string | null;
 }
 
+/**
+ * One PRIMARY address-history row overlapping a queried date range (F-213 — M23 claim place-of-service).
+ * Kind + facility id + its effective window ONLY: no street/city/postal/state (no PHI beyond what the
+ * residence kind implies). `effectiveTo` null = still current.
+ */
+export interface PatientResidenceSpan {
+  readonly kind: PatientAddressKind;
+  /** M40 Facility id, set only when `kind === "facility"`. */
+  readonly facilityId: string | null;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
 export interface PatientAddressReader {
   /** The 2-letter state code of the patient's current (effective_to IS NULL) PRIMARY address, or null
    *  (no primary address, or its state is unset — e.g. a non-US address). */
@@ -447,6 +460,17 @@ export interface PatientAddressReader {
     patientId: string,
     asOfDate: string,
   ): Promise<PatientResidenceSnapshot | null>;
+  /**
+   * Every PRIMARY address-history row overlapping `[from, to]` (inclusive), oldest first — so a caller
+   * can tell whether the residence CHANGED (or has a coverage gap) inside a date range, which a single
+   * `residenceAt` point read cannot (F-213: a claim's service range can span a move).
+   */
+  residencesBetween(
+    organizationId: string,
+    patientId: string,
+    from: string,
+    to: string,
+  ): Promise<readonly PatientResidenceSpan[]>;
 }
 
 // ── PatientPrivacyFlagReader seam (GAP-061 — the M37 §2.2 shared-room occupancy gate) ────────────────

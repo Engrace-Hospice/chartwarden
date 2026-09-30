@@ -212,6 +212,9 @@ export interface MdmEntityProvider {
     orgId: string,
     patientId: string,
     asOf: IsoDate,
+    /** F-213 — the claim's whole service range, so `placeOfService` can be resolved over the range
+     *  rather than at `asOf` alone (a range can span a move). Absent = `[asOf, asOf]`. */
+    range?: DateRange,
   ): Promise<MdmResolution>;
 }
 
@@ -537,6 +540,7 @@ export function buildClaimAssemblyService(
         orgId,
         patientId,
         serviceFrom,
+        range,
       );
       // F-209 (#251) — the claim's real diagnosis sequence (M7), read BEFORE terminology so M38 can resolve
       // `icd10Billable` for exactly these codes. Not persisted to a claim column (no such column exists).
