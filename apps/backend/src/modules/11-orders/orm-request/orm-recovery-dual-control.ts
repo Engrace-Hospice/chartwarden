@@ -309,5 +309,13 @@ export interface RecoveryControls {
   readonly escalationThreshold?: number;
   /** F-203 — see {@link RECOVERY_ORG_RATE_THRESHOLD}. */
   readonly orgRateThreshold?: number;
+  /**
+   * F-204 — how many OTHER active users in the organization can co-sign a recovery (hold `orders.transmission.recover`
+   * or `.cosign_escalated`), excluding `excludeUserId`. When it reports 0, filing a `not_received_by_lab` request is
+   * refused NOW (409 `no_eligible_cosigner`) instead of parking a request nobody can execute until it lapses. M11 does
+   * not own the membership/role tables, so the composition root implements it. Absent ⇒ no pre-check (a request is
+   * filed as before).
+   */
+  readonly countEligibleCosigners?: (organizationId: string, excludeUserId: string) => Promise<number>;
   readonly now?: () => Date;
 }

@@ -1517,6 +1517,16 @@ export function createDbOrderBackend(
             recovery: null,
           };
         }
+        // F-204 — a two-person control needs a second person. If nobody else in the organization can co-sign, say so
+        // now rather than filing a request that can only lapse.
+        if (recovery.countEligibleCosigners) {
+          const eligible = await recovery.countEligibleCosigners(organizationId, auditUserId);
+          if (eligible === 0) {
+            throw new ConflictError(
+              "Transmission recovery not allowed (no_eligible_cosigner): no other active user in this organization can co-sign a recovery — an administrator must grant 'orders.transmission.recover' (or 'orders.transmission.cosign_escalated') to a second person first",
+            );
+          }
+        }
         const [existing] = await t
           .select({ id: REQ.id })
           .from(REQ)

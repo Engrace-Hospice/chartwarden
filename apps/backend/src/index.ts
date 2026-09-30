@@ -6,6 +6,7 @@ import { auditPlatformEvent } from "@wardenx/audit";
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
+  LAB_RECOVERY_KEYS,
   createCredentialThrottle,
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
@@ -33,6 +34,7 @@ import type { AdmissionStatusReader } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
@@ -156,6 +158,7 @@ import {
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import {
+  createMembershipsHoldingPermissionReader,
   createDbProposedRoleAttacher,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
@@ -2831,6 +2834,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       RECOVERY_ESCALATION_THRESHOLD,
     ),
     orgRateThreshold: parseRecoveryBound(process.env.M11_RECOVERY_ORG_RATE_THRESHOLD, RECOVERY_ORG_RATE_THRESHOLD),
+    // F-204 — refuse to file a recovery nobody else can co-sign. M11 does not own the membership/role tables, so the
+    // count is answered here, in the composition root, under the caller's org context (RLS-scoped).
+    countEligibleCosigners: dbHandle
+      ? buildM11CosignerCounter(
+          dbHandle.db,
+          createMembershipsHoldingPermissionReader(dbHandle.db),
+          [LAB_RECOVERY_KEYS.recover, LAB_RECOVERY_KEYS.cosignEscalated],
+        )
+      : undefined,
   };
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential

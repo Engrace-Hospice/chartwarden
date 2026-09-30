@@ -23,6 +23,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { LAB_RECOVERY_DEFAULT_GRANTS } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { sql } from "drizzle-orm";
@@ -35,6 +36,8 @@ import { registerSeam } from "../src/bootstrap/seams/registry";
 import { hl7OrmDemographicsInTx } from "../src/modules/05-patient/seams/hl7-orm-demographics";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
+import { createMembershipsHoldingPermissionReader } from "../src/modules/03-authorization/index";
+import { buildM11CosignerCounter } from "../src/bootstrap/m11-cosigner-counter";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { createDrizzleOrderEraseStore } from "../src/modules/11-orders/erasers/orders-eraser";
 import { runVerbalOrderExpiryFanout } from "../src/modules/11-orders/jobs/verbal-order-expiry-worker";
@@ -2230,6 +2233,162 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await granted(roles.director_of_nursing)).toEqual([]);
     expect(await granted(roles.rn_case_manager)).toEqual([]);
     expect(await granted(roles.compliance_officer)).toEqual([]);
+  });
+
+  // ── F-204 — the operational roles hold the recovery keys by default, and a request nobody can co-sign is refused ──
+
+  it("F-204 MIGRATION 0274: grants the recovery keys to DON / clinical supervisor / compliance officer ONLY where the role exists, idempotently — and is pinned to LAB_RECOVERY_DEFAULT_GRANTS", async () => {
+    const sqlText = readFileSync(join(MIGRATIONS_DIR, "0274_m11_lab_recovery_default_role_grants.sql"), "utf8");
+    // The migration's VALUES table IS the constant (a drift here is a silent permission change).
+    const fromSql: Record<string, string[]> = {};
+    for (const m of sqlText.matchAll(/\('([a-z_]+)',\s*'(orders\.transmission\.[a-z_]+)'\)/g)) {
+      (fromSql[m[1]!] ??= []).push(m[2]!);
+    }
+    const fromCode = Object.fromEntries(
+      Object.entries(LAB_RECOVERY_DEFAULT_GRANTS).map(([role, keys]) => [role, [...keys].sort()]),
+    );
+    expect(Object.fromEntries(Object.entries(fromSql).map(([r, k]) => [r, [...k].sort()]))).toEqual(fromCode);
+
+    const roleId = async (key: string) => {
+      const found = await admin.query("SELECT id FROM role WHERE organization_id=$1 AND key=$2", [ORG_B, key]);
+      if (found.rows[0]) return found.rows[0].id as string;
+      return (
+        await admin.query(
+          "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'clinical_leadership') RETURNING id",
+          [ORG_B, key],
+        )
+      ).rows[0].id as string;
+    };
+    const roles = {
+      director_of_nursing: await roleId("director_of_nursing"),
+      clinical_supervisor: await roleId("clinical_supervisor"),
+      compliance_officer: await roleId("compliance_officer"),
+      medical_director: await roleId("medical_director"),
+      rn_case_manager: await roleId("rn_case_manager"),
+    };
+    await admin.query(sqlText);
+    await admin.query(sqlText); // idempotent: ON CONFLICT DO NOTHING
+    const granted = async (id: string) =>
+      (
+        await admin.query(
+          "SELECT permission_key FROM role_permission WHERE role_id=$1 AND permission_key LIKE 'orders.transmission.%' ORDER BY 1",
+          [id],
+        )
+      ).rows.map((r) => r.permission_key as string);
+    expect(await granted(roles.director_of_nursing)).toEqual(["orders.transmission.recover", "orders.transmission.view_held"]);
+    expect(await granted(roles.clinical_supervisor)).toEqual(["orders.transmission.recover", "orders.transmission.view_held"]);
+    expect(await granted(roles.compliance_officer)).toEqual([
+      "orders.transmission.cosign_escalated",
+      "orders.transmission.view_held",
+    ]);
+    // NARROW: a medical director and a discipline role get nothing from it, and no role is ever stripped of anything.
+    expect(await granted(roles.medical_director)).toEqual([]);
+    expect(await granted(roles.rn_case_manager)).toEqual([]);
+    // A tenant with no such role is unchanged: the migration only ever inserts for roles that exist.
+    const orgsTouched = (
+      await admin.query(
+        "SELECT count(DISTINCT rp.organization_id)::int AS n FROM role_permission rp JOIN role r ON r.id=rp.role_id WHERE r.key='director_of_nursing' AND rp.permission_key='orders.transmission.recover'",
+      )
+    ).rows[0].n as number;
+    expect(orgsTouched).toBe(1);
+  });
+
+  it("F-204 PRE-CHECK: filing `not_received_by_lab` is REFUSED (409, nothing filed) when no other user can co-sign, and files normally when one can", async () => {
+    const seen: Array<[string, string]> = [];
+    const alone = backendWith({
+      countEligibleCosigners: async (org: string, user: string) => {
+        seen.push([org, user]);
+        return 0;
+      },
+    });
+    const id = await heldOrder();
+    await expect(fileWith(alone, id, PD())).rejects.toThrow(/no_eligible_cosigner/);
+    expect(seen).toEqual([[ORG_A, USER_D]]); // asked about THIS org, excluding the requester
+    expect(await requests(id)).toHaveLength(0);
+    expect((await orderRow(id)).transmission_status).toBe("failed"); // nothing changed on the order
+
+    const two = backendWith({ countEligibleCosigners: async () => 1 });
+    const filed = await fileWith(two, id, PD());
+    expect(filed.outcome).toBe("pending_cosign");
+    expect(await requests(id)).toHaveLength(1);
+
+    // `received_by_lab` is single-person and needs no co-signer, so the pre-check never applies to it.
+    const other = await heldOrder();
+    const single = await alone.recoverLabTransmission(ORG_A, PD()[0], other, "received_by_lab", EVIDENCE, undefined, USER_D);
+    expect(single.outcome).not.toBe("pending_cosign");
+  });
+
+  it("F-204 CO-SIGNER COUNTER (the composition root's `countEligibleCosigners`, as the real NOBYPASSRLS role): counts OTHER active users holding recover / cosign_escalated through an enabled, unexpired role — never the requester, never another tenant", async () => {
+    const count = buildM11CosignerCounter(handle.db, createMembershipsHoldingPermissionReader(handle.db), [
+      "orders.transmission.recover",
+      "orders.transmission.cosign_escalated",
+    ]);
+    const mkRole = async (org: string, key: string, perms: string[], enabled = true) => {
+      const id = (
+        await admin.query(
+          "INSERT INTO role (organization_id, key, name, category, enabled) VALUES ($1,$2,$2,'clinical_leadership',$3) RETURNING id",
+          [org, key, enabled],
+        )
+      ).rows[0].id as string;
+      for (const p of perms) {
+        await admin.query("INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)", [org, id, p]);
+      }
+      return id;
+    };
+    const assign = async (org: string, membership: string, role: string, expires: string | null = null) =>
+      admin.query("INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)", [
+        org,
+        membership,
+        role,
+        expires,
+      ]);
+
+    // A FRESH tenant of its own (earlier tests in this suite leave role assignments in ORG_A): three active people.
+    const ORG_C = "44444444-4444-4444-4444-444444444444";
+    await admin.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-c','C','C')", [ORG_C]);
+    const person = async (user: string) =>
+      (
+        await admin.query("INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id", [user, ORG_C])
+      ).rows[0].id as string;
+    const mRequester = await person(USER);
+    const mB = await person(USER_B);
+    const mC = await person(USER_C);
+    const mD = await person(USER_D);
+    expect(await count(ORG_C, USER)).toBe(0);
+
+    const rec = await mkRole(ORG_C, "f204_recoverer", ["orders.transmission.recover"]);
+    const esc = await mkRole(ORG_C, "f204_escalated", ["orders.transmission.cosign_escalated"]);
+    const viewOnly = await mkRole(ORG_C, "f204_view_only", ["orders.transmission.view_held"]);
+    await assign(ORG_C, mD, viewOnly);
+    expect(await count(ORG_C, USER)).toBe(0); // view_held alone cannot co-sign
+
+    await assign(ORG_C, mB, rec); // USER_B
+    expect(await count(ORG_C, USER)).toBe(1);
+    expect(await count(ORG_C, USER_B)).toBe(0); // the requester never counts as their own co-signer
+
+    await assign(ORG_C, mC, esc); // USER_C via the high-trust key alone
+    expect(await count(ORG_C, USER)).toBe(2);
+    expect(await count(ORG_C, USER_B)).toBe(1);
+    // A person holding BOTH keys through two roles is one person; the requester holding the key still does not count.
+    await assign(ORG_C, mC, rec);
+    await assign(ORG_C, mRequester, rec);
+    expect(await count(ORG_C, USER)).toBe(2);
+
+    // Lapsed assignment, disabled role, suspended membership: none of them can co-sign.
+    const lapsedRole = await mkRole(ORG_C, "f204_lapsed", ["orders.transmission.recover"]);
+    const disabledRole = await mkRole(ORG_C, "f204_disabled", ["orders.transmission.recover"], false);
+    await assign(ORG_C, mD, lapsedRole, "2000-01-01T00:00:00Z");
+    await assign(ORG_C, mD, disabledRole);
+    expect(await count(ORG_C, USER)).toBe(2); // USER_D still not counted
+    await admin.query("UPDATE membership SET status='suspended' WHERE id=$1", [mC]);
+    expect(await count(ORG_C, USER)).toBe(1); // USER_C is suspended now
+    await admin.query("UPDATE membership SET status='active' WHERE id=$1", [mC]);
+
+    // Tenant isolation: ORG_C's holders are invisible to ORG_A / ORG_B, whatever their own state.
+    const before = await count(ORG_A, USER);
+    await assign(ORG_C, mD, rec); // one more holder, in ORG_C only
+    expect(await count(ORG_C, USER)).toBe(3);
+    expect(await count(ORG_A, USER)).toBe(before);
   });
 
 });

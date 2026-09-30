@@ -33,7 +33,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { allPermissionMirrorRows } from "@wardenx/auth";
+import { LAB_RECOVERY_DEFAULT_GRANTS, allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
@@ -313,7 +313,11 @@ async function main(): Promise<void> {
       [orgId, key, owner?.roleName ?? key, `${owner?.roleName ?? key} (dev seed persona)`],
     );
     roleIdByKey.set(key, firstRow(r, `seed-staff-personas: role ${key}`).id);
-    for (const permKey of clinicalKeys) {
+    // F-204 — the lab-recovery keys are `admin`-category, so the field-staff categories above never include them; the
+    // roles that hold them by default (DON, clinical supervisor, compliance officer) get them from the one shared table.
+    const labRecoveryKeys: readonly string[] =
+      (LAB_RECOVERY_DEFAULT_GRANTS as Record<string, readonly string[]>)[key] ?? [];
+    for (const permKey of [...clinicalKeys, ...labRecoveryKeys]) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
         [orgId, firstRow(r, `seed-staff-personas: role ${key}`).id, permKey],
