@@ -138016,6 +138016,52 @@
         }
       }
     },
+    "/api/v1/patients/{patientId}/assessments/summary/document": {
+      "post": {
+        "operationId": "postApiV1PatientsByPatientIdAssessmentsSummaryDocument",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "F-208 explicit trigger — request a fresh printable assessment-summary render (M22 renders assessment_summary)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requested"
+                  ],
+                  "properties": {
+                    "requested": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/care-plan": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdCareplan",

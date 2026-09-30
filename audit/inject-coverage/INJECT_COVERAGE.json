@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1309,
-    "coveredRoutes": 1309,
-    "directRoutesReferenced": 1251
+    "routes": 1310,
+    "coveredRoutes": 1310,
+    "directRoutesReferenced": 1252
   },
   "modules": [
     {
@@ -100,13 +100,13 @@
     },
     {
       "module": "09-assessments",
-      "routes": 19,
+      "routes": 20,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/m9-assessments-write.live.test.ts"
       ],
-      "directRoutesReferenced": 14
+      "directRoutesReferenced": 15
     },
     {
       "module": "10-hope",

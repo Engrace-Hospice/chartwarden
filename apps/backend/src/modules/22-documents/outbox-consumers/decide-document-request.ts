@@ -197,6 +197,15 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // `.document_requested` renders at sign; the transmitted PDF is a new version carrying the pharmacy
   // transmission facts.
   "m12.medication_order.transmitted", // medication_order (append)
+  // ── F-208 (#248) — the printable M9 assessment summary. Genuinely different from `m10.hope.summary
+  // _requested` above: the M9 event carries no per-request/assessment id at all
+  // (`{patientId, asOfDate, scales, lang}`), so `patientId` is the only candidate aggregate. The user
+  // decided the open versioning question this left standing (F-168/F-170): treat "the assessment
+  // summary" as ONE evolving per-patient document — every request (auto-refresh on chart-open, or the
+  // explicit download/print action) renders a new VERSION via the F-168 append mechanism, and the
+  // latest version is simply the current summary, not an archive of independently-addressable dated
+  // snapshots. Mig 0277 adds the `assessment_summary` aggregate type.
+  "m9.assessment.summary_requested", // assessment_summary (append)
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —

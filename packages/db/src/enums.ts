@@ -2069,6 +2069,10 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   // M22 spec's own "discharge_summary (transfer variant)" — a distinct type, not a second version of
   // `discharge_summary`, since a transfer is not a discharge for cause/death/routine.
   "discharge_summary_transfer",
+  // F-208 (#248, mig 0277) — the M9 printable assessment summary. Distinct from `hope_summary` (M10's
+  // per-assessment HOPE timepoint PDF): `m9.assessment.summary_requested` carries no per-request id, so
+  // this renders as ONE evolving per-patient document, versioned via the F-168 append mechanism.
+  "assessment_summary",
   "other",
 ]);
 

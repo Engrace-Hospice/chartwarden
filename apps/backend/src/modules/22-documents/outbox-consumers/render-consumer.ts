@@ -405,6 +405,16 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "medication_order",
     appends: true,
   },
+  // F-208 (#248) — M9's printable assessment summary. No per-request id on the payload
+  // (`{patientId, asOfDate, scales, lang}`), so `patientId` is the aggregate — the first patientId-keyed
+  // render this table binds. `appends: true`: every request (chart-open auto-refresh or the explicit
+  // download/print action) renders a NEW version of the SAME per-patient document, never a fresh
+  // aggregate per `asOfDate`. No `contentField`: the whole payload is what the summary renders from.
+  "m9.assessment.summary_requested": {
+    aggregateIdFields: ["patientId"],
+    templateKey: "assessment_summary",
+    appends: true,
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,

@@ -9,6 +9,7 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
+import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
@@ -565,6 +566,11 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m8.encounter.addendum_signed",
       "m14.minutes.amended",
       "m12.medication_order.transmitted",
+      // F-208 (#248) — the printable M9 assessment summary. No per-request id on the payload, so
+      // `patientId` is the aggregate (the first patientId-keyed render this table binds) and every
+      // request — chart-open auto-refresh or the explicit download/print action — appends a new
+      // version of one evolving per-patient `assessment_summary` document.
+      "m9.assessment.summary_requested",
     ]);
   });
 
@@ -584,6 +590,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         ...M6_OUTBOX_EVENTS,
         ...M7_OUTBOX_EVENTS,
         ...M8_OUTBOX_EVENTS,
+        ...M9_OUTBOX_EVENTS,
         ...M10_OUTBOX_EVENTS,
         ...M11_OUTBOX_EVENTS,
         ...M12_OUTBOX_EVENTS,

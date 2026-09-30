@@ -657,6 +657,13 @@ jobs:
               name: "F-194 M18 visit verified",
               scripts: "test:f194:m18-visit-verified:live",
             }
+          # F-208 (#248) — M9's printable assessment summary (`assessment_summary`, migration 0277): the
+          # chart-open auto-refresh + the explicit download/print action, both through the identical
+          # render-handshake chain, proving the freshness throttle and the F-168 per-open append version.
+          - {
+              name: "F-208 M9 assessment summary render",
+              scripts: "test:f208:m9-assessment-summary-render:live",
+            }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }

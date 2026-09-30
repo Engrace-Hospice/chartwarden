@@ -1238,6 +1238,7 @@ import {
   LatestBatchQuerySchema as M9LatestBatchQuerySchema,
   LatestBatchResponseSchema as M9LatestBatchResponseSchema,
   RecordAssessmentSchema as M9RecordAssessmentSchema,
+  RequestSummaryDocumentResponseSchema as M9RequestSummaryDocumentResponseSchema,
   ScaleCatalogResponseSchema as M9ScaleCatalogResponseSchema,
   ScaleDeltaResponseSchema as M9ScaleDeltaResponseSchema,
   ScaleLicenseListResponseSchema as M9ScaleLicenseListResponseSchema,
@@ -4012,6 +4013,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/patients/:patientId/assessments/summary": {
     summary: "Per-scale latest-capture summary surface",
     response: M9AssessmentSummaryResponseSchema,
+  },
+  "POST /api/v1/patients/:patientId/assessments/summary/document": {
+    summary:
+      "F-208 explicit trigger — request a fresh printable assessment-summary render (M22 renders assessment_summary)",
+    response: M9RequestSummaryDocumentResponseSchema,
   },
   "GET /api/v1/patients/:patientId/assessments/:id": {
     summary: "Read one assessment row",

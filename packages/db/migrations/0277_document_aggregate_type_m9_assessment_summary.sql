@@ -1,0 +1,14 @@
+-- M22 `document_aggregate_type` — one new artifact type behind the M9 printable-assessment-summary
+-- render handshake (F-208, #248; the 0239 F-099 / 0251 F-144 / 0252 F-161 / 0267 F-192 additive-enum
+-- precedent, a fifth time).
+--
+-- `m9.assessment.summary_requested` (`{patientId, asOfDate, scales, lang}`) has been declared in M22's
+-- own `handlers-unbound` group since the register existed. It is a DIFFERENT artifact from the
+-- already-live `hope_summary` (M10's per-assessment HOPE timepoint PDF, keyed on `assessmentId`): this
+-- event carries no per-request id at all, so the render is filed as ONE evolving per-PATIENT document
+-- (a live status view, versioned via the F-168 source-event-id append mechanism — never a fresh
+-- document per `asOfDate`).
+--
+-- Additive only (no removal, no existing row affected). Own migration: PG forbids using a value added
+-- earlier in the same transaction, so this stands alone ahead of any migration that reads or writes it.
+ALTER TYPE "public"."document_aggregate_type" ADD VALUE IF NOT EXISTS 'assessment_summary';

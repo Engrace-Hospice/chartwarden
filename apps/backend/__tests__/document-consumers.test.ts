@@ -110,6 +110,10 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m8.encounter.addendum_signed",
       "m14.minutes.amended",
       "m12.medication_order.transmitted",
+      // F-208 (#248) — M9's printable assessment summary. No per-request id on the payload, so
+      // `patientId` is the aggregate; every request (chart-open auto-refresh or the explicit
+      // download/print action) appends a new version of one evolving per-patient document.
+      "m9.assessment.summary_requested",
     ]);
   });
 

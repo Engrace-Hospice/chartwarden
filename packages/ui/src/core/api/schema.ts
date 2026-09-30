@@ -12726,6 +12726,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{patientId}/assessments/summary/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** F-208 explicit trigger — request a fresh printable assessment-summary render (M22 renders assessment_summary) */
+        post: operations["postApiV1PatientsByPatientIdAssessmentsSummaryDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/care-plan": {
         parameters: {
             query?: never;
@@ -55076,6 +55093,33 @@ export interface operations {
                             redacted: boolean;
                             version: number;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByPatientIdAssessmentsSummaryDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        requested: true;
                     };
                 };
             };

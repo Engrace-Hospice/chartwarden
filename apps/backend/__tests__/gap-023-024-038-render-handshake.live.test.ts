@@ -32,6 +32,7 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
+import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
 import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
@@ -254,6 +255,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       // "the dispatcher refuses to construct otherwise" reason as every entry above.
       M7_OUTBOX_EVENTS,
       M8_OUTBOX_EVENTS,
+      M9_OUTBOX_EVENTS,
       M14_OUTBOX_EVENTS,
       M15_OUTBOX_EVENTS,
       M17_OUTBOX_EVENTS,
