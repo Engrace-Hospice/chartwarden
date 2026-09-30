@@ -118,8 +118,9 @@ describe.skipIf(!DB_URL)("F-229 — M5 PatientAddressReader.primaryAddress — L
   it("ignores history, non-primary and closed rows — only the current primary resolves", async () => {
     const pid = await seedPatient(ORG_A);
     await seedAddress(ORG_A, pid, { line1: "9 Old St", from: "2020-01-01", to: "2025-12-31" });
-    await seedAddress(ORG_A, pid, { line1: "8 Mailing St", kind: "mailing", primary: false });
     await seedAddress(ORG_A, pid, { line1: "2 Now St", from: "2026-01-01" });
+    // Seeded AFTER the primary row, same effective_from: a non-primary row must still never win.
+    await seedAddress(ORG_A, pid, { line1: "8 Mailing St", kind: "mailing", primary: false, from: "2026-02-01" });
     const a = await buildPatientAddressReader(handle.db).primaryAddress(ORG_A, pid);
     expect(a?.line1).toBe("2 Now St");
   });
