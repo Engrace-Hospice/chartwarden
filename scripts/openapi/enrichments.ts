@@ -1227,6 +1227,7 @@ import {
 } from "../../apps/backend/src/modules/08-encounters/routes/encounters-typebox";
 import {
   AcknowledgeChangeSchema as M9AcknowledgeChangeSchema,
+  AssessmentDetailResponseSchema as M9AssessmentDetailResponseSchema,
   AssessmentListQuerySchema as M9AssessmentListQuerySchema,
   AssessmentListResponseSchema as M9AssessmentListResponseSchema,
   AssessmentSummaryResponseSchema as M9AssessmentSummaryResponseSchema,
@@ -4022,8 +4023,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M9RequestSummaryDocumentResponseSchema,
   },
   "GET /api/v1/patients/:patientId/assessments/:id": {
-    summary: "Read one assessment row",
-    response: M9AssessmentViewResponseSchema,
+    summary: "Read one assessment with ordered per-item responses",
+    response: M9AssessmentDetailResponseSchema,
   },
   "GET /api/v1/patients/:patientId/scales/:scaleType/latest": {
     summary: "Latest capture of one scale",

@@ -137399,7 +137399,7 @@
         "tags": [
           "09-assessments"
         ],
-        "summary": "Read one assessment row",
+        "summary": "Read one assessment with ordered per-item responses",
         "parameters": [
           {
             "name": "patientId",
@@ -137447,7 +137447,9 @@
                     "correctsAssessmentId",
                     "correctionReason",
                     "redacted",
-                    "version"
+                    "version",
+                    "items",
+                    "notes"
                   ],
                   "properties": {
                     "id": {
@@ -137642,6 +137644,52 @@
                     },
                     "version": {
                       "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "label",
+                          "value",
+                          "displayValue"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              }
+                            ]
+                          },
+                          "displayValue": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "notes": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }

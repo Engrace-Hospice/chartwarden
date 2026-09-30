@@ -15,6 +15,7 @@ import type {
   ScaleSeries as ServiceScaleSeries,
 } from "@wardenx/types";
 import type {
+  AssessmentDetailView as ServiceAssessmentDetailView,
   AssessmentView as ServiceAssessmentView,
   ScaleLicenseView as ServiceScaleLicenseView,
   ScalePolicyView as ServiceScalePolicyView,
@@ -252,6 +253,20 @@ export const AssessmentViewResponseSchema = Type.Object({
   version: Type.Integer(),
 });
 
+/** Route 4 — one assessment plus its ordered, catalog-derived item responses. */
+export const AssessmentDetailResponseSchema = Type.Object({
+  ...AssessmentViewResponseSchema.properties,
+  items: Type.Array(
+    Type.Object({
+      key: Type.String(),
+      label: Type.String(),
+      value: Type.Union([Type.String(), Type.Number(), Type.Boolean()]),
+      displayValue: Type.String(),
+    }),
+  ),
+  notes: nullable(Type.String()),
+});
+
 /** Route 3 — the patient assessment timeline envelope. */
 export const AssessmentListResponseSchema = Type.Object({
   assessments: Type.Array(AssessmentViewResponseSchema),
@@ -346,6 +361,10 @@ export const ScalePolicyListResponseSchema = Type.Object({
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _AssessmentView = Conforms<Static<typeof AssessmentViewResponseSchema>, ServiceAssessmentView>;
+type _AssessmentDetail = Conforms<
+  Static<typeof AssessmentDetailResponseSchema>,
+  ServiceAssessmentDetailView
+>;
 type _AssessmentList = Conforms<
   Static<typeof AssessmentListResponseSchema>,
   { readonly assessments: readonly ServiceAssessmentView[] }

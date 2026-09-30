@@ -74,7 +74,7 @@ export const SCALE_CATALOG: { readonly [K in ScaleType]: ScaleCatalogEntry } = O
   ]),
 ) as { [K in ScaleType]: ScaleCatalogEntry };
 
-/** Whether a scale requires an active license to record (D3 form-gating). */
+/** Whether a scale requires a current (active or pending-renewal) license to record (D3 form-gating). */
 export function isLicensedScale(scaleType: ScaleType): scaleType is LicensedScaleType {
   return LICENSED.has(scaleType);
 }
