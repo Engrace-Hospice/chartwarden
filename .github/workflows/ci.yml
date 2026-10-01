@@ -163,7 +163,7 @@ jobs:
       # M26 and M30 suites; at 4096 all fifteen pass.
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
-          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -180,7 +180,7 @@ jobs:
       - name: Remove CI containers and background processes
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg >/dev/null 2>&1 || true
 
   lifecycle-live:
     # GAP-086: the 25 per-module read/write LIFECYCLE suites had scripts in package.json and no runner
@@ -817,7 +817,7 @@ jobs:
       # note): these suites replay the full migration set, partitioned parents included, in one transaction.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker rm -f wardenx-ci-pg-lifecycle >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-lifecycle >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-lifecycle \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -844,7 +844,7 @@ jobs:
       - name: Remove CI containers and background processes
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-lifecycle >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-lifecycle >/dev/null 2>&1 || true
 
   migration-gate:
     # TASK-040E (OPS-016): scripts/db/migrate.ts is the real production migration path. This job
@@ -869,7 +869,7 @@ jobs:
       # max_locks_per_transaction=64.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker rm -f wardenx-ci-pg-migrate >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-migrate >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-migrate \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_migration_gate \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -909,7 +909,7 @@ jobs:
       - name: Remove CI containers and background processes
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-migrate >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-migrate >/dev/null 2>&1 || true
 
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
@@ -932,7 +932,7 @@ jobs:
       # migration set, which exhausts the default max_locks_per_transaction=64. See the rls-live note.
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
-          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -956,7 +956,7 @@ jobs:
       - name: Remove CI containers and background processes
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg >/dev/null 2>&1 || true
 
   outbox-boot:
     # F-020 (issue #49): the backend refused to START in the documented production configuration —
@@ -990,7 +990,7 @@ jobs:
       # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker rm -f wardenx-ci-pg-boot >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-boot >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-boot \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -1013,7 +1013,7 @@ jobs:
       - name: Remove CI containers and background processes
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-boot >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-boot >/dev/null 2>&1 || true
 
   # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
   # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
@@ -1151,7 +1151,7 @@ jobs:
       # job's note): booting replays the full migration set, ~47 partitioned parents included.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
-          docker rm -f wardenx-ci-pg-e2e >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-e2e >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-e2e \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_e2e \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -1167,7 +1167,7 @@ jobs:
       # (`docker pull` is denied).
       - name: Start MinIO (document storage)
         run: |
-          docker rm -f wardenx-ci-minio-e2e >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-minio-e2e >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-minio-e2e \
             -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=wardenx-minio-ci-secret \
             -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
@@ -1243,8 +1243,8 @@ jobs:
       - name: Remove CI containers and background processes
         if: always()
         run: |
-          docker rm -f wardenx-ci-pg-e2e >/dev/null 2>&1 || true
-          docker rm -f wardenx-ci-minio-e2e >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-pg-e2e >/dev/null 2>&1 || true
+          docker rm -fv wardenx-ci-minio-e2e >/dev/null 2>&1 || true
           # backgrounded by the boot steps above; the runner host is persistent, so stop them explicitly
           pkill -u "$(id -u)" -f 'bun src/index.ts' >/dev/null 2>&1 || true
           pkill -u "$(id -u)" -f 'vite' >/dev/null 2>&1 || true
