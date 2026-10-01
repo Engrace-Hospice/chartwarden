@@ -1092,7 +1092,11 @@ jobs:
       # and `e2e/playwright.config.ts` both already document for exactly this; the shipped production
       # default is untouched, and the limiter itself is proven by `rate-limit-store-live` and by the
       # SD-055 unit tests, not by this job.
-      RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE: "300"
+      #
+      # 300 → 1000 alongside the authenticated raise below: with the route walk running to completion, the
+      # `/api/v1/auth/*` calls peak at ~230/minute against a 300 ceiling and a handful answered 429
+      # (`/auth/context` on the first spec after the walk), which is what made billing's first spec flaky.
+      RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE: "1000"
       # The AUTHENTICATED tier, for the same reason and now for the same measured cause. This job was
       # never set, so it ran on the shipped 600/min default — fine when the suite was 24 tests, and not
       # once #91's per-module E2E specs took it to 33: one full serial pass now issues 805 requests in
@@ -1103,7 +1107,14 @@ jobs:
       # out, and the run goes red in whichever spec happened to be next — a DIFFERENT one each time. It
       # reads as missing seed data. 3000 is ~2.7x the measured peak, so the remaining eight modules can
       # land their specs without re-tripping it. Production default untouched.
-      RATE_LIMIT_AUTHENTICATED_PER_MINUTE: "3000"
+      #
+      # RAISED 3000 → 20000 for the axe route walk (#106). It scans 146 screens in ~3 minutes from the same
+      # loopback client and peaks at ~8100 requests/minute (measured the same way, over one clean full-suite
+      # run) — 2.7x the old ceiling — so it answered 166 requests with 429 and the specs queued right behind
+      # it (billing's Claim Workbench / AR dashboard) read RATE_LIMITED as an empty page. It stayed hidden
+      # while the walk itself timed out at 10 minutes and never reached its steady request rate. 20000 is
+      # ~2.5x that peak, the same headroom as before.
+      RATE_LIMIT_AUTHENTICATED_PER_MINUTE: "20000"
       # F-082 — the four vars M8's finalize (and M27's, M29's, M31's and M39's payload ciphers) need.
       #
       # `POST /encounters/:id/finalize` seals the assembled narrative under the tenant DEK, which needs

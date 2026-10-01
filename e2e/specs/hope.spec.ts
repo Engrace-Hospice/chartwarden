@@ -342,8 +342,10 @@ async function completeAdmissionSections(page: Page): Promise<void> {
   const diagnosisCount = await diagnoses.count();
   expect(diagnosisCount).toBeGreaterThan(0);
   for (let i = 0; i < diagnosisCount; i += 1) await answerSelect(diagnoses.nth(i), page);
-  // The comorbidity flags (I0100…I8005) are Yes/No checkbox pairs inside a "<condition>: select Yes or No"
-  // group rather than selects, so the loop above no longer reaches them; each needs its "No" ticked.
+  // The comorbidity flags (I0100 … I8005) render as a Yes/No pair ("<condition>: select Yes or No", two
+  // checkboxes) rather than a dropdown, and unticking one saves nothing — so each is answered by ticking
+  // "No". Left unanswered they are 15 "active and applicable but unanswered" blockers and the review never
+  // reaches "Ready to complete".
   const flags = main.getByRole("group", { name: /: select Yes or No$/ });
   const flagCount = await flags.count();
   expect(flagCount).toBeGreaterThan(0);

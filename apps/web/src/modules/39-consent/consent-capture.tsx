@@ -32,6 +32,15 @@ import {
 } from "./consent-evidence-fields";
 import { authFailureRedirect } from "./write-workflow";
 
+/**
+ * Catalog types a STAFF member cannot capture. `portal_access`'s `captureMethodFloor` is only
+ * `electronic_portal_signature` — the patient's own portal e-signature — while every method this form
+ * offers (`STAFF_CAPTURE_METHODS`) is outside it, so the server refuses the draft with a 422 whichever
+ * method is picked. The catalog is in enum order and `portal_access` is the FIRST row, so without this
+ * filter the form opened on a type that could never be created ("Validation failed" on a pristine form).
+ */
+const PATIENT_SELF_SERVICE_TYPE_KEYS: ReadonlySet<string> = new Set(["portal_access"]);
+
 const GRANTOR_KINDS = [
   { value: "patient_self", label: "Patient (self)" },
   { value: "dpoa_healthcare_agent", label: "DPOA — healthcare agent" },
@@ -164,7 +173,9 @@ export function ConsentCapture(): JSX.Element {
       if (pRes.data) setPatient(pRes.data as PatientSummary);
       if (cRes.error) setCatalogError("Could not load the consent-type catalog.");
       else {
-        const rows = (cRes.data?.data ?? []) as CatalogRow[];
+        const rows = ((cRes.data?.data ?? []) as CatalogRow[]).filter(
+          (r) => !PATIENT_SELF_SERVICE_TYPE_KEYS.has(r.typeKey),
+        );
         setCatalog(rows);
         if (rows[0]) setTypeKey(rows[0].typeKey);
       }
