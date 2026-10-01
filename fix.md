@@ -79,12 +79,12 @@ Create a verbal order: physician communication, created by, created at, check bo
 - When a patient is converted in the referral intake, it shouldn't be there anymore - Ok
 - Give the possibility to modify all Referral Informations even if it's already created - Ok
 - Review and Fix the error when signing a care plan - Ok
+- Work on assessment module (in the patient and globaly) in visit's tab - Ok
+- Show the notice of right in the "Election & Certification" tab as view. - Ok
 
 
 - RN is also the one assigning the care team in the Care Team & Assignments tab
-- Work on assessment module (in the patient and globaly) in visit's tab
 - RN permission in admission & care plan modules
-- Show the notice of right in the "Election & Certification" tab as view.
 - Apart from passkeys, the user can sign using a code
 - Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
 So when there is something regarding a patient, everybody can see it

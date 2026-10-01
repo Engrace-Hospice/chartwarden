@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   build-and-verify:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     # `tsc -b` over the full project graph outgrew Node's default heap on the runner (~2 GB, sized
     # from runner RAM): it died with "Reached heap limit … JavaScript heap out of memory" (SIGABRT,
     # exit 134) before arch:fitness, the unit suite or the dependency audit ever ran.
@@ -96,7 +96,7 @@ jobs:
 
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     strategy:
       fail-fast: false
       matrix:
@@ -175,6 +175,11 @@ jobs:
       - name: ${{ matrix.suite.name }} — cross-tenant isolation proof (real Postgres + real RLS)
         run: bun run ${{ matrix.suite.script }}
 
+      - name: Cleanup Postgres container
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg 2>/dev/null || true
+
   lifecycle-live:
     # GAP-086: the 25 per-module read/write LIFECYCLE suites had scripts in package.json and no runner
     # anywhere — no CI job, no git hook (.githooks/pre-push runs build/arch:fitness/test, and `bun run test`
@@ -190,7 +195,7 @@ jobs:
     # schema and replays the migrations itself, so they compose sequentially, and 13 runners instead of 25
     # halves the per-job migration replay for identical coverage.
     name: Lifecycle — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     strategy:
       fail-fast: false
       matrix:
@@ -832,13 +837,18 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Cleanup lifecycle containers
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-lifecycle 2>/dev/null || true
+
   migration-gate:
     # TASK-040E (OPS-016): scripts/db/migrate.ts is the real production migration path. This job
     # proves it against a disposable database — both the happy path (full chain applies cleanly)
     # and the failure path (a deliberately corrupted checksum on an already-applied file fails the
     # pipeline under --strict, not just a warning).
     name: Production migration path (scripts/db/migrate.ts)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
@@ -890,9 +900,14 @@ jobs:
           fi
           echo "✓ --strict correctly failed the pipeline on checksum drift"
 
+      - name: Cleanup migration Postgres
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-migrate 2>/dev/null || true
+
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
@@ -930,6 +945,11 @@ jobs:
       - name: device_attestation RLS survives a reused pooled connection (empty-GUC regression)
         run: bun run test:device-attestation-guc:live
 
+      - name: Cleanup auth Postgres
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg 2>/dev/null || true
+
   outbox-boot:
     # F-020 (issue #49): the backend refused to START in the documented production configuration —
     # `DATABASE_PLATFORM_URL` set — because the outbox dispatcher's catalog validation throws before
@@ -941,7 +961,7 @@ jobs:
     # covers the rest of the branch — the platform pool, the audited active-org enumerator, the relay
     # start — by doing the one thing a gate cannot do: running the process the way production runs it.
     name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
@@ -980,6 +1000,11 @@ jobs:
       - name: Boot with the platform credential and prove the relay starts
         run: bun run check:boot:platform
 
+      - name: Cleanup outbox Postgres
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-boot 2>/dev/null || true
+
   # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
   # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
   # existing live jobs and nothing ran it. It proves the cluster-wide rate limiter — that two backend
@@ -988,7 +1013,7 @@ jobs:
   # jobs this needs no command arguments and replays no migrations.
   rate-limit-store-live:
     name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     services:
       valkey:
         image: valkey/valkey:8-alpine
@@ -1030,7 +1055,7 @@ jobs:
     # seed chain runs here through the very `db:seed:all` script `db:reset` composes, so the two cannot
     # drift apart.
     name: Critical-workflow E2E + accessibility (Playwright, full stack)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     services:
       # `db:seed:scenario-billing` drives M27 `refresh-inputs`, which enqueues a trial-balance pull —
       # with no queue connection that port is unbound and the step fails (docs/DEVELOPMENT.md). A
@@ -1199,3 +1224,9 @@ jobs:
             e2e/test-results/
             ${{ runner.temp }}/e2e-logs/
           retention-days: 7
+      
+      - name: Cleanup E2E containers
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-e2e 2>/dev/null || true
+          docker rm -f wardenx-ci-minio-e2e 2>/dev/null || true
