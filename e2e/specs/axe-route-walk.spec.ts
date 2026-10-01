@@ -36,7 +36,7 @@ interface RegisteredScreen {
 }
 
 /** The `web`-app, statically-routable, post-auth screens — see the header for what and why. */
-export function staticWebScreens(): RegisteredScreen[] {
+function staticWebScreens(): RegisteredScreen[] {
   const jsonPath = join(import.meta.dirname, "..", "..", "audit", "ui-parity", "ui-parity.json");
   const data = JSON.parse(readFileSync(jsonPath, "utf8")) as { screens: RegisteredScreen[] };
   return data.screens
@@ -52,7 +52,7 @@ test.describe("Accessibility — route walk (#106, F-046)", () => {
   }) => {
     const screens = staticWebScreens();
     expect(screens.length).toBeGreaterThan(100); // the registry itself going empty is its own defect
-    test.setTimeout(Math.max(120_000, screens.length * 4_000));
+    test.setTimeout(Math.max(120_000, screens.length * 8_000));
 
     await signInAs(page, ADMIN_ACCOUNT());
 
@@ -60,7 +60,8 @@ test.describe("Accessibility — route walk (#106, F-046)", () => {
     for (const screen of screens) {
       try {
         await page.goto(screen.path, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => {});
+        // Capped: pages that poll never go idle, and the default 30s wait per such screen blew the walk's budget.
+        await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
       } catch (err) {
         failures.push(`${screen.id} (${screen.path}): navigation failed — ${String(err)}`);
         continue;

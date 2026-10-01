@@ -54,7 +54,8 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
       .filter((x) => x.endsWith(".sql"))
       .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector) sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+      if (stripVector)
+        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
       await admin.query(sql);
     }
   }
@@ -80,9 +81,10 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
        VALUES ($1,$2,'active','Alpha Hospice LLC','billing@alpha.test','breach@alpha.test')`,
       [TENANT_ACCOUNT_A, ORG_A],
     );
-    await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'f103@example.test','F103 User')`, [
-      SESSION_USER,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'f103@example.test','F103 User')`,
+      [SESSION_USER],
+    );
     registerPlatformJob(PLATFORM_JOB_ID);
     // Superuser (RLS-bypass) connection stands in for the separately-pooled platform credential
     // `withPlatformContext` expects — this suite exercises the lifecycle logic, not the grant profile.
@@ -116,9 +118,11 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     };
     const deps: DrizzleTenantPlatformDeps = {
       platformDb: platformDb.db,
-      enqueue: { async enqueue(queue, jobKey) {
-        return { jobId: `${queue}-${jobKey}` };
-      } },
+      enqueue: {
+        async enqueue(queue, jobKey) {
+          return { jobId: `${queue}-${jobKey}` };
+        },
+      },
       auditBypass: async () => {},
       outbox,
       organizations: {
@@ -158,7 +162,9 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     });
     expect(res.status).toBe("suspended");
 
-    const account = await admin.query("SELECT status FROM tenant_account WHERE id = $1", [TENANT_ACCOUNT_A]);
+    const account = await admin.query("SELECT status FROM tenant_account WHERE id = $1", [
+      TENANT_ACCOUNT_A,
+    ]);
     expect(account.rows[0].status).toBe("suspended");
 
     const ledger = await admin.query(
@@ -185,7 +191,11 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     });
 
     expect(alertCalls).toContainEqual(
-      expect.objectContaining({ orgId: ORG_A, eventType: "tenant.suspension_initiated", severity: "critical" }),
+      expect.objectContaining({
+        orgId: ORG_A,
+        eventType: "tenant.suspension_initiated",
+        severity: "critical",
+      }),
     );
   });
 
@@ -201,7 +211,10 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
       [TENANT_ACCOUNT_A],
     );
     expect(outbox.rows).toHaveLength(1);
-    expect(outbox.rows[0].payload).toMatchObject({ reason: "cause resolved", actorMembershipId: ACTOR_MEMBERSHIP });
+    expect(outbox.rows[0].payload).toMatchObject({
+      reason: "cause resolved",
+      actorMembershipId: ACTOR_MEMBERSHIP,
+    });
   });
 
   it("flagAtRisk: publishes m34.tenant.at_risk (warn, not critical)", async () => {

@@ -308,7 +308,8 @@ describe.skipIf(!DB_URL)(
           newEventId,
           visitId,
           correctedByMembershipId: memA,
-          correctionReason: "Checkout GPS point was corrected after supervisor review of the raw fix.",
+          correctionReason:
+            "Checkout GPS point was corrected after supervisor review of the raw fix.",
         },
       });
 

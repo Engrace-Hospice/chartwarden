@@ -41,13 +41,17 @@ describe("validateRateTableEntry", () => {
   it("rejects dollars keyed as cents (a $215.00 per-diem typed 215)", () => {
     const r = validateRateTableEntry({ ...GOOD, rhcDays1to60PerDiemCents: 215 });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.join(" ")).toMatch(/rhcDays1to60PerDiemCents.*plausible band.*WHOLE CENTS/);
+    if (!r.ok)
+      expect(r.errors.join(" ")).toMatch(/rhcDays1to60PerDiemCents.*plausible band.*WHOLE CENTS/);
   });
 
-  it.each([0, -5, 1.5, Number.NaN])("rejects a non-positive / non-integer cents value %s", (bad) => {
-    expect(validateRateTableEntry({ ...GOOD, gipPerDiemCents: bad }).ok).toBe(false);
-    expect(validateRateTableEntry({ ...GOOD, chcHourlyRateCents: bad }).ok).toBe(false);
-  });
+  it.each([0, -5, 1.5, Number.NaN])(
+    "rejects a non-positive / non-integer cents value %s",
+    (bad) => {
+      expect(validateRateTableEntry({ ...GOOD, gipPerDiemCents: bad }).ok).toBe(false);
+      expect(validateRateTableEntry({ ...GOOD, chcHourlyRateCents: bad }).ok).toBe(false);
+    },
+  );
 
   it("rejects RHC day 1-60 below day 61+ (ADR-0001 tier order)", () => {
     const r = validateRateTableEntry({
@@ -77,7 +81,8 @@ describe("validateRateTableEntry", () => {
 
   it("rejects effectiveTo before effectiveFrom, and malformed dates", () => {
     expect(
-      validateRateTableEntry({ ...GOOD, effectiveFrom: "2026-01-10", effectiveTo: "2026-01-09" }).ok,
+      validateRateTableEntry({ ...GOOD, effectiveFrom: "2026-01-10", effectiveTo: "2026-01-09" })
+        .ok,
     ).toBe(false);
     expect(validateRateTableEntry({ ...GOOD, effectiveFrom: "2025-02-30" }).ok).toBe(false);
   });
@@ -103,12 +108,26 @@ describe("fiscal-year helpers", () => {
 
 describe("dateRangesOverlap / windowCovers", () => {
   it("treats ranges as inclusive on both ends", () => {
-    expect(dateRangesOverlap({ from: "2025-10-01", to: "2026-03-31" }, { from: "2026-03-31", to: "2026-09-30" })).toBe(true);
-    expect(dateRangesOverlap({ from: "2025-10-01", to: "2026-03-31" }, { from: "2026-04-01", to: "2026-09-30" })).toBe(false);
+    expect(
+      dateRangesOverlap(
+        { from: "2025-10-01", to: "2026-03-31" },
+        { from: "2026-03-31", to: "2026-09-30" },
+      ),
+    ).toBe(true);
+    expect(
+      dateRangesOverlap(
+        { from: "2025-10-01", to: "2026-03-31" },
+        { from: "2026-04-01", to: "2026-09-30" },
+      ),
+    ).toBe(false);
   });
   it("treats a null end as open-ended", () => {
-    expect(dateRangesOverlap({ from: "2025-10-01", to: null }, { from: "2030-01-01", to: "2030-02-01" })).toBe(true);
-    expect(dateRangesOverlap({ from: "2025-10-01", to: null }, { from: "2020-01-01", to: "2025-09-30" })).toBe(false);
+    expect(
+      dateRangesOverlap({ from: "2025-10-01", to: null }, { from: "2030-01-01", to: "2030-02-01" }),
+    ).toBe(true);
+    expect(
+      dateRangesOverlap({ from: "2025-10-01", to: null }, { from: "2020-01-01", to: "2025-09-30" }),
+    ).toBe(false);
   });
   it("covers the boundary days and nothing outside", () => {
     const w = { from: "2025-10-01", to: "2026-09-30" };
@@ -152,7 +171,9 @@ describe("toHippsRateTable", () => {
 
 describe("validateRateTableEntry — labor shares (F-211)", () => {
   it("accepts the CMS-shaped band edges", () => {
-    expect(validateRateTableEntry({ ...GOOD, laborShareRhc: "0.3", laborShareGip: "0.9" }).ok).toBe(true);
+    expect(validateRateTableEntry({ ...GOOD, laborShareRhc: "0.3", laborShareGip: "0.9" }).ok).toBe(
+      true,
+    );
   });
   it("rejects a percent (68.71), a 5-place fraction, a non-numeric value, and out-of-band fractions", () => {
     for (const bad of ["68.71", "0.68711", "abc", "", "0.2999", "0.9001", "-0.5"]) {

@@ -33,7 +33,11 @@ describe("graceCutoffDate", () => {
 });
 
 describe("isPastGraceAndNotReadmitted — the strict-less-than floor", () => {
-  const base = { latestDischargeType: "transfer", cutoffDate: "2026-08-31", hasOpenAdmission: false };
+  const base = {
+    latestDischargeType: "transfer",
+    cutoffDate: "2026-08-31",
+    hasOpenAdmission: false,
+  };
   it("revokes only when the discharge is STRICTLY before the cutoff", () => {
     expect(isPastGraceAndNotReadmitted({ ...base, latestEffectiveAt: "2026-08-30" })).toBe(true);
     // exactly on the cutoff = discharge+graceDays today => still inside the floor.
@@ -42,10 +46,18 @@ describe("isPastGraceAndNotReadmitted — the strict-less-than floor", () => {
   });
   it("never a candidate when re-admitted or when the latest discharge was a death", () => {
     expect(
-      isPastGraceAndNotReadmitted({ ...base, latestEffectiveAt: "2026-01-01", hasOpenAdmission: true }),
+      isPastGraceAndNotReadmitted({
+        ...base,
+        latestEffectiveAt: "2026-01-01",
+        hasOpenAdmission: true,
+      }),
     ).toBe(false);
     expect(
-      isPastGraceAndNotReadmitted({ ...base, latestEffectiveAt: "2026-01-01", latestDischargeType: "death" }),
+      isPastGraceAndNotReadmitted({
+        ...base,
+        latestEffectiveAt: "2026-01-01",
+        latestDischargeType: "death",
+      }),
     ).toBe(false);
   });
 });

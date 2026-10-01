@@ -115,7 +115,9 @@ describe.skipIf(!DB_URL)("F-173 (#248) — M1 Drizzle SystemStatusReader — LIV
       updatedAt: "2026-09-29T09:05:00.000Z",
     });
 
-    const { rows } = await admin.query("SELECT count(*)::int AS n FROM system_status WHERE id = 'documents'");
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM system_status WHERE id = 'documents'",
+    );
     expect(rows[0].n).toBe(1);
     const components = await store.list(ORG_A);
     const doc = components.find((c) => c.id === "documents");

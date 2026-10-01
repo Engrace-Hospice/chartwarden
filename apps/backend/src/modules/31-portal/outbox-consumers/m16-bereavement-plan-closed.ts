@@ -103,46 +103,50 @@ export function buildM31BereavementPlanClosedConsumer(deps: BereavementPlanClose
         if (!patientId) return;
         const resolvedPatientId = patientId;
 
-        await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-          const tx = scoped as unknown as DbClient;
+        await withOrgContext(
+          deps.db,
+          { organizationId, userId: CONSUMER_USER_ID },
+          async (scoped) => {
+            const tx = scoped as unknown as DbClient;
 
-          const candidates = await tx
-            .select({ id: PAG.id })
-            .from(PAG)
-            .where(
-              and(
-                eq(PAG.organizationId, organizationId),
-                eq(PAG.patientId, resolvedPatientId),
-                eq(PAG.grantKind, "bereaved_family"),
-                isNull(PAG.revokedAt),
-              ),
-            );
-          if (candidates.length === 0) return;
+            const candidates = await tx
+              .select({ id: PAG.id })
+              .from(PAG)
+              .where(
+                and(
+                  eq(PAG.organizationId, organizationId),
+                  eq(PAG.patientId, resolvedPatientId),
+                  eq(PAG.grantKind, "bereaved_family"),
+                  isNull(PAG.revokedAt),
+                ),
+              );
+            if (candidates.length === 0) return;
 
-          const accountGrants: FlipCandidateGrant[] = candidates.map((r) => ({
-            grantId: r.id,
-            patientId: resolvedPatientId,
-            grantKind: "bereaved_family",
-            revoked: false,
-          }));
-          const plan = planBereavedWindowClose({
-            decedentPatientId: resolvedPatientId,
-            accountGrants,
-          });
+            const accountGrants: FlipCandidateGrant[] = candidates.map((r) => ({
+              grantId: r.id,
+              patientId: resolvedPatientId,
+              grantKind: "bereaved_family",
+              revoked: false,
+            }));
+            const plan = planBereavedWindowClose({
+              decedentPatientId: resolvedPatientId,
+              accountGrants,
+            });
 
-          const now = new Date();
-          for (const rev of plan.revoke) {
-            await tx
-              .update(PAG)
-              .set({
-                revokedAt: now,
-                revokeCascadeSource: rev.revokeCascadeSource,
-                version: sql`${PAG.version} + 1`,
-                updatedAt: now,
-              })
-              .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)));
-          }
-        });
+            const now = new Date();
+            for (const rev of plan.revoke) {
+              await tx
+                .update(PAG)
+                .set({
+                  revokedAt: now,
+                  revokeCascadeSource: rev.revokeCascadeSource,
+                  version: sql`${PAG.version} + 1`,
+                  updatedAt: now,
+                })
+                .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)));
+            }
+          },
+        );
       });
     },
   };

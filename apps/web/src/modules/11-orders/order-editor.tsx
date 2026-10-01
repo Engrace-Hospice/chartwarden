@@ -99,20 +99,42 @@ export function OrderEditor({
           path: string,
           init: unknown,
         ) => Promise<{ data?: unknown; error?: unknown }>;
-        const path = verbal ? "/api/v1/verbal-orders" : replacesOrderId ? "/api/v1/orders/{id}/correct" : "/api/v1/orders";
+        const path = verbal
+          ? "/api/v1/verbal-orders"
+          : replacesOrderId
+            ? "/api/v1/orders/{id}/correct"
+            : "/api/v1/orders";
         result = await post(path, {
           params: !verbal && replacesOrderId ? { path: { id: replacesOrderId } } : undefined,
-          body: verbal ? { order: {
-            patientId,
-            admissionId,
-            kind,
-            drafterDiscipline: discipline,
-            data,
-            priority,
-            orderingPhysicianMdmId: physicianId,
-          }, verbal: { recorderDiscipline: discipline, orderingPhysicianMdmId: physicianId, receivedAt: new Date(receivedAt).toISOString(), effectiveAt: new Date(receivedAt).toISOString(), readBackVerified, verbalAttestation: attestation } } : {
-            patientId, admissionId, kind, drafterDiscipline: discipline, data, priority, orderingPhysicianMdmId: physicianId,
-          },
+          body: verbal
+            ? {
+                order: {
+                  patientId,
+                  admissionId,
+                  kind,
+                  drafterDiscipline: discipline,
+                  data,
+                  priority,
+                  orderingPhysicianMdmId: physicianId,
+                },
+                verbal: {
+                  recorderDiscipline: discipline,
+                  orderingPhysicianMdmId: physicianId,
+                  receivedAt: new Date(receivedAt).toISOString(),
+                  effectiveAt: new Date(receivedAt).toISOString(),
+                  readBackVerified,
+                  verbalAttestation: attestation,
+                },
+              }
+            : {
+                patientId,
+                admissionId,
+                kind,
+                drafterDiscipline: discipline,
+                data,
+                priority,
+                orderingPhysicianMdmId: physicianId,
+              },
         });
       }
 
@@ -130,7 +152,13 @@ export function OrderEditor({
     }
   };
 
-  const title = draft ? "Edit draft" : replacesOrderId ? "Create corrected order" : verbal ? "New verbal order" : "New order";
+  const title = draft
+    ? "Edit draft"
+    : replacesOrderId
+      ? "Create corrected order"
+      : verbal
+        ? "New verbal order"
+        : "New order";
 
   return (
     <Modal open={open} onClose={busy ? undefined : onClose} ariaLabel={title} width="42rem">
@@ -222,18 +250,53 @@ export function OrderEditor({
 
         <CanonicalOrderFields kind={kind} value={data} onChange={setData} errors={fieldErrors} />
 
-        {verbal ? <div style={section}>
-          <h3 style={sectionTitle}>Verbal order details</h3>
-          <div style={grid}>
-            <label style={field}>Received at<input type="datetime-local" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} required style={control} /></label>
-            <label style={{ ...field, gridColumn: "1 / -1" }}>Verbal attestation<textarea value={attestation} onChange={(e) => setAttestation(e.target.value)} minLength={100} maxLength={2000} required style={control} /></label>
-            <label style={field}><span><input type="checkbox" checked={readBackVerified} onChange={(e) => setReadBackVerified(e.target.checked)} required /> Read-back verified</span></label>
+        {verbal ? (
+          <div style={section}>
+            <h3 style={sectionTitle}>Verbal order details</h3>
+            <div style={grid}>
+              <label style={field}>
+                Received at
+                <input
+                  type="datetime-local"
+                  value={receivedAt}
+                  onChange={(e) => setReceivedAt(e.target.value)}
+                  required
+                  style={control}
+                />
+              </label>
+              <label style={{ ...field, gridColumn: "1 / -1" }}>
+                Verbal attestation
+                <textarea
+                  value={attestation}
+                  onChange={(e) => setAttestation(e.target.value)}
+                  minLength={100}
+                  maxLength={2000}
+                  required
+                  style={control}
+                />
+              </label>
+              <label style={field}>
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={readBackVerified}
+                    onChange={(e) => setReadBackVerified(e.target.checked)}
+                    required
+                  />{" "}
+                  Read-back verified
+                </span>
+              </label>
+            </div>
           </div>
-        </div> : null}
+        ) : null}
 
         <div style={footer}>
           <span style={saveHint}>
-            {draft ? "Saving updates this Draft only." : verbal ? "This records a verbal order pending signature." : "This will be saved as a Draft."}
+            {draft
+              ? "Saving updates this Draft only."
+              : verbal
+                ? "This records a verbal order pending signature."
+                : "This will be saved as a Draft."}
           </span>
           <div style={{ display: "flex", gap: ".75rem" }}>
             <Button type="button" tone="secondary" onClick={onClose} disabled={busy}>

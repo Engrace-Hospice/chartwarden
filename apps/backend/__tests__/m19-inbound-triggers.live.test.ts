@@ -467,9 +467,10 @@ describe.skipIf(!DB_URL)("F-043 M19 D10 inbound triggers — LIVE Postgres", () 
         }),
       );
       expect(await callsFor(ORG_A)).toHaveLength(0);
-      const { rows } = await admin.query("SELECT id FROM triage_escalation WHERE organization_id=$1", [
-        ORG_A,
-      ]);
+      const { rows } = await admin.query(
+        "SELECT id FROM triage_escalation WHERE organization_id=$1",
+        [ORG_A],
+      );
       expect(rows).toHaveLength(0);
     });
 

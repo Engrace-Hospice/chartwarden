@@ -85,7 +85,9 @@ export function decideLabCancellation(facts: LabCancellationFacts): LabCancellat
       return "in_flight";
     case "failed":
       // F-181 refusals never produced an ORM; every other failure is an M29 terminal one (delivery unverified).
-      return facts.transmissionFailureReason?.startsWith("orm_refused:") ? null : "delivery_unverified";
+      return facts.transmissionFailureReason?.startsWith("orm_refused:")
+        ? null
+        : "delivery_unverified";
     default:
       return null; // `not_required`: never signed / not a transmitted order
   }
@@ -128,13 +130,23 @@ function factsOf(eventType: string, payload: unknown): SupersessionFacts {
   if (eventType === "m11.order.discontinued") {
     const orderId = str(p, "orderId");
     if (!orderId) throw new Error(`${name}: discontinued payload has no orderId`);
-    return { orderId, replacedByOrderId: null, supersededBy: "discontinued", discontinuationReason: str(p, "reason") };
+    return {
+      orderId,
+      replacedByOrderId: null,
+      supersededBy: "discontinued",
+      discontinuationReason: str(p, "reason"),
+    };
   }
   if (eventType === "m11.order.corrected") {
     // The ORIGINAL is the order at the lab; the new order is its replacement.
     const orderId = str(p, "replacedOrderId");
     if (!orderId) throw new Error(`${name}: corrected payload has no replacedOrderId`);
-    return { orderId, replacedByOrderId: str(p, "newOrderId"), supersededBy: "corrected", discontinuationReason: null };
+    return {
+      orderId,
+      replacedByOrderId: str(p, "newOrderId"),
+      supersededBy: "corrected",
+      discontinuationReason: null,
+    };
   }
   throw new Error(`${name}: unexpected event '${eventType}'`);
 }
@@ -152,23 +164,27 @@ export function buildM11LabCancellationConsumer(deps: LabCancellationDeps) {
       const facts = factsOf(event.eventType, event.payload);
       const organizationId = event.organizationId;
 
-      const order = await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const [row] = await tx
-          .select({
-            patientId: OR.patientId,
-            status: OR.status,
-            kind: OR.kind,
-            transmissionStatus: OR.transmissionStatus,
-            transmissionFailureReason: OR.transmissionFailureReason,
-            resultsStatus: OR.resultsStatus,
-            signedAt: OR.signedAt,
-          })
-          .from(OR)
-          .where(and(eq(OR.organizationId, organizationId), eq(OR.id, facts.orderId)))
-          .limit(1);
-        return row ?? null;
-      });
+      const order = await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const [row] = await tx
+            .select({
+              patientId: OR.patientId,
+              status: OR.status,
+              kind: OR.kind,
+              transmissionStatus: OR.transmissionStatus,
+              transmissionFailureReason: OR.transmissionFailureReason,
+              resultsStatus: OR.resultsStatus,
+              signedAt: OR.signedAt,
+            })
+            .from(OR)
+            .where(and(eq(OR.organizationId, organizationId), eq(OR.id, facts.orderId)))
+            .limit(1);
+          return row ?? null;
+        },
+      );
       // A stale redelivery / another tenant's id (RLS hides it) is a benign no-op, not a dead-letter.
       if (!order || order.status !== "discontinued") return;
 

@@ -1,3 +1,4 @@
+import { Value } from "@sinclair/typebox/value";
 // apps/backend/__tests__/orm-recovery.test.ts — F-187 (#248): the ATTESTED recovery of a lab order that failed after
 // its HL7 message was built, and the resendability of an order the M29 worker refused to persist. The PURE decisions
 // (`classifyTransmissionRecovery`, `classifyOrmResend` over `dispatch_refused:*`), the request contract, and the HTTP
@@ -13,7 +14,6 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { Value } from "@sinclair/typebox/value";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -25,18 +25,21 @@ import {
 import {
   DISPATCH_REFUSED_PREFIX,
   ORM_REFUSAL_PREFIX,
+  type OrmOutboundEvidence,
+  type OrmResendCandidate,
   RECOVERABLE_M29_FAILURE_REASONS,
   RECOVERY_ATTESTATIONS,
   RECOVERY_BLOCKED_PREFIX,
-  type OrmOutboundEvidence,
-  type OrmResendCandidate,
   classifyOrmResend,
   classifyRecoveryContradiction,
   classifyTransmissionRecovery,
 } from "../src/modules/11-orders/orm-request/orm-resend";
 import { RecoverLabTransmissionRequest } from "../src/modules/11-orders/routes/orders-typebox";
 
-const failed = (reason: string | null, over: Partial<OrmResendCandidate> = {}): OrmResendCandidate => ({
+const failed = (
+  reason: string | null,
+  over: Partial<OrmResendCandidate> = {},
+): OrmResendCandidate => ({
   kind: "lab",
   status: "active",
   transmissionStatus: "failed",
@@ -46,25 +49,37 @@ const failed = (reason: string | null, over: Partial<OrmResendCandidate> = {}): 
 
 describe("F-187 — classifyTransmissionRecovery: which failures an attestation may act on", () => {
   it("the recoverable set is exactly the two M29 terminal reasons (plus F-188's `recovery_blocked:*`, by prefix)", () => {
-    expect([...RECOVERABLE_M29_FAILURE_REASONS].sort()).toEqual(["application_reject", "dlq_exhausted"]);
+    expect([...RECOVERABLE_M29_FAILURE_REASONS].sort()).toEqual([
+      "application_reject",
+      "dlq_exhausted",
+    ]);
     expect([...RECOVERY_ATTESTATIONS]).toEqual(["not_received_by_lab", "received_by_lab"]);
   });
 
   it("F-188 — a `recovery_blocked:row_owns_order` order (an attested re-dispatch the worker could not honour) is recoverable AGAIN, but NEVER resendable", () => {
     const reason = `${RECOVERY_BLOCKED_PREFIX}row_owns_order`;
     for (const a of RECOVERY_ATTESTATIONS) {
-      expect(classifyTransmissionRecovery(failed(reason), a)).toEqual({ ok: true, priorReason: reason });
+      expect(classifyTransmissionRecovery(failed(reason), a)).toEqual({
+        ok: true,
+        priorReason: reason,
+      });
     }
     // A row EXISTS for this order, so the plain resend must not act on it (it is neither `orm_refused:` nor `dispatch_refused:`).
-    expect(classifyOrmResend(failed(reason))).toMatchObject({ ok: false, code: "not_an_orm_refusal" });
-  });
-
-  it.each(["dlq_exhausted", "application_reject"])("a %s failure is recoverable by `not_received_by_lab`", (reason) => {
-    expect(classifyTransmissionRecovery(failed(reason), "not_received_by_lab")).toEqual({
-      ok: true,
-      priorReason: reason,
+    expect(classifyOrmResend(failed(reason))).toMatchObject({
+      ok: false,
+      code: "not_an_orm_refusal",
     });
   });
+
+  it.each(["dlq_exhausted", "application_reject"])(
+    "a %s failure is recoverable by `not_received_by_lab`",
+    (reason) => {
+      expect(classifyTransmissionRecovery(failed(reason), "not_received_by_lab")).toEqual({
+        ok: true,
+        priorReason: reason,
+      });
+    },
+  );
 
   it("`received_by_lab` is recoverable for a dlq_exhausted (held / exhausted) order", () => {
     expect(classifyTransmissionRecovery(failed("dlq_exhausted"), "received_by_lab")).toEqual({
@@ -74,13 +89,21 @@ describe("F-187 — classifyTransmissionRecovery: which failures an attestation 
   });
 
   it("an AR-rejected order can NOT be marked received — the lab explicitly refused it", () => {
-    expect(classifyTransmissionRecovery(failed("application_reject"), "received_by_lab")).toMatchObject({
+    expect(
+      classifyTransmissionRecovery(failed("application_reject"), "received_by_lab"),
+    ).toMatchObject({
       ok: false,
       code: "lab_rejected_order",
     });
   });
 
-  it.each([`${ORM_REFUSAL_PREFIX}patient_dob_missing`, `${DISPATCH_REFUSED_PREFIX}baa_inactive`, "recovery_attested:x", null, ""])(
+  it.each([
+    `${ORM_REFUSAL_PREFIX}patient_dob_missing`,
+    `${DISPATCH_REFUSED_PREFIX}baa_inactive`,
+    "recovery_attested:x",
+    null,
+    "",
+  ])(
     "a non-M29-terminal failure (%s) is NOT attestable — those are fixed and re-sent, or already recovered",
     (reason) => {
       for (const a of RECOVERY_ATTESTATIONS) {
@@ -92,26 +115,45 @@ describe("F-187 — classifyTransmissionRecovery: which failures an attestation 
     },
   );
 
-  it.each(["pending", "pending_retry", "transmitted", "not_required"])("a %s order is not recoverable (not_failed)", (s) => {
-    expect(classifyTransmissionRecovery(failed("dlq_exhausted", { transmissionStatus: s }), "not_received_by_lab")).toMatchObject({
-      ok: false,
-      code: "not_failed",
-    });
-  });
+  it.each(["pending", "pending_retry", "transmitted", "not_required"])(
+    "a %s order is not recoverable (not_failed)",
+    (s) => {
+      expect(
+        classifyTransmissionRecovery(
+          failed("dlq_exhausted", { transmissionStatus: s }),
+          "not_received_by_lab",
+        ),
+      ).toMatchObject({
+        ok: false,
+        code: "not_failed",
+      });
+    },
+  );
 
   it("a non-lab or non-active order is not recoverable", () => {
-    expect(classifyTransmissionRecovery(failed("dlq_exhausted", { kind: "dme" }), "not_received_by_lab")).toMatchObject({
+    expect(
+      classifyTransmissionRecovery(failed("dlq_exhausted", { kind: "dme" }), "not_received_by_lab"),
+    ).toMatchObject({
       ok: false,
       code: "not_a_lab_order",
     });
     expect(
-      classifyTransmissionRecovery(failed("dlq_exhausted", { status: "discontinued" }), "not_received_by_lab"),
+      classifyTransmissionRecovery(
+        failed("dlq_exhausted", { status: "discontinued" }),
+        "not_received_by_lab",
+      ),
     ).toMatchObject({ ok: false, code: "order_not_active" });
   });
 });
 
 describe("F-187 — classifyOrmResend over a worker refusal (dispatch_refused:*)", () => {
-  it.each(["no_active_feed", "ambiguous_feed", "no_feed_for_destination", "feed_identity_incomplete", "baa_inactive"])(
+  it.each([
+    "no_active_feed",
+    "ambiguous_feed",
+    "no_feed_for_destination",
+    "feed_identity_incomplete",
+    "baa_inactive",
+  ])(
     "a dispatch_refused:%s order is resendable — no outbound row exists, so a resend cannot duplicate",
     (reason) => {
       expect(classifyOrmResend(failed(`${DISPATCH_REFUSED_PREFIX}${reason}`))).toEqual({
@@ -138,9 +180,12 @@ describe("F-187 — classifyOrmResend over a worker refusal (dispatch_refused:*)
 const EVIDENCE = { contactName: "Dana Reyes", labReference: "REF-2026-0041" };
 
 describe("F-187/F-188 — RecoverLabTransmissionRequest: the attestation is required, closed, and carries STRUCTURED evidence", () => {
-  it.each(["not_received_by_lab", "received_by_lab"])("accepts attestation %s with evidence", (attestation) => {
-    expect(Value.Check(RecoverLabTransmissionRequest, { attestation, ...EVIDENCE })).toBe(true);
-  });
+  it.each(["not_received_by_lab", "received_by_lab"])(
+    "accepts attestation %s with evidence",
+    (attestation) => {
+      expect(Value.Check(RecoverLabTransmissionRequest, { attestation, ...EVIDENCE })).toBe(true);
+    },
+  );
   it.each([
     {},
     { ...EVIDENCE },
@@ -157,15 +202,62 @@ describe("F-187/F-188 — RecoverLabTransmissionRequest: the attestation is requ
   it.each([
     ["no contact name", { attestation: "not_received_by_lab", labReference: "REF-2026-0041" }],
     ["no lab reference", { attestation: "not_received_by_lab", contactName: "Dana Reyes" }],
-    ["a blank contact name", { attestation: "not_received_by_lab", contactName: "", labReference: "REF-2026-0041" }],
-    ["a one-letter contact name", { attestation: "not_received_by_lab", contactName: "D", labReference: "REF-2026-0041" }],
-    ["digits in the contact name (an MRN / DOB / phone could ride in it)", { attestation: "not_received_by_lab", contactName: "Dana 555-0100", labReference: "REF-2026-0041" }],
-    ["a contact name that starts with punctuation", { attestation: "not_received_by_lab", contactName: "-Dana", labReference: "REF-2026-0041" }],
-    ["a contact name over 80 characters", { attestation: "not_received_by_lab", contactName: "D".repeat(81), labReference: "REF-2026-0041" }],
-    ["a lab reference with spaces (free text — a name could ride in it)", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "REF 2026 0041" }],
-    ["a lab reference that is too short", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "R1" }],
-    ["a lab reference over 64 characters", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "R".repeat(65) }],
-    ["a lab reference with a comma / paren", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "REF(2026),41" }],
+    [
+      "a blank contact name",
+      { attestation: "not_received_by_lab", contactName: "", labReference: "REF-2026-0041" },
+    ],
+    [
+      "a one-letter contact name",
+      { attestation: "not_received_by_lab", contactName: "D", labReference: "REF-2026-0041" },
+    ],
+    [
+      "digits in the contact name (an MRN / DOB / phone could ride in it)",
+      {
+        attestation: "not_received_by_lab",
+        contactName: "Dana 555-0100",
+        labReference: "REF-2026-0041",
+      },
+    ],
+    [
+      "a contact name that starts with punctuation",
+      { attestation: "not_received_by_lab", contactName: "-Dana", labReference: "REF-2026-0041" },
+    ],
+    [
+      "a contact name over 80 characters",
+      {
+        attestation: "not_received_by_lab",
+        contactName: "D".repeat(81),
+        labReference: "REF-2026-0041",
+      },
+    ],
+    [
+      "a lab reference with spaces (free text — a name could ride in it)",
+      {
+        attestation: "not_received_by_lab",
+        contactName: "Dana Reyes",
+        labReference: "REF 2026 0041",
+      },
+    ],
+    [
+      "a lab reference that is too short",
+      { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "R1" },
+    ],
+    [
+      "a lab reference over 64 characters",
+      {
+        attestation: "not_received_by_lab",
+        contactName: "Dana Reyes",
+        labReference: "R".repeat(65),
+      },
+    ],
+    [
+      "a lab reference with a comma / paren",
+      {
+        attestation: "not_received_by_lab",
+        contactName: "Dana Reyes",
+        labReference: "REF(2026),41",
+      },
+    ],
   ])("rejects %s", (_label, body) => {
     expect(Value.Check(RecoverLabTransmissionRequest, body)).toBe(false);
   });
@@ -183,33 +275,55 @@ describe("F-188 — classifyRecoveryContradiction: inbound evidence that refutes
     ["partial_results_received", null],
     ["results_received", null],
     ["awaiting_results", new Date("2026-06-01T00:00:00Z")],
-  ])("a result already returned (results_status=%s, first_received=%s) refutes it — lab_result_received", (resultsStatus, at) => {
-    expect(
-      classifyRecoveryContradiction("not_received_by_lab", { resultsStatus, resultsFirstReceivedAt: at }, noTraffic),
-    ).toMatchObject({ code: "lab_result_received" });
-  });
+  ])(
+    "a result already returned (results_status=%s, first_received=%s) refutes it — lab_result_received",
+    (resultsStatus, at) => {
+      expect(
+        classifyRecoveryContradiction(
+          "not_received_by_lab",
+          { resultsStatus, resultsFirstReceivedAt: at },
+          noTraffic,
+        ),
+      ).toMatchObject({ code: "lab_result_received" });
+    },
+  );
 
   it("an M29 `lab_observation` matched to the order refutes it — lab_result_received", () => {
     expect(
-      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: [], labObservationCount: 1 }),
+      classifyRecoveryContradiction("not_received_by_lab", clean, {
+        owningRowStatuses: [],
+        labObservationCount: 1,
+      }),
     ).toMatchObject({ code: "lab_result_received" });
   });
 
   it("an `acked` outbound row refutes it — lab_acknowledged", () => {
     expect(
-      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: ["acked"], labObservationCount: 0 }),
+      classifyRecoveryContradiction("not_received_by_lab", clean, {
+        owningRowStatuses: ["acked"],
+        labObservationCount: 0,
+      }),
     ).toMatchObject({ code: "lab_acknowledged" });
   });
 
-  it.each(["queued", "in_flight"])("a %s outbound row refutes it — send_in_progress (a second send would duplicate)", (s) => {
-    expect(
-      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: [s], labObservationCount: 0 }),
-    ).toMatchObject({ code: "send_in_progress" });
-  });
+  it.each(["queued", "in_flight"])(
+    "a %s outbound row refutes it — send_in_progress (a second send would duplicate)",
+    (s) => {
+      expect(
+        classifyRecoveryContradiction("not_received_by_lab", clean, {
+          owningRowStatuses: [s],
+          labObservationCount: 0,
+        }),
+      ).toMatchObject({ code: "send_in_progress" });
+    },
+  );
 
   it("a result outranks an ack (the most conclusive evidence is reported)", () => {
     expect(
-      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: ["acked"], labObservationCount: 2 }),
+      classifyRecoveryContradiction("not_received_by_lab", clean, {
+        owningRowStatuses: ["acked"],
+        labObservationCount: 2,
+      }),
     ).toMatchObject({ code: "lab_result_received" });
   });
 
@@ -220,7 +334,13 @@ describe("F-188 — classifyRecoveryContradiction: inbound evidence that refutes
   });
 
   it("`received_by_lab` is never blocked — it sends nothing, and inbound evidence can only agree with it", () => {
-    expect(classifyRecoveryContradiction("received_by_lab", { resultsStatus: "results_received", resultsFirstReceivedAt: new Date() }, { owningRowStatuses: ["acked", "queued"], labObservationCount: 3 })).toBeNull();
+    expect(
+      classifyRecoveryContradiction(
+        "received_by_lab",
+        { resultsStatus: "results_received", resultsFirstReceivedAt: new Date() },
+        { owningRowStatuses: ["acked", "queued"], labObservationCount: 3 },
+      ),
+    ).toBeNull();
     expect(classifyRecoveryContradiction("received_by_lab", clean, null)).toBeNull();
   });
 });
@@ -251,13 +371,25 @@ const PERMISSION_SEED = [
   // F-203 — the recovery authority is `orders.transmission.recover`, NOT `orders.amend` (which nearly every clinical role holds).
   {
     userId: "rn_1",
-    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
+    permissions: [
+      "orders.read",
+      "orders.draft",
+      "orders.sign",
+      "orders.amend",
+      "orders.transmission.recover",
+    ],
   },
   { userId: "rn_no_amend", permissions: ["orders.read", "orders.draft", "orders.sign"] },
   // Holds `orders.amend` (and everything else a clinician has) but NOT the recovery authority.
-  { userId: "amend_only", permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"] },
+  {
+    userId: "amend_only",
+    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"],
+  },
   // The high-trust co-signer: no `orders.transmission.recover`, only `cosign_escalated`.
-  { userId: "escalated_only", permissions: ["orders.read", "orders.transmission.cosign_escalated"] },
+  {
+    userId: "escalated_only",
+    permissions: ["orders.read", "orders.transmission.cosign_escalated"],
+  },
   { userId: "viewer_1", permissions: ["orders.read"] },
 ];
 
@@ -284,13 +416,42 @@ function makeServer() {
   return { app, backend };
 }
 
-const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
+const RN = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+  "x-test-stepup": "fresh",
+};
 /** Holds `orders.amend` but has NOT completed a fresh step-up (F-188). */
-const RN_NO_STEPUP = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
-const RN_NO_AMEND = { "x-test-user": "rn_no_amend", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
-const AMEND_ONLY = { "x-test-user": "amend_only", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
-const ESCALATED_ONLY = { "x-test-user": "escalated_only", "x-test-org": ORG, "x-test-roles": "compliance_officer", "x-test-stepup": "fresh" };
-const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor", "x-test-stepup": "fresh" };
+const RN_NO_STEPUP = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+};
+const RN_NO_AMEND = {
+  "x-test-user": "rn_no_amend",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+  "x-test-stepup": "fresh",
+};
+const AMEND_ONLY = {
+  "x-test-user": "amend_only",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+  "x-test-stepup": "fresh",
+};
+const ESCALATED_ONLY = {
+  "x-test-user": "escalated_only",
+  "x-test-org": ORG,
+  "x-test-roles": "compliance_officer",
+  "x-test-stepup": "fresh",
+};
+const VIEWER = {
+  "x-test-user": "viewer_1",
+  "x-test-org": ORG,
+  "x-test-roles": "auditor",
+  "x-test-stepup": "fresh",
+};
 const UNKNOWN_ORDER = "99999999-9999-4999-8999-999999999999";
 const ATTEST = { attestation: "not_received_by_lab", ...EVIDENCE };
 
@@ -320,7 +481,12 @@ afterEach(() => {
 
 describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
   async function draft(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
-    const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody,
+    });
     expect(res.statusCode).toBe(201);
     return res.json().id as string;
   }
@@ -373,14 +539,24 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
 
   it("an unknown order is 404", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: url(UNKNOWN_ORDER), headers: RN, payload: ATTEST });
+    const res = await app.inject({
+      method: "POST",
+      url: url(UNKNOWN_ORDER),
+      headers: RN,
+      payload: ATTEST,
+    });
     expect(res.statusCode).toBe(404);
     await app.close();
   });
 
   it("a malformed order id is a 422 VALIDATION_FAILED, not a 500", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: url("not-a-uuid"), headers: RN, payload: ATTEST });
+    const res = await app.inject({
+      method: "POST",
+      url: url("not-a-uuid"),
+      headers: RN,
+      payload: ATTEST,
+    });
     expect(res.statusCode).toBe(422);
     await app.close();
   });
@@ -389,19 +565,44 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
     ["no body", undefined],
     ["an empty body", {}],
     ["an unknown attestation", { attestation: "probably", ...EVIDENCE }],
-    ["a free-text note (nothing PHI-shaped may enter the audit diff)", { attestation: "received_by_lab", ...EVIDENCE, note: "spoke with Sam" }],
+    [
+      "a free-text note (nothing PHI-shaped may enter the audit diff)",
+      { attestation: "received_by_lab", ...EVIDENCE, note: "spoke with Sam" },
+    ],
     ["an attestation with NO evidence (F-188)", { attestation: "received_by_lab" }],
-    ["evidence with digits in the contact name (F-188)", { attestation: "received_by_lab", contactName: "Dana 5550100", labReference: "REF-2026-0041" }],
-    ["evidence with a spaced (free-text) lab reference (F-188)", { attestation: "received_by_lab", contactName: "Dana Reyes", labReference: "called about Jane Doe" }],
-  ])("%s is a 422 — the attestation and its evidence are REQUIRED and closed, and nothing is emitted", async (_label, payload) => {
-    const { app, backend } = makeServer();
-    const id = await draft(app);
-    backend.drainEvents();
-    const res = await app.inject({ method: "POST", url: url(id), headers: RN, payload: payload as never });
-    expect(res.statusCode).toBe(422);
-    expect(backend.drainEvents()).toEqual([]);
-    await app.close();
-  });
+    [
+      "evidence with digits in the contact name (F-188)",
+      {
+        attestation: "received_by_lab",
+        contactName: "Dana 5550100",
+        labReference: "REF-2026-0041",
+      },
+    ],
+    [
+      "evidence with a spaced (free-text) lab reference (F-188)",
+      {
+        attestation: "received_by_lab",
+        contactName: "Dana Reyes",
+        labReference: "called about Jane Doe",
+      },
+    ],
+  ])(
+    "%s is a 422 — the attestation and its evidence are REQUIRED and closed, and nothing is emitted",
+    async (_label, payload) => {
+      const { app, backend } = makeServer();
+      const id = await draft(app);
+      backend.drainEvents();
+      const res = await app.inject({
+        method: "POST",
+        url: url(id),
+        headers: RN,
+        payload: payload as never,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(backend.drainEvents()).toEqual([]);
+      await app.close();
+    },
+  );
 
   it("an order that never failed (a fresh draft) is 409, and nothing is emitted", async () => {
     const { app, backend } = makeServer();
@@ -418,35 +619,53 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
 // ── F-202 — the two-person control's routes: co-sign (`orders.amend` + step-up) and cancel (`orders.amend`) ───────────
 describe("F-202 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cosign,cancel}", () => {
   async function draft(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
-    const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody,
+    });
     expect(res.statusCode).toBe(201);
     return res.json().id as string;
   }
   const REQUEST = "88888888-8888-4888-8888-888888888888";
-  const cosignUrl = (id: string, requestId = REQUEST) => `/api/v1/orders/${id}/recover-transmission/${requestId}/cosign`;
-  const cancelUrl = (id: string, requestId = REQUEST) => `/api/v1/orders/${id}/recover-transmission/${requestId}/cancel`;
+  const cosignUrl = (id: string, requestId = REQUEST) =>
+    `/api/v1/orders/${id}/recover-transmission/${requestId}/cosign`;
+  const cancelUrl = (id: string, requestId = REQUEST) =>
+    `/api/v1/orders/${id}/recover-transmission/${requestId}/cancel`;
 
   it.each([
     ["cosign", cosignUrl],
     ["cancel", cancelUrl],
-  ])("%s is gated on orders.transmission.recover: read-only, clinician-without-amend and `orders.amend` ALONE are 403 (F-203)", async (_name, urlOf) => {
-    const { app } = makeServer();
-    const id = await draft(app);
-    for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY]) {
-      const res = await app.inject({ method: "POST", url: urlOf(id), headers });
-      expect(res.statusCode).toBe(403);
-    }
-    await app.close();
-  });
+  ])(
+    "%s is gated on orders.transmission.recover: read-only, clinician-without-amend and `orders.amend` ALONE are 403 (F-203)",
+    async (_name, urlOf) => {
+      const { app } = makeServer();
+      const id = await draft(app);
+      for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY]) {
+        const res = await app.inject({ method: "POST", url: urlOf(id), headers });
+        expect(res.statusCode).toBe(403);
+      }
+      await app.close();
+    },
+  );
 
   // F-203 — the high-trust co-signer holds ONLY `cosign_escalated`: it may co-sign (the recovery bound requires exactly
   // that person) but it can neither file nor cancel — those need `orders.transmission.recover`.
   it("co-sign ALSO admits a holder of orders.transmission.cosign_escalated alone; cancel does not", async () => {
     const { app } = makeServer();
     const id = await draft(app);
-    const cosign = await app.inject({ method: "POST", url: cosignUrl(id), headers: ESCALATED_ONLY });
+    const cosign = await app.inject({
+      method: "POST",
+      url: cosignUrl(id),
+      headers: ESCALATED_ONLY,
+    });
     expect(cosign.statusCode).toBe(409); // past the gate; the in-memory service has no recovery requests
-    const cancel = await app.inject({ method: "POST", url: cancelUrl(id), headers: ESCALATED_ONLY });
+    const cancel = await app.inject({
+      method: "POST",
+      url: cancelUrl(id),
+      headers: ESCALATED_ONLY,
+    });
     expect(cancel.statusCode).toBe(403);
     await app.close();
   });
@@ -481,12 +700,24 @@ describe("F-202 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cos
   it.each([
     ["cosign", cosignUrl],
     ["cancel", cancelUrl],
-  ])("%s: no session is 401, an unknown order is 404, malformed ids are 422 (not 500)", async (_name, urlOf) => {
-    const { app } = makeServer();
-    expect((await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER) })).statusCode).toBe(401);
-    expect((await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER), headers: RN })).statusCode).toBe(404);
-    expect((await app.inject({ method: "POST", url: urlOf("not-a-uuid"), headers: RN })).statusCode).toBe(422);
-    expect((await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER, "not-a-uuid"), headers: RN })).statusCode).toBe(422);
-    await app.close();
-  });
+  ])(
+    "%s: no session is 401, an unknown order is 404, malformed ids are 422 (not 500)",
+    async (_name, urlOf) => {
+      const { app } = makeServer();
+      expect((await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER) })).statusCode).toBe(
+        401,
+      );
+      expect(
+        (await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER), headers: RN })).statusCode,
+      ).toBe(404);
+      expect(
+        (await app.inject({ method: "POST", url: urlOf("not-a-uuid"), headers: RN })).statusCode,
+      ).toBe(422);
+      expect(
+        (await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER, "not-a-uuid"), headers: RN }))
+          .statusCode,
+      ).toBe(422);
+      await app.close();
+    },
+  );
 });

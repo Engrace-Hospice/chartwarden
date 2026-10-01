@@ -4,10 +4,7 @@
 // and `admission.window_alert` / the §3 `workers/window-scanner.ts`): both are pure, deterministic over
 // an injected `now`, and idempotent so duplicate enqueues from outbox-redelivery are no-ops. The
 // notify/form-render jobs are event-triggered shells whose bodies land with their M14/M22 consumers.
-import type {
-  ComplianceWindowSeverity,
-  ComplianceWindowStatusValue,
-} from "@wardenx/types";
+import type { ComplianceWindowSeverity, ComplianceWindowStatusValue } from "@wardenx/types";
 import type { LocalDate } from "@wardenx/types";
 import { computeF2fWindow, decideF2fWindowStatus } from "../certification/window-math";
 

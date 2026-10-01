@@ -22,7 +22,7 @@ import {
   buildDrizzleStateChannelCredentialResolver,
   runStateChannelHealth,
 } from "../src/modules/24-billing-medicaid/jobs/state-channel-health-jobs";
-import { appRoleUrl, LIVE_APP_ROLE_PASSWORD } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -121,7 +121,11 @@ describe.skipIf(!DB_URL)(
     }
 
     function fakeActiveOrgs(...orgIds: string[]) {
-      return { async listActiveOrgs() { return orgIds.map((organizationId) => ({ organizationId })); } };
+      return {
+        async listActiveOrgs() {
+          return orgIds.map((organizationId) => ({ organizationId }));
+        },
+      };
     }
 
     function fakeOutbox() {
@@ -143,7 +147,9 @@ describe.skipIf(!DB_URL)(
     }
 
     /** A scripted probe: `answers` is consulted in order per call, `null` entries mean "no live gateway". */
-    function scriptedProbe(answers: ReadonlyArray<{ ok: boolean } | null>): StateChannelHealthProbePort {
+    function scriptedProbe(
+      answers: ReadonlyArray<{ ok: boolean } | null>,
+    ): StateChannelHealthProbePort {
       let i = 0;
       const seenSecrets: string[] = [];
       return {
@@ -162,7 +168,9 @@ describe.skipIf(!DB_URL)(
       await admin.connect();
       await resetSchema();
       await applyMigrations();
-      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m24statechannel@x.test')`, [USER]);
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m24statechannel@x.test')`, [
+        USER,
+      ]);
       peA = await seedOrg(ORG_A, "org-a");
       peB = await seedOrg(ORG_B, "org-b");
       await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
@@ -216,7 +224,10 @@ describe.skipIf(!DB_URL)(
         clientSecret: "secret-debounce",
       });
       const breaker = new Map<string, StateChannelBreakerState>();
-      const deps = (outbox: ReturnType<typeof fakeOutbox>["port"], probe: StateChannelHealthProbePort) => ({
+      const deps = (
+        outbox: ReturnType<typeof fakeOutbox>["port"],
+        probe: StateChannelHealthProbePort,
+      ) => ({
         db: handle.db,
         activeOrgs: fakeActiveOrgs(ORG_A),
         listPeStates: buildDrizzleActivePeStatesLister(),
@@ -267,7 +278,10 @@ describe.skipIf(!DB_URL)(
         clientSecret: "secret-recovery",
       });
       const breaker = new Map<string, StateChannelBreakerState>();
-      const deps = (outbox: ReturnType<typeof fakeOutbox>["port"], probe: StateChannelHealthProbePort) => ({
+      const deps = (
+        outbox: ReturnType<typeof fakeOutbox>["port"],
+        probe: StateChannelHealthProbePort,
+      ) => ({
         db: handle.db,
         activeOrgs: fakeActiveOrgs(ORG_A),
         listPeStates: buildDrizzleActivePeStatesLister(),

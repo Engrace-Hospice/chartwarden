@@ -47,7 +47,12 @@ export function buildM5VisitAssignedConsumer(deps: VisitAssignmentDeps): OutboxC
       const membershipId = stringField(event.payload, "assignedMembershipId");
       const patientId = stringField(event.payload, "patientId");
       const scheduledEndedAt = stringField(event.payload, "scheduledEndedAt");
-      if (visitId === null || membershipId === null || patientId === null || scheduledEndedAt === null) {
+      if (
+        visitId === null ||
+        membershipId === null ||
+        patientId === null ||
+        scheduledEndedAt === null
+      ) {
         throw new Error("m5.m17-visit-assigned: payload missing a required field");
       }
       const userId = await deps.membershipUserId(event.organizationId, membershipId);
@@ -55,7 +60,14 @@ export function buildM5VisitAssignedConsumer(deps: VisitAssignmentDeps): OutboxC
       // an error: a later event for a real membership still resolves correctly (the
       // `orderPatientAndKindForOrg` "no matching order_record" precedent).
       if (userId === null) return;
-      await writeShiftAssignment(deps.redis, event.organizationId, userId, visitId, patientId, scheduledEndedAt);
+      await writeShiftAssignment(
+        deps.redis,
+        event.organizationId,
+        userId,
+        visitId,
+        patientId,
+        scheduledEndedAt,
+      );
     },
   };
 }
@@ -82,4 +94,3 @@ export function buildM5VisitUnassignedConsumer(deps: VisitAssignmentDeps): Outbo
     },
   };
 }
-

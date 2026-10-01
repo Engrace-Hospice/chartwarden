@@ -18,11 +18,11 @@
 // KEK that wraps them is operator-configured (`M35_PSEUDONYM_KEY_KEK`).
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  PseudonymKekError,
+  type PseudonymKekRing,
+  type PseudonymKeyProvider,
   mintPseudonymKeyMaterial,
   openPseudonymKeyMaterial,
-  type PseudonymKekRing,
-  PseudonymKekError,
-  type PseudonymKeyProvider,
   sealPseudonymKeyMaterial,
 } from "@wardenx/subscription-billing";
 import { eq } from "drizzle-orm";
@@ -34,7 +34,11 @@ const PPK = schema.patientPseudonymKey;
  *  enough that two processes minting within the same minute do not collide on `key_epoch`'s OWN unique
  *  index before the `is_active` partial index even gets a chance to arbitrate. */
 function freshEpochId(now: Date): string {
-  const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z").slice(0, 13); // YYYYMMDDTHHmm
+  const stamp = now
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d+Z$/, "Z")
+    .slice(0, 13); // YYYYMMDDTHHmm
   const suffix = Math.random().toString(16).slice(2, 6);
   return `epoch-${stamp}-${suffix}`;
 }
@@ -50,11 +54,7 @@ export function createDrizzlePseudonymKeyProvider(
   now: () => Date = () => new Date(),
 ): PseudonymKeyProvider {
   async function readActiveRow() {
-    const [row] = await platformDb
-      .select()
-      .from(PPK)
-      .where(eq(PPK.isActive, true))
-      .limit(1);
+    const [row] = await platformDb.select().from(PPK).where(eq(PPK.isActive, true)).limit(1);
     return row ?? null;
   }
 

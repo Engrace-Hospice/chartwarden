@@ -72,7 +72,8 @@ function factsOf(payload: unknown): CancelledPayload {
   const p = (payload ?? {}) as Record<string, unknown>;
   const sourceOrderId = p.sourceOrderId;
   return {
-    sourceOrderId: typeof sourceOrderId === "string" && sourceOrderId.length > 0 ? sourceOrderId : null,
+    sourceOrderId:
+      typeof sourceOrderId === "string" && sourceOrderId.length > 0 ? sourceOrderId : null,
   };
 }
 
@@ -100,7 +101,9 @@ export function buildM11SupplyCancelledConsumer(deps: SupplyCancelledDeps) {
           const [order] = await tx
             .select({ id: OR.id, status: OR.status })
             .from(OR)
-            .where(and(eq(OR.organizationId, organizationId), eq(OR.id, facts.sourceOrderId as string)))
+            .where(
+              and(eq(OR.organizationId, organizationId), eq(OR.id, facts.sourceOrderId as string)),
+            )
             .limit(1);
 
           // No matching order, or one already terminal — the ordinary case for a cancellation that

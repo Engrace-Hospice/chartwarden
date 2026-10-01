@@ -36,11 +36,11 @@ import { parseMshEnvelope } from "../src/modules/29-external-interfaces/listener
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import { buildM29OutboundDispatchConsumer } from "../src/modules/29-external-interfaces/outbound/dispatch-worker";
 import { buildDrizzleOutboundFeedResolver } from "../src/modules/29-external-interfaces/outbound/feed-resolver";
-import { ormDispatchExistsForOrder } from "../src/modules/29-external-interfaces/outbound/order-dispatch-dedupe";
 import type {
   MllpTransport,
   MllpTransportSendInput,
 } from "../src/modules/29-external-interfaces/outbound/mllp-transport";
+import { ormDispatchExistsForOrder } from "../src/modules/29-external-interfaces/outbound/order-dispatch-dedupe";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -121,7 +121,11 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     },
   };
 
-  async function seedFeed(port: number, facilityId: string | null, status = "active"): Promise<string> {
+  async function seedFeed(
+    port: number,
+    facilityId: string | null,
+    status = "active",
+  ): Promise<string> {
     const id = randomUUID();
     await admin.query(
       `INSERT INTO external_feed
@@ -147,7 +151,10 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     await service.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
     return draft.id;
   }
-  const signArgs = () => ({ signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() });
+  const signArgs = () => ({
+    signerDiscipline: "rn_case_manager",
+    signedAtClient: new Date().toISOString(),
+  });
 
   async function count(sqlText: string, args: unknown[]): Promise<number> {
     const { rows } = await admin.query(sqlText, args);
@@ -193,7 +200,10 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     await admin.connect();
     await resetSchema();
     await applyMigrations();
-    await admin.query(`INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')`, [ORG_A]);
+    await admin.query(
+      `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')`,
+      [ORG_A],
+    );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f180@x.test')`, [USER]);
     member = (
       await admin.query(
@@ -228,9 +238,17 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
 
     const catalog = buildBootOutboxCatalog([M11_OUTBOX_EVENTS, M29_OUTBOX_EVENTS]);
     publisher = buildTxOutboxPublisher(catalog);
-    const m11Outbox = { publish: (tx: unknown, e: any) => publisher.publish(tx as never, { ...e, callerModule: "m11" }) };
-    const m29Outbox = { publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }) };
-    ports = buildM11OrmRequestedPorts({ patient: hl7OrmDemographicsInTx, feeds: buildDrizzleOutboundFeedResolver() });
+    const m11Outbox = {
+      publish: (tx: unknown, e: any) =>
+        publisher.publish(tx as never, { ...e, callerModule: "m11" }),
+    };
+    const m29Outbox = {
+      publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }),
+    };
+    ports = buildM11OrmRequestedPorts({
+      patient: hl7OrmDemographicsInTx,
+      feeds: buildDrizzleOutboundFeedResolver(),
+    });
     svc = createDbOrderBackend(handle.db, m11Outbox, ports);
 
     const orgs: ActiveOrgEnumerator = { listActiveOrgs: async () => [{ organizationId: ORG_A }] };
@@ -275,7 +293,12 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
     expect(await requestEvents(id)).toBe(1);
-    expect(await count("SELECT count(*) n FROM outbox_event WHERE aggregate_id=$1 AND event_type='m11.order.signed'", [id])).toBe(1);
+    expect(
+      await count(
+        "SELECT count(*) n FROM outbox_event WHERE aggregate_id=$1 AND event_type='m11.order.signed'",
+        [id],
+      ),
+    ).toBe(1);
     await settle();
     expect(sent).toHaveLength(1);
     expect(await outboundRows(id)).toBe(1);
@@ -299,16 +322,24 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
       handle.db,
       {
         publish: (tx: unknown, e: any) => {
-          if (e.eventName === "m11.order.hl7_orm_requested") throw new Error("simulated crash at the emit");
+          if (e.eventName === "m11.order.hl7_orm_requested")
+            throw new Error("simulated crash at the emit");
           return publisher.publish(tx as never, { ...e, callerModule: "m11" });
         },
       },
       ports,
     );
-    await expect(crashing.signOrder(ORG_A, member, id, signArgs())).rejects.toThrow(/simulated crash/);
+    await expect(crashing.signOrder(ORG_A, member, id, signArgs())).rejects.toThrow(
+      /simulated crash/,
+    );
     expect((await orderRow(id)).status).toBe("pending_signature");
     expect(await requestEvents(id)).toBe(0);
-    expect(await count("SELECT count(*) n FROM outbox_event WHERE aggregate_id=$1 AND event_type='m11.order.signed'", [id])).toBe(0);
+    expect(
+      await count(
+        "SELECT count(*) n FROM outbox_event WHERE aggregate_id=$1 AND event_type='m11.order.signed'",
+        [id],
+      ),
+    ).toBe(0);
     expect(await count("SELECT count(*) n FROM order_signature WHERE target_id=$1", [id])).toBe(0);
 
     await svc.signOrder(ORG_A, member, id, signArgs());
@@ -346,8 +377,14 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     expect(sent.map((s) => s.port)).toEqual([PORT_X]);
 
     // An operator relinks the destination: the SAME facility now resolves to feed Y.
-    await admin.query("UPDATE external_feed SET lab_destination_facility_id=$2 WHERE id=$1", [feedX, FAC_OTHER]);
-    await admin.query("UPDATE external_feed SET lab_destination_facility_id=$2 WHERE id=$1", [feedY, FAC_ACTIVE]);
+    await admin.query("UPDATE external_feed SET lab_destination_facility_id=$2 WHERE id=$1", [
+      feedX,
+      FAC_OTHER,
+    ]);
+    await admin.query("UPDATE external_feed SET lab_destination_facility_id=$2 WHERE id=$1", [
+      feedY,
+      FAC_ACTIVE,
+    ]);
 
     await loseTheReceipt(id);
     await settle();
@@ -414,7 +451,12 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
       [
         ORG_A,
         rows[0].id,
-        JSON.stringify({ orderId: id, outboundMessageId: rows[0].id, reason: "dlq_exhausted", attemptCount: 5 }),
+        JSON.stringify({
+          orderId: id,
+          outboundMessageId: rows[0].id,
+          reason: "dlq_exhausted",
+          attemptCount: 5,
+        }),
       ],
     );
     await settle();

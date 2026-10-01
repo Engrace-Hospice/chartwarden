@@ -57,7 +57,9 @@ export interface M31DischargeGracePort {
     organizationId: string,
     patientIds: readonly string[],
     cutoffDate: string,
-  ): Promise<ReadonlyMap<string, { readonly patientId: string; readonly dischargeEventId: string }>>;
+  ): Promise<
+    ReadonlyMap<string, { readonly patientId: string; readonly dischargeEventId: string }>
+  >;
 }
 
 export interface PostDischargeGraceSweepDeps {
@@ -147,7 +149,11 @@ async function sweepOrg(
     cursor = page[page.length - 1] ?? cursor;
 
     // (2) M6 answers which of them are discharged-alive past the cutoff and not re-admitted.
-    const pastGrace = await deps.m6.portalDischargedPastGraceForOrg(organizationId, page, cutoffDate);
+    const pastGrace = await deps.m6.portalDischargedPastGraceForOrg(
+      organizationId,
+      page,
+      cutoffDate,
+    );
     let toRevoke = page.filter((p) => pastGrace.has(p));
     const remaining = budget - revokedPatients;
     if (toRevoke.length > remaining) {

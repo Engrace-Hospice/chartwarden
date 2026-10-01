@@ -443,7 +443,8 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
         reason: "for_cause",
         dischargeDate: "2026-05-05",
         narrative: "Discharge for cause; safety of staff could not be assured.",
-        forCauseReason: "Staff safety could not be assured at the residence after repeated incidents.",
+        forCauseReason:
+          "Staff safety could not be assured at the residence after repeated incidents.",
       } as never,
       USER,
     );

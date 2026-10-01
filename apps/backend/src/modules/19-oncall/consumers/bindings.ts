@@ -602,7 +602,8 @@ export function buildOncallTriggerConsumers(
         const organizationId = event.organizationId as OrgId;
         const at = clock();
         const atIso = at.toISOString() as IsoInstant;
-        const alertEventType = typeof payload.alertEventType === "string" ? payload.alertEventType : null;
+        const alertEventType =
+          typeof payload.alertEventType === "string" ? payload.alertEventType : null;
         const sourceAggregateId =
           typeof payload.sourceAggregateId === "string" ? payload.sourceAggregateId : null;
         const m19Payload: M36DeliveryFailedPayload = {

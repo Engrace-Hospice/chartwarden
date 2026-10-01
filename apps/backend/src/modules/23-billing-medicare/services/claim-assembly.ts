@@ -526,8 +526,7 @@ export function buildClaimAssemblyService(
       if (!wageIndex) {
         throw new WardenXError(
           "WAGE_INDEX_UNAVAILABLE",
-          `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${fiscalYearStarting} (D12); ` +
-            "enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry",
+          `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${fiscalYearStarting} (D12); enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
           422,
         );
       }

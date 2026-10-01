@@ -1,3 +1,4 @@
+import { getSeam } from "../../../bootstrap/index";
 // apps/backend/src/modules/22-documents/render-variants/lab-backref-bindings.ts — M22-T09 the §7.15 lab-
 // results back-ref LIVE binding. Bound since F-171 (#248) — M29's `LabObservationReader` seam is registered
 // at boot (`registerM29PublishedSeams`), and this file's own `resolveLabResultsPayload` used to call a
@@ -12,11 +13,13 @@
 // `DocumentRenderer` seam, and emitting `m22.document.rendered` so M11's own back-ref consumer stamps
 // `order_record.document_id`. The event name is a STRING literal and the M29 seam is reached OPAQUELY via
 // getSeam, so M22 deps stay `[1, 5]` (no producer import, no edge).
-import type { DispatchableOutboxEvent, OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
-import { getSeam } from "../../../bootstrap/index";
-import type { DocumentSeamStore } from "../seams/store";
-import { getDocumentRenderer } from "../seams";
+import type {
+  DispatchableOutboxEvent,
+  OutboxConsumerBinding,
+} from "../../../bootstrap/outbox-dispatcher";
 import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
+import { getDocumentRenderer } from "../seams";
+import type { DocumentSeamStore } from "../seams/store";
 import {
   type LabBackrefFacts,
   type LabObservationSeamDtoPort,
@@ -198,13 +201,12 @@ export function buildM22LabBackrefConsumer(deps: LabBackrefConsumerDeps): Outbox
       // milliseconds for never losing the re-announce.
       const renderPayload = await resolvePayload(requestPayload);
 
-      const sudConsentPresent =
-        renderPayload !== null && renderPayload.resultValues.some((v) => v.isSudClass)
-          ? await resolveSudConsent({
-              organizationId: event.organizationId,
-              patientId: renderPayload.patientId,
-            })
-          : false;
+      const sudConsentPresent = renderPayload?.resultValues.some((v) => v.isSudClass)
+        ? await resolveSudConsent({
+            organizationId: event.organizationId,
+            patientId: renderPayload.patientId,
+          })
+        : false;
 
       const facts: LabBackrefFacts = {
         alreadyRendered: prior !== null,
@@ -218,8 +220,7 @@ export function buildM22LabBackrefConsumer(deps: LabBackrefConsumerDeps): Outbox
       // the same way `redactSudValue`/`planLabResultsRender` do — needed both for the render call AND for
       // a redelivery's re-announce (which does not recompute the variant, only re-reads the prior row).
       const retentionClass: "clinical_record" | "compliance_42cfr_part2" =
-        renderPayload !== null &&
-        renderPayload.resultValues.some((v) => v.isSudClass && !sudConsentPresent)
+        renderPayload?.resultValues.some((v) => v.isSudClass && !sudConsentPresent)
           ? "compliance_42cfr_part2"
           : "clinical_record";
 

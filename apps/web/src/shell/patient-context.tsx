@@ -154,7 +154,11 @@ export function ChartBanner({
   ].filter((m): m is string => Boolean(m));
   return (
     <PatientBanner
-      name={<Link to={`/patients/${patient.id}`} style={{ color: "inherit", textDecoration: "none" }}>{patient.firstName} {patient.lastName}</Link>}
+      name={
+        <Link to={`/patients/${patient.id}`} style={{ color: "inherit", textDecoration: "none" }}>
+          {patient.firstName} {patient.lastName}
+        </Link>
+      }
       chips={
         <StatusPill
           label={patientStatusLabel(patient.status)}

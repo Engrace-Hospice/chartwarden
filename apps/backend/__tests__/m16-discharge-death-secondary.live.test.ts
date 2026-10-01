@@ -22,7 +22,10 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { registerSeam } from "../src/bootstrap/index";
-import { type OutboxConsumerBinding, createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
+import {
+  type OutboxConsumerBinding,
+  createOutboxDispatcher,
+} from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-entity-resolver";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
@@ -142,7 +145,10 @@ describe.skipIf(!DB_URL)("F-134 — M16's discharge-death secondary verifier, LI
     );
   }
 
-  async function decedent(org: string, at: string): Promise<{ admissionId: string; patientId: string }> {
+  async function decedent(
+    org: string,
+    at: string,
+  ): Promise<{ admissionId: string; patientId: string }> {
     const patientId = randomUUID();
     const admissionId = await activeAdmission(org, patientId);
     await dischargeByDeath(org, admissionId, at);

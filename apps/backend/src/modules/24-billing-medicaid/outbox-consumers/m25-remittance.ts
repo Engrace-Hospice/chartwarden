@@ -62,7 +62,10 @@ function decimalToCents(amount: string | undefined): number {
 }
 
 /** Why a delivered remittance event changed nothing (a settled decision, not a delivery failure). */
-export type M24RemittanceSkipReason = "claim_not_found" | "already_applied" | "transition_not_legal";
+export type M24RemittanceSkipReason =
+  | "claim_not_found"
+  | "already_applied"
+  | "transition_not_legal";
 
 export interface M24RemittanceOutboxPort {
   publish(
@@ -118,109 +121,113 @@ export function buildM24RemittanceConsumer(deps: M24RemittanceConsumerDeps): Out
       const transitionEvent = M24_REMITTANCE_TRANSITION_BY_TOPIC[event.eventType];
       const landsIn = landsInFor(transitionEvent);
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const C = schema.medicaidClaim;
-        const SH = schema.medicaidClaimStateHistory;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const C = schema.medicaidClaim;
+          const SH = schema.medicaidClaimStateHistory;
 
-        const rows = await tx
-          .select()
-          .from(C)
-          .where(and(eq(C.id, claimId), eq(C.organizationId, organizationId)))
-          .limit(1);
-        const claim = rows[0];
-        if (!claim) {
-          // M25 matched this claim against a DIFFERENT payer's table (Medicare) or another tenant's row —
-          // a settled non-applicable delivery, not an error. M23's own consumer is the one that will (or
-          // already did) act on it.
-          deps.onSkipped?.({
-            reason: "claim_not_found",
-            eventType: event.eventType,
-            organizationId,
-            claimId,
-          });
-          return;
-        }
-        if (claim.state === landsIn) {
-          // A re-delivery, or a second 835 line posting the same outcome for one claim — already recorded.
-          deps.onSkipped?.({
-            reason: "already_applied",
-            eventType: event.eventType,
-            organizationId,
-            claimId,
-            currentState: claim.state,
-          });
-          return;
-        }
-        const reduced = medicaidClaimMachine.reduce(claim.state, transitionEvent);
-        if (reduced.error) {
-          // An 835 for a claim that was never accepted, or one already replaced/voided/paid-then-appealed
-          // out of ACK_ACCEPTED. A real anomaly for a human, not a delivery failure — the row completes.
-          deps.onSkipped?.({
-            reason: "transition_not_legal",
-            eventType: event.eventType,
-            organizationId,
-            claimId,
-            currentState: claim.state,
-          });
-          return;
-        }
-
-        const now = new Date();
-        // CAS on the version this read saw (the M23 sibling consumer's `claimRepo.transitionToState`
-        // precedent) — a concurrent writer (another redelivery, or a human voiding the claim) between the
-        // read above and this write loses the race and must retry against fresh state rather than
-        // silently clobbering it or double-emitting `m24.medicaid_claim.paid`/`.denied`.
-        const [updated] = await tx
-          .update(C)
-          .set({ state: reduced.state, version: claim.version + 1, updatedAt: now })
-          .where(and(eq(C.id, claimId), eq(C.version, claim.version)))
-          .returning({ id: C.id });
-        if (!updated) {
-          throw new Error(
-            `m24.m25-remittance: version conflict updating medicaid_claim ${claimId} (expected version ${claim.version}) — retrying`,
-          );
-        }
-        await tx.insert(SH).values({
-          organizationId,
-          medicaidClaimId: claimId,
-          fromState: claim.state,
-          toState: reduced.state,
-          reason: transitionEvent,
-          triggerSource: "consumer",
-          actorMembershipId: null,
-        });
-
-        if (transitionEvent === "remittance_paid") {
-          const paidAt = payloadStringOrUndefined(p.postedAt) ?? now.toISOString();
-          await deps.outbox.publish(tx, {
-            eventName: "m24.medicaid_claim.paid",
-            organizationId,
-            aggregateKind: "medicaid_claim",
-            aggregateId: claimId,
-            payload: {
+          const rows = await tx
+            .select()
+            .from(C)
+            .where(and(eq(C.id, claimId), eq(C.organizationId, organizationId)))
+            .limit(1);
+          const claim = rows[0];
+          if (!claim) {
+            // M25 matched this claim against a DIFFERENT payer's table (Medicare) or another tenant's row —
+            // a settled non-applicable delivery, not an error. M23's own consumer is the one that will (or
+            // already did) act on it.
+            deps.onSkipped?.({
+              reason: "claim_not_found",
+              eventType: event.eventType,
               organizationId,
               claimId,
-              remittanceAdviceId,
-              paidAmountCents: decimalToCents(payloadStringOrUndefined(p.paidAmount)),
-              paidAt,
-            },
-          });
-        } else {
-          await deps.outbox.publish(tx, {
-            eventName: "m24.medicaid_claim.denied",
-            organizationId,
-            aggregateKind: "medicaid_claim",
-            aggregateId: claimId,
-            payload: {
+            });
+            return;
+          }
+          if (claim.state === landsIn) {
+            // A re-delivery, or a second 835 line posting the same outcome for one claim — already recorded.
+            deps.onSkipped?.({
+              reason: "already_applied",
+              eventType: event.eventType,
               organizationId,
               claimId,
-              remittanceAdviceId,
-              denialCodes: payloadCarcCodes(p.carcCodes),
-            },
+              currentState: claim.state,
+            });
+            return;
+          }
+          const reduced = medicaidClaimMachine.reduce(claim.state, transitionEvent);
+          if (reduced.error) {
+            // An 835 for a claim that was never accepted, or one already replaced/voided/paid-then-appealed
+            // out of ACK_ACCEPTED. A real anomaly for a human, not a delivery failure — the row completes.
+            deps.onSkipped?.({
+              reason: "transition_not_legal",
+              eventType: event.eventType,
+              organizationId,
+              claimId,
+              currentState: claim.state,
+            });
+            return;
+          }
+
+          const now = new Date();
+          // CAS on the version this read saw (the M23 sibling consumer's `claimRepo.transitionToState`
+          // precedent) — a concurrent writer (another redelivery, or a human voiding the claim) between the
+          // read above and this write loses the race and must retry against fresh state rather than
+          // silently clobbering it or double-emitting `m24.medicaid_claim.paid`/`.denied`.
+          const [updated] = await tx
+            .update(C)
+            .set({ state: reduced.state, version: claim.version + 1, updatedAt: now })
+            .where(and(eq(C.id, claimId), eq(C.version, claim.version)))
+            .returning({ id: C.id });
+          if (!updated) {
+            throw new Error(
+              `m24.m25-remittance: version conflict updating medicaid_claim ${claimId} (expected version ${claim.version}) — retrying`,
+            );
+          }
+          await tx.insert(SH).values({
+            organizationId,
+            medicaidClaimId: claimId,
+            fromState: claim.state,
+            toState: reduced.state,
+            reason: transitionEvent,
+            triggerSource: "consumer",
+            actorMembershipId: null,
           });
-        }
-      });
+
+          if (transitionEvent === "remittance_paid") {
+            const paidAt = payloadStringOrUndefined(p.postedAt) ?? now.toISOString();
+            await deps.outbox.publish(tx, {
+              eventName: "m24.medicaid_claim.paid",
+              organizationId,
+              aggregateKind: "medicaid_claim",
+              aggregateId: claimId,
+              payload: {
+                organizationId,
+                claimId,
+                remittanceAdviceId,
+                paidAmountCents: decimalToCents(payloadStringOrUndefined(p.paidAmount)),
+                paidAt,
+              },
+            });
+          } else {
+            await deps.outbox.publish(tx, {
+              eventName: "m24.medicaid_claim.denied",
+              organizationId,
+              aggregateKind: "medicaid_claim",
+              aggregateId: claimId,
+              payload: {
+                organizationId,
+                claimId,
+                remittanceAdviceId,
+                denialCodes: payloadCarcCodes(p.carcCodes),
+              },
+            });
+          }
+        },
+      );
     },
   };
 }

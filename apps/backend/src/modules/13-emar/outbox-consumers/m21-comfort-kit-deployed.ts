@@ -45,9 +45,12 @@
 // deployment_id, medication_order_id) is the per-line guard for the (normal, non-redelivery) case where
 // the deployment insert succeeds but a later step fails and retries — `.onConflictDoNothing()` there too.
 import { type DbClient, schema } from "@wardenx/db";
+import { type KitContentLine, buildComfortKitDeployment } from "@wardenx/emar";
 import { withOrgContext } from "@wardenx/tenancy";
-import { buildComfortKitDeployment, type KitContentLine } from "@wardenx/emar";
-import type { ComfortKitDispatchedContentPayload, M21ComfortKitDeployedAtPatientPayload } from "@wardenx/types";
+import type {
+  ComfortKitDispatchedContentPayload,
+  M21ComfortKitDeployedAtPatientPayload,
+} from "@wardenx/types";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
 
 const DEPLOYMENT = schema.comfortKitDeployments;
@@ -84,9 +87,7 @@ function toContentLine(c: ComfortKitDispatchedContentPayload): KitContentLine {
  * M21's own `buildM21ComfortKitDeploymentAckConsumer` (F-153) is the real, already-bound consumer waiting
  * for this event to bind `comfort_kit_dispatch.m13_deployment_id`.
  */
-export function buildM13ComfortKitDeployedConsumer(
-  deps: ComfortKitDeployedIntakeDeps,
-) {
+export function buildM13ComfortKitDeployedConsumer(deps: ComfortKitDeployedIntakeDeps) {
   return {
     consumerName: M13_COMFORT_KIT_DEPLOYED_INTAKE_CONSUMER.consumerName,
     consumerModule: "m13" as const,
@@ -103,7 +104,9 @@ export function buildM13ComfortKitDeployedConsumer(
         );
       }
       if (typeof payload.dispatchId !== "string") {
-        throw new Error(`${M13_COMFORT_KIT_DEPLOYED_INTAKE_CONSUMER.consumerName}: payload has no dispatchId`);
+        throw new Error(
+          `${M13_COMFORT_KIT_DEPLOYED_INTAKE_CONSUMER.consumerName}: payload has no dispatchId`,
+        );
       }
       const organizationId = event.organizationId;
       const at = deps.now?.() ?? new Date();
@@ -141,8 +144,11 @@ export function buildM13ComfortKitDeployedConsumer(
         );
         const skippedFloorStockLines = contents.length - orderLinked.length;
 
-        let trackedContents: readonly { medicationOrderId: string; expectedQuantity: number; expectedUnit: string }[] =
-          [];
+        let trackedContents: readonly {
+          medicationOrderId: string;
+          expectedQuantity: number;
+          expectedUnit: string;
+        }[] = [];
         if (orderLinked.length > 0) {
           const plan = buildComfortKitDeployment({
             deploymentId,

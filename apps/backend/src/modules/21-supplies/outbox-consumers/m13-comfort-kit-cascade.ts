@@ -27,26 +27,26 @@
 // all run with NO acting membership — the `m11-order-cascade.ts` / F-102 `CONSUMER_USER_ID` convention —
 // because all three cascades are M13 telling M21 something happened, not a human acting on the row.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import { RETURN_WINDOW_HOURS_DEFAULT } from "@wardenx/supplies";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { ComfortKitReturnedContentPayload } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
-import { transitionComfortKitDispatch } from "../lifecycle/index";
-import type { WriteOutboxPort } from "../routes/write-service";
 import {
-  M13_COMFORT_KIT_DEPLOYED_EVENT,
-  M13_CONTROLLED_SUBSTANCE_DISCREPANCY_EVENT,
-  M13_RETURN_REQUIRED_EVENT,
   type ComfortKitDispatchContext,
   type ControlledSubstanceCustodyChainFacts,
   type M13ComfortKitDeployedPayload,
   type M13ControlledSubstanceDiscrepancyPayload,
   type M13ReturnRequiredPayload,
+  M13_COMFORT_KIT_DEPLOYED_EVENT,
+  M13_CONTROLLED_SUBSTANCE_DISCREPANCY_EVENT,
+  M13_RETURN_REQUIRED_EVENT,
   decideControlledSubstanceReemit,
   decideDeploymentAck,
   decideReturnRequired,
 } from "../consumers/m13-comfort-kit";
+import { transitionComfortKitDispatch } from "../lifecycle/index";
+import type { WriteOutboxPort } from "../routes/write-service";
 
 const DISPATCH = schema.comfortKitDispatch;
 const DISPATCHED = schema.comfortKitDispatchedContent;
@@ -130,53 +130,60 @@ export function buildM21ComfortKitDeploymentAckConsumer(
       }
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const rows = await tx
-          .select()
-          .from(DISPATCH)
-          .where(
-            and(
-              eq(DISPATCH.organizationId, organizationId),
-              eq(DISPATCH.patientId, payload.patientId),
-              eq(DISPATCH.admissionId, payload.admissionId),
-              isNull(DISPATCH.m13DeploymentId),
-            ),
-          )
-          .orderBy(desc(DISPATCH.deployedAtPatientAt))
-          .limit(1);
-        const row = rows[0] as DispatchRow | undefined;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const rows = await tx
+            .select()
+            .from(DISPATCH)
+            .where(
+              and(
+                eq(DISPATCH.organizationId, organizationId),
+                eq(DISPATCH.patientId, payload.patientId),
+                eq(DISPATCH.admissionId, payload.admissionId),
+                isNull(DISPATCH.m13DeploymentId),
+              ),
+            )
+            .orderBy(desc(DISPATCH.deployedAtPatientAt))
+            .limit(1);
+          const row = rows[0] as DispatchRow | undefined;
 
-        let dispatchWithLink:
-          | (ComfortKitDispatchContext & { readonly m13DeploymentId: string | null })
-          | null = null;
-        if (row) {
-          const containsControlledSubstance = await dispatchContainsControlledSubstance(tx, row.id);
-          dispatchWithLink = {
-            ...toDispatchContext(row, containsControlledSubstance),
-            m13DeploymentId: row.m13DeploymentId,
-          };
-        }
+          let dispatchWithLink:
+            | (ComfortKitDispatchContext & { readonly m13DeploymentId: string | null })
+            | null = null;
+          if (row) {
+            const containsControlledSubstance = await dispatchContainsControlledSubstance(
+              tx,
+              row.id,
+            );
+            dispatchWithLink = {
+              ...toDispatchContext(row, containsControlledSubstance),
+              m13DeploymentId: row.m13DeploymentId,
+            };
+          }
 
-        const action = decideDeploymentAck(payload, dispatchWithLink);
-        if (action.kind === "no_op" || !row) return;
+          const action = decideDeploymentAck(payload, dispatchWithLink);
+          if (action.kind === "no_op" || !row) return;
 
-        // Status-preserving — `transitionComfortKitDispatch` is still run (not assumed legal) so a future
-        // machine edge cannot silently drift from the graph it enforces.
-        transitionComfortKitDispatch(row.dispatchStatus, {
-          type: "linkM13Deployment",
-          m13DeploymentId: action.m13DeploymentId,
-        });
-
-        await tx
-          .update(DISPATCH)
-          .set({
+          // Status-preserving — `transitionComfortKitDispatch` is still run (not assumed legal) so a future
+          // machine edge cannot silently drift from the graph it enforces.
+          transitionComfortKitDispatch(row.dispatchStatus, {
+            type: "linkM13Deployment",
             m13DeploymentId: action.m13DeploymentId,
-            m13DeploymentLinkResolvedAt: deps.now?.() ?? new Date(),
-            updatedAt: deps.now?.() ?? new Date(),
-          })
-          .where(eq(DISPATCH.id, row.id));
-      });
+          });
+
+          await tx
+            .update(DISPATCH)
+            .set({
+              m13DeploymentId: action.m13DeploymentId,
+              m13DeploymentLinkResolvedAt: deps.now?.() ?? new Date(),
+              updatedAt: deps.now?.() ?? new Date(),
+            })
+            .where(eq(DISPATCH.id, row.id));
+        },
+      );
     },
   };
 }
@@ -201,63 +208,67 @@ export function buildM21ComfortKitReturnRequiredConsumer(
       }
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const dispatchRows = await tx
-          .select()
-          .from(DISPATCH)
-          .where(
-            and(
-              eq(DISPATCH.organizationId, organizationId),
-              eq(DISPATCH.m13DeploymentId, payload.deploymentId),
-            ),
-          )
-          .orderBy(desc(DISPATCH.dispatchedAt))
-          .limit(1);
-        const dispatchRow = dispatchRows[0] as DispatchRow | undefined;
+          const dispatchRows = await tx
+            .select()
+            .from(DISPATCH)
+            .where(
+              and(
+                eq(DISPATCH.organizationId, organizationId),
+                eq(DISPATCH.m13DeploymentId, payload.deploymentId),
+              ),
+            )
+            .orderBy(desc(DISPATCH.dispatchedAt))
+            .limit(1);
+          const dispatchRow = dispatchRows[0] as DispatchRow | undefined;
 
-        const existingRows = dispatchRow
-          ? await tx
-              .select({ id: RETURN.id })
-              .from(RETURN)
-              .where(eq(RETURN.dispatchId, dispatchRow.id))
-              .limit(1)
-          : [];
-        const existingReturnId = existingRows[0]?.id ?? null;
+          const existingRows = dispatchRow
+            ? await tx
+                .select({ id: RETURN.id })
+                .from(RETURN)
+                .where(eq(RETURN.dispatchId, dispatchRow.id))
+                .limit(1)
+            : [];
+          const existingReturnId = existingRows[0]?.id ?? null;
 
-        let dispatchContext: ComfortKitDispatchContext | null = null;
-        if (dispatchRow) {
-          const containsControlledSubstance = await dispatchContainsControlledSubstance(
-            tx,
-            dispatchRow.id,
-          );
-          dispatchContext = toDispatchContext(dispatchRow, containsControlledSubstance);
-        }
+          let dispatchContext: ComfortKitDispatchContext | null = null;
+          if (dispatchRow) {
+            const containsControlledSubstance = await dispatchContainsControlledSubstance(
+              tx,
+              dispatchRow.id,
+            );
+            dispatchContext = toDispatchContext(dispatchRow, containsControlledSubstance);
+          }
 
-        const action = decideReturnRequired(payload, {
-          existingReturnId,
-          dispatch: dispatchContext,
-          returnWindowHours,
-        });
-        if (action.kind === "idempotent_skip" || !dispatchRow) return;
+          const action = decideReturnRequired(payload, {
+            existingReturnId,
+            dispatch: dispatchContext,
+            returnWindowHours,
+          });
+          if (action.kind === "idempotent_skip" || !dispatchRow) return;
 
-        await tx.insert(RETURN).values({
-          dispatchId: action.draft.dispatchId,
-          dispatchPartitionDispatchedAt: dispatchRow.dispatchedAt,
-          m13DeploymentId: action.draft.m13DeploymentId,
-          organizationId,
-          patientId: action.draft.patientId,
-          admissionId: action.draft.admissionId,
-          providerEntityId: action.draft.providerEntityId,
-          locationId: action.draft.locationId,
-          returnRequiredAt: new Date(action.draft.returnRequiredAt),
-          returnDueAt: new Date(action.draft.returnDueAt),
-          state: action.draft.state as (typeof RETURN.$inferInsert)["state"],
-          createdAt: deps.now?.() ?? new Date(),
-          updatedAt: deps.now?.() ?? new Date(),
-        });
-      });
+          await tx.insert(RETURN).values({
+            dispatchId: action.draft.dispatchId,
+            dispatchPartitionDispatchedAt: dispatchRow.dispatchedAt,
+            m13DeploymentId: action.draft.m13DeploymentId,
+            organizationId,
+            patientId: action.draft.patientId,
+            admissionId: action.draft.admissionId,
+            providerEntityId: action.draft.providerEntityId,
+            locationId: action.draft.locationId,
+            returnRequiredAt: new Date(action.draft.returnRequiredAt),
+            returnDueAt: new Date(action.draft.returnDueAt),
+            state: action.draft.state as (typeof RETURN.$inferInsert)["state"],
+            createdAt: deps.now?.() ?? new Date(),
+            updatedAt: deps.now?.() ?? new Date(),
+          });
+        },
+      );
     },
   };
 }
@@ -286,9 +297,7 @@ export function buildM21ComfortKitControlledSubstanceReemitConsumer(
     async handle(event): Promise<void> {
       const payload = (event.payload ?? {}) as M13ControlledSubstanceDiscrepancyPayload;
       if (typeof payload.deploymentId !== "string") {
-        throw new Error(
-          "m21.comfort-kit-controlled-substance-reemit: payload has no deploymentId",
-        );
+        throw new Error("m21.comfort-kit-controlled-substance-reemit: payload has no deploymentId");
       }
       if (typeof payload.medicationOrderId !== "string") {
         throw new Error(
@@ -300,131 +309,135 @@ export function buildM21ComfortKitControlledSubstanceReemitConsumer(
       }
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const dispatchRows = await tx
-          .select()
-          .from(DISPATCH)
-          .where(
-            and(
-              eq(DISPATCH.organizationId, organizationId),
-              eq(DISPATCH.m13DeploymentId, payload.deploymentId),
-            ),
-          )
-          .orderBy(desc(DISPATCH.dispatchedAt))
-          .limit(1);
-        const dispatchRow = dispatchRows[0] as DispatchRow | undefined;
-
-        let dispatchContext: ComfortKitDispatchContext | null = null;
-        if (dispatchRow) {
-          const containsControlledSubstance = await dispatchContainsControlledSubstance(
-            tx,
-            dispatchRow.id,
-          );
-          dispatchContext = toDispatchContext(dispatchRow, containsControlledSubstance);
-        }
-
-        let returnedContent: ComfortKitReturnedContentPayload | null = null;
-        if (dispatchRow) {
-          const rows = await tx
-            .select({
-              returnedContentId: RETURNED.id,
-              dispatchedContentId: RETURNED.dispatchedContentId,
-              comfortKitTemplateMedicationId: DISPATCHED.comfortKitTemplateMedicationId,
-              medicationOrderId: DISPATCHED.medicationOrderId,
-              rxnorm: DISPATCHED.rxnorm,
-              drugName: DISPATCHED.drugName,
-              isControlledSubstance: RETURNED.isControlledSubstance,
-              controlledSubstanceSchedule: RETURNED.controlledSubstanceSchedule,
-              lotNumber: DISPATCHED.lotNumber,
-              dispatchedQuantity: DISPATCHED.dispatchedQuantity,
-              quantityReturned: RETURNED.quantityReturned,
-              quantityDisposedAtHome: RETURNED.quantityDisposedAtHome,
-              quantityUnaccounted: RETURNED.quantityUnaccounted,
-              discrepancyPct: RETURNED.discrepancyPct,
-              discrepancyFlagged: RETURNED.discrepancyFlagged,
-            })
-            .from(RETURNED)
-            .innerJoin(DISPATCHED, eq(RETURNED.dispatchedContentId, DISPATCHED.id))
+          const dispatchRows = await tx
+            .select()
+            .from(DISPATCH)
             .where(
               and(
-                eq(RETURNED.returnId, payload.returnId),
-                eq(DISPATCHED.dispatchId, dispatchRow.id),
-                eq(DISPATCHED.medicationOrderId, payload.medicationOrderId),
+                eq(DISPATCH.organizationId, organizationId),
+                eq(DISPATCH.m13DeploymentId, payload.deploymentId),
               ),
             )
+            .orderBy(desc(DISPATCH.dispatchedAt))
             .limit(1);
-          const row = rows[0];
-          if (row) {
-            returnedContent = {
-              returnedContentId: row.returnedContentId,
-              dispatchedContentId: row.dispatchedContentId,
-              comfortKitTemplateMedicationId: row.comfortKitTemplateMedicationId,
-              medicationOrderId: row.medicationOrderId,
-              rxnorm: row.rxnorm,
-              drugName: row.drugName,
-              isControlledSubstance: row.isControlledSubstance,
-              controlledSubstanceSchedule: row.controlledSubstanceSchedule,
-              lotNumber: row.lotNumber,
-              dispatchedQuantity: row.dispatchedQuantity,
-              quantityReturned: row.quantityReturned,
-              quantityDisposedAtHome: row.quantityDisposedAtHome,
-              quantityUnaccounted: row.quantityUnaccounted,
-              discrepancyPct: Number(row.discrepancyPct),
-              discrepancyFlagged: row.discrepancyFlagged,
+          const dispatchRow = dispatchRows[0] as DispatchRow | undefined;
+
+          let dispatchContext: ComfortKitDispatchContext | null = null;
+          if (dispatchRow) {
+            const containsControlledSubstance = await dispatchContainsControlledSubstance(
+              tx,
+              dispatchRow.id,
+            );
+            dispatchContext = toDispatchContext(dispatchRow, containsControlledSubstance);
+          }
+
+          let returnedContent: ComfortKitReturnedContentPayload | null = null;
+          if (dispatchRow) {
+            const rows = await tx
+              .select({
+                returnedContentId: RETURNED.id,
+                dispatchedContentId: RETURNED.dispatchedContentId,
+                comfortKitTemplateMedicationId: DISPATCHED.comfortKitTemplateMedicationId,
+                medicationOrderId: DISPATCHED.medicationOrderId,
+                rxnorm: DISPATCHED.rxnorm,
+                drugName: DISPATCHED.drugName,
+                isControlledSubstance: RETURNED.isControlledSubstance,
+                controlledSubstanceSchedule: RETURNED.controlledSubstanceSchedule,
+                lotNumber: DISPATCHED.lotNumber,
+                dispatchedQuantity: DISPATCHED.dispatchedQuantity,
+                quantityReturned: RETURNED.quantityReturned,
+                quantityDisposedAtHome: RETURNED.quantityDisposedAtHome,
+                quantityUnaccounted: RETURNED.quantityUnaccounted,
+                discrepancyPct: RETURNED.discrepancyPct,
+                discrepancyFlagged: RETURNED.discrepancyFlagged,
+              })
+              .from(RETURNED)
+              .innerJoin(DISPATCHED, eq(RETURNED.dispatchedContentId, DISPATCHED.id))
+              .where(
+                and(
+                  eq(RETURNED.returnId, payload.returnId),
+                  eq(DISPATCHED.dispatchId, dispatchRow.id),
+                  eq(DISPATCHED.medicationOrderId, payload.medicationOrderId),
+                ),
+              )
+              .limit(1);
+            const row = rows[0];
+            if (row) {
+              returnedContent = {
+                returnedContentId: row.returnedContentId,
+                dispatchedContentId: row.dispatchedContentId,
+                comfortKitTemplateMedicationId: row.comfortKitTemplateMedicationId,
+                medicationOrderId: row.medicationOrderId,
+                rxnorm: row.rxnorm,
+                drugName: row.drugName,
+                isControlledSubstance: row.isControlledSubstance,
+                controlledSubstanceSchedule: row.controlledSubstanceSchedule,
+                lotNumber: row.lotNumber,
+                dispatchedQuantity: row.dispatchedQuantity,
+                quantityReturned: row.quantityReturned,
+                quantityDisposedAtHome: row.quantityDisposedAtHome,
+                quantityUnaccounted: row.quantityUnaccounted,
+                discrepancyPct: Number(row.discrepancyPct),
+                discrepancyFlagged: row.discrepancyFlagged,
+              };
+            }
+          }
+
+          let custody: ControlledSubstanceCustodyChainFacts | null = null;
+          const returnRows = await tx
+            .select({
+              retrievingMembershipId: RETURN.assignedRetrievingMembershipId,
+              disposalWitnessMembershipId: RETURN.disposalWitnessMembershipId,
+              reconciledByMembershipId: RETURN.reconciledByMembershipId,
+            })
+            .from(RETURN)
+            .where(and(eq(RETURN.id, payload.returnId), eq(RETURN.organizationId, organizationId)))
+            .limit(1);
+          const returnRow = returnRows[0];
+          if (returnRow) {
+            custody = {
+              retrievingMembershipId: returnRow.retrievingMembershipId,
+              disposalWitnessMembershipId: returnRow.disposalWitnessMembershipId,
+              reconciledByMembershipId: returnRow.reconciledByMembershipId,
             };
           }
-        }
 
-        let custody: ControlledSubstanceCustodyChainFacts | null = null;
-        const returnRows = await tx
-          .select({
-            retrievingMembershipId: RETURN.assignedRetrievingMembershipId,
-            disposalWitnessMembershipId: RETURN.disposalWitnessMembershipId,
-            reconciledByMembershipId: RETURN.reconciledByMembershipId,
-          })
-          .from(RETURN)
-          .where(and(eq(RETURN.id, payload.returnId), eq(RETURN.organizationId, organizationId)))
-          .limit(1);
-        const returnRow = returnRows[0];
-        if (returnRow) {
-          custody = {
-            retrievingMembershipId: returnRow.retrievingMembershipId,
-            disposalWitnessMembershipId: returnRow.disposalWitnessMembershipId,
-            reconciledByMembershipId: returnRow.reconciledByMembershipId,
-          };
-        }
+          const action = decideControlledSubstanceReemit(
+            payload,
+            dispatchContext,
+            returnedContent,
+            custody,
+          );
+          if (action.kind !== "reemit" || !dispatchContext) return;
 
-        const action = decideControlledSubstanceReemit(
-          payload,
-          dispatchContext,
-          returnedContent,
-          custody,
-        );
-        if (action.kind !== "reemit" || !dispatchContext) return;
-
-        await deps.outbox.publish(tx, {
-          eventName: "m21.controlled_substance.discrepancy_detected",
-          organizationId,
-          aggregateKind: "comfort_kit_return",
-          aggregateId: action.returnId,
-          payload: {
-            orgId: organizationId,
-            patientId: dispatchContext.patientId,
-            admissionId: dispatchContext.admissionId,
-            providerEntityId: dispatchContext.providerEntityId,
-            locationId: dispatchContext.locationId,
-            returnId: action.returnId,
-            dispatchId: action.dispatchId,
-            m13DeploymentId: action.m13DeploymentId,
-            detectionSource: action.detectionSource,
-            discrepantMedications: [action.discrepantMedication],
-            custodyChain: action.custodyChain,
-            detectedAt: (deps.now?.() ?? new Date()).toISOString(),
-          },
-        });
-      });
+          await deps.outbox.publish(tx, {
+            eventName: "m21.controlled_substance.discrepancy_detected",
+            organizationId,
+            aggregateKind: "comfort_kit_return",
+            aggregateId: action.returnId,
+            payload: {
+              orgId: organizationId,
+              patientId: dispatchContext.patientId,
+              admissionId: dispatchContext.admissionId,
+              providerEntityId: dispatchContext.providerEntityId,
+              locationId: dispatchContext.locationId,
+              returnId: action.returnId,
+              dispatchId: action.dispatchId,
+              m13DeploymentId: action.m13DeploymentId,
+              detectionSource: action.detectionSource,
+              discrepantMedications: [action.discrepantMedication],
+              custodyChain: action.custodyChain,
+              detectedAt: (deps.now?.() ?? new Date()).toISOString(),
+            },
+          });
+        },
+      );
     },
   };
 }

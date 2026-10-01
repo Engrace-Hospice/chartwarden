@@ -455,7 +455,9 @@ describe("calculateHipps — wage index application + snapshot (D7 / D12)", () =
   });
 
   it("a labor share of 1 reduces to the whole-rate multiply, and 0 ignores the wage index entirely", () => {
-    expect(applyWageIndexToLaborShare(20_000, "0.9234", "1")).toBe(applyWageIndexFactor(20_000, "0.9234"));
+    expect(applyWageIndexToLaborShare(20_000, "0.9234", "1")).toBe(
+      applyWageIndexFactor(20_000, "0.9234"),
+    );
     expect(applyWageIndexToLaborShare(20_000, "0.9234", "0")).toBe(20_000);
     expect(() => applyWageIndexToLaborShare(20_000, "0.9234", "1.2")).toThrow(RangeError);
     expect(() => applyWageIndexToLaborShare(20_000, "-1", "0.6")).toThrow(RangeError);

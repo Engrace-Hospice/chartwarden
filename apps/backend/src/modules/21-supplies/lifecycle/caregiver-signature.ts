@@ -53,7 +53,9 @@ export interface CaregiverSignatureCaptureContext {
  * posture for an evidentiary act (the DEA perpetual log, `order_transmission_attestation`) applied here:
  * a resubmission is REFUSED, not silently overwritten or appended as a second row.
  */
-export function assertCaregiverSignatureCaptureAllowed(ctx: CaregiverSignatureCaptureContext): void {
+export function assertCaregiverSignatureCaptureAllowed(
+  ctx: CaregiverSignatureCaptureContext,
+): void {
   require_(
     ctx.deliveredAt !== null,
     "M21_CAREGIVER_SIGNATURE_REQUIRES_DELIVERY",

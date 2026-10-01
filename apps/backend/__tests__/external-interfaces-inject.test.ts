@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 // apps/backend/__tests__/external-interfaces-inject.test.ts — M29 (External Interfaces) §4.1/§4.2
 // route-inventory HTTP-layer smoke test (TASK-050A / TEST-001).
 //
@@ -48,10 +52,6 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -862,9 +862,19 @@ describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
     const dir = mkdtempSync(join(tmpdir(), "m29-feed-input-"));
     try {
       execFileSync("openssl", [
-        "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-        "-keyout", join(dir, "k.pem"), "-out", join(dir, "c.pem"),
-        "-days", "1", "-subj", "/CN=f178-lab-receiver",
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-keyout",
+        join(dir, "k.pem"),
+        "-out",
+        join(dir, "c.pem"),
+        "-days",
+        "1",
+        "-subj",
+        "/CN=f178-lab-receiver",
       ]);
       certPem = readFileSync(join(dir, "c.pem"), "utf8");
     } finally {
@@ -883,7 +893,12 @@ describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
 
   it("a PEM on create is converted to the canonical DER-sha256 pin server-side", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
-    const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ channelCertPem: certPem }) });
+    const res = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound({ channelCertPem: certPem }),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().feed.channelCertPin).toBe(certPinFromPem(certPem));
     await app.close();
@@ -892,7 +907,12 @@ describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
   it("a raw 64-hex pin is still accepted unchanged", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
     const pin = "ab".repeat(32);
-    const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ channelCertPin: pin }) });
+    const res = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound({ channelCertPin: pin }),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().feed.channelCertPin).toBe(pin);
     await app.close();
@@ -901,14 +921,23 @@ describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
   it("a PEM together with a DIFFERENT pin is refused (422 CERT_PIN_MISMATCH); garbage PEM is refused (422 CERT_PEM_INVALID)", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
     const mismatch = await app.inject({
-      method: "POST", url: FEEDS, headers: SUPER,
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
       payload: outbound({ channelCertPem: certPem, channelCertPin: "cd".repeat(32) }),
     });
     expect(mismatch.statusCode).toBe(422);
     expect(JSON.stringify(mismatch.json())).toContain("CERT_PIN_MISMATCH");
     const garbage = await app.inject({
-      method: "POST", url: FEEDS, headers: SUPER,
-      payload: outbound({ channelCertPem: "-----BEGIN CERTIFICATE-----\nnot-a-cert\n-----END CERTIFICATE-----".padEnd(80, " ") }),
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound({
+        channelCertPem: "-----BEGIN CERTIFICATE-----\nnot-a-cert\n-----END CERTIFICATE-----".padEnd(
+          80,
+          " ",
+        ),
+      }),
     });
     expect(garbage.statusCode).toBe(422);
     expect(JSON.stringify(garbage.json())).toContain("CERT_PEM_INVALID");
@@ -917,15 +946,30 @@ describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
 
   it("production: creating an OUTBOUND mllp_plain feed is refused (422 PLAIN_MLLP_REFUSED); mllp_tls and non-production plain are fine", async () => {
     const prod = makeServer({ env: { NODE_ENV: "production" } });
-    const refused = await prod.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ protocol: "mllp_plain" }) });
+    const refused = await prod.app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound({ protocol: "mllp_plain" }),
+    });
     expect(refused.statusCode).toBe(422);
     expect(JSON.stringify(refused.json())).toContain("PLAIN_MLLP_REFUSED");
-    const tlsOk = await prod.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    const tlsOk = await prod.app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound(),
+    });
     expect(tlsOk.statusCode).toBe(201);
     await prod.app.close();
 
     const dev = makeServer({ env: { NODE_ENV: "development" } });
-    const devPlain = await dev.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ protocol: "mllp_plain" }) });
+    const devPlain = await dev.app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound({ protocol: "mllp_plain" }),
+    });
     expect(devPlain.statusCode).toBe(201);
     await dev.app.close();
   });
@@ -933,11 +977,20 @@ describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
   it("a plain outbound feed created before the deployment became production cannot be ACTIVATED in production", async () => {
     const env: Record<string, string | undefined> = { NODE_ENV: "development" };
     const { app } = makeServer({ env });
-    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ protocol: "mllp_plain" }) });
+    const created = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound({ protocol: "mllp_plain" }),
+    });
     expect(created.statusCode).toBe(201);
     const feedId = created.json().feed.id as string;
     env.NODE_ENV = "production";
-    const activate = await app.inject({ method: "POST", url: `${FEEDS}/${feedId}/activate`, headers: SUPER2 });
+    const activate = await app.inject({
+      method: "POST",
+      url: `${FEEDS}/${feedId}/activate`,
+      headers: SUPER2,
+    });
     expect(activate.statusCode).toBe(422);
     expect(JSON.stringify(activate.json())).toContain("PLAIN_MLLP_REFUSED");
     await app.close();
@@ -945,12 +998,27 @@ describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
 
   it("a link-local / metadata destination is refused on create and on update (422 DESTINATION_REFUSED)", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "development" } });
-    const bad = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ host: "169.254.169.254" }) });
+    const bad = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound({ host: "169.254.169.254" }),
+    });
     expect(bad.statusCode).toBe(422);
     expect(JSON.stringify(bad.json())).toContain("DESTINATION_REFUSED");
-    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    const created = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound(),
+    });
     const feedId = created.json().feed.id as string;
-    const upd = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { host: "metadata.google.internal" } });
+    const upd = await app.inject({
+      method: "PATCH",
+      url: `${FEEDS}/${feedId}`,
+      headers: SUPER,
+      payload: { host: "metadata.google.internal" },
+    });
     expect(upd.statusCode).toBe(422);
     expect(JSON.stringify(upd.json())).toContain("DESTINATION_REFUSED");
     await app.close();
@@ -972,20 +1040,33 @@ describe("M29-external-interfaces-inject — F-182 inbound mllp_plain", () => {
     const prod = makeServer({ env: { NODE_ENV: "production" } });
     for (const kind of ["adt_inbound", "lab_inbound"]) {
       const refused = await prod.app.inject({
-        method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ kind, protocol: "mllp_plain" }),
+        method: "POST",
+        url: FEEDS,
+        headers: SUPER,
+        payload: inbound({ kind, protocol: "mllp_plain" }),
       });
       expect(refused.statusCode).toBe(422);
       expect(JSON.stringify(refused.json())).toContain("PLAIN_MLLP_REFUSED");
       expect(JSON.stringify(refused.json())).toContain("inbound");
     }
-    const tlsOk = await prod.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound() });
+    const tlsOk = await prod.app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: inbound(),
+    });
     expect(tlsOk.statusCode).toBe(201);
     await prod.app.close();
   });
 
   it("non-production: an inbound mllp_plain feed can still be created (the listener enforces the opt-in at bind time)", async () => {
     const dev = makeServer({ env: { NODE_ENV: "development" } });
-    const res = await dev.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ protocol: "mllp_plain" }) });
+    const res = await dev.app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: inbound({ protocol: "mllp_plain" }),
+    });
     expect(res.statusCode).toBe(201);
     await dev.app.close();
   });
@@ -993,11 +1074,20 @@ describe("M29-external-interfaces-inject — F-182 inbound mllp_plain", () => {
   it("a plain INBOUND feed created before the deployment became production cannot be ACTIVATED in production", async () => {
     const env: Record<string, string | undefined> = { NODE_ENV: "development" };
     const { app } = makeServer({ env });
-    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ protocol: "mllp_plain" }) });
+    const created = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: inbound({ protocol: "mllp_plain" }),
+    });
     expect(created.statusCode).toBe(201);
     const feedId = created.json().feed.id as string;
     env.NODE_ENV = "production";
-    const activate = await app.inject({ method: "POST", url: `${FEEDS}/${feedId}/activate`, headers: SUPER2 });
+    const activate = await app.inject({
+      method: "POST",
+      url: `${FEEDS}/${feedId}/activate`,
+      headers: SUPER2,
+    });
     expect(activate.statusCode).toBe(422);
     expect(JSON.stringify(activate.json())).toContain("PLAIN_MLLP_REFUSED");
     await app.close();
@@ -1018,64 +1108,128 @@ describe("M29-external-interfaces-inject — F-183 feed reclaim policy", () => {
 
   it("defaults are the SAFE ones: the receiver is NOT assumed to dedupe, and the lease is the platform default (null)", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
-    const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    const res = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound(),
+    });
     expect(res.statusCode).toBe(201);
-    expect(res.json().feed).toMatchObject({ receiverDedupesControlId: false, inFlightLeaseSeconds: null });
+    expect(res.json().feed).toMatchObject({
+      receiverDedupesControlId: false,
+      inFlightLeaseSeconds: null,
+    });
     await app.close();
   });
 
   it("create → get round-trips an explicit dedupe declaration and a per-feed lease", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
     const created = await app.inject({
-      method: "POST", url: FEEDS, headers: SUPER,
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
       payload: outbound({ receiverDedupesControlId: true, inFlightLeaseSeconds: 120 }),
     });
     expect(created.statusCode).toBe(201);
     const feedId = created.json().feed.id as string;
     const got = await app.inject({ method: "GET", url: `${FEEDS}/${feedId}`, headers: SUPER });
     expect(got.statusCode).toBe(200);
-    expect(got.json().feed).toMatchObject({ receiverDedupesControlId: true, inFlightLeaseSeconds: 120 });
+    expect(got.json().feed).toMatchObject({
+      receiverDedupesControlId: true,
+      inFlightLeaseSeconds: 120,
+    });
     await app.close();
   });
 
   it("update changes each independently; an omitted field is unchanged and an explicit null CLEARS the lease", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
     const created = await app.inject({
-      method: "POST", url: FEEDS, headers: SUPER,
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
       payload: outbound({ receiverDedupesControlId: true, inFlightLeaseSeconds: 600 }),
     });
     const feedId = created.json().feed.id as string;
 
-    const lease = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: 900 } });
+    const lease = await app.inject({
+      method: "PATCH",
+      url: `${FEEDS}/${feedId}`,
+      headers: SUPER,
+      payload: { inFlightLeaseSeconds: 900 },
+    });
     expect(lease.statusCode).toBe(200);
-    expect(lease.json().feed).toMatchObject({ receiverDedupesControlId: true, inFlightLeaseSeconds: 900 });
+    expect(lease.json().feed).toMatchObject({
+      receiverDedupesControlId: true,
+      inFlightLeaseSeconds: 900,
+    });
 
-    const flag = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { receiverDedupesControlId: false } });
-    expect(flag.json().feed).toMatchObject({ receiverDedupesControlId: false, inFlightLeaseSeconds: 900 });
+    const flag = await app.inject({
+      method: "PATCH",
+      url: `${FEEDS}/${feedId}`,
+      headers: SUPER,
+      payload: { receiverDedupesControlId: false },
+    });
+    expect(flag.json().feed).toMatchObject({
+      receiverDedupesControlId: false,
+      inFlightLeaseSeconds: 900,
+    });
 
-    const cleared = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: null } });
+    const cleared = await app.inject({
+      method: "PATCH",
+      url: `${FEEDS}/${feedId}`,
+      headers: SUPER,
+      payload: { inFlightLeaseSeconds: null },
+    });
     expect(cleared.statusCode).toBe(200);
-    expect(cleared.json().feed).toMatchObject({ receiverDedupesControlId: false, inFlightLeaseSeconds: null });
+    expect(cleared.json().feed).toMatchObject({
+      receiverDedupesControlId: false,
+      inFlightLeaseSeconds: null,
+    });
     await app.close();
   });
 
   it("a lease outside the 60..3600 s bounds (or a non-integer / non-boolean value) is refused at the boundary — 422", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
     for (const bad of [59, 3601, 0, -5, 90.5]) {
-      const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ inFlightLeaseSeconds: bad }) });
+      const res = await app.inject({
+        method: "POST",
+        url: FEEDS,
+        headers: SUPER,
+        payload: outbound({ inFlightLeaseSeconds: bad }),
+      });
       expect(res.statusCode, `create lease ${bad}`).toBe(422);
     }
-    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    const created = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound(),
+    });
     const feedId = created.json().feed.id as string;
     for (const bad of [59, 3601, "300"]) {
-      const res = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: bad } });
+      const res = await app.inject({
+        method: "PATCH",
+        url: `${FEEDS}/${feedId}`,
+        headers: SUPER,
+        payload: { inFlightLeaseSeconds: bad },
+      });
       expect(res.statusCode, `update lease ${String(bad)}`).toBe(422);
     }
-    const notBool = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { receiverDedupesControlId: "yes" } });
+    const notBool = await app.inject({
+      method: "PATCH",
+      url: `${FEEDS}/${feedId}`,
+      headers: SUPER,
+      payload: { receiverDedupesControlId: "yes" },
+    });
     expect(notBool.statusCode).toBe(422);
     // The bounds themselves are valid.
     for (const ok of [60, 3600]) {
-      const res = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: ok } });
+      const res = await app.inject({
+        method: "PATCH",
+        url: `${FEEDS}/${feedId}`,
+        headers: SUPER,
+        payload: { inFlightLeaseSeconds: ok },
+      });
       expect(res.statusCode, `update lease ${ok}`).toBe(200);
     }
     await app.close();

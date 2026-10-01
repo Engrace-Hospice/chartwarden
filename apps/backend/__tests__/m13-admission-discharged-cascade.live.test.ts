@@ -22,11 +22,11 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import {
   type DischargeCascadeAdmissionAnchor,
   buildM13AdmissionDischargedCascadeConsumer,
 } from "../src/modules/13-emar/outbox-consumers/m6-admission-discharged-cascade";
-import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -262,7 +262,11 @@ describe.skipIf(!DB_URL)(
       await consumer.handle({
         id: eventId,
         organizationId: ORG_A,
-        payload: { admissionId: ADMISSION_A, reason: "revocation", dischargeDate: "2050-01-01T00:00:00Z" },
+        payload: {
+          admissionId: ADMISSION_A,
+          reason: "revocation",
+          dischargeDate: "2050-01-01T00:00:00Z",
+        },
       });
 
       const future = await doseRow(futureDoseId);
@@ -295,7 +299,11 @@ describe.skipIf(!DB_URL)(
       await consumer.handle({
         id: "eeeeeeee-0000-4000-8000-000000000002",
         organizationId: ORG_A,
-        payload: { admissionId: ADMISSION_A, reason: "death", dischargeDate: "2050-01-01T00:00:00Z" },
+        payload: {
+          admissionId: ADMISSION_A,
+          reason: "death",
+          dischargeDate: "2050-01-01T00:00:00Z",
+        },
       });
 
       const after = await outboxRows(ORG_A, "m13.scheduled_dose.cancelled");
@@ -367,7 +375,11 @@ describe.skipIf(!DB_URL)(
       await consumer.handle({
         id: "eeeeeeee-0000-4000-8000-000000000004",
         organizationId: ORG_A,
-        payload: { admissionId: ADMISSION_A, reason: "revocation", dischargeDate: "2052-01-01T00:00:00Z" },
+        payload: {
+          admissionId: ADMISSION_A,
+          reason: "revocation",
+          dischargeDate: "2052-01-01T00:00:00Z",
+        },
       });
 
       const row = await doseRow(doseId);

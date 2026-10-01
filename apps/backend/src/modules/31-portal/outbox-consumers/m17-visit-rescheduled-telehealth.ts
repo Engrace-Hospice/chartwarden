@@ -75,39 +75,45 @@ export function buildM31VisitRescheduledTelehealthConsumer(
       const facts = factsOf(event.payload);
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const [row] = await tx
-          .select({
-            id: TV.id,
-            lifecycleState: TV.lifecycleState,
-            visitStartedAt: TV.visitStartedAt,
-            version: TV.version,
-          })
-          .from(TV)
-          .where(and(eq(TV.organizationId, organizationId), eq(TV.m17VisitId, facts.oldVisitId)))
-          .limit(1);
-        if (!row) return; // the OLD visit never had a telehealth room — nothing to end.
+          const [row] = await tx
+            .select({
+              id: TV.id,
+              lifecycleState: TV.lifecycleState,
+              visitStartedAt: TV.visitStartedAt,
+              version: TV.version,
+            })
+            .from(TV)
+            .where(and(eq(TV.organizationId, organizationId), eq(TV.m17VisitId, facts.oldVisitId)))
+            .limit(1);
+          if (!row) return; // the OLD visit never had a telehealth room — nothing to end.
 
-        const current = row.lifecycleState as TelehealthLifecycleState;
-        if (!canTransitionTelehealth(current, "ended_aborted")) return; // already ended/reconciled.
+          const current = row.lifecycleState as TelehealthLifecycleState;
+          if (!canTransitionTelehealth(current, "ended_aborted")) return; // already ended/reconciled.
 
-        const startedMs = row.visitStartedAt ? row.visitStartedAt.getTime() : null;
-        const now = new Date();
+          const startedMs = row.visitStartedAt ? row.visitStartedAt.getTime() : null;
+          const now = new Date();
 
-        await tx
-          .update(TV)
-          .set({
-            lifecycleState: "ended_aborted",
-            visitEndedAt: now,
-            endReason: "other", // no `rescheduled` member exists on TelehealthEndReason (§3.3)
-            totalDurationSec: startedMs ? Math.max(0, Math.round((now.getTime() - startedMs) / 1000)) : null,
-            version: row.version + 1,
-            updatedAt: now,
-          })
-          .where(and(eq(TV.id, row.id), eq(TV.version, row.version)));
-      });
+          await tx
+            .update(TV)
+            .set({
+              lifecycleState: "ended_aborted",
+              visitEndedAt: now,
+              endReason: "other", // no `rescheduled` member exists on TelehealthEndReason (§3.3)
+              totalDurationSec: startedMs
+                ? Math.max(0, Math.round((now.getTime() - startedMs) / 1000))
+                : null,
+              version: row.version + 1,
+              updatedAt: now,
+            })
+            .where(and(eq(TV.id, row.id), eq(TV.version, row.version)));
+        },
+      );
     },
   };
 }

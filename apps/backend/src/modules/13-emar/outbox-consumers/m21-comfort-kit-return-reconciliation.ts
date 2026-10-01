@@ -47,8 +47,8 @@
 // per line — a silent no-op, not a double-write. The deployment's `disposal_reconciliation_status` UPDATE
 // conditions on `IS DISTINCT FROM 'pending'` being false (i.e. still unset/pending), the same guard shape.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import { reconcileKitReturnLine } from "@wardenx/emar";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { M21ComfortKitReturnReconciliationPayload } from "@wardenx/types";
 import { and, eq, isNull, or } from "drizzle-orm";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
@@ -158,9 +158,8 @@ export function buildM13ComfortKitReturnReconciliationConsumer(
           }
         }
 
-        const disposalReconciliationStatus = payload.discrepancyDetected || anyDiscrepancy
-          ? "discrepancy"
-          : "matched";
+        const disposalReconciliationStatus =
+          payload.discrepancyDetected || anyDiscrepancy ? "discrepancy" : "matched";
 
         await tx
           .update(DEPLOYMENT)
@@ -191,4 +190,3 @@ export function buildM13ComfortKitReturnReconciliationConsumer(
     },
   };
 }
-

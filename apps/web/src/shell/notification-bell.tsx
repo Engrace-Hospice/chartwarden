@@ -63,9 +63,7 @@ function relativeTime(value: string): string {
 }
 
 function categoryLabel(value: string): string {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function NotificationBell(): JSX.Element {
@@ -152,9 +150,7 @@ export function NotificationBell(): JSX.Element {
     const readAt = new Date().toISOString();
 
     setAlerts((current) =>
-      current.map((item) =>
-        item.alertId === alert.alertId ? { ...item, readAt } : item,
-      ),
+      current.map((item) => (item.alertId === alert.alertId ? { ...item, readAt } : item)),
     );
 
     const { error } = await postAlertRead(client, alert.alertId);
@@ -182,11 +178,7 @@ export function NotificationBell(): JSX.Element {
             void load();
           }
         }}
-        aria-label={
-          unreadCount > 0
-            ? `${unreadCount} unread notifications`
-            : "Notifications"
-        }
+        aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Notifications"
@@ -213,22 +205,19 @@ export function NotificationBell(): JSX.Element {
         </svg>
 
         {unreadCount > 0 ? (
-          <span style={badgeStyle}>
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
+          <span style={badgeStyle}>{unreadCount > 99 ? "99+" : unreadCount}</span>
         ) : null}
       </button>
 
       {open ? (
+        // biome-ignore lint/a11y/useSemanticElements: non-modal anchored popover; <dialog> adds top-layer/backdrop semantics.
         <div role="dialog" aria-label="Notifications" style={popoverStyle}>
           <div style={headerStyle}>
             <div>
               <div style={titleStyle}>Notifications</div>
 
               <div style={subtitleStyle}>
-                {unreadCount > 0
-                  ? `${unreadCount} unread`
-                  : "You're all caught up"}
+                {unreadCount > 0 ? `${unreadCount} unread` : "You're all caught up"}
               </div>
             </div>
 
@@ -276,30 +265,20 @@ export function NotificationBell(): JSX.Element {
                     <span
                       style={{
                         ...severityMarkerStyle,
-                        ...(alert.severity === "critical" ||
-                        alert.severity === "warn"
+                        ...(alert.severity === "critical" || alert.severity === "warn"
                           ? severityMarkerWarningStyle
                           : {}),
                       }}
                     >
-                      <Glyph
-                        name={alert.severity === "info" ? "info" : "alert"}
-                        size={16}
-                      />
+                      <Glyph name={alert.severity === "info" ? "info" : "alert"} size={16} />
                     </span>
 
                     <span style={alertContentStyle}>
                       <span style={alertTitleLineStyle}>
-                        <strong style={alertSummaryStyle}>
-                          {alert.summary}
-                        </strong>
+                        <strong style={alertSummaryStyle}>{alert.summary}</strong>
 
                         {unread ? (
-                          <span
-                            aria-label="Unread"
-                            title="Unread"
-                            style={unreadDotStyle}
-                          />
+                          <span aria-label="Unread" title="Unread" style={unreadDotStyle} />
                         ) : null}
                       </span>
 
@@ -316,11 +295,7 @@ export function NotificationBell(): JSX.Element {
           </div>
 
           <div style={footerStyle}>
-            <button
-              type="button"
-              onClick={openAllNotifications}
-              style={viewAllButtonStyle}
-            >
+            <button type="button" onClick={openAllNotifications} style={viewAllButtonStyle}>
               View all notifications
               <Glyph name="arrow-right" size={15} />
             </button>
@@ -379,8 +354,7 @@ const popoverStyle: CSSProperties = {
   maxWidth: "calc(100vw - 2rem)",
   borderRadius: "var(--radius-lg)",
   background: "var(--color-surface-lowest)",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   boxShadow: "var(--shadow-elevated)",
   overflow: "hidden",
 };
@@ -391,8 +365,7 @@ const headerStyle: CSSProperties = {
   justifyContent: "space-between",
   gap: "1rem",
   padding: "1rem",
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
 };
 
 const titleStyle: CSSProperties = {
@@ -463,8 +436,7 @@ const emptyDescriptionStyle: CSSProperties = {
 const alertRowStyle: CSSProperties = {
   width: "100%",
   border: 0,
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 25%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 25%, transparent)",
   background: "transparent",
   padding: "0.8rem 1rem",
   display: "flex",

@@ -21,7 +21,10 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
-import { M27_OUTBOX_EVENTS, buildM27VendorInvoiceConsumer } from "../src/modules/27-cost-report/index";
+import {
+  M27_OUTBOX_EVENTS,
+  buildM27VendorInvoiceConsumer,
+} from "../src/modules/27-cost-report/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -95,13 +98,16 @@ describe.skipIf(!DB_URL)("F-207 — M27 vendor-invoice forward seam, LIVE Postgr
     await dispatcher.tick();
   }
 
-  async function publishAccrued(org: string, args: {
-    providerEntityId: string;
-    supplyRequestId: string;
-    vendorId: string | null;
-    invoiceTotalCents: number;
-    accruedAt: string;
-  }) {
+  async function publishAccrued(
+    org: string,
+    args: {
+      providerEntityId: string;
+      supplyRequestId: string;
+      vendorId: string | null;
+      invoiceTotalCents: number;
+      accruedAt: string;
+    },
+  ) {
     await withOrgContext(handle.db, { organizationId: org, userId: "" }, (tx) =>
       publisher.publish(tx as never, {
         eventName: "m21.supply_request.invoice_accrued",
@@ -125,13 +131,16 @@ describe.skipIf(!DB_URL)("F-207 — M27 vendor-invoice forward seam, LIVE Postgr
     );
   }
 
-  async function publishReconciled(org: string, args: {
-    providerEntityId: string;
-    supplyRequestId: string;
-    invoiceTotalCents: number;
-    varianceCents: number;
-    reconciledAt: string;
-  }) {
+  async function publishReconciled(
+    org: string,
+    args: {
+      providerEntityId: string;
+      supplyRequestId: string;
+      invoiceTotalCents: number;
+      varianceCents: number;
+      reconciledAt: string;
+    },
+  ) {
     await withOrgContext(handle.db, { organizationId: org, userId: "" }, (tx) =>
       publisher.publish(tx as never, {
         eventName: "m21.supply_request.invoice_reconciled",
@@ -169,7 +178,10 @@ describe.skipIf(!DB_URL)("F-207 — M27 vendor-invoice forward seam, LIVE Postgr
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f207-m27-vendor-invoice@x.test')`, [USER]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f207-m27-vendor-invoice@x.test')`,
+      [USER],
+    );
     for (const org of [ORG_A, ORG_B]) {
       memberOf[org] = (
         await admin.query(

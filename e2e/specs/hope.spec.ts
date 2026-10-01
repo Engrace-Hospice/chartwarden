@@ -342,6 +342,17 @@ async function completeAdmissionSections(page: Page): Promise<void> {
   const diagnosisCount = await diagnoses.count();
   expect(diagnosisCount).toBeGreaterThan(0);
   for (let i = 0; i < diagnosisCount; i += 1) await answerSelect(diagnoses.nth(i), page);
+  // The comorbidity flags (I0100…I8005) are Yes/No checkbox pairs inside a "<condition>: select Yes or No"
+  // group rather than selects, so the loop above no longer reaches them; each needs its "No" ticked.
+  const flags = main.getByRole("group", { name: /: select Yes or No$/ });
+  const flagCount = await flags.count();
+  expect(flagCount).toBeGreaterThan(0);
+  for (let i = 0; i < flagCount; i += 1) {
+    const no = flags.nth(i).getByRole("checkbox", { name: "No", exact: true });
+    if (await no.isChecked()) continue;
+    await saving(page, () => no.click());
+    await expect(no).toBeChecked();
+  }
 
   // M — Skin, N — Medications.
   await openSection(page, "M");

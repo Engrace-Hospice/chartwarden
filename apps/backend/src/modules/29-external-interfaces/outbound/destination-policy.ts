@@ -108,7 +108,10 @@ export function classifyAddress(
 }
 
 /** Classify a configured HOSTNAME before resolution (well-known metadata names, `localhost`). */
-export function classifyHostname(host: string, policy: OutboundDestinationPolicy): DestinationRefusal | null {
+export function classifyHostname(
+  host: string,
+  policy: OutboundDestinationPolicy,
+): DestinationRefusal | null {
   const h = host.trim().toLowerCase().replace(/\.$/, "");
   if (METADATA_HOSTNAMES.has(h)) return "destination_metadata_host";
   if (isIP(h) !== 0) return classifyAddress(h, policy);

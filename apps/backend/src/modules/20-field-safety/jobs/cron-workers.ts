@@ -58,20 +58,25 @@ import type {
   SafetySosAlertId,
   SafetySosLifecycleState,
 } from "@wardenx/types";
-import { and, desc, eq, sql } from "drizzle-orm";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { buildSosEscalatedAlert, buildSosTerminusAlert } from "../alerts";
 import {
   type SafetySosAlertFacts,
   type SafetySosTransition,
   escalateSos,
   expireCancelWindow,
-  repageTerminus,
+  type repageTerminus,
 } from "../lifecycle/sos-alert";
 import { decideSosWatchdog } from "../lifecycle/sos-escalator";
 import { type SosStateHistoryPort, runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
-import { M20_JOB_SCHEDULES, M20_QUEUES, M20_QUEUE_PARAMS, M20_SOS_WATCHDOG_JOB_NAME } from "./index";
+import {
+  M20_JOB_SCHEDULES,
+  M20_QUEUES,
+  M20_QUEUE_PARAMS,
+  M20_SOS_WATCHDOG_JOB_NAME,
+} from "./index";
 
 const SOS = schema.safetySosAlert;
 const SOS_HISTORY = schema.safetySosAlertStateHistory;
@@ -248,7 +253,11 @@ async function loadAlertWithStateEnteredAt(
   tx: DbClient,
   organizationId: string,
   sosAlertId: string,
-): Promise<{ alert: SafetySosAlertFacts; stateEnteredAt: IsoInstant; postedAt: IsoInstant } | null> {
+): Promise<{
+  alert: SafetySosAlertFacts;
+  stateEnteredAt: IsoInstant;
+  postedAt: IsoInstant;
+} | null> {
   const [row] = await tx
     .select()
     .from(SOS)
@@ -259,10 +268,14 @@ async function loadAlertWithStateEnteredAt(
   const [history] = await tx
     .select({ transitionedAt: SOS_HISTORY.transitionedAt })
     .from(SOS_HISTORY)
-    .where(and(eq(SOS_HISTORY.sosAlertId, sosAlertId), eq(SOS_HISTORY.organizationId, organizationId)))
+    .where(
+      and(eq(SOS_HISTORY.sosAlertId, sosAlertId), eq(SOS_HISTORY.organizationId, organizationId)),
+    )
     .orderBy(desc(SOS_HISTORY.transitionedAt))
     .limit(1);
-  const stateEnteredAt = (history?.transitionedAt ?? (row as { postedAt: Date }).postedAt).toISOString();
+  const stateEnteredAt = (
+    history?.transitionedAt ?? (row as { postedAt: Date }).postedAt
+  ).toISOString();
   return { alert, stateEnteredAt: stateEnteredAt as IsoInstant, postedAt: alert.postedAt };
 }
 
@@ -281,11 +294,14 @@ async function applyEscalate(
   log: (msg: string, meta: Record<string, unknown>) => void,
 ): Promise<void> {
   if (transition.to === "emergency_terminus") {
-    log("m20.sos-sla-watchdog: tier-3 SLA breach, terminus rung refused (no caller-owned effects impl)", {
-      organizationId: row.organizationId,
-      sosAlertId,
-      sosTerminusUnsupported: true,
-    });
+    log(
+      "m20.sos-sla-watchdog: tier-3 SLA breach, terminus rung refused (no caller-owned effects impl)",
+      {
+        organizationId: row.organizationId,
+        sosAlertId,
+        sosTerminusUnsupported: true,
+      },
+    );
     return;
   }
 
@@ -494,9 +510,27 @@ async function processOneAlert(
           case "none":
             return;
           case "expire_cancel_window":
-            return applyExpireCancelWindow(tx, deps, row, sosAlertId, alert, decision.transition, now);
+            return applyExpireCancelWindow(
+              tx,
+              deps,
+              row,
+              sosAlertId,
+              alert,
+              decision.transition,
+              now,
+            );
           case "escalate":
-            return applyEscalate(tx, deps, row, sosAlertId, alert, decision.transition, now, atIso, log);
+            return applyEscalate(
+              tx,
+              deps,
+              row,
+              sosAlertId,
+              alert,
+              decision.transition,
+              now,
+              atIso,
+              log,
+            );
           case "terminus_repage":
             return applyTerminusRepage(
               tx,

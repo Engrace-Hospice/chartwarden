@@ -30,7 +30,10 @@ export interface HeldTransmissionRouteDeps {
   readonly recovery: Pick<StuckTransmissionRecovery, "listHeld">;
 }
 
-export function registerHeldTransmissionRoutes(app: FastifyInstance, deps: HeldTransmissionRouteDeps): void {
+export function registerHeldTransmissionRoutes(
+  app: FastifyInstance,
+  deps: HeldTransmissionRouteDeps,
+): void {
   app.get(
     "/api/v1/orders/held-transmissions",
     {
@@ -40,10 +43,10 @@ export function registerHeldTransmissionRoutes(app: FastifyInstance, deps: HeldT
       config: { auditRead: { resourceKind: "lab_order", list: true } },
     },
     async (request) => {
-    const organizationId = request.context?.organizationId;
-    if (!organizationId) throw new UnauthorizedError();
-    const q = parse(HeldTransmissionsQuerySchema, request.query);
-    return deps.recovery.listHeld(organizationId, { limit: q.limit ?? 50, cursor: q.cursor });
+      const organizationId = request.context?.organizationId;
+      if (!organizationId) throw new UnauthorizedError();
+      const q = parse(HeldTransmissionsQuerySchema, request.query);
+      return deps.recovery.listHeld(organizationId, { limit: q.limit ?? 50, cursor: q.cursor });
     },
   );
 }

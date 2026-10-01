@@ -658,7 +658,12 @@ describe.skipIf(!DB_URL)(
         "SELECT version FROM certification_of_terminal_illness WHERE id=$1",
         [ctis.rows[0].id],
       );
-      await svc.voidCti(ORG_A, ctis.rows[0].id, "redraft with narrative", Number(skeleton.rows[0].version));
+      await svc.voidCti(
+        ORG_A,
+        ctis.rows[0].id,
+        "redraft with narrative",
+        Number(skeleton.rows[0].version),
+      );
       const redraft = await svc.draftCti(
         ORG_A,
         {

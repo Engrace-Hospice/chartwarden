@@ -55,6 +55,7 @@ export function ScaleTrend(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger, not read in the body.
   useEffect(() => {
     let active = true;
 
@@ -112,8 +113,7 @@ export function ScaleTrend(): JSX.Element {
   const scoredPoints = useMemo(
     () =>
       chronologicalPoints.filter(
-        (point): point is SeriesPoint & { score: number } =>
-          point.score != null,
+        (point): point is SeriesPoint & { score: number } => point.score != null,
       ),
     [chronologicalPoints],
   );
@@ -125,8 +125,7 @@ export function ScaleTrend(): JSX.Element {
   const previousScoredPoint =
     scoredPoints.length >= 2 ? scoredPoints[scoredPoints.length - 2] : null;
 
-  const latestScoredPoint =
-    scoredPoints.length > 0 ? scoredPoints[scoredPoints.length - 1] : null;
+  const latestScoredPoint = scoredPoints.length > 0 ? scoredPoints[scoredPoints.length - 1] : null;
 
   const scoreDelta =
     latestScoredPoint && previousScoredPoint
@@ -175,10 +174,7 @@ export function ScaleTrend(): JSX.Element {
     >
       <div style={pageStyle}>
         {error ? (
-          <ErrorState
-            message={error}
-            onRetry={() => setReloadKey((current) => current + 1)}
-          />
+          <ErrorState message={error} onRetry={() => setReloadKey((current) => current + 1)} />
         ) : loading ? (
           <LoadingState />
         ) : points.length === 0 ? (
@@ -193,13 +189,8 @@ export function ScaleTrend(): JSX.Element {
             <section style={summaryGridStyle}>
               <SummaryCard
                 label="Latest score"
-                value={
-                  latestPoint?.score != null ? String(latestPoint.score) : "—"
-                }
-                helper={
-                  latestPoint?.scoreInterpretation ??
-                  "No interpretation available"
-                }
+                value={latestPoint?.score != null ? String(latestPoint.score) : "—"}
+                helper={latestPoint?.scoreInterpretation ?? "No interpretation available"}
                 icon={<Glyph name="bar-chart" size={18} />}
               />
 
@@ -225,11 +216,7 @@ export function ScaleTrend(): JSX.Element {
               <SummaryCard
                 label="Previous change"
                 value={
-                  scoreDelta == null
-                    ? "—"
-                    : scoreDelta > 0
-                      ? `+${scoreDelta}`
-                      : String(scoreDelta)
+                  scoreDelta == null ? "—" : scoreDelta > 0 ? `+${scoreDelta}` : String(scoreDelta)
                 }
                 helper={
                   scoreDelta == null
@@ -248,8 +235,8 @@ export function ScaleTrend(): JSX.Element {
                   <h2 style={sectionTitleStyle}>{scaleLabel} trend</h2>
 
                   <p style={sectionDescriptionStyle}>
-                    Scores are displayed chronologically from oldest to newest.
-                    Significant changes are highlighted for easier review.
+                    Scores are displayed chronologically from oldest to newest. Significant changes
+                    are highlighted for easier review.
                   </p>
                 </div>
 
@@ -274,8 +261,7 @@ export function ScaleTrend(): JSX.Element {
                     <div style={chartEmptyTitleStyle}>No numeric scores</div>
 
                     <div style={chartEmptyDescriptionStyle}>
-                      Captures exist, but none contain a numeric score that can
-                      be plotted.
+                      Captures exist, but none contain a numeric score that can be plotted.
                     </div>
                   </div>
                 </div>
@@ -290,8 +276,7 @@ export function ScaleTrend(): JSX.Element {
                   <h2 style={sectionTitleStyle}>Recorded captures</h2>
 
                   <p style={sectionDescriptionStyle}>
-                    Newest capture first. Significant score changes are clearly
-                    identified.
+                    Newest capture first. Significant score changes are clearly identified.
                   </p>
                 </div>
               </div>
@@ -320,17 +305,12 @@ export function ScaleTrend(): JSX.Element {
                         key={point.assessmentId}
                         style={{
                           ...tableRowStyle,
-                          ...(point.significantChange
-                            ? significantRowStyle
-                            : null),
+                          ...(point.significantChange ? significantRowStyle : null),
                         }}
                       >
                         <td style={tableCellStyle}>
                           <div style={dateCellStyle}>
-                            <span
-                              className="tabular-nums"
-                              style={primaryCellStyle}
-                            >
+                            <span className="tabular-nums" style={primaryCellStyle}>
                               {formatDateTime(point.capturedAt)}
                             </span>
 
@@ -348,13 +328,9 @@ export function ScaleTrend(): JSX.Element {
 
                         <td style={tableCellStyle}>
                           {point.scoreInterpretation ? (
-                            <span style={interpretationStyle}>
-                              {point.scoreInterpretation}
-                            </span>
+                            <span style={interpretationStyle}>{point.scoreInterpretation}</span>
                           ) : (
-                            <span style={mutedValueStyle}>
-                              No interpretation
-                            </span>
+                            <span style={mutedValueStyle}>No interpretation</span>
                           )}
                         </td>
 
@@ -365,11 +341,7 @@ export function ScaleTrend(): JSX.Element {
                           }}
                         >
                           {point.significantChange ? (
-                            <StatusPill
-                              label="Significant"
-                              tone="warning"
-                              glyph="alert"
-                            />
+                            <StatusPill label="Significant" tone="warning" glyph="alert" />
                           ) : (
                             <span style={noChangeStyle}>—</span>
                           )}
@@ -518,9 +490,7 @@ function TrendChart({
                   style={{
                     ...chartBarStyle,
                     height: `${Math.max(8, normalized)}%`,
-                    ...(point.significantChange
-                      ? chartBarSignificantStyle
-                      : null),
+                    ...(point.significantChange ? chartBarSignificantStyle : null),
                   }}
                 />
 
@@ -531,9 +501,7 @@ function TrendChart({
                 ) : null}
               </div>
 
-              <span style={chartDateStyle}>
-                {formatShortDate(point.capturedAt)}
-              </span>
+              <span style={chartDateStyle}>{formatShortDate(point.capturedAt)}</span>
 
               {index === points.length - 1 ? (
                 <span style={latestMarkerStyle}>Latest</span>
@@ -551,9 +519,7 @@ function TrendChart({
 function formatScaleName(value: string): string {
   if (!value) return "Assessment";
 
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return value.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function formatDate(value: string): string {
@@ -664,15 +630,13 @@ const summaryCardStyle: CSSProperties = {
   gap: "0.75rem",
   padding: "0.9rem 1rem",
   borderRadius: "var(--radius-lg)",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
   background: "var(--color-surface-container-low)",
 };
 
 const summaryWarningCardStyle: CSSProperties = {
   borderColor: "color-mix(in srgb, var(--color-warning) 35%, transparent)",
-  background:
-    "color-mix(in srgb, var(--color-warning) 7%, var(--color-surface-container-low))",
+  background: "color-mix(in srgb, var(--color-warning) 7%, var(--color-surface-container-low))",
 };
 
 const summaryIconStyle: CSSProperties = {
@@ -725,16 +689,14 @@ const summaryHelperStyle: CSSProperties = {
 
 const trendCardStyle: CSSProperties = {
   borderRadius: "var(--radius-lg)",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
   background: "var(--color-surface-container-lowest)",
   overflow: "hidden",
 };
 
 const historyCardStyle: CSSProperties = {
   borderRadius: "var(--radius-lg)",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
   background: "var(--color-surface-container-lowest)",
   overflow: "hidden",
 };
@@ -745,8 +707,7 @@ const sectionHeaderStyle: CSSProperties = {
   alignItems: "flex-start",
   gap: "1rem",
   padding: "1rem 1.1rem",
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
 };
 
 const eyebrowStyle: CSSProperties = {
@@ -824,8 +785,7 @@ const horizontalGuideTopStyle: CSSProperties = {
   left: 0,
   right: 0,
   top: "1rem",
-  borderTop:
-    "1px dashed color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderTop: "1px dashed color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
 };
 
 const horizontalGuideMiddleStyle: CSSProperties = {
@@ -833,8 +793,7 @@ const horizontalGuideMiddleStyle: CSSProperties = {
   left: 0,
   right: 0,
   top: "45%",
-  borderTop:
-    "1px dashed color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderTop: "1px dashed color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 
 const horizontalGuideBottomStyle: CSSProperties = {
@@ -842,8 +801,7 @@ const horizontalGuideBottomStyle: CSSProperties = {
   left: 0,
   right: 0,
   bottom: "2.55rem",
-  borderTop:
-    "1px dashed color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderTop: "1px dashed color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
 };
 
 const chartColumnStyle: CSSProperties = {
@@ -968,13 +926,11 @@ const tableHeaderStyle: CSSProperties = {
   letterSpacing: "0.045em",
   color: "var(--color-on-surface-variant)",
   background: "var(--color-surface-container-low)",
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
 };
 
 const tableRowStyle: CSSProperties = {
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 
 const significantRowStyle: CSSProperties = {
@@ -1074,7 +1030,6 @@ const loadingTextStyle: CSSProperties = {
 const emptyCardStyle: CSSProperties = {
   padding: "2rem",
   borderRadius: "var(--radius-lg)",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
   background: "var(--color-surface-container-lowest)",
 };

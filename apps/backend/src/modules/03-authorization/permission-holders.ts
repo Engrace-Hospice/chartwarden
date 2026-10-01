@@ -17,7 +17,9 @@ export type MembershipsHoldingPermissionReader = (
   permissionKeys: readonly string[],
 ) => Promise<ReadonlySet<string>>;
 
-export function createMembershipsHoldingPermissionReader(db: DbClient): MembershipsHoldingPermissionReader {
+export function createMembershipsHoldingPermissionReader(
+  db: DbClient,
+): MembershipsHoldingPermissionReader {
   return (organizationId, permissionKeys) => {
     if (permissionKeys.length === 0) return Promise.resolve(new Set<string>());
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {

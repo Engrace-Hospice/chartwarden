@@ -1393,7 +1393,14 @@ function CensusCard({ census, loading }: { census: CensusFigures; loading: boole
 function Avatar({ name }: { name: string }): JSX.Element {
   const c = tintFor(name);
   return (
-    <span className="wx-home-avatar" aria-hidden style={{ color: c, background: toneTint(c, 14) }}>
+    <span
+      className="wx-home-avatar"
+      aria-hidden
+      style={{
+        color: `color-mix(in srgb, ${c} 60%, var(--color-on-surface))`,
+        background: toneTint(c, 14),
+      }}
+    >
       {initials(name)}
     </span>
   );

@@ -44,7 +44,11 @@ interface LagRecoveredFacts {
 
 function exceededFactsOf(payload: unknown): LagExceededFacts {
   const p = (payload ?? {}) as Record<string, unknown>;
-  if (typeof p.lagSeconds !== "number" || typeof p.threshold !== "number" || typeof p.sampledAt !== "string") {
+  if (
+    typeof p.lagSeconds !== "number" ||
+    typeof p.threshold !== "number" ||
+    typeof p.sampledAt !== "string"
+  ) {
     throw new Error(`${M1_LAG_PROBE_CONSUMER.consumerName}: malformed m33.lag.exceeded payload`);
   }
   return { lagSeconds: p.lagSeconds, threshold: p.threshold, sampledAt: p.sampledAt };
@@ -114,7 +118,9 @@ export function buildM1LagProbeStatusConsumer(deps: LagProbeStatusConsumerDeps) 
           });
         return;
       }
-      throw new Error(`${M1_LAG_PROBE_CONSUMER.consumerName}: unexpected event type ${event.eventType}`);
+      throw new Error(
+        `${M1_LAG_PROBE_CONSUMER.consumerName}: unexpected event type ${event.eventType}`,
+      );
     },
   };
 }

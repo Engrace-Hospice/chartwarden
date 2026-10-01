@@ -146,7 +146,7 @@ describe.skipIf(!DB_URL)("M23 tenant-entered wage index — LIVE Postgres (F-211
     );
     appUrl = await appRoleConnectionString(admin, DB_URL as string);
     handle = createDbClient({ connectionString: appUrl });
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await handle?.close();

@@ -137,10 +137,10 @@ describe.skipIf(!DB_URL)("F-193 — M21's caregiver-signature capture — LIVE P
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f192a@x.test'),($2,'f192b@x.test')`, [
-      USER_A,
-      USER_B,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f192a@x.test'),($2,'f192b@x.test')`,
+      [USER_A, USER_B],
+    );
     providerA = (
       await admin.query(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
@@ -298,7 +298,8 @@ describe.skipIf(!DB_URL)("F-193 — M21's caregiver-signature capture — LIVE P
       expectedUpdatedAt: req.updatedAt,
       captureMethod: "witnessed_verbal_documented",
       witnessName: "Chris Lee",
-      witnessAttestationText: "I witnessed the caregiver verbally consent to receipt of the DME item.",
+      witnessAttestationText:
+        "I witnessed the caregiver verbally consent to receipt of the DME item.",
       evidenceDocumentId,
     });
     expect(detail.caregiverSignatureCaptureMethod).toBe("witnessed_verbal_documented");
@@ -306,7 +307,8 @@ describe.skipIf(!DB_URL)("F-193 — M21's caregiver-signature capture — LIVE P
     // The evidence document id lives on its OWN column, not duplicated inside the jsonb.
     expect(detail.caregiverSignatureEvidence).toEqual({
       witnessName: "Chris Lee",
-      witnessAttestationText: "I witnessed the caregiver verbally consent to receipt of the DME item.",
+      witnessAttestationText:
+        "I witnessed the caregiver verbally consent to receipt of the DME item.",
     });
   });
 

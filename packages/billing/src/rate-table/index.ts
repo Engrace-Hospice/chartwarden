@@ -110,9 +110,13 @@ export function validateRateTableEntry(entry: RateTableEntry): RateTableValidati
     ["laborShareGip", entry.laborShareGip],
   ] as const) {
     if (typeof v !== "string" || !LABOR_SHARE_SHAPE.test(v)) {
-      errors.push(`${name} must be a decimal fraction with at most four places, e.g. "0.6871" (not a percent)`);
+      errors.push(
+        `${name} must be a decimal fraction with at most four places, e.g. "0.6871" (not a percent)`,
+      );
     } else if (Number(v) < LABOR_SHARE_MIN || Number(v) > LABOR_SHARE_MAX) {
-      errors.push(`${name} (${v}) is outside the plausible band ${LABOR_SHARE_MIN}-${LABOR_SHARE_MAX}`);
+      errors.push(
+        `${name} (${v}) is outside the plausible band ${LABOR_SHARE_MIN}-${LABOR_SHARE_MAX}`,
+      );
     }
   }
 
@@ -121,7 +125,9 @@ export function validateRateTableEntry(entry: RateTableEntry): RateTableValidati
     Number.isInteger(entry.rhcDays61PlusPerDiemCents) &&
     entry.rhcDays1to60PerDiemCents < entry.rhcDays61PlusPerDiemCents
   ) {
-    errors.push("rhcDays1to60PerDiemCents must be at least rhcDays61PlusPerDiemCents (ADR-0001 tiers)");
+    errors.push(
+      "rhcDays1to60PerDiemCents must be at least rhcDays61PlusPerDiemCents (ADR-0001 tiers)",
+    );
   }
   if (
     Number.isInteger(entry.chcPerDiemCents) &&
@@ -133,8 +139,14 @@ export function validateRateTableEntry(entry: RateTableEntry): RateTableValidati
     );
   }
 
-  if (!Number.isInteger(entry.fiscalYearStarting) || entry.fiscalYearStarting < 2000 || entry.fiscalYearStarting > 2100) {
-    errors.push("fiscalYearStarting must be a four-digit year (2025 = FY2026, Oct 2025 - Sep 2026)");
+  if (
+    !Number.isInteger(entry.fiscalYearStarting) ||
+    entry.fiscalYearStarting < 2000 ||
+    entry.fiscalYearStarting > 2100
+  ) {
+    errors.push(
+      "fiscalYearStarting must be a four-digit year (2025 = FY2026, Oct 2025 - Sep 2026)",
+    );
   }
   let effectiveTo: IsoDate = entry.effectiveTo ?? "";
   if (!isDate(entry.effectiveFrom)) {
@@ -145,7 +157,8 @@ export function validateRateTableEntry(entry: RateTableEntry): RateTableValidati
     if (!isDate(effectiveTo)) {
       errors.push("effectiveTo must be a valid YYYY-MM-DD date");
     } else {
-      if (effectiveTo < entry.effectiveFrom) errors.push("effectiveTo must not precede effectiveFrom");
+      if (effectiveTo < entry.effectiveFrom)
+        errors.push("effectiveTo must not precede effectiveFrom");
       if (entry.effectiveFrom < fy.from || effectiveTo > fy.to) {
         errors.push(
           `the effective window ${entry.effectiveFrom}..${effectiveTo} must lie inside fiscal year ${entry.fiscalYearStarting} (${fy.from}..${fy.to}); enter each fiscal year as its own rate table`,
@@ -211,7 +224,9 @@ export function toHippsRateTable(r: RateTableRates): HippsRateTable {
     r.laborShareIrc === null ||
     r.laborShareGip === null
   ) {
-    throw new RangeError("toHippsRateTable: the rate table carries no labor shares (entered before migration 0280)");
+    throw new RangeError(
+      "toHippsRateTable: the rate table carries no labor shares (entered before migration 0280)",
+    );
   }
   return {
     rhcDays1to60PerDiemCents: r.rhcDays1to60PerDiemCents,

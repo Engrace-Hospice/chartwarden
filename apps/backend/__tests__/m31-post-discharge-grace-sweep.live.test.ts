@@ -73,7 +73,11 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     );
     return row.rows[0].id as string;
   }
-  async function seedGrant(orgId: string, patientId: string, kind = "family_caregiver"): Promise<string> {
+  async function seedGrant(
+    orgId: string,
+    patientId: string,
+    kind = "family_caregiver",
+  ): Promise<string> {
     const account = await seedAccount(orgId);
     const row = await admin.query(
       `INSERT INTO portal_access_grant
@@ -119,7 +123,11 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
       "SELECT revoked_at, revoke_cascade_source, version FROM portal_access_grant WHERE id = $1",
       [id],
     );
-    return rows[0] as { revoked_at: Date | null; revoke_cascade_source: string | null; version: number };
+    return rows[0] as {
+      revoked_at: Date | null;
+      revoke_cascade_source: string | null;
+      version: number;
+    };
   }
 
   function m6Port(): M31DischargeGracePort {
@@ -134,7 +142,9 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
   ): PostDischargeGraceSweepDeps {
     return {
       db: handle.db,
-      activeOrgs: { listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })) },
+      activeOrgs: {
+        listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })),
+      },
       m6: m6Port(),
       ...over,
     };
@@ -164,9 +174,24 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     const gPast = await seedGrant(ORG_A, past);
     const gBoundary = await seedGrant(ORG_A, boundary);
     const gRecent = await seedGrant(ORG_A, recent);
-    await seedAdmission({ orgId: ORG_A, patientId: past, status: "discharged", dischargedDaysAgo: 31 });
-    await seedAdmission({ orgId: ORG_A, patientId: boundary, status: "discharged", dischargedDaysAgo: 30 });
-    await seedAdmission({ orgId: ORG_A, patientId: recent, status: "discharged", dischargedDaysAgo: 10 });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: past,
+      status: "discharged",
+      dischargedDaysAgo: 31,
+    });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: boundary,
+      status: "discharged",
+      dischargedDaysAgo: 30,
+    });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: recent,
+      status: "discharged",
+      dischargedDaysAgo: 10,
+    });
 
     const results = await runPostDischargeGraceSweepOnce(deps([ORG_A]));
     expect(results[0]?.graceDays).toBe(30);
@@ -182,7 +207,12 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
   it("is idempotent: a rerun revokes nothing and leaves versions untouched", async () => {
     const p = crypto.randomUUID();
     const g = await seedGrant(ORG_A, p);
-    await seedAdmission({ orgId: ORG_A, patientId: p, status: "discharged", dischargedDaysAgo: 90 });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: p,
+      status: "discharged",
+      dischargedDaysAgo: 90,
+    });
     await runPostDischargeGraceSweepOnce(deps([ORG_A]));
     const first = await grantRow(g);
     expect(first.revoked_at).not.toBeNull();
@@ -199,11 +229,26 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     const gReadmitted = await seedGrant(ORG_A, readmitted);
     const gRedischarged = await seedGrant(ORG_A, redischarged);
     // discharged 60d ago, then re-admitted (open admission) — no cancel logic, just not a candidate.
-    await seedAdmission({ orgId: ORG_A, patientId: readmitted, status: "discharged", dischargedDaysAgo: 60 });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: readmitted,
+      status: "discharged",
+      dischargedDaysAgo: 60,
+    });
     await seedAdmission({ orgId: ORG_A, patientId: readmitted, status: "active" });
     // discharged 60d ago, re-admitted, discharged AGAIN 5d ago — the clock restarts from the newest discharge.
-    await seedAdmission({ orgId: ORG_A, patientId: redischarged, status: "discharged", dischargedDaysAgo: 60 });
-    await seedAdmission({ orgId: ORG_A, patientId: redischarged, status: "discharged", dischargedDaysAgo: 5 });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: redischarged,
+      status: "discharged",
+      dischargedDaysAgo: 60,
+    });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: redischarged,
+      status: "discharged",
+      dischargedDaysAgo: 5,
+    });
 
     await runPostDischargeGraceSweepOnce(deps([ORG_A]));
     expect((await grantRow(gReadmitted)).revoked_at).toBeNull();
@@ -217,7 +262,12 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     const gBereaved = await seedGrant(ORG_A, bereaved, "bereaved_family");
     const gDied = await seedGrant(ORG_A, died);
     const gForCause = await seedGrant(ORG_A, forCause);
-    await seedAdmission({ orgId: ORG_A, patientId: bereaved, status: "discharged", dischargedDaysAgo: 90 });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: bereaved,
+      status: "discharged",
+      dischargedDaysAgo: 90,
+    });
     await seedAdmission({
       orgId: ORG_A,
       patientId: died,
@@ -264,7 +314,12 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
       dischargeType: "for_cause",
       dischargeStatus: "pending_cosign",
     });
-    await seedAdmission({ orgId: ORG_A, patientId: mixed, status: "discharged", dischargedDaysAgo: 90 });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: mixed,
+      status: "discharged",
+      dischargedDaysAgo: 90,
+    });
 
     await runPostDischargeGraceSweepOnce(deps([ORG_A]));
     expect((await grantRow(gVoided)).revoked_at).toBeNull();
@@ -278,11 +333,23 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     const p15 = crypto.randomUUID();
     const g45 = await seedGrant(ORG_B, p45);
     const g15 = await seedGrant(ORG_B, p15);
-    await seedAdmission({ orgId: ORG_B, patientId: p45, status: "discharged", dischargedDaysAgo: 45 });
-    await seedAdmission({ orgId: ORG_B, patientId: p15, status: "discharged", dischargedDaysAgo: 15 });
+    await seedAdmission({
+      orgId: ORG_B,
+      patientId: p45,
+      status: "discharged",
+      dischargedDaysAgo: 45,
+    });
+    await seedAdmission({
+      orgId: ORG_B,
+      patientId: p15,
+      status: "discharged",
+      dischargedDaysAgo: 15,
+    });
 
     // configured 60 => 45d-old discharge retained. Configured 10 (< floor) => clamped up to 30 => 15d retained.
-    let r = await runPostDischargeGraceSweepOnce(deps([ORG_B], { graceDaysForOrg: async () => 60 }));
+    let r = await runPostDischargeGraceSweepOnce(
+      deps([ORG_B], { graceDaysForOrg: async () => 60 }),
+    );
     expect(r[0]?.graceDays).toBe(60);
     expect((await grantRow(g45)).revoked_at).toBeNull();
     r = await runPostDischargeGraceSweepOnce(deps([ORG_B], { graceDaysForOrg: async () => 10 }));
@@ -295,7 +362,12 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
   it("cross-tenant: M6's read and the sweep are tenant-scoped (as the real NOBYPASSRLS role)", async () => {
     const shared = crypto.randomUUID(); // same patient id appears in both orgs
     // Org A: discharged 90d ago. Org B: holds a grant for the SAME patient id but has no admission at all.
-    await seedAdmission({ orgId: ORG_A, patientId: shared, status: "discharged", dischargedDaysAgo: 90 });
+    await seedAdmission({
+      orgId: ORG_A,
+      patientId: shared,
+      status: "discharged",
+      dischargedDaysAgo: 90,
+    });
     const gB = await seedGrant(ORG_B, shared);
     const cutoff = graceCutoffDate(new Date(), 30);
 
@@ -313,7 +385,12 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     const grants: string[] = [];
     for (const p of patients) {
       grants.push(await seedGrant(ORG_C, p));
-      await seedAdmission({ orgId: ORG_C, patientId: p, status: "discharged", dischargedDaysAgo: 60 });
+      await seedAdmission({
+        orgId: ORG_C,
+        patientId: p,
+        status: "discharged",
+        dischargedDaysAgo: 60,
+      });
     }
     const small = { maxRevocationsPerOrgPerRun: 5, scanPageSize: 4 } as const;
     const revokedCount = async () =>
@@ -337,7 +414,12 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
   it("one org's failure does not block the orgs after it, and the job still fails loudly", async () => {
     const p = crypto.randomUUID();
     const g = await seedGrant(ORG_B, p);
-    await seedAdmission({ orgId: ORG_B, patientId: p, status: "discharged", dischargedDaysAgo: 120 });
+    await seedAdmission({
+      orgId: ORG_B,
+      patientId: p,
+      status: "discharged",
+      dischargedDaysAgo: 120,
+    });
     const flaky: M31DischargeGracePort = {
       portalDischargedPastGraceForOrg: (organizationId, patientIds, cutoff) => {
         if (organizationId === ORG_A) return Promise.reject(new Error("boom"));
@@ -346,9 +428,9 @@ describe.skipIf(!DB_URL)("F-222 — M31 post-discharge-grace sweep — LIVE Post
     };
     // ORG_A must have an active grant so the port is reached.
     await seedGrant(ORG_A, crypto.randomUUID());
-    await expect(runPostDischargeGraceSweepOnce(deps([ORG_A, ORG_B], { m6: flaky }))).rejects.toThrow(
-      /1 of 2 org\(s\) failed/,
-    );
+    await expect(
+      runPostDischargeGraceSweepOnce(deps([ORG_A, ORG_B], { m6: flaky })),
+    ).rejects.toThrow(/1 of 2 org\(s\) failed/);
     expect((await grantRow(g)).revoked_at).not.toBeNull();
   });
 });

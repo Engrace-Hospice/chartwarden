@@ -28,48 +28,51 @@ type TaxonomyStatusDbValue = (typeof DC.taxonomyStatus.enumValues)[number];
 export function buildDrizzleDenialSeedStore(db: DbClient): DenialSeedStore {
   return {
     async seedDenial(input) {
-      return withOrgContext(db, { organizationId: input.organizationId, userId: "" }, async (tx) => {
-        const [inserted] = await tx
-          .insert(DC)
-          .values({
-            organizationId: input.organizationId,
-            providerEntityId: input.providerEntityId,
-            claimId: input.claimId,
-            sourceEvvAggregatorSubmissionId: input.sourceEvvAggregatorSubmissionId,
-            carcCode: input.carcCode,
-            rarcCode: input.rarcCode,
-            category: input.category as DenialCategoryDbValue,
-            taxonomyStatus: input.taxonomyStatus as TaxonomyStatusDbValue,
-            source: input.source as DenialSourceDbValue,
-            dollarValue: input.dollarValue,
-            sourceIdempotencyKey: input.idempotencyKey,
-          })
-          .onConflictDoNothing()
-          .returning({ id: DC.id });
-        if (inserted) return { denialCaseId: inserted.id, created: true };
+      return withOrgContext(
+        db,
+        { organizationId: input.organizationId, userId: "" },
+        async (tx) => {
+          const [inserted] = await tx
+            .insert(DC)
+            .values({
+              organizationId: input.organizationId,
+              providerEntityId: input.providerEntityId,
+              claimId: input.claimId,
+              sourceEvvAggregatorSubmissionId: input.sourceEvvAggregatorSubmissionId,
+              carcCode: input.carcCode,
+              rarcCode: input.rarcCode,
+              category: input.category as DenialCategoryDbValue,
+              taxonomyStatus: input.taxonomyStatus as TaxonomyStatusDbValue,
+              source: input.source as DenialSourceDbValue,
+              dollarValue: input.dollarValue,
+              sourceIdempotencyKey: input.idempotencyKey,
+            })
+            .onConflictDoNothing()
+            .returning({ id: DC.id });
+          if (inserted) return { denialCaseId: inserted.id, created: true };
 
-        // Lost a race against a concurrent delivery, or this is a genuine redelivery of an already-seeded
-        // event — the row already exists under the same (org, idempotencyKey). Re-select rather than throw:
-        // "already seeded" is a successful outcome for an idempotent seed, not a failure.
-        const [existing] = await tx
-          .select({ id: DC.id })
-          .from(DC)
-          .where(
-            and(
-              eq(DC.organizationId, input.organizationId),
-              eq(DC.sourceIdempotencyKey, input.idempotencyKey),
-            ),
-          )
-          .limit(1);
-        if (!existing) {
-          // The constraint and this SELECT have drifted — refuse rather than guess at an id.
-          throw new Error(
-            `m25.denial-seed-store: onConflictDoNothing() reported a conflict but no row matches ` +
-              `idempotencyKey=${input.idempotencyKey} for org ${input.organizationId}`,
-          );
-        }
-        return { denialCaseId: existing.id, created: false };
-      });
+          // Lost a race against a concurrent delivery, or this is a genuine redelivery of an already-seeded
+          // event — the row already exists under the same (org, idempotencyKey). Re-select rather than throw:
+          // "already seeded" is a successful outcome for an idempotent seed, not a failure.
+          const [existing] = await tx
+            .select({ id: DC.id })
+            .from(DC)
+            .where(
+              and(
+                eq(DC.organizationId, input.organizationId),
+                eq(DC.sourceIdempotencyKey, input.idempotencyKey),
+              ),
+            )
+            .limit(1);
+          if (!existing) {
+            // The constraint and this SELECT have drifted — refuse rather than guess at an id.
+            throw new Error(
+              `m25.denial-seed-store: onConflictDoNothing() reported a conflict but no row matches idempotencyKey=${input.idempotencyKey} for org ${input.organizationId}`,
+            );
+          }
+          return { denialCaseId: existing.id, created: false };
+        },
+      );
     },
 
     // m22.document.rendered → back-reference (NOT one of this pass's two target events — m23.claim.rejected
@@ -83,14 +86,18 @@ export function buildDrizzleDenialSeedStore(db: DbClient): DenialSeedStore {
       if (input.aggregateType === "denial_case") {
         return { updated: false };
       }
-      return withOrgContext(db, { organizationId: input.organizationId, userId: "" }, async (tx) => {
-        const [updated] = await tx
-          .update(AC)
-          .set({ appealPacketDocumentId: input.documentId })
-          .where(and(eq(AC.organizationId, input.organizationId), eq(AC.id, input.aggregateId)))
-          .returning({ id: AC.id });
-        return { updated: Boolean(updated) };
-      });
+      return withOrgContext(
+        db,
+        { organizationId: input.organizationId, userId: "" },
+        async (tx) => {
+          const [updated] = await tx
+            .update(AC)
+            .set({ appealPacketDocumentId: input.documentId })
+            .where(and(eq(AC.organizationId, input.organizationId), eq(AC.id, input.aggregateId)))
+            .returning({ id: AC.id });
+          return { updated: Boolean(updated) };
+        },
+      );
     },
   };
 }

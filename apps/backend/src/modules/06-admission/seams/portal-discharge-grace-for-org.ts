@@ -70,7 +70,9 @@ export async function portalDischargedPastGraceForOrg(
   cutoffDate: string,
 ): Promise<ReadonlyMap<string, PortalDischargedPastGrace>> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoffDate)) {
-    throw new Error(`portalDischargedPastGraceForOrg: cutoffDate '${cutoffDate}' is not YYYY-MM-DD`);
+    throw new Error(
+      `portalDischargedPastGraceForOrg: cutoffDate '${cutoffDate}' is not YYYY-MM-DD`,
+    );
   }
   const ids = [...new Set(patientIds)];
   const out = new Map<string, PortalDischargedPastGrace>();
@@ -80,67 +82,63 @@ export async function portalDischargedPastGraceForOrg(
       `portalDischargedPastGraceForOrg: ${ids.length} patients exceeds the ${PORTAL_DISCHARGE_GRACE_MAX_PATIENTS} cap`,
     );
   }
-  return withOrgContext(
-    db,
-    { organizationId, userId: PORTAL_GRACE_SYSTEM_USER_ID },
-    async (tx) => {
-      const t = tx as unknown as DbClient;
-      const discharges = await t
-        .select({
-          patientId: ADM.patientId,
-          dischargeEventId: DIS.id,
-          admissionId: DIS.admissionId,
-          effectiveAt: DIS.effectiveAt,
-          dischargeType: DIS.dischargeType,
+  return withOrgContext(db, { organizationId, userId: PORTAL_GRACE_SYSTEM_USER_ID }, async (tx) => {
+    const t = tx as unknown as DbClient;
+    const discharges = await t
+      .select({
+        patientId: ADM.patientId,
+        dischargeEventId: DIS.id,
+        admissionId: DIS.admissionId,
+        effectiveAt: DIS.effectiveAt,
+        dischargeType: DIS.dischargeType,
+      })
+      .from(DIS)
+      .innerJoin(ADM, eq(ADM.id, DIS.admissionId))
+      .where(
+        and(
+          eq(DIS.organizationId, organizationId),
+          eq(ADM.organizationId, organizationId),
+          eq(DIS.status, "completed"),
+          inArray(ADM.patientId, ids),
+        ),
+      )
+      .orderBy(desc(DIS.effectiveAt), desc(DIS.createdAt));
+    // First row per patient = the latest completed discharge (ordered newest first).
+    const latest = new Map<string, (typeof discharges)[number]>();
+    for (const d of discharges) if (!latest.has(d.patientId)) latest.set(d.patientId, d);
+    if (latest.size === 0) return out;
+
+    const open = await t
+      .select({ patientId: ADM.patientId })
+      .from(ADM)
+      .where(
+        and(
+          eq(ADM.organizationId, organizationId),
+          inArray(ADM.patientId, [...latest.keys()]),
+          notInArray(ADM.status, ["discharged", "bereavement", "closed"]),
+        ),
+      );
+    const reAdmitted = new Set(open.map((r) => r.patientId));
+
+    for (const [patientId, d] of latest) {
+      if (
+        !isPastGraceAndNotReadmitted({
+          latestDischargeType: d.dischargeType,
+          latestEffectiveAt: d.effectiveAt,
+          cutoffDate,
+          hasOpenAdmission: reAdmitted.has(patientId),
         })
-        .from(DIS)
-        .innerJoin(ADM, eq(ADM.id, DIS.admissionId))
-        .where(
-          and(
-            eq(DIS.organizationId, organizationId),
-            eq(ADM.organizationId, organizationId),
-            eq(DIS.status, "completed"),
-            inArray(ADM.patientId, ids),
-          ),
-        )
-        .orderBy(desc(DIS.effectiveAt), desc(DIS.createdAt));
-      // First row per patient = the latest completed discharge (ordered newest first).
-      const latest = new Map<string, (typeof discharges)[number]>();
-      for (const d of discharges) if (!latest.has(d.patientId)) latest.set(d.patientId, d);
-      if (latest.size === 0) return out;
-
-      const open = await t
-        .select({ patientId: ADM.patientId })
-        .from(ADM)
-        .where(
-          and(
-            eq(ADM.organizationId, organizationId),
-            inArray(ADM.patientId, [...latest.keys()]),
-            notInArray(ADM.status, ["discharged", "bereavement", "closed"]),
-          ),
-        );
-      const reAdmitted = new Set(open.map((r) => r.patientId));
-
-      for (const [patientId, d] of latest) {
-        if (
-          !isPastGraceAndNotReadmitted({
-            latestDischargeType: d.dischargeType,
-            latestEffectiveAt: d.effectiveAt,
-            cutoffDate,
-            hasOpenAdmission: reAdmitted.has(patientId),
-          })
-        ) {
-          continue;
-        }
-        out.set(patientId, {
-          patientId,
-          dischargeEventId: d.dischargeEventId,
-          admissionId: d.admissionId,
-          effectiveAt: d.effectiveAt,
-          dischargeType: d.dischargeType,
-        });
+      ) {
+        continue;
       }
-      return out;
-    },
-  );
+      out.set(patientId, {
+        patientId,
+        dischargeEventId: d.dischargeEventId,
+        admissionId: d.admissionId,
+        effectiveAt: d.effectiveAt,
+        dischargeType: d.dischargeType,
+      });
+    }
+    return out;
+  });
 }

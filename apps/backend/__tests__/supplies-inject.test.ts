@@ -794,7 +794,9 @@ function createFakeBackend() {
     async captureCaregiverSignature(actor, id, input) {
       const r = requests.get(id) ?? notFound("supply request");
       if (r.deliveredAt === null) {
-        unprocessable("a caregiver signature is captured against a delivery; this request has not reached 'delivered' yet");
+        unprocessable(
+          "a caregiver signature is captured against a delivery; this request has not reached 'delivered' yet",
+        );
       }
       if (r.caregiverSignatureCapturedAt !== null) {
         conflict("a caregiver signature was already captured for this request");
@@ -803,12 +805,17 @@ function createFakeBackend() {
       r.caregiverSignatureCapturedAt = NOW;
       r.caregiverSignatureCapturedByMembershipId = actor.membershipId;
       r.caregiverSignatureEvidenceDocumentId =
-        input.captureMethod === "witnessed_verbal_documented" ? (input.evidenceDocumentId ?? null) : null;
+        input.captureMethod === "witnessed_verbal_documented"
+          ? (input.evidenceDocumentId ?? null)
+          : null;
       r.caregiverSignatureEvidence =
         input.captureMethod === "typed_signature_in_app"
           ? { typedSignatureName: input.typedSignatureName }
           : input.captureMethod === "witnessed_verbal_documented"
-            ? { witnessName: input.witnessName, witnessAttestationText: input.witnessAttestationText }
+            ? {
+                witnessName: input.witnessName,
+                witnessAttestationText: input.witnessAttestationText,
+              }
             : input.declinedReason !== undefined
               ? { declinedReason: input.declinedReason }
               : null;
@@ -1461,7 +1468,11 @@ describe("M21 §4.1 rows 1-10 — supply-request create through delivery, cancel
     const signed = await app.inject({
       method: "POST",
       url: `/api/v1/supplies/supply-requests/${id}/caregiver-signature`,
-      headers: { ...COORD, "idempotency-key": "req-1-signature", "if-match": delivered.json().updatedAt },
+      headers: {
+        ...COORD,
+        "idempotency-key": "req-1-signature",
+        "if-match": delivered.json().updatedAt,
+      },
       payload: { captureMethod: "typed_signature_in_app", typedSignatureName: "Dana Reyes" },
     });
     expect(signed.statusCode).toBe(200);
@@ -1473,7 +1484,11 @@ describe("M21 §4.1 rows 1-10 — supply-request create through delivery, cancel
     const resigned = await app.inject({
       method: "POST",
       url: `/api/v1/supplies/supply-requests/${id}/caregiver-signature`,
-      headers: { ...COORD, "idempotency-key": "req-1-signature-2", "if-match": signed.json().updatedAt },
+      headers: {
+        ...COORD,
+        "idempotency-key": "req-1-signature-2",
+        "if-match": signed.json().updatedAt,
+      },
       payload: { captureMethod: "declined" },
     });
     expect(resigned.statusCode).toBe(409);

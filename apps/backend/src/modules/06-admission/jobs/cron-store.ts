@@ -59,12 +59,7 @@ export async function f2fDueRowsForOrg(
     })
     .from(F2F)
     .innerJoin(EP, eq(EP.id, F2F.electionPeriodId))
-    .where(
-      and(
-        eq(F2F.organizationId, organizationId),
-        isNotNull(F2F.scheduledDate),
-      ),
-    );
+    .where(and(eq(F2F.organizationId, organizationId), isNotNull(F2F.scheduledDate)));
 
   return rows
     .filter(
@@ -125,9 +120,7 @@ export async function ctiSignatureDueRowsForOrg(
       ): row is typeof row & {
         signatureRequestedAt: Date | string;
         signatureDueAt: Date | string;
-      } =>
-        row.signatureRequestedAt !== null &&
-        row.signatureDueAt !== null,
+      } => row.signatureRequestedAt !== null && row.signatureDueAt !== null,
     )
     .map((row) => ({
       ctiId: row.ctiId,
@@ -135,9 +128,7 @@ export async function ctiSignatureDueRowsForOrg(
       hospiceMdId: row.hospiceMdId,
       signatureRequestedAt: isoInstant(row.signatureRequestedAt),
       signatureDueAt: isoInstant(row.signatureDueAt),
-      hospiceMdSignedAt: row.hospiceMdSignedAt
-        ? isoInstant(row.hospiceMdSignedAt)
-        : null,
+      hospiceMdSignedAt: row.hospiceMdSignedAt ? isoInstant(row.hospiceMdSignedAt) : null,
     }));
 }
 
@@ -190,13 +181,20 @@ export async function f2fWindowMissedCandidatesForOrg(
     .where(and(eq(EP.organizationId, organizationId), inArray(EP.admissionId, admissionIds)));
   const priorEndByAdmissionSeq = new Map<string, string>();
   for (const p of priorPeriods) {
-    if (p.scheduledEndAt) priorEndByAdmissionSeq.set(`${p.admissionId}:${p.sequenceNumber}`, p.scheduledEndAt);
+    if (p.scheduledEndAt)
+      priorEndByAdmissionSeq.set(`${p.admissionId}:${p.sequenceNumber}`, p.scheduledEndAt);
   }
 
   const attestedRows = await tx
     .select({ electionPeriodId: F2F.electionPeriodId })
     .from(F2F)
-    .where(and(eq(F2F.organizationId, organizationId), inArray(F2F.electionPeriodId, electionPeriodIds), eq(F2F.status, "attested")));
+    .where(
+      and(
+        eq(F2F.organizationId, organizationId),
+        inArray(F2F.electionPeriodId, electionPeriodIds),
+        eq(F2F.status, "attested"),
+      ),
+    );
   const attestedPeriodIds = new Set(attestedRows.map((r) => r.electionPeriodId));
 
   const flaggedRows = await tx

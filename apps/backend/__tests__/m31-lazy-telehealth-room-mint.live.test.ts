@@ -143,11 +143,15 @@ describe.skipIf(!DB_URL)("F-220 — M31 lazy telehealth room mint — LIVE Postg
       d.setAuthTag(Buffer.from(tag, "base64url"));
       return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
     };
-    expect(open(rows[0].vendor_room_id_cipher, `m31:telehealth_visit:vendor_room_id:${ORG_A}`)).toBe(
-      `room-${digest?.telehealthVisitId}`,
-    );
-    expect(() => open(rows[0].vendor_room_id_cipher, `m31:telehealth_visit:vendor_room_url:${ORG_A}`)).toThrow();
-    expect(() => open(rows[0].vendor_room_id_cipher, `m31:telehealth_visit:vendor_room_id:${ORG_B}`)).toThrow();
+    expect(
+      open(rows[0].vendor_room_id_cipher, `m31:telehealth_visit:vendor_room_id:${ORG_A}`),
+    ).toBe(`room-${digest?.telehealthVisitId}`);
+    expect(() =>
+      open(rows[0].vendor_room_id_cipher, `m31:telehealth_visit:vendor_room_url:${ORG_A}`),
+    ).toThrow();
+    expect(() =>
+      open(rows[0].vendor_room_id_cipher, `m31:telehealth_visit:vendor_room_id:${ORG_B}`),
+    ).toThrow();
   });
 
   it("is idempotent, including under a concurrent double join (one row wins, both callers get it)", async () => {
@@ -160,7 +164,10 @@ describe.skipIf(!DB_URL)("F-220 — M31 lazy telehealth room mint — LIVE Postg
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
     expect(a?.telehealthVisitId).toBe(b?.telehealthVisitId);
-    const { rows } = await admin.query("SELECT count(*)::int AS n FROM telehealth_visit WHERE m17_visit_id=$1", [v.id]);
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM telehealth_visit WHERE m17_visit_id=$1",
+      [v.id],
+    );
     expect(rows[0].n).toBe(1);
     // a later call returns the existing row without minting again.
     const before = mintCalls;
@@ -184,8 +191,12 @@ describe.skipIf(!DB_URL)("F-220 — M31 lazy telehealth room mint — LIVE Postg
       vendorRoomUrlCipher: "c2",
       scheduledVisitSetting: "telephonic" as const,
     });
-    expect(await store.insertTelehealthVisitIfAbsent(ORG_A, "", row(crypto.randomUUID()))).not.toBeNull();
-    expect(await store.insertTelehealthVisitIfAbsent(ORG_A, "", row(crypto.randomUUID()))).toBeNull();
+    expect(
+      await store.insertTelehealthVisitIfAbsent(ORG_A, "", row(crypto.randomUUID())),
+    ).not.toBeNull();
+    expect(
+      await store.insertTelehealthVisitIfAbsent(ORG_A, "", row(crypto.randomUUID())),
+    ).toBeNull();
   });
 
   it("writes nothing for non-telephonic, terminal, unknown, or wrong-tenant visits", async () => {
@@ -195,7 +206,10 @@ describe.skipIf(!DB_URL)("F-220 — M31 lazy telehealth room mint — LIVE Postg
     const p = ports(new Map([home, done, foreign].map((v) => [v.id, v])));
     for (const v of [home, done, foreign, visitFor(ORG_A)]) {
       expect(await ensureTelehealthRoomForVisit(p, ORG_A, "", v.id)).toBeNull();
-      const { rows } = await admin.query("SELECT count(*)::int AS n FROM telehealth_visit WHERE m17_visit_id=$1", [v.id]);
+      const { rows } = await admin.query(
+        "SELECT count(*)::int AS n FROM telehealth_visit WHERE m17_visit_id=$1",
+        [v.id],
+      );
       expect(rows[0].n).toBe(0);
     }
   });
@@ -205,7 +219,10 @@ describe.skipIf(!DB_URL)("F-220 — M31 lazy telehealth room mint — LIVE Postg
     await expect(
       ensureTelehealthRoomForVisit(ports(new Map([[v.id, v]]), false), ORG_A, "", v.id),
     ).rejects.toMatchObject({ code: "TELEHEALTH_VENDOR_UNAVAILABLE" });
-    const { rows } = await admin.query("SELECT count(*)::int AS n FROM telehealth_visit WHERE m17_visit_id=$1", [v.id]);
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM telehealth_visit WHERE m17_visit_id=$1",
+      [v.id],
+    );
     expect(rows[0].n).toBe(0);
   });
 

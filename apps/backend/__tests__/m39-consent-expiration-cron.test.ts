@@ -40,7 +40,9 @@ describe("planConsentExpiry", () => {
 describe("planConsentReminder", () => {
   const all = ["90_days", "30_days", "14_days", "7_days", "1_day"];
   it("fires nothing outside the 90-day look-ahead, for indefinite, or already-lapsed consents", () => {
-    expect(planConsentReminder({ expiresAtMs: NOW + 91 * DAY, nowMs: NOW, cadenceFloor: all })).toBe(null);
+    expect(
+      planConsentReminder({ expiresAtMs: NOW + 91 * DAY, nowMs: NOW, cadenceFloor: all }),
+    ).toBe(null);
     expect(planConsentReminder({ expiresAtMs: null, nowMs: NOW, cadenceFloor: all })).toBe(null);
     expect(planConsentReminder({ expiresAtMs: NOW - 1, nowMs: NOW, cadenceFloor: all })).toBe(null);
   });
@@ -54,14 +56,24 @@ describe("planConsentReminder", () => {
     expect(at(0.5)).toBe("1_day");
   });
   it("fires ONLY the most urgent open window when several are open (no 90/30/14/7/1 burst)", () => {
-    expect(planConsentReminder({ expiresAtMs: NOW + 3 * DAY, nowMs: NOW, cadenceFloor: all })).toBe("7_days");
+    expect(planConsentReminder({ expiresAtMs: NOW + 3 * DAY, nowMs: NOW, cadenceFloor: all })).toBe(
+      "7_days",
+    );
   });
   it("honours the consent type's cadence floor", () => {
     const floor = ["30_days", "1_day"];
-    expect(planConsentReminder({ expiresAtMs: NOW + 6 * DAY, nowMs: NOW, cadenceFloor: floor })).toBe("30_days");
-    expect(planConsentReminder({ expiresAtMs: NOW + 6 * 3600_000, nowMs: NOW, cadenceFloor: floor })).toBe("1_day");
-    expect(planConsentReminder({ expiresAtMs: NOW + 50 * DAY, nowMs: NOW, cadenceFloor: floor })).toBe(null);
-    expect(planConsentReminder({ expiresAtMs: NOW + 5 * DAY, nowMs: NOW, cadenceFloor: [] })).toBe(null);
+    expect(
+      planConsentReminder({ expiresAtMs: NOW + 6 * DAY, nowMs: NOW, cadenceFloor: floor }),
+    ).toBe("30_days");
+    expect(
+      planConsentReminder({ expiresAtMs: NOW + 6 * 3600_000, nowMs: NOW, cadenceFloor: floor }),
+    ).toBe("1_day");
+    expect(
+      planConsentReminder({ expiresAtMs: NOW + 50 * DAY, nowMs: NOW, cadenceFloor: floor }),
+    ).toBe(null);
+    expect(planConsentReminder({ expiresAtMs: NOW + 5 * DAY, nowMs: NOW, cadenceFloor: [] })).toBe(
+      null,
+    );
   });
 });
 
@@ -84,7 +96,7 @@ describe("cron tier wiring", () => {
     expect(src).toContain("wireM39Tenancy()");
     expect(src).toContain("registerM39CronWorkers(m39WorkerDeps)");
     expect(src).toContain("scheduleM39Jobs(queueConnection)");
-    expect(src).toContain("bindCallerModule(txOutboxPublisher, \"m39\")");
+    expect(src).toContain('bindCallerModule(txOutboxPublisher, "m39")');
   });
 
   it("one org's failure does not stop later orgs, and the job still fails loudly", async () => {

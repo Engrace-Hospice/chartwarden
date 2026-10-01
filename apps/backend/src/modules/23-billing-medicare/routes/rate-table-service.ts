@@ -14,7 +14,11 @@ import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
-import type { CreateRateTableBody, RateTableView, SupersedeRateTableBody } from "./rate-table-typebox";
+import type {
+  CreateRateTableBody,
+  RateTableView,
+  SupersedeRateTableBody,
+} from "./rate-table-typebox";
 
 type BillingDb = repositories.BillingDb;
 
@@ -96,12 +100,20 @@ export function buildDrizzleRateTableService(
   now: () => Date = () => new Date(),
 ): RateTableRouteService {
   const inCtx = <T>(actor: M23ReadActor, fn: (tx: BillingDb) => Promise<T>): Promise<T> =>
-    withOrgContext<BillingDb, T>(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
+    withOrgContext<BillingDb, T>(
+      db,
+      { organizationId: actor.organizationId, userId: actor.userId },
+      fn,
+    );
 
   function validated(body: CreateRateTableBody | SupersedeRateTableBody): string {
     const v = validateRateTableEntry(body);
     if (!v.ok) {
-      throw new WardenXError("RATE_TABLE_INVALID", `invalid rate table: ${v.errors.join("; ")}`, 422);
+      throw new WardenXError(
+        "RATE_TABLE_INVALID",
+        `invalid rate table: ${v.errors.join("; ")}`,
+        422,
+      );
     }
     return v.effectiveTo;
   }
@@ -198,7 +210,11 @@ export function buildDrizzleRateTableService(
         const successorId = randomUUID();
         const marked = await repo.markSuperseded(id, successorId, now());
         if (!marked) {
-          throw new WardenXError("RATE_TABLE_ALREADY_SUPERSEDED", `rate table ${id} was already superseded`, 409);
+          throw new WardenXError(
+            "RATE_TABLE_ALREADY_SUPERSEDED",
+            `rate table ${id} was already superseded`,
+            409,
+          );
         }
         return mapRateTable(await insertVersion(tx, actor, body, effectiveTo, successorId, id));
       });
@@ -217,7 +233,11 @@ export function buildDrizzleRateTableService(
     async getRateTable(actor, providerEntityId, id) {
       return inCtx(actor, async (tx) => {
         const row = await new repositories.HospiceRateTableRepository(tx).findById(id);
-        if (!row || row.organizationId !== actor.organizationId || row.providerEntityId !== providerEntityId) {
+        if (
+          !row ||
+          row.organizationId !== actor.organizationId ||
+          row.providerEntityId !== providerEntityId
+        ) {
           throw new NotFoundError("rate table");
         }
         return mapRateTable(row);
@@ -226,7 +246,10 @@ export function buildDrizzleRateTableService(
 
     async effectiveRateTable(actor, providerEntityId, onDate) {
       return inCtx(actor, async (tx) => {
-        const row = await new repositories.HospiceRateTableRepository(tx).findEffectiveOn(providerEntityId, onDate);
+        const row = await new repositories.HospiceRateTableRepository(tx).findEffectiveOn(
+          providerEntityId,
+          onDate,
+        );
         return row && row.organizationId === actor.organizationId ? mapRateTable(row) : null;
       });
     },

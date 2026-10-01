@@ -56,7 +56,10 @@ export const electionPeriods = pgTable(
       t.sequenceNumber,
     ),
     admIdx: index("election_period_admission_idx").on(t.admissionId, t.sequenceNumber),
-    sourceOrderUq: unique("election_period_source_order_id_uq").on(t.organizationId, t.sourceOrderId),
+    sourceOrderUq: unique("election_period_source_order_id_uq").on(
+      t.organizationId,
+      t.sourceOrderId,
+    ),
   }),
 );
 

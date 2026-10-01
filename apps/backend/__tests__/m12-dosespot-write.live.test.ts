@@ -20,12 +20,12 @@ import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { createDrizzleOrderSeamStore, registerOrderSeams } from "../src/modules/11-orders/index";
 import {
   type DoseSpotWriteOutboxPort,
   createDbDoseSpotBackend,
 } from "../src/modules/12-dosespot/dosespot-route-service-db";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
-import { createDrizzleOrderSeamStore, registerOrderSeams } from "../src/modules/11-orders/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;

@@ -771,22 +771,15 @@ export function createDbDoseSpotBackend(
         const r = await loadOrder(tx, id);
         const medicationErrorId = randomUUID();
         const reportedAt = new Date();
-        await emit(
-          tx,
-          organizationId,
-          "m12.medication.error_reported",
-          "medication_order",
-          id,
-          {
-            medicationErrorId,
-            orderId: id,
-            patientId: r.patientId,
-            errorCategory: args.errorCategory,
-            reportedByMembershipId: userId,
-            reportedAt: reportedAt.toISOString(),
-            ...(args.summary !== undefined ? { summary: args.summary } : {}),
-          },
-        );
+        await emit(tx, organizationId, "m12.medication.error_reported", "medication_order", id, {
+          medicationErrorId,
+          orderId: id,
+          patientId: r.patientId,
+          errorCategory: args.errorCategory,
+          reportedByMembershipId: userId,
+          reportedAt: reportedAt.toISOString(),
+          ...(args.summary !== undefined ? { summary: args.summary } : {}),
+        });
         return { medicationErrorId, orderId: id, reportedAt: reportedAt.toISOString() };
       });
     },

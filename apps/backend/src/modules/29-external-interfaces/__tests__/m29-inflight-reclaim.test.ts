@@ -64,10 +64,18 @@ describe("F-182 decideInFlightReclaim — receiver dedupes MSH-10 (requeue)", ()
   });
 
   it("once the shared budget is spent the row goes terminal DLQ, emits transmission_failed, and alerts HIGH — it never loops", () => {
-    const d = decideInFlightReclaim({ outbound: outbound(OUTBOUND_MAX_ATTEMPTS - 1), now: NOW, ...dedupes });
+    const d = decideInFlightReclaim({
+      outbound: outbound(OUTBOUND_MAX_ATTEMPTS - 1),
+      now: NOW,
+      ...dedupes,
+    });
     expect(d.kind).toBe("dlq");
     if (d.kind !== "dlq") throw new Error("unreachable");
-    expect(d.statusUpdate).toEqual({ status: "dlq", retryCount: OUTBOUND_MAX_ATTEMPTS, nextRetryAt: null });
+    expect(d.statusUpdate).toEqual({
+      status: "dlq",
+      retryCount: OUTBOUND_MAX_ATTEMPTS,
+      nextRetryAt: null,
+    });
     expect(d.event).toEqual({
       name: "m29.lab_order.transmission_failed",
       payload: {
@@ -115,7 +123,11 @@ describe("F-183 decideInFlightReclaim — receiver NOT marked as deduping (HELD)
   it("alerts HIGH to a human, says it was NOT re-sent, and carries no ids or PHI in the text", () => {
     const d = decideInFlightReclaim({ outbound: outbound(0), now: NOW, ...held });
     if (d.kind !== "dlq") throw new Error("unreachable");
-    expect(d.alert).toMatchObject({ severity: "HIGH", channel: "operator-on-call", feedId: "feed-1" });
+    expect(d.alert).toMatchObject({
+      severity: "HIGH",
+      channel: "operator-on-call",
+      feedId: "feed-1",
+    });
     expect(d.alert.detail).toMatch(/NOT re-sent/);
     expect(d.alert.detail).toMatch(/verify with the lab/);
     expect(d.alert.detail).not.toMatch(/order-1|org-1|out-1/);
@@ -157,12 +169,16 @@ describe("F-182 inFlightLeaseMs configuration", () => {
 
   it("defaults when unset and accepts a positive number", () => {
     expect(() => buildM29OutboundDispatchConsumer(base)).not.toThrow();
-    expect(() => buildM29OutboundDispatchConsumer({ ...base, inFlightLeaseMs: 120_000 })).not.toThrow();
+    expect(() =>
+      buildM29OutboundDispatchConsumer({ ...base, inFlightLeaseMs: 120_000 }),
+    ).not.toThrow();
   });
 
   it("refuses a zero, negative or non-finite lease (a zero lease would reclaim every live send)", () => {
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() => buildM29OutboundDispatchConsumer({ ...base, inFlightLeaseMs: bad })).toThrow(/positive/);
+      expect(() => buildM29OutboundDispatchConsumer({ ...base, inFlightLeaseMs: bad })).toThrow(
+        /positive/,
+      );
     }
   });
 });

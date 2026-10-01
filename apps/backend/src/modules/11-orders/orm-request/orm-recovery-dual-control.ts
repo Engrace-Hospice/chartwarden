@@ -41,7 +41,12 @@ export const RECOVERY_ANOMALY_WINDOW_MS = 24 * HOUR_MS;
  */
 export const RECOVERY_ANOMALY_THRESHOLD = 3;
 
-export type RecoveryRequestStatus = "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+export type RecoveryRequestStatus =
+  | "pending_cosign"
+  | "executed"
+  | "cancelled"
+  | "expired"
+  | "superseded";
 
 /**
  * F-203 — the bound. How many EXECUTED `not_received_by_lab` recoveries one requester (or one requester/co-signer pair,
@@ -55,7 +60,12 @@ export const RECOVERY_ESCALATION_THRESHOLD = 3;
 export const RECOVERY_ORG_RATE_THRESHOLD = 10;
 
 /** Parse a bound from an env-style string: an integer in `[min, max]`, else `fallback` (never NaN, never "off"). */
-export function parseRecoveryBound(raw: string | undefined, fallback: number, min = 2, max = 100_000): number {
+export function parseRecoveryBound(
+  raw: string | undefined,
+  fallback: number,
+  min = 2,
+  max = 100_000,
+): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   if (!/^\d+$/.test(raw.trim())) return fallback;
   const n = Number(raw.trim());
@@ -71,7 +81,9 @@ export type RecoveryEscalationReason = "requester_bound" | "pair_bound";
 export function decideRecoveryEscalation(
   counts: { readonly requesterExecuted: number; readonly pairExecuted: number },
   threshold: number = RECOVERY_ESCALATION_THRESHOLD,
-): { readonly required: false } | { readonly required: true; readonly reason: RecoveryEscalationReason } {
+):
+  | { readonly required: false }
+  | { readonly required: true; readonly reason: RecoveryEscalationReason } {
   if (counts.pairExecuted >= threshold) return { required: true, reason: "pair_bound" };
   if (counts.requesterExecuted >= threshold) return { required: true, reason: "requester_bound" };
   return { required: false };
@@ -127,7 +139,11 @@ export function decideRecoveryCosign(
     };
   }
   if (request.expiresAt.getTime() <= now.getTime()) {
-    return { ok: false, code: "expired", message: "this recovery request has expired — file a new one" };
+    return {
+      ok: false,
+      code: "expired",
+      message: "this recovery request has expired — file a new one",
+    };
   }
   if (request.requestedByUserId === actorUserId) {
     return {
@@ -140,7 +156,10 @@ export function decideRecoveryCosign(
 }
 
 /** Is this requester's filing a repeat? `priorCount` = their OTHER requests inside the window; the one at hand counts. */
-export function isRepeatAttester(priorCount: number, threshold: number = RECOVERY_ANOMALY_THRESHOLD): boolean {
+export function isRepeatAttester(
+  priorCount: number,
+  threshold: number = RECOVERY_ANOMALY_THRESHOLD,
+): boolean {
   return priorCount + 1 >= threshold;
 }
 
@@ -195,7 +214,13 @@ export function buildRecoveryAlert(
   const repeatPair = kind === "m11.order.recovery_executed" && pairCount >= threshold;
   const anomaly = kind === "m11.order.recovery_executed" && (count >= threshold || repeatPair);
   const severity: RecoveryAlertSeverity =
-    kind === "m11.order.recovery_executed" ? (anomaly ? "critical" : "warn") : kind === "m11.order.recovery_expired" ? "warn" : "info";
+    kind === "m11.order.recovery_executed"
+      ? anomaly
+        ? "critical"
+        : "warn"
+      : kind === "m11.order.recovery_expired"
+        ? "warn"
+        : "info";
   return {
     eventType: kind,
     payload: {
@@ -272,7 +297,12 @@ export function recoveryAlertEventPayload(alert: {
   readonly severity: string;
   readonly correlationId: string;
   readonly payload: Record<string, unknown>;
-}): { alertType: string; severity: string; correlationId: string; alertPayload: Record<string, unknown> } {
+}): {
+  alertType: string;
+  severity: string;
+  correlationId: string;
+  alertPayload: Record<string, unknown>;
+} {
   return {
     alertType: alert.eventType,
     severity: alert.severity,
@@ -316,6 +346,9 @@ export interface RecoveryControls {
    * not own the membership/role tables, so the composition root implements it. Absent ⇒ no pre-check (a request is
    * filed as before).
    */
-  readonly countEligibleCosigners?: (organizationId: string, excludeUserId: string) => Promise<number>;
+  readonly countEligibleCosigners?: (
+    organizationId: string,
+    excludeUserId: string,
+  ) => Promise<number>;
   readonly now?: () => Date;
 }

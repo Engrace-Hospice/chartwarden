@@ -27,9 +27,7 @@ export const alertReceipts = pgTable(
 
     readAt: timestamp("read_at", { withTimezone: true }),
 
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     uniqueAlertRecipient: uniqueIndex("alert_receipt_alert_recipient_unique").on(
@@ -37,10 +35,7 @@ export const alertReceipts = pgTable(
       t.recipientUserId,
     ),
 
-    byRecipient: index("alert_receipt_recipient_idx").on(
-      t.recipientUserId,
-      t.createdAt,
-    ),
+    byRecipient: index("alert_receipt_recipient_idx").on(t.recipientUserId, t.createdAt),
 
     byAlert: index("alert_receipt_alert_idx").on(t.alertId),
   }),

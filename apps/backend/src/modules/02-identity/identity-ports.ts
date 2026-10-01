@@ -79,8 +79,10 @@ export function createOrgScopedIdentityOutbox(
       if (ambient.organizationId || input.organizationId === null) {
         return withOrgContextFromRequest(db, (tx) => publisher.publish(tx as DbClient, input));
       }
-      return withOrgContext(db, { organizationId: input.organizationId, userId: ambient.userId }, (tx) =>
-        publisher.publish(tx as DbClient, input),
+      return withOrgContext(
+        db,
+        { organizationId: input.organizationId, userId: ambient.userId },
+        (tx) => publisher.publish(tx as DbClient, input),
       );
     },
   };
@@ -104,9 +106,7 @@ export function createOrgScopedIdentityOutbox(
  * assumes. (The OTHER thing that migration named, the PHI read-audit path, was fixed correctly —
  * `bootstrap/plugins/read-audit.ts` already wraps in `withOrgContext`.)
  */
-export function createOrgScopedAuditExecutor(
-  db: DbClient,
-): import("@wardenx/audit").AuditExecutor {
+export function createOrgScopedAuditExecutor(db: DbClient): import("@wardenx/audit").AuditExecutor {
   return {
     insert(table) {
       return {

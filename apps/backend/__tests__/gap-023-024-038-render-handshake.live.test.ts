@@ -35,11 +35,6 @@ import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
-import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
-import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
-import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
-import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
-import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
@@ -53,7 +48,12 @@ import {
   buildM12DocumentBackrefConsumer,
 } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS, buildM13DocumentBackrefConsumer } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,

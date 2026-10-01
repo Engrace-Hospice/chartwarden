@@ -194,7 +194,8 @@ export function createDbCarePlanRouteService(
   } as const;
   const idgProposalBlocker = {
     code: "IDG_PROPOSAL_REQUIRED",
-    message: "Record an IDG decision with a proposed Care Plan change before sending this review for signature.",
+    message:
+      "Record an IDG decision with a proposed Care Plan change before sending this review for signature.",
   } as const;
 
   /** Emit one `m7.*` event on the caller's tx (validated + persisted by the bound publisher; no-op default). */

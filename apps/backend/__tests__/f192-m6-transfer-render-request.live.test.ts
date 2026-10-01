@@ -33,13 +33,19 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
-import { M6_OUTBOX_EVENTS, buildM6DocumentBackrefConsumer } from "../src/modules/06-admission/index";
+import {
+  M6_OUTBOX_EVENTS,
+  buildM6DocumentBackrefConsumer,
+} from "../src/modules/06-admission/index";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
-import { M12_OUTBOX_EVENTS, buildM12DocumentBackrefConsumer } from "../src/modules/12-dosespot/index";
+import {
+  M12_OUTBOX_EVENTS,
+  buildM12DocumentBackrefConsumer,
+} from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS, buildM13DocumentBackrefConsumer } from "../src/modules/13-emar/index";
 import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
 import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
@@ -48,7 +54,10 @@ import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
-import { M21_OUTBOX_EVENTS, buildM21DocumentBackrefConsumer } from "../src/modules/21-supplies/index";
+import {
+  M21_OUTBOX_EVENTS,
+  buildM21DocumentBackrefConsumer,
+} from "../src/modules/21-supplies/index";
 import {
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
@@ -61,7 +70,10 @@ import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
 import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
-import { M33_OUTBOX_EVENTS, buildM33DocumentBackrefConsumer } from "../src/modules/33-reporting/index";
+import {
+  M33_OUTBOX_EVENTS,
+  buildM33DocumentBackrefConsumer,
+} from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
@@ -364,7 +376,9 @@ describe.skipIf(!DB_URL)("F-192 — M6 transfer summary renders + back-refs, LIV
     expect(doc.patient_id).toBe(patientId);
     expect(await backref(res.id)).toBe(doc.id);
 
-    const { rows } = await admin.query("SELECT direction FROM transfer_event WHERE id=$1", [res.id]);
+    const { rows } = await admin.query("SELECT direction FROM transfer_event WHERE id=$1", [
+      res.id,
+    ]);
     expect(rows[0].direction).toBe("in");
   });
 

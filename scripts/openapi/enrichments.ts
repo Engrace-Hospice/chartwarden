@@ -349,15 +349,6 @@ import {
   SupersedeRateTableBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
 import {
-  CreateWageIndexBodySchema,
-  SupersedeWageIndexBodySchema,
-  WageIndexEffectiveQuerySchema,
-  WageIndexEffectiveResponseSchema,
-  WageIndexListQuerySchema,
-  WageIndexListResponseSchema,
-  WageIndexViewSchema,
-} from "../../apps/backend/src/modules/23-billing-medicare/routes/wage-index-typebox";
-import {
   CreateSequestrationPolicyBodySchema,
   SequestrationPolicyEffectiveQuerySchema,
   SequestrationPolicyGetQuerySchema,
@@ -367,6 +358,15 @@ import {
   SequestrationPolicyViewSchema,
   SupersedeSequestrationPolicyBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-typebox";
+import {
+  CreateWageIndexBodySchema,
+  SupersedeWageIndexBodySchema,
+  WageIndexEffectiveQuerySchema,
+  WageIndexEffectiveResponseSchema,
+  WageIndexListQuerySchema,
+  WageIndexListResponseSchema,
+  WageIndexViewSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/wage-index-typebox";
 // M24 Billing — Medicaid — the §4.2 request bodies / list queries / response DTOs for the state-Medicaid
 // claim, R&B, rule-overlay, eligibility, and trading-partner surfaces (modules/24-billing-medicaid/routes).
 import {

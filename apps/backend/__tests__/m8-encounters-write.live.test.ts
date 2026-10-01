@@ -257,9 +257,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     registerSeam("LatestAssessmentProvider", {
       latest: async () => null,
       latestBatch: async (_patientId: unknown, scaleTypes: readonly string[]) =>
-        scaleTypes
-          .filter((s) => latestScales.has(s))
-          .map((scaleType) => ({ scaleType }) as never),
+        scaleTypes.filter((s) => latestScales.has(s)).map((scaleType) => ({ scaleType }) as never),
     } as never);
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({

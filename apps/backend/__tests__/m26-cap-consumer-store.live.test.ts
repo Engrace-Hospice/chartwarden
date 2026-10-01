@@ -21,10 +21,10 @@ import { capYearForDate, capYearWindow } from "@wardenx/cap-management";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mbiNormalizedForPatient } from "../src/modules/05-patient/seams/mbi-reader";
 import { firstElectionEffectiveDateInRangeForOrg } from "../src/modules/06-admission/seams/cap-election-context";
 import { createDrizzleCapConsumerStore } from "../src/modules/26-cap/consumers/drizzle-store";
 import { handleClaimReversed } from "../src/modules/26-cap/consumers/handlers";
-import { mbiNormalizedForPatient } from "../src/modules/05-patient/seams/mbi-reader";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;

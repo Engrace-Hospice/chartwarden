@@ -140,7 +140,13 @@ describe.skipIf(!DB_URL)(
                   '20mg/mL', 'solution', 'sublingual', true, 'CII', 30, 'mL', 'LOT-1',
                   (CURRENT_DATE + INTERVAL '90 days')
            FROM comfort_kit_dispatch WHERE id = $1`,
-          [dispatchId, opts.organizationId, opts.providerEntityId, opts.locationId, templateMedControlledA],
+          [
+            dispatchId,
+            opts.organizationId,
+            opts.providerEntityId,
+            opts.locationId,
+            templateMedControlledA,
+          ],
         );
       }
       return dispatchId;
@@ -264,7 +270,13 @@ describe.skipIf(!DB_URL)(
             quantity_returned, quantity_disposed_at_home, is_controlled_substance,
             controlled_substance_schedule)
          VALUES ($1,$2,$3,$4,$5,15,0,true,'CII')`,
-        [returnId, dispatchedContentId, opts.organizationId, opts.providerEntityId, opts.locationId],
+        [
+          returnId,
+          dispatchedContentId,
+          opts.organizationId,
+          opts.providerEntityId,
+          opts.locationId,
+        ],
       );
       return { dispatchId, returnId, medicationOrderId };
     }
@@ -314,7 +326,12 @@ describe.skipIf(!DB_URL)(
 
     function returnRequiredEvent(
       organizationId: string,
-      payload: { deploymentId: string; patientId: string; admissionId: string; returnRequiredAt: string },
+      payload: {
+        deploymentId: string;
+        patientId: string;
+        admissionId: string;
+        returnRequiredAt: string;
+      },
     ): DispatchableOutboxEvent {
       return {
         id: randomUUID(),
@@ -535,7 +552,9 @@ describe.skipIf(!DB_URL)(
         expect(rows).toHaveLength(1);
         expect(rows[0]?.state).toBe("requested");
         expect(rows[0]?.m13_deployment_id).toBe(deploymentId);
-        expect(rows[0]?.return_due_at.getTime()).toBeGreaterThan(rows[0]!.return_required_at.getTime());
+        expect(rows[0]?.return_due_at.getTime()).toBeGreaterThan(
+          rows[0]!.return_required_at.getTime(),
+        );
       });
 
       it("is idempotent on redelivery — a second return-required for the same dispatch opens no second row", async () => {
@@ -645,7 +664,9 @@ describe.skipIf(!DB_URL)(
         expect(payload.detectionSource).toBe("m13_reemit");
         expect(payload.patientId).toBe(patientId);
         expect(payload.admissionId).toBe(admissionId);
-        const discrepantMedications = payload.discrepantMedications as Array<Record<string, unknown>>;
+        const discrepantMedications = payload.discrepantMedications as Array<
+          Record<string, unknown>
+        >;
         expect(discrepantMedications).toHaveLength(1);
         expect(discrepantMedications[0]!.medicationOrderId).toBe(medicationOrderId);
         expect(discrepantMedications[0]!.lotNumber).toBe("LOT-172");
@@ -727,7 +748,11 @@ describe.skipIf(!DB_URL)(
 
         await expect(
           reemitConsumer.handle(
-            controlledDiscrepancyEvent(ORG_A, { deploymentId, medicationOrderId, returnId: unknownReturnId }),
+            controlledDiscrepancyEvent(ORG_A, {
+              deploymentId,
+              medicationOrderId,
+              returnId: unknownReturnId,
+            }),
           ),
         ).resolves.not.toThrow();
 

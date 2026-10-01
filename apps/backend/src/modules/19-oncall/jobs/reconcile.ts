@@ -31,7 +31,11 @@ import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import type { IsoInstant, OncallModel, OrgId } from "@wardenx/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { readOnCallRoster } from "../consumers/trigger-context";
-import type { ExistingOnCallShift, OnCallRosterRead, OnCallRosterSyncPlan } from "../roster/shift-sync";
+import type {
+  ExistingOnCallShift,
+  OnCallRosterRead,
+  OnCallRosterSyncPlan,
+} from "../roster/shift-sync";
 import { reconcileOnCallRoster } from "../roster/shift-sync";
 
 const POLICY = schema.tenantOncallPolicy;
@@ -43,7 +47,10 @@ const CONSUMER_USER_ID = "";
 
 /** The port `reconcileOrgOnCallRoster` reads the roster through — defaults to the real
  *  `readOnCallRoster`. See the file header for why this stays injectable rather than a direct import. */
-export type OrgRosterReadPort = (organizationId: OrgId, asOfIso: IsoInstant) => Promise<OnCallRosterRead>;
+export type OrgRosterReadPort = (
+  organizationId: OrgId,
+  asOfIso: IsoInstant,
+) => Promise<OnCallRosterRead>;
 
 export interface ProviderEntityPolicyRow {
   readonly providerEntityId: string;
@@ -55,7 +62,10 @@ export interface ProviderEntityPolicyRow {
 
 /** Every ProviderEntity this org's roster sync covers — one row per `tenant_oncall_policy` entry. Must
  *  run inside the caller's `withOrgContext` transaction. */
-async function policiesForOrg(tx: DbClient, organizationId: string): Promise<readonly ProviderEntityPolicyRow[]> {
+async function policiesForOrg(
+  tx: DbClient,
+  organizationId: string,
+): Promise<readonly ProviderEntityPolicyRow[]> {
   const rows = await tx.select().from(POLICY).where(eq(POLICY.organizationId, organizationId));
   return rows.map((row) => ({
     providerEntityId: row.providerEntityId,

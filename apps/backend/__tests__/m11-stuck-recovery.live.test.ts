@@ -31,7 +31,10 @@ import { hl7OrmDemographicsInTx } from "../src/modules/05-patient/seams/hl7-orm-
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { buildM11OrmRequestedPorts } from "../src/modules/11-orders/orm-request/ports";
-import { AUTO_RETRY_MAX_ATTEMPTS, AUTO_RETRY_WINDOW_MS } from "../src/modules/11-orders/orm-request/stuck-recovery";
+import {
+  AUTO_RETRY_MAX_ATTEMPTS,
+  AUTO_RETRY_WINDOW_MS,
+} from "../src/modules/11-orders/orm-request/stuck-recovery";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
 import { createStuckTransmissionRecovery } from "../src/modules/11-orders/stuck-transmission-recovery";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
@@ -48,12 +51,12 @@ import {
   ormOutboundFeedsForOrders,
   outboundBaaCleared,
 } from "../src/modules/29-external-interfaces/outbound/stuck-order-support";
-import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import {
   createDrizzleAlertEmitter,
   registerMessagingSeams,
   wireAlertRuleSeed,
 } from "../src/modules/36-messaging/index";
+import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -111,33 +114,38 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
       .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
-  async function addMember(orgId: string, tag: string, roleKey: string, category: string): Promise<string> {
+  async function addMember(
+    orgId: string,
+    tag: string,
+    roleKey: string,
+    category: string,
+  ): Promise<string> {
     const roleId = (
-      await admin.query("INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,$3) RETURNING id", [
-        orgId,
-        roleKey,
-        category,
-      ])
+      await admin.query(
+        "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,$3) RETURNING id",
+        [orgId, roleKey, category],
+      )
     ).rows[0].id as string;
-    const userId = (await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`${tag}@f191.test`])).rows[0]
-      .id as string;
+    const userId = (
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`${tag}@f191.test`])
+    ).rows[0].id as string;
     const membershipId = (
       await admin.query(
         "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id",
         [userId, orgId],
       )
     ).rows[0].id as string;
-    await admin.query("INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)", [
-      orgId,
-      membershipId,
-      roleId,
-    ]);
+    await admin.query(
+      "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+      [orgId, membershipId, roleId],
+    );
     return userId;
   }
 
   const transport: MllpTransport = {
     async send(input: MllpTransportSendInput) {
-      if (mode === "refuse") return { kind: "destination_refused" as const, errorClass: "loopback_refused" as never };
+      if (mode === "refuse")
+        return { kind: "destination_refused" as const, errorClass: "loopback_refused" as never };
       wires.push(input.wireMessage);
       const env = parseMshEnvelope(input.wireMessage);
       const msh = [
@@ -236,7 +244,10 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     }
   }
   const backdate = (id: string, hours: number) =>
-    arrange("UPDATE order_record SET updated_at = now() - ($2 || ' hours')::interval WHERE id=$1", [id, String(hours)]);
+    arrange("UPDATE order_record SET updated_at = now() - ($2 || ' hours')::interval WHERE id=$1", [
+      id,
+      String(hours),
+    ]);
   const alertsOf = async (org: string, eventType: string) =>
     (
       await admin.query(
@@ -245,7 +256,12 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
       )
     ).rows as { id: string; severity: string; correlation_id: string }[];
   const recipientsOf = async (alertId: string): Promise<string[]> =>
-    (await admin.query("SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1", [alertId])).rows
+    (
+      await admin.query(
+        "SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1",
+        [alertId],
+      )
+    ).rows
       .map((r) => r.recipient_user_id as string)
       .sort();
 
@@ -288,18 +304,21 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f191@x.test'),($2,'f191b@x.test')`, [USER, USER_B]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f191@x.test'),($2,'f191b@x.test')`,
+      [USER, USER_B],
+    );
     member = (
-      await admin.query("INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id", [
-        USER,
-        ORG_A,
-      ])
+      await admin.query(
+        "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id",
+        [USER, ORG_A],
+      )
     ).rows[0].id as string;
     memberB = (
-      await admin.query("INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id", [
-        USER_B,
-        ORG_B,
-      ])
+      await admin.query(
+        "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id",
+        [USER_B, ORG_B],
+      )
     ).rows[0].id as string;
     user.orgAdmin = await addMember(ORG_A, "a-admin", "org_admin", "admin_executive");
     user.clinicalLead = await addMember(ORG_A, "a-lead", "clinical_lead", "clinical_leadership");
@@ -307,7 +326,9 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     user.otherTenantAdmin = await addMember(ORG_B, "b-admin", "org_admin", "admin_executive");
 
     // The REAL NOBYPASSRLS role — asserted, never assumed.
-    handle = createDbClient({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
+    handle = createDbClient({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
 
     await admin.query(
       `INSERT INTO external_physician (id, npi, first_name, last_name, status) VALUES ('${PH_ACTIVE}', '1234567893', 'Sam', 'Smith', 'active')`,
@@ -329,8 +350,13 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
 
     const catalog = buildBootOutboxCatalog([M11_OUTBOX_EVENTS, M29_OUTBOX_EVENTS]);
     const publisher = buildTxOutboxPublisher(catalog);
-    const m11Outbox = { publish: (tx: unknown, e: any) => publisher.publish(tx as never, { ...e, callerModule: "m11" }) };
-    const m29Outbox = { publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }) };
+    const m11Outbox = {
+      publish: (tx: unknown, e: any) =>
+        publisher.publish(tx as never, { ...e, callerModule: "m11" }),
+    };
+    const m29Outbox = {
+      publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }),
+    };
     svc = createDbOrderBackend(
       handle.db,
       m11Outbox,
@@ -386,7 +412,10 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     // The sweeps are ORG-WIDE, so a previous test's orders must not be visible to the next one.
     await admin.query("SET session_replication_role = replica");
     await admin.query("DELETE FROM order_record WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
-    await admin.query("DELETE FROM order_transmission_attestation WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
+    await admin.query(
+      "DELETE FROM order_transmission_attestation WHERE organization_id IN ($1,$2)",
+      [ORG_A, ORG_B],
+    );
     await admin.query("SET session_replication_role = DEFAULT");
     await admin.query(
       "DELETE FROM notification_delivery WHERE alert_id IN (SELECT id FROM alert WHERE organization_id IN ($1,$2))",
@@ -394,7 +423,10 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     );
     await admin.query("DELETE FROM alert WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
     await admin.query("DELETE FROM outbox_event WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
-    await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
+    await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id IN ($1,$2)", [
+      ORG_A,
+      ORG_B,
+    ]);
     await admin.query("DELETE FROM external_feed WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
     feedA = await seedFeed(ORG_A);
   });
@@ -445,7 +477,9 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     const id = await signedLab();
     await admin.query("DELETE FROM external_feed WHERE organization_id=$1", [ORG_A]);
     await settle();
-    expect((await orderRow(id)).transmission_failure_reason).toBe("dispatch_refused:no_active_feed");
+    expect((await orderRow(id)).transmission_failure_reason).toBe(
+      "dispatch_refused:no_active_feed",
+    );
 
     // No feed yet: the producer itself refuses, so nothing is emitted and nothing is spent.
     expect(await recovery.sweepAutoRetries(ORG_A)).toMatchObject({ retried: 0, stillRefused: 1 });
@@ -461,12 +495,19 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
   });
 
   it("an emit-time refusal (orm_refused:physician_npi_unconfirmed) is retried automatically once the NPI is confirmed", async () => {
-    await admin.query("UPDATE external_physician SET status='provisional', npi=NULL WHERE id=$1", [PH_ACTIVE]);
+    await admin.query("UPDATE external_physician SET status='provisional', npi=NULL WHERE id=$1", [
+      PH_ACTIVE,
+    ]);
     const id = await signedLab();
-    expect((await orderRow(id)).transmission_failure_reason).toBe("orm_refused:physician_npi_unconfirmed");
+    expect((await orderRow(id)).transmission_failure_reason).toBe(
+      "orm_refused:physician_npi_unconfirmed",
+    );
     expect(await recovery.sweepAutoRetries(ORG_A)).toMatchObject({ retried: 0, stillRefused: 1 });
 
-    await admin.query("UPDATE external_physician SET status='active', npi='1234567893' WHERE id=$1", [PH_ACTIVE]);
+    await admin.query(
+      "UPDATE external_physician SET status='active', npi='1234567893' WHERE id=$1",
+      [PH_ACTIVE],
+    );
     expect(await recovery.sweepAutoRetries(ORG_A)).toMatchObject({ retried: 1 });
     await settle();
     expect(wires).toHaveLength(1);
@@ -474,7 +515,11 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
   });
 
   it("SUD-restricted and immutable-order refusals are NEVER retried automatically", async () => {
-    for (const reason of ["orm_refused:sud_restricted", "orm_refused:no_routing_lab", "orm_refused:lab_test_codes_missing"]) {
+    for (const reason of [
+      "orm_refused:sud_restricted",
+      "orm_refused:no_routing_lab",
+      "orm_refused:lab_test_codes_missing",
+    ]) {
       const id = await signedLab();
       await settle();
       await arrange(
@@ -512,7 +557,10 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     expect(await recovery.sweepAutoRetries(ORG_A)).toMatchObject({ retried: 0, backoff: 1 });
     expect(await count(id, "m11.order.hl7_orm_requested")).toBe(1);
 
-    await arrange("UPDATE order_record SET transmission_auto_retry_at=now() - interval '11 minutes' WHERE id=$1", [id]);
+    await arrange(
+      "UPDATE order_record SET transmission_auto_retry_at=now() - interval '11 minutes' WHERE id=$1",
+      [id],
+    );
     expect(await recovery.sweepAutoRetries(ORG_A)).toMatchObject({ retried: 1, backoff: 0 });
     expect((await orderRow(id)).retries).toBe(2);
   });
@@ -520,7 +568,10 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
   it("at the ATTEMPT BOUND the sweep stops, raises its ONE 'operator must act' alert on the real emitter, and never alerts again", async () => {
     const id = await baaLapsedOrder();
     baaActive = true; // even with the cause cleared, the bound wins
-    await arrange("UPDATE order_record SET transmission_auto_retry_count=$2 WHERE id=$1", [id, AUTO_RETRY_MAX_ATTEMPTS]);
+    await arrange("UPDATE order_record SET transmission_auto_retry_count=$2 WHERE id=$1", [
+      id,
+      AUTO_RETRY_MAX_ATTEMPTS,
+    ]);
 
     for (let i = 0; i < 3; i++) await recovery.sweepAutoRetries(ORG_A);
     await settle();
@@ -531,7 +582,9 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     const alerts = await alertsOf(ORG_A, "m11.order.transmission_auto_retry_exhausted");
     expect(alerts).toHaveLength(1); // once — across three sweeps
     expect(alerts[0]?.severity).toBe("warn");
-    expect(await recipientsOf((alerts[0] as { id: string }).id)).toEqual([user.clinicalLead, user.orgAdmin].sort());
+    expect(await recipientsOf((alerts[0] as { id: string }).id)).toEqual(
+      [user.clinicalLead, user.orgAdmin].sort(),
+    );
   });
 
   it("past the WINDOW (72 h since it failed) the sweep gives up the same way — even though the BAA is back", async () => {
@@ -548,7 +601,10 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
   it("TWO concurrent sweeps dispatch exactly ONCE (F-182's row lock + conditional update — the same two guards a double-click relies on)", async () => {
     const id = await baaLapsedOrder();
     baaActive = true;
-    const [a, b] = await Promise.all([recovery.sweepAutoRetries(ORG_A), recoveryB.sweepAutoRetries(ORG_A)]);
+    const [a, b] = await Promise.all([
+      recovery.sweepAutoRetries(ORG_A),
+      recoveryB.sweepAutoRetries(ORG_A),
+    ]);
     expect(a.retried + b.retried).toBe(1);
     // The loser lost a RACE — benign, never an error (see the deterministic case below).
     expect(a.errors + b.errors).toBe(0);
@@ -589,7 +645,9 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
       db: handle.db,
       // Exactly what F-182's resend throws when another sweeper / an operator's click got the row first.
       resend: () => {
-        throw new ConflictError("ORM resend not allowed (not_failed): the order was resent concurrently");
+        throw new ConflictError(
+          "ORM resend not allowed (not_failed): the order was resent concurrently",
+        );
       },
       baaCleared: outboundBaaCleared,
       alerts: { emit: async () => undefined },
@@ -621,12 +679,15 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     expect(await alertsOf(ORG_A, "m11.order.transmission_held_aging")).toHaveLength(0);
 
     await backdate(id, 5);
-    for (let i = 0; i < 3; i++) expect(await recovery.sweepHeldAging(ORG_A)).toMatchObject({ examined: 1, errors: 0 });
+    for (let i = 0; i < 3; i++)
+      expect(await recovery.sweepHeldAging(ORG_A)).toMatchObject({ examined: 1, errors: 0 });
     let alerts = await alertsOf(ORG_A, "m11.order.transmission_held_aging");
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.severity).toBe("warn");
     expect(alerts[0]?.correlation_id).toMatch(/:warn$/);
-    expect(await recipientsOf((alerts[0] as { id: string }).id)).toEqual([user.clinicalLead, user.orgAdmin].sort());
+    expect(await recipientsOf((alerts[0] as { id: string }).id)).toEqual(
+      [user.clinicalLead, user.orgAdmin].sort(),
+    );
 
     await backdate(id, 25);
     for (let i = 0; i < 3; i++) await recovery.sweepHeldAging(ORG_A);
@@ -643,8 +704,9 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     expect(reached).not.toContain(user.bystander);
     expect(reached).not.toContain(user.otherTenantAdmin);
     // The payload is ids and fixed tokens only.
-    const payload = (await admin.query("SELECT payload FROM alert WHERE id=$1", [(alerts[0] as { id: string }).id])).rows[0]
-      .payload;
+    const payload = (
+      await admin.query("SELECT payload FROM alert WHERE id=$1", [(alerts[0] as { id: string }).id])
+    ).rows[0].payload;
     expect(JSON.stringify(payload)).not.toMatch(/Doe|Jane|MRN/);
   });
 
@@ -670,11 +732,17 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     const page = await recovery.listHeld(ORG_A, { limit: 50 });
     expect(page.nextCursor).toBeNull();
     expect(page.items.map((i) => i.orderId)).toEqual([oldest, newest]);
-    expect(page.items[0]).toMatchObject({ reason: "dlq_exhausted", stage: "critical", feedId: feedA });
+    expect(page.items[0]).toMatchObject({
+      reason: "dlq_exhausted",
+      stage: "critical",
+      feedId: feedA,
+    });
     expect(page.items[0]?.ageSeconds).toBeGreaterThanOrEqual(30 * 3600 - 5);
     expect(page.items[1]).toMatchObject({ stage: "none", feedId: feedA });
     expect(page.items.some((i) => i.orderId === inB)).toBe(false);
-    expect((await recoveryB.listHeld(ORG_B, { limit: 50 })).items.map((i) => i.orderId)).toEqual([inB]);
+    expect((await recoveryB.listHeld(ORG_B, { limit: 50 })).items.map((i) => i.orderId)).toEqual([
+      inB,
+    ]);
   });
 
   it("the worklist paginates by a keyset cursor with no overlap or gap, and refuses a malformed cursor", async () => {
@@ -696,20 +764,35 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     expect(pages).toBe(3);
     expect(seen).toEqual(ids);
 
-    await expect(recovery.listHeld(ORG_A, { limit: 2, cursor: "not-a-cursor" })).rejects.toMatchObject({
+    await expect(
+      recovery.listHeld(ORG_A, { limit: 2, cursor: "not-a-cursor" }),
+    ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
     });
-    const forged = Buffer.from(JSON.stringify({ u: "2026-01-01T00:00:00.000000Z", i: "x'); DROP TABLE order_record;--" })).toString("base64url");
-    await expect(recovery.listHeld(ORG_A, { limit: 2, cursor: forged })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    const forged = Buffer.from(
+      JSON.stringify({ u: "2026-01-01T00:00:00.000000Z", i: "x'); DROP TABLE order_record;--" }),
+    ).toString("base64url");
+    await expect(recovery.listHeld(ORG_A, { limit: 2, cursor: forged })).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+    });
   });
 
   it("a recovery_blocked order is held too (only the attested path can act on it), and application_reject is held", async () => {
     const a = await heldOrder();
     const b = await heldOrder();
-    await arrange("UPDATE order_record SET transmission_failure_reason='recovery_blocked:row_owns_order' WHERE id=$1", [a]);
-    await arrange("UPDATE order_record SET transmission_failure_reason='application_reject' WHERE id=$1", [b]);
+    await arrange(
+      "UPDATE order_record SET transmission_failure_reason='recovery_blocked:row_owns_order' WHERE id=$1",
+      [a],
+    );
+    await arrange(
+      "UPDATE order_record SET transmission_failure_reason='application_reject' WHERE id=$1",
+      [b],
+    );
     const page = await recovery.listHeld(ORG_A, { limit: 50 });
-    expect(page.items.map((i) => i.reason).sort()).toEqual(["application_reject", "recovery_blocked:row_owns_order"]);
+    expect(page.items.map((i) => i.reason).sort()).toEqual([
+      "application_reject",
+      "recovery_blocked:row_owns_order",
+    ]);
     // ...and neither is ever auto-retried.
     baaActive = true;
     expect(await recovery.sweepAutoRetries(ORG_A)).toMatchObject({ examined: 0, retried: 0 });

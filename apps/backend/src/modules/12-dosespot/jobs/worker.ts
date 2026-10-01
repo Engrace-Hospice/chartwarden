@@ -120,7 +120,10 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
     deps.dosespotPatientIdResolver ?? createUnboundDosespotPatientIdResolver();
   const now = deps.now ?? (() => new Date());
 
-  let outcome: { kind: "completed" } | { kind: "failed"; error: string } | { kind: "requeue"; error: string };
+  let outcome:
+    | { kind: "completed" }
+    | { kind: "failed"; error: string }
+    | { kind: "requeue"; error: string };
   try {
     if (row.kind === "patient_sync") {
       const snapshot = await snapshotResolver.resolve(row.organizationId, row.patientId);
@@ -131,7 +134,11 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         const payload = buildPatientUpsertPayload(snapshot);
         const idempotencyKey = patientSyncIdempotencyKey(row.patientId, snapshot.updatedAt);
         // Reached (past this point) only once the vendor client is real — today it always throws here.
-        const response = await doseSpotClient.upsertPatient(row.organizationId, payload, idempotencyKey);
+        const response = await doseSpotClient.upsertPatient(
+          row.organizationId,
+          payload,
+          idempotencyKey,
+        );
         const outboxPort = deps.outbox;
         if (outboxPort) {
           await withOrgContext(
@@ -168,7 +175,8 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
       if (dosespotPatientId === null) {
         outcome = {
           kind: "failed",
-          error: "no DoseSpot-side patient id on file — the prior patient-sync has not succeeded yet",
+          error:
+            "no DoseSpot-side patient id on file — the prior patient-sync has not succeeded yet",
         };
       } else {
         await doseSpotClient.pullMedicationHistory(row.organizationId, { dosespotPatientId });
@@ -219,7 +227,11 @@ export async function runDoseSpotSyncQueueDrain(deps: DoseSpotSyncWorkerDeps): P
         { organizationId, userId: CONSUMER_USER_ID },
         async (tx) => {
           const repo = new DosespotSyncQueueRepository(tx as DbClient);
-          return repo.claimBatchForOrg(organizationId, deps.batchSize ?? 25, deps.now?.() ?? new Date());
+          return repo.claimBatchForOrg(
+            organizationId,
+            deps.batchSize ?? 25,
+            deps.now?.() ?? new Date(),
+          );
         },
       );
       for (const row of claimed) {
@@ -230,7 +242,10 @@ export async function runDoseSpotSyncQueueDrain(deps: DoseSpotSyncWorkerDeps): P
     }
   }
   if (failures.length)
-    throw new AggregateError(failures, `M12_DOSESPOT_SYNC_DRAIN: ${failures.length} org failure(s)`);
+    throw new AggregateError(
+      failures,
+      `M12_DOSESPOT_SYNC_DRAIN: ${failures.length} org failure(s)`,
+    );
 }
 
 export function registerDoseSpotSyncQueueWorker(deps: DoseSpotSyncWorkerDeps): Worker {
@@ -241,7 +256,9 @@ export function registerDoseSpotSyncQueueWorker(deps: DoseSpotSyncWorkerDeps): W
   });
 }
 
-export async function scheduleDoseSpotSyncQueueDrain(connection: ConnectionOptions): Promise<Queue> {
+export async function scheduleDoseSpotSyncQueueDrain(
+  connection: ConnectionOptions,
+): Promise<Queue> {
   const queue = new Queue(M12_DOSESPOT_SYNC_QUEUE, { connection });
   await queue.add(
     "drain",

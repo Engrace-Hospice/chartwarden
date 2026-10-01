@@ -24,15 +24,15 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { audit } from "@wardenx/audit";
 import { createDbClient } from "@wardenx/db";
+import { runWithRequestContext } from "@wardenx/tenancy";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import {
   createOrgScopedAuditExecutor,
   createOrgScopedIdentityOutbox,
 } from "../src/modules/02-identity/identity-ports";
-import { runWithRequestContext } from "@wardenx/tenancy";
-import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -77,9 +77,10 @@ describe.skipIf(!DB_URL)("M2 audit()/outbox RLS — LIVE Postgres, real wardenx_
          ($2,'f205-b','Beta Hospice LLC','Beta Hospice','active')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'f205@example.test','F205 User')`, [
-      USER,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'f205@example.test','F205 User')`,
+      [USER],
+    );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 240_000);

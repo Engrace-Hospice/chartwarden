@@ -91,7 +91,7 @@ test.describe("Assessments", () => {
     // The rail button's accessible name is the scale type plus its capture COUNT ("pps 3"), so this
     // matches on the prefix rather than an exact string that would drift every time the spec runs.
     await page
-      .getByRole("button", { name: /^pps\b/ })
+      .getByRole("button", { name: /^pps\b/i })
       .first()
       .click();
 

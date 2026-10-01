@@ -19,7 +19,8 @@ const RateFields = {
   fiscalYearStarting: Type.Integer({
     minimum: 2000,
     maximum: 2100,
-    description: "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
+    description:
+      "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
   }),
   effectiveFrom: isoDate(),
   effectiveTo: Type.Optional(
@@ -91,7 +92,9 @@ export const RateTableViewSchema = Type.Object({
 });
 export type RateTableView = Static<typeof RateTableViewSchema>;
 
-export const RateTableListResponseSchema = Type.Object({ rateTables: Type.Array(RateTableViewSchema) });
+export const RateTableListResponseSchema = Type.Object({
+  rateTables: Type.Array(RateTableViewSchema),
+});
 export const RateTableEffectiveResponseSchema = Type.Union([RateTableViewSchema, Type.Null()]);
 
 /**

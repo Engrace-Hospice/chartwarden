@@ -32,18 +32,18 @@ import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
+import { __resetSeamsForTest } from "../src/bootstrap/index";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { buildM12VerbalExpiredConsumer } from "../src/modules/12-dosespot/consumers/verbal-expired-binding";
-import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/events-by-m12";
-import { createDbDoseSpotBackend } from "../src/modules/12-dosespot/dosespot-route-service-db";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/events-by-m11";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import {
   createDrizzleOrderSeamStore,
   registerOrderSeams,
 } from "../src/modules/11-orders/seams/index";
-import { __resetSeamsForTest } from "../src/bootstrap/index";
+import { buildM12VerbalExpiredConsumer } from "../src/modules/12-dosespot/consumers/verbal-expired-binding";
+import { createDbDoseSpotBackend } from "../src/modules/12-dosespot/dosespot-route-service-db";
+import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/events-by-m12";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -122,10 +122,10 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     return rows[0].id as string;
   }
 
-  async function orderRow(
-    id: string,
-  ): Promise<{ status: string; version: number } | undefined> {
-    const { rows } = await admin.query("SELECT status, version FROM order_record WHERE id=$1", [id]);
+  async function orderRow(id: string): Promise<{ status: string; version: number } | undefined> {
+    const { rows } = await admin.query("SELECT status, version FROM order_record WHERE id=$1", [
+      id,
+    ]);
     return rows[0] as { status: string; version: number } | undefined;
   }
 
@@ -134,9 +134,9 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     return rows[0] as { status: string } | undefined;
   }
 
-  async function verbalRow(targetId: string): Promise<
-    { status: string; deadlineAt: Date; targetKind: string } | undefined
-  > {
+  async function verbalRow(
+    targetId: string,
+  ): Promise<{ status: string; deadlineAt: Date; targetKind: string } | undefined> {
     const { rows } = await admin.query(
       `SELECT status, deadline_at as "deadlineAt", target_kind as "targetKind" FROM verbal_order WHERE target_id=$1`,
       [targetId],
@@ -154,7 +154,9 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     return rows[0] as { reason: string; actorMembershipId: string | null } | undefined;
   }
 
-  async function eventsFor(aggregateId: string): Promise<Array<{ type: string; payload: unknown }>> {
+  async function eventsFor(
+    aggregateId: string,
+  ): Promise<Array<{ type: string; payload: unknown }>> {
     const { rows } = await admin.query(
       "SELECT event_type, payload FROM outbox_event WHERE aggregate_id=$1 ORDER BY created_at",
       [aggregateId],
@@ -334,9 +336,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     expect((await medOrderRow(orderId))?.status).toBe("expired_unsigned");
 
     const m12Events = await eventsFor(orderId);
-    expect(
-      m12Events.some((e) => e.type === "m12.medication_order.list_changed"),
-    ).toBe(true);
+    expect(m12Events.some((e) => e.type === "m12.medication_order.list_changed")).toBe(true);
   });
 
   it("a medication order signed before its deadline is left alone by the sweep (still verbal_pending, no false expiry)", async () => {

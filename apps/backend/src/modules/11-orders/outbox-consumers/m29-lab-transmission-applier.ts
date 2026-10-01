@@ -105,19 +105,28 @@ function factsOf(
   const p = (payload ?? {}) as Record<string, unknown>;
   const orderId = p.orderId;
   const outboundMessageId = p.outboundMessageId;
-  const rowAttemptId = typeof p.attemptId === "string" && p.attemptId.length > 0 ? p.attemptId : null;
+  const rowAttemptId =
+    typeof p.attemptId === "string" && p.attemptId.length > 0 ? p.attemptId : null;
   if (typeof orderId !== "string" || orderId.length === 0) {
-    throw new Error(`${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: payload has no orderId`);
+    throw new Error(
+      `${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: payload has no orderId`,
+    );
   }
   if (eventType === "m29.lab_order.dispatch_refused") {
     const refusalId = p.refusalId;
     const reason = p.reason;
-    if (typeof refusalId !== "string" || refusalId.length === 0 || typeof reason !== "string" || reason.length === 0) {
+    if (
+      typeof refusalId !== "string" ||
+      refusalId.length === 0 ||
+      typeof reason !== "string" ||
+      reason.length === 0
+    ) {
       throw new Error(
         `${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: dispatch_refused payload has no refusalId/reason`,
       );
     }
-    const attemptId = typeof p.attemptId === "string" && p.attemptId.length > 0 ? p.attemptId : null;
+    const attemptId =
+      typeof p.attemptId === "string" && p.attemptId.length > 0 ? p.attemptId : null;
     return { kind: "dispatch_refused", orderId, refusalId, reason, attemptId };
   }
   if (typeof outboundMessageId !== "string" || outboundMessageId.length === 0) {
@@ -132,7 +141,13 @@ function factsOf(
         `${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: transmitted payload has no ackReceivedAt`,
       );
     }
-    return { kind: "transmitted", orderId, outboundMessageId, ackReceivedAt, attemptId: rowAttemptId };
+    return {
+      kind: "transmitted",
+      orderId,
+      outboundMessageId,
+      ackReceivedAt,
+      attemptId: rowAttemptId,
+    };
   }
   const reason = p.reason;
   if (reason !== "application_reject" && reason !== "dlq_exhausted") {
@@ -146,7 +161,14 @@ function factsOf(
       `${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: transmission_failed payload has no attemptCount`,
     );
   }
-  return { kind: "transmission_failed", orderId, outboundMessageId, reason, attemptCount, attemptId: rowAttemptId };
+  return {
+    kind: "transmission_failed",
+    orderId,
+    outboundMessageId,
+    reason,
+    attemptCount,
+    attemptId: rowAttemptId,
+  };
 }
 
 export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionApplierDeps) {
@@ -163,117 +185,124 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
       const facts = factsOf(event.eventType, event.payload);
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const [order] = await tx
-          .select({
-            id: ORDER.id,
-            transmissionStatus: ORDER.transmissionStatus,
-            orderingPhysicianMdmId: ORDER.orderingPhysicianMdmId,
-            transmissionAttemptId: ORDER.transmissionAttemptId,
-          })
-          .from(ORDER)
-          .where(and(eq(ORDER.organizationId, organizationId), eq(ORDER.id, facts.orderId)))
-          .limit(1);
-        // No matching order (a cross-module id mismatch should never happen in practice, but the outbox
-        // relay's at-least-once redelivery makes "already handled elsewhere, this row moved on" a real case
-        // this consumer must treat as a benign no-op, not a throw that dead-letters a stale redelivery).
-        if (!order) return;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const [order] = await tx
+            .select({
+              id: ORDER.id,
+              transmissionStatus: ORDER.transmissionStatus,
+              orderingPhysicianMdmId: ORDER.orderingPhysicianMdmId,
+              transmissionAttemptId: ORDER.transmissionAttemptId,
+            })
+            .from(ORDER)
+            .where(and(eq(ORDER.organizationId, organizationId), eq(ORDER.id, facts.orderId)))
+            .limit(1);
+          // No matching order (a cross-module id mismatch should never happen in practice, but the outbox
+          // relay's at-least-once redelivery makes "already handled elsewhere, this row moved on" a real case
+          // this consumer must treat as a benign no-op, not a throw that dead-letters a stale redelivery).
+          if (!order) return;
 
-        const fromStatus = order.transmissionStatus;
-        // Terminal states never regress — see the file header's "idempotent by design" note.
-        if (fromStatus === "transmitted" || fromStatus === "failed") return;
-        // F-187 — a worker refusal only ever applies to an order still awaiting its first transmission.
-        if (facts.kind === "dispatch_refused" && fromStatus !== "pending") return;
-        // F-188 / F-200 — and only to the attempt the event concerns: an event from a PREVIOUS attempt (redelivered, or
-        // simply late, after the operator resent / recovered — which minted a new attempt and set the order `pending`
-        // again) is stale. F-188 bound `dispatch_refused`; F-200 binds the two events that come off an outbound ROW too
-        // (`transmitted` / `transmission_failed` — the row now stores the attempt), because the terminal-state check
-        // above stops protecting the order the instant a recovery sets it `pending` again. An event with NO attempt id
-        // (a row queued before the migration, or one already in the outbox) applies exactly as it always did.
-        if (facts.attemptId !== null && order.transmissionAttemptId !== facts.attemptId) return;
+          const fromStatus = order.transmissionStatus;
+          // Terminal states never regress — see the file header's "idempotent by design" note.
+          if (fromStatus === "transmitted" || fromStatus === "failed") return;
+          // F-187 — a worker refusal only ever applies to an order still awaiting its first transmission.
+          if (facts.kind === "dispatch_refused" && fromStatus !== "pending") return;
+          // F-188 / F-200 — and only to the attempt the event concerns: an event from a PREVIOUS attempt (redelivered, or
+          // simply late, after the operator resent / recovered — which minted a new attempt and set the order `pending`
+          // again) is stale. F-188 bound `dispatch_refused`; F-200 binds the two events that come off an outbound ROW too
+          // (`transmitted` / `transmission_failed` — the row now stores the attempt), because the terminal-state check
+          // above stops protecting the order the instant a recovery sets it `pending` again. An event with NO attempt id
+          // (a row queued before the migration, or one already in the outbox) applies exactly as it always did.
+          if (facts.attemptId !== null && order.transmissionAttemptId !== facts.attemptId) return;
 
-        const toStatus = facts.kind === "transmitted" ? "transmitted" : "failed";
-        // F-188 — an attested re-dispatch the worker could not honour (a row owns the order) is NOT a
-        // `dispatch_refused:*` (that prefix is what F-182's plain resend acts on, and a row exists here): it is
-        // `recovery_blocked:row_owns_order`, recoverable again only through the attested path.
-        const failureReason =
-          facts.kind === "dispatch_refused"
-            ? facts.reason === "attested_redispatch_blocked"
-              ? `${RECOVERY_BLOCKED_PREFIX}row_owns_order`
-              : `${DISPATCH_REFUSED_PREFIX}${facts.reason}`
-            : facts.kind === "transmission_failed"
-              ? facts.reason
-              : null;
-        const sourceM29EventId = facts.kind === "dispatch_refused" ? facts.refusalId : facts.outboundMessageId;
-        const at = now();
+          const toStatus = facts.kind === "transmitted" ? "transmitted" : "failed";
+          // F-188 — an attested re-dispatch the worker could not honour (a row owns the order) is NOT a
+          // `dispatch_refused:*` (that prefix is what F-182's plain resend acts on, and a row exists here): it is
+          // `recovery_blocked:row_owns_order`, recoverable again only through the attested path.
+          const failureReason =
+            facts.kind === "dispatch_refused"
+              ? facts.reason === "attested_redispatch_blocked"
+                ? `${RECOVERY_BLOCKED_PREFIX}row_owns_order`
+                : `${DISPATCH_REFUSED_PREFIX}${facts.reason}`
+              : facts.kind === "transmission_failed"
+                ? facts.reason
+                : null;
+          const sourceM29EventId =
+            facts.kind === "dispatch_refused" ? facts.refusalId : facts.outboundMessageId;
+          const at = now();
 
-        const updated = await tx
-          .update(ORDER)
-          .set(
-            facts.kind === "transmitted"
-              ? {
-                  transmissionStatus: "transmitted" as const,
-                  transmissionAckedAt: new Date(facts.ackReceivedAt),
-                  transmissionAckCode: "AA",
-                  transmissionFailureReason: null,
-                  updatedAt: at,
-                }
-              : {
-                  transmissionStatus: "failed" as const,
-                  transmissionFailureReason: failureReason,
-                  updatedAt: at,
-                },
-          )
-          .where(
-            and(
-              eq(ORDER.organizationId, organizationId),
-              eq(ORDER.id, order.id),
-              eq(ORDER.transmissionStatus, fromStatus),
-              // F-188 — the attempt the order is on must not have changed between the read above and this write
-              // (a concurrent resend/recovery mints a new one).
-              order.transmissionAttemptId === null
-                ? isNull(ORDER.transmissionAttemptId)
-                : eq(ORDER.transmissionAttemptId, order.transmissionAttemptId),
-            ),
-          )
-          .returning({ id: ORDER.id });
-        if (updated.length === 0) return; // lost a race to a concurrent redelivery
+          const updated = await tx
+            .update(ORDER)
+            .set(
+              facts.kind === "transmitted"
+                ? {
+                    transmissionStatus: "transmitted" as const,
+                    transmissionAckedAt: new Date(facts.ackReceivedAt),
+                    transmissionAckCode: "AA",
+                    transmissionFailureReason: null,
+                    updatedAt: at,
+                  }
+                : {
+                    transmissionStatus: "failed" as const,
+                    transmissionFailureReason: failureReason,
+                    updatedAt: at,
+                  },
+            )
+            .where(
+              and(
+                eq(ORDER.organizationId, organizationId),
+                eq(ORDER.id, order.id),
+                eq(ORDER.transmissionStatus, fromStatus),
+                // F-188 — the attempt the order is on must not have changed between the read above and this write
+                // (a concurrent resend/recovery mints a new one).
+                order.transmissionAttemptId === null
+                  ? isNull(ORDER.transmissionAttemptId)
+                  : eq(ORDER.transmissionAttemptId, order.transmissionAttemptId),
+              ),
+            )
+            .returning({ id: ORDER.id });
+          if (updated.length === 0) return; // lost a race to a concurrent redelivery
 
-        // D16's own event-consumption table: "Either way emit `m11.order.transmission_status_changed`".
-        await deps.outbox.publish(tx, {
-          organizationId,
-          eventName: "m11.order.transmission_status_changed",
-          aggregateKind: "order",
-          aggregateId: order.id,
-          payload: {
-            orderId: order.id,
-            organizationId,
-            fromStatus,
-            toStatus,
-            ...(facts.kind === "transmitted" ? { ackCode: "AA" } : { failureReason: failureReason as string }),
-            sourceM29EventId,
-          },
-        });
-
-        if (facts.kind !== "transmitted") {
+          // D16's own event-consumption table: "Either way emit `m11.order.transmission_status_changed`".
           await deps.outbox.publish(tx, {
             organizationId,
-            eventName: "m11.order.transmission_terminal_failed",
+            eventName: "m11.order.transmission_status_changed",
             aggregateKind: "order",
             aggregateId: order.id,
             payload: {
               orderId: order.id,
               organizationId,
-              failureReason: failureReason as string,
-              // A refusal is by definition before any attempt: nothing was ever sent.
-              transmittedAttempts: facts.kind === "transmission_failed" ? facts.attemptCount : 0,
-              lastAttemptAt: at.toISOString(),
-              orderingPhysicianMdmId: order.orderingPhysicianMdmId,
+              fromStatus,
+              toStatus,
+              ...(facts.kind === "transmitted"
+                ? { ackCode: "AA" }
+                : { failureReason: failureReason as string }),
+              sourceM29EventId,
             },
           });
-        }
-      });
+
+          if (facts.kind !== "transmitted") {
+            await deps.outbox.publish(tx, {
+              organizationId,
+              eventName: "m11.order.transmission_terminal_failed",
+              aggregateKind: "order",
+              aggregateId: order.id,
+              payload: {
+                orderId: order.id,
+                organizationId,
+                failureReason: failureReason as string,
+                // A refusal is by definition before any attempt: nothing was ever sent.
+                transmittedAttempts: facts.kind === "transmission_failed" ? facts.attemptCount : 0,
+                lastAttemptAt: at.toISOString(),
+                orderingPhysicianMdmId: order.orderingPhysicianMdmId,
+              },
+            });
+          }
+        },
+      );
     },
   };
 }
