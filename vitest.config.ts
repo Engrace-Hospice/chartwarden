@@ -42,6 +42,10 @@ export default defineConfig({
           ],
           exclude: [...EXCLUDE, ...DOM_GLOBS],
           testTimeout: 50_000,
+          // The live-Postgres suites drop the schema and replay every migration in a beforeAll. The
+          // 10s default timed out on a busy CI runner (m23-rate-table, then m23-sequestration-policy),
+          // so it is raised here once instead of per file; a hook that passes its own timeout wins.
+          hookTimeout: 180_000,
         },
       },
       {
