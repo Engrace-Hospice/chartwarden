@@ -19,8 +19,18 @@
  * Deliberately not "solved" by raising the server's ceiling: `RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE`
  * exists (WX-PR-018) and would also make the chain pass, but it turns a real control off for the
  * whole boot to paper over a client that was waiting the wrong amount of time.
+ *
+ * A third, unrelated transient is retried here too: a 5xx from the freshly booted backend. In CI the
+ * very first sign-up (`admin@wardenx.local`) once came back `HTTP 500` because `hash-wasm`'s argon2id
+ * trapped ("access to a null reference") under Bun on the runner, which failed the whole e2e job at
+ * the seed step before any spec ran. It did not reproduce in 40 fresh `bun` processes on linux/amd64,
+ * so it is an intermittent engine fault, and the hash runs BEFORE the user row is written — a retry
+ * cannot find a half-created user. The retry is bounded and 5xx-only: a 4xx (wrong password, duplicate
+ * email) is a real answer and still fails at once.
  */
 const MAX_AUTH_ATTEMPTS = 5;
+const MAX_SERVER_ERROR_RETRIES = 2;
+const SERVER_ERROR_BACKOFF_MS = 2_000;
 
 /** Better Auth reports seconds on `x-retry-after`; WardenX's SD-055 tier on the standard header. */
 function retryDelaySeconds(response: Response): number {
@@ -38,9 +48,20 @@ export async function fetchAuthWithRateLimitRetry(
   init: RequestInit,
   label: string,
 ): Promise<Response> {
-  for (let attempt = 0; attempt < MAX_AUTH_ATTEMPTS; attempt += 1) {
+  let serverErrorRetries = 0;
+  for (let attempt = 0; attempt < MAX_AUTH_ATTEMPTS; ) {
     const response = await fetch(input, init);
-    if (response.status !== 429 || attempt === MAX_AUTH_ATTEMPTS - 1) return response;
+
+    if (response.status >= 500 && serverErrorRetries < MAX_SERVER_ERROR_RETRIES) {
+      serverErrorRetries += 1;
+      const delayMs = SERVER_ERROR_BACKOFF_MS * serverErrorRetries;
+      console.log(`${label} got HTTP ${response.status}; retrying in ${delayMs / 1_000}s`);
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    attempt += 1;
+    if (response.status !== 429 || attempt === MAX_AUTH_ATTEMPTS) return response;
 
     const delaySeconds = retryDelaySeconds(response);
     console.log(`${label} rate-limited; retrying in ${delaySeconds}s`);
