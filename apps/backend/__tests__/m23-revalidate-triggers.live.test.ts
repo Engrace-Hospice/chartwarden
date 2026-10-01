@@ -87,7 +87,7 @@ describe.skipIf(!DB_URL)("F-153 — M23 revalidate-trigger producer, LIVE Postgr
     }
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await admin.end();

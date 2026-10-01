@@ -74,7 +74,7 @@ describe.skipIf(!DB_URL)("#248 — M23 unmapped-taxonomy-occurrence consumer, LI
     );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await admin.end();
