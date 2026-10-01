@@ -70,8 +70,10 @@ test.describe("Billing — Medicaid (M24, a real seeded claim lifecycle)", () =>
     await expect(rows.first()).toBeVisible();
     // At least one row reached SUBMITTED — the state the seed's real assemble → validate → submit
     // chain leaves it in (validation and assembly are proven upstream by the seed script's own
-    // non-zero exit on failure; this is the UI's read of that write path's end state).
-    await expect(page.getByText(/submitted/i).first()).toBeVisible();
+    // non-zero exit on failure; this is the UI's read of that write path's end state). Scoped to the status
+    // CELL of a claim row: a page-wide text match resolves first to the hidden `State: Submitted` filter
+    // `<option>` and never sees the row at all.
+    await expect(rows.getByRole("cell", { name: "Submitted", exact: true }).first()).toBeVisible();
   });
 
   test("failure path: an invalid claim filter combination surfaces inline, not a crash", async ({

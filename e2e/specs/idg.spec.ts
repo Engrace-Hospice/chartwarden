@@ -86,12 +86,13 @@ test.describe("IDG", () => {
     await expect(page.getByRole("heading", { name: "IDG Schedule" })).toBeVisible({
       timeout: 15_000,
     });
-    // Selected by the `button` role, not `row`: each `<tr>` carries `role="button"` so the whole row is
-    // keyboard-actionable, and an explicit role REPLACES the implicit one — `getByRole("row")` matches
-    // only the header. The trap F-023 documents in `e2e/fixtures/patients.ts`, third spec running.
-    const liveRow = page.getByRole("table").getByRole("button").filter({ hasText: "Live" }).first();
+    // The row is a plain `row` again (it used to carry `role="button"`, which REPLACED the implicit role and
+    // made `getByRole("row")` match only the header — the F-023 trap in `e2e/fixtures/patients.ts`); it is
+    // opened through the link inside it, which keeps the row free of nested interactive roles (axe
+    // `nested-interactive`).
+    const liveRow = page.getByRole("table").getByRole("row").filter({ hasText: "Live" }).first();
     await expect(liveRow).toBeVisible({ timeout: 15_000 });
-    await liveRow.click();
+    await liveRow.getByRole("link").first().click();
     await page.waitForURL(/\/idg\/meetings\/[^/]+/, { timeout: 15_000 });
     const meetingUrl = new URL(page.url());
     const meetingPath = meetingUrl.pathname;

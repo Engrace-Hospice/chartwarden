@@ -109,26 +109,46 @@ test.describe("Encounters", () => {
     });
 
     // Every REQUIRED section, because the §2.6 Layer-3 gate refuses a note that says nothing and that
-    // refusal is the server's — the composer marks required sections with an asterisk and never
+    // refusal is the server's — the composer marks required sections with a "Required" badge and never
     // pre-empts it. The tabs are the section nav; a section is satisfied by an entry OR by prose, and
     // the shipped vocabulary has no entries for several of them, so free text is what always works.
     const tabs = page.locator("nav button");
-    const required = tabs.filter({ hasText: "*" });
+    const required = tabs.filter({ hasText: "Required" });
     const count = await required.count();
     expect(count).toBeGreaterThan(0);
     for (let i = 0; i < count; i += 1) {
-      // Re-resolve each time: the tab's own label loses its "*" and gains a "✓" as it is filled, so the
-      // filtered list shrinks under us. Always take the first still-unfilled one.
-      await tabs.filter({ hasText: "*" }).first().click();
+      // Re-resolve each time: the tab's badge changes from "Required" to "Documented" as it is filled, so
+      // the filtered list shrinks under us. Always take the first still-unfilled one.
+      await tabs.filter({ hasText: "Required" }).first().click();
       await page
-        .getByLabel("Additional notes (recorded verbatim)")
+        .getByLabel("Additional notes", { exact: true })
         .fill("Patient resting comfortably; no new symptoms reported this visit.");
     }
 
-    await page.getByRole("button", { name: "Save" }).click();
+    // "Save draft" exactly: a bare "Save" is a substring of "Save & refresh preview" too.
+    await page.getByRole("button", { name: "Save draft", exact: true }).click();
     // The server assembles the Layer-1 narrative and hands it back — the composer never assembles prose.
     // Its appearance is what proves the tree PERSISTED, which is the defect #114 fixed one layer down.
     await expect(page.getByText("Patient resting comfortably").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // ── 2b. Vitals (F-112) ─────────────────────────────────────────────────────────────────────────
+    //
+    // Since F-112 the §2.6 gate evaluates the vitals check instead of deferring it: a routine visit cannot be
+    // finalized without the standard vitals roster on file ("BP not captured — required for routine_visit",
+    // then HR, RR, temperature, SpO₂, pain). Narrative alone is no longer enough, so record them the way a
+    // clinician does, from the composer's Vitals panel.
+    await page.getByRole("button", { name: "Vitals", exact: true }).click();
+    await page.getByLabel("BP systolic").fill("120");
+    await page.getByLabel("BP diastolic").fill("80");
+    await page.getByLabel("Heart rate").fill("72");
+    await page.getByLabel("Respiratory rate").fill("16");
+    await page.getByLabel("Temperature").fill("98.6");
+    await page.getByLabel("SpO₂").fill("97");
+    await page.getByLabel("Pain score").fill("2");
+    await page.getByRole("button", { name: "Record vitals" }).click();
+    await expect(page.getByText("Vitals recorded", { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -137,10 +157,13 @@ test.describe("Encounters", () => {
     // This is where every seeded stack used to answer 503 HEARTHNOTE_CIPHER_UNBOUND. Finalize seals the
     // assembled narrative under the tenant DEK and pins it, so what M22 prints and M28 exposes is what
     // was assembled here rather than what today's corpus would produce from the same selections.
-    await page.getByRole("button", { name: "Finalize" }).click();
-    await expect(page.getByText("Finalized. Sign it from the encounter record.")).toBeVisible({
+    await page.getByRole("button", { name: "Finalize note", exact: true }).click();
+    // The feedback banner is a title ("Note finalized") plus a message ("Sign it from the encounter
+    // record."), no longer the single "Finalized. Sign it…" string.
+    await expect(page.getByText("Note finalized", { exact: true })).toBeVisible({
       timeout: 15_000,
     });
+    await expect(page.getByText("Sign it from the encounter record.")).toBeVisible();
 
     // ── 4. The sign gate refuses a session with no fresh step-up (F-084) ───────────────────────────
     //

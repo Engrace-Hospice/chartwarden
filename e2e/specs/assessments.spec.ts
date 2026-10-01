@@ -88,10 +88,11 @@ test.describe("Assessments", () => {
 
     // Select PPS in the scale rail — the timeline opens on whichever scale it lists first, and the big
     // score belongs to the SELECTED scale.
-    // The rail button's accessible name is the scale type plus its capture COUNT ("pps 3"), so this
-    // matches on the prefix rather than an exact string that would drift every time the spec runs.
+    // The rail button's accessible name is the scale label, its latest-capture date and its capture COUNT
+    // ("Pps Latest Oct 1, 2026 3"), so this matches on the prefix, case-insensitively (the label is now
+    // title-cased), rather than an exact string that would drift every time the spec runs.
     await page
-      .getByRole("button", { name: /^pps\b/ })
+      .getByRole("button", { name: /^pps\b/i })
       .first()
       .click();
 
