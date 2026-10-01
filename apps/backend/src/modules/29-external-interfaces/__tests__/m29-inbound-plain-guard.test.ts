@@ -208,7 +208,10 @@ describe("real registry — the bind point refuses, and binds NOTHING", () => {
       loadCredential: async () => {
         throw new Error("unused");
       },
-      connectionDeps: () => ({ log: () => {} }) as never,
+      // `canConnect` below opens a real socket, which reaches `handleMllpConnection` — and that calls
+      // `socket.setTimeout(deps.readTimeoutMs)`. A stub without it throws inside the server's connection
+      // callback (an uncaught exception that fails the whole vitest run even though every test passes).
+      connectionDeps: () => ({ log: () => {}, readTimeoutMs: 60_000 }) as never,
       log: () => {},
       allowPlainProtocol: true,
     });
