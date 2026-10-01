@@ -180,7 +180,7 @@ jobs:
       # an unexpired date within 90 days — enforced by `arch:vuln-allowlist`, which runs in the CI this
       # job depends on. There is deliberately no severity knob to turn down.
       - name: Scan backend image (HIGH/CRITICAL fail the release)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: ghcr.io/engrace-hospice/wardenx@${{ steps.build_backend.outputs.digest }}
           format: table
@@ -189,7 +189,7 @@ jobs:
           ignore-unfixed: false
           trivyignores: .trivyignore.yaml
       - name: Scan staff web image (HIGH/CRITICAL fail the release)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: ghcr.io/engrace-hospice/wardenx-web@${{ steps.build_web.outputs.digest }}
           format: table
