@@ -76,7 +76,7 @@ describe.skipIf(!DB_URL)("F-162 — M23 m18.evv.late_check_resolved, LIVE Postgr
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await admin.end();

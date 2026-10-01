@@ -141,7 +141,7 @@ describe.skipIf(!DB_URL)("M23 sequestration policy — LIVE Postgres (F-212)", (
     );
     appUrl = await appRoleConnectionString(admin, DB_URL as string);
     handle = createDbClient({ connectionString: appUrl });
-  });
+  }, 120_000);
 
   afterAll(async () => {
     await handle?.close();
