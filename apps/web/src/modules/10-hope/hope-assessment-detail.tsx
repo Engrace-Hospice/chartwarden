@@ -2520,11 +2520,16 @@ function AnswerControl(props: {
 
   if (isSectionIOtherConditionYesNo(props.item)) {
     return (
-      <div
-        role="group"
+      <fieldset
         aria-label={`${props.item.label}: select Yes or No`}
         aria-describedby={props.describedBy}
         style={{
+          // A `<fieldset>` is the native `group` (biome a11y/useSemanticElements); its default border,
+          // padding and min-inline-size are reset so it renders exactly like the `<div>` it replaces.
+          border: 0,
+          margin: 0,
+          padding: 0,
+          minInlineSize: 0,
           display: "inline-flex",
           alignItems: "center",
           gap: ".875rem",
@@ -2566,7 +2571,7 @@ function AnswerControl(props: {
             {label}
           </label>
         ))}
-      </div>
+      </fieldset>
     );
   }
 
@@ -2689,9 +2694,18 @@ function answerOptionsForControl(
     )
     .map((option) => ({
       ...option,
-      label: option.label.replace(/^[0-9A-Z^]+(?:\s*[-.:=)]\s*|\s+)/i, ""),
+      label: option.label.replace(LEADING_ANSWER_CODE, ""),
     }));
 }
+
+/**
+ * A leading answer code ("1 - Yes", "A. Foo", "^ = Blank") that the control already shows as the value.
+ * Case-SENSITIVE and separator-REQUIRED on purpose: the previous `/^[0-9A-Z^]+(?:\s*[-.:=)]\s*|\s+)/i` matched
+ * any leading word followed by whitespace, so "Not applicable (the patient is not experiencing the symptom)"
+ * rendered as "applicable (…)", "Not at all - symptom does not…" as "at all - symptom…", and "Admission (ADM)"
+ * as "(ADM)" — 402 of the 554 seeded HOPE option labels, while none of them actually carries a code prefix.
+ */
+const LEADING_ANSWER_CODE = /^(?:\d+|[A-Z]|\^)\s*[-.:=)]\s+/;
 
 function textPlaceholder(item: WorkspaceItem): string | undefined {
   if (item.itemCode === "A0500B") return "Middle initial";
