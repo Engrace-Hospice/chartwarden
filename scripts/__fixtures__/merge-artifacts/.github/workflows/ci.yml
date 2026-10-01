@@ -16,7 +16,7 @@
     # covers the rest of the branch — the platform pool, the audited active-org enumerator, the relay
     # start — by doing the one thing a gate cannot do: running the process the way production runs it.
     name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
@@ -35,7 +35,7 @@
   # jobs this needs no command arguments and replays no migrations.
   rate-limit-store-live:
     name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     services:
       valkey:
         image: valkey/valkey:8-alpine
