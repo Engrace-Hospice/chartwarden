@@ -89,10 +89,7 @@ export function SecurityPasskeys(): JSX.Element {
   const hasActiveFilters = searchQuery.trim() !== "" || deviceFilter !== "all";
   const pageCount = Math.max(1, Math.ceil(filteredPasskeys.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const pagedPasskeys = filteredPasskeys.slice(
-    (activePage - 1) * pageSize,
-    activePage * pageSize,
-  );
+  const pagedPasskeys = filteredPasskeys.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const clearFilters = (): void => {
     setSearchQuery("");
@@ -110,8 +107,7 @@ export function SecurityPasskeys(): JSX.Element {
               fontSize: "0.875rem",
             }}
           >
-            Manage device biometrics and security keys used for passwordless
-            sign-in.
+            Manage device biometrics and security keys used for passwordless sign-in.
           </div>
         </PageHeader>
       }
@@ -139,8 +135,7 @@ export function SecurityPasskeys(): JSX.Element {
             >
               <div style={passkeyNameFieldStyle}>
                 <label htmlFor="passkey-name" style={fieldLabelStyle}>
-                  Passkey name{" "}
-                  <span style={optionalLabelStyle}>(optional)</span>
+                  Passkey name <span style={optionalLabelStyle}>(optional)</span>
                 </label>
 
                 <input
@@ -228,9 +223,7 @@ export function SecurityPasskeys(): JSX.Element {
                   <th style={{ ...thStyle, width: "38%" }}>Passkey</th>
                   <th style={{ ...thStyle, width: "22%" }}>Device</th>
                   <th style={{ ...thStyle, width: "20%" }}>Created</th>
-                  <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>
-                    Actions
-                  </th>
+                  <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,17 +242,11 @@ export function SecurityPasskeys(): JSX.Element {
                         }
                       />
                     </td>
-                    <td
-                      style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}
-                    >
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
                       {formatDate(passkey.createdAt)}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <Button
-                        size="sm"
-                        tone="danger"
-                        onClick={() => void remove(passkey.id)}
-                      >
+                      <Button size="sm" tone="danger" onClick={() => void remove(passkey.id)}>
                         Remove
                       </Button>
                     </td>
@@ -333,9 +320,7 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 function shortId(value: string): string {
-  return value.length > 18
-    ? `${value.slice(0, 8)}...${value.slice(-6)}`
-    : value;
+  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
 const filterShellStyle: CSSProperties = {
@@ -374,7 +359,7 @@ const errorBannerStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",
@@ -428,13 +413,11 @@ const tableStyle: CSSProperties = {
 const headRowStyle: CSSProperties = {
   textAlign: "left",
   color: "var(--color-on-surface-variant)",
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
 };
 const rowStyle: CSSProperties = {
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",

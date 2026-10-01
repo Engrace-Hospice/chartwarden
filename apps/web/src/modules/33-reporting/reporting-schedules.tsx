@@ -385,7 +385,7 @@ const errorBannerStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
 };
 

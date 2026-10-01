@@ -498,7 +498,7 @@ const modalErrorStyle = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 10%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 28%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
 };
 

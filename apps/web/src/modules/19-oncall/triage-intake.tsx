@@ -551,7 +551,8 @@ const validationItemStyle = (valid: boolean): CSSProperties => ({
   background: valid
     ? "color-mix(in srgb, var(--color-success) 10%, transparent)"
     : "color-mix(in srgb, var(--color-warning) 12%, transparent)",
-  color: valid ? "var(--color-success)" : "var(--color-warning)",
+  // Text uses the darker `-pill-fg` variants: the base tokens measure 2.8:1 / 4.0:1 on these tints (WCAG AA 1.4.3).
+  color: valid ? "var(--color-success-pill-fg)" : "var(--color-warning-pill-fg)",
   fontSize: "0.75rem",
   fontWeight: 650,
 });
@@ -587,7 +588,7 @@ const errorBannerStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",

@@ -451,7 +451,7 @@ const alert: CSSProperties = {
   padding: "0.65rem 0.85rem",
   borderRadius: "8px",
   border: "1px solid color-mix(in srgb, var(--color-error) 35%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
 };
 const loadingBox: CSSProperties = { padding: "3rem 1.5rem", textAlign: "center" };
 const table: CSSProperties = { width: "100%", borderCollapse: "collapse", minWidth: "72rem" };

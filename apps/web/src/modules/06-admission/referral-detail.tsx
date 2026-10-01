@@ -822,7 +822,7 @@ const alert: CSSProperties = {
   marginBottom: "1rem",
   border: "1px solid color-mix(in srgb, var(--color-error) 35%, transparent)",
   borderRadius: "8px",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   padding: "0.75rem 1rem",
 };
 const factsGrid: CSSProperties = {

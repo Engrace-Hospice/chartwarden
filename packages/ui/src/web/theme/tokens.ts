@@ -115,3 +115,11 @@ export const cardSurface = {
  */
 export const tint = (color: string, pct = 12): string =>
   `color-mix(in srgb, ${color} ${pct}%, ${t.surfaceLowest})`;
+
+/**
+ * Text colour for glyphs/initials drawn on a {@link tint} of `color`: the hue pulled toward `onSurface`, which
+ * is dark in light mode and light in dark mode, so it gains contrast in both. The raw viz hues (green 2.8:1,
+ * teal 3.2:1 on a 14% tint) fail WCAG AA 1.4.3 as text.
+ */
+export const inkOn = (color: string, pct = 55): string =>
+  `color-mix(in srgb, ${color} ${pct}%, ${t.onSurface})`;

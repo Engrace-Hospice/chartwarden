@@ -63,7 +63,9 @@ export function ScaleLicenseRegistry(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [recording, setRecording] = useState(false);
-  const [editing, setEditing] = useState<{ license: LicenseRow; action: LicenseAction } | null>(null);
+  const [editing, setEditing] = useState<{ license: LicenseRow; action: LicenseAction } | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<LicenseDraft>(newDraft);
 
@@ -544,7 +546,7 @@ const errorBannerStyle = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",

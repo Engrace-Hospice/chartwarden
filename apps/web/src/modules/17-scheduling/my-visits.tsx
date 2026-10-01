@@ -7,6 +7,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — My Visits (M17 §5.1 `/app/me/visits`, Track B / ADR-0030).
@@ -280,16 +281,11 @@ export function MyVisits(): JSX.Element {
                   {pagedRows.map((v) => (
                     <tr
                       key={v.id}
-                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/scheduling/visits/${v.id}`)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          navigate(`/scheduling/visits/${v.id}`);
-                        }
-                      }}
+                      {...interactiveRowProps(
+                        () => navigate(`/scheduling/visits/${v.id}`),
+                        false,
+                        true,
+                      )}
                       style={rowStyle}
                       className="wx-data-row-interactive"
                     >
@@ -492,7 +488,7 @@ const errorBannerStyle = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",

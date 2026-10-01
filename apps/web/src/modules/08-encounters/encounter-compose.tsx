@@ -43,29 +43,47 @@ const humanize = (k: string): string =>
 
 const sectionIsFilled = (draft: DraftSections, sectionId: string): boolean => {
   const value = draft[sectionId];
-  return (
-    (value?.entries.length ?? 0) > 0 || (value?.freeText.trim().length ?? 0) > 0
-  );
+  return (value?.entries.length ?? 0) > 0 || (value?.freeText.trim().length ?? 0) > 0;
 };
 
-type UiFeedback = { tone: "success" | "error" | "warning"; title: string; message: string; field?: string };
+type UiFeedback = {
+  tone: "success" | "error" | "warning";
+  title: string;
+  message: string;
+  field?: string;
+};
 
 function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFeedback {
   if (result.code === "VERSION_MISMATCH")
-    return { tone: "warning", title: "This visit note changed", message: "The note was updated after you opened it. Reload the latest version before continuing." };
-  return { tone: "error", title: "Action needed", message: readableValidation(result.details, result.message) };
+    return {
+      tone: "warning",
+      title: "This visit note changed",
+      message:
+        "The note was updated after you opened it. Reload the latest version before continuing.",
+    };
+  return {
+    tone: "error",
+    title: "Action needed",
+    message: readableValidation(result.details, result.message),
+  };
 }
 
 const VITAL_LABELS: Record<string, string> = {
-  bpSystolic: "Systolic blood pressure", bpDiastolic: "Diastolic blood pressure", heartRate: "Heart rate",
-  respiratoryRate: "Respiratory rate", temperature: "Temperature", spo2: "SpO₂", painScore: "Pain score",
+  bpSystolic: "Systolic blood pressure",
+  bpDiastolic: "Diastolic blood pressure",
+  heartRate: "Heart rate",
+  respiratoryRate: "Respiratory rate",
+  temperature: "Temperature",
+  spo2: "SpO₂",
+  painScore: "Pain score",
 };
 
 function readableValidation(details: unknown, fallback: string): string {
   const first = Array.isArray(details) ? details[0] : details;
   if (first && typeof first === "object") {
     const item = first as { field?: unknown; message?: unknown };
-    const field = typeof item.field === "string" ? VITAL_LABELS[item.field] ?? humanize(item.field) : null;
+    const field =
+      typeof item.field === "string" ? (VITAL_LABELS[item.field] ?? humanize(item.field)) : null;
     if (typeof item.message === "string") return field ? `${field}: ${item.message}` : item.message;
   }
   return fallback;
@@ -175,12 +193,7 @@ export function EncounterCompose(): JSX.Element {
     });
   }
 
-  function setSlot(
-    sectionId: string,
-    code: string,
-    slot: string,
-    value: string,
-  ): void {
+  function setSlot(sectionId: string, code: string, slot: string, value: string): void {
     setDraft((prev) => {
       const current = prev[sectionId] ?? { entries: [], freeText: "" };
 
@@ -189,9 +202,7 @@ export function EncounterCompose(): JSX.Element {
         [sectionId]: {
           ...current,
           entries: current.entries.map((e) =>
-            e.code === code
-              ? { ...e, params: { ...e.params, [slot]: value } }
-              : e,
+            e.code === code ? { ...e, params: { ...e.params, [slot]: value } } : e,
           ),
         },
       };
@@ -214,12 +225,7 @@ export function EncounterCompose(): JSX.Element {
     setBusy(true);
     setFeedback(null);
 
-    const res = await saveSelections(
-      client,
-      encounterId,
-      version,
-      toSelectionsBody(draft),
-    );
+    const res = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
 
     setBusy(false);
 
@@ -230,7 +236,11 @@ export function EncounterCompose(): JSX.Element {
 
     setVersion(res.value.version);
     setPreview(res.value.layer1Preview);
-    setFeedback({ tone: "success", title: "Draft saved", message: "Your visit note changes were saved." });
+    setFeedback({
+      tone: "success",
+      title: "Draft saved",
+      message: "Your visit note changes were saved.",
+    });
   }
 
   async function finalize(): Promise<void> {
@@ -239,12 +249,7 @@ export function EncounterCompose(): JSX.Element {
     setBusy(true);
     setFeedback(null);
 
-    const saved = await saveSelections(
-      client,
-      encounterId,
-      version,
-      toSelectionsBody(draft),
-    );
+    const saved = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
 
     if (!saved.ok) {
       setBusy(false);
@@ -264,7 +269,11 @@ export function EncounterCompose(): JSX.Element {
       return;
     }
 
-    setFeedback({ tone: "success", title: "Note finalized", message: "Sign it from the encounter record." });
+    setFeedback({
+      tone: "success",
+      title: "Note finalized",
+      message: "Sign it from the encounter record.",
+    });
     await load();
   }
 
@@ -277,17 +286,10 @@ export function EncounterCompose(): JSX.Element {
   }
 
   if (encounter === null || template === null) {
-    return (
-      <EmptyState
-        title="Not found"
-        description="This encounter is not available."
-      />
-    );
+    return <EmptyState title="Not found" description="This encounter is not available." />;
   }
 
-  const active =
-    template.sections.find((s) => s.sectionId === openSection) ??
-    template.sections[0];
+  const active = template.sections.find((s) => s.sectionId === openSection) ?? template.sections[0];
 
   const activeDraft = active ? draft[active.sectionId] : undefined;
   const activeSelectionCount = activeDraft?.entries.length ?? 0;
@@ -318,26 +320,15 @@ export function EncounterCompose(): JSX.Element {
                 Open record
               </Button>
 
-              <Button
-                tone="tertiary"
-                onClick={() => setVitalsOpen((v) => !v)}
-                disabled={!editable}
-              >
+              <Button tone="tertiary" onClick={() => setVitalsOpen((v) => !v)} disabled={!editable}>
                 {vitalsOpen ? "Close vitals" : "Vitals"}
               </Button>
 
-              <Button
-                tone="tertiary"
-                onClick={() => void save()}
-                disabled={busy || !editable}
-              >
+              <Button tone="tertiary" onClick={() => void save()} disabled={busy || !editable}>
                 {busy ? "Saving…" : "Save draft"}
               </Button>
 
-              <Button
-                onClick={() => void finalize()}
-                disabled={busy || !editable}
-              >
+              <Button onClick={() => void finalize()} disabled={busy || !editable}>
                 Finalize note
               </Button>
             </div>
@@ -352,8 +343,7 @@ export function EncounterCompose(): JSX.Element {
                 <div>
                   <div style={eyebrow}>DOCUMENTATION PROGRESS</div>
                   <div style={summaryTitle}>
-                    {completion.completed} of {completion.total} sections
-                    documented
+                    {completion.completed} of {completion.total} sections documented
                   </div>
                 </div>
 
@@ -372,9 +362,7 @@ export function EncounterCompose(): JSX.Element {
 
             <div style={summaryStats}>
               <div style={summaryStat}>
-                <span style={summaryStatValue}>
-                  {completion.requiredRemaining}
-                </span>
+                <span style={summaryStatValue}>{completion.requiredRemaining}</span>
                 <span style={summaryStatLabel}>required remaining</span>
               </div>
 
@@ -409,13 +397,12 @@ export function EncounterCompose(): JSX.Element {
 
               <div style={{ minWidth: 0 }}>
                 <strong style={attentionTitle}>
-                  {unmet.length} required{" "}
-                  {unmet.length === 1 ? "section needs" : "sections need"}{" "}
+                  {unmet.length} required {unmet.length === 1 ? "section needs" : "sections need"}{" "}
                   attention
                 </strong>
                 <p style={attentionText}>
-                  Complete {unmet.join(", ")} before finalization. The server
-                  still performs the authoritative finalization check.
+                  Complete {unmet.join(", ")} before finalization. The server still performs the
+                  authoritative finalization check.
                 </p>
               </div>
             </section>
@@ -425,12 +412,8 @@ export function EncounterCompose(): JSX.Element {
                 ✓
               </span>
               <div>
-                <strong style={readyTitle}>
-                  Required documentation is complete
-                </strong>
-                <p style={readyText}>
-                  You can still review the assembled note before finalizing.
-                </p>
+                <strong style={readyTitle}>Required documentation is complete</strong>
+                <p style={readyText}>You can still review the assembled note before finalizing.</p>
               </div>
             </section>
           )}
@@ -440,7 +423,11 @@ export function EncounterCompose(): JSX.Element {
               encounterId={encounter.id}
               onSaved={() => {
                 setVitalsOpen(false);
-                setFeedback({ tone: "success", title: "Vitals recorded", message: "Visit vitals were saved." });
+                setFeedback({
+                  tone: "success",
+                  title: "Vitals recorded",
+                  message: "Visit vitals were saved.",
+                });
               }}
             />
           ) : null}
@@ -496,16 +483,10 @@ export function EncounterCompose(): JSX.Element {
                         <span
                           style={{
                             ...sectionNavMeta,
-                            ...(missingRequired
-                              ? sectionNavMetaRequired
-                              : null),
+                            ...(missingRequired ? sectionNavMetaRequired : null),
                           }}
                         >
-                          {filled
-                            ? "Documented"
-                            : missingRequired
-                              ? "Required"
-                              : "Not started"}
+                          {filled ? "Documented" : missingRequired ? "Required" : "Not started"}
                         </span>
                       </span>
                     </button>
@@ -536,17 +517,15 @@ export function EncounterCompose(): JSX.Element {
                         )}
                       </div>
                       <p style={editorDescription}>
-                        Select the statements that describe this visit.
-                        Additional free text is stored verbatim.
+                        Select the statements that describe this visit. Additional free text is
+                        stored verbatim.
                       </p>
                     </div>
 
                     <div style={selectionCounter}>
                       <strong>{activeSelectionCount}</strong>
                       <span>
-                        {activeSelectionCount === 1
-                          ? "statement selected"
-                          : "statements selected"}
+                        {activeSelectionCount === 1 ? "statement selected" : "statements selected"}
                       </span>
                     </div>
                   </header>
@@ -558,10 +537,9 @@ export function EncounterCompose(): JSX.Element {
                           No preset statements for this section
                         </strong>
                         <p style={emptyVocabularyText}>
-                          The template has no entries for this{" "}
-                          {humanize(encounter.discipline)}{" "}
-                          {humanize(encounter.encounterType)}. Add the
-                          documentation in the free-text field below.
+                          The template has no entries for this {humanize(encounter.discipline)}{" "}
+                          {humanize(encounter.encounterType)}. Add the documentation in the
+                          free-text field below.
                         </p>
                       </div>
                     ) : (
@@ -585,9 +563,7 @@ export function EncounterCompose(): JSX.Element {
                                   type="checkbox"
                                   checked={selected}
                                   disabled={!editable}
-                                  onChange={() =>
-                                    toggleEntry(active.sectionId, entry)
-                                  }
+                                  onChange={() => toggleEntry(active.sectionId, entry)}
                                   style={entryCheckbox}
                                 />
 
@@ -609,18 +585,14 @@ export function EncounterCompose(): JSX.Element {
 
                               {picked && entry.slots.length > 0 ? (
                                 <div style={slotPanel}>
-                                  <div style={slotPanelTitle}>
-                                    Complete selected details
-                                  </div>
+                                  <div style={slotPanelTitle}>Complete selected details</div>
 
                                   <div style={slotGrid}>
                                     {entry.slots.map((slot) => (
                                       <TextField
                                         key={slot}
                                         label={humanize(slot)}
-                                        value={String(
-                                          picked.params[slot] ?? "",
-                                        )}
+                                        value={String(picked.params[slot] ?? "")}
                                         onChange={(e) =>
                                           setSlot(
                                             active.sectionId,
@@ -644,12 +616,10 @@ export function EncounterCompose(): JSX.Element {
                     <div style={freeTextSection}>
                       <div style={freeTextHeading}>
                         <div>
-                          <strong style={freeTextTitle}>
-                            Additional clinical notes
-                          </strong>
+                          <strong style={freeTextTitle}>Additional clinical notes</strong>
                           <p style={freeTextHint}>
-                            Optional. Enter only information not already
-                            represented by the selected statements.
+                            Optional. Enter only information not already represented by the selected
+                            statements.
                           </p>
                         </div>
                         <span style={verbatimBadge}>Recorded verbatim</span>
@@ -658,9 +628,7 @@ export function EncounterCompose(): JSX.Element {
                       <TextAreaField
                         label="Additional notes"
                         value={draft[active.sectionId]?.freeText ?? ""}
-                        onChange={(e) =>
-                          setFreeText(active.sectionId, e.target.value)
-                        }
+                        onChange={(e) => setFreeText(active.sectionId, e.target.value)}
                         rows={5}
                         disabled={!editable}
                       />
@@ -686,12 +654,9 @@ export function EncounterCompose(): JSX.Element {
                 <div style={previewBody}>
                   {preview.trim().length === 0 ? (
                     <div style={previewEmpty}>
-                      <strong style={previewEmptyTitle}>
-                        No assembled narrative yet
-                      </strong>
+                      <strong style={previewEmptyTitle}>No assembled narrative yet</strong>
                       <p style={previewEmptyText}>
-                        Save the draft to generate the server-built narrative
-                        from your selections.
+                        Save the draft to generate the server-built narrative from your selections.
                       </p>
                     </div>
                   ) : (
@@ -701,14 +666,8 @@ export function EncounterCompose(): JSX.Element {
 
                 {editable ? (
                   <footer style={previewFooter}>
-                    <span style={previewFooterText}>
-                      Preview updates after saving.
-                    </span>
-                    <Button
-                      tone="tertiary"
-                      onClick={() => void save()}
-                      disabled={busy}
-                    >
+                    <span style={previewFooterText}>Preview updates after saving.</span>
+                    <Button tone="tertiary" onClick={() => void save()} disabled={busy}>
                       {busy ? "Saving…" : "Save & refresh preview"}
                     </Button>
                   </footer>
@@ -758,11 +717,7 @@ function VitalsPanel({
     for (const [key] of FIELDS) {
       const raw = values[key];
 
-      if (
-        raw !== undefined &&
-        raw.trim() !== "" &&
-        !Number.isNaN(Number(raw))
-      ) {
+      if (raw !== undefined && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
         body[key] = Number(raw);
       }
     }
@@ -788,8 +743,7 @@ function VitalsPanel({
           <div style={eyebrow}>QUICK CAPTURE</div>
           <h2 style={vitalsTitle}>Visit vitals</h2>
           <p style={vitalsDescription}>
-            Record the measurements available for this visit. Leave unavailable
-            fields blank.
+            Record the measurements available for this visit. Leave unavailable fields blank.
           </p>
         </div>
       </header>
@@ -812,12 +766,14 @@ function VitalsPanel({
         ))}
       </div>
 
-      {error ? <p role="alert" style={vitalsError}>{error}</p> : null}
+      {error ? (
+        <p role="alert" style={vitalsError}>
+          {error}
+        </p>
+      ) : null}
 
       <footer style={vitalsFooter}>
-        <span style={vitalsFooterHint}>
-          Clinical validation is applied by the server.
-        </span>
+        <span style={vitalsFooterHint}>Clinical validation is applied by the server.</span>
 
         <Button onClick={() => void submit()} disabled={busy}>
           {busy ? "Recording…" : "Record vitals"}
@@ -827,16 +783,14 @@ function VitalsPanel({
   );
 }
 
-const hairline =
-  "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)";
+const hairline = "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)";
 
 const page: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "1rem",
   padding: "1rem",
-  background:
-    "color-mix(in srgb, var(--color-surface-container-low) 55%, transparent)",
+  background: "color-mix(in srgb, var(--color-surface-container-low) 55%, transparent)",
 };
 
 const headerActions: CSSProperties = {
@@ -950,8 +904,7 @@ const noticeBox: CSSProperties = {
 };
 
 const noticeSuccess: CSSProperties = {
-  background:
-    "color-mix(in srgb, var(--color-success) 8%, var(--color-surface))",
+  background: "color-mix(in srgb, var(--color-success) 8%, var(--color-surface))",
   color: "var(--color-on-surface)",
 };
 
@@ -985,7 +938,7 @@ const attentionMark: CSSProperties = {
   fontSize: "0.85rem",
   fontWeight: 800,
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
 };
 
 const attentionTitle: CSSProperties = {
@@ -1008,8 +961,7 @@ const readyCard: CSSProperties = {
   padding: "0.9rem 1rem",
   borderRadius: "0.8rem",
   border: "1px solid color-mix(in srgb, var(--color-success) 22%, transparent)",
-  background:
-    "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
+  background: "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
 };
 
 const readyMark: CSSProperties = {
@@ -1038,8 +990,7 @@ const readyText: CSSProperties = {
 
 const workspace: CSSProperties = {
   display: "grid",
-  gridTemplateColumns:
-    "minmax(13rem, 15rem) minmax(26rem, 1fr) minmax(19rem, 24rem)",
+  gridTemplateColumns: "minmax(13rem, 15rem) minmax(26rem, 1fr) minmax(19rem, 24rem)",
   gap: "1rem",
   alignItems: "start",
 };
@@ -1102,8 +1053,7 @@ const sectionNavButton: CSSProperties = {
 
 const sectionNavButtonActive: CSSProperties = {
   border: "1px solid color-mix(in srgb, var(--color-primary) 18%, transparent)",
-  background:
-    "color-mix(in srgb, var(--color-primary) 7%, var(--color-surface))",
+  background: "color-mix(in srgb, var(--color-primary) 7%, var(--color-surface))",
 };
 
 const sectionIndex: CSSProperties = {
@@ -1121,8 +1071,7 @@ const sectionIndex: CSSProperties = {
 
 const sectionIndexComplete: CSSProperties = {
   color: "var(--color-success)",
-  background:
-    "color-mix(in srgb, var(--color-success) 11%, var(--color-surface))",
+  background: "color-mix(in srgb, var(--color-success) 11%, var(--color-surface))",
 };
 
 const sectionIndexActive: CSSProperties = {
@@ -1217,7 +1166,7 @@ const requiredBadge: CSSProperties = {
   borderRadius: 999,
   fontSize: "0.66rem",
   fontWeight: 700,
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   background: "color-mix(in srgb, var(--color-error) 9%, transparent)",
 };
 
@@ -1253,16 +1202,13 @@ const entryCard: CSSProperties = {
   border: hairline,
   borderRadius: "0.7rem",
   background: "var(--color-surface)",
-  transition:
-    "border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
+  transition: "border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
 };
 
 const entryCardSelected: CSSProperties = {
   border: "1px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
-  background:
-    "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
-  boxShadow:
-    "inset 3px 0 0 color-mix(in srgb, var(--color-primary) 85%, transparent)",
+  background: "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
+  boxShadow: "inset 3px 0 0 color-mix(in srgb, var(--color-primary) 85%, transparent)",
 };
 
 const entryLabel: CSSProperties = {

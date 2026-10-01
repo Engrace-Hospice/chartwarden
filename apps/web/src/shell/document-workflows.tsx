@@ -2209,7 +2209,7 @@ const alert: CSSProperties = {
   gap: "1rem",
   border: "1px solid color-mix(in srgb, var(--color-error) 28%, transparent)",
   borderRadius: "10px",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   background: "color-mix(in srgb, var(--color-error) 7%, var(--color-surface))",
   padding: "0.72rem 0.85rem",
   fontSize: "0.85rem",

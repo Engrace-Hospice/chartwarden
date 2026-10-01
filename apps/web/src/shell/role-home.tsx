@@ -7,7 +7,7 @@
 // history snapshots for "vs last week" trends or a daily census/revenue series, and no "recently
 // viewed" patient list, so the cards show current detail instead and the patient panel lists the
 // patients the open work refers to.
-import { EmptyState, Glyph, type GlyphName, Panel, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, Glyph, type GlyphName, Panel, inkOn, t, useApiClient } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -1393,7 +1393,11 @@ function CensusCard({ census, loading }: { census: CensusFigures; loading: boole
 function Avatar({ name }: { name: string }): JSX.Element {
   const c = tintFor(name);
   return (
-    <span className="wx-home-avatar" aria-hidden style={{ color: c, background: toneTint(c, 14) }}>
+    <span
+      className="wx-home-avatar"
+      aria-hidden
+      style={{ color: inkOn(c), background: toneTint(c, 14) }}
+    >
       {initials(name)}
     </span>
   );

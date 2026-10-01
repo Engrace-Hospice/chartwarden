@@ -249,7 +249,14 @@ function WindowTable({
   loading: boolean;
 }): JSX.Element {
   return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
+    <div
+      // biome-ignore lint/a11y/useSemanticElements: a scrolling table viewport is a named region (axe scrollable-region-focusable)
+      role="region"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroll container must be focusable to be keyboard-scrollable (axe scrollable-region-focusable)
+      tabIndex={0}
+      aria-label="Compliance windows"
+      style={{ width: "100%", overflowX: "auto" }}
+    >
       <table style={tableStyle}>
         <thead>
           <tr style={tableHeadRowStyle}>
@@ -293,7 +300,7 @@ const alertStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",

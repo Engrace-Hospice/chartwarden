@@ -473,7 +473,7 @@ const errorBannerStyle: CSSProperties = {
   padding: "0.65rem 0.75rem",
   borderRadius: "0.5rem",
   border: "1px solid var(--color-error)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
   fontSize: "0.875rem",
 };

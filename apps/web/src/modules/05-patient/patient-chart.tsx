@@ -2545,7 +2545,7 @@ const errorNote = {
   border: "1px solid color-mix(in srgb, var(--color-error) 40%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.78rem",
   lineHeight: 1.45,
 } as const;

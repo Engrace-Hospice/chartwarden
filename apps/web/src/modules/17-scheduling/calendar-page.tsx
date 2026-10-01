@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   Panel,
   StatusPill,
+  inkOn,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -1071,7 +1072,10 @@ function VisitPanel({
         <span
           className="wx-home-avatar wx-avatar-lg"
           aria-hidden
-          style={{ color, background: `color-mix(in srgb, ${color} 14%, ${t.surfaceLowest})` }}
+          style={{
+            color: inkOn(color),
+            background: `color-mix(in srgb, ${color} 14%, ${t.surfaceLowest})`,
+          }}
         >
           {initials(name)}
         </span>
@@ -1139,7 +1143,7 @@ function VisitPanel({
                   className="wx-home-avatar"
                   aria-hidden
                   style={{
-                    color,
+                    color: inkOn(color),
                     background: `color-mix(in srgb, ${color} 14%, ${t.surfaceLowest})`,
                   }}
                 >
@@ -1415,7 +1419,7 @@ function StaffAvailability({
                   className="wx-home-avatar"
                   aria-hidden
                   style={{
-                    color: c,
+                    color: inkOn(c),
                     background: `color-mix(in srgb, ${c} 14%, ${t.surfaceLowest})`,
                   }}
                 >

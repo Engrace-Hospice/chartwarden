@@ -10,7 +10,17 @@ import { Modal } from "./modal";
 
 type Tone = "neutral" | "warning" | "error" | "alert";
 
+// Text colour: the darker `*PillFg` variants, because the base `warning`/`error`/`alert` tokens measure 4.25:1 /
+// 3.8:1 on their own 12% tint (WCAG AA 1.4.3 needs 4.5:1) — the guard chip on /medicaid/.../trading-partner-
+// credentials and the SFV countdown chips failed the route-walk axe scan on exactly this.
 const TONE_FG: Record<Tone, string> = {
+  neutral: t.onSurfaceVariant,
+  warning: t.warningPillFg,
+  error: t.errorPillFg,
+  alert: t.alertPillFg,
+};
+// The tint itself is still derived from the base token, so the chip's look is unchanged.
+const TONE_TINT_BASE: Record<Tone, string> = {
   neutral: t.onSurfaceVariant,
   warning: t.warning,
   error: t.error,
@@ -74,7 +84,7 @@ export function GuardChip({
         gap: "0.4rem",
         padding: "0.25rem 0.6rem",
         borderRadius: "9999px",
-        background: tint(fg),
+        background: tint(TONE_TINT_BASE[tone]),
         color: fg,
         fontFamily: t.fontSans,
         fontSize: "0.75rem",
@@ -142,7 +152,7 @@ export function CountdownChip({
         gap: "0.35rem",
         padding: "0.2rem 0.55rem",
         borderRadius: "9999px",
-        background: tone === "neutral" ? t.surfaceContainer : tint(fg),
+        background: tone === "neutral" ? t.surfaceContainer : tint(TONE_TINT_BASE[tone]),
         color: fg,
         fontFamily: t.fontSans,
         fontSize: "0.75rem",

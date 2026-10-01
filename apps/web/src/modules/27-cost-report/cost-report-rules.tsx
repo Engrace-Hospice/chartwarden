@@ -360,7 +360,14 @@ export function CostReportRules(): JSX.Element {
           </div>
         ) : (
           <>
-            <div style={tableViewportStyle}>
+            <div
+              // biome-ignore lint/a11y/useSemanticElements: a scrolling table viewport is a named region (axe scrollable-region-focusable)
+              role="region"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroll container must be focusable to be keyboard-scrollable (axe scrollable-region-focusable)
+              tabIndex={0}
+              aria-label="Rules table"
+              style={tableViewportStyle}
+            >
               <table style={rulesTableStyle}>
                 <colgroup>
                   <col style={{ width: "34%" }} />
@@ -499,7 +506,7 @@ const errorBannerStyle: CSSProperties = {
   padding: "0.65rem 0.75rem",
   borderRadius: "0.5rem",
   border: "1px solid var(--color-error)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
   fontSize: "0.875rem",
 };

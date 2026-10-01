@@ -109,12 +109,8 @@ export function NotificationsInbox(): JSX.Element {
   const [severityFilter, setSeverityFilter] = useState<
     "all" | "critical" | "high" | "warn" | "info"
   >("all");
-  const [deliveryFilter, setDeliveryFilter] = useState<
-    "all" | AlertItem["deliveryStatus"]
-  >("all");
-  const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">(
-    "all",
-  );
+  const [deliveryFilter, setDeliveryFilter] = useState<"all" | AlertItem["deliveryStatus"]>("all");
+  const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -144,10 +140,8 @@ export function NotificationsInbox(): JSX.Element {
         alert.category.toLowerCase().includes(q) ||
         alert.eventType.toLowerCase().includes(q) ||
         alert.alertId.toLowerCase().includes(q);
-      const matchesSeverity =
-        severityFilter === "all" || alert.severity === severityFilter;
-      const matchesDelivery =
-        deliveryFilter === "all" || alert.deliveryStatus === deliveryFilter;
+      const matchesSeverity = severityFilter === "all" || alert.severity === severityFilter;
+      const matchesDelivery = deliveryFilter === "all" || alert.deliveryStatus === deliveryFilter;
       const matchesRead =
         readFilter === "all" ||
         (readFilter === "unread" && alert.readAt === null) ||
@@ -157,8 +151,7 @@ export function NotificationsInbox(): JSX.Element {
   }, [alerts, deliveryFilter, readFilter, searchQuery, severityFilter]);
 
   const total = alerts?.length ?? 0;
-  const unreadTotal =
-    alerts?.filter((alert) => alert.readAt === null).length ?? 0;
+  const unreadTotal = alerts?.filter((alert) => alert.readAt === null).length ?? 0;
   const hasActiveFilters =
     searchQuery.trim() !== "" ||
     severityFilter !== "all" ||
@@ -166,10 +159,7 @@ export function NotificationsInbox(): JSX.Element {
     readFilter !== "all";
   const pageCount = Math.max(1, Math.ceil(filteredAlerts.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const pagedAlerts = filteredAlerts.slice(
-    (activePage - 1) * pageSize,
-    activePage * pageSize,
-  );
+  const pagedAlerts = filteredAlerts.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const clearFilters = (): void => {
     setSearchQuery("");
@@ -213,18 +203,14 @@ export function NotificationsInbox(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="Notifications & Tasks"
-          breadcrumb="General / Notifications"
-        >
+        <PageHeader title="Notifications & Tasks" breadcrumb="General / Notifications">
           <div
             style={{
               color: "var(--color-on-surface-variant)",
               fontSize: "0.875rem",
             }}
           >
-            Review alert delivery, operational notifications, and upcoming
-            worklist scopes.
+            Review alert delivery, operational notifications, and upcoming worklist scopes.
           </div>
         </PageHeader>
       }
@@ -237,11 +223,7 @@ export function NotificationsInbox(): JSX.Element {
             </div>
           ) : null}
           <div style={toolbarStyle}>
-            <div
-              style={tabWrapStyle}
-              role="tablist"
-              aria-label="Notification scope"
-            >
+            <div style={tabWrapStyle} role="tablist" aria-label="Notification scope">
               <TabButton
                 label={
                   unreadTotal > 0
@@ -351,9 +333,7 @@ export function NotificationsInbox(): JSX.Element {
         ) : filteredAlerts.length === 0 ? (
           <div style={{ padding: "2rem 1.5rem" }}>
             <EmptyState
-              title={
-                hasActiveFilters ? "No matching notifications" : "All clear"
-              }
+              title={hasActiveFilters ? "No matching notifications" : "All clear"}
               description={
                 hasActiveFilters
                   ? "Try adjusting the notification filters."
@@ -377,12 +357,8 @@ export function NotificationsInbox(): JSX.Element {
                   <th style={{ ...thStyle, width: "16%" }}>Source</th>
                   <th style={{ ...thStyle, width: "12%" }}>Severity</th>
                   <th style={{ ...thStyle, width: "12%" }}>Delivery</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>
-                    Age
-                  </th>
-                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>
-                    Action
-                  </th>
+                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Age</th>
+                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -400,11 +376,7 @@ export function NotificationsInbox(): JSX.Element {
                       <td style={tdStyle}>
                         <div style={notificationWithStateStyle}>
                           {unread ? (
-                            <span
-                              aria-label="Unread"
-                              title="Unread"
-                              style={tableUnreadDotStyle}
-                            />
+                            <span aria-label="Unread" title="Unread" style={tableUnreadDotStyle} />
                           ) : null}
 
                           <NotificationCell alert={alert} />
@@ -511,9 +483,7 @@ function NotificationCell({ alert }: { alert: AlertItem }): JSX.Element {
         style={{
           ...severityIconStyle,
           color:
-            alert.severity === "info"
-              ? "var(--color-on-surface-variant)"
-              : "var(--color-error)",
+            alert.severity === "info" ? "var(--color-on-surface-variant)" : "var(--color-error)",
         }}
       >
         <Glyph name={SEVERITY_GLYPH[alert.severity] ?? "info"} size={18} />
@@ -598,7 +568,7 @@ const errorBannerStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
 };
 const tableWrapStyle: CSSProperties = {
@@ -615,13 +585,11 @@ const tableStyle: CSSProperties = {
 const headRowStyle: CSSProperties = {
   textAlign: "left",
   color: "var(--color-on-surface-variant)",
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
 };
 const rowStyle: CSSProperties = {
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",

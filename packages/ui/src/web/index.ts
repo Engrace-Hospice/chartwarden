@@ -119,4 +119,4 @@ export type { SharedTailwindConfig } from "./theme/tailwind.config";
 // `color-mix(… 14% …)` at a call site that could not import the 12% helper, and that 2-point
 // deviation is what pushed it under the WCAG AA floor. A shared helper nothing can import is a
 // shared helper that gets re-implemented slightly differently.
-export { cardSurface, ghostBorder, t, tint } from "./theme/tokens";
+export { cardSurface, ghostBorder, inkOn, t, tint } from "./theme/tokens";

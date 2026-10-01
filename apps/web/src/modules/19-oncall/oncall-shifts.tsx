@@ -803,7 +803,7 @@ const errorBannerStyle: CSSProperties = {
   ...bannerBaseStyle,
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
 };
 
 const modalBodyStyle: CSSProperties = {

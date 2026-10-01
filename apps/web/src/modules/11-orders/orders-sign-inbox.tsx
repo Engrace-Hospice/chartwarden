@@ -6,6 +6,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/11-orders — physician signature inbox (M11 §4.1/§5, Track B / ADR-0030).
@@ -217,16 +218,7 @@ export function OrdersSignInbox(): JSX.Element {
                   {pagedRows.map((o) => (
                     <tr
                       key={o.id}
-                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/orders/${o.id}`)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          navigate(`/orders/${o.id}`);
-                        }
-                      }}
+                      {...interactiveRowProps(() => navigate(`/orders/${o.id}`), false, true)}
                       style={rowStyle}
                       className="wx-data-row-interactive"
                     >
@@ -401,7 +393,7 @@ const errorBannerStyle = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",
