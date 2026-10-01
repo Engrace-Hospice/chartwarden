@@ -24,7 +24,9 @@ concurrency:
 
 jobs:
   build-and-verify:
-    runs-on: [self-hosted, linux, hostinger]
+    # GitHub-hosted: on the 2-vCPU Hostinger runner the unit suite took 36 min (26 min of it test-file
+    # import) and timed out. The other jobs stay on the self-hosted runner.
+    runs-on: ubuntu-latest
     # `tsc -b` over the full project graph outgrew Node's default heap on the runner (~2 GB, sized
     # from runner RAM): it died with "Reached heap limit … JavaScript heap out of memory" (SIGABRT,
     # exit 134) before arch:fitness, the unit suite or the dependency audit ever ran.
@@ -1065,7 +1067,7 @@ jobs:
     # seed chain runs here through the very `db:seed:all` script `db:reset` composes, so the two cannot
     # drift apart.
     name: Critical-workflow E2E + accessibility (Playwright, full stack)
-    runs-on: [self-hosted, linux, hostinger]
+    runs-on: ubuntu-latest
     services:
       # `db:seed:scenario-billing` drives M27 `refresh-inputs`, which enqueues a trial-balance pull —
       # with no queue connection that port is unbound and the step fails (docs/DEVELOPMENT.md). A
@@ -1176,10 +1178,10 @@ jobs:
             sleep 1
           done
           echo "MinIO did not become ready" >&2; docker logs wardenx-ci-minio-e2e; exit 1
-      # No `--with-deps`: that runs apt and the persistent runner user has no sudo. The system libraries
-      # are installed once on the host (`playwright install-deps chromium`, run as root).
+      # This job runs on a GitHub-hosted runner (the 2-vCPU Hostinger host was too slow for it), which has
+      # sudo, so `--with-deps` installs the system libraries Chromium needs.
       - name: Install the Chromium build this Playwright version pins
-        run: bunx playwright install chromium
+        run: bunx playwright install --with-deps chromium
       - name: Migrate
         run: bun run db:migrate
       # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
