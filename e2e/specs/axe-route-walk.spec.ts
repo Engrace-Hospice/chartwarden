@@ -60,7 +60,8 @@ test.describe("Accessibility — route walk (#106, F-046)", () => {
     for (const screen of screens) {
       try {
         await page.goto(screen.path, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => {});
+        // Capped: pages that poll never go idle, and the default 30s wait per such screen blew the walk's budget.
+        await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
       } catch (err) {
         failures.push(`${screen.id} (${screen.path}): navigation failed — ${String(err)}`);
         continue;

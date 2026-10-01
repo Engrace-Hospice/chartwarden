@@ -6,6 +6,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/11-orders — lab results-pending-review queue (M11 §4.1/§5 D17, Track B / ADR-0030).
@@ -217,16 +218,7 @@ export function ResultsReviewQueue(): JSX.Element {
                   {pagedRows.map((o) => (
                     <tr
                       key={o.id}
-                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/orders/${o.id}`)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          navigate(`/orders/${o.id}`);
-                        }
-                      }}
+                      {...interactiveRowProps(() => navigate(`/orders/${o.id}`), false, true)}
                       style={rowStyle}
                       className="wx-data-row-interactive"
                     >

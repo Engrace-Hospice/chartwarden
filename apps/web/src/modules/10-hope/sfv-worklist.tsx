@@ -270,7 +270,12 @@ export function SfvWorklist(): JSX.Element {
             </div>
           ) : (
             <>
-              <div style={tableViewportStyle}>
+              <section
+                aria-label="SFV worklist"
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+                tabIndex={0}
+                style={tableViewportStyle}
+              >
                 <table style={tableStyle}>
                   <colgroup>
                     <col style={{ width: "19%" }} />
@@ -335,7 +340,7 @@ export function SfvWorklist(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </section>
               <OffsetPagination
                 page={activePage}
                 pageSize={pageSize}

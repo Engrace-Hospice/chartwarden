@@ -8,7 +8,6 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
-  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/12-dosespot — prescriber medication sign inbox (M12 §4.1/§6.1, Track B / ADR-0030).
@@ -266,11 +265,16 @@ export function MedicationSignInbox(): JSX.Element {
                 {pagedRows.map((o) => (
                   <tr
                     key={o.id}
-                    {...interactiveRowProps(
-                      () => navigate(`/medication-orders/${o.id}`),
-                      false,
-                      true,
-                    )}
+                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/medication-orders/${o.id}`)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        navigate(`/medication-orders/${o.id}`);
+                      }
+                    }}
                     style={rowStyle}
                     className="wx-data-row-interactive"
                   >
