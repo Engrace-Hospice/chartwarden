@@ -171,6 +171,7 @@ export const M14_EVENT_NAMES = [
   "m14.review_clock.escalated",
   "m14.minutes.signed",
   "m14.minutes.amended",
+  "m14.discipline_note.addendum_recorded",
   "m14.packet.frozen",
 ] as const;
 
@@ -419,9 +420,17 @@ export interface PacketMedicationChangeDigest {
   readonly changedAt: IsoInstant;
 }
 
-/** A derived flagged-event digest (hospitalisation / ER / missed dose / fall / infection). */
+/** A derived flagged-event digest (hospitalisation / ER / missed dose / fall / infection, plus — F-218 —
+ *  an after-hours triage call that indicated a care-plan change: today always a GIP admission proposal,
+ *  the only `changeKind` M19 emits). `sourceId` is the M19 `triage_call.id` for that last kind. */
 export interface PacketFlaggedEventDigest {
-  readonly kind: "hospitalisation" | "er_visit" | "missed_dose" | "fall" | "infection";
+  readonly kind:
+    | "hospitalisation"
+    | "er_visit"
+    | "missed_dose"
+    | "fall"
+    | "infection"
+    | "triage_care_plan_change";
   readonly sourceId: string;
   readonly occurredAt: IsoInstant;
   readonly severity: "info" | "attention" | "urgent";
@@ -538,8 +547,8 @@ export type M14AlertPayload =
       readonly severity: "critical";
       readonly recipients: {
         readonly complianceInbox: true;
-        readonly idgCoordinatorMembershipId: MembershipId;
-        readonly clinicalSupervisorMembershipId: MembershipId;
+        readonly idgCoordinatorMembershipId?: MembershipId;
+        readonly clinicalSupervisorMembershipId?: MembershipId;
       };
       readonly bodyTemplate: string;
     }

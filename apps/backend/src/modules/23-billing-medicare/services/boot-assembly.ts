@@ -16,20 +16,25 @@
 // (F-123, #251: bridging M8's `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`),
 // and `terminology` (F-124, #251: over M38's registered `TerminologyProvider.expand()`). `mdm` is
 // PARTIALLY bound — `resolveProviderEntity` (#250) and, as of F-127 (#251), the physician-IDENTITY half of
-// `resolveClinicalParticipants`; `placeOfService` stays unbound (see below) — so it counts toward neither
-// the bound nor the fully-stub tally cleanly. Two of `referenceData`'s four methods are also real
-// (`wageIndexForCcn`, `activeSequestrationPolicy`, #250). Each is individually live-tested against real rows
+// `resolveClinicalParticipants`; `placeOfService` is bound only partially (F-213, see below) — so it counts toward neither
+// the bound nor the fully-stub tally cleanly. All four of `referenceData`'s methods are also real:
+// `wageIndexForCcn`, `activeSequestrationPolicy` (#250) and — F-210 — the TENANT-ENTERED `hippsRateTable`/
+// `chcHourlyRateCents` over the M23-owned `hospice_rate_table` (see the "RATE TABLE" note below).
+// Each is individually live-tested against real rows
 // under RLS (`m23-claim-assembly-seams.live.test.ts`). Binding all this is NOT "the route works end to end"
 // — see NET EFFECT ON REACHABILITY below.
 //
 // EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
 // below was checked against the owning module's actual published seam shape, not assumed from this file's
 // prior header:
-//   * referenceData.hippsRateTable / .chcHourlyRateCents — `packages/billing/src/hipps/calculator.ts`'s
-//     own `HippsRateTable` doc carries an explicit `TODO(CMS-fixture)`: no CMS per-diem rate file has
-//     ever been loaded anywhere in this repository, and no table exists to load one into. Genuine new
-//     infrastructure, confirmed by absence of any backing table (unlike `wageIndexForCcn`'s table, which
-//     exists and is simply unloaded).
+//     (referenceData.hippsRateTable / .chcHourlyRateCents were the last two stubs here — see RATE TABLE.)
+//
+// RATE TABLE (F-210): the CMS per-diem rates are TENANT-ENTERED (no bundled CMS file). A billing administrator
+// keys each fiscal year's national base per-diems per provider entity via `POST /api/v1/billing/rate-tables`
+// (permission `billing.rate_table.admin`), into the M23-owned, effective-dated, append-only `hospice_rate_table`;
+// `buildM23ReferenceDataAdapter` reads the version covering the claim's service-from date and throws the typed
+// `RATE_TABLE_MISSING` (422) when none does. This removed the `SEAM_UNBOUND` wall at `hippsRateTable` — it is NOT
+// "the route works": see NET EFFECT ON REACHABILITY for what still stops `POST /claims/assemble`.
 //
 // `mdm.resolveClinicalParticipants` (M40) was recorded as ONE "genuinely unbuilt" verdict (#250/#251);
 // checked precisely rather than left at that (F-127, #251), it splits into two independent facts with
@@ -39,14 +44,11 @@
 // `MdmEntityProvider.resolvePhysician`. `licenseUnexpiredOnServiceDates` is honestly `false` always — M40
 // tracks which STATES a physician is licensed in, never a per-state EXPIRY DATE, so there is nothing to
 // confirm (`physician-credentials.ts`'s defect message was rewordered, F-126, so it never asserts a
-// confirmed expiry this seam cannot back up). `placeOfService` stays genuinely unbound: checked against the
-// whole schema, not assumed — `patient_address.kind` distinguishes only `home`/`facility`/`mailing`/
-// `temporary`/`prior`, with no facility-type taxonomy beneath `facility`, and M40's `CanonicalFacilityFields`
-// carries `ccn`/`npi`/`sendingFacilityCodes`, no site-type field either. No table anywhere records which of
-// home/ALF/SNF/hospital/IPU a patient is currently receiving care in. That is genuine new infrastructure —
-// a producer decision, the CMS-rate-table gap's own shape — not a wiring task, and is not guessed at: an
-// `patient_address.kind === 'facility'` heuristic could mean any of five different Q-code sites, exactly the
-// "a guessed provider entity is a mis-stated cost report" mistake F-102 already named for a different module.
+// confirmed expiry this seam cannot back up). `placeOfService` is REAL as of F-213 (#252)
+// (F-127's "no producer exists" was corrected): M5's effective-dated address history + M40 `facility.kind`
+// (migration 0183) via injected ports (`ports.placeOfService`). It maps home + the seven facility kinds with an
+// unambiguous CMS Q-code and returns null (line falls to Q5009) for clinic/other, GIP/IRC claims (the site is
+// the LOC facility, not the residence), or a range that spans a move — see `place-of-service-resolver.ts`.
 //
 // Binding the physician-identity half surfaced an independent, real Q-code defect (F-125, #251):
 // `qCodeForPlaceOfService` (below) and `@wardenx/billing`'s own `place_of_service_consistency` rule had
@@ -82,8 +84,18 @@
 // sit LATER in the call order than `hippsRateTable`/`activeSequestrationPolicy`, so they stay unreachable
 // by a real request until the CMS rate-table gap closes. This is real, individually-verified progress on
 // five more seam steps, not a further unblock of the live boundary — stated precisely rather than implied,
-// the exact discipline the #250/#251 issues themselves established. `POST /claims/assemble` remains
-// unreachable end-to-end for every real caller today.
+// the exact discipline the #250/#251 issues themselves established.
+//
+// F-210 UPDATE — the rate-table gap is closed by CODE + TENANT DATA (not by a bundled CMS file): the
+// `SEAM_UNBOUND` wall at `hippsRateTable` is gone, and a tenant that has keyed its rate table reaches every seam
+// step above. What can STILL stop `POST /claims/assemble` is now DATA, each with a typed, actionable 4xx (none is
+// `SEAM_UNBOUND`): `WAGE_INDEX_UNAVAILABLE` (`wage_index_factor` is platform-shared and has NO loader — only the
+// five non-authoritative migration-0080 placeholder CCNs exist, FY starting 2026), `RATE_TABLE_MISSING` (the tenant
+// has not entered rates for the service date), `SEQUESTRATION_POLICY_UNAVAILABLE` (no active policy row for the
+// provider entity), plus the clinical preconditions the earlier seams enforce. `placeOfService` is NOT a wall:
+// the adapter returns `null` and the line Q-code falls back to Q5009 ("place N.O.S.") — an honest but imprecise
+// value until a site-of-care producer exists. A real end-to-end assembly has not been exercised against a real
+// provider entity CCN in any environment.
 //
 // Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
 // (503) only when an assemble request actually reaches it — boot stays green, and the route never
@@ -97,10 +109,12 @@ import {
   type AssemblyOutboxPort,
   type ClaimAssemblySeams,
   type ClaimAssemblyService,
+  type DiagnosisSequenceReader,
   buildClaimAssemblyService,
 } from "./claim-assembly";
 import {
   type M6ClaimRangeReader,
+  type M7ClaimDiagnosesReader,
   type M8BillableEncountersReader,
   type M8EncounterVisitIdsReader,
   type M8SignedEncountersReader,
@@ -108,6 +122,7 @@ import {
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
   buildM23ClinicalParticipantsAdapter,
+  buildM23DiagnosesAdapter,
   buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
@@ -115,6 +130,7 @@ import {
   buildM23SignedEncountersAdapter,
   buildM23TerminologyAdapter,
 } from "./claim-assembly-seam-adapters";
+import type { PlaceOfServicePorts } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;
 
@@ -125,6 +141,17 @@ function unbound(seam: string): never {
     `M23 claim-assembly seam '${seam}' is not bound at boot — see boot-assembly.ts's header for the exact, per-seam reason (a real new read-surface addition needed in the owning module, or genuinely absent CMS reference data)`,
     503,
   );
+}
+
+/**
+ * F-209 (#251) — the `diagnoses` seam: the real M7-backed adapter when the composition root injects the
+ * port, otherwise a fail-closed `SEAM_UNBOUND` stub. Exported so the port-absent behaviour is unit-testable
+ * (the call sits behind `referenceData.hippsRateTable`, which the end-to-end path cannot yet pass).
+ */
+export function buildM23BootDiagnosesSeam(port?: M7ClaimDiagnosesReader): DiagnosisSequenceReader {
+  return port
+    ? buildM23DiagnosesAdapter(port)
+    : { forRange: () => unbound("DiagnosisSequenceReader") };
 }
 
 /**
@@ -151,6 +178,14 @@ export function buildM23BootAssemblyService(
      *  composition root. Absent, `evvCompliance` stays its fail-closed `unbound()` deny-stub below. */
     readonly m8EncounterVisitIds?: M8EncounterVisitIdsReader;
     readonly m18Compliance?: M18ComplianceStatesReader;
+    /** F-209 (#251) — M7's `claimDiagnosesForOrg`, injected by the composition root. Absent, `diagnoses`
+     *  stays its fail-closed `unbound()` deny-stub below (an unbound sequence must never read as "no
+     *  diagnoses" — that would silently fail `icd10_sequencing` on real data). */
+    readonly m7ClaimDiagnoses?: M7ClaimDiagnosesReader;
+    /** F-213 (#252) — the M5 residence-range + M40 facility-kind ports behind
+     *  `mdm.resolveClinicalParticipants().placeOfService`. Absent, `placeOfService` stays `null`
+     *  (line Q-code falls to Q5009 honestly). */
+    readonly placeOfService?: PlaceOfServicePorts;
   } = {},
 ): ClaimAssemblyService {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
@@ -182,6 +217,8 @@ export function buildM23BootAssemblyService(
     certifications: m6Range?.certifications ?? { forPatient: () => unbound("CertificationReader") },
     faceToFace: m6Range?.faceToFace ?? { forPatient: () => unbound("FaceToFaceReader") },
     levelOfCare: m6Range?.levelOfCare ?? { periodsInRange: () => unbound("LevelOfCareReader") },
+    // REAL (#251, F-209) — the claim's diagnosis sequence over M7's org-explicit seam function, when injected.
+    diagnoses: buildM23BootDiagnosesSeam(ports.m7ClaimDiagnoses),
     // REAL (#251, F-122) — over M8's two new range-shaped seam functions, when injected.
     billableEncounters: ports.m8BillableEncounters
       ? buildM23BillableEncountersAdapter(ports.m8BillableEncounters)
@@ -200,10 +237,11 @@ export function buildM23BootAssemblyService(
       // own doc comment).
       resolveProviderEntity: mdmAdapter.resolveProviderEntity,
       // PARTIALLY REAL (#251, F-127) — physician identity/NPPES-status over the SAME injected `m6ClaimRange`
-      // port (extended, no new port) + M40's registered `MdmEntityProvider`; `placeOfService` stays honestly
-      // `null` (see the adapter's own doc comment: no facility-type taxonomy exists anywhere in the schema).
+      // port (extended, no new port) + M40's registered `MdmEntityProvider`; `placeOfService` via the injected
+      // F-213 ports (null when unresolvable — `place-of-service-resolver.ts`).
       resolveClinicalParticipants: ports.m6ClaimRange
-        ? buildM23ClinicalParticipantsAdapter(ports.m6ClaimRange).resolveClinicalParticipants
+        ? buildM23ClinicalParticipantsAdapter(ports.m6ClaimRange, undefined, ports.placeOfService)
+            .resolveClinicalParticipants
         : () => unbound("MdmEntityProvider"),
     },
     // REAL (#251, F-124) — over the registered M38 `TerminologyProvider` seam's bulk `expand()`; needs no
@@ -213,13 +251,10 @@ export function buildM23BootAssemblyService(
     // degrades to status:"unavailable" when M26 is db-unbound (D8). Unlike the other boot seams it does NOT
     // throw — the cap rules warn-skip while degraded, never block.
     capProjection: buildM23CapProjectionAdapter(),
-    // REAL for wageIndexForCcn / activeSequestrationPolicy (#250); hippsRateTable / chcHourlyRateCents stay
-    // unbound — see this file's header for why the four are not one bundle.
-    referenceData: buildM23ReferenceDataAdapter(
-      db,
-      () => unbound("BillingReferenceDataReader"),
-      () => unbound("BillingReferenceDataReader"),
-    ),
+    // REAL for all four methods: wageIndexForCcn / activeSequestrationPolicy (#250) and, as of F-210, the
+    // TENANT-ENTERED hippsRateTable / chcHourlyRateCents (M23-owned `hospice_rate_table`, read org-explicitly
+    // over `db` — no injected port; `RATE_TABLE_MISSING`/422 when no table covers the service date).
+    referenceData: buildM23ReferenceDataAdapter(db),
     ruleRegistry: createDefaultBillingRegistry(),
     outbox,
   };

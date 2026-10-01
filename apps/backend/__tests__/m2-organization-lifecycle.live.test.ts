@@ -23,8 +23,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import {
-  createDrizzleOrganizationLifecycleWriter,
   type OrganizationLifecycleOutboxPort,
+  createDrizzleOrganizationLifecycleWriter,
 } from "../src/modules/02-identity/organization-lifecycle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -47,7 +47,8 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
       .filter((x) => x.endsWith(".sql"))
       .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector) sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+      if (stripVector)
+        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
       await admin.query(sql);
     }
   }
@@ -70,9 +71,10 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
          ($2,'f11d19-b','Beta Hospice LLC','Beta Hospice','active')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'f11d19@example.test','F11D19 User')`, [
-      USER,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'f11d19@example.test','F11D19 User')`,
+      [USER],
+    );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 240_000);
@@ -175,7 +177,9 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
     });
     expect(result).toMatchObject({ status: "closed", sessionsRevoked: 1 });
 
-    const orgBSession = await admin.query('SELECT id FROM "session" WHERE id = $1', ["sess-org-b-bound-1"]);
+    const orgBSession = await admin.query('SELECT id FROM "session" WHERE id = $1', [
+      "sess-org-b-bound-1",
+    ]);
     expect(orgBSession.rows).toHaveLength(1); // untouched
 
     await expect(

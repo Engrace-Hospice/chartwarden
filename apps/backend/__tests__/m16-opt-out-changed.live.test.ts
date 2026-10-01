@@ -90,7 +90,11 @@ describe.skipIf(!DB_URL)(
       return row.rows[0].id as string;
     }
 
-    async function scheduleOutreach(planId: string, organizationId: string, providerEntityId: string) {
+    async function scheduleOutreach(
+      planId: string,
+      organizationId: string,
+      providerEntityId: string,
+    ) {
       // `bereavement_outreach.bereaved_contact_id` is NOT NULL — every touchpoint is per-survivor.
       const contactRow = await admin.query(
         `INSERT INTO bereaved_contact
@@ -128,9 +132,10 @@ describe.skipIf(!DB_URL)(
     }
 
     async function outreachStatuses(planId: string) {
-      const { rows } = await admin.query(`SELECT status FROM bereavement_outreach WHERE plan_id = $1`, [
-        planId,
-      ]);
+      const { rows } = await admin.query(
+        `SELECT status FROM bereavement_outreach WHERE plan_id = $1`,
+        [planId],
+      );
       return rows.map((r) => r.status as string);
     }
 

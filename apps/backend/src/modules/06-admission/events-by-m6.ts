@@ -58,8 +58,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.referral.review_started",
     moduleOwner: "m6",
-    description:
-      "Referral review was started; lifecycle moved to under_review.",
+    description: "Referral review was started; lifecycle moved to under_review.",
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
       outcome: Type.Optional(Type.Literal("eligible")),
@@ -74,8 +73,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.referral.pending_information",
     moduleOwner: "m6",
-    description:
-      "Referral was placed in pending_information while intake waits for more data.",
+    description: "Referral was placed in pending_information while intake waits for more data.",
     payloadSchema: Type.Object({ referralId: Type.String({ minLength: 1 }) }),
     declaredConsumers: [],
     seamConsumers: ["m36"],
@@ -84,8 +82,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.referral.qualified",
     moduleOwner: "m6",
-    description:
-      "Referral was qualified after patient resolution and intake readiness checks.",
+    description: "Referral was qualified after patient resolution and intake readiness checks.",
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -122,14 +119,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // call 500'd with `unknown_event` in any DATABASE_URL boot.
     eventName: "m6.referral.triaged",
     moduleOwner: "m6",
-    description:
-      "A triage outcome (eligible/ineligible) was recorded (route 5).",
+    description: "A triage outcome (eligible/ineligible) was recorded (route 5).",
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
-      outcome: Type.Union([
-        Type.Literal("eligible"),
-        Type.Literal("ineligible"),
-      ]),
+      outcome: Type.Union([Type.Literal("eligible"), Type.Literal("ineligible")]),
     }),
     declaredConsumers: [],
     seamConsumers: ["m36"],
@@ -203,8 +196,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.admission.activated",
     moduleOwner: "m6",
-    description:
-      "Admission activated (route 14) — the broad fan-out the whole system keys off.",
+    description: "Admission activated (route 14) — the broad fan-out the whole system keys off.",
     payloadSchema: Type.Object({
       admissionId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -328,8 +320,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.admission.discharged",
     moduleOwner: "m6",
-    description:
-      "Admission discharged (routes 36/37/38/39) — the broad close-out fan-out.",
+    description: "Admission discharged (routes 36/37/38/39) — the broad close-out fan-out.",
     payloadSchema: Type.Object({
       admissionId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
@@ -364,11 +355,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // event carries no fact M23 needs beyond what discharge.created already delivers.
       "m37",
       "m36",
-      // F-139 (#248) — `m31` ADDED: M31's own §4.10 "M31 consumes" table names this event TWICE, filtered
-      // by `reason` — `reason='death'` triggers the M16-coordinated bereaved-portal transition
-      // (`m6-admission-discharged-death.ts`), `reason!='death'` enqueues the 30-day post-discharge grace
-      // timer (`m6-admission-discharged-non-death.ts`) — a real relationship the catalog never declared.
-      "m31",
+      // F-222 (#248) — `m31` REMOVED (was F-139's ADD): the `reason!='death'` branch is now a DAILY SWEEP over
+      // M6's CURRENT discharge state through the org-explicit published read `portalDischargedPastGraceForOrg`
+      // (`31-portal/jobs/post-discharge-grace-sweep.ts`) — a SEAM PULL, see `seamConsumers` below; a re-admitted
+      // patient simply stops being a candidate, so no per-event grace job exists to cancel. The `reason='death'`
+      // branch is redundant with the bound `m6.bereavement.eligible` -> M16 `plan_opened`/`contact_active` chain.
     ],
     // F-130 (#248) — m27 REMOVED: same reasoning as `m6.admission.activated` above — M27's S-3 census is
     // a seam pull, refreshed on demand, never a push subscription to admission lifecycle events.
@@ -379,15 +370,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: same reasoning as `m6.admission.activated` above — M26's only M6
     // subscriptions are `revocation.created`/`transfer.created`; an ordinary discharge is a benefit-period
     // boundary M26 reads via the `ElectionPeriodReader` PULL, not a push subscription.
-    seamConsumers: ["m30", "m33"],
+    seamConsumers: ["m30", "m31", "m33"],
     isOutboxOnly: true,
   },
   // ── election ──────────────────────────────────────────────────────────────────────────────────
   {
     eventName: "m6.election.drafted",
     moduleOwner: "m6",
-    description:
-      "An election statement was drafted for a period (route 15/20).",
+    description: "An election statement was drafted for a period (route 15/20).",
     payloadSchema: Type.Object({
       electionPeriodId: Type.String({ minLength: 1 }),
       sequence: Type.Integer({ minimum: 1 }),
@@ -431,8 +421,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.election.period_started",
     moduleOwner: "m6",
-    description:
-      "An election period activated (admission.activate or auto-advance on recert).",
+    description: "An election period activated (admission.activate or auto-advance on recert).",
     payloadSchema: Type.Object({
       electionPeriodId: Type.String({ minLength: 1 }),
       sequence: Type.Integer({ minimum: 1 }),
@@ -444,6 +433,20 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       startDate: Type.Optional(Type.String({ minLength: 1 })),
       endDate: Type.Optional(Type.String({ minLength: 1 })),
       admissionId: Type.String({ minLength: 1 }),
+      // F-217 — the F2F/CTI adequacy decision (certification/adequacy.ts) that gated this ACTIVATION.
+      // Additive and optional: present only on the recert-activation emission (the one path that runs the
+      // gate); absent on the pending-period creation emission and the period-1 seed. A period that reaches
+      // this event on the gated path is always `adequate` (an inadequate one refuses and rolls back), so the
+      // value a consumer gains is the non-blocking `flags` (late CTI, overridden F2F window) — never PHI,
+      // only machine-readable codes.
+      adequacy: Type.Optional(
+        Type.Object({
+          verdict: Type.Union([Type.Literal("adequate"), Type.Literal("inadequate")]),
+          f2fRequired: Type.Boolean(),
+          reasonCodes: Type.Array(Type.String({ minLength: 1 })),
+          flags: Type.Array(Type.String({ minLength: 1 })),
+        }),
+      ),
     }),
     // F-101 — `m22` was first in this list. A recertification period starting is a billing and cap
     // fact, not a document: the recert artifact is the CTI, rendered from `m6.cti.signed`. Still
@@ -460,8 +463,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.election.period_ended",
     moduleOwner: "m6",
-    description:
-      "An election period auto-ended at midnight on its endDate (trigger).",
+    description: "An election period auto-ended at midnight on its endDate (trigger).",
     payloadSchema: Type.Object({
       electionPeriodId: Type.String({ minLength: 1 }),
       sequence: Type.Integer({ minimum: 1 }),
@@ -502,8 +504,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.cti.signed",
     moduleOwner: "m6",
-    description:
-      "A CTI was fully signed (route 24, or 25 when both signatures are required).",
+    description: "A CTI was fully signed (route 24, or 25 when both signatures are required).",
     payloadSchema: Type.Object({
       ctiId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
@@ -524,8 +525,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.cti.late_flagged",
     moduleOwner: "m6",
-    description:
-      "A CTI was flagged late (route 27); carries the written-cert deadline.",
+    description: "A CTI was flagged late (route 27); carries the written-cert deadline.",
     payloadSchema: Type.Object({
       ctiId: Type.String({ minLength: 1 }),
       writtenCertDeadlineAt: Type.String({ minLength: 1 }),
@@ -662,8 +662,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.f2f.attested",
     moduleOwner: "m6",
-    description:
-      "A face-to-face encounter was attested (route 31); may back-ref an encounter.",
+    description: "A face-to-face encounter was attested (route 31); may back-ref an encounter.",
     payloadSchema: Type.Object({
       f2fId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
@@ -679,8 +678,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.f2f.window_overridden",
     moduleOwner: "m6",
-    description:
-      "The F2F window was overridden by a compliance officer (route 32).",
+    description: "The F2F window was overridden by a compliance officer (route 32).",
     payloadSchema: Type.Object({
       f2fId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
@@ -700,8 +698,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.f2f.window_missed",
     moduleOwner: "m6",
-    description:
-      "The CMS F2F window closed without an attestation (scheduled job trigger).",
+    description: "The CMS F2F window closed without an attestation (scheduled job trigger).",
     payloadSchema: Type.Object({
       electionPeriodId: Type.String({ minLength: 1 }),
     }),
@@ -720,8 +717,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.f2f.due_7d",
     moduleOwner: "m6",
-    description:
-      "A required face-to-face encounter is seven days from its due date.",
+    description: "A required face-to-face encounter is seven days from its due date.",
     payloadSchema: Type.Object({
       f2fId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
@@ -734,8 +730,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.f2f.due_3d",
     moduleOwner: "m6",
-    description:
-      "A required face-to-face encounter is three days from its due date.",
+    description: "A required face-to-face encounter is three days from its due date.",
     payloadSchema: Type.Object({
       f2fId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
@@ -762,8 +757,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.loc.changed",
     moduleOwner: "m6",
-    description:
-      "The level of care changed (route 33); opens a new level-of-care period.",
+    description: "The level of care changed (route 33); opens a new level-of-care period.",
     payloadSchema: Type.Object({
       levelOfCarePeriodId: Type.String({ minLength: 1 }),
       newLevel: levelOfCare,
@@ -831,8 +825,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.discharge.created",
     moduleOwner: "m6",
-    description:
-      "A discharge was recorded (route 39; also recordExternalDeath via the applier).",
+    description: "A discharge was recorded (route 39; also recordExternalDeath via the applier).",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
@@ -894,8 +887,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.discharge.cosigned",
     moduleOwner: "m6",
-    description:
-      "A for-cause discharge was cosigned by the medical director (route 40).",
+    description: "A for-cause discharge was cosigned by the medical director (route 40).",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       medicalDirectorCosignedAt: Type.String({ minLength: 1 }),
@@ -969,8 +961,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.compliance.window.closed",
     moduleOwner: "m6",
-    description:
-      "A compliance window closed (trigger); carries how it was closed.",
+    description: "A compliance window closed (trigger); carries how it was closed.",
     payloadSchema: Type.Object({
       complianceWindowId: Type.String({ minLength: 1 }),
       closedAt: Type.String({ minLength: 1 }),
@@ -985,8 +976,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.compliance.window.overdue",
     moduleOwner: "m6",
-    description:
-      "The `admission.window_alert` job moved an overdue window to alert severity.",
+    description: "The `admission.window_alert` job moved an overdue window to alert severity.",
     payloadSchema: Type.Object({
       complianceWindowId: Type.String({ minLength: 1 }),
       severity: Type.Literal("alert"),
@@ -1003,8 +993,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.compliance.window.overridden",
     moduleOwner: "m6",
-    description:
-      "A compliance window was overridden by a compliance officer (route 46).",
+    description: "A compliance window was overridden by a compliance officer (route 46).",
     payloadSchema: Type.Object({
       complianceWindowId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
@@ -1034,8 +1023,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.applier.refused",
     moduleOwner: "m6",
-    description:
-      "The AdmissionEventApplier refused an M29 proposal on a contract violation (D13).",
+    description: "The AdmissionEventApplier refused an M29 proposal on a contract violation (D13).",
     payloadSchema: Type.Object({
       proposalId: Type.String({ minLength: 1 }),
       organizationId: Type.String({ minLength: 1 }),

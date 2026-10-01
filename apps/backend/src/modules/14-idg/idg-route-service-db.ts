@@ -47,6 +47,7 @@
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  IDG_REQUIRED_QUORUM,
   isActionableDecisionKind,
   planDecisionRecord,
   planDecisionSupersede,
@@ -56,28 +57,57 @@ import {
 } from "@wardenx/idg";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
-import { and, asc, desc, eq, gte, inArray, lte, ne, notInArray } from "drizzle-orm";
+import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
+import { recomputeCarryForwardCountsForMeeting } from "./jobs/carry-forward-count";
+import {
+  type MinutesSiteNames,
+  loadMinutesMemberIds,
+  loadMinutesRenderContext,
+  patientsNeedingRelease as patientsNeedingReleaseForMeeting,
+} from "./minutes-render-context";
+import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "./routes/idg-enrichment";
+import { mapPacketContent } from "./routes/packet-content";
 import type {
   ActionItemPatchStatus,
   ActionItemView,
   AgendaItemView,
   AttendanceView,
   DecisionView,
+  DisciplineAddendumRenderEntry,
+  DisciplineNoteSnapshotEntry,
+  DisciplineNoteView,
   IdgRouteService,
   MeetingScheduleView,
   MeetingView,
   MinutesView,
+  PacketDetailView,
   PacketDigestView,
   PatientIdgHistoryView,
   RecurringPolicyView,
+} from "./routes/service";
+import {
+  NOTE_PRESENT_STATUSES,
+  addendumEligibilityUnavailableError,
+  addendumImmutableError,
+  assertMayWriteDisciplineNote,
+  assertNoteVersion,
+  deriveAddendumState,
+  invalidCoordinatorError,
+  minutesRenderStatus,
+  normalizeNoteReason,
+  noteFrozenError,
+  noteInclusionError,
+  planDisciplineNoteCreate,
+  validateMeetingWindow,
 } from "./routes/service";
 import { getCarePlanReader } from "./seams/index";
 
 const MTG = schema.idgMeeting;
 const ATT = schema.idgAttendance;
 const AGD = schema.idgAgendaItem;
+const NOTE = schema.idgDisciplineNote;
 const DEC = schema.idgDecision;
 const ACT = schema.idgActionItem;
 const MIN = schema.idgMinutes;
@@ -149,6 +179,7 @@ const toMeetingView = (m: MeetingRow): MeetingView => ({
   scheduledStart: isoReq(m.scheduledStart),
   scheduledEnd: isoReq(m.scheduledEnd),
   adjournedAt: m.status === "adjourned" ? iso(m.actualEnd) : null,
+  coordinatorMembershipId: m.coordinatorMembershipId,
 });
 
 /**
@@ -159,6 +190,17 @@ const toMeetingView = (m: MeetingRow): MeetingView => ({
 export function createDbIdgBackend(
   db: DbClient,
   outbox: IdgWriteOutboxPort = NOOP_OUTBOX,
+  /**
+   * M2's identity-owned batched staff display read (name only), the SAME port the routes use to enrich views.
+   * Used ONLY to put `authorName` on the minutes re-render's addenda appendix; absent (slice/tests) => null names.
+   */
+  membershipDisplay?: IdgMembershipDisplayPort,
+  /**
+   * M1's org-explicit site display read (organization + location NAMES only), bound at the composition root.
+   * Used ONLY to put `meeting.organizationName` / `meeting.locationName` on the minutes render payload (the PDF
+   * header); unbound or failing => the header simply omits the names (never blocks a sign / addendum).
+   */
+  siteDisplay?: IdgSiteDisplayPort,
 ): IdgRouteService & IdgAbacResolver {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) => fn(tx as DbClient));
@@ -226,6 +268,45 @@ export function createDbIdgBackend(
       .limit(1);
     return !!ag;
   }
+  /**
+   * WINDOW B — which of `patientIds` were included by a NEWER ADJOURNED IDG meeting than `meetingId`: another meeting of
+   * the org (RLS-scoped) with `status = 'adjourned'` and a LATER `actual_end` whose stored packet set (`idg_patient_packet`,
+   * the authoritative inclusion signal, frozen once adjourned) OR patient-scoped agenda items contain the patient — the same
+   * two signals {@link patientIncluded} uses. One batched read per signal (two queries total, never per patient).
+   * FAIL-CLOSED: any error is a retryable 503 (`ADDENDUM_ELIGIBILITY_UNAVAILABLE`), never a silent allow.
+   */
+  async function patientsSupersededByNewerIdg(
+    tx: DbClient,
+    meetingId: string,
+    actualEnd: Date,
+    patientIds: readonly string[],
+  ): Promise<Set<string>> {
+    if (patientIds.length === 0) return new Set();
+    try {
+      const newer = and(
+        ne(MTG.id, meetingId),
+        eq(MTG.status, "adjourned"),
+        gt(MTG.actualEnd, actualEnd),
+      );
+      const viaPackets = await tx
+        .selectDistinct({ patientId: PKT.patientId })
+        .from(PKT)
+        .innerJoin(MTG, eq(MTG.id, PKT.idgMeetingId))
+        .where(and(newer, inArray(PKT.patientId, [...patientIds])));
+      const viaAgenda = await tx
+        .selectDistinct({ patientId: AGD.patientId })
+        .from(AGD)
+        .innerJoin(MTG, eq(MTG.id, AGD.idgMeetingId))
+        .where(and(newer, inArray(AGD.patientId, [...patientIds])));
+      return new Set(
+        [...viaPackets, ...viaAgenda]
+          .map((r) => r.patientId)
+          .filter((p): p is string => p !== null),
+      );
+    } catch {
+      throw addendumEligibilityUnavailableError();
+    }
+  }
   const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
   /** The `idg_meeting_status` values a meeting can hold and STILL deliver a review that covers a patient's
    * 15-day floor — i.e. everything before it adjourns. This is an ALLOWLIST on purpose. It was previously a
@@ -292,6 +373,31 @@ export function createDbIdgBackend(
     }
     return breaches;
   }
+  /**
+   * The coordinator must be a real, ACTIVE membership of THIS org. `coordinator_membership_id` is a plain uuid
+   * (no cross-module FK), so nothing else stops a foreign-org / revoked / pending / made-up id. `membership` is
+   * M1-owned and M14 `dependsOn` M1, so the read is in-boundary. RLS pins the read to `app.org_id`; the explicit
+   * org predicate is defense in depth. One uniform 422 for "absent", "other org" and "not active" so the
+   * response is not an existence oracle for another tenant's membership ids.
+   */
+  async function assertCoordinatorMembership(
+    tx: DbClient,
+    orgId: string,
+    membershipId: string,
+  ): Promise<void> {
+    const [row] = await tx
+      .select({ id: schema.memberships.id })
+      .from(schema.memberships)
+      .where(
+        and(
+          eq(schema.memberships.id, membershipId),
+          eq(schema.memberships.organizationId, orgId),
+          eq(schema.memberships.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (!row) throw invalidCoordinatorError();
+  }
   /** Ensure a `in_progress` minutes row for the meeting (idempotent); returns its id. */
   async function ensureMinutes(tx: DbClient, orgId: string, meetingId: string): Promise<string> {
     const [existing] = await tx
@@ -305,6 +411,162 @@ export function createDbIdgBackend(
       .values({ organizationId: orgId, idgMeetingId: meetingId, status: "in_progress" })
       .returning({ id: MIN.id });
     return row!.id;
+  }
+
+  /**
+   * W-SUD-01 fact for a set of patients on ONE meeting: which of them a discipline note's text may be shown for
+   * WITHOUT a Part 2 release. The SUD flag lives on the patient's packet snapshot (`patientCover.activeSudFlag`,
+   * the same signal `mapPacketContent` reads). A patient with no readable packet is UNDETERMINABLE and is
+   * treated as needing a release (fail-closed) — never assumed clear.
+   */
+  const patientsNeedingRelease = (
+    tx: DbClient,
+    meetingId: string,
+    patientIds: readonly string[],
+  ): Promise<Set<string>> => patientsNeedingReleaseForMeeting(tx, meetingId, patientIds);
+  /**
+   * Author display names for the addenda appendix of a minutes re-render. Resolved BEFORE (never inside) the
+   * write transaction — the M2 port opens its own tenant tx, and nesting it would re-enter the pool mid-
+   * transaction. Only an ADJOURNED meeting can have addenda, so a live one costs a single status read. A port
+   * failure degrades to null names (an unresolvable name must never block an addendum), logged nowhere here:
+   * the appendix simply shows the discipline without a name.
+   */
+  async function resolveAddendumAuthorNames(
+    orgId: string,
+    meetingId: string,
+    extraMembershipIds: readonly string[],
+  ): Promise<ReadonlyMap<string, string | null>> {
+    if (!membershipDisplay) return new Map();
+    try {
+      const ids = await withOrg(orgId, async (tx) => {
+        const [m] = await tx
+          .select({ status: MTG.status })
+          .from(MTG)
+          .where(eq(MTG.id, meetingId))
+          .limit(1);
+        if (m?.status !== "adjourned") return null;
+        // Every membership the minutes render names (a superset of the addendum authors): the same map
+        // feeds the addenda appendix AND the render context's `memberNames`.
+        return loadMinutesMemberIds(tx, meetingId);
+      });
+      if (ids === null) return new Map();
+      const all = [...new Set([...ids, ...extraMembershipIds])];
+      if (all.length === 0) return new Map();
+      const byId = await membershipDisplay.displayForMemberships(orgId, all);
+      return new Map(all.map((id) => [id, byId.get(id)?.displayName ?? null]));
+    } catch {
+      return new Map();
+    }
+  }
+
+  /**
+   * The organization + meeting-location NAMES for the minutes PDF header, resolved BEFORE the write transaction
+   * (the M1 port opens its own tenant tx). `onlyIfAdjourned` skips the port for a live meeting (a live note
+   * emits nothing, so there is nothing to render). Degrades to null names when the port is unbound or throws.
+   */
+  async function resolveMinutesSiteNames(
+    orgId: string,
+    meetingId: string,
+    onlyIfAdjourned: boolean,
+  ): Promise<MinutesSiteNames | undefined> {
+    if (!siteDisplay) return undefined;
+    try {
+      const m = await withOrg(orgId, async (tx) => {
+        const [r] = await tx
+          .select({ locationId: MTG.locationId, status: MTG.status })
+          .from(MTG)
+          .where(eq(MTG.id, meetingId))
+          .limit(1);
+        return r ?? null;
+      });
+      if (m === null || (onlyIfAdjourned && m.status !== "adjourned")) return undefined;
+      const site = await siteDisplay.displayForSite(orgId, [m.locationId]);
+      return {
+        organizationName: site.organizationName,
+        locationName: site.locationNames.get(m.locationId) ?? null,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Display names for EVERY membership a minutes render names (attendees, recorders, assignees, note authors),
+   * resolved BEFORE the write transaction for the same reason as {@link resolveAddendumAuthorNames}. A port
+   * failure degrades to no names — the PDF then falls back to the discipline label.
+   */
+  async function resolveMinutesMemberNames(
+    orgId: string,
+    meetingId: string,
+  ): Promise<ReadonlyMap<string, string | null>> {
+    if (!membershipDisplay) return new Map();
+    try {
+      const ids = await withOrg(orgId, (tx) => loadMinutesMemberIds(tx, meetingId));
+      if (ids.length === 0) return new Map();
+      const byId = await membershipDisplay.displayForMemberships(orgId, ids);
+      return new Map(ids.map((id) => [id, byId.get(id)?.displayName ?? null]));
+    } catch {
+      return new Map();
+    }
+  }
+
+  /**
+   * The 'Addenda' appendix of the minutes render, built from the LIVE addendum rows (never the frozen
+   * snapshot) inside the caller's tenant tx, in one batched read. 42 CFR Part 2 handling is the frozen
+   * snapshot's, verbatim: for a patient whose text must be withheld (active SUD flag, or no packet to vouch
+   * for them) the body AND the free-text reason are elided (`bodyWithheld`) and only metadata is kept.
+   */
+  async function buildDisciplineAddenda(
+    tx: DbClient,
+    meetingId: string,
+    names: ReadonlyMap<string, string | null>,
+  ): Promise<DisciplineAddendumRenderEntry[]> {
+    const rows = await tx
+      .select()
+      .from(NOTE)
+      .where(and(eq(NOTE.idgMeetingId, meetingId), eq(NOTE.isAddendum, true)))
+      .orderBy(asc(NOTE.addendumRecordedAt), asc(NOTE.createdAt));
+    const releaseNeeded = await patientsNeedingRelease(tx, meetingId, [
+      ...new Set(rows.map((n) => n.patientId).filter((p): p is string => p !== null)),
+    ]);
+    return rows.map((n) => {
+      const withheld = n.patientId !== null && releaseNeeded.has(n.patientId);
+      return {
+        noteId: n.id,
+        patientId: n.patientId,
+        discipline: n.discipline,
+        authorMembershipId: n.authorMembershipId,
+        authorName: names.get(n.authorMembershipId) ?? null,
+        recordedAt: isoReq(n.addendumRecordedAt ?? n.createdAt),
+        reason: withheld ? null : n.reason,
+        bodyText: withheld ? null : n.bodyText,
+        bodyWithheld: withheld,
+      };
+    });
+  }
+
+  const toNoteView = (r: typeof NOTE.$inferSelect, withheld: boolean): DisciplineNoteView => ({
+    id: r.id,
+    meetingId: r.idgMeetingId,
+    patientId: r.patientId,
+    discipline: r.discipline,
+    bodyText: withheld ? null : r.bodyText,
+    bodyWithheld: withheld,
+    authorMembershipId: r.authorMembershipId,
+    version: r.version,
+    createdAt: isoReq(r.createdAt),
+    updatedAt: isoReq(r.updatedAt),
+    isAddendum: r.isAddendum,
+    addendumRecordedAt: iso(r.addendumRecordedAt),
+    // The reason is free-text PHI (optional on originals, required on addenda): withheld exactly when the body is.
+    reason: withheld ? null : r.reason,
+  });
+  /** The attendance rows the note-write authorization reads (present/tardy/partial for the discipline). */
+  async function attendanceForNotes(tx: DbClient, meetingId: string) {
+    return tx
+      .select({ membershipId: ATT.membershipId, discipline: ATT.discipline, status: ATT.status })
+      .from(ATT)
+      .where(and(eq(ATT.idgMeetingId, meetingId), inArray(ATT.status, [...NOTE_PRESENT_STATUSES])));
   }
 
   const toActionItemView = (r: typeof ACT.$inferSelect): ActionItemView => ({
@@ -343,6 +605,8 @@ export function createDbIdgBackend(
     discipline: r.discipline,
     status: r.status,
     checkedInAt: iso(r.checkInAt) ?? "",
+    disciplineAttested: r.disciplineAttested,
+    recordedByMembershipId: r.recordedByMembershipId,
   });
   const toAgendaItemView = (r: typeof AGD.$inferSelect): AgendaItemView => ({
     id: r.id,
@@ -362,6 +626,7 @@ export function createDbIdgBackend(
             status: MTG.status,
             scheduledStart: MTG.scheduledStart,
             scheduledEnd: MTG.scheduledEnd,
+            coordinatorMembershipId: MTG.coordinatorMembershipId,
           })
           .from(MTG)
           .where(
@@ -378,7 +643,63 @@ export function createDbIdgBackend(
           status: r.status,
           scheduledStart: isoReq(r.scheduledStart),
           scheduledEnd: isoReq(r.scheduledEnd),
+          coordinatorMembershipId: r.coordinatorMembershipId,
         }));
+      });
+    },
+    async scheduleMeeting(orgId, userId, args): Promise<MeetingView> {
+      validateMeetingWindow(args.scheduledStart, args.scheduledEnd, Date.now());
+      const start = new Date(args.scheduledStart);
+      const end = new Date(args.scheduledEnd);
+      return withOrg(orgId, async (tx) => {
+        // Serialise concurrent creates for the same location so the overlap check below cannot race.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`idg_meeting:${args.locationId}`}))`,
+        );
+        if (args.coordinatorMembershipId !== undefined) {
+          // Only an explicit coordinator needs checking — the default is the caller's own (session) membership.
+          await assertCoordinatorMembership(tx, orgId, args.coordinatorMembershipId);
+        }
+        const [clash] = await tx
+          .select({ id: MTG.id })
+          .from(MTG)
+          .where(
+            and(
+              eq(MTG.locationId, args.locationId),
+              notInArray(MTG.status, ["cancelled", "rescheduled"]),
+              lt(MTG.scheduledStart, end),
+              gt(MTG.scheduledEnd, start),
+            ),
+          )
+          .limit(1);
+        if (clash) {
+          throw new WardenXError(
+            "IDG_MEETING_OVERLAP",
+            "another IDG meeting at this location overlaps the requested window",
+            409,
+          );
+        }
+        const [row] = await tx
+          .insert(MTG)
+          .values({
+            organizationId: orgId,
+            locationId: args.locationId,
+            recurringPolicyId: null,
+            scheduledStart: start,
+            scheduledEnd: end,
+            status: "scheduled",
+            coordinatorMembershipId: args.coordinatorMembershipId ?? userId,
+            // Platform-floor quorum, verbatim — same as the schedule worker (no per-tenant tightening surface).
+            tenantQuorumSnapshot: IDG_REQUIRED_QUORUM,
+          })
+          .returning();
+        await emit(tx, orgId, "m14.meeting.scheduled", "idg_meeting", row!.id, {
+          meetingId: row!.id,
+          locationId: row!.locationId,
+          scheduledStart: start.toISOString(),
+          scheduledEnd: end.toISOString(),
+        });
+        return toMeetingView(row!);
       });
     },
     async getMeeting(orgId, id): Promise<MeetingView> {
@@ -401,17 +722,40 @@ export function createDbIdgBackend(
         }));
       });
     },
-    async getPacket(orgId, meetingId, patientId): Promise<PacketDigestView> {
-      return withOrg(orgId, async (tx) => {
+    async getPacket(orgId, meetingId, patientId, viewer): Promise<PacketDetailView> {
+      // Load the stored row inside the tenant tx (RLS-scoped), then map OUTSIDE it: the W-SUD-01 consent
+      // round-trip (M39) must not run while this read transaction is held open.
+      const r = await withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
-        const [r] = await tx
-          .select({ id: PKT.id, frozenAt: PKT.frozenAt })
+        const [row] = await tx
+          .select({
+            id: PKT.id,
+            frozenAt: PKT.frozenAt,
+            builtSnapshot: PKT.builtSnapshot,
+            disciplineViews: PKT.disciplineViews,
+          })
           .from(PKT)
           .where(and(eq(PKT.idgMeetingId, meetingId), eq(PKT.patientId, patientId)))
+          .orderBy(desc(PKT.builtAt))
           .limit(1);
-        if (!r) throw new NotFoundError("idg_patient_packet");
-        return { packetId: r.id, meetingId, patientId, frozenAt: iso(r.frozenAt) };
+        if (!row) throw new NotFoundError("idg_patient_packet");
+        return row;
       });
+      const mapped = await mapPacketContent(r, () =>
+        viewer ? viewer.sudDisclosureAllowed(patientId) : Promise.resolve(false),
+      );
+      if (mapped.appliedSudRedaction) {
+        viewer?.onSudRedaction?.({ patientId, redactedEntryCount: mapped.redactedEntryCount });
+      }
+      return {
+        packetId: r.id,
+        meetingId,
+        patientId,
+        frozenAt: iso(r.frozenAt),
+        content: mapped.content,
+        appliedSudRedaction: mapped.appliedSudRedaction,
+        redactionNotice: mapped.redactionNotice,
+      };
     },
     async getPatientIdgHistory(orgId, patientId): Promise<PatientIdgHistoryView> {
       return withOrg(orgId, async (tx) => {
@@ -545,6 +889,16 @@ export function createDbIdgBackend(
      * consent gate. `closing_note` is withheld for the same reason (a DENYLISTED free-text column).
      */
     async getMinutes(orgId, meetingId): Promise<MinutesView> {
+      const finalizerDiscipline = (
+        snapshot: unknown,
+        membershipId: string | null,
+      ): string | null => {
+        if (membershipId === null || !Array.isArray(snapshot)) return null;
+        const hit = (
+          snapshot as ReadonlyArray<{ membershipId?: unknown; discipline?: unknown }>
+        ).find((a) => a?.membershipId === membershipId);
+        return typeof hit?.discipline === "string" ? hit.discipline : null;
+      };
       return withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
         const [r] = await tx
@@ -557,11 +911,51 @@ export function createDbIdgBackend(
             attendanceSnapshot: MIN.attendanceSnapshot,
             decisionListSnapshot: MIN.decisionListSnapshot,
             actionItemListSnapshot: MIN.actionItemListSnapshot,
+            disciplineNoteSnapshot: MIN.disciplineNoteSnapshot,
           })
           .from(MIN)
           .where(eq(MIN.idgMeetingId, meetingId))
           .limit(1);
         if (!r) throw new NotFoundError("idg_minutes");
+        // LIVE count of late addenda (the frozen snapshot never changes after adjournment).
+        const [addenda] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(NOTE)
+          .where(and(eq(NOTE.idgMeetingId, meetingId), eq(NOTE.isAddendum, true)));
+        // WINDOW B read model: closes-at + which of this meeting's patients a newer adjourned IDG has superseded.
+        const [mtg] = await tx
+          .select({ status: MTG.status, actualEnd: MTG.actualEnd })
+          .from(MTG)
+          .where(eq(MTG.id, meetingId))
+          .limit(1);
+        const nowAt = new Date();
+        const base = deriveAddendumState({
+          status: mtg?.status ?? "",
+          adjournedAt: mtg?.actualEnd ?? null,
+          now: nowAt,
+          supersededPatientIds: [],
+        });
+        let superseded: string[] = [];
+        if (base.open && mtg?.actualEnd) {
+          // Read-model only: a failed supersession lookup must NOT take the finalized-minutes read down. It runs
+          // in a savepoint (a failed statement would otherwise abort the whole tx) and degrades to "none
+          // superseded" — the addendum WRITE re-checks and stays fail-closed (503 ADDENDUM_ELIGIBILITY_UNAVAILABLE).
+          const actualEnd = mtg.actualEnd;
+          try {
+            superseded = await tx.transaction(async (sp) => {
+              const [pk, ag] = await Promise.all([
+                sp.select({ p: PKT.patientId }).from(PKT).where(eq(PKT.idgMeetingId, meetingId)),
+                sp.select({ p: AGD.patientId }).from(AGD).where(eq(AGD.idgMeetingId, meetingId)),
+              ]);
+              const included = [
+                ...new Set([...pk, ...ag].map((x) => x.p).filter((p): p is string => p !== null)),
+              ];
+              return [...(await patientsSupersededByNewerIdg(sp, meetingId, actualEnd, included))];
+            });
+          } catch {
+            superseded = [];
+          }
+        }
         // Null (rather than 0) while `in_progress`: nothing is frozen yet, and "no decisions were
         // recorded" and "the snapshot has not been taken" are different facts about a meeting.
         const size = (v: unknown): number | null => (Array.isArray(v) ? v.length : null);
@@ -572,9 +966,24 @@ export function createDbIdgBackend(
           finalizedAt: iso(r.finalizedAt),
           finalizedByMembershipId: r.finalizedByMembershipId,
           minutesDocumentId: r.minutesDocumentId,
+          renderStatus: minutesRenderStatus(r.status, r.minutesDocumentId),
+          // The finalizer's discipline off M14's OWN frozen attendance snapshot (`{membershipId, discipline}`
+          // per row) — null when they were not on the roster (e.g. an admin finalizing without attending).
+          finalizedByDiscipline: finalizerDiscipline(
+            r.attendanceSnapshot,
+            r.finalizedByMembershipId,
+          ),
           attendanceCount: size(r.attendanceSnapshot),
           decisionCount: size(r.decisionListSnapshot),
           actionItemCount: size(r.actionItemListSnapshot),
+          disciplineNoteCount: size(r.disciplineNoteSnapshot),
+          disciplineAddendumCount: addenda?.n ?? 0,
+          addendumState: deriveAddendumState({
+            status: mtg?.status ?? "",
+            adjournedAt: mtg?.actualEnd ?? null,
+            now: nowAt,
+            supersededPatientIds: superseded,
+          }),
         };
       });
     },
@@ -702,6 +1111,9 @@ export function createDbIdgBackend(
             updatedAt: at,
           })
           .where(eq(MTG.id, id));
+        // D8 — a cancelled meeting no longer counts toward any action item's carry-forward count: re-derive the
+        // count of every item it had carried, in this same tx (cheap: one indexed read + ≤1 UPDATE per item).
+        await recomputeCarryForwardCountsForMeeting(tx, orgId, id, at);
         await emit(tx, orgId, "m14.meeting.cancelled", "idg_meeting", id, {
           meetingId: id,
           cancelledBy: userId,
@@ -745,6 +1157,8 @@ export function createDbIdgBackend(
           .update(MTG)
           .set({ status: "rescheduled", version: prior.version + 1, updatedAt: at })
           .where(eq(MTG.id, id));
+        // D8 — a rescheduled-away meeting does not count either (its successor counts once if it carries the item).
+        await recomputeCarryForwardCountsForMeeting(tx, orgId, id, at);
         const [next] = await tx
           .insert(MTG)
           .values({
@@ -813,6 +1227,8 @@ export function createDbIdgBackend(
       });
     },
     async adjournMeeting(orgId, userId, id, stepUpFresh): Promise<MeetingView> {
+      const minutesMemberNames = await resolveMinutesMemberNames(orgId, id);
+      const minutesSite = await resolveMinutesSiteNames(orgId, id, false);
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, id);
         // `transitionMeeting` raises STEP_UP_REQUIRED (412) when the fresh step-up is absent (§2.2 D13).
@@ -914,6 +1330,36 @@ export function createDbIdgBackend(
           dueDate: iso(a.dueDate),
         }));
 
+        // Per-discipline notes (spec extension): frozen WITH their text, except that the text of a note about
+        // a patient with an active SUD flag — or one no packet can vouch for — is elided (`bodyWithheld`):
+        // the snapshot feeds the M22 render and outlives any per-caller Part 2 verdict, so it fails closed.
+        // Meeting-level notes (no patient) always carry their text. Notes stay readable, per caller, via
+        // `GET /idg/meetings/:id/discipline-notes`.
+        const noteRows = await tx
+          .select()
+          .from(NOTE)
+          .where(eq(NOTE.idgMeetingId, id))
+          .orderBy(asc(NOTE.createdAt));
+        const releaseNeeded = await patientsNeedingRelease(tx, id, [
+          ...new Set(noteRows.map((n) => n.patientId).filter((p): p is string => p !== null)),
+        ]);
+        const disciplineNoteSnapshot: DisciplineNoteSnapshotEntry[] = noteRows.map((n) => {
+          const withheld = n.patientId !== null && releaseNeeded.has(n.patientId);
+          return {
+            noteId: n.id,
+            patientId: n.patientId,
+            discipline: n.discipline,
+            bodyText: withheld ? null : n.bodyText,
+            bodyWithheld: withheld,
+            // Same fail-closed Part 2 elision as the text: the reason is free-text PHI too.
+            reason: withheld ? null : n.reason,
+            authorMembershipId: n.authorMembershipId,
+            version: n.version,
+            createdAt: isoReq(n.createdAt),
+            updatedAt: isoReq(n.updatedAt),
+          };
+        });
+
         const minutesId = await ensureMinutes(tx, orgId, id);
         await tx
           .update(MIN)
@@ -924,6 +1370,7 @@ export function createDbIdgBackend(
             attendanceSnapshot,
             decisionListSnapshot,
             actionItemListSnapshot,
+            disciplineNoteSnapshot,
             updatedAt: at,
           })
           .where(eq(MIN.id, minutesId));
@@ -940,7 +1387,18 @@ export function createDbIdgBackend(
           minutesId,
           meetingId: id,
           finalizedByMembershipId: userId,
-          renderPayload: { attendanceSnapshot, decisionListSnapshot, actionItemListSnapshot },
+          renderPayload: {
+            attendanceSnapshot,
+            decisionListSnapshot,
+            actionItemListSnapshot,
+            disciplineNoteSnapshot,
+            ...(await loadMinutesRenderContext(tx, {
+              meetingId: id,
+              minutesId,
+              names: minutesMemberNames,
+              site: minutesSite,
+            })),
+          },
         });
         return toMeetingView({ ...m, status: "adjourned", actualEnd: at });
       });
@@ -961,6 +1419,8 @@ export function createDbIdgBackend(
             discipline: args.discipline,
             status,
             checkInAt,
+            recordedByMembershipId: args.recordedByMembershipId ?? null,
+            disciplineAttested: args.disciplineAttested ?? false,
           })
           .returning({ id: ATT.id });
         await emit(tx, orgId, "m14.attendance.checked_in", "idg_meeting", meetingId, {
@@ -978,6 +1438,8 @@ export function createDbIdgBackend(
           discipline: args.discipline,
           status,
           checkedInAt: checkInAt.toISOString(),
+          disciplineAttested: args.disciplineAttested ?? false,
+          recordedByMembershipId: args.recordedByMembershipId ?? null,
         };
       });
     },
@@ -993,6 +1455,8 @@ export function createDbIdgBackend(
           discipline: row.discipline,
           status,
           checkedInAt: iso(row.checkInAt) ?? "",
+          disciplineAttested: row.disciplineAttested,
+          recordedByMembershipId: row.recordedByMembershipId,
         };
       });
     },
@@ -1053,6 +1517,203 @@ export function createDbIdgBackend(
       });
     },
 
+    // ── discipline notes (spec extension) ───────────────────────────────────────────────────────────────
+    async listDisciplineNotes(orgId, meetingId, q, viewer): Promise<DisciplineNoteView[]> {
+      // Read inside the tenant tx, resolve the W-SUD-01 consent verdicts OUTSIDE it (the M39 seam opens its
+      // own request-scoped tx — nesting it inside `withOrg` would re-enter the pool mid-transaction).
+      const { rows, needs } = await withOrg(orgId, async (tx) => {
+        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        const where =
+          q.patientId === undefined
+            ? eq(NOTE.idgMeetingId, meetingId)
+            : and(eq(NOTE.idgMeetingId, meetingId), eq(NOTE.patientId, q.patientId));
+        const found = await tx.select().from(NOTE).where(where).orderBy(asc(NOTE.createdAt));
+        const patientIds = [
+          ...new Set(found.map((n) => n.patientId).filter((p): p is string => p !== null)),
+        ];
+        return { rows: found, needs: await patientsNeedingRelease(tx, meetingId, patientIds) };
+      });
+      const verdict = new Map<string, boolean>();
+      for (const pid of needs) {
+        let ok = false;
+        try {
+          ok = viewer ? await viewer.sudDisclosureAllowed(pid) : false;
+        } catch {
+          ok = false; // an outage denies
+        }
+        verdict.set(pid, ok);
+        if (!ok) viewer?.onSudRedaction?.({ patientId: pid, redactedEntryCount: 0 });
+      }
+      return rows.map((n) =>
+        toNoteView(
+          n,
+          n.patientId !== null && needs.has(n.patientId) && verdict.get(n.patientId) !== true,
+        ),
+      );
+    },
+    async createDisciplineNote(orgId, actor, meetingId, args): Promise<DisciplineNoteView> {
+      const addendumAuthorNames = await resolveAddendumAuthorNames(orgId, meetingId, [
+        actor.membershipId,
+      ]);
+      const addendumSite = await resolveMinutesSiteNames(orgId, meetingId, true);
+      return withOrg(orgId, async (tx) => {
+        const m = await loadMeeting(tx, meetingId);
+        // live => an ordinary note; adjourned + in-window + reason => a LATE ADDENDUM (a new row — the frozen
+        // minutes snapshot is never touched); anything else => 422. The server clock is the recorded-at.
+        const nowAt = new Date();
+        const patientId = args.patientId ?? null;
+        // WINDOW B fact — only looked up for a patient-scoped note on an adjourned meeting (fail-closed 503).
+        const newerAdjournedIdgForPatient =
+          m.status === "adjourned" && patientId !== null && m.actualEnd
+            ? (await patientsSupersededByNewerIdg(tx, meetingId, m.actualEnd, [patientId])).has(
+                patientId,
+              )
+            : false;
+        const plan = planDisciplineNoteCreate({
+          status: m.status,
+          adjournedAt: m.actualEnd ?? null,
+          now: nowAt,
+          reason: args.reason,
+          patientId,
+          newerAdjournedIdgForPatient,
+        });
+        let providerEntityId: string | null = null;
+        if (patientId !== null) {
+          // Inclusion is the packet set (authoritative) OR a patient-scoped agenda item — the same rule the
+          // decision write uses (`patientIncluded`). The packet, when present, also supplies the tenancy pair.
+          if (!(await patientIncluded(tx, meetingId, patientId))) throw noteInclusionError();
+          const [pkt] = await tx
+            .select({ providerEntityId: PKT.providerEntityId })
+            .from(PKT)
+            .where(and(eq(PKT.idgMeetingId, meetingId), eq(PKT.patientId, patientId)))
+            .limit(1);
+          providerEntityId = pkt?.providerEntityId ?? null;
+        }
+        assertMayWriteDisciplineNote(
+          actor,
+          args.discipline,
+          await attendanceForNotes(tx, meetingId),
+        );
+        const [row] = await tx
+          .insert(NOTE)
+          .values({
+            organizationId: orgId,
+            providerEntityId,
+            locationId: m.locationId,
+            idgMeetingId: meetingId,
+            patientId,
+            discipline: args.discipline,
+            bodyText: args.bodyText,
+            authorMembershipId: actor.membershipId,
+            isAddendum: plan.isAddendum,
+            addendumRecordedAt: plan.addendumRecordedAt,
+            reason: plan.reason,
+            createdAt: nowAt,
+            updatedAt: nowAt,
+          })
+          .returning();
+        // The M4 write-audit trigger records the INSERT (body_text + reason denylisted). A LIVE note
+        // emits nothing — nothing downstream consumes it until it is frozen into the minutes at adjournment.
+        // A LATE ADDENDUM emits `m14.discipline_note.addendum_recorded` in this SAME transaction: M22 appends a
+        // new VERSION of the minutes document carrying the 'Addenda' appendix. It never re-opens or mutates the
+        // frozen minutes snapshot (the snapshot columns are re-read here only to ride the render payload).
+        if (plan.isAddendum) {
+          // Lock the minutes row so concurrent addenda serialize: each emit then reads the full committed
+          // addendum set, and the last event in outbox order always carries every addendum.
+          const [min] = await tx
+            .select({
+              id: MIN.id,
+              attendanceSnapshot: MIN.attendanceSnapshot,
+              decisionListSnapshot: MIN.decisionListSnapshot,
+              actionItemListSnapshot: MIN.actionItemListSnapshot,
+              disciplineNoteSnapshot: MIN.disciplineNoteSnapshot,
+            })
+            .from(MIN)
+            .where(eq(MIN.idgMeetingId, meetingId))
+            .limit(1)
+            .for("update");
+          if (min) {
+            const disciplineAddenda = await buildDisciplineAddenda(
+              tx,
+              meetingId,
+              addendumAuthorNames,
+            );
+            const renderContext = await loadMinutesRenderContext(tx, {
+              meetingId,
+              minutesId: min.id,
+              names: addendumAuthorNames,
+              site: addendumSite,
+            });
+            await emit(tx, orgId, "m14.discipline_note.addendum_recorded", "idg_minutes", min.id, {
+              minutesId: min.id,
+              meetingId,
+              addendumId: row!.id,
+              addendumCount: disciplineAddenda.length,
+              recordedByMembershipId: actor.membershipId,
+              renderPayload: {
+                attendanceSnapshot: min.attendanceSnapshot,
+                decisionListSnapshot: min.decisionListSnapshot,
+                actionItemListSnapshot: min.actionItemListSnapshot,
+                disciplineNoteSnapshot: min.disciplineNoteSnapshot,
+                disciplineAddenda,
+                ...renderContext,
+              },
+            });
+          }
+        }
+        return toNoteView(row!, false);
+      });
+    },
+    async updateDisciplineNote(
+      orgId,
+      actor,
+      id,
+      patch,
+      ifMatchVersion,
+    ): Promise<DisciplineNoteView> {
+      return withOrg(orgId, async (tx) => {
+        const [cur] = await tx.select().from(NOTE).where(eq(NOTE.id, id)).limit(1);
+        if (!cur) throw new NotFoundError("idg_discipline_note");
+        const m = await loadMeeting(tx, cur.idgMeetingId);
+        if (cur.isAddendum) throw addendumImmutableError(); // append-only: correct with a further addendum
+        if (m.status !== "live") throw noteFrozenError();
+        assertMayWriteDisciplineNote(
+          actor,
+          cur.discipline,
+          await attendanceForNotes(tx, cur.idgMeetingId),
+        );
+        if (!actor.isCoordinator && cur.authorMembershipId !== actor.membershipId) {
+          throw new ForbiddenError("only the note's author or a coordinator may edit it");
+        }
+        assertNoteVersion(ifMatchVersion, cur.version);
+        const at = new Date();
+        // Compare-and-set on the version: a concurrent edit that slipped between the read and this UPDATE
+        // matches no row (=> 412), so the If-Match precondition holds under the race too.
+        const [row] = await tx
+          .update(NOTE)
+          .set({
+            ...(patch.bodyText !== undefined ? { bodyText: patch.bodyText } : {}),
+            ...(patch.reason !== undefined ? { reason: normalizeNoteReason(patch.reason) } : {}),
+            version: cur.version + 1,
+            updatedAt: at,
+          })
+          .where(and(eq(NOTE.id, id), eq(NOTE.version, cur.version)))
+          .returning();
+        if (!row) assertNoteVersion(ifMatchVersion, cur.version + 1);
+        return toNoteView(row!, false);
+      });
+    },
+    async disciplineNoteMeetingId(orgId, id): Promise<string | null> {
+      return withOrg(orgId, async (tx) => {
+        const [row] = await tx
+          .select({ meetingId: NOTE.idgMeetingId })
+          .from(NOTE)
+          .where(eq(NOTE.id, id))
+          .limit(1);
+        return row?.meetingId ?? null;
+      });
+    },
+
     // ── decisions (writes) ─────────────────────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, meetingId, args): Promise<DecisionView> {
       // Resolved BEFORE the write tx: the seam read opens its own request-scoped tx, and nesting it
@@ -1093,6 +1754,13 @@ export function createDbIdgBackend(
             wasQuorate: plan.wasQuorate,
             recordedByMembershipId: userId,
             recordedAt: new Date().toISOString(),
+            // The M36 non-quorate notice's inputs (only meaningful when `wasQuorate` is false).
+            ...(plan.wasQuorate
+              ? {}
+              : {
+                  coordinatorMembershipId: m.coordinatorMembershipId,
+                  missingDisciplines: [...plan.quorumSnapshot.missingDisciplines],
+                }),
           });
         return toDecisionView(row!);
       });
@@ -1249,10 +1917,29 @@ export function createDbIdgBackend(
       minutesId,
       amendmentReason,
     ): Promise<{ amendmentId: string; minutesId: string }> {
+      // A re-render after an amendment must keep the 'Addenda' appendix, or the newest document version would
+      // silently drop addenda the previous version showed.
+      const meetingIdForNames = await withOrg(orgId, async (tx) => {
+        const [r] = await tx
+          .select({ meetingId: MIN.idgMeetingId })
+          .from(MIN)
+          .where(eq(MIN.id, minutesId))
+          .limit(1);
+        return r?.meetingId ?? null;
+      });
+      const addendumAuthorNames =
+        meetingIdForNames === null
+          ? new Map<string, string | null>()
+          : await resolveAddendumAuthorNames(orgId, meetingIdForNames, []);
+      const amendSite =
+        meetingIdForNames === null
+          ? undefined
+          : await resolveMinutesSiteNames(orgId, meetingIdForNames, false);
       return withOrg(orgId, async (tx) => {
         const [min] = await tx
           .select({
             id: MIN.id,
+            meetingId: MIN.idgMeetingId,
             status: MIN.status,
             // F-168 (#248) — the exact `renderPayload` shape `.signed` already sends, re-read
             // post-amendment: M22 re-renders through the SAME `idg_minutes` template, and until now this
@@ -1260,6 +1947,7 @@ export function createDbIdgBackend(
             attendanceSnapshot: MIN.attendanceSnapshot,
             decisionListSnapshot: MIN.decisionListSnapshot,
             actionItemListSnapshot: MIN.actionItemListSnapshot,
+            disciplineNoteSnapshot: MIN.disciplineNoteSnapshot,
           })
           .from(MIN)
           .where(eq(MIN.id, minutesId))
@@ -1294,6 +1982,14 @@ export function createDbIdgBackend(
             attendanceSnapshot: min.attendanceSnapshot,
             decisionListSnapshot: min.decisionListSnapshot,
             actionItemListSnapshot: min.actionItemListSnapshot,
+            disciplineNoteSnapshot: min.disciplineNoteSnapshot,
+            disciplineAddenda: await buildDisciplineAddenda(tx, min.meetingId, addendumAuthorNames),
+            ...(await loadMinutesRenderContext(tx, {
+              meetingId: min.meetingId,
+              minutesId,
+              names: addendumAuthorNames,
+              site: amendSite,
+            })),
           },
           amendmentReasonHash: createHash("sha256").update(amendmentReason, "utf8").digest("hex"),
         });

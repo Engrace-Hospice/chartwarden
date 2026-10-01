@@ -18,7 +18,9 @@ const LATER = new Date(NOW.getTime() + 60_000);
 const EARLIER = new Date(NOW.getTime() - 60_000);
 const REQUESTER = "33333333-3333-3333-3333-333333333333";
 const OTHER = "44444444-4444-4444-4444-444444444444";
-const pending = (over: Partial<{ status: string; requestedByUserId: string; expiresAt: Date }> = {}) => ({
+const pending = (
+  over: Partial<{ status: string; requestedByUserId: string; expiresAt: Date }> = {},
+) => ({
   status: "pending_cosign",
   requestedByUserId: REQUESTER,
   expiresAt: LATER,
@@ -39,16 +41,28 @@ describe("F-202 — decideRecoveryCosign: who may co-sign a pending recovery", (
   });
 
   it("the REQUESTER may not co-sign their own request", () => {
-    expect(decideRecoveryCosign(pending(), REQUESTER, NOW)).toMatchObject({ ok: false, code: "self_cosign" });
+    expect(decideRecoveryCosign(pending(), REQUESTER, NOW)).toMatchObject({
+      ok: false,
+      code: "self_cosign",
+    });
   });
 
   it.each(["executed", "cancelled", "expired"])("a %s request is `not_pending`", (status) => {
-    expect(decideRecoveryCosign(pending({ status }), OTHER, NOW)).toMatchObject({ ok: false, code: "not_pending" });
+    expect(decideRecoveryCosign(pending({ status }), OTHER, NOW)).toMatchObject({
+      ok: false,
+      code: "not_pending",
+    });
   });
 
   it("a request whose `expires_at` has passed (or is exactly now) is `expired`", () => {
-    expect(decideRecoveryCosign(pending({ expiresAt: EARLIER }), OTHER, NOW)).toMatchObject({ ok: false, code: "expired" });
-    expect(decideRecoveryCosign(pending({ expiresAt: NOW }), OTHER, NOW)).toMatchObject({ ok: false, code: "expired" });
+    expect(decideRecoveryCosign(pending({ expiresAt: EARLIER }), OTHER, NOW)).toMatchObject({
+      ok: false,
+      code: "expired",
+    });
+    expect(decideRecoveryCosign(pending({ expiresAt: NOW }), OTHER, NOW)).toMatchObject({
+      ok: false,
+      code: "expired",
+    });
   });
 
   it("no authenticated user cannot co-sign", () => {
@@ -56,8 +70,12 @@ describe("F-202 — decideRecoveryCosign: who may co-sign a pending recovery", (
   });
 
   it("a SETTLED or lapsed request reports THAT — never whether the caller happens to be its requester (the break-glass order)", () => {
-    expect(decideRecoveryCosign(pending({ status: "executed" }), REQUESTER, NOW)).toMatchObject({ code: "not_pending" });
-    expect(decideRecoveryCosign(pending({ expiresAt: EARLIER }), REQUESTER, NOW)).toMatchObject({ code: "expired" });
+    expect(decideRecoveryCosign(pending({ status: "executed" }), REQUESTER, NOW)).toMatchObject({
+      code: "not_pending",
+    });
+    expect(decideRecoveryCosign(pending({ expiresAt: EARLIER }), REQUESTER, NOW)).toMatchObject({
+      code: "expired",
+    });
   });
 });
 
@@ -83,23 +101,43 @@ describe("F-202 — buildRecoveryAlert: what compliance is told, and nothing els
   };
 
   it("an EXECUTED recovery warns; a repeat attester turns it `critical` (and says so with a flag and a count)", () => {
-    const normal = buildRecoveryAlert("m11.order.recovery_executed", { ...facts, requesterCountInWindow: 1 });
+    const normal = buildRecoveryAlert("m11.order.recovery_executed", {
+      ...facts,
+      requesterCountInWindow: 1,
+    });
     expect(normal.severity).toBe("warn");
-    expect(normal.payload).toMatchObject({ repeatAttester: false, requesterRequestsInWindow: 1, repeatAttesterThreshold: 3 });
-    const repeat = buildRecoveryAlert("m11.order.recovery_executed", { ...facts, requesterCountInWindow: 3 });
+    expect(normal.payload).toMatchObject({
+      repeatAttester: false,
+      requesterRequestsInWindow: 1,
+      repeatAttesterThreshold: 3,
+    });
+    const repeat = buildRecoveryAlert("m11.order.recovery_executed", {
+      ...facts,
+      requesterCountInWindow: 3,
+    });
     expect(repeat.severity).toBe("critical");
     expect(repeat.payload).toMatchObject({ repeatAttester: true, requesterRequestsInWindow: 3 });
     // an injected threshold
     expect(
-      buildRecoveryAlert("m11.order.recovery_executed", { ...facts, requesterCountInWindow: 2, anomalyThreshold: 2 }).severity,
+      buildRecoveryAlert("m11.order.recovery_executed", {
+        ...facts,
+        requesterCountInWindow: 2,
+        anomalyThreshold: 2,
+      }).severity,
     ).toBe("critical");
   });
 
   it("a LAPSED request warns, a CANCELLED one is info — and neither is ever a repeat-attester flag", () => {
-    const expired = buildRecoveryAlert("m11.order.recovery_expired", { ...facts, requesterCountInWindow: 99 });
+    const expired = buildRecoveryAlert("m11.order.recovery_expired", {
+      ...facts,
+      requesterCountInWindow: 99,
+    });
     expect(expired.severity).toBe("warn");
     expect(expired.payload.repeatAttester).toBe(false);
-    const cancelled = buildRecoveryAlert("m11.order.recovery_cancelled", { ...facts, requesterCountInWindow: 99 });
+    const cancelled = buildRecoveryAlert("m11.order.recovery_cancelled", {
+      ...facts,
+      requesterCountInWindow: 99,
+    });
     expect(cancelled.severity).toBe("info");
     expect(cancelled.payload.repeatAttester).toBe(false);
   });
@@ -135,7 +173,10 @@ describe("F-202 — buildRecoveryAlert: what compliance is told, and nothing els
     const ids = new Set<string>();
     for (const kind of RECOVERY_ALERT_KINDS) {
       ids.add(buildRecoveryAlert(kind, facts).correlationId);
-      ids.add(buildRecoveryAlert(kind, { ...facts, requestId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }).correlationId);
+      ids.add(
+        buildRecoveryAlert(kind, { ...facts, requestId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" })
+          .correlationId,
+      );
     }
     expect(ids.size).toBe(RECOVERY_ALERT_KINDS.length * 2);
     expect(buildRecoveryAlert("m11.order.recovery_executed", facts).correlationId).toBe(

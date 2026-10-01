@@ -185,13 +185,16 @@ describe.skipIf(!DB_URL)(
 
       const catalog = new Map<string, unknown>(M17_OUTBOX_EVENTS.map((e) => [e.eventName, e]));
       const outbox = {
-        async publish(tx: unknown, input: {
-          eventName: string;
-          payload: Record<string, unknown>;
-          organizationId: string;
-          aggregateKind: string;
-          aggregateId: string;
-        }) {
+        async publish(
+          tx: unknown,
+          input: {
+            eventName: string;
+            payload: Record<string, unknown>;
+            organizationId: string;
+            aggregateKind: string;
+            aggregateId: string;
+          },
+        ) {
           if (!catalog.has(input.eventName)) {
             throw new Error(`m17 test publisher: undeclared event ${input.eventName}`);
           }

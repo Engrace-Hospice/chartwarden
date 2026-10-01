@@ -656,7 +656,17 @@ describe.skipIf(!DB_URL)(
             controlled_substance_handling_policy_digest, dispatched_contents_jsonb)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'home','deployed_at_patient','supply_hub_dispatch','supply_hub','KIT-B',
                  $8,now(),$8,$9,'digest','[]'::jsonb)`,
-        [reqRows[0].id, ORG_B, patientId, admissionId, locationB, providerB, templateA, memberA, deploymentId],
+        [
+          reqRows[0].id,
+          ORG_B,
+          patientId,
+          admissionId,
+          locationB,
+          providerB,
+          templateA,
+          memberA,
+          deploymentId,
+        ],
       );
 
       await expect(

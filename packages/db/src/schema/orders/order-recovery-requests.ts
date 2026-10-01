@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `order_recovery_request` (F-202, #248; migration 0272). A PENDING attested recovery of a lab order —
 // the two-person control on the duplicate-risk `not_received_by_lab` attestation (M3 break-glass's shape,
 // `bge_cosigner_distinct`, migration 0210): a first person files it, a DIFFERENT person co-signs it (which executes the
@@ -7,7 +8,6 @@
 // (order_record is partitioned — the `order_discontinuation` precedent). RLS + FORCE + the M4 write-audit trigger (the
 // contact NAME denylisted) land in the migration; the app role has SELECT/INSERT/UPDATE and no DELETE.
 import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { businessRule } from "../../business-rules";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -73,7 +73,11 @@ export const orderRecoveryRequests = pgTable(
     pendingExpiry: index("order_recovery_request_pending_expiry_idx")
       .on(t.organizationId, t.expiresAt)
       .where(sql`${t.status} = 'pending_cosign'`),
-    byOrder: index("order_recovery_request_order_idx").on(t.organizationId, t.orderRecordId, t.requestedAt),
+    byOrder: index("order_recovery_request_order_idx").on(
+      t.organizationId,
+      t.orderRecordId,
+      t.requestedAt,
+    ),
   }),
 );
 

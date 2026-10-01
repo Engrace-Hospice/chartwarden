@@ -24,6 +24,9 @@ export const idgMinutes = pgTable(
     attendanceSnapshot: jsonb("attendance_snapshot"),
     decisionListSnapshot: jsonb("decision_list_snapshot"),
     actionItemListSnapshot: jsonb("action_item_list_snapshot"),
+    // Per-discipline live-meeting notes frozen at adjournment (migration 0282). Free-text PHI: text is elided
+    // for a Part 2 (SUD-flagged / undeterminable) patient at freeze time — see idg-route-service-db.ts.
+    disciplineNoteSnapshot: jsonb("discipline_note_snapshot"),
     closingNote: text("closing_note"), // DENYLISTED
     finalizedByMembershipId: uuid("finalized_by_membership_id"), // M1 membership (no cross-module FK)
     finalizedAt: timestamp("finalized_at", { withTimezone: true }),

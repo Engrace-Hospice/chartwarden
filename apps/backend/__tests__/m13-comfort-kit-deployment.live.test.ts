@@ -24,11 +24,11 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { buildM13ComfortKitDeployedConsumer } from "../src/modules/13-emar/outbox-consumers/m21-comfort-kit-deployed";
 import { buildM13ComfortKitReplenishedConsumer } from "../src/modules/13-emar/outbox-consumers/m21-comfort-kit-replenished";
-import { buildM13ComfortKitReturnedConsumer } from "../src/modules/13-emar/outbox-consumers/m21-comfort-kit-returned";
 import { buildM13ComfortKitReturnReconciliationConsumer } from "../src/modules/13-emar/outbox-consumers/m21-comfort-kit-return-reconciliation";
-import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { buildM13ComfortKitReturnedConsumer } from "../src/modules/13-emar/outbox-consumers/m21-comfort-kit-returned";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -177,7 +177,16 @@ describe.skipIf(!DB_URL)(
 
       const catalog = new Map<string, unknown>(M13_OUTBOX_EVENTS.map((e) => [e.eventName, e]));
       const outbox = {
-        async publish(tx: unknown, input: { eventName: string; organizationId: string; aggregateKind: string; aggregateId: string; payload: Record<string, unknown> }) {
+        async publish(
+          tx: unknown,
+          input: {
+            eventName: string;
+            organizationId: string;
+            aggregateKind: string;
+            aggregateId: string;
+            payload: Record<string, unknown>;
+          },
+        ) {
           if (!catalog.has(input.eventName)) {
             throw new Error(`m13 test publisher: undeclared event ${input.eventName}`);
           }
@@ -194,7 +203,10 @@ describe.skipIf(!DB_URL)(
       deployedConsumer = buildM13ComfortKitDeployedConsumer({ db: handle.db, outbox });
       replenishedConsumer = buildM13ComfortKitReplenishedConsumer({ db: handle.db });
       returnedConsumer = buildM13ComfortKitReturnedConsumer({ db: handle.db });
-      reconciliationConsumer = buildM13ComfortKitReturnReconciliationConsumer({ db: handle.db, outbox });
+      reconciliationConsumer = buildM13ComfortKitReturnReconciliationConsumer({
+        db: handle.db,
+        outbox,
+      });
     }, 120_000);
 
     afterAll(async () => {
@@ -219,8 +231,16 @@ describe.skipIf(!DB_URL)(
           deployedAt: "2050-01-01T00:00:00Z",
           deployedByMembershipId: MEMBERSHIP,
           contents: [
-            contentLine({ id: "dc000000-0000-4000-8000-000000000001", medicationOrderId: ORDER_1, dispatchedQuantity: "30" }),
-            contentLine({ id: "dc000000-0000-4000-8000-000000000002", medicationOrderId: null, dispatchedQuantity: "15" }),
+            contentLine({
+              id: "dc000000-0000-4000-8000-000000000001",
+              medicationOrderId: ORDER_1,
+              dispatchedQuantity: "30",
+            }),
+            contentLine({
+              id: "dc000000-0000-4000-8000-000000000002",
+              medicationOrderId: null,
+              dispatchedQuantity: "15",
+            }),
           ],
           bolDocumentId: null,
         },
@@ -261,7 +281,11 @@ describe.skipIf(!DB_URL)(
           deployedAt: "2050-01-01T00:00:00Z",
           deployedByMembershipId: MEMBERSHIP,
           contents: [
-            contentLine({ id: "dc000000-0000-4000-8000-000000000009", medicationOrderId: ORDER_1, dispatchedQuantity: "30" }),
+            contentLine({
+              id: "dc000000-0000-4000-8000-000000000009",
+              medicationOrderId: ORDER_1,
+              dispatchedQuantity: "30",
+            }),
           ],
           bolDocumentId: null,
         },
@@ -289,7 +313,11 @@ describe.skipIf(!DB_URL)(
           replenishedAt: "2050-01-05T00:00:00Z",
           contents: [
             // Drawdown had drifted to 5 remaining before this replenishment (simulate a PRN draw).
-            contentLine({ id: "dc000000-0000-4000-8000-000000000003", medicationOrderId: ORDER_1, dispatchedQuantity: "100" }),
+            contentLine({
+              id: "dc000000-0000-4000-8000-000000000003",
+              medicationOrderId: ORDER_1,
+              dispatchedQuantity: "100",
+            }),
           ],
         },
       });
@@ -352,7 +380,11 @@ describe.skipIf(!DB_URL)(
               dispatchedQuantity: "20",
               isControlled: true,
             }),
-            contentLine({ id: "dc000000-0000-4000-8000-000000000005", medicationOrderId: ORDER_2, dispatchedQuantity: "20" }),
+            contentLine({
+              id: "dc000000-0000-4000-8000-000000000005",
+              medicationOrderId: ORDER_2,
+              dispatchedQuantity: "20",
+            }),
           ],
           bolDocumentId: null,
         },
@@ -424,7 +456,10 @@ describe.skipIf(!DB_URL)(
       expect(Number(controlled?.final_remaining_quantity_at_return)).toBe(10); // 8 returned + 2 disposed
       expect(Number(plain?.final_remaining_quantity_at_return)).toBe(20);
 
-      const discrepancies = await outboxRows(ORG_A, "m13.comfort_kit.controlled_substance_discrepancy");
+      const discrepancies = await outboxRows(
+        ORG_A,
+        "m13.comfort_kit.controlled_substance_discrepancy",
+      );
       expect(discrepancies).toHaveLength(1);
       expect(discrepancies[0].payload.medicationOrderId).toBe(ORDER_CONTROLLED);
       // F-172 (#248) — the fact was already in scope (this handler IS the return_reconciliation
@@ -459,7 +494,11 @@ describe.skipIf(!DB_URL)(
           deployedAt: "2050-01-01T00:00:00Z",
           deployedByMembershipId: MEMBERSHIP,
           contents: [
-            contentLine({ id: "dc000000-0000-4000-8000-000000000006", medicationOrderId: ORDER_1, dispatchedQuantity: "10" }),
+            contentLine({
+              id: "dc000000-0000-4000-8000-000000000006",
+              medicationOrderId: ORDER_1,
+              dispatchedQuantity: "10",
+            }),
           ],
           bolDocumentId: null,
         },

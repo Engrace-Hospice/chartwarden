@@ -9,7 +9,9 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
-import { reviewClockPatientsForOrg } from "./cron-store";
+import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "../routes/idg-enrichment";
+import { runCarryForwardCron } from "./carry-forward";
+import { locationCoordinatorsForOrg, reviewClockPatientsForOrg } from "./cron-store";
 import type { ActiveOrgListPort } from "./index";
 import {
   M14_JOB_SCHEDULES,
@@ -18,7 +20,13 @@ import {
   M14_WORKER_SYSTEM_USER_ID,
   planReviewClockSweep,
 } from "./index";
-import type { Idg6PacketPort, Idg7PacketPort } from "./packet-build";
+import type {
+  Idg6PacketPort,
+  Idg6RecertWindowPort,
+  Idg7PacketPort,
+  Idg10HopeContextPort,
+  IdgFlaggedEventSourcePort,
+} from "./packet-build";
 import { runPacketBuildCron } from "./packet-build";
 import type { Idg1LocationTimezonePort } from "./schedule-materialise";
 import { runScheduleMaterialiseCron } from "./schedule-materialise";
@@ -40,6 +48,16 @@ export interface M14WorkerDeps {
   readonly m6?: Idg6PacketPort;
   /** F-171 — the M7 §2.4 care-plan-summary org-explicit port (`packet-build.ts`). */
   readonly m7?: Idg7PacketPort;
+  /** §2.4 cover recert/F2F facts (M6 `idgRecertWindowsForOrg`); unbound ⇒ the cover fields stay null. */
+  readonly recertWindows?: Idg6RecertWindowPort;
+  /** §2.4 `sinceLastIdg.flaggedEvents` sources (M6 hospital/ER, M13 missed dose, M30 fall/infection); unbound ⇒ `[]`. */
+  readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
+  /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`); unbound ⇒ `null` (not captured). */
+  readonly hope?: Idg10HopeContextPort;
+  /** M1 `siteDisplayForOrg` (org + location NAMES) for the packet PDF header; unbound ⇒ header omits the names. */
+  readonly siteDisplay?: IdgSiteDisplayPort;
+  /** M2 `membershipDisplayForOrg` (names only) for the carry-forward assignees; unbound ⇒ "Member xxxxxxxx". */
+  readonly membershipDisplay?: IdgMembershipDisplayPort;
   /** F-171 — the M1 `FoundationSiteReader.locationTimezone` org-explicit port (`schedule-materialise.ts`). */
   readonly locationTimezone?: Idg1LocationTimezonePort;
   now?: () => Date;
@@ -68,7 +86,10 @@ function m6Of(deps: M14WorkerDeps): Idg6PacketPort {
       inclusionForOrg: () =>
         unbound("m6.inclusionForOrg", "bind idgPacketInclusionForOrg at the composition root"),
       currentLevelOfCareForOrg: () =>
-        unbound("m6.currentLevelOfCareForOrg", "bind idgCurrentLevelOfCareForOrg at the composition root"),
+        unbound(
+          "m6.currentLevelOfCareForOrg",
+          "bind idgCurrentLevelOfCareForOrg at the composition root",
+        ),
     }
   );
 }
@@ -77,7 +98,10 @@ function m7Of(deps: M14WorkerDeps): Idg7PacketPort {
   return (
     deps.m7 ?? {
       carePlanContextForOrg: () =>
-        unbound("m7.carePlanContextForOrg", "bind idgPacketCarePlanContextForOrg at the composition root"),
+        unbound(
+          "m7.carePlanContextForOrg",
+          "bind idgPacketCarePlanContextForOrg at the composition root",
+        ),
     }
   );
 }
@@ -97,7 +121,9 @@ function locationTimezoneOf(deps: M14WorkerDeps): Idg1LocationTimezonePort {
 function redisOf(deps: M14WorkerDeps): Redis {
   if (deps.redis) return deps.redis;
   const err = (): never => {
-    throw new Error("M14_WORKER_PORT_UNBOUND: redis — bind the Valkey client at the composition root");
+    throw new Error(
+      "M14_WORKER_PORT_UNBOUND: redis — bind the Valkey client at the composition root",
+    );
   };
   return new Proxy({}, { get: () => err }) as Redis;
 }
@@ -111,6 +137,11 @@ export function buildM14WorkerDeps(deps: {
   redis?: Redis;
   m6?: Idg6PacketPort;
   m7?: Idg7PacketPort;
+  recertWindows?: Idg6RecertWindowPort;
+  flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
+  hope?: Idg10HopeContextPort;
+  siteDisplay?: IdgSiteDisplayPort;
+  membershipDisplay?: IdgMembershipDisplayPort;
   locationTimezone?: Idg1LocationTimezonePort;
 }): M14WorkerDeps {
   return {
@@ -121,6 +152,11 @@ export function buildM14WorkerDeps(deps: {
     redis: deps.redis,
     m6: deps.m6,
     m7: deps.m7,
+    recertWindows: deps.recertWindows,
+    flaggedEventSources: deps.flaggedEventSources,
+    hope: deps.hope,
+    siteDisplay: deps.siteDisplay,
+    membershipDisplay: deps.membershipDisplay,
     locationTimezone: deps.locationTimezone,
     now: () => new Date(),
   };
@@ -174,7 +210,18 @@ export async function runReviewClockSweepCron(
           const t = tx as unknown as DbClient;
           const patients = await reviewClockPatientsForOrg(t, organizationId);
           const escalations = planReviewClockSweep(patients, now);
+          // The coordinator tier of the M36 alert (only read when something escalates; one batched read).
+          const coordinators =
+            escalations.length === 0
+              ? new Map<string, string>()
+              : await locationCoordinatorsForOrg(
+                  t,
+                  organizationId,
+                  [...new Set(escalations.map((e) => e.locationId))],
+                  now,
+                );
           for (const e of escalations) {
+            const coordinatorMembershipId = coordinators.get(e.locationId);
             await deps.outbox.publish(t, {
               eventName: "m14.review_clock.escalated",
               payload: {
@@ -185,6 +232,7 @@ export async function runReviewClockSweepCron(
                 floorAt: e.floorAt,
                 stage: e.stage,
                 severity: e.severity,
+                ...(coordinatorMembershipId === undefined ? {} : { coordinatorMembershipId }),
               },
               organizationId,
               aggregateKind: "idg_patient_packet",
@@ -269,7 +317,7 @@ function bullmqCheckpoint(job: Job): ReviewClockSweepCheckpoint {
   };
 }
 
-/** Construct all THREE M14 crons (the caller owns lifecycle — `close()` on shutdown): the pre-existing
+/** Construct all FOUR M14 crons (+ `idg.carry-forward`, §2.7) (the caller owns lifecycle — `close()` on shutdown): the pre-existing
  * `idg.review-clock-sweep`, plus F-171's `idg.schedule-materialise` (§7.1) and `idg.packets-cron` (§4.9.1
  * `tminus-24h-build`) — the real T-24h packet-build worker. `m6`/`m7`/`redis` resolve through the same
  * fail-closed-thunk pattern `activeOrgs` already uses, so an unwired port throws loudly on first USE
@@ -307,9 +355,25 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
           redis: redisOf(deps),
           m6: m6Of(deps),
           m7: m7Of(deps),
+          recertWindows: deps.recertWindows,
+          flaggedEventSources: deps.flaggedEventSources,
+          hope: deps.hope,
+          siteDisplay: deps.siteDisplay,
+          membershipDisplay: deps.membershipDisplay,
           now: deps.now,
         }),
       { connection, concurrency: M14_QUEUE_PARAMS.packetsBuild.concurrency },
+    ),
+    new Worker(
+      M14_QUEUES.carryForward,
+      async () =>
+        runCarryForwardCron({
+          db: deps.db,
+          outbox: deps.outbox,
+          activeOrgs: activeOrgsOf(deps),
+          now: deps.now,
+        }),
+      { connection, concurrency: M14_QUEUE_PARAMS.carryForward.concurrency },
     ),
   ];
 }
@@ -338,6 +402,11 @@ export async function scheduleM14Jobs(connection: ConnectionOptions): Promise<Qu
       queue: M14_QUEUES.packetsBuild,
       pattern: M14_JOB_SCHEDULES.packetsBuild,
       params: M14_QUEUE_PARAMS.packetsBuild,
+    },
+    {
+      queue: M14_QUEUES.carryForward,
+      pattern: M14_JOB_SCHEDULES.carryForward,
+      params: M14_QUEUE_PARAMS.carryForward,
     },
   ];
   const queues: Queue[] = [];

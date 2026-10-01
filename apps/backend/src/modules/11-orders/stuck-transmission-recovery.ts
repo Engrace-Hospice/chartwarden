@@ -19,7 +19,12 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ValidationError } from "@wardenx/types";
 import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getMdmEntityProvider } from "../40-mdm/seams";
-import { RECOVERABLE_M29_FAILURE_REASONS, RECOVERY_BLOCKED_PREFIX, DISPATCH_REFUSED_PREFIX, ORM_REFUSAL_PREFIX } from "./orm-request/orm-resend";
+import {
+  DISPATCH_REFUSED_PREFIX,
+  ORM_REFUSAL_PREFIX,
+  RECOVERABLE_M29_FAILURE_REASONS,
+  RECOVERY_BLOCKED_PREFIX,
+} from "./orm-request/orm-resend";
 import type { OrmMdmReader } from "./orm-request/ports";
 import {
   AUTO_RETRY_BATCH_SIZE,
@@ -57,7 +62,10 @@ export interface StuckTransmissionRecoveryDeps {
    * F-182's `resendLabTransmission`, bound at the composition root with no acting user. Anything but `requested` means
    * the producer still refused (nothing was emitted); a `ConflictError` means another sweeper/operator won the row.
    */
-  readonly resend: (organizationId: string, orderId: string) => Promise<{ readonly outcome: string }>;
+  readonly resend: (
+    organizationId: string,
+    orderId: string,
+  ) => Promise<{ readonly outcome: string }>;
   /**
    * M29's D16 BAA gate for a destination facility, as of `asOf` — injected because M11 has no `dependsOn` edge to M29.
    * The producer does not check the BAA (the worker does), so this is the ONE cause the sweep verifies before it
@@ -130,10 +138,20 @@ function encodeCursor(updatedAtIso: string, id: string): string {
 
 function decodeCursor(cursor: string): { readonly u: string; readonly i: string } {
   const bad = () =>
-    new ValidationError("invalid cursor", [{ field: "cursor", code: "INVALID", message: "cursor is not valid" }]);
+    new ValidationError("invalid cursor", [
+      { field: "cursor", code: "INVALID", message: "cursor is not valid" },
+    ]);
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as { u?: unknown; i?: unknown };
-    if (typeof parsed.u !== "string" || typeof parsed.i !== "string" || !ISO_MICROS.test(parsed.u) || !UUID.test(parsed.i)) {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
+      u?: unknown;
+      i?: unknown;
+    };
+    if (
+      typeof parsed.u !== "string" ||
+      typeof parsed.i !== "string" ||
+      !ISO_MICROS.test(parsed.u) ||
+      !UUID.test(parsed.i)
+    ) {
       throw bad();
     }
     return { u: parsed.u, i: parsed.i };
@@ -146,7 +164,8 @@ function decodeCursor(cursor: string): { readonly u: string; readonly i: string 
 const updatedAtIso = sql<string>`to_char(${OR.updatedAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 // `starts_with`, not LIKE: `_` is a LIKE wildcard and `orm_refused:` contains one.
-const reasonStartsWith = (prefix: string) => sql`starts_with(${OR.transmissionFailureReason}, ${prefix})`;
+const reasonStartsWith = (prefix: string) =>
+  sql`starts_with(${OR.transmissionFailureReason}, ${prefix})`;
 
 /** The failure reasons an operator must resolve with the lab — the worklist and the aging sweep read exactly these. */
 const heldReasonFilter = () =>
@@ -182,7 +201,12 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
    */
   async function markExhausted(
     organizationId: string,
-    row: { readonly id: string; readonly reason: string; readonly attemptId: string | null; readonly count: number },
+    row: {
+      readonly id: string;
+      readonly reason: string;
+      readonly attemptId: string | null;
+      readonly count: number;
+    },
     why: "attempts" | "window",
     at: Date,
   ): Promise<boolean> {
@@ -193,21 +217,24 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
       // ids + fixed tokens only — no patient data.
       payload: { orderId: row.id, reason: row.reason, attempts: row.count, why },
     });
-    const stamped = await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) =>
-      (tx as unknown as DbClient)
-        .update(OR)
-        .set({ transmissionAutoRetryExhaustedAt: at })
-        .where(
-          and(
-            eq(OR.organizationId, organizationId),
-            eq(OR.id, row.id),
-            eq(OR.kind, "lab"),
-            eq(OR.transmissionStatus, "failed"),
-            eq(OR.transmissionFailureReason, row.reason),
-            isNull(OR.transmissionAutoRetryExhaustedAt),
-          ),
-        )
-        .returning({ id: OR.id }),
+    const stamped = await withOrgContext(
+      deps.db,
+      { organizationId, userId: SYSTEM_USER_ID },
+      async (tx) =>
+        (tx as unknown as DbClient)
+          .update(OR)
+          .set({ transmissionAutoRetryExhaustedAt: at })
+          .where(
+            and(
+              eq(OR.organizationId, organizationId),
+              eq(OR.id, row.id),
+              eq(OR.kind, "lab"),
+              eq(OR.transmissionStatus, "failed"),
+              eq(OR.transmissionFailureReason, row.reason),
+              isNull(OR.transmissionAutoRetryExhaustedAt),
+            ),
+          )
+          .returning({ id: OR.id }),
     );
     return stamped.length > 0;
   }
@@ -220,35 +247,47 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
      */
     async sweepAutoRetries(organizationId: string): Promise<AutoRetrySweepSummary> {
       const at = now();
-      const rows = await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) =>
-        (tx as unknown as DbClient)
-          .select({
-            id: OR.id,
-            kind: OR.kind,
-            status: OR.status,
-            transmissionStatus: OR.transmissionStatus,
-            transmissionFailureReason: OR.transmissionFailureReason,
-            attemptId: OR.transmissionAttemptId,
-            data: OR.data,
-            count: OR.transmissionAutoRetryCount,
-            retryAt: OR.transmissionAutoRetryAt,
-            exhaustedAt: OR.transmissionAutoRetryExhaustedAt,
-            failedAt: OR.updatedAt,
-          })
-          .from(OR)
-          .where(
-            and(
-              failedActiveLab(organizationId),
-              isNull(OR.transmissionAutoRetryExhaustedAt),
-              sql`(${reasonStartsWith(DISPATCH_REFUSED_PREFIX)} OR ${reasonStartsWith(ORM_REFUSAL_PREFIX)})`,
-            ),
-          )
-          // The order the sweep's own candidate index (`idx_order_transmission_failed`) is keyed in.
-          .orderBy(asc(OR.updatedAt), asc(OR.id))
-          .limit(AUTO_RETRY_BATCH_SIZE),
+      const rows = await withOrgContext(
+        deps.db,
+        { organizationId, userId: SYSTEM_USER_ID },
+        async (tx) =>
+          (tx as unknown as DbClient)
+            .select({
+              id: OR.id,
+              kind: OR.kind,
+              status: OR.status,
+              transmissionStatus: OR.transmissionStatus,
+              transmissionFailureReason: OR.transmissionFailureReason,
+              attemptId: OR.transmissionAttemptId,
+              data: OR.data,
+              count: OR.transmissionAutoRetryCount,
+              retryAt: OR.transmissionAutoRetryAt,
+              exhaustedAt: OR.transmissionAutoRetryExhaustedAt,
+              failedAt: OR.updatedAt,
+            })
+            .from(OR)
+            .where(
+              and(
+                failedActiveLab(organizationId),
+                isNull(OR.transmissionAutoRetryExhaustedAt),
+                sql`(${reasonStartsWith(DISPATCH_REFUSED_PREFIX)} OR ${reasonStartsWith(ORM_REFUSAL_PREFIX)})`,
+              ),
+            )
+            // The order the sweep's own candidate index (`idx_order_transmission_failed`) is keyed in.
+            .orderBy(asc(OR.updatedAt), asc(OR.id))
+            .limit(AUTO_RETRY_BATCH_SIZE),
       );
 
-      const tally = { retried: 0, causeNotCleared: 0, stillRefused: 0, backoff: 0, notEligible: 0, exhausted: 0, raced: 0, errors: 0 };
+      const tally = {
+        retried: 0,
+        causeNotCleared: 0,
+        stillRefused: 0,
+        backoff: 0,
+        notEligible: 0,
+        exhausted: 0,
+        raced: 0,
+        errors: 0,
+      };
       for (const row of rows) {
         try {
           const candidate: AutoRetryCandidate = {
@@ -268,7 +307,19 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
             continue;
           }
           if (verdict.action === "exhausted") {
-            if (await markExhausted(organizationId, { id: row.id, reason: row.transmissionFailureReason as string, attemptId: row.attemptId, count: row.count }, verdict.why, at)) {
+            if (
+              await markExhausted(
+                organizationId,
+                {
+                  id: row.id,
+                  reason: row.transmissionFailureReason as string,
+                  attemptId: row.attemptId,
+                  count: row.count,
+                },
+                verdict.why,
+                at,
+              )
+            ) {
               tally.exhausted++;
             }
             continue;
@@ -287,8 +338,13 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
           await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) =>
             (tx as unknown as DbClient)
               .update(OR)
-              .set({ transmissionAutoRetryCount: sql`${OR.transmissionAutoRetryCount} + 1`, transmissionAutoRetryAt: at })
-              .where(and(eq(OR.organizationId, organizationId), eq(OR.id, row.id), eq(OR.kind, "lab"))),
+              .set({
+                transmissionAutoRetryCount: sql`${OR.transmissionAutoRetryCount} + 1`,
+                transmissionAutoRetryAt: at,
+              })
+              .where(
+                and(eq(OR.organizationId, organizationId), eq(OR.id, row.id), eq(OR.kind, "lab")),
+              ),
           );
           tally.retried++;
         } catch (error) {
@@ -297,7 +353,10 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
             continue;
           }
           tally.errors++;
-          log("m11.stuck_recovery.auto_retry_error", { orderId: row.id, error: error instanceof Error ? error.name : "unknown" });
+          log("m11.stuck_recovery.auto_retry_error", {
+            orderId: row.id,
+            error: error instanceof Error ? error.name : "unknown",
+          });
         }
       }
       return { examined: rows.length, ...tally };
@@ -310,24 +369,27 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
      */
     async sweepHeldAging(organizationId: string): Promise<HeldAgingSweepSummary> {
       const at = now();
-      const rows = await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) =>
-        (tx as unknown as DbClient)
-          .select({
-            id: OR.id,
-            reason: OR.transmissionFailureReason,
-            attemptId: OR.transmissionAttemptId,
-            failedAt: OR.updatedAt,
-          })
-          .from(OR)
-          .where(
-            and(
-              failedActiveLab(organizationId),
-              heldReasonFilter(),
-              lte(OR.updatedAt, new Date(at.getTime() - thresholds.warnAfterMs)),
-            ),
-          )
-          .orderBy(asc(OR.updatedAt), asc(OR.id))
-          .limit(AUTO_RETRY_BATCH_SIZE),
+      const rows = await withOrgContext(
+        deps.db,
+        { organizationId, userId: SYSTEM_USER_ID },
+        async (tx) =>
+          (tx as unknown as DbClient)
+            .select({
+              id: OR.id,
+              reason: OR.transmissionFailureReason,
+              attemptId: OR.transmissionAttemptId,
+              failedAt: OR.updatedAt,
+            })
+            .from(OR)
+            .where(
+              and(
+                failedActiveLab(organizationId),
+                heldReasonFilter(),
+                lte(OR.updatedAt, new Date(at.getTime() - thresholds.warnAfterMs)),
+              ),
+            )
+            .orderBy(asc(OR.updatedAt), asc(OR.id))
+            .limit(AUTO_RETRY_BATCH_SIZE),
       );
 
       let alerted = 0;
@@ -342,12 +404,20 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
             severity: stage,
             correlationId: heldAgingCorrelationId(row.id, row.attemptId, stage),
             // ids + fixed tokens + a coarse age — no patient data.
-            payload: { orderId: row.id, stage, reason: row.reason, ageHours: Math.floor(ageMs / 3_600_000) },
+            payload: {
+              orderId: row.id,
+              stage,
+              reason: row.reason,
+              ageHours: Math.floor(ageMs / 3_600_000),
+            },
           });
           alerted++;
         } catch (error) {
           errors++;
-          log("m11.stuck_recovery.held_aging_error", { orderId: row.id, error: error instanceof Error ? error.name : "unknown" });
+          log("m11.stuck_recovery.held_aging_error", {
+            orderId: row.id,
+            error: error instanceof Error ? error.name : "unknown",
+          });
         }
       }
       return { examined: rows.length, alerted, errors };
@@ -376,7 +446,9 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
             and(
               failedActiveLab(organizationId),
               heldReasonFilter(),
-              after === null ? undefined : sql`(${OR.updatedAt}, ${OR.id}) > (${after.u}::timestamptz, ${after.i}::uuid)`,
+              after === null
+                ? undefined
+                : sql`(${OR.updatedAt}, ${OR.id}) > (${after.u}::timestamptz, ${after.i}::uuid)`,
             ),
           )
           .orderBy(asc(OR.updatedAt), asc(OR.id))
@@ -384,7 +456,11 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
         const page = rows.slice(0, limit);
         const feeds =
           deps.feedsForOrders !== undefined && page.length > 0
-            ? await deps.feedsForOrders(tx, organizationId, page.map((r) => r.id))
+            ? await deps.feedsForOrders(
+                tx,
+                organizationId,
+                page.map((r) => r.id),
+              )
             : new Map<string, string>();
         const items: HeldTransmissionItem[] = page.map((r) => {
           const ageMs = Math.max(0, at.getTime() - r.failedAt.getTime());
@@ -401,7 +477,10 @@ export function createStuckTransmissionRecovery(deps: StuckTransmissionRecoveryD
         const last = page[page.length - 1];
         return {
           items,
-          nextCursor: rows.length > limit && last !== undefined ? encodeCursor(last.failedAtIso, last.id) : null,
+          nextCursor:
+            rows.length > limit && last !== undefined
+              ? encodeCursor(last.failedAtIso, last.id)
+              : null,
         };
       });
     },

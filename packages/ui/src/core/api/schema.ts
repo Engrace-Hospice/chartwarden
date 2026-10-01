@@ -3979,6 +3979,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/rate-tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a ProviderEntity's hospice rate-table versions, newest window first (F-210; includeSuperseded=true adds history) */
+        get: operations["getApiV1BillingRatetables"];
+        put?: never;
+        /** Enter a hospice rate-table version - whole-cent PRE-wage-index per-diems for a fiscal year; non-overlapping (F-210) */
+        post: operations["postApiV1BillingRatetables"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/rate-tables/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one hospice rate-table version (F-210) */
+        get: operations["getApiV1BillingRatetablesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/rate-tables/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210) */
+        post: operations["postApiV1BillingRatetablesByIdSupersede"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/rate-tables/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live hospice rate table claim assembly would price a service date from, or null (F-210) */
+        get: operations["getApiV1BillingRatetablesEffective"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/rule-configs": {
         parameters: {
             query?: never;
@@ -4042,8 +4111,42 @@ export interface paths {
         /** Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32) */
         get: operations["getApiV1BillingSequestrationpolicies"];
         put?: never;
-        /** Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33) */
+        /** Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212) */
         post: operations["postApiV1BillingSequestrationpolicies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one sequestration policy row (F-212) */
+        get: operations["getApiV1BillingSequestrationpoliciesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212) */
+        post: operations["postApiV1BillingSequestrationpoliciesByIdSupersede"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4057,8 +4160,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The active-on-now sequestration policy for a ProviderEntity (or null, §4.1) */
+        /** The current open-ended sequestration policy for a ProviderEntity (or null, §4.1) */
         get: operations["getApiV1BillingSequestrationpoliciesActive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live sequestration policy claim assembly would apply on a service date, or null (F-212) */
+        get: operations["getApiV1BillingSequestrationpoliciesEffective"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4076,6 +4196,75 @@ export interface paths {
         };
         /** Lightweight billing status */
         get: operations["getApiV1BillingStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history) */
+        get: operations["getApiV1BillingWageindexes"];
+        put?: never;
+        /** Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211) */
+        post: operations["postApiV1BillingWageindexes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one tenant-entered wage-index version (F-211) */
+        get: operations["getApiV1BillingWageindexesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211) */
+        post: operations["postApiV1BillingWageindexesByIdSupersede"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live tenant-entered wage index for a CCN + fiscal year, or null (F-211) */
+        get: operations["getApiV1BillingWageindexesEffective"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8911,6 +9100,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/idg/discipline-notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a discipline note's text and/or reason (at least one; live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE */
+        patch: operations["patchApiV1IdgDisciplinenotesById"];
+        trace?: never;
+    };
+    "/api/v1/idg/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule a single (ad-hoc) IDG meeting */
+        post: operations["postApiV1IdgMeetings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/idg/meetings/{id}": {
         parameters: {
             query?: never;
@@ -8990,8 +9213,25 @@ export interface paths {
         /** The meeting's attendance roster in check-in order — the §2.7 participation the quorate_decision predicate evaluates (F-062: the three attendance writes shipped with no reader) */
         get: operations["getApiV1IdgMeetingsByIdAttendance"];
         put?: never;
-        /** Self check-in attendance for a meeting */
+        /** Record attendance. A non-coordinator may record ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline must be in the closed vocabulary (422 UNKNOWN_DISCIPLINE) and conferred by the member's authoritative roles (422 DISCIPLINE_NOT_HELD). A coordinator (idg.coordinate) may record others and, with `coordinatorAttested: true`, an unheld discipline as a FLAGGED override (`disciplineAttested`); attesting for themself => 403 ATTESTATION_SELF_FORBIDDEN, a non-coordinator sending it => 403 ATTESTATION_REQUIRES_COORDINATOR; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND; roles unresolvable => 503 ATTENDANCE_AUTHORITY_UNAVAILABLE */
         post: operations["postApiV1IdgMeetingsByIdAttendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/idg/meetings/{id}/attendance-eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the caller may attest at the check-in: the attendance disciplines their AUTHORITATIVE roles confer (`heldDisciplines`). A coordinator may pass `?membershipId=` for another member and also receives the closed vocabulary they may ATTEST (`attestableDisciplines`); a non-coordinator naming someone else => 403 ATTENDANCE_SELF_ONLY; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND */
+        get: operations["getApiV1IdgMeetingsByIdAttendanceeligibility"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9027,6 +9267,24 @@ export interface paths {
         put?: never;
         /** Record a decision (quorate_decision ABAC) */
         post: operations["postApiV1IdgMeetingsByIdDecisions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/idg/meetings/{id}/discipline-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The meeting's per-discipline notes, oldest first (optionally one patient) — readable in any status; text withheld (`bodyWithheld`) for a 42 CFR Part 2 patient the caller has no release for */
+        get: operations["getApiV1IdgMeetingsByIdDisciplinenotes"];
+        put?: never;
+        /** Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). `reason` (≤500) is OPTIONAL context on a live note (blank = absent). A patient-scoped addendum is refused once a NEWER ADJOURNED IDG has included that patient. Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_SUPERSEDED_BY_NEWER_IDG / ADDENDUM_REASON_REQUIRED; 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE (retryable) */
+        post: operations["postApiV1IdgMeetingsByIdDisciplinenotes"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9084,6 +9342,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/idg/meetings/{id}/recert-windows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-agenda-patient recert / face-to-face windows for the IDG right pane — next recert due date, benefit-period end, F2F status/window (seam-pulled from M6's window math, org-timezone; unresolved patients are `unknown`, never fabricated) */
+        get: operations["getApiV1IdgMeetingsByIdRecertwindows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/idg/meetings/{id}/reschedule": {
         parameters: {
             query?: never;
@@ -9125,7 +9400,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one patient's packet (SUD redaction applied) */
+        /** Read one patient's packet with its content — cover summary (deterministic), per-discipline views, signed encounters, assessment changes, HOPE, order/medication changes, flagged events, carry-forward items (SUD redaction applied per caller) */
         get: operations["getApiV1IdgMeetingsByMeetingIdPacketsByPatientId"];
         put?: never;
         post?: never;
@@ -10223,6 +10498,23 @@ export interface paths {
         put?: never;
         /** Log equipment maintenance (§2.9) */
         post: operations["postApiV1IpuequipmentByIdMaintenance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-intake/gip-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** F-219 intake worklist — pending M19 GIP admission PROPOSALS (a pull; never an ipu_admission row) */
+        get: operations["getApiV1IpuintakeGipproposals"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -18743,6 +19035,23 @@ export interface paths {
         put?: never;
         /** Resolve the caller to a served person — patient AND admission together, because M8's encounter creator requires both NOT NULL (§4.1 #4) */
         post: operations["postApiV1TriagecallsByTriageCallIdIdentifypatient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/request-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** F-224 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending) */
+        post: operations["postApiV1TriagecallsByTriageCallIdRequestsummary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -30778,6 +31087,302 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingRatetables: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTables: {
+                            rateTableId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            fiscalYearStarting: number;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            rhcDays1to60PerDiemCents: number;
+                            rhcDays61PlusPerDiemCents: number;
+                            chcPerDiemCents: number;
+                            ircPerDiemCents: number;
+                            gipPerDiemCents: number;
+                            chcHourlyRateCents: number;
+                            laborShareRhc: string | null;
+                            laborShareChc: string | null;
+                            laborShareIrc: string | null;
+                            laborShareGip: string | null;
+                            enteredByMembershipId: string;
+                            entryReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingRatetables: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    rhcDays1to60PerDiemCents: number;
+                    rhcDays61PlusPerDiemCents: number;
+                    chcPerDiemCents: number;
+                    ircPerDiemCents: number;
+                    gipPerDiemCents: number;
+                    chcHourlyRateCents: number;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareRhc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareChc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareIrc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareGip: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingRatetablesById: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingRatetablesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    rhcDays1to60PerDiemCents: number;
+                    rhcDays61PlusPerDiemCents: number;
+                    chcPerDiemCents: number;
+                    ircPerDiemCents: number;
+                    gipPerDiemCents: number;
+                    chcHourlyRateCents: number;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareRhc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareChc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareIrc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareGip: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingRatetablesEffective: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                onDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingRuleconfigs: {
         parameters: {
             query?: {
@@ -30984,6 +31589,7 @@ export interface operations {
         parameters: {
             query: {
                 providerEntityId: string;
+                includeSuperseded?: boolean;
             };
             header?: never;
             path?: never;
@@ -31007,6 +31613,8 @@ export interface operations {
                             effectiveTo: string | null;
                             setByMembershipId: string;
                             setReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
                             createdAt: string;
                         }[];
                     };
@@ -31019,7 +31627,10 @@ export interface operations {
     postApiV1BillingSequestrationpolicies: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -31031,17 +31642,123 @@ export interface operations {
                     percentage: string;
                     /** Format: date */
                     effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
                     setReason?: string;
                 };
             };
         };
         responses: {
             /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingSequestrationpoliciesById: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingSequestrationpoliciesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    percentage: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    setReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -31073,6 +31790,45 @@ export interface operations {
                         effectiveTo: string | null;
                         setByMembershipId: string;
                         setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingSequestrationpoliciesEffective: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                onDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
                         createdAt: string;
                     } | null;
                 };
@@ -31104,6 +31860,230 @@ export interface operations {
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexes: {
+        parameters: {
+            query?: {
+                ccn?: string;
+                fiscalYearStarting?: number;
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexes: {
+                            wageIndexId: string;
+                            organizationId: string;
+                            ccn: string;
+                            fiscalYearStarting: number;
+                            cbsaCode: string | null;
+                            factorDecimal: string;
+                            sourceReference: string;
+                            enteredByMembershipId: string;
+                            entryReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingWageindexes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 6-character CMS Certification Number. */
+                    ccn: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    cbsaCode?: string;
+                    /** @description The published hospice wage index as a decimal string with at most four places, e.g. "1.0342". */
+                    factorDecimal: string;
+                    /** @description Where the value was keyed from (CMS wage-index table / Federal Register notice). */
+                    sourceReference: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingWageindexesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 6-character CMS Certification Number. */
+                    ccn: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    cbsaCode?: string;
+                    /** @description The published hospice wage index as a decimal string with at most four places, e.g. "1.0342". */
+                    factorDecimal: string;
+                    /** @description Where the value was keyed from (CMS wage-index table / Federal Register notice). */
+                    sourceReference: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexesEffective: {
+        parameters: {
+            query: {
+                ccn: string;
+                fiscalYearStarting: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
                 };
             };
             "4XX": components["responses"]["Error"];
@@ -43796,6 +44776,10 @@ export interface operations {
                         meetingId: string;
                         decisionId: string | null;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         /** Format: uuid */
                         assignedToMembershipId: string;
                         status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
@@ -43869,6 +44853,10 @@ export interface operations {
                         meetingId: string;
                         decisionId: string | null;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         /** Format: uuid */
                         assignedToMembershipId: string;
                         status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
@@ -43942,6 +44930,10 @@ export interface operations {
                         meetingId: string;
                         kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                     };
                 };
             };
@@ -44012,6 +45004,8 @@ export interface operations {
                         status: "present" | "tardy" | "partial" | "absent" | "excused";
                         /** Format: date-time */
                         checkedInAt: string;
+                        disciplineAttested: boolean;
+                        recordedByMembershipId: string | null;
                     };
                 };
             };
@@ -44160,6 +45154,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -44205,6 +45203,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -44214,6 +45216,119 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1IdgDisciplinenotesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bodyText?: string;
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        discipline: string;
+                        bodyText: string | null;
+                        bodyWithheld: boolean;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        authorName?: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        isAddendum: boolean;
+                        addendumRecordedAt: string | null;
+                        reason: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IdgMeetings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    locationId: string;
+                    /** Format: date-time */
+                    scheduledStart: string;
+                    /** Format: date-time */
+                    scheduledEnd: string;
+                    /** Format: uuid */
+                    coordinatorMembershipId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        status: "scheduled" | "packets_building" | "packets_ready" | "live" | "adjourned" | "cancelled" | "rescheduled";
+                        /** Format: date-time */
+                        scheduledStart: string;
+                        /** Format: date-time */
+                        scheduledEnd: string;
+                        adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     };
                 };
             };
@@ -44251,6 +45366,8 @@ export interface operations {
                         /** Format: date-time */
                         scheduledEnd: string;
                         adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     };
                 };
             };
@@ -44298,6 +45415,10 @@ export interface operations {
                         meetingId: string;
                         decisionId: string | null;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         /** Format: uuid */
                         assignedToMembershipId: string;
                         status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
@@ -44362,6 +45483,10 @@ export interface operations {
                         meetingId: string;
                         kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                     }[];
                 };
             };
@@ -44402,6 +45527,10 @@ export interface operations {
                         meetingId: string;
                         kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                     };
                 };
             };
@@ -44437,6 +45566,8 @@ export interface operations {
                         status: "present" | "tardy" | "partial" | "absent" | "excused";
                         /** Format: date-time */
                         checkedInAt: string;
+                        disciplineAttested: boolean;
+                        recordedByMembershipId: string | null;
                     }[];
                 };
             };
@@ -44462,6 +45593,7 @@ export interface operations {
                     status?: "present" | "tardy" | "partial" | "absent" | "excused";
                     /** Format: date-time */
                     checkedInAt?: string;
+                    coordinatorAttested?: boolean;
                 };
             };
         };
@@ -44483,6 +45615,40 @@ export interface operations {
                         status: "present" | "tardy" | "partial" | "absent" | "excused";
                         /** Format: date-time */
                         checkedInAt: string;
+                        disciplineAttested: boolean;
+                        recordedByMembershipId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdAttendanceeligibility: {
+        parameters: {
+            query?: {
+                membershipId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        isCoordinator: boolean;
+                        heldDisciplines: string[];
+                        attestableDisciplines: string[];
                     };
                 };
             };
@@ -44543,6 +45709,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -44703,6 +45873,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -44712,6 +45886,116 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdDisciplinenotes: {
+        parameters: {
+            query?: {
+                patientId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        discipline: string;
+                        bodyText: string | null;
+                        bodyWithheld: boolean;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        authorName?: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        isAddendum: boolean;
+                        addendumRecordedAt: string | null;
+                        reason: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IdgMeetingsByIdDisciplinenotes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId?: string | null;
+                    discipline: string;
+                    bodyText: string;
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        discipline: string;
+                        bodyText: string | null;
+                        bodyWithheld: boolean;
+                        /** Format: uuid */
+                        authorMembershipId: string;
+                        authorName?: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        isAddendum: boolean;
+                        addendumRecordedAt: string | null;
+                        reason: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                     };
                 };
             };
@@ -44745,9 +46029,20 @@ export interface operations {
                         finalizedAt: string | null;
                         finalizedByMembershipId: string | null;
                         minutesDocumentId: string | null;
+                        renderStatus: "not_rendered" | "pending" | "rendered";
+                        finalizedByName?: string | null;
+                        finalizedByDiscipline: string | null;
                         attendanceCount: number | null;
                         decisionCount: number | null;
                         actionItemCount: number | null;
+                        disciplineNoteCount: number | null;
+                        disciplineAddendumCount: number;
+                        addendumState: {
+                            open: boolean;
+                            closesAt: string | null;
+                            closedReason: "window_elapsed" | null;
+                            supersededPatientIds: string[];
+                        };
                     };
                 };
             };
@@ -44779,6 +46074,10 @@ export interface operations {
                         meetingId: string;
                         /** Format: uuid */
                         patientId: string;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         frozenAt: string | null;
                     }[];
                 };
@@ -44817,6 +46116,58 @@ export interface operations {
                         /** Format: date-time */
                         scheduledEnd: string;
                         adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdRecertwindows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        meetingId: string;
+                        /** Format: date-time */
+                        generatedAt: string;
+                        items: {
+                            /** Format: uuid */
+                            patientId: string;
+                            patient?: {
+                                displayName: string;
+                                mrnSuffix: string | null;
+                            } | null;
+                            admissionId: string | null;
+                            currentPeriodSequence: number | null;
+                            benefitPeriodStart: string | null;
+                            benefitPeriodEnd: string | null;
+                            nextRecertDueDate: string | null;
+                            nextPeriodSequence: number | null;
+                            daysUntilNextRecert: number | null;
+                            f2fRequired: boolean | null;
+                            f2fWindowStart: string | null;
+                            f2fWindowEnd: string | null;
+                            f2fStatus: "not_required" | "not_yet_open" | "window_open" | "attested" | "missed" | "unknown";
+                            f2fWindowState: ("not_due" | "window_open" | "overdue") | null;
+                            f2fScheduledDate: string | null;
+                        }[];
                     };
                 };
             };
@@ -44888,6 +46239,8 @@ export interface operations {
                         /** Format: date-time */
                         scheduledEnd: string;
                         adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     };
                 };
             };
@@ -44920,7 +46273,129 @@ export interface operations {
                         meetingId: string;
                         /** Format: uuid */
                         patientId: string;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         frozenAt: string | null;
+                        content: {
+                            /** @constant */
+                            schemaVersion: "2026-01-v1";
+                            cover: {
+                                summary: string;
+                                /** Format: date-time */
+                                builtAt: string;
+                                /** Format: date-time */
+                                sinceCursorAt: string;
+                                sinceContext: "prior_idg" | "first_idg";
+                                nameAtBuild: string;
+                                age: number;
+                                primaryDiagnosisIcd10: string;
+                                primaryDiagnosisLabel: string;
+                                levelOfCare: "routine" | "continuous" | "inpatient_respite" | "general_inpatient";
+                                daysOnService: number;
+                                hasActiveDpoa: boolean;
+                                activeSudFlag: boolean;
+                                recert: {
+                                    nextRecertDueAt: string | null;
+                                    f2fWindowState: ("not_due" | "window_open" | "overdue") | null;
+                                };
+                                carePlan: {
+                                    activeProblemCount: number;
+                                    activeGoalCount: number;
+                                    activeInterventionCount: number;
+                                    /** Format: date-time */
+                                    lastSignedAt: string;
+                                    /** Format: date-time */
+                                    nextReviewDueAt: string;
+                                    isReviewOverdue: boolean;
+                                };
+                                discussionFlags: {
+                                    kind: string;
+                                    detail: string;
+                                }[];
+                                counts: {
+                                    signedEncounters: number;
+                                    assessmentChanges: number;
+                                    hopeTriggers: number;
+                                    orderChanges: number;
+                                    medicationChanges: number;
+                                    flaggedEvents: number;
+                                    carryForwardActionItems: number;
+                                };
+                            };
+                            disciplines: {
+                                discipline: "rn" | "msw" | "chaplain" | "aide" | "md_np" | "volunteer" | "medical_director";
+                                oneLineSummary: string;
+                                items: {
+                                    sourceKind: "encounter" | "assessment" | "order" | "medication" | "hope" | "action_item" | "flag";
+                                    sourceId: string;
+                                    label: string;
+                                    summary: string;
+                                    severity: ("info" | "attention" | "urgent") | null;
+                                }[];
+                                openQuestions: string[];
+                            }[];
+                            signedEncounters: {
+                                encounterId: string;
+                                encounterType: string;
+                                discipline: string;
+                                /** Format: date-time */
+                                signedAt: string;
+                            }[];
+                            assessmentChanges: {
+                                assessmentId: string;
+                                scaleKind: string;
+                                changeKind: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                            }[];
+                            hopeTimepoints: {
+                                captured: boolean;
+                                upcoming: {
+                                    timepoint: string;
+                                    /** Format: date-time */
+                                    dueAt: string;
+                                }[];
+                                openSfvCount: number | null;
+                                symptomImpactTriggers: {
+                                    hopeAssessmentId: string;
+                                    triggerKind: string;
+                                    /** Format: date-time */
+                                    firedAt: string;
+                                }[];
+                            };
+                            orderChanges: {
+                                orderId: string;
+                                orderKind: string;
+                                changeKind: string;
+                                /** Format: date-time */
+                                changedAt: string;
+                            }[];
+                            medicationChanges: {
+                                medicationOrderId: string;
+                                drugLabel: string;
+                                changeKind: string;
+                                /** Format: date-time */
+                                changedAt: string;
+                            }[];
+                            flaggedEvents: {
+                                kind: string;
+                                sourceId: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                severity: "info" | "attention" | "urgent";
+                            }[];
+                            carryForwardActionItems: {
+                                actionItemId: string;
+                                assignedToMembershipId: string;
+                                /** Format: date-time */
+                                dueDate: string;
+                                carryForwardCount: number;
+                            }[];
+                        } | null;
+                        appliedSudRedaction: boolean;
+                        redactionNotice: string | null;
                     };
                 };
             };
@@ -45070,6 +46545,8 @@ export interface operations {
                         scheduledStart: string;
                         /** Format: date-time */
                         scheduledEnd: string;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     }[];
                 };
             };
@@ -47527,6 +49004,39 @@ export interface operations {
                         currentStatus: string;
                         nextInspectionDueDate: string | null;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IpuintakeGipproposals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            triageCallId: string;
+                            patientId: string;
+                            admissionId: string | null;
+                            providerEntityId: string;
+                            locationId: string | null;
+                            proposedAt: string;
+                            preferredFacility: string | null;
+                            callState: string;
+                        }[];
                     };
                 };
             };
@@ -57846,6 +59356,7 @@ export interface operations {
                         url: string;
                         /** Format: date-time */
                         expiresAt: string;
+                        patientId: string;
                     };
                 };
             };
@@ -73169,6 +74680,42 @@ export interface operations {
                         nextQuestionId: string | null;
                         permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdRequestsummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    recipientKind: "caregiver" | "attending";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        requested: true;
+                        triageCallId: string;
+                        recipientKind: "caregiver" | "attending";
+                        requestedAt: string;
                     };
                 };
             };

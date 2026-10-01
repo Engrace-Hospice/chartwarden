@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1322,
-    "enriched": 1317,
+    "routes": 1343,
+    "enriched": 1338,
     "deficit": 5,
-    "mutating": 751,
+    "mutating": 760,
     "mutatingNoBody": 1,
-    "gets": 538,
+    "gets": 550,
     "getsNoResponse": 8
   },
   "modules": [
@@ -131,12 +131,12 @@
     },
     {
       "module": "14-idg",
-      "routes": 30,
-      "enriched": 30,
+      "routes": 36,
+      "enriched": 36,
       "deficit": 0,
-      "mutating": 17,
+      "mutating": 20,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 13,
       "getsNoResponse": 0
     },
     {
@@ -181,10 +181,10 @@
     },
     {
       "module": "19-oncall",
-      "routes": 39,
-      "enriched": 39,
+      "routes": 40,
+      "enriched": 40,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 28,
       "mutatingNoBody": 0,
       "gets": 12,
       "getsNoResponse": 0
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 43,
-      "enriched": 43,
+      "routes": 56,
+      "enriched": 56,
       "deficit": 0,
-      "mutating": 17,
+      "mutating": 22,
       "mutatingNoBody": 0,
-      "gets": 24,
+      "gets": 32,
       "getsNoResponse": 0
     },
     {
@@ -361,12 +361,12 @@
     },
     {
       "module": "37-ipu",
-      "routes": 51,
-      "enriched": 51,
+      "routes": 52,
+      "enriched": 52,
       "deficit": 0,
       "mutating": 34,
       "mutatingNoBody": 0,
-      "gets": 15,
+      "gets": 16,
       "getsNoResponse": 0
     },
     {

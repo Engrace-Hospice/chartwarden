@@ -14,8 +14,8 @@ import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import {
   M19_JOB_SCHEDULES,
-  M19_QUEUE_PARAMS,
   M19_QUEUES,
+  M19_QUEUE_PARAMS,
   M19_ROSTER_SYNC_CATCHUP_JOB_NAME,
   M19_ROSTER_SYNC_DRAIN_JOB_NAME,
 } from "./index";
@@ -97,7 +97,10 @@ async function drainOneOrg(
     }
   }
   if (failures.length)
-    throw new AggregateError(failures, `M19_ROSTER_SYNC_DRAIN: ${failures.length} failure(s) for org ${organizationId}`);
+    throw new AggregateError(
+      failures,
+      `M19_ROSTER_SYNC_DRAIN: ${failures.length} failure(s) for org ${organizationId}`,
+    );
 }
 
 /** §4.8 `m19.shift-sync.debounced` — fan out over every active org and drain its due rows. */
@@ -136,7 +139,10 @@ export async function runOnCallRosterSyncCatchupTick(deps: M19WorkerDeps): Promi
     }
   }
   if (failures.length)
-    throw new AggregateError(failures, `M19_ROSTER_SYNC_CATCHUP: ${failures.length} org failure(s)`);
+    throw new AggregateError(
+      failures,
+      `M19_ROSTER_SYNC_CATCHUP: ${failures.length} org failure(s)`,
+    );
 }
 
 // ── BullMQ construction (the M9/M12/M20/M25 registerMxCronWorkers / scheduleMxJobs template) ────────────
@@ -163,7 +169,8 @@ function parseBackoff(spec: string): { type: "exponential" | "fixed"; delay: num
   }
   const n = Number(m[1]);
   const unit = m[2];
-  const delay = unit === "ms" ? n : unit === "s" ? n * 1000 : unit === "m" ? n * 60_000 : n * 3_600_000;
+  const delay =
+    unit === "ms" ? n : unit === "s" ? n * 1000 : unit === "m" ? n * 60_000 : n * 3_600_000;
   return { type, delay };
 }
 

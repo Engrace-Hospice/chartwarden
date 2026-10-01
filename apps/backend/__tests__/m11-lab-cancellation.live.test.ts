@@ -150,7 +150,12 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
     );
   }
 
-  async function seedPatient(id: string, organizationId: string, mrn: string, sex = "F"): Promise<void> {
+  async function seedPatient(
+    id: string,
+    organizationId: string,
+    mrn: string,
+    sex = "F",
+  ): Promise<void> {
     await admin.query(
       `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth)
        VALUES ($1,$2,$3,'Jane','Doe','1950-04-05',$4)`,
@@ -202,7 +207,10 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
   }
 
   const discontinue = (id: string) =>
-    svc.discontinueOrder(ORG_A, member, id, { ...DISCONTINUE, effectiveAt: new Date().toISOString() });
+    svc.discontinueOrder(ORG_A, member, id, {
+      ...DISCONTINUE,
+      effectiveAt: new Date().toISOString(),
+    });
   const alertsFor = (orderId: string) => alerts.filter((a) => a.payload.orderId === orderId);
 
   beforeAll(async () => {
@@ -214,7 +222,10 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
       `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f184@x.test'),($2,'f184b@x.test')`, [USER, USER_B]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f184@x.test'),($2,'f184b@x.test')`,
+      [USER, USER_B],
+    );
     member = (
       await admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
@@ -242,13 +253,21 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
 
     const catalog = buildBootOutboxCatalog([M11_OUTBOX_EVENTS, M29_OUTBOX_EVENTS]);
     const publisher = buildTxOutboxPublisher(catalog);
-    const m11Outbox = { publish: (tx: unknown, e: any) => publisher.publish(tx as never, { ...e, callerModule: "m11" }) };
-    const m29Outbox = { publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }) };
+    const m11Outbox = {
+      publish: (tx: unknown, e: any) =>
+        publisher.publish(tx as never, { ...e, callerModule: "m11" }),
+    };
+    const m29Outbox = {
+      publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }),
+    };
 
     svc = createDbOrderBackend(
       handle.db,
       m11Outbox,
-      buildM11OrmRequestedPorts({ patient: hl7OrmDemographicsInTx, feeds: buildDrizzleOutboundFeedResolver() }),
+      buildM11OrmRequestedPorts({
+        patient: hl7OrmDemographicsInTx,
+        feeds: buildDrizzleOutboundFeedResolver(),
+      }),
     );
 
     cancellation = buildM11LabCancellationConsumer({
@@ -292,7 +311,10 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
     wires = [];
     alerts = [];
     await admin.query("DELETE FROM outbox_event WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
-    await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
+    await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id IN ($1,$2)", [
+      ORG_A,
+      ORG_B,
+    ]);
     await admin.query("DELETE FROM external_feed WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
     await seedFeed(ORG_A);
   });
@@ -379,7 +401,9 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
 
   it("results are already back (the lab has finished) → NO alert", async () => {
     const { id } = await transmittedOrder();
-    await admin.query("UPDATE order_record SET results_status='results_received' WHERE id=$1", [id]);
+    await admin.query("UPDATE order_record SET results_status='results_received' WHERE id=$1", [
+      id,
+    ]);
     await discontinue(id);
     await settle();
     expect(alertsFor(id)).toHaveLength(0);
@@ -392,19 +416,21 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
     ["pending_retry", null, "in_flight"],
     ["failed", "dlq_exhausted", "delivery_unverified"],
     ["failed", "application_reject", "delivery_unverified"],
-  ])("transmission_status=%s (%s) at discontinuation → alert labState=%s", async (status, reason, labState) => {
-    const { id } = await transmittedOrder();
-    await admin.query("UPDATE order_record SET transmission_status=$2, transmission_failure_reason=$3 WHERE id=$1", [
-      id,
-      status,
-      reason,
-    ]);
-    await discontinue(id);
-    await settle();
-    const got = alertsFor(id);
-    expect(got).toHaveLength(1);
-    expect(got[0]?.payload.labState).toBe(labState);
-  });
+  ])(
+    "transmission_status=%s (%s) at discontinuation → alert labState=%s",
+    async (status, reason, labState) => {
+      const { id } = await transmittedOrder();
+      await admin.query(
+        "UPDATE order_record SET transmission_status=$2, transmission_failure_reason=$3 WHERE id=$1",
+        [id, status, reason],
+      );
+      await discontinue(id);
+      await settle();
+      const got = alertsFor(id);
+      expect(got).toHaveLength(1);
+      expect(got[0]?.payload.labState).toBe(labState);
+    },
+  );
 
   // ── A correction: the ORIGINAL is at the lab; the replacement goes out as a second ORM ─────────────────────
 

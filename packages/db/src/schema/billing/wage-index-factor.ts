@@ -8,7 +8,16 @@
 // the migration (§3.2 Phase D) MUST `REVOKE INSERT` on this table from app_user so only platform_loader
 // can load CMS rate files. Mirrors the M27 `cost_report_validation_rule` NON_ORG_SCOPED precedent
 // (but unlike M27 there is no nullable-org variant — this table is purely platform-owned). No PHI (D18).
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const wageIndexFactor = pgTable(
   "wage_index_factor",
@@ -21,6 +30,8 @@ export const wageIndexFactor = pgTable(
     factorDecimal: text("factor_decimal").notNull(), // e.g. "0.9234"
 
     loadSourceRef: text("load_source_ref").notNull(), // CMS file URI loaded from
+    /** F-211 (0280): false = a non-authoritative placeholder/fixture row; claim assembly never prices from one. */
+    isAuthoritative: boolean("is_authoritative").notNull().default(true),
     loadedAt: timestamp("loaded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

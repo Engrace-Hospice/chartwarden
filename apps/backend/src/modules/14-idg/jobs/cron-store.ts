@@ -7,10 +7,12 @@
 // (`idg-route-service-db.ts`'s `listPackets`/`getPacket`/`getPatientIdgHistory`) is per-meeting or
 // per-(meeting,patient), never "every patient's most-recent review across ALL their meetings, org-wide".
 import { type DbClient, schema } from "@wardenx/db";
-import { eq } from "drizzle-orm";
+import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import type { ReviewClockSnapshot } from "./index";
 
 const PKT = schema.idgPatientPacket;
+const MTG = schema.idgMeeting;
+const POL = schema.idgRecurringPolicy;
 
 /** Coerce a Drizzle timestamp (Date or string, depending on column mode) to an ISO string. */
 const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() : d);
@@ -85,4 +87,49 @@ export async function reviewClockPatientsForOrg(
     lastIdgReviewedAt: a.lastIdgReviewedAt ? iso(a.lastIdgReviewedAt) : null,
     earliestSinceCursorIso: a.earliestCursor,
   }));
+}
+
+/** The IDG coordinator of each given location, for the M36 review-clock alert's coordinator tier: the coordinator of
+ * the location's NEXT upcoming meeting (`scheduled | packets_building | packets_ready | live`, not yet ended), else the
+ * location's ACTIVE recurring policy's default coordinator. A location with neither is ABSENT from the map (the alert
+ * then reaches only its role tiers — never a guessed coordinator). Same caller-owned org `withOrgContext` tx. */
+export async function locationCoordinatorsForOrg(
+  tx: DbClient,
+  organizationId: string,
+  locationIds: readonly string[],
+  now: Date,
+): Promise<ReadonlyMap<string, string>> {
+  const out = new Map<string, string>();
+  if (locationIds.length === 0) return out;
+  const meetings = await tx
+    .select({
+      locationId: MTG.locationId,
+      coordinator: MTG.coordinatorMembershipId,
+    })
+    .from(MTG)
+    .where(
+      and(
+        eq(MTG.organizationId, organizationId),
+        inArray(MTG.locationId, [...locationIds]),
+        inArray(MTG.status, ["scheduled", "packets_building", "packets_ready", "live"] as never),
+        gte(MTG.scheduledEnd, now),
+      ),
+    )
+    .orderBy(asc(MTG.scheduledStart));
+  for (const m of meetings) if (!out.has(m.locationId)) out.set(m.locationId, m.coordinator);
+  const missing = locationIds.filter((l) => !out.has(l));
+  if (missing.length > 0) {
+    const policies = await tx
+      .select({ locationId: POL.locationId, coordinator: POL.defaultCoordinatorMembershipId })
+      .from(POL)
+      .where(
+        and(
+          eq(POL.organizationId, organizationId),
+          inArray(POL.locationId, missing),
+          eq(POL.active, true),
+        ),
+      );
+    for (const p of policies) if (!out.has(p.locationId)) out.set(p.locationId, p.coordinator);
+  }
+  return out;
 }

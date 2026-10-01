@@ -11,6 +11,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — shared NOE / NOTR filing-window surface (R2, §5.1 #11–14,
@@ -434,17 +435,7 @@ function NoticeTable({
             return (
               <tr
                 key={id}
-                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                role="button"
-                tabIndex={0}
-                aria-pressed={id === selectedId}
-                onClick={() => onSelect(r)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    onSelect(r);
-                  }
-                }}
+                {...interactiveRowProps(() => onSelect(r), id === selectedId, true)}
                 className="wx-data-row-interactive"
                 style={{
                   borderBottom:

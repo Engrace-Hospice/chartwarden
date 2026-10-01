@@ -10,3 +10,4 @@ export * from "./state-matrix";
 export * from "./recording-consent";
 export * from "./visit-lifecycle";
 export * from "./fallback";
+export * from "./room-mint";

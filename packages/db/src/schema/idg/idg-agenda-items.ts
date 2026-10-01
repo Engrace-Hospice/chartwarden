@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `idg_agenda_item` (M14 §3.3.1 / §2.7). One ordered agenda row per meeting: a patient-review
 // slot, a carried-forward overdue action item, or an administrative note. PHI-bearing when patient-scoped
 // (`patient_id`) → the three-column tenancy rule (provider_entity_id + location_id), nullable here because
@@ -6,7 +7,7 @@
 // (carried_from_action_item_id) and actor refs (added_by_membership_id → M1 membership) are plain uuid
 // app-validated, NOT cross-module FKs. `body_text` is free-text → denylisted in the M4 write-audit trigger
 // (§3.3). RLS + grants + trigger land in the RLS migration (M14-T02).
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { idgAgendaItemKind } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -46,6 +47,10 @@ export const idgAgendaItem = pgTable(
       t.idgMeetingId,
       t.sortOrder,
     ),
+    // 0285 — the carry-forward cron's idempotency key: ONE carry_forward row per (action item, meeting).
+    carryForwardOnce: uniqueIndex("idg_agenda_item_carry_forward_uq")
+      .on(t.organizationId, t.idgMeetingId, t.carriedFromActionItemId)
+      .where(sql`${t.kind} = 'carry_forward' AND ${t.carriedFromActionItemId} IS NOT NULL`),
   }),
 );
 

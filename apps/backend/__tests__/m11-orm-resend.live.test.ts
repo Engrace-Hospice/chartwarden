@@ -30,11 +30,11 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerSeam } from "../src/bootstrap/seams/registry";
+import { hl7OrmDemographicsInTx } from "../src/modules/05-patient/seams/hl7-orm-demographics";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { buildM11OrmRequestedPorts } from "../src/modules/11-orders/orm-request/ports";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
-import { hl7OrmDemographicsInTx } from "../src/modules/05-patient/seams/hl7-orm-demographics";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
 import { parseMshEnvelope } from "../src/modules/29-external-interfaces/listener/mllp-framing";
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
@@ -158,9 +158,12 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
     }
   }
 
-  async function signedLab(
-    over: { patientId: string; physician?: string; data?: Record<string, unknown>; kind?: string },
-  ): Promise<string> {
+  async function signedLab(over: {
+    patientId: string;
+    physician?: string;
+    data?: Record<string, unknown>;
+    kind?: string;
+  }): Promise<string> {
     const draft = await svc.createDraft(ORG_A, member, {
       patientId: over.patientId,
       admissionId: ADMISSION,
@@ -219,7 +222,10 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
       `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f179@x.test'),($2,'f179b@x.test')`, [USER, USER_B]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f179@x.test'),($2,'f179b@x.test')`,
+      [USER, USER_B],
+    );
     member = (
       await admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
@@ -250,13 +256,21 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
 
     const catalog = buildBootOutboxCatalog([M11_OUTBOX_EVENTS, M29_OUTBOX_EVENTS]);
     const publisher = buildTxOutboxPublisher(catalog);
-    const m11Outbox = { publish: (tx: unknown, e: any) => publisher.publish(tx as never, { ...e, callerModule: "m11" }) };
-    const m29Outbox = { publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }) };
+    const m11Outbox = {
+      publish: (tx: unknown, e: any) =>
+        publisher.publish(tx as never, { ...e, callerModule: "m11" }),
+    };
+    const m29Outbox = {
+      publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }),
+    };
 
     svc = createDbOrderBackend(
       handle.db,
       m11Outbox,
-      buildM11OrmRequestedPorts({ patient: hl7OrmDemographicsInTx, feeds: buildDrizzleOutboundFeedResolver() }),
+      buildM11OrmRequestedPorts({
+        patient: hl7OrmDemographicsInTx,
+        feeds: buildDrizzleOutboundFeedResolver(),
+      }),
     );
 
     const orgs: ActiveOrgEnumerator = {
@@ -292,7 +306,10 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
     wires = [];
     // A test that resends without settling leaves an undelivered request in the outbox; it must not leak into the next.
     await admin.query("DELETE FROM outbox_event WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
-    await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
+    await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id IN ($1,$2)", [
+      ORG_A,
+      ORG_B,
+    ]);
     await admin.query("DELETE FROM external_feed WHERE organization_id IN ($1,$2)", [ORG_A, ORG_B]);
     await seedFeed(ORG_A);
   });
@@ -409,9 +426,10 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
     expect(await count(id, "m11.order.hl7_orm_requested")).toBe(1);
     await settle();
     expect(wires).toHaveLength(1);
-    const { rows } = await admin.query("SELECT count(*)::int AS n FROM hl7_message_outbound WHERE organization_id=$1", [
-      ORG_A,
-    ]);
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM hl7_message_outbound WHERE organization_id=$1",
+      [ORG_A],
+    );
     expect(rows[0].n).toBe(1);
   });
 
@@ -419,7 +437,10 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
     const { id, patientId } = await refusedOrder();
     await admin.query("UPDATE patient SET sex_assigned_at_birth='F' WHERE id=$1", [patientId]);
     await resend(id);
-    await expect(resend(id)).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("not_failed") });
+    await expect(resend(id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("not_failed"),
+    });
     expect(await count(id, "m11.order.hl7_orm_requested")).toBe(1);
   });
 
@@ -431,7 +452,10 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
     const id = await signedLab({ patientId });
     await settle();
     expect((await orderRow(id)).transmission_status).toBe("transmitted");
-    await expect(resend(id)).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("not_failed") });
+    await expect(resend(id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("not_failed"),
+    });
     expect(await count(id, "m11.order.hl7_orm_requested")).toBe(1);
   });
 
@@ -471,10 +495,16 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
     const id = await signedLab({ patientId });
     expect((await orderRow(id)).transmission_failure_reason).toBe("orm_refused:sud_restricted");
 
-    await expect(resend(id)).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("sud_restricted") });
+    await expect(resend(id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("sud_restricted"),
+    });
     // Clearing the M5 flag does NOT turn the resend into an override: the refusal is still not resendable.
     await admin.query("DELETE FROM patient_privacy_flag_snapshot WHERE patient_id=$1", [patientId]);
-    await expect(resend(id)).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("sud_restricted") });
+    await expect(resend(id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("sud_restricted"),
+    });
 
     expect(await count(id, "m11.order.hl7_orm_requested")).toBe(0);
     expect((await orderRow(id)).transmission_failure_reason).toBe("orm_refused:sud_restricted");
@@ -511,7 +541,9 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
   it("without the ORM ports (not configured) a resend is refused, never a silent no-op", async () => {
     const bare = createDbOrderBackend(handle.db);
     const { id } = await refusedOrder();
-    await expect(bare.resendLabTransmission(ORG_A, member, id, undefined, USER)).rejects.toMatchObject({
+    await expect(
+      bare.resendLabTransmission(ORG_A, member, id, undefined, USER),
+    ).rejects.toMatchObject({
       statusCode: 409,
       message: expect.stringContaining("not_configured"),
     });

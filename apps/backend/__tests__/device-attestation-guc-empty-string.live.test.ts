@@ -82,9 +82,10 @@ describe.skipIf(!DB_URL)("device_attestation RLS — empty-GUC-after-reuse", () 
          ($2,'f0da-b','Beta Hospice LLC','Beta Hospice','active')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'f0da@example.test','F0DA User')`, [
-      USER,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'f0da@example.test','F0DA User')`,
+      [USER],
+    );
     await admin.query(
       `INSERT INTO session (id,user_id,active_organization_id,token,expires_at) VALUES
          ($1,$2,$3,'f0da-token',now() + interval '1 day')`,

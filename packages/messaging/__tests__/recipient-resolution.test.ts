@@ -22,6 +22,35 @@ function fakePorts(over: Partial<RecipientSourcePorts> = {}): RecipientSourcePor
   };
 }
 
+describe("role_set userIdPaths (per-event audience member on top of the role set)", () => {
+  it("adds the user ids held at the named payload keys, deduped, skipping absent / non-string values", async () => {
+    const ports = fakePorts({ roleSetMembers: vi.fn(async () => ["u-comp", "u-coord"]) });
+    const registry = createRecipientResolverRegistry(ports);
+    const out = await resolveRecipients(
+      registry,
+      "role_set",
+      "org-1",
+      { roleKeys: ["compliance_officer"], userIdPaths: ["coordinatorUserId", "missing", "num"] },
+      { coordinatorUserId: "u-coord", num: 7 },
+    );
+    expect(out).toEqual(["u-comp", "u-coord"]);
+    expect(ports.roleSetMembers).toHaveBeenCalledWith("org-1", ["compliance_officer"]);
+  });
+
+  it("a payload-only audience member is still resolved when the role set is empty", async () => {
+    const ports = fakePorts({ roleSetMembers: vi.fn(async () => []) });
+    const registry = createRecipientResolverRegistry(ports);
+    const out = await resolveRecipients(
+      registry,
+      "role_set",
+      "org-1",
+      { roleKeys: [], userIdPaths: ["coordinatorUserId"] },
+      { coordinatorUserId: "u-coord" },
+    );
+    expect(out).toEqual(["u-coord"]);
+  });
+});
+
 describe("recipient resolution (§2.1.3 / §4.6)", () => {
   it("care_team reads the patient id from the payload and queries the seam", async () => {
     const ports = fakePorts();
@@ -116,5 +145,46 @@ describe("recipient resolution (§2.1.3 / §4.6)", () => {
     registry.set("ordering_provider", async () => ["u-ordering"]);
     const out = await resolveRecipients(registry, "ordering_provider", "org-1", {}, {});
     expect(out).toEqual(["u-ordering"]);
+  });
+});
+
+describe("role_set userIdPaths (array) + roleKeysPath (per-event tier)", () => {
+  it("a user-id path may hold a LIST of ids (expected attendees), deduped with the role audience", async () => {
+    const ports = fakePorts({ roleSetMembers: vi.fn(async () => ["u-a"]) });
+    const registry = createRecipientResolverRegistry(ports);
+    const out = await resolveRecipients(
+      registry,
+      "role_set",
+      "org-1",
+      { roleKeys: ["r"], userIdPaths: ["attendeeUserIds"] },
+      { attendeeUserIds: ["u-a", "u-b", "", 7, "u-c"] },
+    );
+    expect(out).toEqual(["u-a", "u-b", "u-c"]);
+  });
+
+  it("roleKeysPath adds the payload's role keys to the static ones (deduped, non-strings skipped)", async () => {
+    const ports = fakePorts({ roleSetMembers: vi.fn(async () => ["u-sup"]) });
+    const registry = createRecipientResolverRegistry(ports);
+    await resolveRecipients(
+      registry,
+      "role_set",
+      "org-1",
+      { roleKeys: ["a"], roleKeysPath: "audienceRoleKeys" },
+      { audienceRoleKeys: ["clinical_supervisor", "a", 3] },
+    );
+    expect(ports.roleSetMembers).toHaveBeenCalledWith("org-1", ["a", "clinical_supervisor"]);
+  });
+
+  it("an absent / empty tier path resolves to the static role set only", async () => {
+    const ports = fakePorts({ roleSetMembers: vi.fn(async () => []) });
+    const registry = createRecipientResolverRegistry(ports);
+    await resolveRecipients(
+      registry,
+      "role_set",
+      "org-1",
+      { roleKeys: [], roleKeysPath: "audienceRoleKeys" },
+      { audienceRoleKeys: [] },
+    );
+    expect(ports.roleSetMembers).toHaveBeenCalledWith("org-1", []);
   });
 });

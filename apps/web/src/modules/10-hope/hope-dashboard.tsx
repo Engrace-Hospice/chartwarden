@@ -10,6 +10,7 @@ import {
   OffsetPagination,
   PageHeader,
   StatusPill,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/10-hope — HOPE timepoint dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
@@ -324,7 +325,12 @@ export function HopeDashboard(): JSX.Element {
             </div>
           ) : (
             <>
-              <div style={tableViewportStyle}>
+              <section
+                aria-label="HOPE records"
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+                tabIndex={0}
+                style={tableViewportStyle}
+              >
                 <table style={tableStyle}>
                   <colgroup>
                     <col style={{ width: "22%" }} />
@@ -348,16 +354,11 @@ export function HopeDashboard(): JSX.Element {
                     {pagedRows.map(({ row, bucket }) => (
                       <tr
                         key={row.id}
-                        // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => navigate(`/patients/${row.patientId}/hope`)}
-                        onKeyDown={(ev) => {
-                          if (ev.key === "Enter" || ev.key === " ") {
-                            ev.preventDefault();
-                            navigate(`/patients/${row.patientId}/hope`);
-                          }
-                        }}
+                        {...interactiveRowProps(
+                          () => navigate(`/patients/${row.patientId}/hope`),
+                          false,
+                          true,
+                        )}
                         style={{ cursor: "pointer" }}
                       >
                         <td>
@@ -410,7 +411,7 @@ export function HopeDashboard(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </section>
               <OffsetPagination
                 page={activePage}
                 pageSize={pageSize}
@@ -513,7 +514,7 @@ const errorBannerStyle: CSSProperties = {
   padding: "0.65rem 0.75rem",
   borderRadius: "0.5rem",
   border: "1px solid var(--color-error)",
-  color: "var(--color-error)",
+  color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
   background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
   fontSize: "0.875rem",
 };

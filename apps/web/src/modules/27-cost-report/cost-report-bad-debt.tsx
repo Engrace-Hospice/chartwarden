@@ -362,7 +362,12 @@ export function CostReportBadDebt(): JSX.Element {
           </div>
         ) : (
           <>
-            <div style={tableViewportStyle}>
+            <section
+              aria-label="Bad debt"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+              tabIndex={0}
+              style={tableViewportStyle}
+            >
               <table style={badDebtTableStyle}>
                 <colgroup>
                   <col style={{ width: "24%" }} />
@@ -403,7 +408,7 @@ export function CostReportBadDebt(): JSX.Element {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </section>
             <OffsetPagination
               page={activePage}
               pageSize={pageSize}

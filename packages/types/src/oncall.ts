@@ -561,14 +561,14 @@ export interface M19TriageCallVisitNeededPayload extends M19TriageCallEventBase 
   readonly visitKind: "dispatch_now" | "first_light" | "pronouncement";
 }
 
-/** `m19.triage_call.gip_admission_proposed` → M37 when M37 locks. */
+/** `m19.triage_call.gip_admission_proposed` → M37's intake worklist PULLS it (F-219, `gipProposalsForOrg`). */
 export interface M19TriageCallGipAdmissionProposedPayload extends M19TriageCallEventBase {
   readonly patientId: PatientId;
   readonly gipCriteriaSummary: string;
   readonly preferredFacility: string | null;
 }
 
-/** `m19.triage_call.care_plan_change_indicated` → M7. */
+/** `m19.triage_call.care_plan_change_indicated` → M14's packet build PULLS it as a flagged event (F-218). */
 export interface M19TriageCallCarePlanChangeIndicatedPayload extends M19TriageCallEventBase {
   readonly patientId: PatientId;
   readonly changeKind: string;
@@ -610,9 +610,19 @@ export interface M19OnCallShiftCoverageGapPayload extends M19OnCallShiftEventBas
   readonly discipline: OncallShiftDiscipline;
 }
 
-/** `m19.triage.summary_requested` → M22 renders the caregiver/attending summary document. */
+/** `m19.triage.summary_requested` → M22 renders the caregiver/attending summary document (F-224: produced
+ *  by the explicit `POST /api/v1/triage-calls/:id/request-summary` staff action). The content fields are an
+ *  ALLOWLIST of enumerated facts — never a free-text field, answer, transcript or medication. */
 export interface M19TriageSummaryRequestedPayload extends M19TriageCallEventBase {
   readonly recipientKind: "caregiver" | "attending";
+  readonly patientId: PatientId;
+  readonly callOpenedAt: IsoInstant;
+  readonly requestedByMembershipId: MembershipId;
+  readonly disposition: TriageDisposition;
+  readonly requestedDiscipline: string | null;
+  readonly requestedArrivalBy: IsoInstant | null;
+  readonly proposedForDate: IsoDate | null;
+  readonly transportArrangedBy: "family" | "ems" | "facility" | "unknown" | null;
 }
 
 /** The §4.10 topic → payload map every emitter and consumer type-checks against. */

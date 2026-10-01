@@ -527,7 +527,23 @@ export function createDrizzleBillingEraseStore(
             .where(eq(VRC.organizationId, organizationId))
             .returning({ id: VRC.id })
         ).length;
+        // F-210 — the tenant-entered rate versions (migration 0279 grants the destruction role SELECT+DELETE).
+        const hospiceRateTables = (
+          await tx
+            .delete(schema.hospiceRateTable)
+            .where(eq(schema.hospiceRateTable.organizationId, organizationId))
+            .returning({ id: schema.hospiceRateTable.id })
+        ).length;
+        // F-211 — the tenant-entered wage index (migration 0280 grants the destruction role SELECT+DELETE).
+        const tenantWageIndexes = (
+          await tx
+            .delete(schema.tenantWageIndex)
+            .where(eq(schema.tenantWageIndex.organizationId, organizationId))
+            .returning({ id: schema.tenantWageIndex.id })
+        ).length;
         return {
+          tenant_wage_index: tenantWageIndexes,
+          hospice_rate_table: hospiceRateTables,
           mac_submitter_credential: macCredentials,
           sequestration_policy: sequestrationPolicies,
           validation_rule_config: ruleConfigs,

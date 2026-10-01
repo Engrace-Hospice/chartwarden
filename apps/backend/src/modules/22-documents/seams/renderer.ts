@@ -17,6 +17,11 @@ import type {
   OrgScope,
 } from "@wardenx/types";
 import { deriveObjectKey, deriveTenantBucket } from "../lifecycle/storage";
+import {
+  DEFAULT_PDF_RENDERERS,
+  type PdfRendererRegistry,
+  renderRegisteredPdf,
+} from "../render-pdf";
 import type { DocumentSeamStore, ObjectStorePort } from "./store";
 
 /** Raised when the W2 handshake is asked to render an unknown template key (no descriptor). The caller's
@@ -321,6 +326,20 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Assessment Summary",
   },
+  // F-224 (#248) — M19's caregiver / attending triage-call summaries (one descriptor per audience — never a
+  // shared type, so a caregiver version and an attending version can never interleave in one chain, and so
+  // the portal/mint gates can key on the audience). `clinical_record`: the rendered summary is filed on the
+  // chart. Mig 0290 adds both `document_aggregate_type` values.
+  triage_summary_caregiver: {
+    aggregateType: "triage_summary_caregiver",
+    retentionClass: "clinical_record",
+    defaultTitle: "After-Hours Call Summary (Caregiver)",
+  },
+  triage_summary_attending: {
+    aggregateType: "triage_summary_attending",
+    retentionClass: "clinical_record",
+    defaultTitle: "After-Hours Call Summary (Attending)",
+  },
   // F-166 (#248) — M14's two IDG render requests. Both `document_aggregate_type` values have existed
   // since migration 0048 with no descriptor and no subscription — F-162's own precise finding
   // ("even a first-ever render would hit `unknown_template` today"). `clinical_record`: both are the
@@ -403,9 +422,20 @@ const realShortId: ShortIdFn = () =>
 /** Deterministic stand-in for the §7.2 step-4 PDF render. The real react-pdf/puppeteer adapter is injected
  * in a later task; this produces stable bytes from the template key + payload so the handshake (key shape,
  * version chain, immutability) is testable with no PDF library. */
-function renderBytes(templateKey: string, payload: unknown): Uint8Array {
+function standInBytes(templateKey: string, payload: unknown): Uint8Array {
   const json = JSON.stringify({ templateKey, payload });
   return new TextEncoder().encode(`%PDF-1.7\n% wardenx-render\n${json}\n`);
+}
+
+/** §7.2 step 4. A template with a registered real renderer (../render-pdf/registry.ts — today `idg_minutes`
+ * and `idg_patient_packet`) yields a real, valid, byte-deterministic PDF; every other key keeps the
+ * deterministic stand-in above, so registering one template never changes another's bytes. */
+function renderBytes(
+  templateKey: string,
+  payload: unknown,
+  registry: PdfRendererRegistry,
+): Uint8Array {
+  return renderRegisteredPdf(templateKey, payload, registry) ?? standInBytes(templateKey, payload);
 }
 
 /** Every current template resolves through {@link renderBytes}' PDF stand-in (GAP-095). */
@@ -417,6 +447,9 @@ export interface DocumentRendererDeps {
   readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
   readonly now?: NowClock;
   readonly shortId?: ShortIdFn;
+  /** Template key -> real-PDF document builder. Defaults to {@link DEFAULT_PDF_RENDERERS}; pass `{}` to force
+   *  the stand-in for every template. */
+  readonly pdfRenderers?: PdfRendererRegistry;
 }
 
 /**
@@ -429,6 +462,7 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
   const templates = deps.templates ?? PLATFORM_TEMPLATE_TABLE;
   const now = deps.now ?? realClock;
   const shortId = deps.shortId ?? realShortId;
+  const pdfRenderers = deps.pdfRenderers ?? DEFAULT_PDF_RENDERERS;
 
   return {
     async render(
@@ -447,8 +481,8 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
       const patientId = core.patientId ?? null;
       const bucket = deriveTenantBucket(organizationId);
 
-      // §7.2 step 4: render the bytes. (Stand-in until the react-pdf/puppeteer adapter lands.)
-      const bytes = renderBytes(templateKey, payload);
+      // §7.2 step 4: render the bytes (real PDF for registered templates, the stand-in otherwise).
+      const bytes = renderBytes(templateKey, payload, pdfRenderers);
 
       // §7.2 step 5 / D11: derive the PHI-free per-version key, then write the bytes BEFORE the row exists
       // (a failed write never leaves an orphan `document` row). The documentId is not yet known on a

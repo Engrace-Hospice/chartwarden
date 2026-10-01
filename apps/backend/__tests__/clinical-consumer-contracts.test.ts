@@ -47,18 +47,17 @@ describe("clinical outbox consumer contract reconciliation", () => {
   // publication to M8 and M18 and to nobody in M20. This assertion is what keeps the three in step: the
   // list is pinned EXACTLY, so adding a fourth consumer without a binding fails here rather than deferring
   // every publication silently.
-  // F-139 (#248) — `m31` is a FOURTH real, still-unbound declaration (M31's own §4.10 table names this
-  // event with a real consumer file, `m17-visit-published-telehealth.ts`, for the room-mint enqueue).
-  // `buildOutboxRoutingPlan` delivers live to every BOUND consumer regardless of what else is declared
-  // ("Available bindings are live even when another declared module is not yet wired") — m31 having no
-  // binding marks the row `deferred` (kept pending for the relay to retry) without blocking m8/m18/m20's
-  // already-working delivery, which is exactly what the two assertions below prove.
-  it("fully binds the three M17 visit-publication command consumers, with m31 still deferred", () => {
+  // F-220 (#248) — the F-139 `m31` declaration (a room-mint enqueue nothing could bind) is GONE: M31 mints the
+  // telehealth room lazily on the first clinician join via M17's published `VisitReader`, catalogued as a
+  // `seamConsumers` entry. With no unbound declared consumer left, the row is no longer `deferred` — it is fully
+  // delivered to m8/m18/m20 (before F-220 it was re-claimed by the relay every 30 minutes forever).
+  it("fully binds the three M17 visit-publication command consumers, with m31 a seam consumer (not deferred)", () => {
     const entry = M17_OUTBOX_EVENTS.find(
       (candidate) => candidate.eventName === "m17.visit.published",
     );
     if (!entry) throw new Error("missing m17.visit.published catalog entry");
-    expect(entry.declaredConsumers).toEqual(["m8", "m18", "m20", "m31"]);
+    expect(entry.declaredConsumers).toEqual(["m8", "m18", "m20"]);
+    expect(entry.seamConsumers).toContain("m31");
     const plan = buildOutboxRoutingPlan(new Map([[entry.eventName, entry]]), [
       binding("m8", M8_VISIT_PUBLISHED_CONSUMER),
       binding("m18", M18_VISIT_PUBLISHED_CONSUMER),
@@ -68,7 +67,7 @@ describe("clinical outbox consumer contract reconciliation", () => {
       }),
     ]);
     expect(plan.live.get(entry.eventName)).toHaveLength(3);
-    expect(plan.deferred.has(entry.eventName)).toBe(true);
+    expect(plan.deferred.has(entry.eventName)).toBe(false);
   });
 
   it("declares M17 as the care-plan proposal consumer", () => {

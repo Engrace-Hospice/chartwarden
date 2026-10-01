@@ -1,5 +1,5 @@
 /**
- * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122, F-123, F-124).
+ * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122, F-123, F-124, F-209).
  *
  * `boot-assembly.ts` binds TEN of the eleven named `ClaimAssemblySeams` reader ports to real data:
  * `patientPayer` (M5), all FIVE M6 range-shaped seams (F-121, #251: `admission`, `electionPeriods`,
@@ -20,17 +20,16 @@
  * two rows `@wardenx/terminology`'s own seed now curates.
  *
  * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122/F-123/F-124 (stated,
- * not implied): it still fails at `referenceData.hippsRateTable` (no CMS per-diem rate file has ever been
- * loaded), which sits BEFORE `billableEncounters`/`signedEncounters`/`evvCompliance`/`terminology` in call
- * order — binding them is real, individually-verified progress on four more seam steps, not a further
- * unblock of the live wall.
+ * not implied): as of F-210 the wall at `referenceData.hippsRateTable` is a typed, actionable
+ * `RATE_TABLE_MISSING` (422) until the tenant enters its rate table (the tenant-entered `hospice_rate_table`;
+ * its own suite is `m23-rate-table.live.test.ts`) — no longer `SEAM_UNBOUND`.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { CMS_HOSPICE_MODIFIER_VALUE_SET } from "@wardenx/billing";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET, icd10Sequencing } from "@wardenx/billing";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { runWithRequestContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
@@ -38,9 +37,11 @@ import { and, eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
+import { buildPatientAddressReader } from "../src/modules/05-patient/address-reader";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
+import { claimDiagnosesForOrg } from "../src/modules/07-care-plan/index";
 import {
   billableEncountersInRangeForOrg,
   createDrizzleEncounterReaderStore,
@@ -54,6 +55,7 @@ import {
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
   buildM23ClinicalParticipantsAdapter,
+  buildM23DiagnosesAdapter,
   buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
@@ -65,7 +67,12 @@ import {
   createDbTerminologyStore,
   registerTerminologySeams,
 } from "../src/modules/38-terminology/index";
-import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
+import { createDbConsentStore, registerConsentSeams } from "../src/modules/39-consent/index";
+import {
+  createDbMdmStore,
+  facilityKindsForIds,
+  registerMdmSeams,
+} from "../src/modules/40-mdm/index";
 import { appRoleConnectionString } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 
@@ -411,6 +418,24 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     // call), so `buildM23TerminologyAdapter()`'s `getSeam("TerminologyProvider")` default resolves
     // for real rather than needing its own `resolve` override.
     registerTerminologySeams({ store: createDbTerminologyStore(handle.db) });
+    // F-214 (#251) — M39's REAL `ConsentEvaluator` over the REAL Drizzle consent store, exactly as `index.ts`
+    // registers it, so M7's Part 2 billing gate is proven against real `consent_record` rows (not a stub).
+    registerConsentSeams({ store: createDbConsentStore(handle.db) });
+    // M39's platform-floor catalog rows `consent_record.type_key` FKs to (the gap-061 precedent).
+    await admin.query(
+      `INSERT INTO consent_type_catalog (type_key, display_name_en, scope_discriminator,
+         default_expiration_seconds, max_term_seconds, capture_method_floor,
+         reminder_cadence_floor, revocation_cascade_kind, is_per_recipient, is_per_named_agent,
+         is_post_mortem_eligible, requires_jurisdiction_code, cfr_42_part_2_compliant,
+         hipaa_164_508_compliant, body_text_template_key, m22_template_version)
+       VALUES
+         ('42_cfr_part_2_release','42 CFR Part 2 Release','per_recipient',31536000,31536000,
+          ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'part_2_release',
+          true,false,false,false,true,false,'consent_record','v1'),
+         ('hipaa_release','HIPAA Release','per_recipient',31536000,31536000,
+          ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'hipaa_release',
+          true,false,false,false,false,true,'consent_record','v1')`,
+    );
     // `cms_hospice_modifiers` (GV/GW) did not exist as real curated data before F-124 — seeded here
     // the same way the seam's own migration-less curation file describes it: two rows in `value_set`
     // + `value_set_member`, no RLS (platform-shared reference data, §3.7).
@@ -448,6 +473,36 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
          ('${M6_MD}', '1122334455', 'Hospice', 'MD', 'active'),
          ('${M6_ATTENDING}', '1234567893', 'Attending', 'MD', 'deactivated')`,
     );
+    // F-209 (#251) — real ICD-10-CM concept rows behind M38's registered provider, so `icd10Billable`
+    // resolves against the SAME `lookupBatch` production runs. One active code-system version; then:
+    //   C34.90 billable leaf (since 2020) · C34 non-leaf header · J44.9 + I10 billable leaves ·
+    //   L89.90 active billable leaf that only takes effect 2026-03-01 (as-of boundary) ·
+    //   A00.0 leaf that was retired with end_date 2026-05-31 (a since-retired code at its service date).
+    await admin.query(
+      `INSERT INTO code_system (id, name, license_source) VALUES ('icd10cm','ICD-10-CM','CDC')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    const versionId = (
+      await admin.query(
+        `INSERT INTO code_system_version (code_system_id, version, released_on, effective_from,
+           source_file_ref, checksum, status)
+         VALUES ('icd10cm','F209-fixture','2020-01-01','2020-01-01','f209','f209','active') RETURNING id`,
+      )
+    ).rows[0].id as string;
+    for (const [code, status, leaf, eff, end] of [
+      ["C34.90", "active", true, "2020-01-01", null],
+      ["C34", "active", false, "2020-01-01", null],
+      ["J44.9", "active", true, "2020-01-01", null],
+      ["I10", "active", true, "2020-01-01", null],
+      ["L89.90", "active", true, "2026-03-01", null],
+      ["A00.0", "retired", true, "2020-01-01", "2026-05-31"],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO concept_icd10cm (code, display, status, effective_date, end_date, version_id, is_billable_leaf)
+         VALUES ($1,$1,$2,$3,$4,$5,$6)`,
+        [code, status, eff, end, versionId, leaf],
+      );
+    }
   }, 120_000);
 
   const admissionSvc = () =>
@@ -546,16 +601,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
   describe("referenceData.wageIndexForCcn", () => {
     it("resolves a loaded CMS wage-index factor for (ccn, fiscal year)", async () => {
       await seedWageIndex("381237", 2026, "0.9234", "38900");
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new WardenXError("SEAM_UNBOUND", "hipps", 503);
-        },
-        () => {
-          throw new WardenXError("SEAM_UNBOUND", "chc", 503);
-        },
-      );
-      expect(await adapter.wageIndexForCcn("381237", 2026)).toEqual({
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
+      expect(await adapter.wageIndexForCcn("381237", 2026, ORG_A)).toEqual({
         factorDecimal: "0.9234",
         cbsaCode: "38900",
       });
@@ -565,16 +612,18 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // NOTE: migration 0080_billing_m23_seed.sql pre-seeds 5 REPRESENTATIVE placeholder rows for
       // FY2026 (010001, 050002, 380001, 450003, 999999 — explicitly marked "not authoritative"), so a
       // real null-path proof must use a CCN/FY outside that fixed set, not assume the table is empty.
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new Error("unreachable");
-        },
-        () => {
-          throw new Error("unreachable");
-        },
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
+      expect(await adapter.wageIndexForCcn("777777", 2026, ORG_A)).toBeNull();
+    });
+
+    it("NEVER prices from a non-authoritative migration-0080 placeholder row (F-211)", async () => {
+      // 0280 flips the 5 placeholder rows to is_authoritative = false; they exist (checked) but do not resolve.
+      const seeded = await admin.query(
+        "SELECT ccn FROM wage_index_factor WHERE ccn = '010001' AND fiscal_year_starting = 2026 AND is_authoritative = false",
       );
-      expect(await adapter.wageIndexForCcn("777777", 2026)).toBeNull();
+      expect(seeded.rowCount).toBe(1);
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
+      expect(await adapter.wageIndexForCcn("010001", 2026, ORG_A)).toBeNull();
     });
   });
 
@@ -582,15 +631,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("resolves the policy in effect on the service date", async () => {
       const pe = await seedProviderEntity(ORG_A, "381238");
       await seedSequestrationPolicy(ORG_A, pe, "2.00", "2020-01-01");
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new Error("unreachable");
-        },
-        () => {
-          throw new Error("unreachable");
-        },
-      );
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
       const resolved = await adapter.activeSequestrationPolicy(ORG_A, pe, "2026-06-01");
       expect(resolved?.percentage).toBe("2.00");
       expect(resolved?.effectiveTo).toBeNull();
@@ -599,15 +640,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("never resolves another org's sequestration policy (cross-tenant RLS isolation)", async () => {
       const peOrgB = await seedProviderEntity(ORG_B, "381239");
       await seedSequestrationPolicy(ORG_B, peOrgB, "2.00", "2020-01-01");
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new Error("unreachable");
-        },
-        () => {
-          throw new Error("unreachable");
-        },
-      );
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
       expect(await adapter.activeSequestrationPolicy(ORG_A, peOrgB, "2026-06-01")).toBeNull();
     });
   });
@@ -1072,9 +1105,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(
         resolutionA.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort(),
       ).toEqual(["GV", "GW", "GX"]);
-      // Traced against `claim-assembly.ts`'s own hardcoded `icd10Sequence: []` (a separate, real
-      // M23-side gap this seam does not create): no diagnosis code ever reaches this call, so the
-      // honest bulk map has nothing to resolve.
+      // F-209: no diagnosis codes asked about => an empty per-code map (no M38 round trip).
       expect(resolutionA.icd10Billable).toEqual({});
     });
 
@@ -1085,6 +1116,463 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(
         resolutionB.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort(),
       ).toEqual(["GV", "GW"]);
+    });
+  });
+
+  describe("terminology.resolveForClaim: icd10Billable via M38 lookupBatch (F-209, #251)", () => {
+    it("true for an active billable leaf; false for a non-leaf header, a retired code and an unknown code", async () => {
+      const seam = buildM23TerminologyAdapter();
+      const res = await seam.resolveForClaim(ORG_A, "2026-06-01", [
+        "C34.90",
+        "C34",
+        "A00.0",
+        "ZZZ.99",
+        "J44.9",
+      ]);
+      expect(res.icd10Billable).toEqual({
+        "C34.90": true,
+        C34: false,
+        "A00.0": false, // retired: its end_date (2026-05-31) precedes the service date
+        "ZZZ.99": false, // unknown to M38 => false, never omitted-as-true
+        "J44.9": true,
+      });
+    });
+
+    it("is as-of the SERVICE date: a code not yet effective is false, effective from its start date on", async () => {
+      const seam = buildM23TerminologyAdapter();
+      const before = await seam.resolveForClaim(ORG_A, "2026-02-28", ["L89.90"]);
+      const onto = await seam.resolveForClaim(ORG_A, "2026-03-01", ["L89.90"]);
+      expect(before.icd10Billable).toEqual({ "L89.90": false });
+      expect(onto.icd10Billable).toEqual({ "L89.90": true });
+    });
+  });
+
+  describe("diagnoses: M7 claimDiagnosesForOrg (F-209, #251)", () => {
+    const RANGE = { from: "2026-06-01", to: "2026-06-30" };
+
+    async function seedPlan(orgId: string, patientId: string, pe: string): Promise<string> {
+      const loc = await seedLocation(pe);
+      const row = await admin.query(
+        `INSERT INTO care_plan (organization_id, provider_entity_id, location_id, patient_id, admission_id,
+           initial_due_at) VALUES ($1,$2,$3,$4,gen_random_uuid(), now() + interval '5 days')
+         RETURNING id`,
+        [orgId, pe, loc, patientId],
+      );
+      return row.rows[0].id as string;
+    }
+
+    async function seedProblem(
+      orgId: string,
+      planId: string,
+      pe: string,
+      p: {
+        code: string | null;
+        kind: "terminal" | "related" | "unrelated";
+        status?: "active" | "resolved" | "inactive";
+        onset?: string | null;
+        resolved?: string | null;
+        createdAt?: string;
+        /** F-214 — `problem.sud_related` (42 CFR Part 2). */
+        sud?: boolean;
+      },
+    ): Promise<void> {
+      const loc = (await admin.query("SELECT location_id FROM care_plan WHERE id=$1", [planId]))
+        .rows[0].location_id as string;
+      await admin.query(
+        `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, icd10_code,
+           description, kind, status, onset_at, resolved_at, created_at, sud_related)
+         VALUES ($1,$2,$3,$4,$5,'F-209 fixture problem',$6,$7::problem_status,$8,$9, COALESCE($10::timestamptz, now()), $11)`,
+        [
+          orgId,
+          pe,
+          loc,
+          planId,
+          p.code,
+          p.kind,
+          p.status ?? "active",
+          p.onset ?? null,
+          p.resolved ?? null,
+          p.createdAt ?? null,
+          p.sud ?? false,
+        ],
+      );
+    }
+
+    it("orders terminal, related, unrelated (then created_at), positions 1..n, code + relationship only", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381290");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      // Inserted deliberately OUT of ranking order; the two related rows tie-break on created_at.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "I10",
+        kind: "unrelated",
+        createdAt: "2026-01-01",
+      });
+      await seedProblem(ORG_A, plan, pe, {
+        code: "J44.9",
+        kind: "related",
+        createdAt: "2026-02-02",
+      });
+      await seedProblem(ORG_A, plan, pe, {
+        code: "E11.9",
+        kind: "related",
+        createdAt: "2026-02-01",
+      });
+      await seedProblem(ORG_A, plan, pe, {
+        code: "C34.90",
+        kind: "terminal",
+        createdAt: "2026-03-01",
+      });
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
+      expect(seq).toEqual([
+        { position: 1, code: "C34.90", relationship: "terminal" },
+        { position: 2, code: "E11.9", relationship: "related" },
+        { position: 3, code: "J44.9", relationship: "related" },
+        { position: 4, code: "I10", relationship: "unrelated" },
+      ]);
+    });
+
+    it("excludes resolved / inactive / null- and blank-code problems, and de-duplicates a repeated code", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381291");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "terminal" });
+      await seedProblem(ORG_A, plan, pe, { code: "J44.9", kind: "related", status: "resolved" });
+      await seedProblem(ORG_A, plan, pe, { code: "I10", kind: "related", status: "inactive" });
+      await seedProblem(ORG_A, plan, pe, { code: null, kind: "related" });
+      await seedProblem(ORG_A, plan, pe, { code: "  ", kind: "related" });
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "related" }); // same code again
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
+      expect(seq).toEqual([{ position: 1, code: "C34.90", relationship: "terminal" }]);
+    });
+
+    it("keeps only problems overlapping the service range (onset before its end, not resolved before its start)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381292");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, {
+        code: "C34.90",
+        kind: "terminal",
+        onset: "2026-01-15T00:00:00Z",
+      });
+      // Onset on the range's LAST day (any time of day) still overlaps.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "J44.9",
+        kind: "related",
+        onset: "2026-06-30T23:00:00Z",
+      });
+      // Onset the day AFTER the range ends: not yet a problem during the service window.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "I10",
+        kind: "related",
+        onset: "2026-07-01T00:00:00Z",
+      });
+      // Still-`active` row whose resolved_at precedes the range: over before the window began.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "E11.9",
+        kind: "related",
+        onset: "2026-01-01T00:00:00Z",
+        resolved: "2026-05-31T23:59:59Z",
+      });
+      // resolved_at inside the range: still overlaps (was active for part of it).
+      await seedProblem(ORG_A, plan, pe, {
+        code: "L89.90",
+        kind: "unrelated",
+        onset: "2026-01-01T00:00:00Z",
+        resolved: "2026-06-10T00:00:00Z",
+      });
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
+      expect(seq.map((d) => d.code)).toEqual(["C34.90", "J44.9", "L89.90"]);
+    });
+
+    it("caps the sequence at 12 positions", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381293");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "terminal" });
+      for (let i = 0; i < 14; i++) {
+        await seedProblem(ORG_A, plan, pe, {
+          code: `R${String(10 + i)}.0`,
+          kind: "related",
+          createdAt: `2026-02-${String(i + 1).padStart(2, "0")}`,
+        });
+      }
+      const seq = (await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE)).sequence;
+      expect(seq).toHaveLength(12);
+      expect(seq.map((d) => d.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      expect(seq[0]).toEqual({ position: 1, code: "C34.90", relationship: "terminal" });
+      expect(seq[11]?.code).toBe("R20.0"); // 11 related rows survive, oldest-created first
+    });
+
+    it("never resolves another org's problems, or another patient's (cross-tenant + cross-patient isolation)", async () => {
+      const patientA = await seedPatient(ORG_A);
+      const otherPatientA = await seedPatient(ORG_A);
+      const patientB = await seedPatient(ORG_B);
+      const peA = await seedProviderEntity(ORG_A, "381294");
+      const peB = await seedProviderEntity(ORG_B, "381295");
+      const planA = await seedPlan(ORG_A, patientA, peA);
+      const planOther = await seedPlan(ORG_A, otherPatientA, peA);
+      const planB = await seedPlan(ORG_B, patientB, peB);
+      await seedProblem(ORG_A, planA, peA, { code: "C34.90", kind: "terminal" });
+      await seedProblem(ORG_A, planOther, peA, { code: "J44.9", kind: "terminal" });
+      await seedProblem(ORG_B, planB, peB, { code: "I10", kind: "terminal" });
+      // Org A's patient, asked as org A: only its own row.
+      expect((await claimDiagnosesForOrg(handle.db, ORG_A, patientA, RANGE)).sequence).toEqual([
+        { position: 1, code: "C34.90", relationship: "terminal" },
+      ]);
+      // Org B asking about org A's patient id: nothing (RLS + explicit organization_id predicate).
+      expect((await claimDiagnosesForOrg(handle.db, ORG_B, patientA, RANGE)).sequence).toEqual([]);
+      // Org A asking about org B's patient id: nothing.
+      expect((await claimDiagnosesForOrg(handle.db, ORG_A, patientB, RANGE)).sequence).toEqual([]);
+    });
+
+    it("the explicit organization_id predicate is a second wall: it holds even where RLS does not apply (superuser handle)", async () => {
+      const patientA = await seedPatient(ORG_A);
+      const peA = await seedProviderEntity(ORG_A, "381297");
+      const planA = await seedPlan(ORG_A, patientA, peA);
+      await seedProblem(ORG_A, planA, peA, { code: "C34.90", kind: "terminal" });
+      // A deliberately RLS-bypassing handle — the ONLY use of the superuser url for a read in this block,
+      // so the assertion isolates the query's own organization_id predicate from the row-level policy.
+      const superHandle = createDbClient({ connectionString: DB_URL! });
+      try {
+        expect(
+          (await claimDiagnosesForOrg(superHandle.db, ORG_B, patientA, RANGE)).sequence,
+        ).toEqual([]);
+        expect(
+          (await claimDiagnosesForOrg(superHandle.db, ORG_A, patientA, RANGE)).sequence,
+        ).toHaveLength(1);
+      } finally {
+        await superHandle.close();
+      }
+    });
+
+    // ── F-214 (#251): the 42 CFR Part 2 consent gate, against REAL consent rows on the app role ──────────
+    describe("F-214: sud_related diagnoses are consent-gated (42 CFR Part 2)", () => {
+      async function seedConsent(
+        orgId: string,
+        patientId: string,
+        o: {
+          type?: string;
+          status?: "active" | "revoked";
+          effective?: string;
+          expires?: string | null;
+          recipient?: boolean;
+        } = {},
+      ): Promise<string> {
+        const status = o.status ?? "active";
+        const row = await admin.query(
+          `INSERT INTO consent_record (organization_id, patient_id, type_key, scope_descriptor, grantor_kind,
+             effective_at, expires_at, status, capture_method, capture_evidence_jsonb, created_by_id, version,
+             signed_at, signed_by_id, revoked_at, revoked_via_id)
+           VALUES ($1,$2,$3::consent_type_key,'{}'::jsonb,'patient_self', $4::timestamptz, $5::timestamptz,
+             $6::consent_status,'typed_signature_in_app','{}'::jsonb,$7,1, now() - interval '400 days', $7,
+             $8::timestamptz, $9)
+           RETURNING id`,
+          [
+            orgId,
+            patientId,
+            o.type ?? "42_cfr_part_2_release",
+            o.effective ?? "2020-01-01T00:00:00Z",
+            o.expires === undefined ? null : o.expires,
+            status,
+            U,
+            status === "revoked" ? "2026-01-01T00:00:00Z" : null,
+            status === "revoked" ? U : null,
+          ],
+        );
+        const id = row.rows[0].id as string;
+        if (o.recipient !== false) {
+          await admin.query(
+            `INSERT INTO consent_record_recipient (organization_id, consent_record_id, recipient_kind,
+               recipient_free_text, recipient_resolved_display_name, added_by_id)
+             VALUES ($1,$2,'free_text','Medicare Administrative Contractor','Medicare Administrative Contractor',$3)`,
+            [orgId, id, U],
+          );
+        }
+        return id;
+      }
+
+      /** Terminal non-SUD + one SUD related + one plain related, for a fresh patient. */
+      async function seedSudPatient(orgId: string, ccn: string): Promise<string> {
+        const patientId = await seedPatient(orgId);
+        const pe = await seedProviderEntity(orgId, ccn);
+        const plan = await seedPlan(orgId, patientId, pe);
+        await seedProblem(orgId, plan, pe, {
+          code: "C34.90",
+          kind: "terminal",
+          createdAt: "2026-01-01",
+        });
+        await seedProblem(orgId, plan, pe, {
+          code: "F11.20",
+          kind: "related",
+          sud: true,
+          createdAt: "2026-02-01",
+        });
+        await seedProblem(orgId, plan, pe, {
+          code: "J44.9",
+          kind: "related",
+          createdAt: "2026-03-01",
+        });
+        return patientId;
+      }
+
+      const CODES = (r: { sequence: readonly { code: string }[] }) => r.sequence.map((d) => d.code);
+
+      it("valid active Part 2 release => the SUD code IS included; nothing withheld", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381910");
+        await seedConsent(ORG_A, patientId);
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "F11.20", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(0);
+        expect(r.terminalWithheldForConsent).toBe(false);
+      });
+
+      it("no consent on file => code omitted, positions re-ranked, flag raised (count only)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381911");
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(r.sequence).toEqual([
+          { position: 1, code: "C34.90", relationship: "terminal" },
+          { position: 2, code: "J44.9", relationship: "related" },
+        ]);
+        expect(r.withheldForConsentCount).toBe(1);
+        expect(JSON.stringify(r)).not.toContain("F11.20");
+      });
+
+      it("EXPIRED release => omitted + flagged", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381912");
+        await seedConsent(ORG_A, patientId, {
+          effective: "2024-01-01T00:00:00Z",
+          expires: "2025-01-01T00:00:00Z",
+        });
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+      });
+
+      it("REVOKED release => omitted + flagged (revocation blocks future disclosure)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381913");
+        await seedConsent(ORG_A, patientId, { status: "revoked" });
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+      });
+
+      it("wrong-scope: a DIFFERENT consent type (hipaa_release), or a Part 2 release with no active recipient, does not cover it", async () => {
+        const wrongType = await seedSudPatient(ORG_A, "381914");
+        await seedConsent(ORG_A, wrongType, { type: "hipaa_release" });
+        const a = await claimDiagnosesForOrg(handle.db, ORG_A, wrongType, RANGE);
+        expect(CODES(a)).toEqual(["C34.90", "J44.9"]);
+        expect(a.withheldForConsentCount).toBe(1);
+
+        const noRecipient = await seedSudPatient(ORG_A, "381915");
+        await seedConsent(ORG_A, noRecipient, { recipient: false });
+        const b = await claimDiagnosesForOrg(handle.db, ORG_A, noRecipient, RANGE);
+        expect(CODES(b)).toEqual(["C34.90", "J44.9"]);
+        expect(b.withheldForConsentCount).toBe(1);
+      });
+
+      it("a release for a DIFFERENT patient does not cover this one", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381916");
+        const other = await seedPatient(ORG_A);
+        await seedConsent(ORG_A, other);
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+      });
+
+      it("a release in ANOTHER ORG (even keyed to the same patient id) does not cover it (cross-tenant, app role)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381917");
+        await seedConsent(ORG_B, patientId); // org B holds a consent naming org A's patient id
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+        expect(r.withheldForConsentCount).toBe(1);
+        // And org B, asking about that patient, sees none of org A's problems (RLS) and withholds nothing.
+        const asB = await claimDiagnosesForOrg(handle.db, ORG_B, patientId, RANGE);
+        expect(asB.sequence).toEqual([]);
+        expect(asB.withheldForConsentCount).toBe(0);
+      });
+
+      it("withheld TERMINAL: flagged, NOT replaced — a related diagnosis is never promoted to principal", async () => {
+        const patientId = await seedPatient(ORG_A);
+        const pe = await seedProviderEntity(ORG_A, "381918");
+        const plan = await seedPlan(ORG_A, patientId, pe);
+        await seedProblem(ORG_A, plan, pe, { code: "F11.20", kind: "terminal", sud: true });
+        await seedProblem(ORG_A, plan, pe, { code: "J44.9", kind: "related" });
+        const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(r.sequence).toEqual([{ position: 1, code: "J44.9", relationship: "related" }]);
+        expect(r.terminalWithheldForConsent).toBe(true);
+        // ...and M23's icd10_sequencing rule fails on exactly that context (real rule, real seam output).
+        const verdict = icd10Sequencing.check(
+          {
+            seams: { terminologyBound: true },
+            claim: {
+              claimId: "claim-f214",
+              icd10Sequence: r.sequence,
+              diagnosesWithheldForConsent: r.withheldForConsentCount,
+              terminalDiagnosisWithheldForConsent: r.terminalWithheldForConsent,
+            },
+            terminology: { icd10Billable: { "J44.9": true } },
+          } as never,
+          {},
+        );
+        expect(verdict.passed).toBe(false);
+        expect(verdict.annotations?.observed?.firstDefect).toContain(
+          "principal (terminal) diagnosis is withheld",
+        );
+        // With a valid release the same patient's claim has its terminal back.
+        await seedConsent(ORG_A, patientId);
+        const ok = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+        expect(CODES(ok)).toEqual(["F11.20", "J44.9"]);
+        expect(ok.terminalWithheldForConsent).toBe(false);
+      });
+
+      it("FAILS CLOSED when the consent evaluator throws (even with a valid release on file)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381919");
+        await seedConsent(ORG_A, patientId);
+        registerSeam("ConsentEvaluator", {
+          evaluate: async () => {
+            throw new Error("consent store down");
+          },
+        });
+        try {
+          const r = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+          expect(CODES(r)).toEqual(["C34.90", "J44.9"]);
+          expect(r.withheldForConsentCount).toBe(1);
+        } finally {
+          registerConsentSeams({ store: createDbConsentStore(handle.db) });
+        }
+        // and restored: the same patient's code is released again
+        expect(CODES(await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE))).toContain(
+          "F11.20",
+        );
+      });
+
+      it("the adapter carries the flag through to M23's diagnoses port (count + terminal flag, no codes)", async () => {
+        const patientId = await seedSudPatient(ORG_A, "381920");
+        const res = await buildM23DiagnosesAdapter({
+          forRange: (orgId, pid, range) => claimDiagnosesForOrg(handle.db, orgId, pid, range),
+        }).forRange(ORG_A, patientId, RANGE);
+        expect(res.withheldForConsentCount).toBe(1);
+        expect(res.terminalWithheldForConsent).toBe(false);
+        expect(res.sequence.map((d) => d.code)).toEqual(["C34.90", "J44.9"]);
+      });
+    });
+
+    it("M7 diagnoses feed M38 billability: a billable terminal leaf and a non-leaf header resolve distinctly", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381296");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "terminal" });
+      await seedProblem(ORG_A, plan, pe, { code: "C34", kind: "related" }); // non-leaf header
+      const seq = await buildM23DiagnosesAdapter({
+        forRange: (orgId, pid, range) => claimDiagnosesForOrg(handle.db, orgId, pid, range),
+      }).forRange(ORG_A, patientId, RANGE);
+      const terminology = await buildM23TerminologyAdapter().resolveForClaim(
+        ORG_A,
+        RANGE.from,
+        seq.sequence.map((d) => d.code),
+      );
+      expect(terminology.icd10Billable).toEqual({ "C34.90": true, C34: false });
     });
   });
 
@@ -1111,7 +1599,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         status: "inactive",
         licenseUnexpiredOnServiceDates: false,
       });
-      // Genuinely unbound — no facility-type taxonomy exists anywhere in the schema (F-127).
+      // Built WITHOUT the F-213 place-of-service ports, so it stays null (its own section below binds them).
       expect(resolution.placeOfService).toBeNull();
     });
 
@@ -1143,8 +1631,269 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     });
   });
 
+  describe("mdm.resolveClinicalParticipants: placeOfService from M5 address history + M40 facility.kind (F-213, #252)", () => {
+    const POS_RANGE_FROM = "2026-01-01";
+
+    async function seedFacility(kind: string, mergedIntoId: string | null = null): Promise<string> {
+      const row = await admin.query(
+        `INSERT INTO facility (kind, name, status, merged_into_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+        [kind, `F213-${crypto.randomUUID()}`, mergedIntoId ? "merged" : "active", mergedIntoId],
+      );
+      return row.rows[0].id as string;
+    }
+
+    async function seedAddress(
+      orgId: string,
+      patientId: string,
+      a: {
+        kind: "home" | "facility" | "mailing" | "temporary" | "prior";
+        facilityId?: string | null;
+        from?: string;
+        to?: string | null;
+        primary?: boolean;
+      },
+    ) {
+      await admin.query(
+        `INSERT INTO patient_address
+           (patient_id, organization_id, kind, line1, city, state, postal_code, is_primary,
+            effective_from, effective_to, facility_id)
+         VALUES ($1,$2,$3,'1 Test St','Portland','OR','97000',$4,$5,$6,$7)`,
+        [
+          patientId,
+          orgId,
+          a.kind,
+          a.primary ?? true,
+          a.from ?? POS_RANGE_FROM,
+          a.to ?? null,
+          a.facilityId ?? null,
+        ],
+      );
+    }
+
+    /** The exact production wiring: the real M5 reader + the real M40 facility-kind read, real M6 range. */
+    function posSeam() {
+      const addr = buildPatientAddressReader(handle.db);
+      return buildM23ClinicalParticipantsAdapter(
+        { forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r) },
+        undefined,
+        {
+          residence: {
+            residencesBetween: (orgId, pid, from, to) =>
+              addr.residencesBetween(orgId, pid, from, to),
+          },
+          facilityKinds: { kindsFor: (ids) => facilityKindsForIds(handle.db, ids) },
+        },
+      );
+    }
+
+    /** A patient with an ACTIVE admission and one open routine-home-care LOC period from 2026-01-01. */
+    async function rhcPatient(orgId: string, ccn: string): Promise<string> {
+      const patientId = await seedPatient(orgId);
+      const pe = await seedProviderEntity(orgId, ccn);
+      const { admissionId } = await activeAdmissionForRange(
+        orgId,
+        patientId,
+        pe,
+        "2026-01-01T00:00:00.000Z",
+      );
+      await admissionSvc().changeLoc(
+        orgId,
+        admissionId,
+        "routine_home_care",
+        null,
+        "2026-01-01T00:00:00.000Z",
+        "initial LOC",
+      );
+      return patientId;
+    }
+
+    let ccnSeq = 381300;
+    const nextCcn = () => String(++ccnSeq);
+
+    it("home address -> the Q5001 label", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "home" });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe("home");
+    });
+
+    it.each([
+      ["alf", "alf"],
+      ["nf", "ltc"],
+      ["snf", "snf"],
+      ["hospital", "hospital"],
+      ["ipu", "ipu"],
+      ["ltch", "ltch"],
+      ["psych", "psych"],
+    ] as const)("facility kind %s -> POS_BY_QCODE label %s", async (kind, label) => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, {
+        kind: "facility",
+        facilityId: await seedFacility(kind),
+      });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe(label);
+    });
+
+    it.each(["clinic", "other"] as const)(
+      "unmapped facility kind %s -> null (falls to Q5009, never guessed)",
+      async (kind) => {
+        const patientId = await rhcPatient(ORG_A, nextCcn());
+        await seedAddress(ORG_A, patientId, {
+          kind: "facility",
+          facilityId: await seedFacility(kind),
+        });
+        const { range } = futureClaimRange();
+        const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+        expect(r.placeOfService).toBeNull();
+      },
+    );
+
+    it("a non-residence primary address kind (temporary) -> null", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "temporary" });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBeNull();
+    });
+
+    it("no address history at all -> null", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBeNull();
+    });
+
+    it("chases a merged facility to its SURVIVOR's kind", async () => {
+      const survivor = await seedFacility("snf");
+      const merged = await seedFacility("alf", survivor);
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "facility", facilityId: merged });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe("snf"); // the dead row said alf; the survivor is a SNF
+    });
+
+    const shiftDay = (d: string, delta: number) => {
+      const x = new Date(`${d}T00:00:00Z`);
+      x.setUTCDate(x.getUTCDate() + delta);
+      return x.toISOString().slice(0, 10);
+    };
+
+    it("date-effective: a residence that ended BEFORE the range does not count; the range's own residence does", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      const { range } = futureClaimRange();
+      await seedAddress(ORG_A, patientId, {
+        kind: "facility",
+        facilityId: await seedFacility("hospital"),
+        from: POS_RANGE_FROM,
+        to: shiftDay(range.from, -1),
+      });
+      await seedAddress(ORG_A, patientId, { kind: "home", from: range.from });
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe("home");
+    });
+
+    it("date-effective: a move INSIDE the range -> null (one claim-level Q-code cannot be honest)", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      const { range } = futureClaimRange();
+      const moveDay = shiftDay(range.from, 10);
+      const lastHomeDay = shiftDay(moveDay, -1);
+      await seedAddress(ORG_A, patientId, { kind: "home", from: POS_RANGE_FROM, to: lastHomeDay });
+      await seedAddress(ORG_A, patientId, {
+        kind: "facility",
+        facilityId: await seedFacility("alf"),
+        from: moveDay,
+      });
+      const seam = posSeam();
+      const whole = await seam.resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(whole.placeOfService).toBeNull();
+      // ... but a sub-range that sits entirely on one side of the move IS answerable.
+      const pre = { from: range.from, to: lastHomeDay };
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_A, patientId, pre.from, pre)).placeOfService,
+      ).toBe("home");
+      const post = { from: moveDay, to: range.to };
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_A, patientId, post.from, post)).placeOfService,
+      ).toBe("alf");
+    });
+
+    it("a general-inpatient period in the range -> null even with a home address (the residence is not the site)", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "home" });
+      const { range } = futureClaimRange();
+      const addr = buildPatientAddressReader(handle.db);
+      const gipSeam = buildM23ClinicalParticipantsAdapter(
+        {
+          forRange: async (orgId, pid, r) => {
+            const ctx = await claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r);
+            return ctx
+              ? {
+                  ...ctx,
+                  levelOfCarePeriods: [
+                    ...ctx.levelOfCarePeriods,
+                    {
+                      levelOfCarePeriodId: crypto.randomUUID(),
+                      levelOfCare: "general_inpatient_care",
+                      from: range.from,
+                      to: range.to,
+                      chcDocumentedHours: null,
+                      gipAdmissionCriteriaDocumented: null,
+                    },
+                  ],
+                }
+              : ctx;
+          },
+        },
+        undefined,
+        {
+          residence: {
+            residencesBetween: (o, p, f, t) => addr.residencesBetween(o, p, f, t),
+          },
+          facilityKinds: { kindsFor: (ids) => facilityKindsForIds(handle.db, ids) },
+        },
+      );
+      const r = await gipSeam.resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBeNull();
+    });
+
+    it("never resolves another org's residence (cross-tenant isolation, real NOBYPASSRLS role)", async () => {
+      const patientIdB = await rhcPatient(ORG_B, nextCcn());
+      await seedAddress(ORG_B, patientIdB, { kind: "home" });
+      const { range } = futureClaimRange();
+      const seam = posSeam();
+      // Org B asking about its own patient works ...
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_B, patientIdB, range.from, range))
+          .placeOfService,
+      ).toBe("home");
+      // ... org A asking about org B's patient sees no admission, no LOC period and no address.
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_A, patientIdB, range.from, range))
+          .placeOfService,
+      ).toBeNull();
+    });
+
+    it("M5 residencesBetween itself: org-scoped, primary-only, kind + facility + window only (no address columns)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedAddress(ORG_A, patientId, { kind: "home", primary: true });
+      await seedAddress(ORG_A, patientId, { kind: "mailing", primary: false });
+      const addr = buildPatientAddressReader(handle.db);
+      const rows = await addr.residencesBetween(ORG_A, patientId, "2026-02-01", "2026-02-28");
+      expect(rows).toEqual([
+        { kind: "home", facilityId: null, effectiveFrom: POS_RANGE_FROM, effectiveTo: null },
+      ]);
+      expect(await addr.residencesBetween(ORG_B, patientId, "2026-02-01", "2026-02-28")).toEqual(
+        [],
+      );
+    });
+  });
+
   describe("end-to-end boundary: POST /claims/assemble's real SEAM_UNBOUND wall today", () => {
-    it("progresses PAST the entire M6 block and fails at referenceData.hippsRateTable (F-121, #251)", async () => {
+    it("progresses PAST the entire M6 block and fails at referenceData.hippsRateTable with the typed RATE_TABLE_MISSING when the tenant has entered no rates (F-121 #251, F-210)", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381240");
@@ -1173,8 +1922,102 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
           },
         ),
       ).rejects.toMatchObject({
+        code: "RATE_TABLE_MISSING",
+        statusCode: 422,
+        message: expect.stringContaining("/api/v1/billing/rate-tables"),
+      });
+    });
+
+    it("with NO wage index for the CCN the wall is the typed WAGE_INDEX_UNAVAILABLE naming the entry endpoint, and a tenant entry moves it to RATE_TABLE_MISSING (F-211)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
+      const pe = await seedProviderEntity(ORG_A, "381299");
+      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      const { range, fiscalYearStarting } = futureClaimRange();
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
+      const service = buildM23BootAssemblyService(handle.db, {
+        providerCcn: testProviderCcnPort,
+        m6ClaimRange: {
+          forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+        },
+      });
+      const assemble = () =>
+        service.assemble(
+          { organizationId: ORG_A, userId: M6_USER, membershipId: M6_USER, actorKind: "user" },
+          {
+            providerEntityId: pe,
+            patientId,
+            serviceFrom: range.from,
+            serviceTo: range.to,
+            tob: "811",
+          },
+        );
+      await expect(assemble()).rejects.toMatchObject({
+        code: "WAGE_INDEX_UNAVAILABLE",
+        statusCode: 422,
+        message: expect.stringContaining("/api/v1/billing/wage-indexes"),
+      });
+      // ANOTHER tenant's entry for the same CCN + year must not satisfy this tenant's assembly.
+      await admin.query(
+        `INSERT INTO tenant_wage_index (organization_id, ccn, fiscal_year_starting, factor_decimal, source_reference, entered_by_membership_id)
+         VALUES ($1,'381299',$2,1.0,'other tenant',$3)`,
+        [ORG_B, fiscalYearStarting, U],
+      );
+      await expect(assemble()).rejects.toMatchObject({ code: "WAGE_INDEX_UNAVAILABLE" });
+      // This tenant's own entry moves the wall on to the rate table.
+      await admin.query(
+        `INSERT INTO tenant_wage_index (organization_id, ccn, fiscal_year_starting, factor_decimal, source_reference, entered_by_membership_id)
+         VALUES ($1,'381299',$2,0.95,'CMS wage index table',$3)`,
+        [ORG_A, fiscalYearStarting, U],
+      );
+      await expect(assemble()).rejects.toMatchObject({ code: "RATE_TABLE_MISSING" });
+    });
+
+    it("with a tenant-entered rate table + sequestration policy the wall MOVES PAST hippsRateTable/activeSequestrationPolicy to billableEncounters (F-210)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
+      const pe = await seedProviderEntity(ORG_A, "381242");
+      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      const { range, fiscalYearStarting } = futureClaimRange();
+      await seedWageIndex("381242", fiscalYearStarting, "0.9500", "12060");
+      await seedSequestrationPolicy(ORG_A, pe, "2.00", "2020-01-01");
+      await admin.query(
+        `INSERT INTO hospice_rate_table (organization_id, provider_entity_id, fiscal_year_starting, effective_from, effective_to,
+           rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents,
+           gip_per_diem_cents, chc_hourly_rate_cents, labor_share_rhc, labor_share_chc, labor_share_irc, labor_share_gip, entered_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5, 21500, 17000, 105600, 49000, 118000, 4400, 0.66, 0.68, 0.54, 0.64, $6)`,
+        [
+          ORG_A,
+          pe,
+          fiscalYearStarting,
+          `${fiscalYearStarting}-10-01`,
+          `${fiscalYearStarting + 1}-09-30`,
+          U,
+        ],
+      );
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
+
+      // No M8 port injected (unit-test default): the next stub the call order reaches is billableEncounters.
+      const service = buildM23BootAssemblyService(handle.db, {
+        providerCcn: testProviderCcnPort,
+        m6ClaimRange: {
+          forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+        },
+      });
+      await expect(
+        service.assemble(
+          { organizationId: ORG_A, userId: M6_USER, membershipId: M6_USER, actorKind: "user" },
+          {
+            providerEntityId: pe,
+            patientId,
+            serviceFrom: range.from,
+            serviceTo: range.to,
+            tob: "811",
+          },
+        ),
+      ).rejects.toMatchObject({
         code: "SEAM_UNBOUND",
-        message: expect.stringContaining("BillingReferenceDataReader"),
+        message: expect.stringContaining("BillableEncounterReader"),
       });
     });
 

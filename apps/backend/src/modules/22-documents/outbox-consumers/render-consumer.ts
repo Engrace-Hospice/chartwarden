@@ -345,10 +345,16 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   },
   // M14 — both request-shaped, `renderPayload: Type.Unknown()` (the M11/M12 shape): the M22 template
   // key is fixed per event, not read off the payload.
+  // `appends: true`: the packet build is replace-in-place (D5 — one `idg_patient_packet` row per
+  // (meeting, patient), rebuilt by the T-24h resume and the coordinator's on-demand build), so the SAME
+  // `packetId` legitimately requests a render again with NEW content. Genesis-only idempotency answered
+  // `idempotent_skip` for every rebuild, leaving the first PDF stale forever; the per-delivered-event key
+  // renders each rebuild as a new VERSION of the same packet document (a redelivery still renders nothing).
   "m14.packet.render_requested": {
     aggregateIdFields: ["packetId"],
     templateKey: "idg_patient_packet",
     contentField: "renderPayload",
+    appends: true,
   },
   "m14.minutes.signed": {
     aggregateIdFields: ["minutesId"],
@@ -393,6 +399,16 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     contentField: "renderPayload",
     appends: true,
   },
+  // M14 spec §13 — a late discipline-note ADDENDUM on an adjourned meeting. A dedicated event (not a
+  // re-use of `.amended`, which carries an approver/amendment id and an M33 seam consumer and would
+  // mislabel an addendum as an amendment) that appends a new version of the SAME `minutesId` document,
+  // carrying the frozen snapshots plus the live `disciplineAddenda` appendix.
+  "m14.discipline_note.addendum_recorded": {
+    aggregateIdFields: ["minutesId"],
+    templateKey: "idg_minutes",
+    contentField: "renderPayload",
+    appends: true,
+  },
   // M12 §4.4 — the transmit-to-pharmacy confirmation. Appends onto the SAME `orderId`
   // `.document_requested` genesis-rendered. NOTE (reported, not fixed): this event is CATALOGUED with
   // no producer anywhere in `12-dosespot/` — the `dosespot.transmit_newrx` worker its own catalog
@@ -413,6 +429,23 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m9.assessment.summary_requested": {
     aggregateIdFields: ["patientId"],
     templateKey: "assessment_summary",
+    appends: true,
+  },
+  // F-224 (#248) — M19's caregiver/attending triage-call summary. The aggregate is the CALL
+  // (`triageCallId`), and `recipientKind` (added to the payload by this round — the catalogued payload had
+  // none while `M19TriageSummaryRequestedPayload` required it) discriminates the TWO artifacts: a
+  // value outside {caregiver, attending} is a malformed request (a throw), never a guess — rendering the
+  // attending variant for a caregiver is a disclosure error. `appends: true`: every explicit re-request is a
+  // NEW version of the same per-audience document (F-168), never an `idempotent_skip`.
+  "m19.triage.summary_requested": {
+    aggregateIdFields: ["triageCallId"],
+    templateKeyByField: {
+      field: "recipientKind",
+      map: {
+        caregiver: "triage_summary_caregiver",
+        attending: "triage_summary_attending",
+      },
+    },
     appends: true,
   },
 };

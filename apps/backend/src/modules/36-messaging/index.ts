@@ -83,8 +83,30 @@ export { createDbMessagingProvider } from "./messaging-provider-db";
 export {
   createDrizzleAlertEmitter,
   createDrizzleAlertEmitterPorts,
+  createDrizzleIdgAttendeeLookup,
+  createDrizzleMembershipUserLookup,
 } from "./alert-emitter-drizzle";
+export type { MembershipsHoldingPermissionPort } from "./alert-emitter-drizzle";
 export { buildM36ClinicalAlertConsumer } from "./outbox-consumers/clinical-alerts";
+// M14 §2.7/D8 — the carry-forward COMPLIANCE alert: `m14.action_item.carry_forward` (the count crossing 3) ->
+// the critical typed alert `m14.action_item.carry_forward.compliance`, once per action item.
+export {
+  IDG_CARRY_FORWARD_COMPLIANCE_CONSUMER,
+  IDG_CARRY_FORWARD_COMPLIANCE_PAYLOAD_TYPE,
+  buildIdgCarryForwardComplianceConsumer,
+  carryForwardComplianceCorrelationId,
+} from "./outbox-consumers/idg-carry-forward-compliance";
+// M14 §4.10 — the remaining typed IDG alerts (packets ready / action item assigned / non-quorate decision /
+// review-clock escalation / review-floor override): one M36 consumer each over a shared shape.
+export {
+  IDG_ALERT_CONSUMERS,
+  buildIdgAlertConsumers,
+  idgActionItemCreatedCorrelationId,
+  idgNonQuorateCorrelationId,
+  idgPacketsReadyCorrelationId,
+  idgReviewClockCorrelationId,
+  idgReviewFloorOverrideCorrelationId,
+} from "./outbox-consumers/idg-alerts";
 // GAP-096 — boot-populate alert_rule's platform-default rows (BYPASSRLS-only; see file header).
 export { wireAlertRuleSeed } from "./alert-rule-seed-persister";
 // FB-T14 — M36-owned TRANSACTIONAL email transport (password reset / magic-link delivery). The

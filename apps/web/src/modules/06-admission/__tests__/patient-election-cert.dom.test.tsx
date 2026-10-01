@@ -1,0 +1,269 @@
+// @vitest-environment jsdom
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { ApiClientProvider } from "@wardenx/ui";
+import type { ApiClient } from "@wardenx/ui";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+import { SessionProvider } from "../../../shell/session";
+import type { Session } from "../../../shell/session";
+import { PatientElectionCert } from "../patient-election-cert";
+
+const session: Session = {
+  userId: "11111111-1111-4111-8111-111111111111",
+  organizationId: "org-1",
+  displayName: "Sarah Miller",
+  roles: ["rn", "medical_director"],
+  permissions: ["election.read"],
+};
+
+function ok(data: unknown) {
+  return {
+    data,
+    error: undefined,
+    response: new Response(null, { status: 200 }),
+  };
+}
+
+function clientFor(options: { failCtiOnce?: boolean } = {}): ApiClient {
+  let ctiFailuresRemaining = options.failCtiOnce ? 1 : 0;
+
+  return {
+    GET: vi.fn(async (path: string) => {
+      if (path === "/api/v1/patients/{id}") {
+        return ok({
+          id: "patient-1",
+          mrn: "MRN-1001",
+          firstName: "Elena",
+          lastName: "Rivera",
+          dob: "1946-04-12",
+          status: "active",
+        });
+      }
+
+      if (path === "/api/v1/patients/{patientId}/election-certification") {
+        return ok({
+          admission: {
+            id: "admission-1",
+            state: "active",
+            admissionAt: "2026-10-01T10:00:00.000Z",
+            activatedAt: "2026-10-01T12:00:00.000Z",
+            dischargedAt: null,
+            version: 2,
+          },
+          periods: [
+            {
+              id: "period-1",
+              sequenceNumber: 1,
+              periodKind: "ninety_day",
+              effectiveAt: "2026-10-01",
+              scheduledEndAt: "2026-12-29",
+              actualEndAt: null,
+              status: "active",
+              electionStatement: {
+                id: "election-1",
+                status: "signed",
+                signerKind: "patient",
+                signedAt: "2026-10-01T09:30:00.000Z",
+                sourceType: "structured",
+              },
+              cti: {
+                id: "cti-1",
+                status: "signed",
+                sourceType: "structured",
+                hospiceMdSigned: true,
+                attendingMdSigned: false,
+                signedLate: false,
+                periodStart: "2026-10-01",
+                periodEnd: "2026-12-29",
+              },
+              faceToFace: null,
+            },
+            {
+              id: "period-2",
+              sequenceNumber: 2,
+              periodKind: "ninety_day",
+              effectiveAt: "2026-12-30",
+              scheduledEndAt: "2027-03-29",
+              actualEndAt: null,
+              status: "pending",
+              electionStatement: null,
+              cti: {
+                id: "cti-2",
+                status: "awaiting_hospice_md",
+                sourceType: "structured",
+                hospiceMdSigned: false,
+                attendingMdSigned: false,
+                signedLate: false,
+                periodStart: "2026-12-30",
+                periodEnd: "2027-03-29",
+              },
+              faceToFace: null,
+            },
+            {
+              id: "period-3",
+              sequenceNumber: 3,
+              periodKind: "sixty_day",
+              effectiveAt: "2027-03-30",
+              scheduledEndAt: "2027-05-28",
+              actualEndAt: null,
+              status: "active",
+              electionStatement: null,
+              cti: null,
+              faceToFace: {
+                id: "f2f-3",
+                status: "attested",
+                performerRole: "hospice_physician",
+                encounterDate: "2027-03-20",
+                withinWindow: true,
+                windowOverride: false,
+                attested: true,
+              },
+            },
+            {
+              id: "period-4",
+              sequenceNumber: 4,
+              periodKind: "sixty_day",
+              effectiveAt: "2027-05-29",
+              scheduledEndAt: "2027-07-27",
+              actualEndAt: null,
+              status: "pending",
+              electionStatement: null,
+              cti: null,
+              faceToFace: null,
+            },
+          ],
+          complianceWindows: [],
+        });
+      }
+
+      if (path === "/api/v1/election-statements/{id}") {
+        return ok({ id: "election-1", state: "signed", version: 3 });
+      }
+
+      if (path === "/api/v1/cti/{id}") {
+        if (ctiFailuresRemaining > 0) {
+          ctiFailuresRemaining -= 1;
+          return {
+            data: undefined,
+            error: { error: { code: "UNAVAILABLE" } },
+            response: new Response(null, { status: 503 }),
+          };
+        }
+        return ok({ id: "cti-1", state: "signed", version: 4 });
+      }
+
+      if (path === "/api/v1/face-to-face/{id}") {
+        return ok({ id: "f2f-3", state: "attested", version: 2 });
+      }
+
+      return ok({});
+    }),
+    POST: vi.fn(async () => ok({})),
+  } as unknown as ApiClient;
+}
+
+function renderWorkspace(client: ApiClient): void {
+  render(
+    <MemoryRouter initialEntries={["/patients/patient-1/election-certification"]}>
+      <ApiClientProvider client={client}>
+        <SessionProvider session={session}>
+          <Routes>
+            <Route
+              path="/patients/:patientId/election-certification"
+              element={<PatientElectionCert />}
+            />
+          </Routes>
+        </SessionProvider>
+      </ApiClientProvider>
+    </MemoryRouter>,
+  );
+}
+
+describe("Patient Election & Certification workspace", () => {
+  it("separates the hospice election from period-specific CTI and F2F requirements", async () => {
+    renderWorkspace(clientFor());
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Hospice Election" })).toBeTruthy(),
+    );
+
+    expect(screen.getAllByText("Election Statement")).toHaveLength(1);
+    expect(screen.getByText("CTI — Initial Certification")).toBeTruthy();
+    expect(screen.getAllByText("CTI — Recertification")).toHaveLength(3);
+    expect(screen.getAllByText("Not required")).toHaveLength(2);
+    expect(screen.getByText("Required — not scheduled")).toBeTruthy();
+    expect(screen.getAllByText(/Attending pending/)).toHaveLength(1);
+
+    expect(screen.getByRole("button", { name: "Sign CTI" })).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "Create CTI" })).toHaveLength(2);
+  });
+
+  it("loads Election Statement details only after View details is clicked", async () => {
+    const client = clientFor();
+    renderWorkspace(client);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "View Election Statement details" })).toBeTruthy(),
+    );
+    expect(client.GET).not.toHaveBeenCalledWith(
+      "/api/v1/election-statements/{id}",
+      expect.anything(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View Election Statement details" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Election Statement details" });
+    await waitFor(() => expect(within(dialog).getByText("Version")).toBeTruthy());
+    expect(within(dialog).getByText("Structured")).toBeTruthy();
+    expect(within(dialog).getByText("Patient")).toBeTruthy();
+    expect(client.GET).toHaveBeenCalledWith("/api/v1/election-statements/{id}", {
+      params: { path: { id: "election-1" } },
+    });
+  });
+
+  it("loads and displays CTI details for the selected benefit period", async () => {
+    const client = clientFor();
+    renderWorkspace(client);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View Period 1 CTI details" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "CTI details" });
+    await waitFor(() => expect(within(dialog).getByText("Initial Certification")).toBeTruthy());
+    expect(within(dialog).getByText("Period 1")).toBeTruthy();
+    expect(within(dialog).getByText("Hospice Medical Director")).toBeTruthy();
+    expect(client.GET).toHaveBeenCalledWith("/api/v1/cti/{id}", {
+      params: { path: { id: "cti-1" } },
+    });
+  });
+
+  it("loads and displays Face-to-Face details for an existing record", async () => {
+    const client = clientFor();
+    renderWorkspace(client);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "View Period 3 Face-to-Face details" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Face-to-Face details" });
+    await waitFor(() => expect(within(dialog).getAllByText("Attested")).toHaveLength(2));
+    expect(within(dialog).getByText("Period 3")).toBeTruthy();
+    expect(within(dialog).getByText("Hospice Physician")).toBeTruthy();
+    expect(client.GET).toHaveBeenCalledWith("/api/v1/face-to-face/{id}", {
+      params: { path: { id: "f2f-3" } },
+    });
+  });
+
+  it("shows a readable detail error and retries the request", async () => {
+    const client = clientFor({ failCtiOnce: true });
+    renderWorkspace(client);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View Period 1 CTI details" }));
+
+    expect(await screen.findByText("Unable to load CTI details.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    const dialog = screen.getByRole("dialog", { name: "CTI details" });
+    await waitFor(() => expect(within(dialog).getByText("Initial Certification")).toBeTruthy());
+    expect(client.GET).toHaveBeenCalledTimes(4);
+  });
+});

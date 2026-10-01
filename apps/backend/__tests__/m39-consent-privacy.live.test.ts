@@ -23,10 +23,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 // Imported by exact file path, not the module barrel: the coordinator wires the barrel export
 // (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
-import { type M5OutboxPort } from "../src/modules/05-patient/deceased-db";
+import type { M5OutboxPort } from "../src/modules/05-patient/deceased-db";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 import { buildM5ConsentPrivacyConsumer } from "../src/modules/05-patient/outbox-consumers/m39-consent-privacy";
-import { appRoleUrl, LIVE_APP_ROLE_PASSWORD } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -125,14 +125,14 @@ describe.skipIf(!DB_URL)(
     beforeEach(() => {
       const catalog = buildBootOutboxCatalog([M5_OUTBOX_EVENTS]);
       const txPublisher = buildTxOutboxPublisher(catalog);
-      outbox = { publish: (tx, input) => txPublisher.publish(tx, { ...input, callerModule: "m5" }) };
+      outbox = {
+        publish: (tx, input) => txPublisher.publish(tx, { ...input, callerModule: "m5" }),
+      };
       consumer = buildM5ConsentPrivacyConsumer({ db: handle.db, outbox });
     });
 
     afterEach(async () => {
-      await admin.query(
-        "TRUNCATE patient_privacy_flag_snapshot, patient RESTART IDENTITY CASCADE",
-      );
+      await admin.query("TRUNCATE patient_privacy_flag_snapshot, patient RESTART IDENTITY CASCADE");
       await admin.query("DELETE FROM outbox_event");
     });
 

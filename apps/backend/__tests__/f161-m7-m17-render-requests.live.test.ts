@@ -61,14 +61,9 @@ import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
-import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
-import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
-import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
-import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
-import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
-import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import {
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
@@ -76,6 +71,12 @@ import {
   createDrizzleDocumentSeamStore,
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
+import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
+import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -180,6 +181,7 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
       M16_OUTBOX_EVENTS,
       M17_OUTBOX_EVENTS,
       M18_OUTBOX_EVENTS,
+      M19_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,

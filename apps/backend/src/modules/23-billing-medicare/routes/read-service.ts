@@ -298,18 +298,6 @@ export interface RuleConfigView {
   readonly updatedAt: string;
 }
 
-export interface SequestrationPolicyView {
-  readonly policyId: string;
-  readonly organizationId: string;
-  readonly providerEntityId: string;
-  readonly percentage: string;
-  readonly effectiveFrom: string;
-  readonly effectiveTo: string | null;
-  readonly setByMembershipId: string;
-  readonly setReason: string | null;
-  readonly createdAt: string;
-}
-
 export interface MacCredentialView {
   readonly credentialId: string;
   readonly organizationId: string;
@@ -439,15 +427,7 @@ export interface M23ReadRouteService {
   ): Promise<CursorPage<RuleConfigView>>;
   getRuleConfig(actor: M23ReadActor, ruleConfigId: string): Promise<RuleConfigView>;
 
-  // ── sequestration policy ──
-  listSequestrationPolicies(
-    actor: M23ReadActor,
-    providerEntityId: string,
-  ): Promise<readonly SequestrationPolicyView[]>;
-  getActiveSequestrationPolicy(
-    actor: M23ReadActor,
-    providerEntityId: string,
-  ): Promise<SequestrationPolicyView | null>;
+  // (sequestration policy reads moved to `SequestrationPolicyRouteService`, F-212)
 
   // ── MAC credentials (cipher never projected) ──
   listMacCredentials(

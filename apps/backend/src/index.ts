@@ -23,29 +23,27 @@ import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter } from "@wardenx/messaging";
+import { createAlertPayloadRegistry } from "@wardenx/messaging";
+// F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
+// M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
+// the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
+import { type PseudonymKeyProvider, loadPseudonymKekRing } from "@wardenx/subscription-billing";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
-import {
-  registerPlatformJob,
-  withOrgContext,
-  withPlatformContext,
-} from "@wardenx/tenancy";
+import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
-import type { AdmissionStatusReader } from "@wardenx/types";
+import type { AdmissionStatusReader, PatientAddressReader } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
-import {
-  attachDlqPromotionAlert,
-  buildDlqPromotionSink,
-} from "./bootstrap/dlq-alerts";
+import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import {
   createDrizzleFeatureFlagAdmin,
   createDrizzleFeatureFlagReader,
 } from "./bootstrap/feature-flag-store";
-import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
+// F-166 (#248) — M13's `m12.medication_order.active` materializer needs the order's location timezone.
+import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
 import {
   DEFAULT_RATE_LIMIT_TIERS,
   assertNoInMemoryBindingsOnDbBoot,
@@ -66,6 +64,7 @@ import {
   summarizeRotation,
   wirePartitionRotationTenancy,
 } from "./bootstrap/jobs/partition-rotation";
+import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import {
   m34ActiveMembershipUserId,
   m34SoleTenantUserIds,
@@ -79,8 +78,8 @@ import {
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
 import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
-import { buildM1LagProbeStatusConsumer } from "./bootstrap/outbox-consumers/m33-lag-probe";
 import { buildM1MacPortalHealthConsumer } from "./bootstrap/outbox-consumers/m23-mac-portal-health";
+import { buildM1LagProbeStatusConsumer } from "./bootstrap/outbox-consumers/m33-lag-probe";
 import {
   M1_OUTBOX_DISPATCHER_JOB_ID,
   type OutboxDispatcher,
@@ -107,17 +106,13 @@ import {
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
 } from "./bootstrap/provider-entity-resolver";
-// F-166 (#248) — M13's `m12.medication_order.active` materializer needs the order's location timezone.
-import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
+import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
+import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
-// F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
-// M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
-// the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
-import { loadPseudonymKekRing, type PseudonymKeyProvider } from "@wardenx/subscription-billing";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -150,6 +145,7 @@ import {
   M2_OUTBOX_EVENTS,
   buildM2ConsentRevokedConsumer,
   createDrizzleIdentityEraserStore,
+  membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
   mountOrganizationLifecycleRoutes,
@@ -158,8 +154,9 @@ import {
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import {
-  createMembershipsHoldingPermissionReader,
   createDbProposedRoleAttacher,
+  createMembershipsHoldingPermissionReader,
+  membershipRoleKeysForOrg,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
 } from "./modules/03-authorization/index";
@@ -192,10 +189,15 @@ import {
   hl7OrmDemographicsInTx,
   membershipUserIdForOrg,
   mountPatientRoutes,
+  patientDisplayLabelsForOrg,
   registerPatientErasers,
   registerPatientSeams,
 } from "./modules/05-patient/index";
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
+// F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
+// group, fed by two new org-explicit seam reads (M5's MBI, M6's first-election-in-range) injected as
+// ports since M26's manifest dependsOn is [1, 23, 36] — it cannot import M5 or M6 directly.
+import { mbiNormalizedForPatient } from "./modules/05-patient/seams/mbi-reader";
 import {
   M6_OUTBOX_EVENTS,
   M6_PLATFORM_JOB_ID,
@@ -203,17 +205,21 @@ import {
   activeAdmissionSitingForPatientForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
-  idgCurrentLevelOfCareForOrg,
-  idgPacketInclusionForOrg,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
+  buildM6RecertificationSignedConsumer,
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   electionPeriodContextForOrg,
+  idgCurrentLevelOfCareForOrg,
+  idgHospitalEventsForOrg,
+  idgPacketInclusionForOrg,
+  idgRecertWindowsForOrg,
   mountAdmissionRoutes,
+  portalDischargedPastGraceForOrg,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
   registerAdmissionRoutes,
@@ -222,6 +228,7 @@ import {
   scheduleM6Jobs,
   wireM6Tenancy,
 } from "./modules/06-admission/index";
+import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
@@ -229,6 +236,7 @@ import {
   buildM7AdmissionDischargedConsumer,
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
+  claimDiagnosesForOrg,
   createDbCarePlanAbacResolver,
   createDrizzleCarePlanEraseStore,
   createDrizzleCarePlanReaderStore,
@@ -283,13 +291,14 @@ import {
   buildM10AdmissionWorkflowConsumer,
   buildM10WorkerDeps,
   createDrizzleHopeEraseStore,
+  hopeAssessmentPatientIdForOrg,
+  idgHopeContextForOrg,
   mountHopeRoutes,
   registerHopeAbacPredicates,
   registerHopeErasers,
   registerHopeRoutes,
   registerHopeSeams,
   registerM10CronWorkers,
-  hopeAssessmentPatientIdForOrg,
   scheduleM10Jobs,
   wireM10Tenancy,
 } from "./modules/10-hope/index";
@@ -298,6 +307,8 @@ import {
   M11_PLATFORM_JOB_ID,
   M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
   M11_VERBAL_TIMER_PLATFORM_JOB_ID,
+  RECOVERY_ESCALATION_THRESHOLD,
+  RECOVERY_ORG_RATE_THRESHOLD,
   buildM11AssessmentSuggestionConsumer,
   buildM11DischargeCascadeConsumer,
   buildM11DocumentBackrefConsumer,
@@ -307,18 +318,16 @@ import {
   buildM11LabTransmissionApplierConsumer,
   buildM11OrmRequestedPorts,
   buildM11RecoveryAlertConsumer,
-  RECOVERY_ESCALATION_THRESHOLD,
-  RECOVERY_ORG_RATE_THRESHOLD,
-  parseRecoveryBound,
   buildM11SupplyCancelledConsumer,
   createDbOrderBackend,
-  createStuckTransmissionRecovery,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
   createMedicationOrderSignatureCascade,
+  createStuckTransmissionRecovery,
   heldThresholdsFromEnv,
   mountOrderRoutes,
   orderPatientAndKindForOrg,
+  parseRecoveryBound,
   registerHeldTransmissionRoutes,
   registerM11StandingSpawnWorker,
   registerM11StuckTransmissionWorker,
@@ -343,8 +352,8 @@ import {
   buildM12PatientSyncCreatedConsumer,
   buildM12PatientSyncPayerChangedConsumer,
   buildM12PatientSyncUpdatedConsumer,
-  buildM12ReconciliationDiscontinueConsumer,
   buildM12RecertificationMedHxConsumer,
+  buildM12ReconciliationDiscontinueConsumer,
   buildM12VerbalExpiredConsumer,
   createDrizzleAdmissionIdForElectionPeriodPort,
   createDrizzleDoseSpotSeamStore,
@@ -368,13 +377,14 @@ import {
   buildM13CancelFutureScheduleConsumer,
   buildM13ComfortKitDeployedConsumer,
   buildM13ComfortKitReplenishedConsumer,
-  buildM13ComfortKitReturnedConsumer,
   buildM13ComfortKitReturnReconciliationConsumer,
+  buildM13ComfortKitReturnedConsumer,
   buildM13DocumentBackrefConsumer,
   buildM13MaterializeScheduleConsumer,
   buildM13ReconciliationTriggerConsumer,
   createDrizzleEmarEraseStore,
   createDrizzleEmarSeamStore,
+  idgMissedDosesForOrg,
   mountEmarRoutes,
   registerEmarAbacPredicates,
   registerEmarErasers,
@@ -382,11 +392,13 @@ import {
   registerEmarSeams,
 } from "./modules/13-emar/index";
 import {
+  M14_ALERT_PAYLOADS,
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
   buildM14ActionItemAutoCloseConsumer,
   buildM14AssessmentRecordedConsumer,
   buildM14AssessmentSignificantChangeConsumer,
+  buildM14DocumentBackrefConsumer,
   buildM14HopeJ2051TriggerConsumer,
   buildM14HopeSfvCreatedConsumer,
   buildM14MedicationOrderDiscontinuedConsumer,
@@ -450,9 +462,9 @@ import {
   buildM17EncounterSignedConsumer,
   buildM17EvvAtPatientAddressConsumer,
   buildM17EvvCheckInConsumer,
-  buildM17EvvLateCheckResolvedConsumer,
   buildM17EvvCheckOutConsumer,
   buildM17EvvEventCorrectedConsumer,
+  buildM17EvvLateCheckResolvedConsumer,
   buildM17SosVisitCancellationConsumer,
   buildM17TriageVisitNeededConsumer,
   buildM17VolunteerAssignmentInactivatedConsumer,
@@ -494,6 +506,8 @@ import {
   createDrizzleInboundTriggerPorts,
   createDrizzleTriageEraseStore,
   denyStubOncallAbacResolver,
+  gipProposalsForOrg,
+  idgTriageCarePlanChangesForOrg,
   mountM19Routes,
   registerM19CronWorkers,
   registerOncallAbacPredicates,
@@ -553,6 +567,7 @@ import {
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
+  createDrizzlePortalAccessLog,
   createRefusingObjectStore,
   createS3ObjectStore,
   createS3TenantStorageProvisioner,
@@ -578,6 +593,10 @@ import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleRateTableService,
+  buildDrizzleRevalidationTargetResolver,
+  buildDrizzleSequestrationPolicyService,
+  buildDrizzleWageIndexService,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
@@ -590,7 +609,6 @@ import {
   buildM23SubmissionRequestConsumer,
   buildM23TaxonomyUnmappedCodeObservedConsumer,
   buildM23WorkerDeps,
-  buildDrizzleRevalidationTargetResolver,
   createDrizzleBillingEraseStore,
   createM23LaunchGateway,
   m23LaunchGatewayConfigFromEnv,
@@ -665,6 +683,8 @@ import {
   scheduleM25Jobs,
   wireM25Tenancy,
 } from "./modules/25-remittance/index";
+import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
+import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-binding";
 // M26 (Cap Management) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers (cap_period_open /
 // _in_settlement / _settled / _methodology_unlocked / cap_platform_admin), and the §4.1 route mount over the
 // Drizzle read/write services. The write service's transactional outbox publisher binds at boot; the §4.3
@@ -681,24 +701,6 @@ import {
   registerM26PublishedSeams,
   scheduleM26Jobs,
 } from "./modules/26-cap/index";
-// F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
-// group, fed by two new org-explicit seam reads (M5's MBI, M6's first-election-in-range) injected as
-// ports since M26's manifest dependsOn is [1, 23, 36] — it cannot import M5 or M6 directly.
-import { mbiNormalizedForPatient } from "./modules/05-patient/seams/mbi-reader";
-import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
-import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
-import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-binding";
-// F-160 (#248) — M31's first outbox consumers: the telehealth force-end/re-mint/reconcile trio over
-// `telehealth_visit`, M31's own owned table.
-import { buildM31VisitCancelledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-cancelled-telehealth";
-import { buildM31VisitRescheduledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-rescheduled-telehealth";
-import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
-import { buildM31BereavementPlanClosedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-closed";
-import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-opened";
-// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
-// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
-import { buildM31BereavementContactActiveConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-contact-active";
-import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/outbox-consumers/m39-consent-revoked";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). WX-PR-013 bound the recompute-enqueue producer + the outbox/alerts/active-org worker
@@ -762,13 +764,13 @@ import {
   buildM29PatientDeceasedConsumer,
   buildNppesManualSyncTrigger,
   createDrizzleM29PublishedSeamStore,
-  ormOutboundEvidenceForOrder,
-  ormOutboundFeedsForOrders,
-  outboundBaaCleared,
   createDrizzleM29Store,
   createFeedRateLimiter as createM29OutboundRateLimiter,
   denyStubM29AbacResolver,
   mountM29Routes,
+  ormOutboundEvidenceForOrder,
+  ormOutboundFeedsForOrders,
+  outboundBaaCleared,
   registerM29AbacPredicates,
   registerM29OutboundRetrySweepWorker,
   registerM29PublishedSeams,
@@ -791,6 +793,7 @@ import {
   buildM30VisitVerifiedConsumer,
   buildM30WorkerDeps,
   createDrizzleQualityEraseStore,
+  idgQualityFlaggedEventsForOrg,
   mountM30Routes,
   registerM30AbacPredicates,
   registerM30CronWorkers,
@@ -805,12 +808,31 @@ import {
   buildPortalAbacResolverFromStore,
   createM31PublishedSeamImpls,
   createPortalReasonCipher,
+  createPortalRoomCipher,
   denyStubPortalAbacResolver,
   mountM31Routes,
   registerM31PublishedSeams,
   registerPortalAbacPredicates,
   registerPortalErasers,
 } from "./modules/31-portal/index";
+// F-222 (#248) — M31's first cron: the daily post-discharge-grace sweep (replaces the unbuilt `m6.admission.discharged` push).
+import {
+  M31_PLATFORM_JOB_ID,
+  registerM31PostDischargeGraceWorker,
+  scheduleM31PostDischargeGraceJob,
+  wireM31Tenancy,
+} from "./modules/31-portal/jobs/index";
+import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
+// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
+// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
+import { buildM31BereavementContactActiveConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-contact-active";
+import { buildM31BereavementPlanClosedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-closed";
+import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-opened";
+// F-160 (#248) — M31's first outbox consumers: the telehealth force-end/re-mint/reconcile trio over
+// `telehealth_visit`, M31's own owned table.
+import { buildM31VisitCancelledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-cancelled-telehealth";
+import { buildM31VisitRescheduledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-rescheduled-telehealth";
+import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/outbox-consumers/m39-consent-revoked";
 // M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract, M32-T06's §4.4 seam registration
 // and M32-T07's HTTP surface: the §4.11 `m32.*` outbox catalog, the six §4.7 ABAC predicate resolvers and
 // the §4.1 route mount over the T03/T04/T05 command services + T07's read port. `ai.full` stays OFF.
@@ -909,9 +931,13 @@ import {
 } from "./modules/35-subscription/index";
 import {
   M36_OUTBOX_EVENTS,
+  buildIdgAlertConsumers,
+  buildIdgCarryForwardComplianceConsumer,
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
+  createDrizzleIdgAttendeeLookup,
+  createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   mountMessagingRoutes,
   registerMessagingErasers,
@@ -956,7 +982,9 @@ import {
 } from "./modules/38-terminology/index";
 import {
   M39_OUTBOX_EVENTS,
+  M39_PLATFORM_JOB_ID,
   buildM39ConsentRenderConsumer,
+  buildM39WorkerDeps,
   createConsentInternalNotesCipher,
   createDbConsentStore,
   createDrizzleConsentEraseStore,
@@ -965,6 +993,9 @@ import {
   registerConsentAbacPredicates,
   registerConsentErasers,
   registerConsentSeams,
+  registerM39CronWorkers,
+  scheduleM39Jobs,
+  wireM39Tenancy,
 } from "./modules/39-consent/index";
 import {
   M40_OUTBOX_EVENTS,
@@ -973,6 +1004,7 @@ import {
   createDbMdmStore,
   createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
+  facilityKindsForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
   registerMdmErasers,
@@ -1045,9 +1077,7 @@ export function wireModuleSeams(
   registerAuthorizationAbacPredicates();
   // M38 — TerminologyProvider (§4.5). Production backs it with the Drizzle store over the real M38
   // tables (FB-T01); slice/tests keep the in-memory default.
-  registerTerminologySeams(
-    deps.db ? { store: createDbTerminologyStore(deps.db) } : {},
-  );
+  registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
   // M36 — AlertEmitter (§4.6): GAP-096 — the real Drizzle-backed T04 resolution/fan-out engine binds
   // over a DB client; slice/tests keep the in-memory default (createInMemoryAlertEmitter). The
   // DB-backed MessagingProvider (§4.6 channel/message CRUD with per-tenant DEK encryption) registers
@@ -1111,27 +1141,21 @@ export function wireModuleSeams(
   // TASK-002 — the six §4.7 admission readers bind the Drizzle store on a db boot (deps.db also
   // keeps the §4.11 DeathDischargeReader + the HCI aggregate readers live, as before).
   registerAdmissionSeams(
-    deps.db
-      ? { db: deps.db, store: createDrizzleAdmissionReaderStore(deps.db) }
-      : {},
+    deps.db ? { db: deps.db, store: createDrizzleAdmissionReaderStore(deps.db) } : {},
   );
   // M7 — the §7.8 CarePlanReader (encounter-relevance picker + the 5-/15-day overdue sign-gate M8
   // consumes). Slice/tests keep the in-memory store + real clock; the Drizzle-backed store lands with
   // M7's routes/repos (M7-T05+).
   // TASK-002 — CarePlanReader binds the full Drizzle store on a db boot (SUD/D7 redaction resolves
   // the M39 ConsentEvaluator lazily, fail-closed).
-  registerCarePlanSeams(
-    deps.db ? { store: createDrizzleCarePlanReaderStore(deps.db) } : {},
-  );
+  registerCarePlanSeams(deps.db ? { store: createDrizzleCarePlanReaderStore(deps.db) } : {});
   // M8 — the four §4.7 owned seams (billable/signed/mileage/creator). M8 also CONSUMES M7's CarePlanReader
   // (registered just above) for the encounter authoring picker + the overdue sign-gate. Slice/tests keep
   // the in-memory store; the Drizzle-backed store lands with M8's routes/repos (M8-T09+).
   // M8 — back the §4.7 reader seams with the Drizzle store when a db is present (#107): the live
   // SignedEncountersReader.signedEncountersForPatientSince over the real encounter table (the prior in-memory
   // default returned empty, zeroing M30's HVLDL numerator). Slice/tests keep the in-memory store.
-  registerEncounterSeams(
-    deps.db ? { store: createDrizzleEncounterReaderStore(deps.db) } : {},
-  );
+  registerEncounterSeams(deps.db ? { store: createDrizzleEncounterReaderStore(deps.db) } : {});
   // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
   // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
@@ -1139,9 +1163,7 @@ export function wireModuleSeams(
   // KNOWN GAP (agent finding): the M9 route write path never populates provider_entity_id/location_id,
   // so a route-recorded row's latest-read throws AssessmentSeamDataGapError until the write path sites
   // captures — loud, never a fabricated context.
-  registerAssessmentSeams(
-    deps.db ? { store: createDrizzleAssessmentReaderStore(deps.db) } : {},
-  );
+  registerAssessmentSeams(deps.db ? { store: createDrizzleAssessmentReaderStore(deps.db) } : {});
   // M10 — the three PER-ENTITY §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider +
   // HopeSubmissionProvider) M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations,
   // and per-PE submission status (in-memory store). PLUS the ORG-LEVEL HopeOrgRollupProvider (#107) the M30
@@ -1181,9 +1203,7 @@ export function wireModuleSeams(
   // and it costs nothing dormant (contrast M24, whose seams are built but deliberately left UNregistered
   // until a consumer exists — the two postures differ, and this is the one M30 shipped with).
   registerM30PublishedSeams(deps.db, {
-    providerEntities: deps.db
-      ? buildOrgProviderEntityLister(deps.db)
-      : undefined,
+    providerEntities: deps.db ? buildOrgProviderEntityLister(deps.db) : undefined,
   });
   // M27 — register the PUBLISHED CostReportFilingStatusReader (M27's FIRST M1 publish) so M30's CoP
   // 418.310 failure-to-file indicator resolves the live filing posture. GAP-065: that indicator now EXISTS
@@ -1201,9 +1221,7 @@ export function wireModuleSeams(
   // a db boot (guard-checked writes in the caller's request scope). Migration 0156 added the
   // `order_discontinuation.target_kind` discriminator (task-11), and `SignOrderTargetInput` now
   // carries the REQUIRED signerDiscipline (task-15) — the seam sentinel is gone.
-  registerOrderSeams(
-    deps.db ? { store: createDrizzleOrderSeamStore(deps.db) } : {},
-  );
+  registerOrderSeams(deps.db ? { store: createDrizzleOrderSeamStore(deps.db) } : {});
   // M12 — the two §2.10 D17 owned READ seams (MedicationOrderProvider — the medication-order read path M13
   // (eMAR administration context) / M14 / M19 / M28 (FHIR) / M30 / M31 (portal) / M33 consume — + RefillInboxProvider
   // — the refill-inbox read path the prescriber UI + M19/M33 consume). Slice/tests keep the in-memory store;
@@ -1211,9 +1229,7 @@ export function wireModuleSeams(
   // TASK-002 — MedicationOrderProvider + RefillInboxProvider bind the Drizzle store on a db boot
   // (D14 allowlist sig projection; the cost-basis + comfort-kit rollups REFUSE with
   // M12_SEAM_SCHEMA_GAP — no cost column / not M12's table — never a fabricated $0 or "no kit").
-  registerDoseSpotSeams(
-    deps.db ? { store: createDrizzleDoseSpotSeamStore(deps.db) } : {},
-  );
+  registerDoseSpotSeams(deps.db ? { store: createDrizzleDoseSpotSeamStore(deps.db) } : {});
   // M13 — the two §2.12 D16 owned READ seams (MedicationAdministrationProvider — the administration read path M14
   // (IDG "administrations since last meeting") / M28 (FHIR) / M30 (PRN-effectiveness / missed-dose /
   // comfort-kit-timeliness measures) / M31 (portal summary) / M33 (dashboards) / M37 (IPU IV-pump overlay)
@@ -1221,9 +1237,7 @@ export function wireModuleSeams(
   // keep the in-memory store; the Drizzle-backed store lands with M13's routes/repos (M13-T08+).
   // TASK-002 — MedicationAdministrationProvider + ReconciliationProvider bind the full Drizzle
   // store on a db boot (12/12 methods; §3.6 free-text denylist keys scrubbed from `data`).
-  registerEmarSeams(
-    deps.db ? { store: createDrizzleEmarSeamStore(deps.db) } : {},
-  );
+  registerEmarSeams(deps.db ? { store: createDrizzleEmarSeamStore(deps.db) } : {});
   // M14 — the three §4.8 owned READ seams (IdgPacketProvider — the packet-snapshot + M22 render handshake M22
   // (minutes / packet PDF) + M33 consume — + IdgDecisionProvider — the decision read path M30
   // (decision-to-careplan-update latency) + M33 consume — + IdgScheduleProvider — the meeting-schedule +
@@ -1232,9 +1246,7 @@ export function wireModuleSeams(
   // TASK-002 — the three IDG providers bind the full Drizzle store on a db boot.
   // `decisionsForCarePlan` reads the migration-0155 `idg_decision.care_plan_id` link (populated at
   // record time via M7's CarePlanReader; a NULL link honestly never matches — task-11 closed the gap).
-  registerIdgSeams(
-    deps.db ? { store: createDrizzleIdgSeamStore(deps.db) } : {},
-  );
+  registerIdgSeams(deps.db ? { store: createDrizzleIdgSeamStore(deps.db) } : {});
   // M15 — the seven §4.3 owned READ seams. Two of them are the LOCKED contracts M17 shipped first and has been
   // consuming as fail-closed deny-stubs since Wave F (M17-F06/ADR-0009): registering `VolunteerComplianceProvider`
   // CLOSES the D8 pre-schedule gate predicate 6 (a `volunteer_visit` now resolves the REAL 42 CFR §418.78 gate
@@ -1275,9 +1287,7 @@ export function wireModuleSeams(
   // TASK-002 — the seven M16 bereavement seams bind the Drizzle store on a db boot (all 15 port
   // methods incl. the ONE write: the append to the immutable risk-score ledger; contact channel
   // ciphers never cross the seam).
-  registerBereavementSeams(
-    deps.db ? { store: createDrizzleBereavementSeamStore(deps.db) } : {},
-  );
+  registerBereavementSeams(deps.db ? { store: createDrizzleBereavementSeamStore(deps.db) } : {});
   // M16-T06 — the four §4.8 ABAC predicates M16 OWNS (bereavement_window / discipline_can_provide_bereavement
   // / org_scope_bereavement_oversight / portal_self_service) into M3's named-predicate registry. §4.8 calls
   // the last two "reused / M3 §4.2 family", but nothing on the platform registers either name, and an
@@ -1294,14 +1304,9 @@ export function wireModuleSeams(
       : denyStubBereavementAbacResolver,
     // §4.8's volunteer clause resolves through M15's published `VolunteerComplianceProvider` — the ONE
     // 42 CFR §418.78 gate implementation on the platform. Resolved lazily per call, fail-CLOSED on throw.
-    volunteerGatesSatisfied: async ({
-      organizationId,
-      volunteerMembershipId,
-    }) => {
+    volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
       try {
-        const status = await getSeam(
-          "VolunteerComplianceProvider",
-        ).effectiveStatusFor(
+        const status = await getSeam("VolunteerComplianceProvider").effectiveStatusFor(
           organizationId as never,
           volunteerMembershipId as never,
         );
@@ -1325,9 +1330,7 @@ export function wireModuleSeams(
   // route and an M11 cascade (D4 routing freeze + per-kind validation + the §4.5.2 emit). It is wired below,
   // where the Drizzle services are constructed; unbound, the create method raises rather than writing a
   // routing-less row.
-  registerSuppliesSeams(
-    deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db) } : {},
-  );
+  registerSuppliesSeams(deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db) } : {});
   // M19 — the five §4.3 owned READ seams: `OnCallProvider` (who is on call NOW for a ProviderEntity + the
   // active shifts M36's `on_call` channel synchronizer re-syncs membership from, §4.5 — the same read M20's
   // after-hours SOS parallel recipient resolves through, M20 §7.5 D14), `TriageCallReader` (M32's PHI-free
@@ -1343,8 +1346,7 @@ export function wireModuleSeams(
   // seam is a REAL answer meaning "nobody is covering" — the fact M36's escalation routing and the §4.8
   // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
   // answer", which is the truth.
-  if (deps.db)
-    registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
+  if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
   // M20-T05 — the SEVEN §4.3 seams M20 publishes: `SafetyDashboardProvider` (the supervisor
   // live-awareness board, also embedded by M17's visit-day view), `SafetyContextReader` (M8's "was there
   // an incident during the visit I am documenting?"), `SafetyIncidentReader` (M32's §8.6
@@ -1448,10 +1450,7 @@ export function wireModuleSeams(
   // a DB client is present; without one the deny-stub resolver stands.
   if (deps.db) {
     const portalStore = buildDrizzlePortalStore(deps.db);
-    registerM31PublishedSeams(
-      { registerSeam },
-      createM31PublishedSeamImpls(portalStore),
-    );
+    registerM31PublishedSeams({ registerSeam }, createM31PublishedSeamImpls(portalStore));
     registerPortalAbacPredicates({
       resolver: buildPortalAbacResolverFromStore(portalStore),
     });
@@ -1490,9 +1489,7 @@ export function wireModuleSeams(
   // TASK-002 — the six M18 EVV seams bind the Drizzle store on a db boot (real classified
   // compliance breakdowns — the route service's UI-003 hardcode was NOT copied; coordinate-bearing
   // reads keep the route surface's zeroed-coords D10 posture pending the decrypt pipeline).
-  registerEvvSeams(
-    deps.db ? { store: createDrizzleEvvSeamStore(deps.db) } : {},
-  );
+  registerEvvSeams(deps.db ? { store: createDrizzleEvvSeamStore(deps.db) } : {});
   // M22 — the two §4.3 published seams: `DocumentRenderer` (the §7.2 W2 render-from-typed-payload handshake
   // M5/M6/M8/M11/M12/M13/M14/M16/M17/M18/M23/M39 consume to materialize their PDFs) + `DocumentStorageProvider`
   // (the §11 D1 per-tenant object store: presign-download + version-aware destroy). Registering the renderer
@@ -1521,10 +1518,10 @@ export function wireModuleSeams(
       ? {
           store: createDrizzleDocumentSeamStore(deps.db),
           readers: createDrizzleDocumentReaderStore(deps.db),
-          objects: s3Config
-            ? createS3ObjectStore(s3Config)
-            : createRefusingObjectStore(),
+          objects: s3Config ? createS3ObjectStore(s3Config) : createRefusingObjectStore(),
           portalConsent: createSudConsentEvaluatorPortalConsentPort(),
+          // F-225 (#248) — the portal mint's §164.528 `document_access_log` append.
+          portalAccessLog: createDrizzlePortalAccessLog(deps.db),
         }
       : {},
   );
@@ -1629,6 +1626,7 @@ export function wireModuleSeams(
   wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
   wireM29Tenancy(); // F-175 (#248) — allowlist the cron job id so the outbound-dispatch retry sweep may enter withPlatformContext
+  wireM31Tenancy(); // F-222 (#248) — allowlist the cron job id so the post-discharge-grace sweep may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
   wireM6Tenancy();
   wireM7Tenancy();
@@ -1636,6 +1634,7 @@ export function wireModuleSeams(
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
+  wireM39Tenancy(); // F-216 — allowlist the cron job id so the consent expiration/reminder crons may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
@@ -1749,9 +1748,7 @@ export function wireModuleSeams(
   // STORE-GATED (the M28/M19/M20 posture): a db-less boot passes no store and the fail-closed deny-stubs
   // stand, so M28's DiagnosticReport egress / M5+M6 review badges / M33+M34 feed status deny LOUDLY rather
   // than reading a projection minted from an unwired store.
-  registerM29PublishedSeams(
-    deps.db ? { store: createDrizzleM29PublishedSeamStore(deps.db) } : {},
-  );
+  registerM29PublishedSeams(deps.db ? { store: createDrizzleM29PublishedSeamStore(deps.db) } : {});
   // M29-T08 (§4.8) — the six named ABAC predicate resolvers. The resolver binds the M3 effective-permission
   // store + a LAZY M5 CaseloadProvider adapter (resolved via getSeam at call time, so a not-yet-registered
   // M5 provider fails closed via the registry deny-stub, never at boot). The db-less path binds the deny-stub
@@ -1762,8 +1759,7 @@ export function wireModuleSeams(
           db: deps.db,
           permissions: createDbEffectivePermissionStore(deps.db),
           caseload: {
-            isInCaseload: (input) =>
-              getSeam("CaseloadProvider").isInCaseload(input),
+            isInCaseload: (input) => getSeam("CaseloadProvider").isInCaseload(input),
           },
         })
       : denyStubM29AbacResolver,
@@ -1847,10 +1843,7 @@ export function wireModuleSeams(
  * SECURITY DEFINER `audit_writer_insert_platform_event` function (migration 0187), so this write actually
  * succeeds under real RLS instead of throwing on every `withPlatformContext` entry codebase-wide.
  */
-export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
-  tx,
-  event,
-) => {
+export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (tx, event) => {
   await auditPlatformEvent(tx, {
     eventType: "platform.bypass_invoked",
     resourceKind: "tenant",
@@ -1936,9 +1929,7 @@ export function wireModuleErasers(
   // Privileged erase pool: the destruction credential when provisioned, else the tenant pool
   // (whose missing DELETE grants make the erase fail loudly — the honest interim).
   const eraseDb = deps.destructionDb ?? db;
-  registerIdentityErasers(
-    db ? { store: createDrizzleIdentityEraserStore(db) } : {},
-  ); // M2 — `identity`
+  registerIdentityErasers(db ? { store: createDrizzleIdentityEraserStore(db) } : {}); // M2 — `identity`
   registerAuditErasers(
     db
       ? {
@@ -1952,9 +1943,7 @@ export function wireModuleErasers(
         }
       : {},
   ); // M4 — `audit_event`
-  registerTerminologyErasers(
-    eraseDb ? { store: createDrizzleTerminologyEraseStore(eraseDb) } : {},
-  ); // M38
+  registerTerminologyErasers(eraseDb ? { store: createDrizzleTerminologyEraseStore(eraseDb) } : {}); // M38
   // M36 — the D9 sole-tenant-user leg resolves through the audited platform-context membership
   // read when the platform credential is present; without it that ONE leg keeps its typed refusal.
   registerMessagingErasers(
@@ -1975,48 +1964,27 @@ export function wireModuleErasers(
         }
       : {},
   );
-  registerMdmErasers(
-    eraseDb ? { store: createDrizzleMdmEraseStore(eraseDb) } : {},
-  ); // M40 — `mdm_tenant_overlays`
-  registerPatientErasers(
-    eraseDb ? { store: createDrizzlePatientEraseStore(eraseDb) } : {},
-  ); // M5 — `clinical_record`
-  registerConsentErasers(
-    eraseDb ? { store: createDrizzleConsentEraseStore(eraseDb) } : {},
-  ); // M39 — `consent`
-  registerAdmissionErasers(
-    eraseDb ? { store: createDrizzleAdmissionEraseStore(eraseDb) } : {},
-  ); // M6 — `admission_record`
-  registerCarePlanErasers(
-    eraseDb ? { store: createDrizzleCarePlanEraseStore(eraseDb) } : {},
-  ); // M7 — `care_plan_record`
-  registerEncounterErasers(
-    eraseDb ? { store: createDrizzleEncounterEraseStore(eraseDb) } : {},
-  ); // M8 — `encounter_record`
-  registerAssessmentErasers(
-    eraseDb ? { store: createDrizzleAssessmentEraseStore(eraseDb) } : {},
-  ); // M9 — `clinical_assessment`
-  registerHopeErasers(
-    eraseDb ? { store: createDrizzleHopeEraseStore(eraseDb) } : {},
-  ); // M10 — `hope_record` (CMS 10-year block in the orchestrator)
-  registerOrderErasers(
-    eraseDb ? { store: createDrizzleOrderEraseStore(eraseDb) } : {},
-  ); // M11 — `order_record`
+  registerMdmErasers(eraseDb ? { store: createDrizzleMdmEraseStore(eraseDb) } : {}); // M40 — `mdm_tenant_overlays`
+  registerPatientErasers(eraseDb ? { store: createDrizzlePatientEraseStore(eraseDb) } : {}); // M5 — `clinical_record`
+  registerConsentErasers(eraseDb ? { store: createDrizzleConsentEraseStore(eraseDb) } : {}); // M39 — `consent`
+  registerAdmissionErasers(eraseDb ? { store: createDrizzleAdmissionEraseStore(eraseDb) } : {}); // M6 — `admission_record`
+  registerCarePlanErasers(eraseDb ? { store: createDrizzleCarePlanEraseStore(eraseDb) } : {}); // M7 — `care_plan_record`
+  registerEncounterErasers(eraseDb ? { store: createDrizzleEncounterEraseStore(eraseDb) } : {}); // M8 — `encounter_record`
+  registerAssessmentErasers(eraseDb ? { store: createDrizzleAssessmentEraseStore(eraseDb) } : {}); // M9 — `clinical_assessment`
+  registerHopeErasers(eraseDb ? { store: createDrizzleHopeEraseStore(eraseDb) } : {}); // M10 — `hope_record` (CMS 10-year block in the orchestrator)
+  registerOrderErasers(eraseDb ? { store: createDrizzleOrderEraseStore(eraseDb) } : {}); // M11 — `order_record`
   // M12 — `medication_order_record`; the injected M11 cascade removes the med-order-targeted
   // signature/verbal rows at erase time (task-15 — the cross-eraser ownership decision).
   registerDoseSpotErasers(
     eraseDb
       ? {
           store: createDrizzleMedicationOrderEraseStore(eraseDb, {
-            orderSignatureCascade:
-              createMedicationOrderSignatureCascade(eraseDb),
+            orderSignatureCascade: createMedicationOrderSignatureCascade(eraseDb),
           }),
         }
       : {},
   );
-  registerEmarErasers(
-    eraseDb ? { store: createDrizzleEmarEraseStore(eraseDb) } : {},
-  ); // M13 — `emar_record`
+  registerEmarErasers(eraseDb ? { store: createDrizzleEmarEraseStore(eraseDb) } : {}); // M13 — `emar_record`
   // M15-T06 — `discipline_plan_record` (per-PATIENT destruction-cert callback; scrubs the version
   // `state_snapshot` + assessment `data` jsonb FIRST, deletes the discipline subtree, tombstones the plan
   // roots for FK integrity; the workforce-scoped volunteer gate/ledger/hour rows survive, §8.5). The
@@ -2030,27 +1998,19 @@ export function wireModuleErasers(
   // narrative shredded — §7.15 survey reconstruction — and the org-scoped external-source gate override is
   // tenant config that is never touched, §8.5). The Drizzle store binds when a DB client is present;
   // without one the slice's in-memory store stands.
-  registerBereavementErasers(
-    deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {},
-  );
-  registerIdgErasers(
-    eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {},
-  ); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
+  registerBereavementErasers(deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {});
+  registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
   // M22 — `documents`. With the MINIO_* env contract the erase destroys real object versions via
   // the SigV4 adapter (task-15); without it, object destruction refuses via DegradedError BEFORE
   // any row delete (retryable, never orphaned keys).
   {
-    const s3EraseConfig = eraseDb
-      ? s3ObjectStoreConfigFromEnv(process.env)
-      : null;
+    const s3EraseConfig = eraseDb ? s3ObjectStoreConfigFromEnv(process.env) : null;
     registerDocumentErasers(
       eraseDb
         ? {
             store: createDrizzleDocumentEraseStore(
               eraseDb,
-              s3EraseConfig
-                ? { objects: createS3ObjectStore(s3EraseConfig) }
-                : {},
+              s3EraseConfig ? { objects: createS3ObjectStore(s3EraseConfig) } : {},
             ),
           }
         : {},
@@ -2069,15 +2029,9 @@ export function wireModuleErasers(
         }
       : {},
   );
-  registerReportingErasers(
-    eraseDb ? { store: createDrizzleReportingEraseStore(eraseDb) } : {},
-  ); // M33 — `reporting_class` (drilldown audit count-only, destruction-blocked)
-  registerQualityErasers(
-    eraseDb ? { store: createDrizzleQualityEraseStore(eraseDb) } : {},
-  ); // M30 — `quality_class` (compliance/survey evidence count-only, destruction-blocked)
-  registerCostReportErasers(
-    eraseDb ? { store: createDrizzleCostReportEraseStore(eraseDb) } : {},
-  ); // M27 — `cost_report_class` (evidence delete refuses until the M4 elevated destruction-cert binding lands)
+  registerReportingErasers(eraseDb ? { store: createDrizzleReportingEraseStore(eraseDb) } : {}); // M33 — `reporting_class` (drilldown audit count-only, destruction-blocked)
+  registerQualityErasers(eraseDb ? { store: createDrizzleQualityEraseStore(eraseDb) } : {}); // M30 — `quality_class` (compliance/survey evidence count-only, destruction-blocked)
+  registerCostReportErasers(eraseDb ? { store: createDrizzleCostReportEraseStore(eraseDb) } : {}); // M27 — `cost_report_class` (evidence delete refuses until the M4 elevated destruction-cert binding lands)
   registerBillingErasers({
     registerEraser,
     ...(db ? { store: createDrizzleBillingEraseStore(eraseDb ?? db) } : {}),
@@ -2108,9 +2062,7 @@ export function wireModuleErasers(
   // signed `triage_telephonic_contact` encounter back-references it. The org-scoped policy / vendor binding
   // / protocol catalog and the CoP 418.100(c)(2) `on_call_shift` roster evidence are never touched, §3.7).
   // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
-  registerTriageErasers(
-    deps.db ? { store: createDrizzleTriageEraseStore(deps.db) } : {},
-  );
+  registerTriageErasers(deps.db ? { store: createDrizzleTriageEraseStore(deps.db) } : {});
   // M20-T02 — `safety_record` (per-PATIENT destruction-cert callback that DELETES NOTHING: §3.7 files ten
   // of M20's thirteen tables as "structural row retained with redacted markers". It redacts the free text
   // §3.5 says may describe the patient on the incidents and SOS alerts linked to them, redacts `action_taken`
@@ -2119,9 +2071,7 @@ export function wireModuleErasers(
   // subscriptions, the advisory polygons and the clinician's emergency-contact consent are never touched —
   // that is a different data subject's workers-comp evidence.) The Drizzle store binds when a DB client is
   // present; without one the slice's in-memory store stands.
-  registerSafetyErasers(
-    deps.db ? { store: createDrizzleSafetyEraseStore(deps.db) } : {},
-  );
+  registerSafetyErasers(deps.db ? { store: createDrizzleSafetyEraseStore(deps.db) } : {});
   // M32-T02 — `clinical_record_ai_provenance` + `intake_ai_provenance` (per-PATIENT destruction-cert
   // callbacks that DELETE NOTHING: `ai_invocation` is the §164.528 disclosure ledger, so the rows survive
   // with their token counts, model pin, ZDR flag and timestamps — the evidence that a disclosure to a
@@ -2138,9 +2088,7 @@ export function wireModuleErasers(
   // the §164.528 disclosure record — a targeted shred of the cursor-signing key, the credential ciphers,
   // the export/session rows and the inbound payloads, while every accounting row survives. The Drizzle
   // store binds when a DB client is present; without one the in-memory slice store stands.
-  registerFhirGatewayEraser(
-    deps.db ? { store: createDrizzleFhirGatewayEraseStore(deps.db) } : {},
-  );
+  registerFhirGatewayEraser(deps.db ? { store: createDrizzleFhirGatewayEraseStore(deps.db) } : {});
   // M31-T06 — `portal_record` (per-PATIENT destruction-cert callback, §3.7/D15): aborts the patient's active
   // telehealth visits and shreds their vendor-room recording refs, revokes the patient's grants with
   // `revoke_cascade_source='destruction'`, and flips any account the revocation left with no active grant to
@@ -2201,11 +2149,7 @@ function buildFirstAdminAcceptanceService(deps: {
   auditBypass: PlatformBypassAuditor<DbClient>;
 }): SignupIntentRouteService {
   const disabled = (): never => {
-    throw new WardenXError(
-      "SIGNUP_DISABLED",
-      "self-serve signup is not enabled",
-      503,
-    );
+    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
   };
   return {
     async createIntent() {
@@ -2232,16 +2176,9 @@ function buildFirstAdminAcceptanceService(deps: {
             .limit(1)
             .for("update");
           if (!invitation) {
-            throw new WardenXError(
-              "INVITATION_INVALID",
-              "invitation is invalid",
-              404,
-            );
+            throw new WardenXError("INVITATION_INVALID", "invitation is invalid", 404);
           }
-          if (
-            invitation.status !== "pending" ||
-            invitation.expiresAt <= new Date()
-          ) {
+          if (invitation.status !== "pending" || invitation.expiresAt <= new Date()) {
             throw new WardenXError(
               "INVITATION_INVALID",
               "invitation is expired or already used",
@@ -2275,10 +2212,7 @@ function buildFirstAdminAcceptanceService(deps: {
                 .where(
                   and(
                     eq(schema.memberships.userId, user.id),
-                    eq(
-                      schema.memberships.organizationId,
-                      invitation.organizationId,
-                    ),
+                    eq(schema.memberships.organizationId, invitation.organizationId),
                     ne(schema.memberships.status, "revoked"),
                   ),
                 )
@@ -2300,21 +2234,14 @@ function buildFirstAdminAcceptanceService(deps: {
                   .where(eq(schema.memberships.id, membership.id))
                   .returning();
               }
-              if (!membership)
-                throw new Error("first-admin membership creation failed");
+              if (!membership) throw new Error("first-admin membership creation failed");
 
               const [orgAdmin] = await tx
                 .select()
                 .from(schema.roles)
-                .where(
-                  and(
-                    isNull(schema.roles.organizationId),
-                    eq(schema.roles.key, "org_admin"),
-                  ),
-                )
+                .where(and(isNull(schema.roles.organizationId), eq(schema.roles.key, "org_admin")))
                 .limit(1);
-              if (!orgAdmin)
-                throw new Error("org_admin role template is unavailable");
+              if (!orgAdmin) throw new Error("org_admin role template is unavailable");
               await tx
                 .insert(schema.membershipRoles)
                 .values({
@@ -2324,10 +2251,7 @@ function buildFirstAdminAcceptanceService(deps: {
                   grantedBy: user.id,
                 })
                 .onConflictDoNothing({
-                  target: [
-                    schema.membershipRoles.membershipId,
-                    schema.membershipRoles.roleId,
-                  ],
+                  target: [schema.membershipRoles.membershipId, schema.membershipRoles.roleId],
                 });
               return user.id;
             },
@@ -2348,11 +2272,7 @@ function buildFirstAdminAcceptanceService(deps: {
             )
             .returning({ id: schema.tenantInvitation.id });
           if (consumed.length !== 1) {
-            throw new WardenXError(
-              "INVITATION_INVALID",
-              "invitation was already used",
-              409,
-            );
+            throw new WardenXError("INVITATION_INVALID", "invitation was already used", 409);
           }
         },
       );
@@ -2436,17 +2356,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     const bypassing = await dbHandle.db.execute(
       sql`SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user`,
     );
-    const row = (
-      bypassing as unknown as { rows?: Array<{ rolbypassrls?: boolean }> }
-    ).rows?.[0];
+    const row = (bypassing as unknown as { rows?: Array<{ rolbypassrls?: boolean }> }).rows?.[0];
     if (row?.rolbypassrls === true) {
       const message =
         "the database role this process connects as (current_user) has BYPASSRLS: " +
         "row-level security is NOT enforced for any query, on any table.";
       if (process.env.NODE_ENV === "production") {
-        throw new Error(
-          `Refusing to boot — ${message} Revoke it (ALTER ROLE … NOBYPASSRLS).`,
-        );
+        throw new Error(`Refusing to boot — ${message} Revoke it (ALTER ROLE … NOBYPASSRLS).`);
       }
       console.warn(`⚠️  ${message} (permitted outside production)`);
     }
@@ -2459,17 +2375,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     process.env.REDIS_URL,
   );
   const m23LaunchConfig = m23LaunchGatewayConfigFromEnv(process.env);
-  const m23LaunchGateway = m23LaunchConfig
-    ? createM23LaunchGateway(m23LaunchConfig)
-    : null;
+  const m23LaunchGateway = m23LaunchConfig ? createM23LaunchGateway(m23LaunchConfig) : null;
   // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
   // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
   // default). No sidecar is deployed anywhere yet, so this stays undefined in every environment today.
   const m25X12Port = m25X12WorkerPortFromEnv(process.env);
   const m23SubmissionQueues =
-    queueConnection && m23LaunchGateway
-      ? buildM23SubmissionQueuePort(queueConnection)
-      : null;
+    queueConnection && m23LaunchGateway ? buildM23SubmissionQueuePort(queueConnection) : null;
   // F-153 (#248) — the `revalidate.consumer` producer, unlike submission, needs no MAC/X12 launch
   // gateway — only the Valkey connection the worker itself already requires to run. Built unconditionally
   // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
@@ -2478,14 +2390,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
   // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
   const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(process.env);
-  const m24OregonGateway = m24LaunchConfig
-    ? createM24OregonGateway(m24LaunchConfig)
-    : null;
+  const m24OregonGateway = m24LaunchConfig ? createM24OregonGateway(m24LaunchConfig) : null;
   const m24AdapterRegistry = new MedicaidAdapterRegistry([], m24OregonGateway);
   const m24SubmissionQueues =
-    queueConnection && m24OregonGateway
-      ? buildM24SubmissionQueuePort(queueConnection)
-      : null;
+    queueConnection && m24OregonGateway ? buildM24SubmissionQueuePort(queueConnection) : null;
   // F-165 (#248, m24 group) — the `medicaid-revalidate` producer, mirroring M23's `revalidate.consumer` port
   // above: needs no Oregon launch gateway, only the Valkey connection. Built unconditionally
   // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
@@ -2494,9 +2402,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // section) because the ROUTE needs it and the route mount runs first; the nightly repeatable + the
   // Worker that drains this same queue are registered further below. Absent REDIS_URL → the trigger route
   // 503s and the nightly run simply does not exist on this deployment — both honest, neither silent.
-  const m29NppesSync = queueConnection
-    ? buildNppesManualSyncTrigger(queueConnection)
-    : null;
+  const m29NppesSync = queueConnection ? buildNppesManualSyncTrigger(queueConnection) : null;
   const m34ProvisionConfig = m34ProvisionGatewayConfigFromEnv(process.env);
   const m34ProvisionGateway = m34ProvisionConfig
     ? createM34ProvisionGateway(m34ProvisionConfig)
@@ -2515,10 +2421,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     ? createPlatformKekAdapter(m34PlatformKekRing)
     : m34ProvisionGateway?.keyMaterial;
   const m34ProvisionQueue =
-    queueConnection &&
-    platformDbHandle &&
-    m34ProvisionGateway &&
-    m34TenantStorage
+    queueConnection && platformDbHandle && m34ProvisionGateway && m34TenantStorage
       ? buildM34ProvisionQueue(queueConnection)
       : null;
   if (m34ProvisionQueue) {
@@ -2622,8 +2525,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // TASK-040C (OPS-005/006) — shared by BOTH the readiness probe (below) and the metrics registry's
   // `wardenx_outbox_pending_depth` gauge, so the "no dispatcher running yet/at all → 0" fallback is
   // defined exactly once instead of duplicated at each call site.
-  const outboxPendingDepth = () =>
-    outboxDispatcherRef?.pendingDepth() ?? Promise.resolve(0);
+  const outboxPendingDepth = () => outboxDispatcherRef?.pendingDepth() ?? Promise.resolve(0);
   // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
   // M30/M33/M34 contributions) and build the catalog-validating tx publisher. The publisher is threaded
   // into the M30 + M33 write services below so their §4.10 `m30.*`/`m33.*` emits persist into
@@ -2781,10 +2683,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           bedId: string;
         } | null>;
       };
-      return reader.activeBedAssignmentForLevelOfCarePeriod(
-        organizationId,
-        levelOfCarePeriodId,
-      );
+      return reader.activeBedAssignmentForLevelOfCarePeriod(organizationId, levelOfCarePeriodId);
     },
   };
   const m7OutboxPublisher = bindCallerModule(txOutboxPublisher, "m7");
@@ -2835,7 +2734,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       process.env.M11_RECOVERY_ESCALATION_THRESHOLD,
       RECOVERY_ESCALATION_THRESHOLD,
     ),
-    orgRateThreshold: parseRecoveryBound(process.env.M11_RECOVERY_ORG_RATE_THRESHOLD, RECOVERY_ORG_RATE_THRESHOLD),
+    orgRateThreshold: parseRecoveryBound(
+      process.env.M11_RECOVERY_ORG_RATE_THRESHOLD,
+      RECOVERY_ORG_RATE_THRESHOLD,
+    ),
     // F-205 — refuse to file a recovery nobody else can co-sign. M11 does not own the membership/role tables, so the
     // count is answered here, in the composition root, under the caller's org context (RLS-scoped).
     countEligibleCosigners: dbHandle
@@ -2888,10 +2790,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // scans) rather than inside the M24 module itself.
   const m24CcnReader = dbHandle
     ? {
-        async ccnForProviderEntity(
-          organizationId: string,
-          providerEntityId: string,
-        ) {
+        async ccnForProviderEntity(organizationId: string, providerEntityId: string) {
           const rows = await dbHandle.db
             .select({ ccn: schema.providerEntities.ccn })
             .from(schema.providerEntities)
@@ -2964,11 +2863,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent) so
   // registration order at boot never matters.
   const m24ResidenceReader = {
-    async residenceAt(
-      organizationId: string,
-      patientId: string,
-      asOfDate: string,
-    ) {
+    async residenceAt(organizationId: string, patientId: string, asOfDate: string) {
       const reader = getSeam("PatientAddressReader") as {
         residenceAt(
           organizationId: string,
@@ -2987,12 +2882,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // M8 at boot), narrowed to the encounter-window shape claim assembly needs. Resolved lazily per call
   // (the M24 coverage-resolver precedent) so registration order at boot never matters.
   const m24SignedEncounters = {
-    async encountersInWindow(
-      organizationId: string,
-      patientId: string,
-      from: string,
-      to: string,
-    ) {
+    async encountersInWindow(organizationId: string, patientId: string, from: string, to: string) {
       const reader = getSeam("SignedEncountersReader") as {
         signedEncountersForPatientSince(
           organizationId: string,
@@ -3036,16 +2926,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const webAppBaseUrl =
     process.env.WEB_APP_URL ??
     process.env.BETTER_AUTH_URL ??
-    (process.env.NODE_ENV === "production"
-      ? undefined
-      : "http://localhost:5173");
+    (process.env.NODE_ENV === "production" ? undefined : "http://localhost:5173");
   const auth = dbHandle
-    ? createIdentityAuth(
-        dbHandle.db as Parameters<typeof createIdentityAuth>[0],
-        {
-          emailTransport,
-        },
-      )
+    ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
+        emailTransport,
+      })
     : undefined;
   const authenticate = auth
     ? createSessionAuthenticate({
@@ -3069,9 +2954,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // every other boot.
   const rateLimitTiers = process.env.RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE
     ? {
-        unauthenticatedPerMinute: Number(
-          process.env.RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE,
-        ),
+        unauthenticatedPerMinute: Number(process.env.RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE),
         authenticatedPerMinute: process.env.RATE_LIMIT_AUTHENTICATED_PER_MINUTE
           ? Number(process.env.RATE_LIMIT_AUTHENTICATED_PER_MINUTE)
           : DEFAULT_RATE_LIMIT_TIERS.authenticatedPerMinute,
@@ -3143,13 +3026,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }
         : {}),
       outboxPendingDepth,
-      outboxDepthThreshold: Number(
-        process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500,
-      ),
+      outboxDepthThreshold: Number(process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500),
       capabilities: {
-        m22DocumentUpload: s3ObjectStoreConfigFromEnv(process.env)
-          ? "ready"
-          : "disabled",
+        m22DocumentUpload: s3ObjectStoreConfigFromEnv(process.env) ? "ready" : "disabled",
         m23AsyncWorkers: m23SubmissionQueues ? "ready" : "disabled",
         m24AsyncWorkers: m24SubmissionQueues ? "ready" : "disabled",
         m34AsyncWorkers: m34ProvisionQueue ? "ready" : "disabled",
@@ -3160,9 +3039,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // on another replica re-ran the mutation, which for the M23/M26/M30 write surfaces that REQUIRE
     // the header means a duplicated claim submission or settlement. Absent a DB the in-memory default
     // still applies (slice/tests), which is correct: there is nowhere durable to put it.
-    ...(dbHandle
-      ? { idempotencyStore: createDbIdempotencyStore(dbHandle.db) }
-      : {}),
+    ...(dbHandle ? { idempotencyStore: createDbIdempotencyStore(dbHandle.db) } : {}),
     // Mount module REST routes when a DB client is present (progressive backend wiring). M3 first:
     // the role catalog runs on the real Drizzle RoleStore; other module routes append here as their
     // stores land. The slice/tests boot without this (foundation routes only).
@@ -3305,10 +3182,40 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             m11RecoveryControls,
           );
           // F-201 (#248) — the held-order worklist: lab orders waiting on a human's verification with the lab.
-          registerHeldTransmissionRoutes(app, { recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher) });
+          registerHeldTransmissionRoutes(app, {
+            recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher),
+          });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
-          mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
+          mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher, {
+            // M14 read enrichment — org-explicit BATCHED seams bound as locally-declared ports (M14 imports no M5/M6 code):
+            // M5 "First L." + MRN last-4 for the agenda/packet/decision/action-item reads, and M6's per-patient recert/F2F
+            // window (M6's own window math) for GET /idg/meetings/:id/recert-windows.
+            patientDisplay: {
+              displayForPatients: (organizationId, patientIds) =>
+                patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+            },
+            recertWindows: {
+              recertWindowsForPatients: (organizationId, patientIds) =>
+                idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds),
+            },
+            // M2's identity-owned batched staff display read (name only) — the minutes "Finalized by".
+            membershipDisplay: {
+              displayForMemberships: (organizationId, membershipIds) =>
+                membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
+            },
+            // M1's org-explicit site display read (organization + location NAMES only) — the minutes PDF header.
+            siteDisplay: {
+              displayForSite: (organizationId, locationIds) =>
+                siteDisplayForOrg(dbHandle.db, organizationId, locationIds),
+            },
+            // M3's authorization-owned batched role-key read (keys only) — the authoritative basis M14 validates an
+            // attendance row's discipline against when a coordinator records SOMEONE ELSE (attendance trust, 0286).
+            membershipRoles: {
+              roleKeysForMemberships: (organizationId, membershipIds) =>
+                membershipRoleKeysForOrg(dbHandle.db, organizationId, membershipIds),
+            },
+          }); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
           mountDocumentRoutes(app, dbHandle.db, featureFlagReader); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake); the reader is the `documents.doclens` DocLens gate (F-091)
@@ -3361,10 +3268,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                   windowMs: 3_600_000,
                   keyPrefix: "m34:signup:ip",
                   onStoreError: (err) =>
-                    app.log.warn(
-                      { err },
-                      "signup rate-limit store unavailable — failing open",
-                    ),
+                    app.log.warn({ err }, "signup rate-limit store unavailable — failing open"),
                 },
               ),
               ...(platformDbHandle
@@ -3464,8 +3368,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // applied its graceful deny-stub / M2 has registered the real reader), so the platform-ops admin
               // lists label cross-tenant rows with an org display name instead of a raw UUID.
               organizationReader: {
-                readByIds: (ids) =>
-                  getSeam("OrganizationReader").readByIds(ids),
+                readByIds: (ids) => getSeam("OrganizationReader").readByIds(ids),
               },
               // Platform-ops cross-tenant runner: each call is ONE allowlisted ("m35-subscription-admin"),
               // audited (`platform.bypass_invoked` via the shared M34 auditor) `withPlatformContext` tx against
@@ -3504,6 +3407,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // F-070 — the §2.2 discharge gate's M6 admission-state read (same thunk reason). Without
               // it the "the M6 discharge has happened" precondition was a boolean the client sent.
               admissions: getIpuAdmissionStatusReader,
+              // F-219 — the intake worklist's M19 GIP-proposal entries: a SEAM PULL through M19's
+              // org-explicit published read (M37 has no `dependsOn` edge to M19, so the port is injected
+              // here). No outbox consumer and no M37 table — see `m19.triage_call.gip_admission_proposed`.
+              gipProposals: {
+                proposalsForOrg: (organizationId) =>
+                  gipProposalsForOrg(dbHandle.db, organizationId),
+              },
             }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
@@ -3534,28 +3444,28 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 .where(
                   and(
                     eq(schema.providerEntities.id, providerEntityId),
-                    eq(
-                      schema.providerEntities.organizationId,
-                      organizationId,
-                    ),
+                    eq(schema.providerEntities.organizationId, organizationId),
                   ),
                 )
                 .limit(1);
-              if (!provider)
-                throw new DegradedError(
-                  "provider-entity",
-                  "provider CCN unavailable",
-                );
+              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
               return provider.ccn;
             },
           };
           mountM23Routes(app, {
+            // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
+            // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
+            // the boot assembly reads it over `dbHandle.db` directly — no injected port).
+            rateTableService: buildDrizzleRateTableService(dbHandle.db),
+            // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
+            wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
+            // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
+            // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
+            sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
-              jobs: buildM23OutboxBackedSubmissionGate(
-                m23SubmissionQueues !== null,
-              ),
+              jobs: buildM23OutboxBackedSubmissionGate(m23SubmissionQueues !== null),
               providerCcn: m23ProviderCcn,
             }),
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
@@ -3567,10 +3477,21 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 forRange: (orgId, patientId, range) =>
                   claimAssemblyRangeContextForOrg(dbHandle.db, orgId, patientId, range),
               },
+              // F-209 (#251) — M7's org-explicit, patient-keyed claim-diagnosis read.
+              m7ClaimDiagnoses: {
+                forRange: (orgId, patientId, range) =>
+                  claimDiagnosesForOrg(dbHandle.db, orgId, patientId, range),
+              },
               // F-122 (#251) — M8's two new range-shaped seam functions, same org-explicit binding.
               m8BillableEncounters: {
                 inRange: (orgId, providerEntityId, patientId, range) =>
-                  billableEncountersInRangeForOrg(dbHandle.db, orgId, providerEntityId, patientId, range),
+                  billableEncountersInRangeForOrg(
+                    dbHandle.db,
+                    orgId,
+                    providerEntityId,
+                    patientId,
+                    range,
+                  ),
               },
               m8SignedEncounters: {
                 inRange: (orgId, patientId, range) =>
@@ -3584,6 +3505,23 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m18Compliance: {
                 forVisits: (orgId, visitIds) =>
                   complianceStatesForVisitsForOrg(dbHandle.db, orgId, visitIds),
+              },
+              // F-213 (#252) - mdm placeOfService: M5's effective-dated address history (the registered
+              // PatientAddressReader seam, resolved lazily per call so boot registration order never
+              // matters) + M40's merge-resolved facility.kind. M23 imports neither module.
+              placeOfService: {
+                residence: {
+                  residencesBetween: (orgId, patientId, from, to) =>
+                    (getSeam("PatientAddressReader") as PatientAddressReader).residencesBetween(
+                      orgId,
+                      patientId,
+                      from,
+                      to,
+                    ),
+                },
+                facilityKinds: {
+                  kindsFor: (facilityIds) => facilityKindsForIds(dbHandle.db, facilityIds),
+                },
               },
             }),
           });
@@ -3610,17 +3548,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           };
           const m25Terminology: TerminologyLookupPort = {
             async lookup(carcCode) {
-              const concept = await terminologyProvider.lookup(
-                "carc",
-                carcCode,
-              );
+              const concept = await terminologyProvider.lookup("carc", carcCode);
               if (!concept) return null;
               const props = concept.properties;
               return {
-                category:
-                  typeof props?.category === "string"
-                    ? props.category
-                    : "unmapped",
+                category: typeof props?.category === "string" ? props.category : "unmapped",
                 plainLanguage: concept.display,
               };
             },
@@ -3645,24 +3577,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             },
           });
           mountM25Routes(app, {
-            readService: buildDrizzleM25ReadService(
-              dbHandle.db,
-              m25Terminology,
-            ),
-            writeService: buildDrizzleM25WriteService(
-              dbHandle.db,
-              m25OutboxPublisher,
-            ),
+            readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
+            writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher),
             ingestService: m25IngestService,
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           mountM26Routes(app, {
             readService: buildDrizzleM26ReadService(dbHandle.db),
-            writeService: buildDrizzleM26WriteService(
-              dbHandle.db,
-              m26OutboxPublisher,
-            ),
+            writeService: buildDrizzleM26WriteService(dbHandle.db, m26OutboxPublisher),
           });
           // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
@@ -3711,13 +3634,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
           mountM16Routes(app, {
             readService: m16ReadService,
-            writeService: buildDrizzleM16WriteService(
-              dbHandle.db,
-              m16ReadService,
-              {
-                outbox: m16OutboxPublisher,
-              },
-            ),
+            writeService: buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
+              outbox: m16OutboxPublisher,
+            }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
@@ -3736,62 +3655,40 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           //     or throwing seam: sending a hospital bed to a vendor whose contract lapsed is a bill the
           //     agency cannot collect and a delivery the patient may never get.
           const m21ReadService = buildDrizzleM21ReadService(dbHandle.db);
-          const m21AbacResolver = buildDrizzleSuppliesAbacResolver(
-            dbHandle.db,
-            {
-              roleGrants: createDbEffectivePermissionStore(dbHandle.db),
-            },
-          );
-          const m21WriteService = buildDrizzleM21WriteService(
-            dbHandle.db,
-            m21ReadService,
-            {
-              outbox: m21OutboxPublisher,
-              dispatcherEligible: async ({
-                organizationId,
-                membershipId,
-                locationId,
-              }) => {
-                const roleKeys = await m21AbacResolver.roleKeysOf(
+          const m21AbacResolver = buildDrizzleSuppliesAbacResolver(dbHandle.db, {
+            roleGrants: createDbEffectivePermissionStore(dbHandle.db),
+          });
+          const m21WriteService = buildDrizzleM21WriteService(dbHandle.db, m21ReadService, {
+            outbox: m21OutboxPublisher,
+            dispatcherEligible: async ({ organizationId, membershipId, locationId }) => {
+              const roleKeys = await m21AbacResolver.roleKeysOf(organizationId, membershipId);
+              const locationIds = await m21AbacResolver.locationIdsOf(organizationId, membershipId);
+              return decideDispatcherEligible(
+                {
                   organizationId,
-                  membershipId,
-                );
-                const locationIds = await m21AbacResolver.locationIdsOf(
-                  organizationId,
-                  membershipId,
-                );
-                return decideDispatcherEligible(
-                  {
-                    organizationId,
-                    targetId: "",
-                    locationId,
-                    involvesControlledSubstance: true,
-                  },
-                  { organizationId, membershipId, roleKeys, locationIds },
-                );
-              },
-              vendorActive: async ({ organizationId, vendorId }) => {
-                try {
-                  const provider = getSeam("MdmEntityProvider") as {
-                    isActiveEntity?: (
-                      orgId: string,
-                      kind: string,
-                      entityId: string,
-                    ) => Promise<boolean>;
-                  };
-                  if (typeof provider.isActiveEntity !== "function")
-                    return false;
-                  return await provider.isActiveEntity(
-                    organizationId,
-                    "dme_vendor",
-                    vendorId,
-                  );
-                } catch {
-                  return false;
-                }
-              },
+                  targetId: "",
+                  locationId,
+                  involvesControlledSubstance: true,
+                },
+                { organizationId, membershipId, roleKeys, locationIds },
+              );
             },
-          );
+            vendorActive: async ({ organizationId, vendorId }) => {
+              try {
+                const provider = getSeam("MdmEntityProvider") as {
+                  isActiveEntity?: (
+                    orgId: string,
+                    kind: string,
+                    entityId: string,
+                  ) => Promise<boolean>;
+                };
+                if (typeof provider.isActiveEntity !== "function") return false;
+                return await provider.isActiveEntity(organizationId, "dme_vendor", vendorId);
+              } catch {
+                return false;
+              }
+            },
+          });
           mountM21Routes(app, {
             readService: m21ReadService,
             writeService: m21WriteService,
@@ -3861,13 +3758,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           const m20ReadService = buildDrizzleM20ReadService(dbHandle.db);
           mountM20Routes(app, {
             readService: m20ReadService,
-            writeService: buildDrizzleM20WriteService(
-              dbHandle.db,
-              m20ReadService,
-              {
-                outbox: m20OutboxPublisher,
-              },
-            ),
+            writeService: buildDrizzleM20WriteService(dbHandle.db, m20ReadService, {
+              outbox: m20OutboxPublisher,
+            }),
           });
           // M31 (Patient/Family Portal & Telehealth) — mount the forty-seven §4.1 routes over the Drizzle
           // store (the three owned tables) + the injected video adapter. The telehealth adapter is left
@@ -3882,6 +3775,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountM31Routes(app, {
             store: buildDrizzlePortalStore(dbHandle.db),
             reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
+            // F-220 (#248) — the lazy telehealth room mint: M17's org-explicit published visit read + the
+            // per-tenant DEK envelope for the two vendor-room columns. The vendor adapter stays UNBOUND above,
+            // so a lazy mint fails closed (503) until a per-tenant vendor key vault exists.
+            visitReader: {
+              visitForOrg: (organizationId, visitId) =>
+                getSeam("VisitReader").visitForEncounter(organizationId, visitId),
+            },
+            roomCipher: createPortalRoomCipher(getTenantKeyProvider()),
           });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet
@@ -3940,8 +3841,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // make the wave's most consequential consent gate a no-op indistinguishable from a
               // working one (governance/service.ts's header).
               evidence: createDenyingAiOptInEvidenceResolver(),
-              evaluations:
-                createDrizzleAiEvaluationRunStore(m32SafetyStoreDeps),
+              evaluations: createDrizzleAiEvaluationRunStore(m32SafetyStoreDeps),
             },
             safety: {
               killSwitches: createDrizzleAiKillSwitchStore(m32SafetyStoreDeps),
@@ -3949,8 +3849,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 db: dbHandle.db,
                 userId: "",
               }),
-              evaluations:
-                createDrizzleAiEvaluationRunStore(m32SafetyStoreDeps),
+              evaluations: createDrizzleAiEvaluationRunStore(m32SafetyStoreDeps),
               registry: m32Registry,
             },
             prompts: {
@@ -4019,10 +3918,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     registerModuleSeams: () =>
       wireModuleSeams({
         sessionContextStore: dbHandle
-          ? createDbSessionContextStore(
-              dbHandle.db,
-              createDbActorEnrichmentReader(dbHandle.db),
-            )
+          ? createDbSessionContextStore(dbHandle.db, createDbActorEnrichmentReader(dbHandle.db))
           : undefined,
         db: dbHandle?.db,
         organizationDb: platformDbHandle?.db,
@@ -4040,9 +3936,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   });
   if (m23SubmissionQueues) {
     app.addHook("onClose", async () => {
-      await Promise.all(
-        m23SubmissionQueues.queues.map((queue) => queue.close()),
-      );
+      await Promise.all(m23SubmissionQueues.queues.map((queue) => queue.close()));
     });
   }
   app.addHook("onClose", async () => {
@@ -4050,9 +3944,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   });
   if (m24SubmissionQueues) {
     app.addHook("onClose", async () => {
-      await Promise.all(
-        m24SubmissionQueues.queues.map((queue) => queue.close()),
-      );
+      await Promise.all(m24SubmissionQueues.queues.map((queue) => queue.close()));
     });
   }
   if (m24RevalidateEnqueue.queue) {
@@ -4061,13 +3953,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       await m24RevalidateQueue.close();
     });
   }
-  if (m34ProvisionQueue)
-    app.addHook("onClose", () => m34ProvisionQueue.close());
+  if (m34ProvisionQueue) app.addHook("onClose", () => m34ProvisionQueue.close());
   // TASK-040B — close the readiness-probe's dedicated Redis connection on shutdown (the per-queue
   // BullMQ connections below close via their own onClose hooks; this one is health-check-only).
   if (redisHealthClient) app.addHook("onClose", () => redisHealthClient.quit());
-  if (rateLimitRedisClient)
-    app.addHook("onClose", () => rateLimitRedisClient.quit());
+  if (rateLimitRedisClient) app.addHook("onClose", () => rateLimitRedisClient.quit());
   // TASK-040C (OPS-005/006) — Prometheus metrics. HTTP + outbox counters/gauges register for EVERY
   // role (they're cheap and role-agnostic — an API-only replica's `wardenx_outbox_pending_depth`
   // correctly reads 0 since no dispatcher runs there); the BullMQ per-queue gauge only registers where
@@ -4114,10 +4004,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           : createInMemoryFailedLoginStore(),
         {
           onStoreError: (err) =>
-            app.log.warn(
-              { err },
-              "credential-throttle store unavailable — failing open",
-            ),
+            app.log.warn({ err }, "credential-throttle store unavailable — failing open"),
         },
       ),
     }); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
@@ -4125,8 +4012,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   }
   // Close the separate M35 platform-ops credential pool on shutdown (when configured).
   if (platformDbHandle) app.addHook("onClose", () => platformDbHandle.close());
-  if (destructionDbHandle)
-    app.addHook("onClose", () => destructionDbHandle.close());
+  if (destructionDbHandle) app.addHook("onClose", () => destructionDbHandle.close());
 
   // M37 D16 — the AI-prohibited-zone boot validator (§8.6). With a db, M32's real AIPromptRegistry is
   // registered (bootSeams ran inside buildServer), so this asks the D18 table-only query whether any active
@@ -4135,9 +4021,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // is belt-and-suspenders with the central AI_PROHIBITED_ZONES table (the R30 registration-time guard).
   if (dbHandle) {
     app.addHook("onReady", async () => {
-      await validateIpuAIBlock(
-        getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort,
-      );
+      await validateIpuAIBlock(getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort);
     });
   }
 
@@ -4196,10 +4080,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         }
       })
       .catch((err) => {
-        app.log.error(
-          err,
-          "M34 alert_rule platform-default seed population failed",
-        );
+        app.log.error(err, "M34 alert_rule platform-default seed population failed");
       });
   }
 
@@ -4218,16 +4099,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // EVERY module's constructed Worker set below (existing modules + TASK-040D's new M7/M9/M10 ones),
     // using BullMQ's own `Worker.name` (the queue name) as the source label — one call site, not one
     // bespoke wiring per module.
-    const attachDlqAlertsToAll = (
-      workers: readonly Worker[],
-      modulePrefix: string,
-    ): void => {
+    const attachDlqAlertsToAll = (workers: readonly Worker[], modulePrefix: string): void => {
       for (const w of workers)
-        attachDlqPromotionAlert(
-          w,
-          `${modulePrefix}:${w.name}`,
-          dlqPromotionSink,
-        );
+        attachDlqPromotionAlert(w, `${modulePrefix}:${w.name}`, dlqPromotionSink);
     };
     const m34Workers: Worker[] = [];
     // GAP-048 — the DSAR-export worker's object-store PUT + M22 DocumentRenderer capability. A fresh
@@ -4236,9 +4110,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // real implementations, reachable here (the composition root) but not from M34's own module folder
     // (module-boundary discipline, ADR-0005 D1).
     const m34DsarS3Config = s3ObjectStoreConfigFromEnv(process.env);
-    const m34DsarObjectStore = m34DsarS3Config
-      ? createS3ObjectStore(m34DsarS3Config)
-      : null;
+    const m34DsarObjectStore = m34DsarS3Config ? createS3ObjectStore(m34DsarS3Config) : null;
     const m34DsarExportDeps = m34DsarObjectStore
       ? {
           objectStore: {
@@ -4255,11 +4127,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           },
           render: {
             render: (args: DsarDocumentUploadRequest) =>
-              getDocumentRenderer().render(
-                { orgId: args.organizationId },
-                "dsar_bundle",
-                args,
-              ),
+              getDocumentRenderer().render({ orgId: args.organizationId }, "dsar_bundle", args),
           },
           outbox: m34OutboxPublisher,
         }
@@ -4340,10 +4208,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               ) {
                 return {
                   ...(await workflow.authorizationFacts(tx, input)),
-                  actorUserId: await m34ActiveMembershipUserId(
-                    tx,
-                    input.actorMembershipId,
-                  ),
+                  actorUserId: await m34ActiveMembershipUserId(tx, input.actorMembershipId),
                 };
               },
             };
@@ -4358,9 +4223,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       const dekRotateWorker = registerM34DekRotateWorker(workerDeps);
       m34Workers.push(provisionWorker);
       m34Workers.push(dekRotateWorker);
-      app.addHook("onClose", () =>
-        Promise.all([provisionWorker.close(), dekRotateWorker.close()]),
-      );
+      app.addHook("onClose", () => Promise.all([provisionWorker.close(), dekRotateWorker.close()]));
       if (destructionDbHandle) {
         const shredWorker = registerM34ShredWorker(workerDeps);
         m34Workers.push(shredWorker);
@@ -4435,10 +4298,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     attachDlqAlertsToAll(m33Workers, "m33");
     app.addHook("onClose", async () => {
       await Promise.all(m33Workers.map((w) => w.close()));
-      await Promise.all([
-        m33LagProbeRedis?.quit(),
-        m33MvRefreshEnqueue.queue?.close(),
-      ]);
+      await Promise.all([m33LagProbeRedis?.quit(), m33MvRefreshEnqueue.queue?.close()]);
     });
     // Register the repeatable cron schedules + their close hook BEFORE app.listen() (the M34
     // FST_ERR_INSTANCE_ALREADY_LISTENING gotcha — await here so the hook is added while pre-listen).
@@ -4450,10 +4310,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M33 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m33Workers.length },
-      "M33 §4.8 BullMQ reporting workers constructed",
-    );
+    app.log.info({ queues: m33Workers.length }, "M33 §4.8 BullMQ reporting workers constructed");
 
     // ── platform.partition_rotate — the time-partition rotation cron (F-033 / #93) ─────────────────────
     //
@@ -4531,40 +4388,26 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // the recompute worker never reaches `hope` until `registrations` + `resolveInput` are bound anyway.
     const m30HopeConsumer: QualityHopeConsumer = {
       timepointCompletionRollup(organizationId, period) {
-        return getSeam("HopeOrgRollupProvider").timepointCompletionRollup(
-          organizationId,
-          period,
-        );
+        return getSeam("HopeOrgRollupProvider").timepointCompletionRollup(organizationId, period);
       },
       submissionPostureRollup(organizationId, period) {
-        return getSeam("HopeOrgRollupProvider").submissionPostureRollup(
-          organizationId,
-          period,
-        );
+        return getSeam("HopeOrgRollupProvider").submissionPostureRollup(organizationId, period);
       },
       sfvTimelinessRollup(organizationId, period) {
-        return getSeam("HopeOrgRollupProvider").sfvTimelinessRollup(
-          organizationId,
-          period,
-        );
+        return getSeam("HopeOrgRollupProvider").sfvTimelinessRollup(organizationId, period);
       },
       j2051FollowUpRollup(organizationId, period) {
-        return getSeam("HopeOrgRollupProvider").j2051FollowUpRollup(
-          organizationId,
-          period,
-        );
+        return getSeam("HopeOrgRollupProvider").j2051FollowUpRollup(organizationId, period);
       },
       openSfvObligationCount(organizationId) {
-        return getSeam("HopeOrgRollupProvider").openSfvObligationCount(
-          organizationId,
-        );
+        return getSeam("HopeOrgRollupProvider").openSfvObligationCount(organizationId);
       },
     };
     // #107 item 2 — bind the active-org enumerator so the §4.8 cron fan-outs enumerate every active tenant
     // under withPlatformContext (allowlisted via wireM30Tenancy above; audited by the shared platform-bypass
     // auditor — its event records the M30 jobId, so the "M34" name is incidental, the auditor is module-agnostic).
     const m30ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M30_PLATFORM_JOB_ID,
       reason: "M30 §4.8 cron fan-out (active-org enumeration)",
@@ -4634,17 +4477,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M30 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m30Workers.length },
-      "M30 §4.8 BullMQ HQRP/quality workers constructed",
-    );
+    app.log.info({ queues: m30Workers.length }, "M30 §4.8 BullMQ HQRP/quality workers constructed");
     // ── M27 §4.8 Cost-Report workers + the filing-deadline cron (same worker-runner shape) ──────────────
     // WX-PR-013 bound the outbox/alerts/active-org ports for real (the M25 alert/active-org-enumerator
     // pattern); the M1 DEK + Xero/Gusto pull seams + M6/M8 statistics seams remain explicit deny-stub
     // forward work (see wiring.ts / jobs/m27-jobs.ts for why — RULE 4 still applies: those typed thunks
     // throw only when a JOB RUNS, so boot stays green).
     const m27ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M27_PLATFORM_JOB_ID,
       reason: "M27 §4.8 cron fan-out (active-org enumeration)",
@@ -4690,13 +4530,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       // buildM30WorkerDeps({ deathDischargeReader: getSeam(...) }) precedent). M23-gated rules SKIP (unbound).
       validationContext: buildM27ValidationContext({
         capResolver: m27CapSeamResolver,
-        providerEntity: () =>
-          getSeam("MdmEntityProvider") as M27ProviderEntityResolver,
+        providerEntity: () => getSeam("MdmEntityProvider") as M27ProviderEntityResolver,
         // M23 billed-census + M25 actual interim payments + M12 drug-cost basis (opaque rich-seams; cast to
         // M27's consumer views). Each degrades to its deny-stub (rule SKIPS) until the producer binds live.
         patientDays: () => getSeam("PatientDaysProvider") as M27PatientDaysSeam,
-        settlement: () =>
-          getSeam("ClaimSettlementProvider") as M27ClaimSettlementSeam,
+        settlement: () => getSeam("ClaimSettlementProvider") as M27ClaimSettlementSeam,
         drugCost: () => getSeam("DrugCostBillingReader") as M27DrugCostSeam,
       }),
       // The §4320/§4330 allocation-input shaper — reads M27's materialized Worksheet A/A-1…A-4/B-1 + the
@@ -4723,10 +4561,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M27 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m27Workers.length },
-      "M27 §4.8 BullMQ cost-report workers constructed",
-    );
+    app.log.info({ queues: m27Workers.length }, "M27 §4.8 BullMQ cost-report workers constructed");
     // ── M23 §4.8 Billing workers (claim/NOE/NOTR submit[.retry], eligibility refresh, validation-run,
     // revalidate consumer) + the cron consumers (999/277CA ack pulls, NOE/NOTR window-watch, eligibility
     // stale-watch, MAC-portal health) — same worker-runner shape. buildM23WorkerDeps binds only the
@@ -4827,10 +4662,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.addHook("onClose", async () => {
         await Promise.all(m24Workers.map((worker) => worker.close()));
       });
-      app.log.info(
-        { queues: m24Workers.length },
-        "M24 launch submission workers constructed",
-      );
+      app.log.info({ queues: m24Workers.length }, "M24 launch submission workers constructed");
     } else {
       app.log.warn(
         "M24 launch workers disabled: configure M24_LAUNCH_GATEWAY_ENABLED and M24_CREDENTIAL_ENCRYPTION_KEY",
@@ -4857,7 +4689,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // exist — it will simply observe and report nothing until Oregon's launch gateway is also configured.
     if (m24CredentialCipher) {
       const m24ActiveOrgs = buildActiveOrgEnumerator({
-        platformDb: dbHandle.db,
+        platformDb: platformDbHandle?.db,
         auditBypass: m34PlatformBypassAuditor,
         jobId: M24_PLATFORM_JOB_ID,
         reason: "M24 §4.9 state-channel-health cron fan-out (active-org enumeration)",
@@ -4896,10 +4728,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // "no extra credential needed" shape.
     if (queueConnection) {
       const m29ActiveOrgs = buildActiveOrgEnumerator({
-        platformDb: dbHandle.db,
+        platformDb: platformDbHandle?.db,
         auditBypass: m34PlatformBypassAuditor,
         jobId: M29_PLATFORM_JOB_ID,
-        reason: "M29 §4.9-shaped outbound-dispatch retry-sweep cron fan-out (active-org enumeration)",
+        reason:
+          "M29 §4.9-shaped outbound-dispatch retry-sweep cron fan-out (active-org enumeration)",
       });
       const m29RetrySweepWorker = registerM29OutboundRetrySweepWorker({
         connection: queueConnection,
@@ -4924,6 +4757,40 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } else {
       app.log.warn("M29 outbound-dispatch retry-sweep cron disabled: configure REDIS_URL");
     }
+    // F-222 (#248) — M31 §4.8 `m31.post-discharge-grace.cron`: the daily sweep that ends care-time portal access
+    // for patients discharged alive past the 30-day grace FLOOR and not re-admitted. Reads M6 through the org-
+    // explicit published `portalDischargedPastGraceForOrg` (M31 imports no M6 code); bounded per org per run.
+    if (queueConnection) {
+      const m31ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M31_PLATFORM_JOB_ID,
+        reason: "M31 §4.8 post-discharge-grace sweep cron fan-out (active-org enumeration)",
+      });
+      const m31PostDischargeGraceWorker = registerM31PostDischargeGraceWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        activeOrgs: m31ActiveOrgs,
+        m6: {
+          portalDischargedPastGraceForOrg: (organizationId, patientIds, cutoffDate) =>
+            portalDischargedPastGraceForOrg(dbHandle.db, organizationId, patientIds, cutoffDate),
+        },
+      });
+      app.addHook("onClose", async () => {
+        await m31PostDischargeGraceWorker.close();
+      });
+      try {
+        const m31PostDischargeGraceQueue = await scheduleM31PostDischargeGraceJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m31PostDischargeGraceQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M31 post-discharge-grace cron schedule registration failed");
+      }
+      app.log.info("M31 post-discharge-grace cron worker constructed");
+    } else {
+      app.log.warn("M31 post-discharge-grace cron disabled: configure REDIS_URL");
+    }
     // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
     // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
@@ -4932,7 +4799,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // the shared module-agnostic platform-bypass auditor) + the M36 AlertEmitter so the crons enumerate
     // every active tenant under withPlatformContext and fire the §4.9 typed alerts.
     const m25ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M25_PLATFORM_JOB_ID,
       reason: "M25 §4.8 cron fan-out (active-org enumeration)",
@@ -4977,10 +4844,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M25 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m25Workers.length },
-      "M25 §4.8 BullMQ remittance crons constructed",
-    );
+    app.log.info({ queues: m25Workers.length }, "M25 §4.8 BullMQ remittance crons constructed");
 
     // ── M26 §4.8 Cap-Management crons (nightly projection recompute · cap-year auto-close · stale-PS&R
     // watchdog). Constructed over the same Valkey connection + db; the M2 active-org enumerator + the M36
@@ -5002,15 +4866,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M26 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m26Workers.length },
-      "M26 §4.8 BullMQ cap crons constructed",
-    );
+    app.log.info({ queues: m26Workers.length }, "M26 §4.8 BullMQ cap crons constructed");
 
     // ── M7 §4.6 `care-plan.gates` cron (TASK-040D — the M25 worker-runner shape) ─────────────────────────
     // The CoP 418.56 5-/15-day gate scans. Absent this, they never ran in production — this is the fix.
     const m7ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M7_PLATFORM_JOB_ID,
       reason: "M7 §4.6 care-plan.gates cron fan-out (active-org enumeration)",
@@ -5034,18 +4895,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M7 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m7Workers.length },
-      "M7 §4.6 BullMQ care-plan.gates cron constructed",
-    );
+    app.log.info({ queues: m7Workers.length }, "M7 §4.6 BullMQ care-plan.gates cron constructed");
 
     // ── M17 Phase-3 scheduling automation: recurring materialization + visit attention ───────────────
     const m17ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M17_PLATFORM_JOB_ID,
-      reason:
-        "M17 scheduling automation cron fan-out (recurrence materialization + attention)",
+      reason: "M17 scheduling automation cron fan-out (recurrence materialization + attention)",
     });
     const m17WorkerDeps = buildM17WorkerDeps({
       connection: queueConnection,
@@ -5074,11 +4931,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
 
     // ── M8 Phase-3 encounter attention + cosignature SLA automation ─────────────────────────────────
     const m8ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M8_PLATFORM_JOB_ID,
-      reason:
-        "M8 encounter automation cron fan-out (attention + cosignature SLA)",
+      reason: "M8 encounter automation cron fan-out (attention + cosignature SLA)",
     });
     const m8WorkerDeps = buildM8WorkerDeps({
       connection: queueConnection,
@@ -5100,18 +4956,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M8 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m8Workers.length },
-      "M8 Phase-3 encounter automation crons constructed",
-    );
+    app.log.info({ queues: m8Workers.length }, "M8 Phase-3 encounter automation crons constructed");
 
     // ── M6 admission F2F due-reminder cron ───────────────────────────────────────────────────────────────
     const m6ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M6_PLATFORM_JOB_ID,
-      reason:
-        "M6 admission F2F due-reminder cron fan-out (active-org enumeration)",
+      reason: "M6 admission F2F due-reminder cron fan-out (active-org enumeration)",
     });
 
     const m6WorkerDeps = buildM6WorkerDeps({
@@ -5139,19 +4991,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M6 cron-schedule registration failed");
     }
 
-    app.log.info(
-      { queues: m6Workers.length },
-      "M6 admission due-reminder crons constructed",
-    );
+    app.log.info({ queues: m6Workers.length }, "M6 admission due-reminder crons constructed");
 
     // ── M9 §4.8 `license`/`changes`/`cadence` crons (TASK-040D — the M25 worker-runner shape) ────────────
     // `summary`/`eraser` (M9_QUEUES) stay out of scope — event-driven / M4-destruction-cert consumers.
     const m9ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M9_PLATFORM_JOB_ID,
-      reason:
-        "M9 §4.8 license/change-escalation/cadence cron fan-out (active-org enumeration)",
+      reason: "M9 §4.8 license/change-escalation/cadence cron fan-out (active-org enumeration)",
     });
     const m9WorkerDeps = buildM9WorkerDeps({
       connection: queueConnection,
@@ -5173,10 +5021,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M9 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m9Workers.length },
-      "M9 §4.8 BullMQ compliance-scan crons constructed",
-    );
+    app.log.info({ queues: m9Workers.length }, "M9 §4.8 BullMQ compliance-scan crons constructed");
 
     // ── M20 §4.8 `m20.sos-sla-watchdog.cron` (F-111, #249 — the M9 worker-runner shape) ─────────────────
     // `decideSosWatchdog` (lifecycle/sos-escalator.ts) shipped with M20-T03 and had no production caller
@@ -5186,7 +5031,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // choice consumers/m36-delivery-failed.ts already made for the identical edge — no caller anywhere in
     // this codebase implements the terminus's dial/PSAP/page effects).
     const m20ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M20_PLATFORM_JOB_ID,
       reason: "M20 §4.8 SOS SLA watchdog cron fan-out (active-org enumeration)",
@@ -5212,10 +5057,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M20 cron-schedule registration failed");
     }
-    app.log.info(
-      { queues: m20Workers.length },
-      "M20 §4.8 SOS SLA watchdog cron constructed",
-    );
+    app.log.info({ queues: m20Workers.length }, "M20 §4.8 SOS SLA watchdog cron constructed");
 
     // ── M10 §4.8 HOPE crons (TASK-040D — the M25 worker-runner shape) ────────────────────────────────────
     // `hope-window-watchdog` + `sfv-watchdog`, plus (F-058 / F-072) the three §4.10 submission stages on
@@ -5229,7 +5071,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // raises a typed `retryable: false` DegradedError, so the job DLQs immediately (no retry storm) and
     // `attachDlqAlertsToAll` surfaces it, while Tier-2 capture is untouched (§5.6 / §7.10).
     const m10ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M10_PLATFORM_JOB_ID,
       reason: "M10 §4.8 HOPE watchdog cron fan-out (active-org enumeration)",
@@ -5278,7 +5120,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // M7), wired here rather than imported by M14 directly — a locally-declared structural port type on
     // the M14 side, the `arch:boundaries` type-only-import rule (F-165's `m16-plan-closed.ts` precedent).
     const m14ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M14_PLATFORM_JOB_ID,
       reason:
@@ -5299,6 +5141,51 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       m7: {
         carePlanContextForOrg: (organizationId, patientId, asOfIso) =>
           idgPacketCarePlanContextForOrg(dbHandle.db, organizationId, patientId, asOfIso),
+      },
+      // §2.4 cover `nextRecertDueAt`/`f2fWindowState` — M6's own window math, snapshotted at packet freeze.
+      recertWindows: {
+        recertWindowsForOrg: (organizationId, patientIds, asOfIso) =>
+          idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds, new Date(asOfIso)),
+      },
+      // §2.4 `sinceLastIdg.flaggedEvents` — three org-explicit BATCHED source seams (M14 imports none of their code):
+      // M6 hospital/ER (ADT-derived windows), M13 missed doses, M30 falls + infections, M19 GIP-proposal triage calls (F-218).
+      flaggedEventSources: [
+        {
+          source: "m6.hospital",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgHospitalEventsForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+        {
+          source: "m13.missed_dose",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgMissedDosesForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+        {
+          source: "m30.fall_infection",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgQualityFlaggedEventsForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+        // F-218 — M19 after-hours triage calls that proposed a GIP admission (`care_plan_change_indicated`).
+        {
+          source: "m19.triage_care_plan_change",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgTriageCarePlanChangesForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+      ],
+      // §2.4 `hopeContext` — M10's org-explicit batched open-timepoint + open-SFV read.
+      hope: {
+        hopeContextForOrg: (organizationId, patientIds) =>
+          idgHopeContextForOrg(dbHandle.db, organizationId, patientIds),
+      },
+      // The packet PDF's org/location header + named carry-forward assignees (M1 / M2 org-explicit seams; the
+      // worker has no request, so both take the org id explicitly and open their own `withOrgContext`).
+      siteDisplay: {
+        displayForSite: (organizationId, locationIds) =>
+          siteDisplayForOrg(dbHandle.db, organizationId, locationIds),
+      },
+      membershipDisplay: {
+        displayForMemberships: (organizationId, membershipIds) =>
+          membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
       },
       locationTimezone: {
         locationTimezone: (organizationId, locationId) =>
@@ -5325,10 +5212,46 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       "M14 §4.8 BullMQ review-clock-sweep cron constructed",
     );
 
+    // ── M39 §4.9 crons: `m39.consent_expiration` + `m39.expiration_reminder` (F-216) — the ONLY producers
+    // of `m39.consent.expired` / `m39.consent.expiring_soon` (M5's §7.6 privacy snapshot consumes `.expired`).
+    // Hourly, per-org, org-explicit: each tick enumerates active orgs under the audited platform context and
+    // opens one `withOrgContext` tx per page, flipping the row and publishing through the REAL catalog-
+    // validating M39 publisher in that same tx. First-run backlog is bounded by `M39_CRON_BOUNDS`.
+    const m39ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M39_PLATFORM_JOB_ID,
+      reason:
+        "M39 §4.9 consent-expiration / expiration-reminder cron fan-out (active-org enumeration)",
+    });
+    const m39WorkerDeps = buildM39WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m39OutboxPublisher,
+      activeOrgs: m39ActiveOrgs,
+    });
+    const m39Workers = registerM39CronWorkers(m39WorkerDeps);
+    attachDlqAlertsToAll(m39Workers, "m39");
+    app.addHook("onClose", async () => {
+      await Promise.all(m39Workers.map((w) => w.close()));
+    });
+    try {
+      const m39ScheduleQueues = await scheduleM39Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m39ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M39 cron-schedule registration failed");
+    }
+    app.log.info(
+      { queues: m39Workers.length },
+      "M39 §4.9 BullMQ consent-expiration + expiration-reminder crons constructed",
+    );
+
     // M11 D5 — one repeatable hourly trigger enumerates active org ids under the audited platform
     // context; each delegated service call opens its own tenant/RLS transaction before touching PHI.
     const m11StandingActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M11_PLATFORM_JOB_ID,
       reason: "M11 D5 standing-order hourly spawn fan-out",
@@ -5354,7 +5277,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // standing-spawn worker above does; the real scan/write logic lives on `OrderRouteService
     // .expireOverdueVerbals`, this is a thin fan-out wrapper (F-164, #248).
     const m11VerbalTimerActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M11_VERBAL_TIMER_PLATFORM_JOB_ID,
       reason: "M11 §2.3 D3 verbal-order-expiry hourly sweep fan-out",
@@ -5363,7 +5286,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       connection: queueConnection,
       activeOrgs: m11VerbalTimerActiveOrgs,
       // F-202 — the same tick lapses stale two-person recovery requests, so the backend needs the alert port too.
-      service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher, undefined, m11RecoveryControls),
+      service: createDbOrderBackend(
+        dbHandle.db,
+        m11OutboxPublisher,
+        undefined,
+        m11RecoveryControls,
+      ),
     });
     attachDlqAlertsToAll([m11VerbalTimerWorker], "m11");
     app.addHook("onClose", async () => {
@@ -5382,7 +5310,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // critical). Fans out over active orgs like the two M11 sweeps above; each service call opens its own tenant/RLS
     // transaction. Grep this factory: a worker that is bound but never constructed is dead code.
     const m11StuckTransmissionActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
       reason: "M11 stuck lab-order recovery (auto-retry + held-order aging) fan-out",
@@ -5410,7 +5338,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real
     // outbound vendor I/O, so it runs as its own scheduled worker (F-164, #248).
     const m12SyncActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M12_PLATFORM_JOB_ID,
       reason: "M12 §2.6/§2.8 dosespot_sync_queue drain fan-out",
@@ -5442,7 +5370,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // model roster sync had ever executed. The drain reads no PHI and performs no outbound vendor I/O
     // (unlike M12's), so it needs no dedicated outbox publisher of its own here.
     const m19ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M19_PLATFORM_JOB_ID,
       reason: "M19 §4.5/§4.8 on_call_roster_sync_queue drain + catch-up-seed fan-out",
@@ -5474,7 +5402,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // (`@wardenx/inpatient` `buildCoverageWindows`) has existed and been unit-tested since M37-T07; this
     // is the worker its own header named and that was never built.
     const m37ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M37_PLATFORM_JOB_ID,
       reason: "M37 §4.8 ipu.rn-coverage-watchdog cron fan-out (active-org enumeration)",
@@ -5528,11 +5456,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       npiSource: {
         collectDistinctNpis: () => m29NppesNpiSource.distinctReferencedNpis(),
       },
-      log: (
-        level: "info" | "warn" | "error",
-        event: string,
-        fields: Record<string, unknown>,
-      ) => {
+      log: (level: "info" | "warn" | "error", event: string, fields: Record<string, unknown>) => {
         app.log[level]({ ...fields, event }, "m29.nppes.sync");
       },
     };
@@ -5551,10 +5475,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           await Promise.all(m29ScheduleQueues.map((q) => q.close()));
         });
       } catch (err) {
-        app.log.error(
-          err,
-          "M29 NPPES nightly-sync schedule registration failed",
-        );
+        app.log.error(err, "M29 NPPES nightly-sync schedule registration failed");
       }
     } else {
       app.log.warn(
@@ -5609,11 +5530,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // TASK-040A — gated on `role !== "api"` for the same reason as the worker-runner section above: an
   // API replica polling the SAME outbox rows as every other replica is wasted work, not a correctness
   // bug (FOR UPDATE SKIP LOCKED makes concurrent pollers safe), but it belongs on the worker role.
-  if (
-    role !== "api" &&
-    dbHandle &&
-    process.env.OUTBOX_DISPATCHER_DISABLED !== "1"
-  ) {
+  if (role !== "api" && dbHandle && process.env.OUTBOX_DISPATCHER_DISABLED !== "1") {
     if (platformDbHandle) {
       registerPlatformJob(M1_OUTBOX_DISPATCHER_JOB_ID);
       const outboxRelayOrgs = buildActiveOrgEnumerator({
@@ -5647,21 +5564,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m11OutboxPublisher,
             resolveAdmissionContext: (organizationId, patientId) =>
-              activeAdmissionDraftContextForPatient(
-                dbHandle.db,
-                organizationId,
-                patientId,
-              ),
+              activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
           }),
           buildM12IdgDecisionConsumer({
             db: dbHandle.db,
             outbox: m12OutboxPublisher,
             resolveAdmissionContext: (organizationId, patientId) =>
-              activeAdmissionDraftContextForPatient(
-                dbHandle.db,
-                organizationId,
-                patientId,
-              ),
+              activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
           }),
           buildM16IdgDecisionConsumer({ db: dbHandle.db }),
           // F-105 — the §4.3.1 bereavement intake. The ONLY path by which a `bereavement_plan` row can
@@ -5809,15 +5718,41 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m17OutboxPublisher,
             admissionSitingForPatient: activeAdmissionSitingForPatientForOrg,
           }),
-          buildM36ClinicalAlertConsumer(
-            getSeam("AlertEmitter") as AlertEmitter,
-          ),
+          buildM36ClinicalAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // M14 §2.7/D8 — the carry-forward COMPLIANCE alert (the count crossing 3): validated against the
+          // typed alert-payload catalog (M14's contribution registered on the Foundation registry here, in the
+          // composition root — M36 never imports M14), one alert per action item.
+          (() => {
+            const m14AlertCatalog = createAlertPayloadRegistry();
+            m14AlertCatalog.register(M14_ALERT_PAYLOADS);
+            m14AlertCatalog.assertValid();
+            return buildIdgCarryForwardComplianceConsumer({
+              alerts: getSeam("AlertEmitter") as AlertEmitter,
+              catalog: m14AlertCatalog.build(),
+              membershipUserId: createDrizzleMembershipUserLookup(dbHandle.db),
+            });
+          })(),
+          // M14 §4.10 — the REMAINING typed IDG alerts (packets ready / action item assigned / non-quorate decision /
+          // review-clock escalation / review-floor override), one M36 consumer each, same catalog validation and
+          // correlation-id idempotency; recipients = platform `alert_rule` role_set + resolved user ids.
+          ...(() => {
+            const m14AlertCatalog = createAlertPayloadRegistry();
+            m14AlertCatalog.register(M14_ALERT_PAYLOADS);
+            m14AlertCatalog.assertValid();
+            return buildIdgAlertConsumers({
+              alerts: getSeam("AlertEmitter") as AlertEmitter,
+              catalog: m14AlertCatalog.build(),
+              membershipUserId: createDrizzleMembershipUserLookup(dbHandle.db),
+              meetingAttendees: createDrizzleIdgAttendeeLookup(
+                dbHandle.db,
+                createMembershipsHoldingPermissionReader(dbHandle.db),
+              ),
+            });
+          })(),
           buildM10AdmissionWorkflowConsumer({
             db: dbHandle.db,
             outbox: m10OutboxPublisher,
-            admissions: getSeam(
-              "AdmissionStatusReader",
-            ) as AdmissionStatusReader,
+            admissions: getSeam("AdmissionStatusReader") as AdmissionStatusReader,
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
           // F-153 (#248) — D14's other named consumed event: cancel pending aggregator submissions +
@@ -5966,9 +5901,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 "M24 remittance transition skipped",
               ),
           }),
-          ...(m34ProvisionQueue
-            ? [buildM34ProvisionStartedConsumer(m34ProvisionQueue.port)]
-            : []),
+          ...(m34ProvisionQueue ? [buildM34ProvisionStartedConsumer(m34ProvisionQueue.port)] : []),
           // M5 §4.10 — the proposal applier (LIVE end-to-end now that M29's accept path publishes
           // the event; skips everything not m5-owned).
           buildM29ProposalApplierConsumer(),
@@ -6038,17 +5971,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // its own), which is why the consumer re-announces on an idempotent re-delivery: a crash
             // between them is precisely what gets redelivered.
             emitRendered: ({ organizationId, ...payload }) =>
-              withOrgContext(
-                dbHandle.db,
-                { organizationId, userId: "" },
-                (tx) =>
-                  m22OutboxPublisher.publish(tx as never, {
-                    eventName: M22_DOCUMENT_RENDERED_EVENT,
-                    payload,
-                    organizationId,
-                    aggregateKind: "document",
-                    aggregateId: payload.documentId,
-                  }),
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                m22OutboxPublisher.publish(tx as never, {
+                  eventName: M22_DOCUMENT_RENDERED_EVENT,
+                  payload,
+                  organizationId,
+                  aggregateKind: "document",
+                  aggregateId: payload.documentId,
+                }),
               ),
           }),
           // F-171 (#248) — the LIVE `m12.medication_order.list_changed` → `patient_medication_list`
@@ -6061,21 +5991,23 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             store: createDrizzleDocumentSeamStore(dbHandle.db),
             onRefusal: (r) =>
               app.log.warn(
-                { event: r.eventType, org: r.organizationId, patient: r.patientId, detail: r.detail },
+                {
+                  event: r.eventType,
+                  org: r.organizationId,
+                  patient: r.patientId,
+                  detail: r.detail,
+                },
                 `M22 medication-list render refused: ${r.detail}`,
               ),
             emitRendered: ({ organizationId, ...payload }) =>
-              withOrgContext(
-                dbHandle.db,
-                { organizationId, userId: "" },
-                (tx) =>
-                  m22OutboxPublisher.publish(tx as never, {
-                    eventName: M22_DOCUMENT_RENDERED_EVENT,
-                    payload,
-                    organizationId,
-                    aggregateKind: "document",
-                    aggregateId: payload.documentId,
-                  }),
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                m22OutboxPublisher.publish(tx as never, {
+                  eventName: M22_DOCUMENT_RENDERED_EVENT,
+                  payload,
+                  organizationId,
+                  aggregateKind: "document",
+                  aggregateId: payload.documentId,
+                }),
               ),
           }),
           // F-171 (#248) — the LIVE `m11.order.results_received` → `lab_results_pdf` render. NOT part of
@@ -6092,17 +6024,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 "M22 lab-results render deferred: M29 observation not yet resolved",
               ),
             emitRendered: ({ organizationId, ...payload }) =>
-              withOrgContext(
-                dbHandle.db,
-                { organizationId, userId: "" },
-                (tx) =>
-                  m22OutboxPublisher.publish(tx as never, {
-                    eventName: M22_DOCUMENT_RENDERED_EVENT,
-                    payload,
-                    organizationId,
-                    aggregateKind: "document",
-                    aggregateId: payload.documentId,
-                  }),
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                m22OutboxPublisher.publish(tx as never, {
+                  eventName: M22_DOCUMENT_RENDERED_EVENT,
+                  payload,
+                  organizationId,
+                  aggregateKind: "document",
+                  aggregateId: payload.documentId,
+                }),
               ),
           }),
           // The requesting modules' back-ref consumers — the columns each built for exactly this
@@ -6119,6 +6048,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           // Migration 0250 adds the `source_order_id` idempotency key a genuine redelivery needs.
           buildM6LevelOfCareChangeSignedConsumer({
+            db: dbHandle.db,
+            outbox: m6OutboxPublisher,
+          }),
+          // F-223 (#248) — a signed recert order (M11 D10) opens the next PENDING election period via the
+          // route's own insert; F2F/CTI adequacy stays gated at activation. Migration 0297 is the key.
+          buildM6RecertificationSignedConsumer({
             db: dbHandle.db,
             outbox: m6OutboxPublisher,
           }),
@@ -6171,7 +6106,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM12DischargeCascadeConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
           // F-161 (#248) — the §2.8 D17 reconciliation-discontinue handshake: an M13 reconciliation
           // decision to discontinue an `m12_active` line now actually reaches the medication order.
-          buildM12ReconciliationDiscontinueConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          buildM12ReconciliationDiscontinueConsumer({
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+          }),
           // F-164 (#248) — the §2.8 D17 reconciliation "draft order" handshake: a real `medication_order`
           // draft minted from a reconciliation decision, never the historical hardcoded `{}` payload.
           buildM12DraftOrderRequestedConsumer({
@@ -6228,6 +6166,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // matches on, was written by no code path at all, so binding alone would have matched nothing
           // forever. An action item saying "sign this care plan" stayed open after the plan was signed.
           buildM14ActionItemAutoCloseConsumer({ db: dbHandle.db, outbox: m14OutboxPublisher }),
+          // The §4.4 M22 back-ref (return leg of the F-166 render handshake): stamps
+          // `idg_minutes.minutes_document_id` / `idg_patient_packet.packet_document_id` off
+          // `m22.document.rendered`. Until it was bound both columns were written by nothing and the minutes
+          // screen said "not rendered" for a document M22 had rendered.
+          buildM14DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers, gated on the
           // dedicated `m14SinceLastIdgRedisClient` the same way F-152's M11 suggestion-banner consumer
           // gates on its own dedicated client (no Redis in dev/test without `queueConnection`).
@@ -6320,7 +6263,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 organizationId,
                 admissionId,
               );
-              return ctx ? { providerEntityId: ctx.providerEntityId, locationId: ctx.locationId } : null;
+              return ctx
+                ? { providerEntityId: ctx.providerEntityId, locationId: ctx.locationId }
+                : null;
             },
             locationTimezone: (organizationId, locationId) =>
               withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
@@ -6341,7 +6286,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM13ComfortKitDeployedConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
           buildM13ComfortKitReplenishedConsumer({ db: dbHandle.db }),
           buildM13ComfortKitReturnedConsumer({ db: dbHandle.db }),
-          buildM13ComfortKitReturnReconciliationConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
+          buildM13ComfortKitReturnReconciliationConsumer({
+            db: dbHandle.db,
+            outbox: m13OutboxPublisher,
+          }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-120 (#248) — the OTHER two of the three M11 cascade deciders `consumers/m11-orders.ts` has
           // carried since M21-T04 ("the live outbox binding … land with the §4.6 workers alongside the
@@ -6361,7 +6309,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-161 (#248) — §2.1 comfort-kit replenishment intake, the third of the four
           // `consumers/m13-comfort-kit.ts` deciders. Resolves the per-line pharmacy identity and
           // delivery-address snapshot from M21's own tables (M13's payload carries neither).
-          buildM21ComfortKitReplenishmentIntakeConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          buildM21ComfortKitReplenishmentIntakeConsumer({
+            db: dbHandle.db,
+            outbox: m21OutboxPublisher,
+          }),
           // F-172 (#248) — §4.5.1 controlled-substance re-emit, the fourth and last of the
           // `consumers/m13-comfort-kit.ts` deciders. Joins M13's bedside discrepancy signal to M21's
           // dispatch/return custody chain via the `returnId` M13's payload now carries.
@@ -6386,17 +6337,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM33DocumentBackrefConsumer({
             db: dbHandle.db,
             emitDelivered: ({ organizationId, ...payload }) =>
-              withOrgContext(
-                dbHandle.db,
-                { organizationId, userId: "" },
-                (tx) =>
-                  m33OutboxPublisher.publish(tx as never, {
-                    eventName: "m33.scheduled_report.delivered",
-                    payload: { ...payload, organizationId },
-                    organizationId,
-                    aggregateKind: "report_schedule_run",
-                    aggregateId: payload.runId,
-                  }),
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                m33OutboxPublisher.publish(tx as never, {
+                  eventName: "m33.scheduled_report.delivered",
+                  payload: { ...payload, organizationId },
+                  organizationId,
+                  aggregateKind: "report_schedule_run",
+                  aggregateId: payload.runId,
+                }),
               ),
             onDisposition: (action) =>
               app.log.info(
@@ -6434,10 +6382,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                   if (!concept) return null;
                   const props = concept.properties;
                   return {
-                    category:
-                      typeof props?.category === "string"
-                        ? props.category
-                        : "unmapped",
+                    category: typeof props?.category === "string" ? props.category : "unmapped",
                     plainLanguage: concept.display,
                   };
                 },
@@ -6545,7 +6490,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // per this module's established no-package-import posture for M8 bridges.
           buildM23LateCheckResolvedConsumer({
             resolveEncounterForVisit: {
-              forVisits: (orgId, visitIds) => encounterIdsForVisitsForOrg(dbHandle.db, orgId, visitIds),
+              forVisits: (orgId, visitIds) =>
+                encounterIdsForVisitsForOrg(dbHandle.db, orgId, visitIds),
             },
             enqueue: m23RevalidateEnqueue.port,
           }),
@@ -6587,7 +6533,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `pseudonymKeyProvider` built above. Each fails closed per-delivery (dead-letters, never
           // silently pseudonymizes under nothing) when `pseudonymKeyProvider` is the unbound stub.
           buildM35SessionCreatedConsumer({ db: dbHandle.db, keyProvider: pseudonymKeyProvider }),
-          buildM35PatientActivePeriodConsumer({ db: dbHandle.db, keyProvider: pseudonymKeyProvider }),
+          buildM35PatientActivePeriodConsumer({
+            db: dbHandle.db,
+            keyProvider: pseudonymKeyProvider,
+          }),
           // F-165 (#248, m24 group) — M29's `m5.patient.deceased` freeze: every still-`pending` `hl7_inbound_proposal`
           // matched to the decedent is expired via the same pure `expireProposal` decider the (also
           // unbuilt) §2.2 SLA sweep would use, with its own distinct `decision_rationale`. Builds only the
@@ -6703,9 +6652,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // default 3001) so /health + /ready are reachable for its OWN liveness/readiness probes without
   // colliding with an API process's PORT on the same host (local/dev single-host runs).
   const port =
-    role === "worker"
-      ? Number(process.env.WORKER_PORT ?? 3001)
-      : Number(process.env.PORT ?? 3000);
+    role === "worker" ? Number(process.env.WORKER_PORT ?? 3001) : Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);
@@ -6714,9 +6661,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
 
 if ((import.meta as { main?: boolean }).main) {
   // Start only when run directly (not when imported by tests/tooling/worker.ts) — see `bootWardenX`.
-  await bootWardenX(
-    (process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all",
-  );
+  await bootWardenX((process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all");
 }
 
 /**
@@ -6784,9 +6729,7 @@ function bindCallerModule(
  * when unset so the queue producers + the worker construction stay fail-closed (never a localhost-default
  * that silently connects to the wrong store). TLS (`rediss:`) sets the `tls` option.
  */
-function parseRedisConnection(
-  redisUrl: string | undefined,
-): ConnectionOptions | undefined {
+function parseRedisConnection(redisUrl: string | undefined): ConnectionOptions | undefined {
   if (!redisUrl) return undefined;
   const u = new URL(redisUrl);
   const db = u.pathname.length > 1 ? Number(u.pathname.slice(1)) : undefined;

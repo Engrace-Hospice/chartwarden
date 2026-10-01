@@ -11,18 +11,46 @@
 // `idg.override_review_floor` + step-up — is composed at the route). The location-scoped list routes
 // (`GET /idg/schedule`, `GET /idg/action-items`) scope server-side (caller org/location/assignee) rather than
 // through the meeting-specific predicate.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
+import {
+  type AbacTarget,
+  requireAbac,
+  requirePermission,
+  resolveActorPermissions,
+} from "@wardenx/auth";
+import { IDG_ATTENDANCE_DISCIPLINES, attendableDisciplinesForRoleKeys } from "@wardenx/idg";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
-import { UnauthorizedError, ValidationError } from "@wardenx/types";
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
 import {
+  type AttendanceTargetFacts,
+  attendanceSelfOnlyError,
+  planAttendanceRecord,
+} from "./attendance-authority";
+import { ifMatchVersionOf, requireIdempotencyKey, requireIfMatch } from "./concurrency";
+import {
+  type IdgRecertWindowFact,
+  type IdgRouteEnrichmentPorts,
+  withAuthorNames,
+  withFinalizerName,
+  withPatientDisplay,
+} from "./idg-enrichment";
+import {
   ActionItemListQuerySchema,
   AddAgendaItemRequest,
   AdjournMeetingRequest,
+  AttendanceEligibilityQuerySchema,
   CancelMeetingRequest,
   CreateActionItemRequest,
+  CreateDisciplineNoteRequest,
+  DisciplineNoteListQuerySchema,
   IdParamsSchema,
   MeetingPacketParamsSchema,
   PatientIdParamsSchema,
@@ -30,6 +58,7 @@ import {
   RecordDecisionRequest,
   RecurringPolicyRequest,
   RescheduleMeetingRequest,
+  ScheduleMeetingRequest,
   ScheduleQuerySchema,
   SubmitAmendmentRequest,
   SupersedeDecisionRequest,
@@ -37,8 +66,14 @@ import {
   UpdateAgendaItemRequest,
   UpdateAttendanceRequest,
   UpdateDecisionRequest,
+  UpdateDisciplineNoteRequest,
   parse,
 } from "./idg-typebox";
+import {
+  type PacketDisclosurePort,
+  seamPacketDisclosurePort,
+  sudDisclosureAllowedForPacket,
+} from "./packet-disclosure";
 import type { IdgRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -46,6 +81,16 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface IdgRouteDeps {
   service: IdgRouteService;
+  /**
+   * Optional read-enrichment ports (patient display info; meeting-scoped recert/F2F windows), bound to M5/M6's
+   * org-explicit seams at the composition root — see ./idg-enrichment.ts. Absent in the in-memory slice/tests.
+   */
+  enrichment?: IdgRouteEnrichmentPorts;
+  /**
+   * W-SUD-01 caller verdict for the packet READ (M39 `evaluateForInternalAccess`, per actor). Defaults to the
+   * seam-registry-backed, fail-closed port — an unbound M39 REDACTS. Injected in tests.
+   */
+  sudDisclosure?: PacketDisclosurePort;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -72,28 +117,44 @@ const AMEND = P("idg.amend_minutes");
 // §4.7 ABAC guards. `idg_meeting_scope` defaults its target to the route params (`:id` / `:meetingId`).
 const SCOPE = (action: string): PreHandler =>
   requireAbac(action, "idg_meeting_scope") as PreHandler;
+/**
+ * Discipline-note WRITE gate (spec extension): the caller needs `idg.attend` (a participant) OR `idg.coordinate`
+ * (any-discipline). Which of the two they hold decides {@link DisciplineNoteActor.isCoordinator}; the finer
+ * "present for THIS discipline" rule is enforced in the service against the attendance roster.
+ */
+const NOTE_WRITE: PreHandler = async (request) => {
+  const ctx = request.context;
+  if (!ctx?.organizationId) throw new UnauthorizedError();
+  const granted = await resolveActorPermissions(ctx);
+  if (!granted.has("idg.attend") && !granted.has("idg.coordinate")) {
+    throw new ForbiddenError("requires permission 'idg.attend' or 'idg.coordinate'");
+  }
+};
+const IF_MATCH = requireIfMatch();
+const IDEMPOTENCY_KEY = requireIdempotencyKey();
 const ABAC_QUORATE = requireAbac("idg.decide", "quorate_decision") as PreHandler;
 
-// The cancel/reschedule target lifts the body's `proposedTransition` + `newScheduledStart` so
-// `per_patient_review_floor_clear` resolves at authz time; the meeting `:id` comes from the params.
-const reviewFloorTarget = (request: {
-  readonly params?: unknown;
-  readonly body?: unknown;
-}): AbacTarget => {
-  const params = (request.params ?? {}) as { id?: unknown };
-  const body = (request.body ?? {}) as {
-    proposedTransition?: unknown;
-    newScheduledStart?: unknown;
+// The cancel/reschedule target pins the transition from the ROUTE (cancel route => "cancel", reschedule route
+// => "reschedule") and lifts only `newScheduledStart` from the body; the meeting `:id` comes from the params.
+// The transition MUST NOT be read from the body: the body is not schema-validated until the handler runs, so a
+// body missing `proposedTransition` used to be denied by the predicate (fail-closed on "unknown transition")
+// as a misleading 403 before the 422 validation could fire — even for an empty-agenda meeting.
+const reviewFloorTarget =
+  (transition: "cancel" | "reschedule") =>
+  (request: { readonly params?: unknown; readonly body?: unknown }): AbacTarget => {
+    const params = (request.params ?? {}) as { id?: unknown };
+    const body = (request.body ?? {}) as { newScheduledStart?: unknown };
+    const target: Record<string, unknown> = { proposedTransition: transition };
+    if (typeof params.id === "string") target.id = params.id;
+    if (transition === "reschedule" && typeof body.newScheduledStart === "string")
+      target.newScheduledStart = body.newScheduledStart;
+    return target;
   };
-  const target: Record<string, unknown> = {};
-  if (typeof params.id === "string") target.id = params.id;
-  if (typeof body.proposedTransition === "string")
-    target.proposedTransition = body.proposedTransition;
-  if (typeof body.newScheduledStart === "string") target.newScheduledStart = body.newScheduledStart;
-  return target;
-};
-const ABAC_REVIEW_FLOOR = requireAbac("idg.schedule", "per_patient_review_floor_clear", {
-  getTarget: reviewFloorTarget,
+const ABAC_REVIEW_FLOOR_CANCEL = requireAbac("idg.schedule", "per_patient_review_floor_clear", {
+  getTarget: reviewFloorTarget("cancel"),
+}) as PreHandler;
+const ABAC_REVIEW_FLOOR_RESCHEDULE = requireAbac("idg.schedule", "per_patient_review_floor_clear", {
+  getTarget: reviewFloorTarget("reschedule"),
 }) as PreHandler;
 
 /** GAP-091 — `per_patient_review_floor_clear` flags `context.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]`
@@ -118,6 +179,10 @@ const ADJOURN_STEP_UP_OPERATION = "idg.meeting.adjourn";
 
 export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): void {
   const { service } = deps;
+  const patientDisplay = deps.enrichment?.patientDisplay;
+  const recertPort = deps.enrichment?.recertWindows;
+  const membershipDisplay = deps.enrichment?.membershipDisplay;
+  const sudDisclosure = deps.sudDisclosure ?? seamPacketDisclosurePort;
 
   // 1 — list the meeting schedule for a location/range (location-scoped server-side).
   app.get(
@@ -149,6 +214,17 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     return service.updateRecurringPolicy(organizationId, userId, id, b);
   });
 
+  // 3b — schedule ONE ad-hoc meeting (§4.1; the recurring worker is the only other creator). Location scope
+  // is enforced here (the create has no meeting `:id` for `idg_meeting_scope` to resolve): a location outside
+  // the caller's session location memberships is a 404 (no existence oracle), same non-leak as RLS-hidden rows.
+  app.post("/api/v1/idg/meetings", { preHandler: [SCHEDULE] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const b = parse(ScheduleMeetingRequest, request.body);
+    if (!request.context?.locationIds.includes(b.locationId)) throw new NotFoundError("location");
+    const res = await service.scheduleMeeting(organizationId, userId, b);
+    return reply.code(201).send(res);
+  });
+
   // 4 — read one meeting.
   app.get(
     "/api/v1/idg/meetings/:id",
@@ -166,7 +242,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 5 — cancel a meeting (per_patient_review_floor_clear ABAC; override composed at the route).
   app.post(
     "/api/v1/idg/meetings/:id/cancel",
-    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR] },
+    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR_CANCEL] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -184,7 +260,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 6 — reschedule a meeting (per_patient_review_floor_clear ABAC; override composed at the route).
   app.post(
     "/api/v1/idg/meetings/:id/reschedule",
-    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR] },
+    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR_RESCHEDULE] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -237,7 +313,40 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     },
   );
 
-  // 10 — self check-in attendance.
+  // ATTENDANCE TRUST (0286): what a member's AUTHORITATIVE roles let them attend as. The caller's own roles come from
+  // the session context (the same authority every ABAC predicate reads); another member's come from M3's role-key seam,
+  // called BEFORE any transaction opens (the seam takes its own connection). `unavailable` fails CLOSED.
+  const membershipRoles = deps.enrichment?.membershipRoles;
+  async function attendanceTargetFacts(
+    request: FastifyRequest,
+    organizationId: string,
+    actorMembershipId: string,
+    targetMembershipId: string,
+  ): Promise<AttendanceTargetFacts> {
+    if (targetMembershipId === actorMembershipId) {
+      return {
+        kind: "held",
+        disciplines: attendableDisciplinesForRoleKeys(request.context?.roles ?? []),
+      };
+    }
+    if (!membershipRoles) return { kind: "unavailable" };
+    try {
+      const byId = await membershipRoles.roleKeysForMemberships(organizationId, [
+        targetMembershipId,
+      ]);
+      const keys = byId.get(targetMembershipId);
+      return keys === undefined
+        ? { kind: "not_found" }
+        : { kind: "held", disciplines: attendableDisciplinesForRoleKeys(keys) };
+    } catch (err) {
+      request.log.warn({ err }, "idg: member role lookup failed; refusing the attendance write");
+      return { kind: "unavailable" };
+    }
+  }
+
+  // 10 — attendance check-in. A non-coordinator records ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline is
+  // validated against the target's authoritative roles (422 DISCIPLINE_NOT_HELD); a coordinator may record others and,
+  // with `coordinatorAttested`, an unheld discipline as a flagged override (see `planAttendanceRecord`).
   app.post(
     "/api/v1/idg/meetings/:id/attendance",
     { preHandler: [ATTEND, SCOPE("idg.attend")] },
@@ -245,13 +354,73 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecordAttendanceRequest, request.body);
+      const actorIsCoordinator = (await resolveActorPermissions(request.context!)).has(
+        "idg.coordinate",
+      );
+      // A non-coordinator recording someone else is refused BEFORE any role lookup (no oracle on other members' roles).
+      if (!actorIsCoordinator && b.membershipId !== userId) throw attendanceSelfOnlyError();
+      const plan = planAttendanceRecord({
+        actorMembershipId: userId,
+        actorIsCoordinator,
+        targetMembershipId: b.membershipId,
+        discipline: b.discipline,
+        coordinatorAttested: b.coordinatorAttested === true,
+        target: await attendanceTargetFacts(request, organizationId, userId, b.membershipId),
+      });
       const res = await service.recordAttendance(organizationId, userId, id, {
         membershipId: b.membershipId,
         discipline: b.discipline,
         status: b.status as IdgAttendanceStatus | undefined,
         checkedInAt: b.checkedInAt,
+        recordedByMembershipId: userId,
+        disciplineAttested: plan.disciplineAttested,
       });
       return reply.code(201).send(res);
+    },
+  );
+
+  // 10b — what may the caller attest at the check-in? The caller's own held disciplines (from the session's roles), or,
+  // for a coordinator passing `?membershipId=`, another member's (from the M3 seam) plus the vocabulary they may attest.
+  app.get(
+    "/api/v1/idg/meetings/:id/attendance-eligibility",
+    {
+      preHandler: [ATTEND, SCOPE("idg.attend")],
+      config: {
+        auditRead: {
+          none: "staff role-derived attendance eligibility (discipline vocabulary), not patient data",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      parse(IdParamsSchema, request.params);
+      const q = parse(AttendanceEligibilityQuerySchema, request.query);
+      const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
+      const subject = q.membershipId ?? userId;
+      if (subject !== userId && !isCoordinator) throw attendanceSelfOnlyError();
+      const facts = await attendanceTargetFacts(request, organizationId, userId, subject);
+      if (facts.kind === "not_found") {
+        throw new WardenXError(
+          "ATTENDANCE_MEMBERSHIP_NOT_FOUND",
+          "that membership is not an active member of this organization",
+          422,
+        );
+      }
+      if (facts.kind === "unavailable") {
+        throw new WardenXError(
+          "ATTENDANCE_AUTHORITY_UNAVAILABLE",
+          "could not verify the attendee's disciplines; please retry",
+          503,
+        );
+      }
+      return {
+        membershipId: subject,
+        isCoordinator,
+        heldDisciplines: [...facts.disciplines],
+        // A coordinator may attest anything in the vocabulary for ANOTHER member, never for themself.
+        attestableDisciplines:
+          isCoordinator && subject !== userId ? [...IDG_ATTENDANCE_DISCIPLINES] : [],
+      };
     },
   );
 
@@ -297,7 +466,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.listPackets(organizationId, id);
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listPackets(organizationId, id),
+        request.log,
+      );
     },
   );
 
@@ -311,7 +485,33 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { meetingId, patientId } = parse(MeetingPacketParamsSchema, request.params);
-      return service.getPacket(organizationId, meetingId, patientId);
+      // W-SUD-01: the per-actor Part 2 verdict is resolved lazily (only for a SUD-flagged patient) and the
+      // elision happens in the service's read path, before the view is shaped — never a UI hide.
+      const membershipId = request.context?.attributes.membershipId;
+      const roles = request.context?.roles ?? [];
+      const detail = await service.getPacket(organizationId, meetingId, patientId, {
+        sudDisclosureAllowed: (pid) =>
+          sudDisclosureAllowedForPacket(sudDisclosure, {
+            organizationId,
+            patientId: pid,
+            membershipId: typeof membershipId === "string" ? membershipId : null,
+            roles,
+          }),
+        // Sampled-audit stand-in (§8.1 `idg.sud_redaction_applied`): the read itself is already in the M4 read
+        // log (`auditRead`); this records THAT redaction happened, with the count kept server-side only.
+        onSudRedaction: ({ patientId: pid, redactedEntryCount }) =>
+          request.log.info(
+            { event: "idg.sud_redaction_applied", meetingId, patientId: pid, redactedEntryCount },
+            "idg: packet content filtered per 42 CFR Part 2",
+          ),
+      });
+      const [packet] = await withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        [detail],
+        request.log,
+      );
+      return packet;
     },
   );
 
@@ -372,7 +572,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.listAgenda(organizationId, id);
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listAgenda(organizationId, id),
+        request.log,
+      );
     },
   );
 
@@ -429,7 +634,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.listDecisions(organizationId, id);
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listDecisions(organizationId, id),
+        request.log,
+      );
     },
   );
 
@@ -495,10 +705,203 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const q = parse(ActionItemListQuerySchema, request.query);
-      return service.listActionItems(organizationId, userId, {
-        assignee: q.assignee,
-        status: q.status as IdgActionItemStatus | undefined,
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listActionItems(organizationId, userId, {
+          assignee: q.assignee,
+          status: q.status as IdgActionItemStatus | undefined,
+        }),
+        request.log,
+      );
+    },
+  );
+
+  // 24b — the meeting's recert / face-to-face windows, one row per agenda patient (the IDG right pane). The
+  // existing M6 reads are keyed by ADMISSION; a meeting has PATIENTS. The patient set is the agenda's
+  // patient-scoped items UNION the built packets (packets are authoritative once built; agenda items are the
+  // pre-build signal — the same split `patientIncluded` draws). The facts are SEAM-PULLED from M6 (§1.1 "recert/
+  // F2F windows via M6 readers"): M6's own window math in the org timezone, one batched read for the whole
+  // meeting. Same gate as the other per-meeting reads (idg.read + idg_meeting_scope → 404 non-leak).
+  app.get(
+    "/api/v1/idg/meetings/:id/recert-windows",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const [agenda, packets] = await Promise.all([
+        service.listAgenda(organizationId, id),
+        service.listPackets(organizationId, id),
+      ]);
+      const patientIds = [
+        ...new Set([
+          ...agenda.map((a) => a.patientId).filter((p): p is string => p !== null),
+          ...packets.map((p) => p.patientId),
+        ]),
+      ];
+      let windows: ReadonlyMap<string, IdgRecertWindowFact> = new Map();
+      if (recertPort !== undefined && patientIds.length > 0) {
+        try {
+          windows = await recertPort.recertWindowsForPatients(organizationId, patientIds);
+        } catch (err) {
+          // An M6 read failure degrades to "unknown" rows (never a fabricated verdict, never a 500 on the screen).
+          request.log.warn({ err }, "idg: recert-window read failed; returning unknown windows");
+        }
+      }
+      const rows = patientIds.map((patientId) => {
+        const w = windows.get(patientId);
+        return {
+          patientId,
+          admissionId: w?.admissionId ?? null,
+          currentPeriodSequence: w?.currentPeriodSequence ?? null,
+          benefitPeriodStart: w?.benefitPeriodStart ?? null,
+          benefitPeriodEnd: w?.benefitPeriodEnd ?? null,
+          nextRecertDueDate: w?.nextRecertDueDate ?? null,
+          nextPeriodSequence: w?.nextPeriodSequence ?? null,
+          daysUntilNextRecert: w?.daysUntilNextRecert ?? null,
+          f2fRequired: w?.f2fRequired ?? null,
+          f2fWindowStart: w?.f2fWindowStart ?? null,
+          f2fWindowEnd: w?.f2fWindowEnd ?? null,
+          f2fStatus: w?.f2fStatus ?? ("unknown" as const),
+          f2fWindowState: w?.f2fWindowState ?? null,
+          f2fScheduledDate: w?.f2fScheduledDate ?? null,
+        };
       });
+      return {
+        meetingId: id,
+        generatedAt: new Date().toISOString(),
+        items: await withPatientDisplay(patientDisplay, organizationId, rows, request.log),
+      };
+    },
+  );
+
+  // 24c — per-discipline meeting notes (spec extension; the M14 spec has only agenda body text + the closing
+  // note). Reads: idg.read + idg_meeting_scope (404 non-leak), any meeting status (frozen after adjourn). The
+  // W-SUD-01 caller verdict is resolved lazily per SUD-flagged/undeterminable patient; without a Part 2 release
+  // the note's text is withheld (`bodyWithheld`), fail-closed. The audit row is the M4 read log (`auditRead`).
+  app.get(
+    "/api/v1/idg/meetings/:id/discipline-notes",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: {
+        auditRead: { resourceKind: "idg_discipline_note", resourceIdParam: "id", list: true },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const q = parse(DisciplineNoteListQuerySchema, request.query);
+      const membershipId = request.context?.attributes.membershipId;
+      const roles = request.context?.roles ?? [];
+      const notes = await service.listDisciplineNotes(
+        organizationId,
+        id,
+        { patientId: q.patientId },
+        {
+          sudDisclosureAllowed: (pid) =>
+            sudDisclosureAllowedForPacket(sudDisclosure, {
+              organizationId,
+              patientId: pid,
+              membershipId: typeof membershipId === "string" ? membershipId : null,
+              roles,
+            }),
+          onSudRedaction: ({ patientId: pid }) =>
+            request.log.info(
+              {
+                event: "idg.sud_redaction_applied",
+                meetingId: id,
+                patientId: pid,
+                surface: "discipline_note",
+              },
+              "idg: discipline note text withheld per 42 CFR Part 2",
+            ),
+        },
+      );
+      return withAuthorNames(
+        membershipDisplay,
+        organizationId,
+        await withPatientDisplay(patientDisplay, organizationId, notes, request.log),
+        request.log,
+      );
+    },
+  );
+
+  // 24d — write a discipline note. A `live` meeting takes ordinary notes; an `adjourned` one (within the addendum
+  // window, with a required `reason`) takes a LATE ADDENDUM — a new append-only row that never touches the frozen
+  // minutes snapshot; other states => 422 MEETING_NOT_LIVE, out of window => 422 ADDENDUM_WINDOW_CLOSED, a patient
+  // already included by a NEWER adjourned IDG => 422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG (503 ADDENDUM_ELIGIBILITY_UNAVAILABLE
+  // if that lookup fails), missing reason => 422 ADDENDUM_REASON_REQUIRED. On a live meeting `reason` is optional context. A coordinator may write any
+  // discipline, everyone else only for a discipline they are recorded present for (403); a patient must be on
+  // the meeting's agenda/packet set (422). Idempotency-Key required.
+  app.post(
+    "/api/v1/idg/meetings/:id/discipline-notes",
+    { preHandler: [NOTE_WRITE, SCOPE("idg.attend"), IDEMPOTENCY_KEY] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(CreateDisciplineNoteRequest, request.body);
+      const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
+      const note = await service.createDisciplineNote(
+        organizationId,
+        { membershipId: userId, isCoordinator },
+        id,
+        {
+          patientId: b.patientId ?? null,
+          discipline: b.discipline,
+          bodyText: b.bodyText,
+          reason: b.reason ?? null,
+        },
+      );
+      const [out] = await withAuthorNames(membershipDisplay, organizationId, [note], request.log);
+      return reply.code(201).send(out);
+    },
+  );
+
+  // 24e — edit a note's text and/or reason (If-Match = the version read; 412 on skew; no delete). Only while the meeting is
+  // `live`: original notes of an adjourned meeting are frozen (422 MEETING_NOT_LIVE) and addenda are append-only
+  // (422 ADDENDUM_IMMUTABLE — a correction is a further addendum). The note id carries no
+  // meeting id, so the SAME `idg_meeting_scope` predicate is evaluated here against the note's OWNING meeting
+  // (resolved first; an unknown/cross-tenant note is the non-leaking 404).
+  app.patch(
+    "/api/v1/idg/discipline-notes/:id",
+    {
+      preHandler: [
+        NOTE_WRITE,
+        IDEMPOTENCY_KEY,
+        IF_MATCH,
+        async (request, reply) => {
+          const { organizationId } = actorOf(request);
+          const { id } = parse(IdParamsSchema, request.params);
+          const meetingId = await service.disciplineNoteMeetingId(organizationId, id);
+          if (meetingId === null) throw new NotFoundError("idg_discipline_note");
+          await (
+            requireAbac("idg.attend", "idg_meeting_scope", {
+              getTarget: () => ({ meetingId }),
+            }) as PreHandler
+          )(request, reply);
+        },
+      ],
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(UpdateDisciplineNoteRequest, request.body);
+      const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
+      const note = await service.updateDisciplineNote(
+        organizationId,
+        { membershipId: userId, isCoordinator },
+        id,
+        {
+          ...(b.bodyText !== undefined ? { bodyText: b.bodyText } : {}),
+          ...(b.reason !== undefined ? { reason: b.reason } : {}),
+        },
+        ifMatchVersionOf(request),
+      );
+      const [out] = await withAuthorNames(membershipDisplay, organizationId, [note], request.log);
+      return out;
     },
   );
 
@@ -512,7 +915,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.getMinutes(organizationId, id);
+      return withFinalizerName(
+        membershipDisplay,
+        organizationId,
+        await service.getMinutes(organizationId, id),
+        request.log,
+      );
     },
   );
 

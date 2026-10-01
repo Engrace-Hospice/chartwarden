@@ -311,7 +311,7 @@ export function createDbAssessmentRouteService(
     patientId: string,
     rows: readonly AssessmentRow[],
   ): Promise<void> {
-    let mostRecentCapturedAtMs = -Infinity;
+    let mostRecentCapturedAtMs = Number.NEGATIVE_INFINITY;
     for (const r of rows) {
       const ms = (r.capturedAt instanceof Date ? r.capturedAt : new Date(r.capturedAt)).getTime();
       if (ms > mostRecentCapturedAtMs) mostRecentCapturedAtMs = ms;

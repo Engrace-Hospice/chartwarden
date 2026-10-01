@@ -42,6 +42,8 @@ export const M14_QUEUES = {
   scheduleMaterialise: "idg.schedule-materialise",
   /** Hourly T-24h packet build — the §4.9.1 `idg.packets-cron` (`tminus-24h-build`) sweep. */
   packetsBuild: "idg.packets-cron",
+  /** Hourly §2.7 / §4.9.1 `compute-carry-forward` — carry overdue action items onto the next meeting's agenda. */
+  carryForward: "idg.carry-forward",
 } as const;
 
 export type M14QueueName = (typeof M14_QUEUES)[keyof typeof M14_QUEUES];
@@ -51,6 +53,7 @@ export const M14_DLQ = {
   reviewClockSweep: "idg.review-clock-sweep.dlq",
   scheduleMaterialise: "idg.schedule-materialise.dlq",
   packetsBuild: "idg.packets-cron.dlq",
+  carryForward: "idg.carry-forward.dlq",
 } as const;
 
 /** The §4.8 cron cadence (the scheduler registers this repeatable). */
@@ -58,6 +61,9 @@ export const M14_JOB_SCHEDULES = {
   reviewClockSweep: "0 6 * * *", // daily 06:00 (the M9 cadence-scan precedent)
   scheduleMaterialise: "0 2 * * *", // §7.1 "job runs at 02:00 org-tz" (UTC here; see the file's own header)
   packetsBuild: "0 * * * *", // hourly — the T-24h window tolerates an hour of slack either side
+  // hourly at :30 — runs BEFORE the :00 packet build for the same meeting (36h lookahead vs the build's 24h),
+  // so a built packet's `carryForwardCount` already includes this meeting's carry.
+  carryForward: "30 * * * *",
 } as const;
 
 /** Per-queue BullMQ parameters, declared as data so boot worker construction reads one source of truth
@@ -69,6 +75,9 @@ export const M14_QUEUE_PARAMS = {
   // tick, not across concurrent ticks), matching the spec's own §4.9.1 table row exactly.
   packetsBuild: { priority: 7, attempts: 2, backoff: "fixed 60s", concurrency: 1 },
   scheduleMaterialise: { priority: 5, attempts: 3, backoff: "exponential 300s", concurrency: 1 },
+  // §4.9.1 `idg.carry-forward` — priority 6 / attempts 3 / exponential 20s / concurrency 5 (the spec row). Safe
+  // at 5: the (item, meeting) increment is keyed on the 0285 unique index, proven live under concurrent ticks.
+  carryForward: { priority: 6, attempts: 3, backoff: "exponential 20s", concurrency: 5 },
 } as const;
 
 // ── `idg.review-clock-sweep` (§4.8 daily / M14-F01 / ADR-0018 D2) ──────────────────────────────────────

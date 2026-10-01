@@ -7,7 +7,12 @@
 // either has a linked administration or the missed-dose sweep owns it, and retro-marking a dose "missed"
 // after the fact creates a phantom compliance alert. Idempotent — re-running against the same
 // already-cancelled doses yields an empty plan.
-import type { IsoInstant, MedicationOrderId, ScheduledDoseId, ScheduledDoseStatus } from "@wardenx/types";
+import type {
+  IsoInstant,
+  MedicationOrderId,
+  ScheduledDoseId,
+  ScheduledDoseStatus,
+} from "@wardenx/types";
 
 /** The minimal scheduled-dose facts the cascade reads (mirrors `CascadeScheduledDose`, order-scoped). */
 export interface OrderCascadeScheduledDose {
@@ -51,10 +56,12 @@ function isCancellable(dose: OrderCascadeScheduledDose, effectiveAt: IsoInstant)
 export function planOrderDiscontinueCascade(
   input: OrderDiscontinueCascadeInput,
 ): readonly OrderScheduledDoseCancelledSignal[] {
-  return input.scheduledDoses.filter((dose) => isCancellable(dose, input.effectiveAt)).map((dose) => ({
-    scheduledDoseId: dose.scheduledDoseId,
-    medicationOrderId: input.medicationOrderId,
-    cancellationReason: "order_discontinued",
-    sourceEventId: input.sourceEventId,
-  }));
+  return input.scheduledDoses
+    .filter((dose) => isCancellable(dose, input.effectiveAt))
+    .map((dose) => ({
+      scheduledDoseId: dose.scheduledDoseId,
+      medicationOrderId: input.medicationOrderId,
+      cancellationReason: "order_discontinued",
+      sourceEventId: input.sourceEventId,
+    }));
 }

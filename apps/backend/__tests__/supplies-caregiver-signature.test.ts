@@ -69,7 +69,9 @@ describe("F-193 — caregiverSignatureEvidenceSatisfiesMethod (mirrors M39's val
       }),
     ).toBe(true);
     expect(
-      caregiverSignatureEvidenceSatisfiesMethod("typed_signature_in_app", { typedSignatureName: "D" }),
+      caregiverSignatureEvidenceSatisfiesMethod("typed_signature_in_app", {
+        typedSignatureName: "D",
+      }),
     ).toBe(false);
     expect(caregiverSignatureEvidenceSatisfiesMethod("typed_signature_in_app", {})).toBe(false);
     expect(
@@ -82,10 +84,13 @@ describe("F-193 — caregiverSignatureEvidenceSatisfiesMethod (mirrors M39's val
   it("witnessed_verbal_documented requires a witness name, a ≥20-char attestation AND an evidence document id", () => {
     const full = {
       witnessName: "Chris Lee",
-      witnessAttestationText: "I witnessed the caregiver verbally consent to receipt of the DME item.",
+      witnessAttestationText:
+        "I witnessed the caregiver verbally consent to receipt of the DME item.",
       evidenceDocumentId: "doc-1",
     };
-    expect(caregiverSignatureEvidenceSatisfiesMethod("witnessed_verbal_documented", full)).toBe(true);
+    expect(caregiverSignatureEvidenceSatisfiesMethod("witnessed_verbal_documented", full)).toBe(
+      true,
+    );
 
     expect(
       caregiverSignatureEvidenceSatisfiesMethod("witnessed_verbal_documented", {

@@ -171,16 +171,19 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       redis = new IORedis({ ...parseRedisUrl(REDIS_URL as string), maxRetriesPerRequest: null });
-      await redis.keys("wardenx:m11:orders:suggestion:*").then((keys) =>
-        keys.length ? redis.del(...keys) : undefined,
-      );
+      await redis
+        .keys("wardenx:m11:orders:suggestion:*")
+        .then((keys) => (keys.length ? redis.del(...keys) : undefined));
 
       suggestionConsumer = buildM11AssessmentSuggestionConsumer({
         db: handle.db,
         redis,
         outbox: makeOutbox(),
       });
-      fulfillmentConsumer = buildM11FulfillmentStatusConsumer({ db: handle.db, outbox: makeOutbox() });
+      fulfillmentConsumer = buildM11FulfillmentStatusConsumer({
+        db: handle.db,
+        outbox: makeOutbox(),
+      });
     }, 120_000);
 
     afterAll(async () => {
@@ -202,7 +205,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         const raw = await redis.get(`wardenx:m11:orders:suggestion:${patientId}`);
         const banner = JSON.parse(raw as string);
         expect(banner).toHaveLength(1);
-        expect(banner[0]).toMatchObject({ triggeringId: assessmentId, suggestedKind: "comfort_kit" });
+        expect(banner[0]).toMatchObject({
+          triggeringId: assessmentId,
+          suggestedKind: "comfort_kit",
+        });
 
         const events = await outboxRows(ORG_A, "m11.order.suggestion_state_changed");
         expect(events).toHaveLength(1);
@@ -235,7 +241,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         const patientId = "aaaaaaaa-1000-4000-8000-000000000005";
         await suggestionConsumer.handle({
           organizationId: ORG_A,
-          payload: { patientId, assessmentId: "aaaaaaaa-1000-4000-8000-000000000006", ruleId: "unrelated_rule" },
+          payload: {
+            patientId,
+            assessmentId: "aaaaaaaa-1000-4000-8000-000000000006",
+            ruleId: "unrelated_rule",
+          },
         });
         expect(await redis.get(`wardenx:m11:orders:suggestion:${patientId}`)).toBeNull();
       });
@@ -355,7 +365,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           kind: "supply",
           status: "active",
         });
-        const event = { organizationId: ORG_A, payload: { sourceOrderId: orderId, toStatus: "delivered" } };
+        const event = {
+          organizationId: ORG_A,
+          payload: { sourceOrderId: orderId, toStatus: "delivered" },
+        };
         await fulfillmentConsumer.handle(event);
         await expect(fulfillmentConsumer.handle(event)).resolves.toBeUndefined();
         expect(await outboxRows(ORG_A, "m11.order.completed", orderId)).toHaveLength(1);

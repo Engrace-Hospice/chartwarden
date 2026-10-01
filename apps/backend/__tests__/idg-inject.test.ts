@@ -35,11 +35,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+import { evaluateQuorum } from "@wardenx/idg";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
+  type IdgMembershipDisplayPort,
+  type IdgRouteEnrichmentPorts,
   buildIdgAbacPredicates,
   createInMemoryIdgBackend,
   registerIdgRoutes,
@@ -79,6 +82,8 @@ const MSW_MSHIP = "44444444-4444-4444-8444-444444444444";
 const CHAP_MSHIP = "55555555-5555-4555-8555-555555555555";
 const PHYS_MSHIP = "66666666-6666-4666-8666-666666666666";
 const NOW = "2026-06-08T12:00:00.000Z";
+const ATT_RN = "77777777-7777-4777-8777-777777777777";
+const ATT_ADMIN = "88888888-8888-4888-8888-888888888888";
 
 // Meeting ids the caller supplies (never server-generated), one per lifecycle branch under test.
 const MEETING_LIVE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -101,9 +106,34 @@ const ALL_IDG_PERMISSIONS = [
 const PERMISSION_SEED = [
   { userId: "coord_1", permissions: ALL_IDG_PERMISSIONS },
   { userId: "noperm_1", permissions: [] as string[] },
+  // Attendance trust: plain attendees (idg.attend, NOT idg.coordinate). Their user id IS their membership id.
+  { userId: ATT_RN, permissions: ["idg.read", "idg.attend"] },
+  { userId: ATT_ADMIN, permissions: ["idg.read", "idg.attend"] },
 ];
 
-function makeServer(meetings: readonly IdgMeetingSeed[] = []) {
+// Attendance trust (0286): the fake M3 role-key port the coordinator's "record someone else" path validates against —
+// each fixture membership holds exactly the role key its discipline is recorded under.
+const ROLE_KEYS_BY_MEMBERSHIP = new Map<string, readonly string[]>([
+  [RN_MSHIP, ["rn_case_manager"]],
+  [MSW_MSHIP, ["msw"]],
+  [CHAP_MSHIP, ["chaplain"]],
+  [PHYS_MSHIP, ["hospice_physician"]],
+]);
+const FAKE_MEMBERSHIP_ROLES: NonNullable<IdgRouteEnrichmentPorts["membershipRoles"]> = {
+  async roleKeysForMemberships(_org, ids) {
+    return new Map(
+      ids.flatMap((id) => {
+        const keys = ROLE_KEYS_BY_MEMBERSHIP.get(id);
+        return keys ? [[id, keys] as const] : [];
+      }),
+    );
+  },
+};
+
+function makeServer(
+  meetings: readonly IdgMeetingSeed[] = [],
+  enrichment?: IdgRouteEnrichmentPorts,
+) {
   const backend = createInMemoryIdgBackend({ now: () => NOW, meetings });
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -123,9 +153,19 @@ function makeServer(meetings: readonly IdgMeetingSeed[] = []) {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerIdgRoutes(app, { service: backend });
+  registerIdgRoutes(app, {
+    service: backend,
+    enrichment: { membershipRoles: FAKE_MEMBERSHIP_ROLES, ...enrichment },
+  });
   return { app, backend };
 }
+
+const attendeeHeaders = (user: string, roles: string) => ({
+  "x-test-user": user,
+  "x-test-org": ORG,
+  "x-test-roles": roles,
+  "x-test-loc": LOC,
+});
 
 const SUPER = {
   "x-test-user": "coord_1",
@@ -521,6 +561,10 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     // taken" are different facts about a meeting, and a screen has to be able to tell them apart.
     expect(minutesBefore.json().attendanceCount).toBeNull();
     expect(minutesBefore.json().decisionCount).toBeNull();
+    // Nothing frozen, nothing to render — and no enrichment port is mounted here, so no name key at all.
+    expect(minutesBefore.json().renderStatus).toBe("not_rendered");
+    expect(minutesBefore.json().finalizedByDiscipline).toBeNull();
+    expect(minutesBefore.json()).not.toHaveProperty("finalizedByName");
 
     // route #9 — adjourn (fresh step-up required, §2.2 D13); the commit point: emits the open decision,
     // finalizes the minutes.
@@ -549,7 +593,113 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     expect(minutesAfter.json().attendanceCount).toBe(4);
     expect(minutesAfter.json().decisionCount).toBe(1);
     expect(minutesAfter.json().actionItemCount).toBe(1);
+    // Final with no M22 back-ref yet: the render request is in flight, which is `pending` — never the
+    // "not rendered" a screen would read as "nothing will ever render".
+    expect(minutesAfter.json().minutesDocumentId).toBeNull();
+    expect(minutesAfter.json().renderStatus).toBe("pending");
 
+    await app.close();
+  });
+});
+
+describe("M14-idg-inject — minutes signer name (identity-owned membershipDisplay port)", () => {
+  const seed: readonly IdgMeetingSeed[] = [
+    {
+      id: MEETING_LIVE,
+      organizationId: ORG,
+      locationId: LOC,
+      status: "live",
+      scheduledStart: "2026-06-08T09:00:00.000Z",
+      scheduledEnd: "2026-06-08T10:00:00.000Z",
+      includedPatientIds: [PATIENT],
+    },
+  ];
+  const displayPort = (
+    names: Record<string, string | null>,
+    calls: Array<{ org: string; ids: readonly string[] }> = [],
+  ): IdgMembershipDisplayPort => ({
+    async displayForMemberships(org, ids) {
+      calls.push({ org, ids });
+      return new Map(
+        ids.filter((i) => i in names).map((i) => [i, { displayName: names[i] ?? null }] as const),
+      );
+    },
+  });
+  const adjournAndRead = async (app: ReturnType<typeof makeServer>["app"]) => {
+    const adjourn = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/adjourn`,
+      headers: SUPER_FRESH,
+      payload: {},
+    });
+    expect(adjourn.statusCode).toBe(200);
+    return app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/minutes`,
+      headers: SUPER,
+    });
+  };
+
+  it("names the finalizer (name only, ONE batched call, the caller's own org) and carries the discipline off the attendance snapshot", async () => {
+    const calls: Array<{ org: string; ids: readonly string[] }> = [];
+    const { app, backend } = makeServer(seed, {
+      membershipDisplay: displayPort({ coord_1: "Dana Coordinator" }, calls),
+    });
+    // The finalizer attended, so the frozen roster records their discipline. Written through the backend
+    // directly: the test principal id ("coord_1") is not a uuid, which the attendance route body requires.
+    await backend.recordAttendance(ORG, "coord_1", MEETING_LIVE, {
+      membershipId: "coord_1",
+      discipline: "rn_case_manager",
+    });
+    const res = await adjournAndRead(app);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.finalizedByMembershipId).toBe("coord_1");
+    expect(body.finalizedByName).toBe("Dana Coordinator");
+    expect(body.finalizedByDiscipline).toBe("rn_case_manager");
+    expect(calls).toEqual([{ org: ORG, ids: ["coord_1"] }]);
+    await app.close();
+  });
+
+  it("an unknown / nameless membership yields finalizedByName:null, never a fabricated label", async () => {
+    for (const port of [displayPort({}), displayPort({ coord_1: null })]) {
+      const { app } = makeServer(seed, { membershipDisplay: port });
+      const res = await adjournAndRead(app);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().finalizedByName).toBeNull();
+      expect(res.json().finalizedByDiscipline).toBeNull(); // did not attend
+      await app.close();
+    }
+  });
+
+  it("a failing port degrades to the id-only view (200, no name key) rather than 500ing the minutes screen", async () => {
+    const { app } = makeServer(seed, {
+      membershipDisplay: {
+        displayForMemberships: async () => {
+          throw new Error("identity down");
+        },
+      },
+    });
+    const res = await adjournAndRead(app);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().finalizedByMembershipId).toBe("coord_1");
+    expect(res.json()).not.toHaveProperty("finalizedByName");
+    await app.close();
+  });
+
+  it("in-progress minutes make no lookup (nobody has finalized yet) and report finalizedByName:null", async () => {
+    const calls: Array<{ org: string; ids: readonly string[] }> = [];
+    const { app } = makeServer(seed, { membershipDisplay: displayPort({ coord_1: "X" }, calls) });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/minutes`,
+      headers: SUPER,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("in_progress");
+    expect(res.json().finalizedByName).toBeNull();
+    expect(res.json().renderStatus).toBe("not_rendered");
+    expect(calls).toHaveLength(0);
     await app.close();
   });
 });
@@ -792,6 +942,202 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     expect(amendment.statusCode).toBe(422);
     expect(amendment.json().error.details[0].field).toBe("id");
 
+    await app.close();
+  });
+});
+
+describe("M14-idg-inject — attendance trust (0286): self-only, discipline-from-roles, flagged coordinator attestation", () => {
+  const LIVE = (): IdgMeetingSeed[] => [
+    {
+      id: MEETING_LIVE,
+      organizationId: ORG,
+      locationId: LOC,
+      status: "live",
+      scheduledStart: "2026-06-08T09:00:00.000Z",
+      scheduledEnd: "2026-06-08T10:00:00.000Z",
+      includedPatientIds: [PATIENT],
+    },
+  ];
+  const post = (
+    app: ReturnType<typeof makeServer>["app"],
+    headers: Record<string, string>,
+    payload: object,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`,
+      headers,
+      payload,
+    });
+
+  it("a non-coordinator may check in ONLY themself, as a discipline their own roles confer", async () => {
+    const { app } = makeServer(LIVE());
+    const h = attendeeHeaders(ATT_RN, "rn");
+    const ok = await post(app, h, { membershipId: ATT_RN, discipline: "rn_case_manager" });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json()).toMatchObject({
+      membershipId: ATT_RN,
+      discipline: "rn_case_manager",
+      disciplineAttested: false,
+      recordedByMembershipId: ATT_RN,
+    });
+    await app.close();
+  });
+
+  it("refuses a non-coordinator recording someone else (403 ATTENDANCE_SELF_ONLY), before any role lookup", async () => {
+    const lookups: string[][] = [];
+    const { app } = makeServer(LIVE(), {
+      membershipRoles: {
+        async roleKeysForMemberships(_o, ids) {
+          lookups.push([...ids]);
+          return new Map();
+        },
+      },
+    });
+    const res = await post(app, attendeeHeaders(ATT_RN, "rn"), {
+      membershipId: MSW_MSHIP,
+      discipline: "msw",
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("ATTENDANCE_SELF_ONLY");
+    expect(lookups).toEqual([]);
+    await app.close();
+  });
+
+  it("refuses a discipline the caller's roles do not confer (422 DISCIPLINE_NOT_HELD) and an unknown one (422 UNKNOWN_DISCIPLINE)", async () => {
+    const { app } = makeServer(LIVE());
+    const h = attendeeHeaders(ATT_RN, "rn");
+    const notHeld = await post(app, h, { membershipId: ATT_RN, discipline: "chaplain" });
+    expect(notHeld.statusCode).toBe(422);
+    expect(notHeld.json().error.code).toBe("DISCIPLINE_NOT_HELD");
+    const unknown = await post(app, h, { membershipId: ATT_RN, discipline: "wizard" });
+    expect(unknown.statusCode).toBe(422);
+    expect(unknown.json().error.code).toBe("UNKNOWN_DISCIPLINE");
+    await app.close();
+  });
+
+  it("a non-coordinator cannot attest (403 ATTESTATION_REQUIRES_COORDINATOR)", async () => {
+    const { app } = makeServer(LIVE());
+    const res = await post(app, attendeeHeaders(ATT_RN, "rn"), {
+      membershipId: ATT_RN,
+      discipline: "chaplain",
+      coordinatorAttested: true,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("ATTESTATION_REQUIRES_COORDINATOR");
+    await app.close();
+  });
+
+  it("a coordinator records another member as a HELD discipline (validated), and refuses an unheld one without attestation", async () => {
+    const { app } = makeServer(LIVE());
+    const ok = await post(app, SUPER, { membershipId: MSW_MSHIP, discipline: "msw" });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().disciplineAttested).toBe(false);
+    expect(ok.json().recordedByMembershipId).toBe("coord_1");
+    const bad = await post(app, SUPER, { membershipId: MSW_MSHIP, discipline: "chaplain" });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json().error.code).toBe("DISCIPLINE_NOT_HELD");
+    await app.close();
+  });
+
+  it("a coordinator's explicit attestation of an unheld discipline is stored FLAGGED; a member unknown to the org is refused", async () => {
+    const { app } = makeServer(LIVE());
+    const attested = await post(app, SUPER, {
+      membershipId: MSW_MSHIP,
+      discipline: "chaplain",
+      coordinatorAttested: true,
+    });
+    expect(attested.statusCode).toBe(201);
+    expect(attested.json().disciplineAttested).toBe(true);
+    const roster = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`,
+      headers: SUPER,
+    });
+    expect(roster.json()[0]).toMatchObject({ discipline: "chaplain", disciplineAttested: true });
+    const unknown = await post(app, SUPER, {
+      membershipId: "99999999-9999-4999-8999-999999999999",
+      discipline: "msw",
+      coordinatorAttested: true,
+    });
+    expect(unknown.statusCode).toBe(422);
+    expect(unknown.json().error.code).toBe("ATTENDANCE_MEMBERSHIP_NOT_FOUND");
+    await app.close();
+  });
+
+  it("fails CLOSED (503) when another member's roles cannot be resolved — no port bound, or the port throws", async () => {
+    const throwing = makeServer(LIVE(), {
+      membershipRoles: {
+        async roleKeysForMemberships() {
+          throw new Error("m3 down");
+        },
+      },
+    });
+    const a = await post(throwing.app, SUPER, { membershipId: MSW_MSHIP, discipline: "msw" });
+    expect(a.statusCode).toBe(503);
+    expect(a.json().error.code).toBe("ATTENDANCE_AUTHORITY_UNAVAILABLE");
+    await throwing.app.close();
+  });
+
+  it("an admin attends as `administrator`, which never satisfies quorum", async () => {
+    const { app, backend } = makeServer(LIVE());
+    const res = await post(app, attendeeHeaders(ATT_ADMIN, "org_admin"), {
+      membershipId: ATT_ADMIN,
+      discipline: "administrator",
+    });
+    expect(res.statusCode).toBe(201);
+    const present = await backend.loadPresentDisciplines(ORG, MEETING_LIVE);
+    expect(present).toEqual(["administrator"]);
+    expect(evaluateQuorum(present ?? []).met).toBe(false);
+    await app.close();
+  });
+
+  it("GET attendance-eligibility: a caller sees their own held disciplines; naming another member needs a coordinator", async () => {
+    const { app } = makeServer(LIVE());
+    const url = `/api/v1/idg/meetings/${MEETING_LIVE}/attendance-eligibility`;
+    const own = await app.inject({
+      method: "GET",
+      url,
+      headers: attendeeHeaders(ATT_RN, "rn,clinician"),
+    });
+    expect(own.statusCode).toBe(200);
+    expect(own.json()).toEqual({
+      membershipId: ATT_RN,
+      isCoordinator: false,
+      heldDisciplines: ["rn_case_manager"],
+      attestableDisciplines: [],
+    });
+    const other = await app.inject({
+      method: "GET",
+      url: `${url}?membershipId=${MSW_MSHIP}`,
+      headers: attendeeHeaders(ATT_RN, "rn"),
+    });
+    expect(other.statusCode).toBe(403);
+    expect(other.json().error.code).toBe("ATTENDANCE_SELF_ONLY");
+    const asCoordinator = await app.inject({
+      method: "GET",
+      url: `${url}?membershipId=${MSW_MSHIP}`,
+      headers: SUPER,
+    });
+    expect(asCoordinator.statusCode).toBe(200);
+    expect(asCoordinator.json()).toMatchObject({
+      membershipId: MSW_MSHIP,
+      isCoordinator: true,
+      heldDisciplines: ["msw"],
+    });
+    expect(asCoordinator.json().attestableDisciplines).toContain("chaplain");
+    await app.close();
+  });
+
+  it("grandfathered rows (no recorder, not attested) still count toward quorum exactly as before", async () => {
+    const { app, backend } = makeServer(LIVE());
+    // The service-level write (what pre-0286 callers and seeds did) carries no recorder and no attestation flag.
+    const legacy = await backend.recordAttendance(ORG, "coord_1", MEETING_LIVE, {
+      membershipId: RN_MSHIP,
+      discipline: "rn_case_manager",
+    });
+    expect(legacy).toMatchObject({ disciplineAttested: false, recordedByMembershipId: null });
+    expect(await backend.loadPresentDisciplines(ORG, MEETING_LIVE)).toEqual(["rn_case_manager"]);
     await app.close();
   });
 });

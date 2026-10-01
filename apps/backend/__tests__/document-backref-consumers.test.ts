@@ -78,7 +78,21 @@ describe("m22.document.rendered — the event that did not exist", () => {
     // bound consumers — proven generally by `clinical-consumer-contracts.test.ts`'s
     // "fully binds the three M17 visit-publication command consumers, with m31 still deferred" and by
     // `outbox-dispatcher.live.test.ts`'s partial-fan-out coverage.
-    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m27", "m31", "m33"]);
+    // m14 — on the commit that bound `m14.m22-document-backref` (stamps idg_minutes/idg_patient_packet document ids).
+    expect(entry?.declaredConsumers).toEqual([
+      "m6",
+      "m11",
+      "m12",
+      "m13",
+      "m14",
+      "m21",
+      "m27",
+      "m33",
+    ]);
+    // F-225 (#248) — m31 was DROPPED again (user-approved, F-221): portal document visibility is the
+    // `PortalDocumentReader` seam pull and the §164.528 accounting is M22's `document_access_log` row
+    // appended by the portal mint. It is recorded as a seam consumer, never a declared (deferred) one.
+    expect(entry?.seamConsumers).toEqual(["m31"]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {
@@ -171,7 +185,9 @@ describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
     // Distinct: F-176's `m6.discharge.cosigned` files under the SAME `discharge_summary` aggregate as `.created`.
     const rendered = [
       ...new Set(
-        Object.values(M6_TEMPLATE_BY_EVENT).map((key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType),
+        Object.values(M6_TEMPLATE_BY_EVENT).map(
+          (key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType,
+        ),
       ),
     ].sort();
     expect([...M6_BACKREF_AGGREGATE_TYPES].sort()).toEqual(rendered);

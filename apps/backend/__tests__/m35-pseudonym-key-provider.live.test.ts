@@ -34,7 +34,7 @@ import {
   createDrizzlePseudonymKeyProvider,
   rotatePseudonymKey,
 } from "../src/modules/35-subscription/index";
-import { appRoleUrl, LIVE_APP_ROLE_PASSWORD } from "./_live-app-role";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -42,8 +42,8 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 
 const ORG_A = "11111111-1111-4111-8111-111111110171";
 const ORG_B = "22222222-2222-4222-8222-222222220171";
-const KEK_1 = "kek-1:" + Buffer.alloc(32, 0x11).toString("base64");
-const KEK_2 = "kek-2:" + Buffer.alloc(32, 0x22).toString("base64");
+const KEK_1 = `kek-1:${Buffer.alloc(32, 0x11).toString("base64")}`;
+const KEK_2 = `kek-2:${Buffer.alloc(32, 0x22).toString("base64")}`;
 
 function ring(active: string, retired = "") {
   const r = loadPseudonymKekRing({
@@ -116,7 +116,9 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
         return cause?.message ?? (e as Error).message;
       }
     };
-    expect(await failureOf(appHandle)).toMatch(/permission denied for table patient_pseudonym_key/i);
+    expect(await failureOf(appHandle)).toMatch(
+      /permission denied for table patient_pseudonym_key/i,
+    );
     expect(await failureOf(platformHandle)).toBeNull();
   });
 
@@ -145,10 +147,14 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
   });
 
   it("an unknown KEK id refuses with a stated reason, never a wrong/zero key", async () => {
-    await admin.query("UPDATE patient_pseudonym_key SET key_kms_ref = 'no-such-kek' WHERE is_active = true");
+    await admin.query(
+      "UPDATE patient_pseudonym_key SET key_kms_ref = 'no-such-kek' WHERE is_active = true",
+    );
     const provider = createDrizzlePseudonymKeyProvider(platformHandle.db, ring(KEK_1));
     await expect(provider.activeKey()).rejects.toThrow(/no pseudonym KEK 'no-such-kek'/);
-    await admin.query("UPDATE patient_pseudonym_key SET key_kms_ref = 'kek-1' WHERE is_active = true");
+    await admin.query(
+      "UPDATE patient_pseudonym_key SET key_kms_ref = 'kek-1' WHERE is_active = true",
+    );
   });
 
   it("a ciphertext copied onto a different epoch's row fails authentication (the AAD binds the epoch)", async () => {
@@ -237,9 +243,13 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
       const pseudonym = computeBillingPseudonym(key.keyMaterial, membershipId);
       expect(pseudonym).toMatch(/^[a-f0-9]{32}$/);
       const period = new Date().toISOString().slice(0, 7);
-      expect(await activePeriodRowExists(appHandle.db, ORG_A, pseudonym, period, "user")).toBe(true);
+      expect(await activePeriodRowExists(appHandle.db, ORG_A, pseudonym, period, "user")).toBe(
+        true,
+      );
       // Cross-tenant isolation — org B never sees org A's row.
-      expect(await activePeriodRowExists(appHandle.db, ORG_B, pseudonym, period, "user")).toBe(false);
+      expect(await activePeriodRowExists(appHandle.db, ORG_B, pseudonym, period, "user")).toBe(
+        false,
+      );
 
       // Redelivery is idempotent (no duplicate row — the unique index would throw on a naive re-insert).
       await expect(
@@ -264,7 +274,11 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
         consumer.handle({
           eventType: "m2.session.created",
           organizationId: ORG_A,
-          payload: { sessionId: "s3", userId: "99999999-9999-4999-8999-000000000009", organizationId: ORG_A },
+          payload: {
+            sessionId: "s3",
+            userId: "99999999-9999-4999-8999-000000000009",
+            organizationId: ORG_A,
+          },
         }),
       ).resolves.toBeUndefined();
     });
@@ -272,7 +286,10 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
     it("m5.patient.merged: the survivor's raw patientId is marked active for the current period", async () => {
       const r = await freshRing();
       const provider = createDrizzlePseudonymKeyProvider(platformHandle.db, r);
-      const consumer = buildM35PatientActivePeriodConsumer({ db: appHandle.db, keyProvider: provider });
+      const consumer = buildM35PatientActivePeriodConsumer({
+        db: appHandle.db,
+        keyProvider: provider,
+      });
       const survivorId = "44444444-4444-4444-8444-000000000001";
 
       await consumer.handle({
@@ -284,13 +301,18 @@ describe.skipIf(!DB_URL)("F-172 (#248) — M35 pseudonym-key provider, LIVE Post
       const key = await provider.activeKey();
       const pseudonym = computeBillingPseudonym(key.keyMaterial, survivorId);
       const period = new Date().toISOString().slice(0, 7);
-      expect(await activePeriodRowExists(appHandle.db, ORG_A, pseudonym, period, "patient")).toBe(true);
+      expect(await activePeriodRowExists(appHandle.db, ORG_A, pseudonym, period, "patient")).toBe(
+        true,
+      );
     });
 
     it("m5.patient.deceased: marks the period inactive with reason='died', leaves was_active true", async () => {
       const r = await freshRing();
       const provider = createDrizzlePseudonymKeyProvider(platformHandle.db, r);
-      const consumer = buildM35PatientActivePeriodConsumer({ db: appHandle.db, keyProvider: provider });
+      const consumer = buildM35PatientActivePeriodConsumer({
+        db: appHandle.db,
+        keyProvider: provider,
+      });
       const patientId = "55555555-5555-4555-8555-000000000001";
       const deceasedDate = "2026-03-15";
 

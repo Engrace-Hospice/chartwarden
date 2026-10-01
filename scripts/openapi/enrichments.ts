@@ -232,6 +232,8 @@ import {
   PortalRecentQuery as M19PortalRecentQuery,
   ProtocolQuestionBody as M19ProtocolQuestionBody,
   RecordAnswerBody as M19RecordAnswerBody,
+  RequestSummaryBody as M19RequestSummaryBody,
+  RequestSummaryResponse as M19RequestSummaryResponse,
   ResolveEscalationBody as M19ResolveEscalationBody,
   SelectDispositionBody as M19SelectDispositionBody,
   ShiftTransitionBody as M19ShiftTransitionBody,
@@ -328,16 +330,43 @@ import {
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
   CreateRuleConfigBodySchema,
-  ForwardDateSequestrationBodySchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
   NotrListQuerySchema,
   OverrideValidationResultBodySchema,
-  RequiredProviderEntityQuerySchema,
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
+import {
+  CreateRateTableBodySchema,
+  RateTableEffectiveQuerySchema,
+  RateTableEffectiveResponseSchema,
+  RateTableGetQuerySchema,
+  RateTableListQuerySchema,
+  RateTableListResponseSchema,
+  RateTableViewSchema,
+  SupersedeRateTableBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
+import {
+  CreateSequestrationPolicyBodySchema,
+  SequestrationPolicyEffectiveQuerySchema,
+  SequestrationPolicyGetQuerySchema,
+  SequestrationPolicyListQuerySchema,
+  SequestrationPolicyListResponseSchema,
+  SequestrationPolicyNullableResponseSchema,
+  SequestrationPolicyViewSchema,
+  SupersedeSequestrationPolicyBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-typebox";
+import {
+  CreateWageIndexBodySchema,
+  SupersedeWageIndexBodySchema,
+  WageIndexEffectiveQuerySchema,
+  WageIndexEffectiveResponseSchema,
+  WageIndexListQuerySchema,
+  WageIndexListResponseSchema,
+  WageIndexViewSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/wage-index-typebox";
 // M24 Billing — Medicaid — the §4.2 request bodies / list queries / response DTOs for the state-Medicaid
 // claim, R&B, rule-overlay, eligibility, and trading-partner surfaces (modules/24-billing-medicaid/routes).
 import {
@@ -1291,12 +1320,17 @@ import {
   ValidationQuerySchema as M10ValidationQuerySchema,
 } from "../../apps/backend/src/modules/10-hope/routes/hope-typebox";
 import {
+  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
+  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
+} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
+import {
+  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
   CompleteOrderRequest as M11CompleteOrderRequest,
   CorrectOrderRequest as M11CorrectOrderRequest,
   CosignRequest as M11CosignRequest,
   CreateOrderRequest as M11CreateOrderRequest,
-  CreateVerbalOrderRequest as M11CreateVerbalOrderRequest,
   CreateStandingOrderRequest as M11CreateStandingOrderRequest,
+  CreateVerbalOrderRequest as M11CreateVerbalOrderRequest,
   DiscontinueRequest as M11DiscontinueRequest,
   DiscontinueStandingOrderRequest as M11DiscontinueStandingOrderRequest,
   OrderDetailResponseSchema as M11OrderDetailResponseSchema,
@@ -1304,11 +1338,10 @@ import {
   OrderListResponseSchema as M11OrderListResponseSchema,
   OrderViewResponseSchema as M11OrderViewResponseSchema,
   RecordVerbalRequest as M11RecordVerbalRequest,
+  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
+  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   RegenerateVerbalTimerRequest as M11RegenerateVerbalTimerRequest,
   RequestSignatureRequest as M11RequestSignatureRequest,
-  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
-  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
-  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
   SignOrderRequest as M11SignOrderRequest,
@@ -1323,10 +1356,6 @@ import {
   VerbalPolicyViewResponseSchema as M11VerbalPolicyViewResponseSchema,
 } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
-  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
-  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
-} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
-import {
   ApproveRefillRequest as M12ApproveRefillRequest,
   CompleteRequest as M12CompleteRequest,
   ControlledSubstancePolicyRequest as M12ControlledSubstancePolicyRequest,
@@ -1338,13 +1367,13 @@ import {
   DiscontinueRequest as M12DiscontinueRequest,
   EnrollPrescriberRequest as M12EnrollPrescriberRequest,
   HistoryRefreshResponseSchema as M12HistoryRefreshResponseSchema,
+  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   MedicationHistoryResponseSchema as M12MedicationHistoryResponseSchema,
   MedicationOrderListQuerySchema as M12MedicationOrderListQuerySchema,
   MedicationOrderListResponseSchema as M12MedicationOrderListResponseSchema,
   MedicationOrderResponseSchema as M12MedicationOrderResponseSchema,
   NewOrderIdResponseSchema as M12NewOrderIdResponseSchema,
   PrescriberRosterListResponseSchema as M12PrescriberRosterListResponseSchema,
-  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   ReconcileRequest as M12ReconcileRequest,
   RecordVerbalRequest as M12RecordVerbalRequest,
   RefillInboxPolicyRequest as M12RefillInboxPolicyRequest,
@@ -1408,16 +1437,23 @@ import {
   AgendaItemViewSchema as M14AgendaItemViewSchema,
   AgendaListResponseSchema as M14AgendaListResponseSchema,
   AmendmentResponseSchema as M14AmendmentResponseSchema,
+  AttendanceEligibilityQuerySchema as M14AttendanceEligibilityQuerySchema,
+  AttendanceEligibilitySchema as M14AttendanceEligibilitySchema,
   AttendanceListResponseSchema as M14AttendanceListResponseSchema,
   AttendanceViewSchema as M14AttendanceViewSchema,
   CancelMeetingRequest as M14CancelMeetingRequest,
   CreateActionItemRequest as M14CreateActionItemRequest,
+  CreateDisciplineNoteRequest as M14CreateDisciplineNoteRequest,
   DecisionListResponseSchema as M14DecisionListResponseSchema,
   DecisionViewSchema as M14DecisionViewSchema,
+  DisciplineNoteListQuerySchema as M14DisciplineNoteListQuerySchema,
+  DisciplineNoteListResponseSchema as M14DisciplineNoteListResponseSchema,
+  DisciplineNoteViewSchema as M14DisciplineNoteViewSchema,
   MeetingViewSchema as M14MeetingViewSchema,
   MinutesViewSchema as M14MinutesViewSchema,
-  PacketDigestViewSchema as M14PacketDigestViewSchema,
+  PacketDetailViewSchema as M14PacketDetailViewSchema,
   PacketListResponseSchema as M14PacketListResponseSchema,
+  RecertWindowsResponseSchema as M14RecertWindowsResponseSchema,
   RecordAttendanceRequest as M14RecordAttendanceRequest,
   RecordDecisionRequest as M14RecordDecisionRequest,
   RecurringPolicyRequest as M14RecurringPolicyRequest,
@@ -1425,6 +1461,7 @@ import {
   RemovedResponseSchema as M14RemovedResponseSchema,
   RescheduleMeetingRequest as M14RescheduleMeetingRequest,
   ScheduleListResponseSchema as M14ScheduleListResponseSchema,
+  ScheduleMeetingRequest as M14ScheduleMeetingRequest,
   ScheduleQuerySchema as M14ScheduleQuerySchema,
   SubmitAmendmentRequest as M14SubmitAmendmentRequest,
   SupersedeDecisionRequest as M14SupersedeDecisionRequest,
@@ -1432,6 +1469,7 @@ import {
   UpdateAgendaItemRequest as M14UpdateAgendaItemRequest,
   UpdateAttendanceRequest as M14UpdateAttendanceRequest,
   UpdateDecisionRequest as M14UpdateDecisionRequest,
+  UpdateDisciplineNoteRequest as M14UpdateDisciplineNoteRequest,
 } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 import {
   ApproveTimeOffRequest as M17ApproveTimeOffRequest,
@@ -2730,8 +2768,19 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // ── sequestration policy (sequestration-policy.routes.ts) ──
   "POST /api/v1/billing/sequestration-policies": {
     summary:
-      "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
-    body: ForwardDateSequestrationBodySchema,
+      "Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212)",
+    body: CreateSequestrationPolicyBodySchema,
+    response: SequestrationPolicyViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/sequestration-policies/:id/supersede": {
+    summary:
+      "Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212)",
+    body: SupersedeSequestrationPolicyBodySchema,
+    response: SequestrationPolicyViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
   "POST /api/v1/billing/mac-credentials": {
@@ -4741,6 +4790,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M14RecurringPolicyRequest,
     response: M14RecurringPolicyViewSchema,
   },
+  "POST /api/v1/idg/meetings": {
+    summary: "Schedule a single (ad-hoc) IDG meeting",
+    body: M14ScheduleMeetingRequest,
+    response: M14MeetingViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
   "GET /api/v1/idg/meetings/:id": {
     summary: "Read one IDG meeting's lifecycle view",
     response: M14MeetingViewSchema,
@@ -4765,8 +4821,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Adjourn the meeting (commit point; fresh step-up, D13)",
     body: M14AdjournMeetingRequest,
   },
+  "GET /api/v1/idg/meetings/:id/attendance-eligibility": {
+    summary:
+      "What the caller may attest at the check-in: the attendance disciplines their AUTHORITATIVE roles confer (`heldDisciplines`). A coordinator may pass `?membershipId=` for another member and also receives the closed vocabulary they may ATTEST (`attestableDisciplines`); a non-coordinator naming someone else => 403 ATTENDANCE_SELF_ONLY; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND",
+    query: M14AttendanceEligibilityQuerySchema,
+    response: M14AttendanceEligibilitySchema,
+  },
   "POST /api/v1/idg/meetings/:id/attendance": {
-    summary: "Self check-in attendance for a meeting",
+    summary:
+      "Record attendance. A non-coordinator may record ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline must be in the closed vocabulary (422 UNKNOWN_DISCIPLINE) and conferred by the member's authoritative roles (422 DISCIPLINE_NOT_HELD). A coordinator (idg.coordinate) may record others and, with `coordinatorAttested: true`, an unheld discipline as a FLAGGED override (`disciplineAttested`); attesting for themself => 403 ATTESTATION_SELF_FORBIDDEN, a non-coordinator sending it => 403 ATTESTATION_REQUIRES_COORDINATOR; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND; roles unresolvable => 503 ATTENDANCE_AUTHORITY_UNAVAILABLE",
     body: M14RecordAttendanceRequest,
     response: M14AttendanceViewSchema,
   },
@@ -4784,8 +4847,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M14PacketListResponseSchema,
   },
   "GET /api/v1/idg/meetings/:meetingId/packets/:patientId": {
-    summary: "Read one patient's packet (SUD redaction applied)",
-    response: M14PacketDigestViewSchema,
+    summary:
+      "Read one patient's packet with its content — cover summary (deterministic), per-discipline views, signed encounters, assessment changes, HOPE, order/medication changes, flagged events, carry-forward items (SUD redaction applied per caller)",
+    response: M14PacketDetailViewSchema,
   },
   "GET /api/v1/idg/meetings/:id/attendance": {
     summary:
@@ -4795,6 +4859,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/idg/meetings/:id/agenda": {
     summary: "The meeting's agenda in sort_order (F-062: add/update/remove had no reader)",
     response: M14AgendaListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/recert-windows": {
+    summary:
+      "Per-agenda-patient recert / face-to-face windows for the IDG right pane — next recert due date, benefit-period end, F2F status/window (seam-pulled from M6's window math, org-timezone; unresolved patients are `unknown`, never fabricated)",
+    response: M14RecertWindowsResponseSchema,
   },
   "GET /api/v1/idg/meetings/:id/decisions": {
     summary:
@@ -4848,6 +4917,27 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "List action items (assignee self-scoped)",
     query: M14ActionItemListQuerySchema,
     response: M14ActionItemListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/discipline-notes": {
+    summary:
+      "The meeting's per-discipline notes, oldest first (optionally one patient) — readable in any status; text withheld (`bodyWithheld`) for a 42 CFR Part 2 patient the caller has no release for",
+    query: M14DisciplineNoteListQuerySchema,
+    response: M14DisciplineNoteListResponseSchema,
+  },
+  "POST /api/v1/idg/meetings/:id/discipline-notes": {
+    summary:
+      "Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). `reason` (≤500) is OPTIONAL context on a live note (blank = absent). A patient-scoped addendum is refused once a NEWER ADJOURNED IDG has included that patient. Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_SUPERSEDED_BY_NEWER_IDG / ADDENDUM_REASON_REQUIRED; 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE (retryable)",
+    body: M14CreateDisciplineNoteRequest,
+    response: M14DisciplineNoteViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "PATCH /api/v1/idg/discipline-notes/:id": {
+    summary:
+      "Edit a discipline note's text and/or reason (at least one; live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE",
+    body: M14UpdateDisciplineNoteRequest,
+    response: M14DisciplineNoteViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "GET /api/v1/idg/meetings/:id/minutes": {
     summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
@@ -6166,6 +6256,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The caller disconnected. A mandatory escalation still blocks: 'the caller hung up' is not an answer to 'did a human respond to the suicidal-ideation page?' (§4.1 #13)",
     body: M19AbandonCallBody,
     response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/request-summary": {
+    summary:
+      "F-224 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending)",
+    body: M19RequestSummaryBody,
+    response: M19RequestSummaryResponse,
   },
   "GET /api/v1/triage-calls/:triageCallId/transcript-decrypt": {
     summary:
@@ -8353,6 +8449,7 @@ import {
   EquipmentViewSchema as M37EquipmentViewSchema,
   GipCriteriaListSchema as M37GipCriteriaListSchema,
   GipCriteriaViewSchema as M37GipCriteriaViewSchema,
+  GipProposalListSchema as M37GipProposalListSchema,
   InitiateTransferBodySchema as M37InitiateTransferBodySchema,
   InvokeRnBreakGlassBodySchema as M37InvokeRnBreakGlassBodySchema,
   IrcEpisodeListSchema as M37IrcEpisodeListSchema,
@@ -8440,6 +8537,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/ipu-admissions": {
     response: M37AdmissionListSchema,
     summary: "List IPU admissions (§4.1)",
+  },
+  "GET /api/v1/ipu-intake/gip-proposals": {
+    response: M37GipProposalListSchema,
+    summary:
+      "F-219 intake worklist — pending M19 GIP admission PROPOSALS (a pull; never an ipu_admission row)",
   },
   "POST /api/v1/ipu-admissions": {
     body: M37OpenAdmissionBodySchema,
@@ -9193,22 +9295,6 @@ const M23RuleConfigListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 
-const M23SequestrationPolicyView = Type.Object({
-  policyId: Type.String(),
-  organizationId: Type.String(),
-  providerEntityId: Type.String(),
-  percentage: Type.String(),
-  effectiveFrom: Type.String(),
-  effectiveTo: Type.Union([Type.String(), Type.Null()]),
-  setByMembershipId: Type.String(),
-  setReason: Type.Union([Type.String(), Type.Null()]),
-  createdAt: Type.String(),
-});
-const M23SequestrationPolicyListResponse = Type.Object({
-  policies: Type.Array(M23SequestrationPolicyView),
-});
-const M23SequestrationPolicyActiveResponse = Type.Union([M23SequestrationPolicyView, Type.Null()]);
-
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
@@ -9317,13 +9403,90 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/billing/sequestration-policies": {
     summary:
       "Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32)",
-    query: RequiredProviderEntityQuerySchema,
-    response: M23SequestrationPolicyListResponse,
+    query: SequestrationPolicyListQuerySchema,
+    response: SequestrationPolicyListResponseSchema,
   },
   "GET /api/v1/billing/sequestration-policies/active": {
-    summary: "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
-    query: RequiredProviderEntityQuerySchema,
-    response: M23SequestrationPolicyActiveResponse,
+    summary: "The current open-ended sequestration policy for a ProviderEntity (or null, §4.1)",
+    query: SequestrationPolicyGetQuerySchema,
+    response: SequestrationPolicyNullableResponseSchema,
+  },
+  "GET /api/v1/billing/sequestration-policies/effective": {
+    summary:
+      "The live sequestration policy claim assembly would apply on a service date, or null (F-212)",
+    query: SequestrationPolicyEffectiveQuerySchema,
+    response: SequestrationPolicyNullableResponseSchema,
+  },
+  "GET /api/v1/billing/sequestration-policies/:id": {
+    summary: "Read one sequestration policy row (F-212)",
+    query: SequestrationPolicyGetQuerySchema,
+    response: SequestrationPolicyViewSchema,
+  },
+  // ── F-210: the tenant-entered hospice per-diem rate table (rate-table.routes.ts) ──
+  "GET /api/v1/billing/rate-tables": {
+    summary:
+      "List a ProviderEntity's hospice rate-table versions, newest window first (F-210; includeSuperseded=true adds history)",
+    query: RateTableListQuerySchema,
+    response: RateTableListResponseSchema,
+  },
+  "GET /api/v1/billing/rate-tables/effective": {
+    summary:
+      "The live hospice rate table claim assembly would price a service date from, or null (F-210)",
+    query: RateTableEffectiveQuerySchema,
+    response: RateTableEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/rate-tables/:id": {
+    summary: "Read one hospice rate-table version (F-210)",
+    query: RateTableGetQuerySchema,
+    response: RateTableViewSchema,
+  },
+  "POST /api/v1/billing/rate-tables": {
+    summary:
+      "Enter a hospice rate-table version - whole-cent PRE-wage-index per-diems for a fiscal year; non-overlapping (F-210)",
+    body: CreateRateTableBodySchema,
+    response: RateTableViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/rate-tables/:id/supersede": {
+    summary:
+      "Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210)",
+    body: SupersedeRateTableBodySchema,
+    response: RateTableViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  // ── F-211: the tenant-entered CMS hospice wage index (wage-index.routes.ts) ──
+  "GET /api/v1/billing/wage-indexes": {
+    summary:
+      "List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history)",
+    query: WageIndexListQuerySchema,
+    response: WageIndexListResponseSchema,
+  },
+  "GET /api/v1/billing/wage-indexes/effective": {
+    summary: "The live tenant-entered wage index for a CCN + fiscal year, or null (F-211)",
+    query: WageIndexEffectiveQuerySchema,
+    response: WageIndexEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/wage-indexes/:id": {
+    summary: "Read one tenant-entered wage-index version (F-211)",
+    response: WageIndexViewSchema,
+  },
+  "POST /api/v1/billing/wage-indexes": {
+    summary:
+      "Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211)",
+    body: CreateWageIndexBodySchema,
+    response: WageIndexViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/wage-indexes/:id/supersede": {
+    summary:
+      "Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211)",
+    body: SupersedeWageIndexBodySchema,
+    response: WageIndexViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   "GET /api/v1/claims/:id/validation-runs": {
     summary: "List a claim's validation runs, most recent first (§4.1 #14)",

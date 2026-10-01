@@ -156,3 +156,94 @@ sweep, all three tier escalations, the tier-3 refusal (state/history/outbox all 
 terminus re-page (loop iteration counted correctly, no spurious history row — `m20_ssash_no_self` would
 refuse one), the two-concurrent-ticks race (escalates exactly once, version 2 never 3), and a two-org fan
 out under each org's own tenant scope.
+
+## F-217 — M6 F2F/CTI adequacy predicate and the recert activation gate (M11 D10)
+
+**Correction of the F-159/F-167 record.** Both said `m11.order.recertification_signed` was blocked because
+"no callable F2F/CTI adequacy check exists" and that `createElectionPeriod` "performs no F2F/CTI check". The
+second half was the wrong place to look. `createElectionPeriod` inserts a `pending` shell and cannot carry
+the gate: `certification_of_terminal_illness.election_period_id` and `face_to_face_encounter.election_period_id`
+are NOT NULL, so neither record can exist before the period does. The spec puts the gate where a period
+becomes `active` (M6 §2.3.2 `setActive`, R-F2F-04, §2.3.3), and `signCtiHospiceMd` — the only path that
+advances a period >= 2 — already enforced the F2F half of it (`hasAttestedF2f`, "is there an attested row").
+The real gaps were (a) no shared predicate, (b) nothing on the CTI side beyond the signer-equals-admission-
+physician check, (c) nothing on the F2F side beyond "attested".
+
+**Built.** `06-admission/certification/adequacy.ts` — `evaluatePeriodAdequacy`, pure and deterministic, returns
+`adequate | inadequate` + machine-readable reason codes + non-blocking flags (no PHI: codes only).
+`signCtiHospiceMd` now runs it fail-closed after the legacy R-F2F-04 machine guard: typed 409
+`ELECTION_PERIOD_ADEQUACY_FAILED` with the codes in `details`, whole tx rolled back (CTI stays unsigned, period
+stays `pending`). The decision is published additively as `adequacy` on the recert-activation
+`m6.election.period_started` (catalog schema extended, optional). The M23 range reader
+(`claimAssemblyRangeContextForOrg`) now selects its CTI/F2F row with the predicate's own `pickCertification` /
+`pickFaceToFace`, so the claim-assembly facts and the gate cannot disagree about which row represents a period.
+Proven by `m6-adequacy.test.ts` (pure, window/deadline boundaries on exact instants incl. a DST case) and
+`m6-adequacy-gate.live.test.ts` (real `wardenx_app` role, real catalog-validating publisher, real M6 rows).
+
+**Semantics (spec citations in the file header).** CTI: present for this period; non-voided/superseded;
+hospice-MD signature on file and status `signed` (period 1: MD signature alone suffices and the attending
+co-sign is a flag only — D3 amended v0.6); signer = `admission.hospice_physician_id`; narrative >= 200 chars
+(§2.3.3 / `TEXT_MINIMUMS.ctiNarrative`). Late is a FLAG, never a block (R-CTI-01, D4): `CTI_SIGNED_LATE`,
+`CTI_LATE_REASON_MISSING`, `CTI_WRITTEN_CERT_DEADLINE_MISSED` (org-TZ calendar days, D8). F2F (sequence >= 3
+only, R-F2F-04; D9: the inherited sequence counts): attested with a signature instant; performer hospice MD/NP
+(R-F2F-01); in `[start-30, start-1]` (R-F2F-02) or a valid override (reason >= 20 chars + overriding user,
+R-F2F-03/D5), flagged `F2F_WINDOW_OVERRIDDEN`. Period 1 is NOT routed through the gate — R-AC-01
+(`evaluateAdmissionReadiness`) governs the initial CTI and its verbal-cert grace.
+
+**What the spec left ambiguous, and what was chosen.** (1) Override authority: D5 says compliance officer only,
+R-F2F-03/§2.3.4 say Medical Director — the predicate does not re-decide WHO (route permission does), it accepts
+the facts the DB CHECK requires. (2) How "in window" is established: the predicate has `windowBasis: 'recorded'`
+(trust the persisted `within_window`, NULL = unverified, fail-closed) and `'dates'` (recompute from
+`encounter_date` + period start). The gate uses `'recorded'` because the production `completeF2f` does not
+capture the real encounter/period dates: it ignores the validated `encounterDate` body field, stamps "today",
+and computes the window against a hard-coded `period start = today + 7d`, so `within_window` is always true on
+that path and recomputing from those dates would refuse every same-day flow. **A compliance officer should know
+this: today the F2F window check on the production write path is structurally always satisfied.** Fixing
+`completeF2f` to take the real dates (and the real period start, which is unknown for a `pending` recert period
+— activation stamps "today") is a separate, decision-bearing change. (3) `attestF2f` does not persist the
+attestation narrative (`attestation_narrative` stays NULL), so its 100-char minimum (§2.3.4) cannot be checked
+from stored facts and is not part of the predicate.
+
+**Operational consequence to note.** `transferIn` (and the period-1 seed) draft a SKELETON CTI with no
+narrative and no route edits a CTI's narrative; `draftCti` refuses while a non-voided CTI exists. A transferred-in
+next period's CTI therefore now fails `CTI_NARRATIVE_MISSING` until it is voided and re-drafted with a narrative
+(`m6-discharge-f2f-loc-write.live.test.ts` exercises exactly that path). That is the CMS-correct outcome
+(42 CFR 418.22(b)(3) requires the narrative) but it is a new step for operators.
+
+**Outbox pair.** `m6 <- m11.order.recertification_signed` stays deferred, with a corrected reason in
+`scripts/outbox-deferred-consumers.ts`: with the gate at activation, a consumer that opens the next pending
+period can no longer bypass the CoP check, so the old blocker is gone; the remaining blocker is the product
+decision whether a signed recert order should auto-open the next pending election period at all (M11 D10 / §1.3
+name M6 as subscriber; M6's own spec never names the event; there is no F2F/CTI to validate before the period
+exists).
+
+## F-223 — M6 binds `m11.order.recertification_signed`: a signed recert order opens the next PENDING period
+
+**Decision (user-approved, closing F-217's open question).** A signed `recertification` order (M11 D10 / §1.3)
+auto-opens the next election period, PENDING only. `outbox-consumers/m11-recertification-signed.ts`; migration
+0297 adds `election_period.source_order_id` (logical uuid, M6's `dependsOn` excludes M11) + plain
+`UNIQUE(organization_id, source_order_id)` (NULLS DISTINCT — the F-159 / 0250 / M25 0249 precedent).
+
+**Gate intact.** The consumer never activates, signs or touches CTI/F2F rows; adequacy stays enforced at
+activation (`signCtiHospiceMd` → `evaluatePeriodAdequacy`, F-217). The live suite proves an auto-opened period
+with an inadequate CTI still refuses activation (409 `ELECTION_PERIOD_ADEQUACY_FAILED`).
+
+**No duplicated insert logic.** `createElectionPeriod` now delegates to the exported `openNextElectionPeriodInTx`
+(next sequence, `electionPeriodKindForSequence` 90/90/60, row, `m6.election.period_started` on the same tx); the
+consumer passes `sourceOrderId`, which switches the insert to `ON CONFLICT DO NOTHING` so a racing manual open
+or redelivery loses quietly instead of aborting the tx with 23505.
+
+**Matching.** `periodEndDate` is the CURRENT period's end (M11 spec: `<curr period end>`); the consumer selects
+the highest-sequence `active` period whose `scheduled_end_at` equals it. Highest-sequence because activating
+period N+1 does not flip period N off `active`, and (pre-existing behaviour) period windows are stamped from the
+activation day, so two periods can share an end date.
+
+**Settle vs retry.** Settled (return, never throw): malformed payload, already applied (source_order_id),
+admission unknown / cross-tenant (RLS), admission not `active`/`on_hold`, no active period matching
+`periodEndDate`, a later period already exists (no duplicate pending period when staff opened it manually).
+Only db/publisher errors propagate for dispatcher retry (proven: the period rolls back).
+
+**Outbox pair.** `m6 <- m11.order.recertification_signed` removed from `scripts/outbox-deferred-consumers.ts`
+(group deleted). No `*_SUBSCRIBED_EVENT_NAMES` list exists for M6. Wired at `apps/backend/src/index.ts`
+(`buildM6RecertificationSignedConsumer`). Proof: `m6-recertification-signed.test.ts` (unit) and
+`m6-recertification-signed.live.test.ts` (`test:m6:recertification-signed:live`, CI row added).

@@ -75,7 +75,6 @@ import {
 } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, gt, gte, lte, ne, sql } from "drizzle-orm";
-import { type OrmRequestedPorts, resolveOrmRequested } from "./orm-request/orm-requested";
 import {
   RECOVERY_ANOMALY_THRESHOLD,
   RECOVERY_ANOMALY_WINDOW_MS,
@@ -90,6 +89,7 @@ import {
   decideRecoveryEscalation,
   recoveryAlertEventPayload,
 } from "./orm-request/orm-recovery-dual-control";
+import { type OrmRequestedPorts, resolveOrmRequested } from "./orm-request/orm-requested";
 import {
   ORM_REFUSAL_PREFIX,
   classifyOrmResend,
@@ -308,7 +308,9 @@ export function createDbOrderBackend(
   const anomalyThreshold = recovery.anomalyThreshold ?? RECOVERY_ANOMALY_THRESHOLD;
   const escalationThreshold = recovery.escalationThreshold ?? RECOVERY_ESCALATION_THRESHOLD;
   const orgRateThreshold = recovery.orgRateThreshold ?? RECOVERY_ORG_RATE_THRESHOLD;
-  type RecoveryAlert = ReturnType<typeof buildRecoveryAlert> | ReturnType<typeof buildRecoveryAnomalyAlert>;
+  type RecoveryAlert =
+    | ReturnType<typeof buildRecoveryAlert>
+    | ReturnType<typeof buildRecoveryAnomalyAlert>;
 
   /**
    * The lab contact's NAME and the lab's reference are a third party's personal data — only the recovery authority sees
@@ -319,7 +321,10 @@ export function createDbOrderBackend(
     actor.permissions.has("orders.transmission.recover") ||
     actor.permissions.has("orders.transmission.cosign_escalated");
 
-  const toRequestView = (r: typeof REQ.$inferSelect, actor: OrderDetailActor): RecoveryRequestView => {
+  const toRequestView = (
+    r: typeof REQ.$inferSelect,
+    actor: OrderDetailActor,
+  ): RecoveryRequestView => {
     const see = canSeeRecoveryEvidence(actor);
     return {
       id: r.id,
@@ -336,7 +341,10 @@ export function createDbOrderBackend(
     };
   };
 
-  const toAttestationView = (r: typeof ATT.$inferSelect, actor: OrderDetailActor): TransmissionAttestationView => {
+  const toAttestationView = (
+    r: typeof ATT.$inferSelect,
+    actor: OrderDetailActor,
+  ): TransmissionAttestationView => {
     const see = canSeeRecoveryEvidence(actor);
     return {
       id: r.id,
@@ -366,7 +374,13 @@ export function createDbOrderBackend(
     alerts: readonly RecoveryAlert[],
   ): Promise<void> {
     for (const a of alerts) {
-      await emit(t, organizationId, "m11.order.recovery_alert_requested", orderId, recoveryAlertEventPayload(a));
+      await emit(
+        t,
+        organizationId,
+        "m11.order.recovery_alert_requested",
+        orderId,
+        recoveryAlertEventPayload(a),
+      );
     }
   }
   /** Emit one `m11.order.*` event on the caller's tx (validated + persisted by the bound publisher). */
@@ -1297,7 +1311,9 @@ export function createDbOrderBackend(
       auditUserId = "",
     ): Promise<ResendLabTransmissionResult> {
       if (!orm) {
-        throw new ConflictError("ORM resend not allowed (not_configured): outbound lab requests are not configured");
+        throw new ConflictError(
+          "ORM resend not allowed (not_configured): outbound lab requests are not configured",
+        );
       }
       return withOrgContext(db, { organizationId, userId: auditUserId }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -1348,13 +1364,19 @@ export function createDbOrderBackend(
             .where(stillFailed)
             .returning({ id: OR.id });
           if (claimed.length === 0) {
-            throw new ConflictError("ORM resend not allowed (not_failed): the order was resent concurrently");
+            throw new ConflictError(
+              "ORM resend not allowed (not_failed): the order was resent concurrently",
+            );
           }
           await emit(t, organizationId, "m11.order.hl7_orm_requested", id, {
             ...outcome.payload,
             attemptId,
           } as unknown as Record<string, unknown>);
-          return { outcome: "requested", refusalReason: null, order: await readOrder(t, id, actor) };
+          return {
+            outcome: "requested",
+            refusalReason: null,
+            order: await readOrder(t, id, actor),
+          };
         }
         const refusal = `${ORM_REFUSAL_PREFIX}${outcome.reason}`;
         if (refusal !== verdict.priorReason) {
@@ -1363,7 +1385,11 @@ export function createDbOrderBackend(
             .set({ transmissionFailureReason: refusal, updatedAt: at })
             .where(stillFailed);
         }
-        return { outcome: "still_refused", refusalReason: outcome.reason, order: await readOrder(t, id, actor) };
+        return {
+          outcome: "still_refused",
+          refusalReason: outcome.reason,
+          order: await readOrder(t, id, actor),
+        };
       });
     },
 
@@ -1419,14 +1445,18 @@ export function createDbOrderBackend(
           attestation,
         );
         if (!verdict.ok) {
-          throw new ConflictError(`Transmission recovery not allowed (${verdict.code}): ${verdict.message}`);
+          throw new ConflictError(
+            `Transmission recovery not allowed (${verdict.code}): ${verdict.message}`,
+          );
         }
         // F-188 — the CONTRADICTION CHECK, BEFORE anything is written: an operator's `not_received_by_lab` is a
         // phone call the system cannot verify, but it CAN see whether the lab has already returned a result for the
         // order, acknowledged the message, or still has a send under way. Any of those refuses the attestation with
         // a specific 409; a missing evidence port fails CLOSED. `received_by_lab` is never blocked (it sends nothing).
         if (attestation === "not_received_by_lab") {
-          const observed = orm.outboundEvidence ? await orm.outboundEvidence(t, organizationId, id) : null;
+          const observed = orm.outboundEvidence
+            ? await orm.outboundEvidence(t, organizationId, id)
+            : null;
           const contradiction = classifyRecoveryContradiction(
             attestation,
             { resultsStatus: r.resultsStatus, resultsFirstReceivedAt: r.resultsFirstReceivedAt },
@@ -1446,7 +1476,11 @@ export function createDbOrderBackend(
             .update(OR)
             // F-188 — a delivered order carries NO failure reason; what was attested, by whom, with what evidence,
             // lives in `order_transmission_attestation`.
-            .set({ transmissionStatus: "transmitted", transmissionFailureReason: null, updatedAt: at })
+            .set({
+              transmissionStatus: "transmitted",
+              transmissionFailureReason: null,
+              updatedAt: at,
+            })
             .where(
               and(
                 eq(OR.organizationId, organizationId),
@@ -1458,7 +1492,9 @@ export function createDbOrderBackend(
             )
             .returning({ id: OR.id });
           if (claimed.length === 0) {
-            throw new ConflictError("Transmission recovery not allowed (not_failed): the order was recovered concurrently");
+            throw new ConflictError(
+              "Transmission recovery not allowed (not_failed): the order was recovered concurrently",
+            );
           }
           await t.insert(ATT).values({
             id: attestationId,
@@ -1603,7 +1639,13 @@ export function createDbOrderBackend(
         const [q] = await t
           .select()
           .from(REQ)
-          .where(and(eq(REQ.organizationId, organizationId), eq(REQ.id, requestId), eq(REQ.orderRecordId, orderId)))
+          .where(
+            and(
+              eq(REQ.organizationId, organizationId),
+              eq(REQ.id, requestId),
+              eq(REQ.orderRecordId, orderId),
+            ),
+          )
           .limit(1);
         if (!q) throw new NotFoundError(`recovery request ${requestId} not found`);
         const at = nowFn();
@@ -1618,7 +1660,9 @@ export function createDbOrderBackend(
           at,
         );
         if (!cosign.ok) {
-          throw new ConflictError(`Transmission recovery not allowed (${cosign.code}): ${cosign.message}`);
+          throw new ConflictError(
+            `Transmission recovery not allowed (${cosign.code}): ${cosign.message}`,
+          );
         }
 
         // F-203 — the COLLUSION BOUND. Serialize concurrent co-signs that involve either person (advisory locks, taken in
@@ -1627,7 +1671,9 @@ export function createDbOrderBackend(
         // `orders.transmission.cosign_escalated` may co-sign. This raises the cost of two people agreeing to lie; it
         // does not verify the lab — nothing inside the platform can.
         for (const who of [q.requestedByUserId, auditUserId].sort()) {
-          await t.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`m11-recovery:${organizationId}:${who}`}))`);
+          await t.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext(${`m11-recovery:${organizationId}:${who}`}))`,
+          );
         }
         const windowStart = new Date(at.getTime() - anomalyWindowMs);
         const [tally] = await t
@@ -1657,7 +1703,9 @@ export function createDbOrderBackend(
         if (escalation.required && !actor.permissions.has("orders.transmission.cosign_escalated")) {
           throw new ConflictError(
             `Transmission recovery not allowed (escalation_required): ${
-              escalation.reason === "pair_bound" ? "this requester and co-signer have" : "this requester has"
+              escalation.reason === "pair_bound"
+                ? "this requester and co-signer have"
+                : "this requester has"
             } already executed ${escalationThreshold} recoveries in the last ${Math.round(
               anomalyWindowMs / 3_600_000,
             )} hours — a co-signer holding 'orders.transmission.cosign_escalated' (an administrator or compliance officer) must approve this one`,
@@ -1674,16 +1722,22 @@ export function createDbOrderBackend(
           "not_received_by_lab",
         );
         if (!verdict.ok) {
-          throw new ConflictError(`Transmission recovery not allowed (${verdict.code}): ${verdict.message}`);
+          throw new ConflictError(
+            `Transmission recovery not allowed (${verdict.code}): ${verdict.message}`,
+          );
         }
-        const observed = orm.outboundEvidence ? await orm.outboundEvidence(t, organizationId, orderId) : null;
+        const observed = orm.outboundEvidence
+          ? await orm.outboundEvidence(t, organizationId, orderId)
+          : null;
         const contradiction = classifyRecoveryContradiction(
           "not_received_by_lab",
           { resultsStatus: r.resultsStatus, resultsFirstReceivedAt: r.resultsFirstReceivedAt },
           observed,
         );
         if (contradiction) {
-          throw new ConflictError(`Transmission recovery not allowed (${contradiction.code}): ${contradiction.message}`);
+          throw new ConflictError(
+            `Transmission recovery not allowed (${contradiction.code}): ${contradiction.message}`,
+          );
         }
         const outcome = await resolveOrmRequested(orm, t, {
           orderId,
@@ -1752,7 +1806,9 @@ export function createDbOrderBackend(
           )
           .returning({ id: OR.id });
         if (claimed.length === 0) {
-          throw new ConflictError("Transmission recovery not allowed (not_failed): the order was recovered concurrently");
+          throw new ConflictError(
+            "Transmission recovery not allowed (not_failed): the order was recovered concurrently",
+          );
         }
         await t.insert(ATT).values({
           id: attestationId,
@@ -1876,7 +1932,13 @@ export function createDbOrderBackend(
           const [q] = await t
             .select({ status: REQ.status, supersededReason: REQ.supersededReason })
             .from(REQ)
-            .where(and(eq(REQ.organizationId, organizationId), eq(REQ.id, requestId), eq(REQ.orderRecordId, orderId)))
+            .where(
+              and(
+                eq(REQ.organizationId, organizationId),
+                eq(REQ.id, requestId),
+                eq(REQ.orderRecordId, orderId),
+              ),
+            )
             .limit(1);
           if (!q) throw new NotFoundError(`recovery request ${requestId} not found`);
           throw new ConflictError(
@@ -1893,7 +1955,10 @@ export function createDbOrderBackend(
             cancelledByMembershipId: membershipId || null,
           }),
         ]);
-        return { recovery: toRequestView(cancelled, actor), order: await readOrder(t, orderId, actor) };
+        return {
+          recovery: toRequestView(cancelled, actor),
+          order: await readOrder(t, orderId, actor),
+        };
       });
     },
 
@@ -1916,7 +1981,11 @@ export function createDbOrderBackend(
           .update(REQ)
           .set({ status: "expired", resolvedAt: at })
           .where(
-            and(eq(REQ.organizationId, organizationId), eq(REQ.status, "pending_cosign"), lte(REQ.expiresAt, at)),
+            and(
+              eq(REQ.organizationId, organizationId),
+              eq(REQ.status, "pending_cosign"),
+              lte(REQ.expiresAt, at),
+            ),
           )
           .returning();
         for (const row of rows) {
@@ -1930,7 +1999,11 @@ export function createDbOrderBackend(
         }
         const stranded = await t
           .update(REQ)
-          .set({ status: "superseded", resolvedAt: at, supersededReason: "order_no_longer_recoverable" })
+          .set({
+            status: "superseded",
+            resolvedAt: at,
+            supersededReason: "order_no_longer_recoverable",
+          })
           .where(
             and(
               eq(REQ.organizationId, organizationId),

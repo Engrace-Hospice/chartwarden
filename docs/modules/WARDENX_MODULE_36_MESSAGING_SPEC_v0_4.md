@@ -2140,6 +2140,44 @@ async function composeAndDispatch(input: {
 > (recipient resolution + template render) is generic alert-engine work M36 already owns — so the
 > resolvers live in M36's registry, not M14 (ADR-0024 Decision).
 
+#### 4.11.1 As built: M14 carry-forward compliance alert (`m14.action_item.carry_forward.compliance`)
+
+> M14's own typed alert (M14 §2.7 / D8) is delivered by an M36 outbox consumer —
+> `m36.idg-carry-forward-compliance-alert` (`36-messaging/outbox-consumers/idg-carry-forward-compliance.ts`) —
+> bound to `m14.action_item.carry_forward` (`declaredConsumers: ["m36"]`). It acts only on the event's
+> `isComplianceAlert` crossing flag (count moved < 3 → ≥ 3), validates the payload against the registered
+> catalog entry before emit, and emits through the real `AlertEmitter` with correlation id
+> `m14.carry_forward.compliance:<actionItemId>` (one alert per action item, ever — the `alert` unique key
+> absorbs redelivery and a re-crossing; no repeat/escalation cadence). The catalog's
+> `defaultRecipientResolver: idg_compliance_inbox` is realised as the platform-default `alert_rule` for the event
+> type: a `role_set` over `compliance_officer`, `clinical_supervisor` and `org_admin` (backstop), plus the
+> meeting coordinator via the new **`role_set.userIdPaths`** resolver arg (payload keys that each hold one
+> already-verified user id to add to the role audience; here `coordinatorUserId`, resolved by the consumer from
+> the event's `coordinatorMembershipId` to an ACTIVE membership's user). No new `alert_recipient_resolver` enum
+> value was needed. Out-of-band push/email ride the rule's `channels_override` for recipients that have a
+> preferences row; every recipient gets the in-app floor.
+
+#### 4.11.2 As built: the remaining M14 typed alerts
+
+> Five more M14 typed alerts are delivered by M36 outbox consumers in
+> `36-messaging/outbox-consumers/idg-alerts.ts` (one binding each: `m36.idg-packets-ready-alert`,
+> `m36.idg-action-item-assigned-alert`, `m36.idg-non-quorate-alert`, `m36.idg-review-clock-alert`,
+> `m36.idg-review-floor-override-alert`), same design as §4.11.1: catalog-validated before emit, throw on failure,
+> correlation-id idempotency on the `alert` unique key, PHI-free (ids, counts, dates, constant copy; an id-based
+> `deepLink` only for `/idg/meetings/:id`). Source events, audiences, severities and correlation ids are tabulated in
+> M14 §4.10.1.
+>
+> **Resolver decision — no enum migration.** The catalog names `idg_meeting_attendees`, `idg_action_item_assignee`,
+> `idg_meeting_coordinator` and `idg_compliance_inbox`; none is added to the closed `alert_recipient_resolver` enum.
+> Each is a platform-default `alert_rule` using `role_set` over the audience the producer-side consumer resolved onto the
+> payload in the relay (org-explicit, `withOrgContext`): `userIdPaths` now accepts a payload key holding one user id
+> **or a list** (expected attendees), and the new **`roleKeysPath`** names a payload key holding extra role keys — the
+> review-clock tier (T-0 adds `clinical_supervisor`; T+1 adds `compliance_officer`/`org_admin`). The data-dependent
+> audiences (attendee roster, assignee, coordinator) are resolved by the consumer — attendees via
+> `createDrizzleIdgAttendeeLookup` (idg.attend / idg.coordinate × location scope), single members via
+> `createDrizzleMembershipUserLookup` — because a role set cannot express them and a new enum value would need a
+> migration for no behavioural gain.
+
 -----
 
 ## 5. Frontend Screens

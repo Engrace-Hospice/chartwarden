@@ -15,9 +15,9 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildM24MedicarePrimaryAckConsumer } from "../src/modules/24-billing-medicaid/outbox-consumers/m24-medicare-primary-ack";
 import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
-import { appRoleUrl, LIVE_APP_ROLE_PASSWORD } from "./_live-app-role";
+import { buildM24MedicarePrimaryAckConsumer } from "../src/modules/24-billing-medicaid/outbox-consumers/m24-medicare-primary-ack";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -211,7 +211,9 @@ describe.skipIf(!DB_URL)(
       expect(outbox.published.map((p) => p.eventName)).toContain(
         "m24.medicaid_claim.validation_started",
       );
-      expect(outbox.published.some((p) => p.eventName.startsWith("m24.medicaid_claim."))).toBe(true);
+      expect(outbox.published.some((p) => p.eventName.startsWith("m24.medicaid_claim."))).toBe(
+        true,
+      );
 
       const vr = await admin.query(
         "SELECT triggered_by, actor_membership_id, trigger_signal_id FROM medicaid_validation_run WHERE id=$1",
@@ -264,7 +266,11 @@ describe.skipIf(!DB_URL)(
         eventType: "m23.claim.acknowledged",
         aggregateKind: "claim",
         aggregateId: medicareClaimId,
-        payload: { claimId: medicareClaimId, acknowledgmentId: randomUUID(), payerClaimControlNumber: "PCCN-1" },
+        payload: {
+          claimId: medicareClaimId,
+          acknowledgmentId: randomUUID(),
+          payerClaimControlNumber: "PCCN-1",
+        },
         attemptCount: 1,
         createdAt: new Date(),
       });
@@ -310,7 +316,11 @@ describe.skipIf(!DB_URL)(
         eventType: "m23.claim.acknowledged",
         aggregateKind: "claim",
         aggregateId: medicareClaimId,
-        payload: { claimId: medicareClaimId, acknowledgmentId: randomUUID(), payerClaimControlNumber: null },
+        payload: {
+          claimId: medicareClaimId,
+          acknowledgmentId: randomUUID(),
+          payerClaimControlNumber: null,
+        },
         attemptCount: 1,
         createdAt: new Date(),
       });
@@ -335,7 +345,11 @@ describe.skipIf(!DB_URL)(
         eventType: "m23.claim.acknowledged",
         aggregateKind: "claim",
         aggregateId: medicareClaimId,
-        payload: { claimId: medicareClaimId, acknowledgmentId: randomUUID(), payerClaimControlNumber: null },
+        payload: {
+          claimId: medicareClaimId,
+          acknowledgmentId: randomUUID(),
+          payerClaimControlNumber: null,
+        },
         attemptCount: 1,
         createdAt: new Date(),
       });
@@ -368,7 +382,11 @@ describe.skipIf(!DB_URL)(
         eventType: "m23.claim.acknowledged",
         aggregateKind: "claim",
         aggregateId: medicareClaimId,
-        payload: { claimId: medicareClaimId, acknowledgmentId: randomUUID(), payerClaimControlNumber: null },
+        payload: {
+          claimId: medicareClaimId,
+          acknowledgmentId: randomUUID(),
+          payerClaimControlNumber: null,
+        },
         attemptCount: 1,
         createdAt: new Date(),
       });
@@ -383,7 +401,9 @@ describe.skipIf(!DB_URL)(
      *  expects the tx it receives to already carry `app.org_id`. */
     async function withTx<T>(orgId: string, fn: (tx: never) => Promise<T>): Promise<T> {
       const { withOrgContext } = await import("@wardenx/tenancy");
-      return withOrgContext(handle.db, { organizationId: orgId, userId: "" }, (tx) => fn(tx as never));
+      return withOrgContext(handle.db, { organizationId: orgId, userId: "" }, (tx) =>
+        fn(tx as never),
+      );
     }
   },
 );

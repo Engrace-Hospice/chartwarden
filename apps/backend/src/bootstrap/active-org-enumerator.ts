@@ -27,7 +27,7 @@ export interface ActiveOrgEnumerator {
 
 export interface ActiveOrgEnumeratorDeps {
   /** The separately-pooled platform login role (the cross-tenant credential; NOT the tenant pool). */
-  readonly platformDb: DbClient;
+  readonly platformDb: DbClient | undefined;
   /** Audits every withPlatformContext entry (fail-closed: an unaudited bypass throws, never serves). */
   readonly auditBypass: PlatformBypassAuditor<DbClient>;
   /** The registered platform job id the caller is allowlisted under (wire*Tenancy registered it at boot). */
@@ -44,10 +44,21 @@ export interface ActiveOrgEnumeratorDeps {
  * status is 'active'. Returns a structural ActiveOrgListPort the composition root passes as a worker dep.
  */
 export function buildActiveOrgEnumerator(deps: ActiveOrgEnumeratorDeps): ActiveOrgEnumerator {
+  const platformDb = deps.platformDb;
   return {
-    listActiveOrgs: () =>
-      withPlatformContext<DbClient, readonly ActiveOrgRow[]>(
-        deps.platformDb,
+    listActiveOrgs: () => {
+      // Fail LOUD, never an empty list: without DATABASE_PLATFORM_URL the only pool left is the tenant pool, on which
+      // `organization` RLS hides every row — an enumerator bound there "succeeds" with zero orgs and the cron
+      // silently does nothing (the M14 packets-cron incident). A thrown error surfaces as a failed job / DLQ alert.
+      if (!platformDb) {
+        return Promise.reject(
+          new Error(
+            `active-org enumeration for job '${deps.jobId}' requires the platform pool (DATABASE_PLATFORM_URL); refusing to enumerate on the tenant pool`,
+          ),
+        );
+      }
+      return withPlatformContext<DbClient, readonly ActiveOrgRow[]>(
+        platformDb,
         {
           jobId: deps.jobId,
           reason: deps.reason ?? "active-org enumeration (platform cron fan-out)",
@@ -59,6 +70,7 @@ export function buildActiveOrgEnumerator(deps: ActiveOrgEnumeratorDeps): ActiveO
             .select({ organizationId: schema.organizations.id })
             .from(schema.organizations)
             .where(inArray(schema.organizations.status, [...(deps.statuses ?? ["active"])])),
-      ),
+      );
+    },
   };
 }

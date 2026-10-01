@@ -49,7 +49,7 @@ jobs:
   # `main` without first checking whether a fresher commit has already superseded it.
   debounce:
     name: Debounce rapid pushes
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     if: github.event_name != 'workflow_dispatch'
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
@@ -97,7 +97,7 @@ jobs:
   release:
     name: Build and publish immutable images
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     permissions:
       contents: read
       packages: write
@@ -267,7 +267,7 @@ jobs:
   deploy:
     name: Deploy to production VPS
     needs: release
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     environment: production
     permissions:
       contents: read

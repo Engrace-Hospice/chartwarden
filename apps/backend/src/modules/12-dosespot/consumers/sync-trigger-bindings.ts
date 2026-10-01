@@ -126,7 +126,9 @@ function buildPatientChangedPayload(
 }
 
 /** `m5.patient.created` → always syncs (§2.6). */
-export function buildM12PatientSyncCreatedConsumer(deps: SyncTriggerBindingDeps): OutboxConsumerBinding {
+export function buildM12PatientSyncCreatedConsumer(
+  deps: SyncTriggerBindingDeps,
+): OutboxConsumerBinding {
   const consumerName = "m12.patient-sync-created";
   return {
     consumerName,
@@ -148,14 +150,18 @@ export function buildM12PatientSyncCreatedConsumer(deps: SyncTriggerBindingDeps)
 }
 
 /** `m5.patient.updated` → syncs only when a DoseSpot-relevant field changed (§2.6 D4). */
-export function buildM12PatientSyncUpdatedConsumer(deps: SyncTriggerBindingDeps): OutboxConsumerBinding {
+export function buildM12PatientSyncUpdatedConsumer(
+  deps: SyncTriggerBindingDeps,
+): OutboxConsumerBinding {
   const consumerName = "m12.patient-sync-updated";
   return {
     consumerName,
     consumerModule: "m12",
     eventTypes: ["m5.patient.updated"],
     async handle(event) {
-      const payload = buildPatientChangedPayload(event.payload, consumerName, { changedField: "changed" });
+      const payload = buildPatientChangedPayload(event.payload, consumerName, {
+        changedField: "changed",
+      });
       const action = decidePatientSyncTrigger("updated", payload);
       if (!action.enqueueSync) return;
       await deps.patientSync.enqueue({
@@ -248,7 +254,9 @@ export function buildM12AdmissionActivatedMedHxConsumer(
 
 /** `m6.cti.signed` → always fetches MedHx (§2.8 D10) — the recertification pull. See the file header for
  *  the `admissionId` resolution gap. */
-export function buildM12RecertificationMedHxConsumer(deps: SyncTriggerBindingDeps): OutboxConsumerBinding {
+export function buildM12RecertificationMedHxConsumer(
+  deps: SyncTriggerBindingDeps,
+): OutboxConsumerBinding {
   const consumerName = "m12.recertification-medhx";
   const admissionIdForElectionPeriod =
     deps.admissionIdForElectionPeriod ?? unboundAdmissionIdForElectionPeriod();
@@ -264,9 +272,16 @@ export function buildM12RecertificationMedHxConsumer(deps: SyncTriggerBindingDep
         "electionPeriodId",
         consumerName,
       );
-      const admissionId = await admissionIdForElectionPeriod.resolve(event.organizationId, electionPeriodId);
+      const admissionId = await admissionIdForElectionPeriod.resolve(
+        event.organizationId,
+        electionPeriodId,
+      );
       if (admissionId === null) return; // no such election period under this org — safe no-op
-      const payload: AdmissionMedHxPayload = { organizationId: event.organizationId, patientId, admissionId };
+      const payload: AdmissionMedHxPayload = {
+        organizationId: event.organizationId,
+        patientId,
+        admissionId,
+      };
       const action = decideMedHxFetch("recertification", payload);
       await deps.medHxFetch.enqueue({
         organizationId: event.organizationId,
@@ -280,7 +295,9 @@ export function buildM12RecertificationMedHxConsumer(deps: SyncTriggerBindingDep
 }
 
 /** Every §2.6/§2.8 sync-trigger `OutboxConsumerBinding` this pass adds. */
-export function buildM12SyncTriggerConsumers(deps: SyncTriggerBindingDeps): OutboxConsumerBinding[] {
+export function buildM12SyncTriggerConsumers(
+  deps: SyncTriggerBindingDeps,
+): OutboxConsumerBinding[] {
   return [
     buildM12PatientSyncCreatedConsumer(deps),
     buildM12PatientSyncUpdatedConsumer(deps),

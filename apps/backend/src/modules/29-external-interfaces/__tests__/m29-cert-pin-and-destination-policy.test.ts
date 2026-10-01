@@ -7,7 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { CertPinError, certPinFromDer, certPinFromPem, derFromPem, normalizeCertPin } from "../feed/cert-pin";
+import {
+  CertPinError,
+  certPinFromDer,
+  certPinFromPem,
+  derFromPem,
+  normalizeCertPin,
+} from "../feed/cert-pin";
 import {
   checkProtocol,
   classifyAddress,
@@ -24,9 +30,19 @@ function makeCert(cn: string): string {
   const dir = mkdtempSync(join(tmpdir(), "m29-cert-pin-"));
   try {
     execFileSync("openssl", [
-      "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-      "-keyout", join(dir, "k.pem"), "-out", join(dir, "c.pem"),
-      "-days", "1", "-subj", `/CN=${cn}`,
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      join(dir, "k.pem"),
+      "-out",
+      join(dir, "c.pem"),
+      "-days",
+      "1",
+      "-subj",
+      `/CN=${cn}`,
     ]);
     return readFileSync(join(dir, "c.pem"), "utf8");
   } finally {
@@ -105,9 +121,16 @@ describe("destination policy", () => {
 
   it("mllp_plain needs BOTH non-production AND the explicit opt-in — and production ignores the opt-in", () => {
     expect(resolveDestinationPolicy({ NODE_ENV: "development" }).allowPlain).toBe(false); // default: refuse
-    expect(resolveDestinationPolicy({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" }).allowPlain).toBe(true);
-    expect(resolveDestinationPolicy({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "1" }).allowPlain).toBe(false);
-    expect(resolveDestinationPolicy({ NODE_ENV: "production", M29_ALLOW_MLLP_PLAIN: "true" }).allowPlain).toBe(false);
+    expect(
+      resolveDestinationPolicy({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })
+        .allowPlain,
+    ).toBe(true);
+    expect(
+      resolveDestinationPolicy({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "1" }).allowPlain,
+    ).toBe(false);
+    expect(
+      resolveDestinationPolicy({ NODE_ENV: "production", M29_ALLOW_MLLP_PLAIN: "true" }).allowPlain,
+    ).toBe(false);
     expect(checkProtocol("mllp_plain", prod)).toBe("plain_protocol_refused");
     expect(checkProtocol("mllp_plain", dev)).toBe("plain_protocol_refused");
     expect(checkProtocol("mllp_tls", prod)).toBeNull();
@@ -124,8 +147,12 @@ describe("destination policy", () => {
       expect(classifyAddress("::ffff:a9fe:a9fe", policy)).toBe("destination_link_local");
       expect(classifyAddress("100.100.100.200", policy)).toBe("destination_metadata_host");
       expect(classifyAddress("fd00:ec2::254", policy)).toBe("destination_metadata_host");
-      expect(classifyHostname("metadata.google.internal", policy)).toBe("destination_metadata_host");
-      expect(classifyHostname("Metadata.Google.Internal.", policy)).toBe("destination_metadata_host");
+      expect(classifyHostname("metadata.google.internal", policy)).toBe(
+        "destination_metadata_host",
+      );
+      expect(classifyHostname("Metadata.Google.Internal.", policy)).toBe(
+        "destination_metadata_host",
+      );
       expect(classifyHostname("169.254.169.254", policy)).toBe("destination_link_local");
     }
   });
@@ -146,7 +173,14 @@ describe("destination policy", () => {
   it("multicast is refused; private (RFC1918 / ULA) and public addresses are NOT — a hospital receiver lives on a VPN", () => {
     expect(classifyAddress("224.0.0.1", dev)).toBe("destination_multicast");
     expect(classifyAddress("ff02::1", dev)).toBe("destination_multicast");
-    for (const ok of ["10.1.2.3", "172.16.0.5", "192.168.1.9", "8.8.8.8", "fd12:3456::1", "2606:4700::1111"]) {
+    for (const ok of [
+      "10.1.2.3",
+      "172.16.0.5",
+      "192.168.1.9",
+      "8.8.8.8",
+      "fd12:3456::1",
+      "2606:4700::1111",
+    ]) {
       expect(classifyAddress(ok, prod), ok).toBeNull();
     }
     expect(classifyHostname("lab.example.org", prod)).toBeNull();
@@ -155,7 +189,13 @@ describe("destination policy", () => {
 
 describe("decidePermanentFailure — a refusal retrying cannot fix goes straight to the terminal DLQ", () => {
   const input = {
-    outbound: { id: "o1", feedId: "f1", organizationId: "org", sourceAggregateId: "ord1", retryCount: 0 },
+    outbound: {
+      id: "o1",
+      feedId: "f1",
+      organizationId: "org",
+      sourceAggregateId: "ord1",
+      retryCount: 0,
+    },
     now: new Date("2026-09-29T00:00:00Z"),
     lastError: "plain_protocol_refused",
   };
@@ -166,14 +206,22 @@ describe("decidePermanentFailure — a refusal retrying cannot fix goes straight
     expect(d.event).toEqual({
       name: "m29.lab_order.transmission_failed",
       payload: {
-        orderId: "ord1", organizationId: "org", feedId: "f1", outboundMessageId: "o1",
-        reason: "dlq_exhausted", detail: "plain_protocol_refused", attemptCount: 1,
+        orderId: "ord1",
+        organizationId: "org",
+        feedId: "f1",
+        outboundMessageId: "o1",
+        reason: "dlq_exhausted",
+        detail: "plain_protocol_refused",
+        attemptCount: 1,
       },
     });
     expect(d.alert.severity).toBe("HIGH");
     expect(d.audit.kind).toBe("hl7.outbound.dlq");
   });
   it("counts prior attempts when a sweep retry hits a refusal (config changed between attempts)", () => {
-    expect(decidePermanentFailure({ ...input, outbound: { ...input.outbound, retryCount: 2 } }).event.payload.attemptCount).toBe(3);
+    expect(
+      decidePermanentFailure({ ...input, outbound: { ...input.outbound, retryCount: 2 } }).event
+        .payload.attemptCount,
+    ).toBe(3);
   });
 });

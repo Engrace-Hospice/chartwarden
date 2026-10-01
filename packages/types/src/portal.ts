@@ -213,15 +213,20 @@ export const M31_SUBSCRIBED_EVENT_NAMES = [
   // Catalogued AND declaring `m31`.
   "m17.visit.rescheduled",
   "m17.visit.cancelled",
-  "m17.visit.published",
+  // F-220 (#248) — `m17.visit.published` removed: the telehealth room is minted LAZILY on the first clinician join of a
+  // `telephonic` visit through M17's published `VisitReader` (`telehealth/room-mint.ts`); catalogued `seamConsumers`.
   "m8.encounter.signed",
   "m16.bereavement.contact_active",
   "m16.bereavement.plan_opened",
   "m16.bereavement.plan_closed_completed",
   // F-176 (#248) — `m39.consent.delegated_access.granted`/`.revoked` removed: M31's §4.10 table names neither and nothing publishes them.
   "m39.consent.revoked",
-  "m6.admission.discharged",
-  "m22.document.rendered",
+  // F-222 (#248) — `m6.admission.discharged` removed: the non-death branch is a daily SWEEP pulled from M6 through
+  // `portalDischargedPastGraceForOrg` (`31-portal/jobs/`), catalogued as `seamConsumers: ['m31']`; the death branch is
+  // redundant with the bound `m6.bereavement.eligible` -> M16 `plan_opened`/`contact_active` chain.
+  // F-225 (#248) — `m22.document.rendered` removed (user-approved, F-221): "what can this account see" is the
+  // SEAM PULL `PortalDocumentReader.documentsForPatient`; a push on render cannot record a VIEW, and the
+  // §164.528 accounting is M22's `document_access_log` row appended by `mintPortalDownloadUrl` (F-225).
   // Subscribed and NOT routed here.
   "m39.consent.created",
   "m4.legal_hold.applied",

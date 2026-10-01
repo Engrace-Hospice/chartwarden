@@ -3014,9 +3014,35 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  // --- hospice rate-table surface (F-210: tenant-entered CMS per-diem rates) ---
+  "billing.rate_table.read": {
+    resource: "billing_rate_table",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.rate_table.admin": {
+    resource: "billing_rate_table",
+    action: "admin",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  // --- tenant-entered wage index (F-211) ---
+  "billing.wage_index.read": {
+    resource: "billing_wage_index",
+    action: "read",
+    category: "billing",
+    abac: "inOrg",
+  },
+  "billing.wage_index.admin": {
+    resource: "billing_wage_index",
+    action: "admin",
+    category: "billing",
+    abac: "inOrg",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M23 contributed permission keys (twenty-eight). */
+/** Union of the M23 contributed permission keys (twenty-eight + the two F-210 rate-table keys). */
 export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;
 
 /**
@@ -4162,6 +4188,15 @@ export const M19_CONTRIBUTED_PERMISSIONS = {
   "triage.close_abandoned": {
     resource: "triage_call",
     action: "close_abandoned",
+    category: "triage",
+    abac: "triage_call_owner_or_supervisor",
+  },
+  // F-224 — the explicit staff action that requests the caregiver/attending summary document
+  // (`m19.triage.summary_requested` → M22). Granted to the same on-call clinician bands as
+  // `triage.disposition` (RN/NP, Clinical Supervisor/DON, Medical Director); NOT on the vendor list.
+  "triage.request_summary": {
+    resource: "triage_call",
+    action: "request_summary",
     category: "triage",
     abac: "triage_call_owner_or_supervisor",
   },

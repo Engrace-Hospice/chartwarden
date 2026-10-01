@@ -26,12 +26,12 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, or } from "drizzle-orm";
 import type Redis from "ioredis";
-import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 import {
-  decideAssessmentSuggestion,
   type SignificantChangePayload,
+  decideAssessmentSuggestion,
 } from "../consumers/assessment-trigger";
 import type { OrderSuggestionEntry } from "../consumers/suggestion-banner";
+import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 
 const ORDER = schema.orderRecords;
 
@@ -73,9 +73,7 @@ function factsOf(payload: unknown): SignificantChangePayload {
   const read = (key: string): string => {
     const value = p[key];
     if (typeof value !== "string" || value.length === 0) {
-      throw new Error(
-        `${M11_ASSESSMENT_SUGGESTION_CONSUMER.consumerName}: payload has no ${key}`,
-      );
+      throw new Error(`${M11_ASSESSMENT_SUGGESTION_CONSUMER.consumerName}: payload has no ${key}`);
     }
     return value;
   };

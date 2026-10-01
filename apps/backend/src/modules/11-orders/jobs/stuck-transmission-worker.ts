@@ -43,7 +43,10 @@ export async function runStuckTransmissionFanout(
     }
   }
   if (failures.length) {
-    throw new AggregateError(failures, `M11_STUCK_TRANSMISSION: ${failures.length} sweep failure(s)`);
+    throw new AggregateError(
+      failures,
+      `M11_STUCK_TRANSMISSION: ${failures.length} sweep failure(s)`,
+    );
   }
 }
 

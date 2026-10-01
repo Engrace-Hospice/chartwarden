@@ -43,13 +43,14 @@ import type { OrmRequestedPayload } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
+import { getSeam } from "../../../bootstrap/index";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
-import { getSeam } from "../../../bootstrap/index";
 import { decideBaaGate } from "../feed/baa-gate";
 import { sha256Hex } from "../listener/mllp-framing";
+import type { M29WriteOutboxPort } from "../routes/store-drizzle";
 import {
   type AckCorrelationResult,
   type CorrelatedOutboundRow,
@@ -57,6 +58,11 @@ import {
   parseAckMsa,
 } from "./ack-correlation";
 import { emitOutboundAlert } from "./alert-routing";
+import {
+  type OutboundDestinationPolicy,
+  checkProtocol,
+  resolveDestinationPolicy,
+} from "./destination-policy";
 import {
   type OutboundPayloadCipher,
   type OutboundTenantKeyProvider,
@@ -78,18 +84,24 @@ import {
   type MllpTransportOutcome,
   createNodeMllpTransport,
 } from "./mllp-transport";
+import {
+  ormDispatchExistsForOrder,
+  ormDispatchHasLiveOrDeliveredRow,
+  ormOrderDispatchLockKey,
+} from "./order-dispatch-dedupe";
 import type {
   LabOrderDispatchRefusalReason,
   OutboundAlert,
   OutboundAuditRecord,
 } from "./outbound-events";
-import { M29_OUTBOUND_CRON_QUEUES, M29_OUTBOUND_JOB_SCHEDULES, M29_OUTBOUND_QUEUE_PARAMS, M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE } from "./queues";
-import { type FeedRateLimiter, createFeedRateLimiter } from "./rate-limiter";
 import {
-  type OutboundDestinationPolicy,
-  checkProtocol,
-  resolveDestinationPolicy,
-} from "./destination-policy";
+  M29_OUTBOUND_CRON_QUEUES,
+  M29_OUTBOUND_JOB_SCHEDULES,
+  M29_OUTBOUND_QUEUE_PARAMS,
+  M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE,
+} from "./queues";
+import { type FeedRateLimiter, createFeedRateLimiter } from "./rate-limiter";
+import { resolveOutboundBaaResult } from "./resolve-baa";
 import {
   OUTBOUND_IN_FLIGHT_LEASE_MS,
   decideInFlightReclaim,
@@ -97,13 +109,6 @@ import {
   decideRetry,
   inFlightLeaseMsFor,
 } from "./retry-policy";
-import {
-  ormDispatchExistsForOrder,
-  ormDispatchHasLiveOrDeliveredRow,
-  ormOrderDispatchLockKey,
-} from "./order-dispatch-dedupe";
-import { resolveOutboundBaaResult } from "./resolve-baa";
-import type { M29WriteOutboxPort } from "../routes/store-drizzle";
 
 const HMO = schema.hl7MessageOutbound;
 const FEED = schema.externalFeed;
@@ -414,7 +419,11 @@ async function applyAckStatusUpdate(
   statusUpdate: Extract<AckCorrelationResult, { kind: "acked" | "rejected" }>["statusUpdate"],
   extra: { retryCount?: number; nextRetryAt?: null } = {},
 ): Promise<boolean> {
-  const ackPayloadCipher = await deps.cipher.encrypt(ctx.organizationId, "ack_payload", rawAckPayload);
+  const ackPayloadCipher = await deps.cipher.encrypt(
+    ctx.organizationId,
+    "ack_payload",
+    rawAckPayload,
+  );
   const held = await tx
     .update(HMO)
     .set({
@@ -454,7 +463,12 @@ async function handleAckOutcome(
     // brief: log + discard, no state change. F-182: the row is left `in_flight` on its lease, so the reclaim
     // sweep picks it up once the lease expires (attempt counted, same wire/MSH-10, alert raised) instead of
     // the row sitting `in_flight` forever as it did before the lease existed.
-    const orphan = correlateAck({ ack: parsed, outbound: null, ackReceivedAt: now, ackPayloadSha256 });
+    const orphan = correlateAck({
+      ack: parsed,
+      outbound: null,
+      ackReceivedAt: now,
+      ackPayloadSha256,
+    });
     // `outbound: null` always yields `kind: "orphan"` (`correlateAck`'s own first branch) — narrowed
     // explicitly since the function's declared return type is the full union regardless of the input.
     if (orphan.kind === "orphan") logAuditIntent(orphan.audit);
@@ -470,7 +484,12 @@ async function handleAckOutcome(
     retryCount: ctx.retryCount + 1,
     attemptId: ctx.attemptId,
   };
-  const result = correlateAck({ ack: parsed, outbound: correlated, ackReceivedAt: now, ackPayloadSha256 });
+  const result = correlateAck({
+    ack: parsed,
+    outbound: correlated,
+    ackReceivedAt: now,
+    ackPayloadSha256,
+  });
 
   switch (result.kind) {
     case "acked": {
@@ -672,7 +691,10 @@ async function refuseDispatch(
   });
 }
 
-async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxEvent): Promise<void> {
+async function handleOrmRequested(
+  deps: ResolvedDeps,
+  event: DispatchableOutboxEvent,
+): Promise<void> {
   const organizationId = event.organizationId;
   if (!isOrmRequestedPayload(event.payload)) {
     throw new Error(
@@ -683,181 +705,196 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
 
   // F-182 — CLAIM transaction: everything up to and including the committed `in_flight` row. The socket send
   // happens AFTER this commits (see `transmitClaimed`), so a crash mid-send leaves a reclaimable row.
-  const claimed = await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped): Promise<TransmitContext | null> => {
-    const tx = scoped as unknown as DbClient;
-    const now = deps.now();
+  const claimed = await withOrgContext(
+    deps.db,
+    { organizationId, userId: SYSTEM_USER_ID },
+    async (scoped): Promise<TransmitContext | null> => {
+      const tx = scoped as unknown as DbClient;
+      const now = deps.now();
 
-    // F-183 — ORDER-level dedupe, BEFORE feed resolution. The §2.6 key below hashes the feed the resolver picks
-    // NOW, so a redelivery after the routing changed (a relink, a swapped/suspended feed) resolves another feed,
-    // computes another key and would send the same order to a second endpoint. One ORM per ORDER: serialize every
-    // delivery for this order across ALL feeds, and if any outbound row exists for it (any feed, any status — a
-    // crashed `in_flight`, a `dlq`, a sent one) send nothing; the reclaim sweep is the only path that re-sends.
-    // Checking first also means a redelivery never refuses (`dispatch_refused`) over a feed this order never used.
-    //
-    // F-187 — THE ONE EXCEPTION: an operator-ATTESTED re-dispatch (`redispatchAttestationId`, minted by M11's
-    // `recoverLabTransmission` after a human attested to the lab that it did NOT receive the earlier attempt).
-    // It may add a NEW row when every earlier row is a dead end (`dlq` / `naked` / `failed`); a `queued`,
-    // `in_flight` or `acked` row still owns the order and blocks it exactly as before. Nothing else — no ordinary
-    // redelivery, no resend of an emit-time refusal — carries the attestation id, so the guard is unchanged for them.
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${ormOrderDispatchLockKey(organizationId, payload.orderId)}, 0))`,
-    );
-    const attestationId = payload.redispatchAttestationId;
-    const orderOwned =
-      attestationId === undefined
-        ? await ormDispatchExistsForOrder(tx, organizationId, payload.orderId)
-        : await ormDispatchHasLiveOrDeliveredRow(tx, organizationId, payload.orderId);
-    if (orderOwned) {
-      // An ATTESTED re-dispatch blocked by a row that still owns the order is not a routine redelivery: the operator
-      // asked for a send that will not happen, and until F-188 the order then sat `pending` forever with only this
-      // log line. Publish the terminal signal IN THIS TRANSACTION so M11's applier ends the order actionable
-      // (`recovery_blocked:row_owns_order`, recoverable again once the owning row settles). Ids only.
-      if (attestationId !== undefined) {
-        console.warn("m29.outbound.attested_redispatch_blocked", { orderId: payload.orderId, attestationId });
+      // F-183 — ORDER-level dedupe, BEFORE feed resolution. The §2.6 key below hashes the feed the resolver picks
+      // NOW, so a redelivery after the routing changed (a relink, a swapped/suspended feed) resolves another feed,
+      // computes another key and would send the same order to a second endpoint. One ORM per ORDER: serialize every
+      // delivery for this order across ALL feeds, and if any outbound row exists for it (any feed, any status — a
+      // crashed `in_flight`, a `dlq`, a sent one) send nothing; the reclaim sweep is the only path that re-sends.
+      // Checking first also means a redelivery never refuses (`dispatch_refused`) over a feed this order never used.
+      //
+      // F-187 — THE ONE EXCEPTION: an operator-ATTESTED re-dispatch (`redispatchAttestationId`, minted by M11's
+      // `recoverLabTransmission` after a human attested to the lab that it did NOT receive the earlier attempt).
+      // It may add a NEW row when every earlier row is a dead end (`dlq` / `naked` / `failed`); a `queued`,
+      // `in_flight` or `acked` row still owns the order and blocks it exactly as before. Nothing else — no ordinary
+      // redelivery, no resend of an emit-time refusal — carries the attestation id, so the guard is unchanged for them.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${ormOrderDispatchLockKey(organizationId, payload.orderId)}, 0))`,
+      );
+      const attestationId = payload.redispatchAttestationId;
+      const orderOwned =
+        attestationId === undefined
+          ? await ormDispatchExistsForOrder(tx, organizationId, payload.orderId)
+          : await ormDispatchHasLiveOrDeliveredRow(tx, organizationId, payload.orderId);
+      if (orderOwned) {
+        // An ATTESTED re-dispatch blocked by a row that still owns the order is not a routine redelivery: the operator
+        // asked for a send that will not happen, and until F-188 the order then sat `pending` forever with only this
+        // log line. Publish the terminal signal IN THIS TRANSACTION so M11's applier ends the order actionable
+        // (`recovery_blocked:row_owns_order`, recoverable again once the owning row settles). Ids only.
+        if (attestationId !== undefined) {
+          console.warn("m29.outbound.attested_redispatch_blocked", {
+            orderId: payload.orderId,
+            attestationId,
+          });
+          await refuseDispatch(
+            deps,
+            tx,
+            organizationId,
+            payload.orderId,
+            null,
+            "attested_redispatch_blocked",
+            payload.attemptId ?? attestationId,
+          );
+        }
+        return null;
+      }
+
+      const feedResult = await deps.feedResolver.resolveForOrg(
+        tx,
+        organizationId,
+        now,
+        payload.labDestinationFacilityId ?? null,
+      );
+      if (feedResult.kind === "unresolved") {
+        await alertUnresolvedFeed(deps, organizationId, payload.orderId, feedResult);
         await refuseDispatch(
           deps,
           tx,
           organizationId,
           payload.orderId,
-          null,
-          "attested_redispatch_blocked",
-          payload.attemptId ?? attestationId,
+          feedResult.reason === "feed_identity_incomplete" ? feedResult.feedId : null,
+          feedResult.reason,
+          payload.attemptId,
         );
+        return null;
       }
-      return null;
-    }
+      const feed = feedResult.feed;
 
-    const feedResult = await deps.feedResolver.resolveForOrg(
-      tx,
-      organizationId,
-      now,
-      payload.labDestinationFacilityId ?? null,
-    );
-    if (feedResult.kind === "unresolved") {
-      await alertUnresolvedFeed(deps, organizationId, payload.orderId, feedResult);
-      await refuseDispatch(
-        deps,
-        tx,
-        organizationId,
-        payload.orderId,
-        feedResult.reason === "feed_identity_incomplete" ? feedResult.feedId : null,
-        feedResult.reason,
-        payload.attemptId,
+      // Idempotency (D14/§2.6): a redelivered `m11.order.hl7_orm_requested` for the same (feed, order) must
+      // never double-dispatch — including under a TRUE CONCURRENT redelivery (F-181). `hl7_message_outbound` is
+      // PARTITIONED BY RANGE (queued_at), and Postgres requires every unique index on a partitioned table to
+      // contain the partition key, so a `UNIQUE (organization_id, idempotency_key)` cannot exist (a key that
+      // included `queued_at` would never collide, since each attempt stamps its own). The dedupe is instead
+      // serialized with a transaction-scoped advisory lock on (org, idempotency key): two overlapping deliveries
+      // queue behind one another, and the loser's SELECT (a fresh READ COMMITTED snapshot, taken after the lock is
+      // granted) sees the winner's committed row. The lock is released at commit/rollback — nothing to clean up.
+      // F-187 — an attested re-dispatch hashes the attestation id into the key (the persisted `source_aggregate_id`
+      // stays the bare order id), so it cannot collide with the dead attempt's key, while a REDELIVERY of the same
+      // attested event still finds its own row and sends nothing.
+      const idempotencyKey = outboundIdempotencyKey(
+        feed.id,
+        ORM_SOURCE_KIND,
+        attestationId === undefined ? payload.orderId : `${payload.orderId}#${attestationId}`,
       );
-      return null;
-    }
-    const feed = feedResult.feed;
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m29.outbound:${organizationId}:${idempotencyKey}`}, 0))`,
+      );
+      const existing = await tx
+        .select({ id: HMO.id })
+        .from(HMO)
+        .where(and(eq(HMO.organizationId, organizationId), eq(HMO.idempotencyKey, idempotencyKey)))
+        .limit(1);
+      // A redelivery that finds a row — including one a crashed worker left `in_flight` — sends nothing: the
+      // row already owns its MSH-10 and the reclaim sweep (F-182) is the only path that may re-send it.
+      if (existing.length > 0) return null;
 
-    // Idempotency (D14/§2.6): a redelivered `m11.order.hl7_orm_requested` for the same (feed, order) must
-    // never double-dispatch — including under a TRUE CONCURRENT redelivery (F-181). `hl7_message_outbound` is
-    // PARTITIONED BY RANGE (queued_at), and Postgres requires every unique index on a partitioned table to
-    // contain the partition key, so a `UNIQUE (organization_id, idempotency_key)` cannot exist (a key that
-    // included `queued_at` would never collide, since each attempt stamps its own). The dedupe is instead
-    // serialized with a transaction-scoped advisory lock on (org, idempotency key): two overlapping deliveries
-    // queue behind one another, and the loser's SELECT (a fresh READ COMMITTED snapshot, taken after the lock is
-    // granted) sees the winner's committed row. The lock is released at commit/rollback — nothing to clean up.
-    // F-187 — an attested re-dispatch hashes the attestation id into the key (the persisted `source_aggregate_id`
-    // stays the bare order id), so it cannot collide with the dead attempt's key, while a REDELIVERY of the same
-    // attested event still finds its own row and sends nothing.
-    const idempotencyKey = outboundIdempotencyKey(
-      feed.id,
-      ORM_SOURCE_KIND,
-      attestationId === undefined ? payload.orderId : `${payload.orderId}#${attestationId}`,
-    );
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m29.outbound:${organizationId}:${idempotencyKey}`}, 0))`,
-    );
-    const existing = await tx
-      .select({ id: HMO.id })
-      .from(HMO)
-      .where(and(eq(HMO.organizationId, organizationId), eq(HMO.idempotencyKey, idempotencyKey)))
-      .limit(1);
-    // A redelivery that finds a row — including one a crashed worker left `in_flight` — sends nothing: the
-    // row already owns its MSH-10 and the reclaim sweep (F-182) is the only path that may re-send it.
-    if (existing.length > 0) return null;
+      const baaResult = await resolveOutboundBaaResult({
+        organizationId,
+        destinationFacilityId: payload.labDestinationFacilityId ?? null,
+        asOf: now,
+      });
+      const baaDecision = decideBaaGate(baaResult);
 
-    const baaResult = await resolveOutboundBaaResult({
-      organizationId,
-      destinationFacilityId: payload.labDestinationFacilityId ?? null,
-      asOf: now,
-    });
-    const baaDecision = decideBaaGate(baaResult);
+      const outboundMessageId = randomUUID();
+      const messageControlId = randomUUID().replace(/-/g, "");
 
-    const outboundMessageId = randomUUID();
-    const messageControlId = randomUUID().replace(/-/g, "");
+      const plan: OutboundDispatchPlan = planOutboundDispatch({
+        request: payload,
+        feed: { id: feed.id, organizationId, endpoint: feed.endpoint },
+        baa: baaDecision,
+        destinationFacilityId: payload.labDestinationFacilityId ?? null,
+        outboundMessageId,
+        messageControlId,
+        queuedAt: now,
+      });
 
-    const plan: OutboundDispatchPlan = planOutboundDispatch({
-      request: payload,
-      feed: { id: feed.id, organizationId, endpoint: feed.endpoint },
-      baa: baaDecision,
-      destinationFacilityId: payload.labDestinationFacilityId ?? null,
-      outboundMessageId,
-      messageControlId,
-      queuedAt: now,
-    });
+      if (plan.kind === "baa_refused") {
+        // NO row, so NO `transmission_failed` (that event needs an outbound row to cite). F-175 stopped here and the
+        // order stayed `pending` forever — the planner's header assumed an M29-owned DLQ that auto-requeues on BAA
+        // restoration, which was never built (a refused plan writes no row for a requeue to find). F-187: publish
+        // `dispatch_refused` so the order becomes `failed` (`dispatch_refused:baa_inactive`) and F-182's resend
+        // re-runs the producer once the BAA is renewed.
+        await emitAlert(deps, organizationId, plan.alert);
+        logAuditIntent(plan.audit);
+        await refuseDispatch(
+          deps,
+          tx,
+          organizationId,
+          payload.orderId,
+          feed.id,
+          "baa_inactive",
+          payload.attemptId,
+        );
+        return null;
+      }
 
-    if (plan.kind === "baa_refused") {
-      // NO row, so NO `transmission_failed` (that event needs an outbound row to cite). F-175 stopped here and the
-      // order stayed `pending` forever — the planner's header assumed an M29-owned DLQ that auto-requeues on BAA
-      // restoration, which was never built (a refused plan writes no row for a requeue to find). F-187: publish
-      // `dispatch_refused` so the order becomes `failed` (`dispatch_refused:baa_inactive`) and F-182's resend
-      // re-runs the producer once the BAA is renewed.
-      await emitAlert(deps, organizationId, plan.alert);
-      logAuditIntent(plan.audit);
-      await refuseDispatch(deps, tx, organizationId, payload.orderId, feed.id, "baa_inactive", payload.attemptId);
-      return null;
-    }
+      const payloadCipher = await deps.cipher.encrypt(organizationId, "payload", plan.wire);
+      // F-183 — the lease is the FEED's own (`in_flight_lease_seconds`), else the platform default.
+      const leaseMs = inFlightLeaseMsFor(feed.inFlightLeaseSeconds, deps.leaseMs);
+      const leaseExpiresAt = leaseExpiry(leaseMs, now);
+      const [inserted] = await tx
+        .insert(HMO)
+        .values({
+          ...plan.row,
+          // F-187 — the attempt's own key (the planner keyed on the bare order id): identical for an ordinary
+          // dispatch, attestation-scoped for an attested re-dispatch.
+          idempotencyKey,
+          payloadCipher,
+          status: "in_flight",
+          // F-182 — `next_retry_at` on an `in_flight` row is its LEASE EXPIRY: the reclaim sweep only takes a
+          // row back once this has passed, so a live worker mid-send is never mistaken for a crashed one.
+          nextRetryAt: leaseExpiresAt,
+          // F-200 — the request's attempt, so every terminal event built from this row names it (a malformed id is
+          // stored as NULL — the event then applies as a pre-F-200 one — rather than failing the claim).
+          attemptId: asUuidOrNull(payload.attemptId),
+        })
+        .returning();
+      const row = inserted!;
 
-    const payloadCipher = await deps.cipher.encrypt(organizationId, "payload", plan.wire);
-    // F-183 — the lease is the FEED's own (`in_flight_lease_seconds`), else the platform default.
-    const leaseMs = inFlightLeaseMsFor(feed.inFlightLeaseSeconds, deps.leaseMs);
-    const leaseExpiresAt = leaseExpiry(leaseMs, now);
-    const [inserted] = await tx
-      .insert(HMO)
-      .values({
-        ...plan.row,
-        // F-187 — the attempt's own key (the planner keyed on the bare order id): identical for an ordinary
-        // dispatch, attestation-scoped for an attested re-dispatch.
-        idempotencyKey,
-        payloadCipher,
-        status: "in_flight",
-        // F-182 — `next_retry_at` on an `in_flight` row is its LEASE EXPIRY: the reclaim sweep only takes a
-        // row back once this has passed, so a live worker mid-send is never mistaken for a crashed one.
-        nextRetryAt: leaseExpiresAt,
-        // F-200 — the request's attempt, so every terminal event built from this row names it (a malformed id is
-        // stored as NULL — the event then applies as a pre-F-200 one — rather than failing the claim).
-        attemptId: asUuidOrNull(payload.attemptId),
-      })
-      .returning();
-    const row = inserted!;
+      const ctx: TransmitContext = {
+        id: row.id,
+        organizationId,
+        feedId: feed.id,
+        sourceAggregateId: row.sourceAggregateId,
+        messageControlId: row.messageControlId,
+        retryCount: row.retryCount,
+        attemptId: row.attemptId ?? null,
+        host: feed.host,
+        port: feed.port,
+        protocol: feed.protocol,
+        channelCertPin: feed.channelCertPin,
+        rateLimitMsgPerSec: feed.rateLimitMsgPerSec,
+        wirePlaintext: plan.wire,
+        leaseMs,
+        leaseExpiresAt,
+      };
 
-    const ctx: TransmitContext = {
-      id: row.id,
-      organizationId,
-      feedId: feed.id,
-      sourceAggregateId: row.sourceAggregateId,
-      messageControlId: row.messageControlId,
-      retryCount: row.retryCount,
-      attemptId: row.attemptId ?? null,
-      host: feed.host,
-      port: feed.port,
-      protocol: feed.protocol,
-      channelCertPin: feed.channelCertPin,
-      rateLimitMsgPerSec: feed.rateLimitMsgPerSec,
-      wirePlaintext: plan.wire,
-      leaseMs,
-      leaseExpiresAt,
-    };
-
-    // F-181 — protocol guard BEFORE any socket: a `mllp_plain` feed is cleartext PHI on the wire and is refused
-    // unless this deployment is explicitly non-production with the opt-in. Fail closed to a terminal DLQ.
-    const protocolRefusal = checkProtocol(ctx.protocol, deps.policy);
-    if (protocolRefusal !== null) {
-      await applyPermanentFailure(deps, tx, ctx, protocolRefusal, now);
-      return null;
-    }
-    return ctx;
-  });
+      // F-181 — protocol guard BEFORE any socket: a `mllp_plain` feed is cleartext PHI on the wire and is refused
+      // unless this deployment is explicitly non-production with the opt-in. Fail closed to a terminal DLQ.
+      const protocolRefusal = checkProtocol(ctx.protocol, deps.policy);
+      if (protocolRefusal !== null) {
+        await applyPermanentFailure(deps, tx, ctx, protocolRefusal, now);
+        return null;
+      }
+      return ctx;
+    },
+  );
 
   if (claimed === null) return;
   // SEND with no transaction open, then FINALIZE in a second one (both guarded by the claim — see `claimGuard`).
@@ -884,7 +921,9 @@ export function buildM29OutboundDispatchConsumer(
 // ── Retry sweep: the poll-based worker over `idx_hmo_next_retry` (see `./queues.ts`'s header for why) ─────
 
 export interface OutboundRetrySweepDeps extends OutboundDispatchWorkerDeps {
-  readonly activeOrgs: { listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]> };
+  readonly activeOrgs: {
+    listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
+  };
 }
 
 /**
@@ -899,7 +938,11 @@ export interface OutboundRetrySweepDeps extends OutboundDispatchWorkerDeps {
  * Race safety: `FOR UPDATE SKIP LOCKED` (concurrent sweepers never take the same row) plus a conditional UPDATE
  * on `status='in_flight' AND retry_count` (a row a worker finalized between our read and write is untouched).
  */
-async function reclaimStaleInFlight(deps: ResolvedDeps, organizationId: string, now: Date): Promise<void> {
+async function reclaimStaleInFlight(
+  deps: ResolvedDeps,
+  organizationId: string,
+  now: Date,
+): Promise<void> {
   await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped) => {
     const tx = scoped as unknown as DbClient;
     const stale = await tx
@@ -1101,16 +1144,21 @@ export async function runOutboundRetrySweepOnce(deps: OutboundRetrySweepDeps): P
 export function registerM29OutboundRetrySweepWorker(
   deps: OutboundRetrySweepDeps & { readonly connection: ConnectionOptions },
 ): Worker {
-  return new Worker(
-    M29_OUTBOUND_CRON_QUEUES.retrySweep,
-    () => runOutboundRetrySweepOnce(deps),
-    { connection: deps.connection, concurrency: M29_OUTBOUND_QUEUE_PARAMS.retrySweep.concurrency },
-  );
+  return new Worker(M29_OUTBOUND_CRON_QUEUES.retrySweep, () => runOutboundRetrySweepOnce(deps), {
+    connection: deps.connection,
+    concurrency: M29_OUTBOUND_QUEUE_PARAMS.retrySweep.concurrency,
+  });
 }
 
 /** Register the repeatable schedule. Returns the Queue so the composition root can `close()` it. */
-export async function scheduleM29OutboundRetrySweepJob(connection: ConnectionOptions): Promise<Queue> {
+export async function scheduleM29OutboundRetrySweepJob(
+  connection: ConnectionOptions,
+): Promise<Queue> {
   const queue = new Queue(M29_OUTBOUND_CRON_QUEUES.retrySweep, { connection });
-  await queue.add("tick", {}, { repeat: { pattern: M29_OUTBOUND_JOB_SCHEDULES.retrySweep, tz: "UTC" } });
+  await queue.add(
+    "tick",
+    {},
+    { repeat: { pattern: M29_OUTBOUND_JOB_SCHEDULES.retrySweep, tz: "UTC" } },
+  );
   return queue;
 }

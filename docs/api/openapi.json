@@ -45220,6 +45220,1163 @@
         }
       }
     },
+    "/api/v1/billing/rate-tables": {
+      "get": {
+        "operationId": "getApiV1BillingRatetables",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "List a ProviderEntity's hospice rate-table versions, newest window first (F-210; includeSuperseded=true adds history)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rateTables"
+                  ],
+                  "properties": {
+                    "rateTables": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "rateTableId",
+                          "organizationId",
+                          "providerEntityId",
+                          "fiscalYearStarting",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "rhcDays1to60PerDiemCents",
+                          "rhcDays61PlusPerDiemCents",
+                          "chcPerDiemCents",
+                          "ircPerDiemCents",
+                          "gipPerDiemCents",
+                          "chcHourlyRateCents",
+                          "laborShareRhc",
+                          "laborShareChc",
+                          "laborShareIrc",
+                          "laborShareGip",
+                          "enteredByMembershipId",
+                          "entryReason",
+                          "supersededAt",
+                          "supersededById",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "rateTableId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "fiscalYearStarting": {
+                            "type": "integer"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rhcDays1to60PerDiemCents": {
+                            "type": "integer"
+                          },
+                          "rhcDays61PlusPerDiemCents": {
+                            "type": "integer"
+                          },
+                          "chcPerDiemCents": {
+                            "type": "integer"
+                          },
+                          "ircPerDiemCents": {
+                            "type": "integer"
+                          },
+                          "gipPerDiemCents": {
+                            "type": "integer"
+                          },
+                          "chcHourlyRateCents": {
+                            "type": "integer"
+                          },
+                          "laborShareRhc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "laborShareChc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "laborShareIrc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "laborShareGip": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "enteredByMembershipId": {
+                            "type": "string"
+                          },
+                          "entryReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BillingRatetables",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Enter a hospice rate-table version - whole-cent PRE-wage-index per-diems for a fiscal year; non-overlapping (F-210)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rateTableId",
+                    "organizationId",
+                    "providerEntityId",
+                    "fiscalYearStarting",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "rhcDays1to60PerDiemCents",
+                    "rhcDays61PlusPerDiemCents",
+                    "chcPerDiemCents",
+                    "ircPerDiemCents",
+                    "gipPerDiemCents",
+                    "chcHourlyRateCents",
+                    "laborShareRhc",
+                    "laborShareChc",
+                    "laborShareIrc",
+                    "laborShareGip",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "rateTableId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rhcDays1to60PerDiemCents": {
+                      "type": "integer"
+                    },
+                    "rhcDays61PlusPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "chcPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "ircPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "gipPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "chcHourlyRateCents": {
+                      "type": "integer"
+                    },
+                    "laborShareRhc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareChc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareIrc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareGip": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "fiscalYearStarting",
+                  "effectiveFrom",
+                  "rhcDays1to60PerDiemCents",
+                  "rhcDays61PlusPerDiemCents",
+                  "chcPerDiemCents",
+                  "ircPerDiemCents",
+                  "gipPerDiemCents",
+                  "chcHourlyRateCents",
+                  "laborShareRhc",
+                  "laborShareChc",
+                  "laborShareIrc",
+                  "laborShareGip"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "fiscalYearStarting": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "description": "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
+                    "type": "integer"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "rhcDays1to60PerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "rhcDays61PlusPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "chcPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "ircPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "gipPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "chcHourlyRateCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "laborShareRhc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareChc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareIrc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareGip": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/rate-tables/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingRatetablesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read one hospice rate-table version (F-210)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rateTableId",
+                    "organizationId",
+                    "providerEntityId",
+                    "fiscalYearStarting",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "rhcDays1to60PerDiemCents",
+                    "rhcDays61PlusPerDiemCents",
+                    "chcPerDiemCents",
+                    "ircPerDiemCents",
+                    "gipPerDiemCents",
+                    "chcHourlyRateCents",
+                    "laborShareRhc",
+                    "laborShareChc",
+                    "laborShareIrc",
+                    "laborShareGip",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "rateTableId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rhcDays1to60PerDiemCents": {
+                      "type": "integer"
+                    },
+                    "rhcDays61PlusPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "chcPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "ircPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "gipPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "chcHourlyRateCents": {
+                      "type": "integer"
+                    },
+                    "laborShareRhc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareChc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareIrc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareGip": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/rate-tables/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1BillingRatetablesByIdSupersede",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rateTableId",
+                    "organizationId",
+                    "providerEntityId",
+                    "fiscalYearStarting",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "rhcDays1to60PerDiemCents",
+                    "rhcDays61PlusPerDiemCents",
+                    "chcPerDiemCents",
+                    "ircPerDiemCents",
+                    "gipPerDiemCents",
+                    "chcHourlyRateCents",
+                    "laborShareRhc",
+                    "laborShareChc",
+                    "laborShareIrc",
+                    "laborShareGip",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "rateTableId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rhcDays1to60PerDiemCents": {
+                      "type": "integer"
+                    },
+                    "rhcDays61PlusPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "chcPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "ircPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "gipPerDiemCents": {
+                      "type": "integer"
+                    },
+                    "chcHourlyRateCents": {
+                      "type": "integer"
+                    },
+                    "laborShareRhc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareChc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareIrc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareGip": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "fiscalYearStarting",
+                  "effectiveFrom",
+                  "rhcDays1to60PerDiemCents",
+                  "rhcDays61PlusPerDiemCents",
+                  "chcPerDiemCents",
+                  "ircPerDiemCents",
+                  "gipPerDiemCents",
+                  "chcHourlyRateCents",
+                  "laborShareRhc",
+                  "laborShareChc",
+                  "laborShareIrc",
+                  "laborShareGip"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "fiscalYearStarting": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "description": "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
+                    "type": "integer"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "rhcDays1to60PerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "rhcDays61PlusPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "chcPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "ircPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "gipPerDiemCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "chcHourlyRateCents": {
+                    "minimum": 1,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "laborShareRhc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareChc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareIrc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareGip": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/rate-tables/effective": {
+      "get": {
+        "operationId": "getApiV1BillingRatetablesEffective",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The live hospice rate table claim assembly would price a service date from, or null (F-210)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "onDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "rateTableId",
+                        "organizationId",
+                        "providerEntityId",
+                        "fiscalYearStarting",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "rhcDays1to60PerDiemCents",
+                        "rhcDays61PlusPerDiemCents",
+                        "chcPerDiemCents",
+                        "ircPerDiemCents",
+                        "gipPerDiemCents",
+                        "chcHourlyRateCents",
+                        "laborShareRhc",
+                        "laborShareChc",
+                        "laborShareIrc",
+                        "laborShareGip",
+                        "enteredByMembershipId",
+                        "entryReason",
+                        "supersededAt",
+                        "supersededById",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "rateTableId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "fiscalYearStarting": {
+                          "type": "integer"
+                        },
+                        "effectiveFrom": {
+                          "type": "string"
+                        },
+                        "effectiveTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rhcDays1to60PerDiemCents": {
+                          "type": "integer"
+                        },
+                        "rhcDays61PlusPerDiemCents": {
+                          "type": "integer"
+                        },
+                        "chcPerDiemCents": {
+                          "type": "integer"
+                        },
+                        "ircPerDiemCents": {
+                          "type": "integer"
+                        },
+                        "gipPerDiemCents": {
+                          "type": "integer"
+                        },
+                        "chcHourlyRateCents": {
+                          "type": "integer"
+                        },
+                        "laborShareRhc": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "laborShareChc": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "laborShareIrc": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "laborShareGip": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "enteredByMembershipId": {
+                          "type": "string"
+                        },
+                        "entryReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/rule-configs": {
       "get": {
         "operationId": "getApiV1BillingRuleconfigs",
@@ -45862,6 +47019,14 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -45888,6 +47053,8 @@
                           "effectiveTo",
                           "setByMembershipId",
                           "setReason",
+                          "supersededAt",
+                          "supersededById",
                           "createdAt"
                         ],
                         "properties": {
@@ -45929,6 +47096,26 @@
                               }
                             ]
                           },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string"
                           }
@@ -45953,11 +47140,104 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
-        "parameters": [],
+        "summary": "Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -45983,10 +47263,297 @@
                     "type": "string"
                   },
                   "percentage": {
-                    "pattern": "^-?\\d+(\\.\\d+)?$",
+                    "pattern": "^\\d+(\\.\\d+)?$",
+                    "maxLength": 12,
                     "type": "string"
                   },
                   "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "setReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingSequestrationpoliciesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read one sequestration policy row (F-212)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1BillingSequestrationpoliciesByIdSupersede",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "percentage",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "percentage": {
+                    "pattern": "^\\d+(\\.\\d+)?$",
+                    "maxLength": 12,
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
                     "format": "date",
                     "type": "string"
                   },
@@ -46007,7 +47574,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
+        "summary": "The current open-ended sequestration policy for a ProviderEntity (or null, §4.1)",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -46037,6 +47604,8 @@
                         "effectiveTo",
                         "setByMembershipId",
                         "setReason",
+                        "supersededAt",
+                        "supersededById",
                         "createdAt"
                       ],
                       "properties": {
@@ -46069,6 +47638,156 @@
                           "type": "string"
                         },
                         "setReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/effective": {
+      "get": {
+        "operationId": "getApiV1BillingSequestrationpoliciesEffective",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The live sequestration policy claim assembly would apply on a service date, or null (F-212)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "onDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "policyId",
+                        "organizationId",
+                        "providerEntityId",
+                        "percentage",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "setByMembershipId",
+                        "setReason",
+                        "supersededAt",
+                        "supersededById",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "policyId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "percentage": {
+                          "type": "string"
+                        },
+                        "effectiveFrom": {
+                          "type": "string"
+                        },
+                        "effectiveTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "setByMembershipId": {
+                          "type": "string"
+                        },
+                        "setReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
                           "anyOf": [
                             {
                               "type": "string"
@@ -46158,6 +47877,743 @@
                       ]
                     }
                   }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes": {
+      "get": {
+        "operationId": "getApiV1BillingWageindexes",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history)",
+        "parameters": [
+          {
+            "name": "ccn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9A-Za-z]{6}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fiscalYearStarting",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexes"
+                  ],
+                  "properties": {
+                    "wageIndexes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "wageIndexId",
+                          "organizationId",
+                          "ccn",
+                          "fiscalYearStarting",
+                          "cbsaCode",
+                          "factorDecimal",
+                          "sourceReference",
+                          "enteredByMembershipId",
+                          "entryReason",
+                          "supersededAt",
+                          "supersededById",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "wageIndexId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "ccn": {
+                            "type": "string"
+                          },
+                          "fiscalYearStarting": {
+                            "type": "integer"
+                          },
+                          "cbsaCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "factorDecimal": {
+                            "type": "string"
+                          },
+                          "sourceReference": {
+                            "type": "string"
+                          },
+                          "enteredByMembershipId": {
+                            "type": "string"
+                          },
+                          "entryReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BillingWageindexes",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexId",
+                    "organizationId",
+                    "ccn",
+                    "fiscalYearStarting",
+                    "cbsaCode",
+                    "factorDecimal",
+                    "sourceReference",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "wageIndexId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "cbsaCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "factorDecimal": {
+                      "type": "string"
+                    },
+                    "sourceReference": {
+                      "type": "string"
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ccn",
+                  "fiscalYearStarting",
+                  "factorDecimal",
+                  "sourceReference"
+                ],
+                "properties": {
+                  "ccn": {
+                    "pattern": "^[0-9A-Za-z]{6}$",
+                    "description": "6-character CMS Certification Number.",
+                    "type": "string"
+                  },
+                  "fiscalYearStarting": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "description": "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
+                    "type": "integer"
+                  },
+                  "cbsaCode": {
+                    "pattern": "^[0-9]{5}$",
+                    "type": "string"
+                  },
+                  "factorDecimal": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "The published hospice wage index as a decimal string with at most four places, e.g. \"1.0342\".",
+                    "type": "string"
+                  },
+                  "sourceReference": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Where the value was keyed from (CMS wage-index table / Federal Register notice).",
+                    "type": "string"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingWageindexesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read one tenant-entered wage-index version (F-211)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexId",
+                    "organizationId",
+                    "ccn",
+                    "fiscalYearStarting",
+                    "cbsaCode",
+                    "factorDecimal",
+                    "sourceReference",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "wageIndexId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "cbsaCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "factorDecimal": {
+                      "type": "string"
+                    },
+                    "sourceReference": {
+                      "type": "string"
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1BillingWageindexesByIdSupersede",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexId",
+                    "organizationId",
+                    "ccn",
+                    "fiscalYearStarting",
+                    "cbsaCode",
+                    "factorDecimal",
+                    "sourceReference",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "wageIndexId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "cbsaCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "factorDecimal": {
+                      "type": "string"
+                    },
+                    "sourceReference": {
+                      "type": "string"
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ccn",
+                  "fiscalYearStarting",
+                  "factorDecimal",
+                  "sourceReference"
+                ],
+                "properties": {
+                  "ccn": {
+                    "pattern": "^[0-9A-Za-z]{6}$",
+                    "description": "6-character CMS Certification Number.",
+                    "type": "string"
+                  },
+                  "fiscalYearStarting": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "description": "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
+                    "type": "integer"
+                  },
+                  "cbsaCode": {
+                    "pattern": "^[0-9]{5}$",
+                    "type": "string"
+                  },
+                  "factorDecimal": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "The published hospice wage index as a decimal string with at most four places, e.g. \"1.0342\".",
+                    "type": "string"
+                  },
+                  "sourceReference": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Where the value was keyed from (CMS wage-index table / Federal Register notice).",
+                    "type": "string"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes/effective": {
+      "get": {
+        "operationId": "getApiV1BillingWageindexesEffective",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The live tenant-entered wage index for a CCN + fiscal year, or null (F-211)",
+        "parameters": [
+          {
+            "name": "ccn",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-Za-z]{6}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fiscalYearStarting",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "wageIndexId",
+                        "organizationId",
+                        "ccn",
+                        "fiscalYearStarting",
+                        "cbsaCode",
+                        "factorDecimal",
+                        "sourceReference",
+                        "enteredByMembershipId",
+                        "entryReason",
+                        "supersededAt",
+                        "supersededById",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "wageIndexId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "ccn": {
+                          "type": "string"
+                        },
+                        "fiscalYearStarting": {
+                          "type": "integer"
+                        },
+                        "cbsaCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "factorDecimal": {
+                          "type": "string"
+                        },
+                        "sourceReference": {
+                          "type": "string"
+                        },
+                        "enteredByMembershipId": {
+                          "type": "string"
+                        },
+                        "entryReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }
@@ -94725,6 +97181,35 @@
                           }
                         ]
                       },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "assignedToMembershipId": {
                         "format": "uuid",
                         "type": "string"
@@ -94919,6 +97404,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -95162,6 +97676,35 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -95272,7 +97815,9 @@
                     "membershipId",
                     "discipline",
                     "status",
-                    "checkedInAt"
+                    "checkedInAt",
+                    "disciplineAttested",
+                    "recordedByMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -95317,6 +97862,20 @@
                     "checkedInAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "disciplineAttested": {
+                      "type": "boolean"
+                    },
+                    "recordedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -95421,6 +97980,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -96316,6 +98904,35 @@
                         }
                       ]
                     },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "agendaItemId": {
                       "anyOf": [
                         {
@@ -96435,18 +99052,36 @@
         }
       }
     },
-    "/api/v1/idg/meetings/{id}": {
-      "get": {
-        "operationId": "getApiV1IdgMeetingsById",
+    "/api/v1/idg/discipline-notes/{id}": {
+      "patch": {
+        "operationId": "patchApiV1IdgDisciplinenotesById",
         "tags": [
           "14-idg"
         ],
-        "summary": "Read one IDG meeting's lifecycle view",
+        "summary": "Edit a discipline note's text and/or reason (at least one; live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
             "schema": {
               "type": "string"
             }
@@ -96461,12 +99096,212 @@
                   "type": "object",
                   "required": [
                     "id",
+                    "meetingId",
+                    "patientId",
+                    "discipline",
+                    "bodyText",
+                    "bodyWithheld",
+                    "authorMembershipId",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "isAddendum",
+                    "addendumRecordedAt",
+                    "reason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discipline": {
+                      "type": "string"
+                    },
+                    "bodyText": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bodyWithheld": {
+                      "type": "boolean"
+                    },
+                    "authorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "authorName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "isAddendum": {
+                      "type": "boolean"
+                    },
+                    "addendumRecordedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "minProperties": 1,
+                "type": "object",
+                "properties": {
+                  "bodyText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings": {
+      "post": {
+        "operationId": "postApiV1IdgMeetings",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Schedule a single (ad-hoc) IDG meeting",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
                     "organizationId",
                     "locationId",
                     "status",
                     "scheduledStart",
                     "scheduledEnd",
-                    "adjournedAt"
+                    "adjournedAt",
+                    "coordinatorMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -96531,6 +99366,159 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "locationId",
+                  "scheduledStart",
+                  "scheduledEnd"
+                ],
+                "properties": {
+                  "locationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "scheduledStart": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "scheduledEnd": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "coordinatorMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsById",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Read one IDG meeting's lifecycle view",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "locationId",
+                    "status",
+                    "scheduledStart",
+                    "scheduledEnd",
+                    "adjournedAt",
+                    "coordinatorMembershipId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "scheduled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "live",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adjourned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rescheduled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scheduledStart": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "scheduledEnd": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "adjournedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
                     }
                   }
                 }
@@ -96606,6 +99594,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -96880,6 +99897,35 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -96962,6 +100008,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -97061,7 +100136,9 @@
                       "membershipId",
                       "discipline",
                       "status",
-                      "checkedInAt"
+                      "checkedInAt",
+                      "disciplineAttested",
+                      "recordedByMembershipId"
                     ],
                     "properties": {
                       "id": {
@@ -97106,6 +100183,20 @@
                       "checkedInAt": {
                         "format": "date-time",
                         "type": "string"
+                      },
+                      "disciplineAttested": {
+                        "type": "boolean"
+                      },
+                      "recordedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -97126,7 +100217,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Self check-in attendance for a meeting",
+        "summary": "Record attendance. A non-coordinator may record ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline must be in the closed vocabulary (422 UNKNOWN_DISCIPLINE) and conferred by the member's authoritative roles (422 DISCIPLINE_NOT_HELD). A coordinator (idg.coordinate) may record others and, with `coordinatorAttested: true`, an unheld discipline as a FLAGGED override (`disciplineAttested`); attesting for themself => 403 ATTESTATION_SELF_FORBIDDEN, a non-coordinator sending it => 403 ATTESTATION_REQUIRES_COORDINATOR; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND; roles unresolvable => 503 ATTENDANCE_AUTHORITY_UNAVAILABLE",
         "parameters": [
           {
             "name": "id",
@@ -97150,7 +100241,9 @@
                     "membershipId",
                     "discipline",
                     "status",
-                    "checkedInAt"
+                    "checkedInAt",
+                    "disciplineAttested",
+                    "recordedByMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -97195,6 +100288,20 @@
                     "checkedInAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "disciplineAttested": {
+                      "type": "boolean"
+                    },
+                    "recordedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -97255,10 +100362,86 @@
                   "checkedInAt": {
                     "format": "date-time",
                     "type": "string"
+                  },
+                  "coordinatorAttested": {
+                    "type": "boolean"
                   }
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/attendance-eligibility": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdAttendanceeligibility",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "What the caller may attest at the check-in: the attendance disciplines their AUTHORITATIVE roles confer (`heldDisciplines`). A coordinator may pass `?membershipId=` for another member and also receives the closed vocabulary they may ATTEST (`attestableDisciplines`); a non-coordinator naming someone else => 403 ATTENDANCE_SELF_ONLY; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "isCoordinator",
+                    "heldDisciplines",
+                    "attestableDisciplines"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "isCoordinator": {
+                      "type": "boolean"
+                    },
+                    "heldDisciplines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "attestableDisciplines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -97370,6 +100553,35 @@
                           {
                             "format": "uuid",
                             "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           },
                           {
                             "type": "null"
@@ -97528,6 +100740,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -98383,6 +101624,410 @@
         }
       }
     },
+    "/api/v1/idg/meetings/{id}/discipline-notes": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdDisciplinenotes",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "The meeting's per-discipline notes, oldest first (optionally one patient) — readable in any status; text withheld (`bodyWithheld`) for a 42 CFR Part 2 patient the caller has no release for",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "meetingId",
+                      "patientId",
+                      "discipline",
+                      "bodyText",
+                      "bodyWithheld",
+                      "authorMembershipId",
+                      "version",
+                      "createdAt",
+                      "updatedAt",
+                      "isAddendum",
+                      "addendumRecordedAt",
+                      "reason"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "discipline": {
+                        "type": "string"
+                      },
+                      "bodyText": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "bodyWithheld": {
+                        "type": "boolean"
+                      },
+                      "authorMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "authorName": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "isAddendum": {
+                        "type": "boolean"
+                      },
+                      "addendumRecordedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdDisciplinenotes",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). `reason` (≤500) is OPTIONAL context on a live note (blank = absent). A patient-scoped addendum is refused once a NEWER ADJOURNED IDG has included that patient. Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_SUPERSEDED_BY_NEWER_IDG / ADDENDUM_REASON_REQUIRED; 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE (retryable)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "meetingId",
+                    "patientId",
+                    "discipline",
+                    "bodyText",
+                    "bodyWithheld",
+                    "authorMembershipId",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "isAddendum",
+                    "addendumRecordedAt",
+                    "reason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discipline": {
+                      "type": "string"
+                    },
+                    "bodyText": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bodyWithheld": {
+                      "type": "boolean"
+                    },
+                    "authorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "authorName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "isAddendum": {
+                      "type": "boolean"
+                    },
+                    "addendumRecordedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "discipline",
+                  "bodyText"
+                ],
+                "properties": {
+                  "patientId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "discipline": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "bodyText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/idg/meetings/{id}/minutes": {
       "get": {
         "operationId": "getApiV1IdgMeetingsByIdMinutes",
@@ -98414,9 +102059,14 @@
                     "finalizedAt",
                     "finalizedByMembershipId",
                     "minutesDocumentId",
+                    "renderStatus",
+                    "finalizedByDiscipline",
                     "attendanceCount",
                     "decisionCount",
-                    "actionItemCount"
+                    "actionItemCount",
+                    "disciplineNoteCount",
+                    "disciplineAddendumCount",
+                    "addendumState"
                   ],
                   "properties": {
                     "id": {
@@ -98472,6 +102122,42 @@
                         }
                       ]
                     },
+                    "renderStatus": {
+                      "anyOf": [
+                        {
+                          "const": "not_rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "finalizedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "finalizedByDiscipline": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "attendanceCount": {
                       "anyOf": [
                         {
@@ -98504,6 +102190,64 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "disciplineNoteCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "disciplineAddendumCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "addendumState": {
+                      "type": "object",
+                      "required": [
+                        "open",
+                        "closesAt",
+                        "closedReason",
+                        "supersededPatientIds"
+                      ],
+                      "properties": {
+                        "open": {
+                          "type": "boolean"
+                        },
+                        "closesAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closedReason": {
+                          "anyOf": [
+                            {
+                              "const": "window_elapsed",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededPatientIds": {
+                          "type": "array",
+                          "items": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -98564,6 +102308,35 @@
                         "format": "uuid",
                         "type": "string"
                       },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "frozenAt": {
                         "anyOf": [
                           {
@@ -98621,7 +102394,8 @@
                     "status",
                     "scheduledStart",
                     "scheduledEnd",
-                    "adjournedAt"
+                    "adjournedAt",
+                    "coordinatorMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -98686,6 +102460,289 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/recert-windows": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdRecertwindows",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Per-agenda-patient recert / face-to-face windows for the IDG right pane — next recert due date, benefit-period end, F2F status/window (seam-pulled from M6's window math, org-timezone; unresolved patients are `unknown`, never fabricated)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meetingId",
+                    "generatedAt",
+                    "items"
+                  ],
+                  "properties": {
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "generatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientId",
+                          "admissionId",
+                          "currentPeriodSequence",
+                          "benefitPeriodStart",
+                          "benefitPeriodEnd",
+                          "nextRecertDueDate",
+                          "nextPeriodSequence",
+                          "daysUntilNextRecert",
+                          "f2fRequired",
+                          "f2fWindowStart",
+                          "f2fWindowEnd",
+                          "f2fStatus",
+                          "f2fWindowState",
+                          "f2fScheduledDate"
+                        ],
+                        "properties": {
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patient": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "displayName",
+                                  "mrnSuffix"
+                                ],
+                                "properties": {
+                                  "displayName": {
+                                    "type": "string"
+                                  },
+                                  "mrnSuffix": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "admissionId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "currentPeriodSequence": {
+                            "anyOf": [
+                              {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "benefitPeriodStart": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "benefitPeriodEnd": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextRecertDueDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextPeriodSequence": {
+                            "anyOf": [
+                              {
+                                "minimum": 2,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "daysUntilNextRecert": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fRequired": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fWindowStart": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fWindowEnd": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fStatus": {
+                            "anyOf": [
+                              {
+                                "const": "not_required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_yet_open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "window_open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attested",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "f2fWindowState": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "not_due",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "window_open",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "overdue",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fScheduledDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -98797,7 +102854,8 @@
                     "status",
                     "scheduledStart",
                     "scheduledEnd",
-                    "adjournedAt"
+                    "adjournedAt",
+                    "coordinatorMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -98862,6 +102920,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
                     }
                   }
                 }
@@ -98883,7 +102945,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Read one patient's packet (SUD redaction applied)",
+        "summary": "Read one patient's packet with its content — cover summary (deterministic), per-discipline views, signed encounters, assessment changes, HOPE, order/medication changes, flagged events, carry-forward items (SUD redaction applied per caller)",
         "parameters": [
           {
             "name": "meetingId",
@@ -98913,7 +102975,10 @@
                     "packetId",
                     "meetingId",
                     "patientId",
-                    "frozenAt"
+                    "frozenAt",
+                    "content",
+                    "appliedSudRedaction",
+                    "redactionNotice"
                   ],
                   "properties": {
                     "packetId": {
@@ -98928,10 +102993,671 @@
                       "format": "uuid",
                       "type": "string"
                     },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "frozenAt": {
                       "anyOf": [
                         {
                           "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "schemaVersion",
+                            "cover",
+                            "disciplines",
+                            "signedEncounters",
+                            "assessmentChanges",
+                            "hopeTimepoints",
+                            "orderChanges",
+                            "medicationChanges",
+                            "flaggedEvents",
+                            "carryForwardActionItems"
+                          ],
+                          "properties": {
+                            "schemaVersion": {
+                              "const": "2026-01-v1",
+                              "type": "string"
+                            },
+                            "cover": {
+                              "type": "object",
+                              "required": [
+                                "summary",
+                                "builtAt",
+                                "sinceCursorAt",
+                                "sinceContext",
+                                "nameAtBuild",
+                                "age",
+                                "primaryDiagnosisIcd10",
+                                "primaryDiagnosisLabel",
+                                "levelOfCare",
+                                "daysOnService",
+                                "hasActiveDpoa",
+                                "activeSudFlag",
+                                "recert",
+                                "carePlan",
+                                "discussionFlags",
+                                "counts"
+                              ],
+                              "properties": {
+                                "summary": {
+                                  "type": "string"
+                                },
+                                "builtAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "sinceCursorAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "sinceContext": {
+                                  "anyOf": [
+                                    {
+                                      "const": "prior_idg",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "first_idg",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "nameAtBuild": {
+                                  "type": "string"
+                                },
+                                "age": {
+                                  "type": "integer"
+                                },
+                                "primaryDiagnosisIcd10": {
+                                  "type": "string"
+                                },
+                                "primaryDiagnosisLabel": {
+                                  "type": "string"
+                                },
+                                "levelOfCare": {
+                                  "anyOf": [
+                                    {
+                                      "const": "routine",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "continuous",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "inpatient_respite",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "general_inpatient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "daysOnService": {
+                                  "type": "integer"
+                                },
+                                "hasActiveDpoa": {
+                                  "type": "boolean"
+                                },
+                                "activeSudFlag": {
+                                  "type": "boolean"
+                                },
+                                "recert": {
+                                  "type": "object",
+                                  "required": [
+                                    "nextRecertDueAt",
+                                    "f2fWindowState"
+                                  ],
+                                  "properties": {
+                                    "nextRecertDueAt": {
+                                      "anyOf": [
+                                        {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "f2fWindowState": {
+                                      "anyOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "const": "not_due",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "window_open",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "overdue",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "carePlan": {
+                                  "type": "object",
+                                  "required": [
+                                    "activeProblemCount",
+                                    "activeGoalCount",
+                                    "activeInterventionCount",
+                                    "lastSignedAt",
+                                    "nextReviewDueAt",
+                                    "isReviewOverdue"
+                                  ],
+                                  "properties": {
+                                    "activeProblemCount": {
+                                      "type": "integer"
+                                    },
+                                    "activeGoalCount": {
+                                      "type": "integer"
+                                    },
+                                    "activeInterventionCount": {
+                                      "type": "integer"
+                                    },
+                                    "lastSignedAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "nextReviewDueAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "isReviewOverdue": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                },
+                                "discussionFlags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "kind",
+                                      "detail"
+                                    ],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string"
+                                      },
+                                      "detail": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                "counts": {
+                                  "type": "object",
+                                  "required": [
+                                    "signedEncounters",
+                                    "assessmentChanges",
+                                    "hopeTriggers",
+                                    "orderChanges",
+                                    "medicationChanges",
+                                    "flaggedEvents",
+                                    "carryForwardActionItems"
+                                  ],
+                                  "properties": {
+                                    "signedEncounters": {
+                                      "type": "integer"
+                                    },
+                                    "assessmentChanges": {
+                                      "type": "integer"
+                                    },
+                                    "hopeTriggers": {
+                                      "type": "integer"
+                                    },
+                                    "orderChanges": {
+                                      "type": "integer"
+                                    },
+                                    "medicationChanges": {
+                                      "type": "integer"
+                                    },
+                                    "flaggedEvents": {
+                                      "type": "integer"
+                                    },
+                                    "carryForwardActionItems": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "disciplines": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "discipline",
+                                  "oneLineSummary",
+                                  "items",
+                                  "openQuestions"
+                                ],
+                                "properties": {
+                                  "discipline": {
+                                    "anyOf": [
+                                      {
+                                        "const": "rn",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "msw",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "chaplain",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "aide",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "md_np",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "volunteer",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "medical_director",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "oneLineSummary": {
+                                    "type": "string"
+                                  },
+                                  "items": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sourceKind",
+                                        "sourceId",
+                                        "label",
+                                        "summary",
+                                        "severity"
+                                      ],
+                                      "properties": {
+                                        "sourceKind": {
+                                          "anyOf": [
+                                            {
+                                              "const": "encounter",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "assessment",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "order",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "medication",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "hope",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "action_item",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "flag",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "sourceId": {
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "type": "string"
+                                        },
+                                        "severity": {
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "const": "info",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "attention",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "urgent",
+                                                  "type": "string"
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "openQuestions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "signedEncounters": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "encounterId",
+                                  "encounterType",
+                                  "discipline",
+                                  "signedAt"
+                                ],
+                                "properties": {
+                                  "encounterId": {
+                                    "type": "string"
+                                  },
+                                  "encounterType": {
+                                    "type": "string"
+                                  },
+                                  "discipline": {
+                                    "type": "string"
+                                  },
+                                  "signedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "assessmentChanges": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "assessmentId",
+                                  "scaleKind",
+                                  "changeKind",
+                                  "occurredAt"
+                                ],
+                                "properties": {
+                                  "assessmentId": {
+                                    "type": "string"
+                                  },
+                                  "scaleKind": {
+                                    "type": "string"
+                                  },
+                                  "changeKind": {
+                                    "type": "string"
+                                  },
+                                  "occurredAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "hopeTimepoints": {
+                              "type": "object",
+                              "required": [
+                                "captured",
+                                "upcoming",
+                                "openSfvCount",
+                                "symptomImpactTriggers"
+                              ],
+                              "properties": {
+                                "captured": {
+                                  "type": "boolean"
+                                },
+                                "upcoming": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "timepoint",
+                                      "dueAt"
+                                    ],
+                                    "properties": {
+                                      "timepoint": {
+                                        "type": "string"
+                                      },
+                                      "dueAt": {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                "openSfvCount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "symptomImpactTriggers": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "hopeAssessmentId",
+                                      "triggerKind",
+                                      "firedAt"
+                                    ],
+                                    "properties": {
+                                      "hopeAssessmentId": {
+                                        "type": "string"
+                                      },
+                                      "triggerKind": {
+                                        "type": "string"
+                                      },
+                                      "firedAt": {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "orderChanges": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "orderId",
+                                  "orderKind",
+                                  "changeKind",
+                                  "changedAt"
+                                ],
+                                "properties": {
+                                  "orderId": {
+                                    "type": "string"
+                                  },
+                                  "orderKind": {
+                                    "type": "string"
+                                  },
+                                  "changeKind": {
+                                    "type": "string"
+                                  },
+                                  "changedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "medicationChanges": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "medicationOrderId",
+                                  "drugLabel",
+                                  "changeKind",
+                                  "changedAt"
+                                ],
+                                "properties": {
+                                  "medicationOrderId": {
+                                    "type": "string"
+                                  },
+                                  "drugLabel": {
+                                    "type": "string"
+                                  },
+                                  "changeKind": {
+                                    "type": "string"
+                                  },
+                                  "changedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "flaggedEvents": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "sourceId",
+                                  "occurredAt",
+                                  "severity"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "sourceId": {
+                                    "type": "string"
+                                  },
+                                  "occurredAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "severity": {
+                                    "anyOf": [
+                                      {
+                                        "const": "info",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "attention",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "urgent",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "carryForwardActionItems": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "actionItemId",
+                                  "assignedToMembershipId",
+                                  "dueDate",
+                                  "carryForwardCount"
+                                ],
+                                "properties": {
+                                  "actionItemId": {
+                                    "type": "string"
+                                  },
+                                  "assignedToMembershipId": {
+                                    "type": "string"
+                                  },
+                                  "dueDate": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "carryForwardCount": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appliedSudRedaction": {
+                      "type": "boolean"
+                    },
+                    "redactionNotice": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -99239,7 +103965,8 @@
                       "locationId",
                       "status",
                       "scheduledStart",
-                      "scheduledEnd"
+                      "scheduledEnd",
+                      "coordinatorMembershipId"
                     ],
                     "properties": {
                       "id": {
@@ -99288,6 +104015,10 @@
                       },
                       "scheduledEnd": {
                         "format": "date-time",
+                        "type": "string"
+                      },
+                      "coordinatorMembershipId": {
+                        "format": "uuid",
                         "type": "string"
                       }
                     }
@@ -106776,6 +111507,107 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-intake/gip-proposals": {
+      "get": {
+        "operationId": "getApiV1IpuintakeGipproposals",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "F-219 intake worklist — pending M19 GIP admission PROPOSALS (a pull; never an ipu_admission row)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "triageCallId",
+                          "patientId",
+                          "admissionId",
+                          "providerEntityId",
+                          "locationId",
+                          "proposedAt",
+                          "preferredFacility",
+                          "callState"
+                        ],
+                        "properties": {
+                          "triageCallId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "providerEntityId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "locationId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "proposedAt": {
+                            "type": "string"
+                          },
+                          "preferredFacility": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "callState": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -147451,7 +152283,8 @@
                   "type": "object",
                   "required": [
                     "url",
-                    "expiresAt"
+                    "expiresAt",
+                    "patientId"
                   ],
                   "properties": {
                     "url": {
@@ -147460,6 +152293,9 @@
                     },
                     "expiresAt": {
                       "format": "date-time",
+                      "type": "string"
+                    },
+                    "patientId": {
                       "type": "string"
                     }
                   }
@@ -217579,6 +222415,101 @@
                   "callerCaregiverId": {
                     "format": "uuid",
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/request-summary": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdRequestsummary",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "F-224 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requested",
+                    "triageCallId",
+                    "recipientKind",
+                    "requestedAt"
+                  ],
+                  "properties": {
+                    "requested": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "triageCallId": {
+                      "type": "string"
+                    },
+                    "recipientKind": {
+                      "anyOf": [
+                        {
+                          "const": "caregiver",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attending",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "recipientKind"
+                ],
+                "properties": {
+                  "recipientKind": {
+                    "anyOf": [
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      },
+                      {
+                        "const": "attending",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }

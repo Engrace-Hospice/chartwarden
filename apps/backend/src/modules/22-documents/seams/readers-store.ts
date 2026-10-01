@@ -78,6 +78,12 @@ export interface DocumentReaderStore {
      *  had no real implementation anywhere and was never actually passed at the one production call site;
      *  reading it here, off data already being loaded, needs no new injection point at all. */
     readonly isSudClass: boolean;
+    /** F-225 (#248) — the document lifecycle status; a portal mint only targets a live (non-superseded,
+     *  non-destroyed) document. */
+    readonly status: DocumentDigest["status"];
+    /** F-225 (#248) — the version's REAL (opaque, PHI-free) object key: the URL must presign the stored
+     *  bytes, not an invented path (the prior `portal/<versionId>` key named no object). */
+    readonly objectKey: string;
   } | null>;
 
   /** §4.3 IntakeMetricsProvider — the intake-throughput counts for an org over a window. */
@@ -208,6 +214,8 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
               // F-197 (#248) — the seed's own `retentionClass` is the SUD signal here (no separate
               // metadata field on `DocumentDigest`); a test seeds `compliance_42cfr_part2` to simulate one.
               isSudClass: d.retentionClass === "compliance_42cfr_part2",
+              status: d.status,
+              objectKey: `rendered/${documentVersionId}.pdf`,
             }
           : null;
       },
@@ -229,6 +237,40 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
           (p) => p.targetModule === targetModule && p.targetAggregateId === targetAggregateId,
         );
       },
+    },
+  };
+}
+
+/**
+ * F-225 (#248) — the append-only `document_access_log` writer the portal mint appends its §164.528 row
+ * through. M22 owns the table; the Drizzle adapter (`./drizzle-access-log-store.ts`) inserts under the
+ * tenant's RLS context, the in-memory one records for the slice/tests. Ids only — no PHI, no free text.
+ */
+export interface PortalAccessLogEntry {
+  readonly organizationId: OrgId;
+  readonly documentId: DocumentId;
+  readonly documentVersionId: DocumentVersionId;
+  readonly patientId: PatientId;
+  readonly portalAccountId: string;
+  readonly portalSessionId: string;
+  readonly correlationId: string;
+  readonly accessedAt: IsoInstant;
+}
+export interface PortalAccessLogPort {
+  /** Append ONE row (access_kind 'portal_view', purpose 'patient_access'). Throws on failure — the caller
+   *  must not release the URL when this rejects. */
+  appendPortalDownload(entry: PortalAccessLogEntry): Promise<void>;
+}
+
+/** An in-memory {@link PortalAccessLogPort}; `rows` is exposed for assertions. */
+export function createInMemoryPortalAccessLog(): PortalAccessLogPort & {
+  readonly rows: PortalAccessLogEntry[];
+} {
+  const rows: PortalAccessLogEntry[] = [];
+  return {
+    rows,
+    async appendPortalDownload(entry) {
+      rows.push(entry);
     },
   };
 }

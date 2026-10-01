@@ -57,10 +57,7 @@ export const certificationsOfTerminalIllness = pgTable(
     // Nullable at draft (M6L-T03): a `drafted` CTI carries only the physicians + period ref; the clinical
     // fields are filled when known / on completion. See migration 0124.
     terminalDiagnosisIcd10: text("terminal_diagnosis_icd10"),
-    relatedConditionsIcd10: text("related_conditions_icd10")
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
+    relatedConditionsIcd10: text("related_conditions_icd10").array().notNull().default(sql`'{}'`),
     narrative: text("narrative"),
     periodStart: date("period_start"),
     periodEnd: date("period_end"),
@@ -69,12 +66,8 @@ export const certificationsOfTerminalIllness = pgTable(
     status: ctiStatus("status").notNull().default("drafted"),
     documentId: uuid("document_id"), // M22 document (app-validated)
     voidedSupersedesId: uuid("voided_supersedes_id"), // self-reference (logical)
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
@@ -83,13 +76,9 @@ export const certificationsOfTerminalIllness = pgTable(
       .where(sql`status <> 'voided'`),
     orgSignatureDueIdx: index("cti_org_signature_due_idx")
       .on(t.organizationId, t.status, t.signatureDueAt)
-      .where(
-        sql`signature_due_at IS NOT NULL AND hospice_md_signed_at IS NULL`,
-      ),
+      .where(sql`signature_due_at IS NOT NULL AND hospice_md_signed_at IS NULL`),
   }),
 );
 
-export type CertificationOfTerminalIllness =
-  typeof certificationsOfTerminalIllness.$inferSelect;
-export type NewCertificationOfTerminalIllness =
-  typeof certificationsOfTerminalIllness.$inferInsert;
+export type CertificationOfTerminalIllness = typeof certificationsOfTerminalIllness.$inferSelect;
+export type NewCertificationOfTerminalIllness = typeof certificationsOfTerminalIllness.$inferInsert;

@@ -16,9 +16,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { createDrizzleOrderSeamStore, registerOrderSeams } from "../src/modules/11-orders/index";
 import {
   type DoseSpotWriteOutboxPort,
   createDbDoseSpotBackend,
@@ -209,6 +211,11 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
+    // The real M11 OrderSignatureProvider seam over the real Drizzle store, registered exactly as
+    // `apps/backend/src/index.ts` does on a db boot. M12's `recordVerbal` writes its `verbal_order` receipt
+    // through this seam since F-162 (651f8ef6); without it the route throws "seam requested before
+    // registration". Registered once for the file (a module-scope Map; one test file per process).
+    registerOrderSeams({ store: createDrizzleOrderSeamStore(handle.db) });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M12_OUTBOX_EVENTS]));
     const outbox: DoseSpotWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m12" }),
@@ -299,12 +306,16 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   it("recordVerbal → verbal_pending; the named prescriber then signs → signed (viaVerbal)", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
-    const verbal = await svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
-      recorderDiscipline: "rn_case_manager",
-      verbalAttestation: ATTESTATION,
-      receivedAt: new Date().toISOString(),
-      namedPrescriberMdmId: PHYSICIAN_MDM,
-    });
+    // The route runs inside the request's ambient context; the M11 seam it writes through
+    // (`withOrgContextFromRequest`) reads it, exactly as in production.
+    const verbal = await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
+      svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+        recorderDiscipline: "rn_case_manager",
+        verbalAttestation: ATTESTATION,
+        receivedAt: new Date().toISOString(),
+        namedPrescriberMdmId: PHYSICIAN_MDM,
+      }),
+    );
     expect(verbal.status).toBe("verbal_pending");
     expect(await eventsFor(draft.id)).toContain("m12.medication_order.verbal_received");
     const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {

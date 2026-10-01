@@ -77,7 +77,8 @@ function factsOf(payload: unknown): StatusChangedPayload {
   const sourceOrderId = p.sourceOrderId;
   return {
     toStatus,
-    sourceOrderId: typeof sourceOrderId === "string" && sourceOrderId.length > 0 ? sourceOrderId : null,
+    sourceOrderId:
+      typeof sourceOrderId === "string" && sourceOrderId.length > 0 ? sourceOrderId : null,
   };
 }
 
@@ -103,7 +104,12 @@ export function buildM11FulfillmentStatusConsumer(deps: FulfillmentStatusDeps) {
           const [order] = await tx
             .select({ id: ORDER.id, status: ORDER.status, kind: ORDER.kind })
             .from(ORDER)
-            .where(and(eq(ORDER.organizationId, organizationId), eq(ORDER.id, facts.sourceOrderId as string)))
+            .where(
+              and(
+                eq(ORDER.organizationId, organizationId),
+                eq(ORDER.id, facts.sourceOrderId as string),
+              ),
+            )
             .limit(1);
 
           // No matching order, an order not in `active`, or a non-one-shot kind (dme) — all benign no-ops.

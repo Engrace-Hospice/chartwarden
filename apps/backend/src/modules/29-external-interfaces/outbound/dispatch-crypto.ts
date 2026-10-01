@@ -32,10 +32,18 @@ export interface OutboundTenantKeyProvider {
 export interface OutboundPayloadCipher {
   /** Encrypts under the org's CURRENT active DEK. `column` is `'payload'` or `'ack_payload'` — folded into
    *  the AAD so a `payload_cipher` blob can never be replayed into `ack_payload_cipher` or vice versa. */
-  encrypt(organizationId: string, column: "payload" | "ack_payload", plaintext: string): Promise<string>;
+  encrypt(
+    organizationId: string,
+    column: "payload" | "ack_payload",
+    plaintext: string,
+  ): Promise<string>;
   /** Opens a blob sealed by `encrypt` — resolves the DEK VERSION embedded in the blob (never assumes it is
    *  still the current active version; a retry may run after a KEK/DEK rotation). */
-  decrypt(organizationId: string, column: "payload" | "ack_payload", sealed: string): Promise<string>;
+  decrypt(
+    organizationId: string,
+    column: "payload" | "ack_payload",
+    sealed: string,
+  ): Promise<string>;
 }
 
 const AAD_PREFIX = "m29:hl7_message_outbound";
@@ -46,7 +54,9 @@ function aad(column: string, organizationId: string): Buffer {
 
 /** AES-256-GCM envelope; format `v1.<dekVersion>.<nonceB64url>.<tagB64url>.<ciphertextB64url>` — the
  *  `portal-crypto.ts` / `consent-crypto.ts` house format, so a reviewer already fluent in one reads this. */
-export function createOutboundPayloadCipher(keys: OutboundTenantKeyProvider): OutboundPayloadCipher {
+export function createOutboundPayloadCipher(
+  keys: OutboundTenantKeyProvider,
+): OutboundPayloadCipher {
   return {
     async encrypt(organizationId, column, plaintext) {
       const { version, key } = await keys.dekForOrg(organizationId);

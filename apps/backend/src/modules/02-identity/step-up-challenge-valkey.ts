@@ -1,26 +1,16 @@
 import type Redis from "ioredis";
-import type {
-  StepUpChallenge,
-  StepUpChallengeStore,
-} from "./step-up-ports";
+import type { StepUpChallenge, StepUpChallengeStore } from "./step-up-ports";
 
 const PREFIX = "wardenx:m2:step-up";
 const LOCKOUT_WINDOW_SEC = 60;
 
-export function createValkeyStepUpChallengeStore(
-  redis: Redis,
-): StepUpChallengeStore {
+export function createValkeyStepUpChallengeStore(redis: Redis): StepUpChallengeStore {
   const challengeKey = (id: string) => `${PREFIX}:challenge:${id}`;
   const failureKey = (sessionId: string) => `${PREFIX}:failures:${sessionId}`;
 
   return {
     async put(challengeId, challenge, ttlSec) {
-      await redis.set(
-        challengeKey(challengeId),
-        JSON.stringify(challenge),
-        "EX",
-        ttlSec,
-      );
+      await redis.set(challengeKey(challengeId), JSON.stringify(challenge), "EX", ttlSec);
     },
 
     async get(challengeId) {

@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   build-and-verify:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     # `tsc -b` over the full project graph outgrew Node's default heap on the runner (~2 GB, sized
     # from runner RAM): it died with "Reached heap limit … JavaScript heap out of memory" (SIGABRT,
     # exit 134) before arch:fitness, the unit suite or the dependency audit ever ran.
@@ -96,7 +96,7 @@ jobs:
 
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     strategy:
       fail-fast: false
       matrix:
@@ -175,6 +175,11 @@ jobs:
       - name: ${{ matrix.suite.name }} — cross-tenant isolation proof (real Postgres + real RLS)
         run: bun run ${{ matrix.suite.script }}
 
+      - name: Cleanup Postgres container
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg 2>/dev/null || true
+
   lifecycle-live:
     # GAP-086: the 25 per-module read/write LIFECYCLE suites had scripts in package.json and no runner
     # anywhere — no CI job, no git hook (.githooks/pre-push runs build/arch:fitness/test, and `bun run test`
@@ -190,7 +195,7 @@ jobs:
     # schema and replays the migrations itself, so they compose sequentially, and 13 runners instead of 25
     # halves the per-job migration replay for identical coverage.
     name: Lifecycle — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     strategy:
       fail-fast: false
       matrix:
@@ -289,7 +294,8 @@ jobs:
           - {
               name: "M14 IDG",
               scripts:
-                "test:m14:read:live test:m14:write:live test:m14:clinical-event-consumers:live",
+                "test:m14:read:live test:m14:write:live test:m14:clinical-event-consumers:live
+                test:m14:enrichment:live",
             }
           - {
               name: "M17 Scheduling",
@@ -346,7 +352,9 @@ jobs:
               scripts:
                 "test:m23:remittance-feedback:live test:m23:billed-days-seam:live
                 test:m23:claim-submit-worker:live test:m23:claim-match-seam:live
-                test:m23:claim-assembly-seams:live",
+                test:m23:claim-assembly-seams:live test:m23:rate-table:live
+                test:m23:wage-index:live
+                test:m23:sequestration-policy:live",
             }
           - {
               name: "M24 Billing-Medicaid",
@@ -543,6 +551,9 @@ jobs:
           # F-167 (#248) — the m5 `handlers-unbound` group's `m39.consent.{signed,revoked,supersedes,
           # renewed}` privacy-flag-snapshot recompute (§7.6/D10).
           - { name: "M5 consent privacy-flag recompute", scripts: "test:m5:consent-privacy:live" }
+          # F-216 (#248) — M39's hourly consent-expiration/expiration-reminder crons (the producer of
+          # `m39.consent.expired`/`.expiring_soon`) + the `m5 <- m39.consent.expired` snapshot binding.
+          - { name: "M39 consent expiration crons", scripts: "test:m39:consent-expiration:live" }
           # F-171 (#248) — the real §4.3 M5 direct patient-merge write path: POST /patients/:id/merge,
           # field resolution, satellite-table preservation, m5.patient.merged emission.
           - { name: "M5 patient merge", scripts: "test:m5:patient-merge:live" }
@@ -578,7 +589,9 @@ jobs:
                 # INSERT half, re-checked past F-164's BLOCKED verdict.
                 # F-167 (#248) adds test:m31:bereavement-contact-active:live — the per-contact-exact
                 # trigger `plan_opened`'s own header names as the real primary mechanism.
-                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live test:m31:bereavement-contact-active:live",
+                # F-222 (#248) adds test:m31:post-discharge-grace:live — the daily post-discharge-grace sweep.
+                # F-220 (#248) adds test:m31:lazy-room-mint:live — the lazy telehealth room mint on first join.
+                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live test:m31:bereavement-contact-active:live test:m31:post-discharge-grace:live test:m31:lazy-room-mint:live",
             }
           - {
               name: "M36 Messaging alerts",
@@ -640,6 +653,13 @@ jobs:
               name: "F-197 M22 mint-time SUD consent",
               scripts: "test:f197:m22-mint-time-sud-consent:live",
             }
+          # F-225 (#248) — the portal document download is ACCOUNTED (§164.528): an authorized mint appends
+          # exactly one ids-only `document_access_log` row + one M4 read row carrying the document id; every
+          # refusal logs nothing; the ledger is tenant-isolated and append-only for the app role (migration 0298).
+          - {
+              name: "F-225 M22 portal access log",
+              scripts: "test:f225:m22-portal-access-log:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
@@ -679,9 +699,19 @@ jobs:
               name: "F-208 M9 assessment summary render",
               scripts: "test:f208:m9-assessment-summary-render:live",
             }
+          # F-218/F-219/F-224 (#248) — the three M19 triage pairs: the explicit caregiver/attending summary
+          # request -> M22 render (migration 0290), and the GIP-proposal seam pull M14 (flagged events) and
+          # M37 (intake worklist) share, on the real wardenx_app role.
+          - {
+              name: "F-218/219/224 M19 triage pairs",
+              scripts: "test:f218-f219-f224:m19-triage-pairs:live",
+            }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }
+          - { name: "M6 F2F/CTI adequacy gate", scripts: "test:m6:adequacy-gate:live" }
+          # F-223 (#248) — a signed recert order opens the next PENDING election period (gate stays at activation).
+          - { name: "M6 recertification signed", scripts: "test:m6:recertification-signed:live" }
           # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
           # close-out), both already live-emitted by the M6/M11 discharge cascade above.
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }
@@ -807,13 +837,18 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Cleanup lifecycle containers
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-lifecycle 2>/dev/null || true
+
   migration-gate:
     # TASK-040E (OPS-016): scripts/db/migrate.ts is the real production migration path. This job
     # proves it against a disposable database — both the happy path (full chain applies cleanly)
     # and the failure path (a deliberately corrupted checksum on an already-applied file fails the
     # pipeline under --strict, not just a warning).
     name: Production migration path (scripts/db/migrate.ts)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
@@ -865,9 +900,14 @@ jobs:
           fi
           echo "✓ --strict correctly failed the pipeline on checksum drift"
 
+      - name: Cleanup migration Postgres
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-migrate 2>/dev/null || true
+
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
@@ -905,6 +945,11 @@ jobs:
       - name: device_attestation RLS survives a reused pooled connection (empty-GUC regression)
         run: bun run test:device-attestation-guc:live
 
+      - name: Cleanup auth Postgres
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg 2>/dev/null || true
+
   outbox-boot:
     # F-020 (issue #49): the backend refused to START in the documented production configuration —
     # `DATABASE_PLATFORM_URL` set — because the outbox dispatcher's catalog validation throws before
@@ -916,7 +961,7 @@ jobs:
     # covers the rest of the branch — the platform pool, the audited active-org enumerator, the relay
     # start — by doing the one thing a gate cannot do: running the process the way production runs it.
     name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
@@ -955,6 +1000,11 @@ jobs:
       - name: Boot with the platform credential and prove the relay starts
         run: bun run check:boot:platform
 
+      - name: Cleanup outbox Postgres
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-boot 2>/dev/null || true
+
   # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
   # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
   # existing live jobs and nothing ran it. It proves the cluster-wide rate limiter — that two backend
@@ -963,7 +1013,7 @@ jobs:
   # jobs this needs no command arguments and replays no migrations.
   rate-limit-store-live:
     name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     services:
       valkey:
         image: valkey/valkey:8-alpine
@@ -1005,7 +1055,7 @@ jobs:
     # seed chain runs here through the very `db:seed:all` script `db:reset` composes, so the two cannot
     # drift apart.
     name: Critical-workflow E2E + accessibility (Playwright, full stack)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, hostinger]
     services:
       # `db:seed:scenario-billing` drives M27 `refresh-inputs`, which enqueues a trial-balance pull —
       # with no queue connection that port is unbound and the step fails (docs/DEVELOPMENT.md). A
@@ -1174,3 +1224,9 @@ jobs:
             e2e/test-results/
             ${{ runner.temp }}/e2e-logs/
           retention-days: 7
+      
+      - name: Cleanup E2E containers
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-e2e 2>/dev/null || true
+          docker rm -f wardenx-ci-minio-e2e 2>/dev/null || true

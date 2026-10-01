@@ -10,6 +10,7 @@ import {
   pgTable,
   smallint,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -45,6 +46,9 @@ export const electionPeriods = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
+    // F-223 — the triggering M11 `order_record.id` (logical uuid, no SQL FK: M6's dependsOn excludes M11).
+    // NULL for every period opened by the HTTP route; only the order-triggered consumer sets it.
+    sourceOrderId: uuid("source_order_id"),
   },
   (t) => ({
     admSeqUnique: uniqueIndex("election_period_admission_seq_idx").on(
@@ -52,6 +56,10 @@ export const electionPeriods = pgTable(
       t.sequenceNumber,
     ),
     admIdx: index("election_period_admission_idx").on(t.admissionId, t.sequenceNumber),
+    sourceOrderUq: unique("election_period_source_order_id_uq").on(
+      t.organizationId,
+      t.sourceOrderId,
+    ),
   }),
 );
 

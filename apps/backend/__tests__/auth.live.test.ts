@@ -1,3 +1,9 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { isSealed } from "@wardenx/auth";
+import { sql } from "drizzle-orm";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // apps/backend/__tests__/auth.live.test.ts — AUTH-T06 (ADR-0033) live-Postgres auth integration.
 // Proves the Better Auth ↔ M1 schema reconciliation (migration 0024): a real email+password sign-up
 // writes user/account/session rows against the migrated schema, and sign-in + the DB-backed session
@@ -6,12 +12,6 @@
 // sendResetPassword seam → resetPassword → credential rotation). Passkey enrollment is out of scope
 // (a browser WebAuthn ceremony — not CI-testable without a virtual authenticator).
 import { appRoleConnectionString } from "./_live-app-role";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { isSealed } from "@wardenx/auth";
-import { sql } from "drizzle-orm";
-import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 
@@ -702,7 +702,9 @@ describe.skipIf(!DB_URL)(
       // The REAL NOBYPASSRLS `wardenx_app` — not the suite's superuser DB_URL. Through the superuser every RLS policy
       // is bypassed, which is how `select-organization`'s outbox publish (an `outbox_event` insert under
       // `organization_id = current_setting('app.org_id')::uuid`) could fail in production yet pass here.
-      const handle11 = mkDb11({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
+      const handle11 = mkDb11({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
       registerDbEffectivePermissionResolver(handle11.db as never);
 
       // Seed a real user, org, membership, role, and the patient.read grant (superuser — RLS bypassed
@@ -789,7 +791,8 @@ describe.skipIf(!DB_URL)(
         createDbAdminMembershipReader(handle11.db as never),
         {
           outbox: {
-            publish: (tx: never, input: never) => _m2Publisher.publish(tx, { ...(input as object), callerModule: "m2" } as never),
+            publish: (tx: never, input: never) =>
+              _m2Publisher.publish(tx, { ...(input as object), callerModule: "m2" } as never),
           },
         } as never,
       );

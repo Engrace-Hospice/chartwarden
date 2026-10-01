@@ -119,6 +119,19 @@ export {
   createDrizzleAdmissionReaderStore,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
+  idgRecertWindowsForOrg,
+  IDG_HOSPITAL_EVENTS_MAX_PATIENTS,
+  type IdgHospitalEvent,
+  idgHospitalEventsForOrg,
+  projectHospitalEvent,
+  PORTAL_DISCHARGE_GRACE_MAX_PATIENTS,
+  type PortalDischargedPastGrace,
+  isPastGraceAndNotReadmitted,
+  portalDischargedPastGraceForOrg,
+  IDG_RECERT_WINDOWS_MAX_PATIENTS,
+  type IdgRecertF2fStatus,
+  type IdgRecertWindow,
+  projectIdgRecertWindow,
   createInMemoryAdmissionReaderStore,
   createElectionPeriodReader,
   createCertificationReader,
@@ -221,6 +234,18 @@ export {
   isF2fScheduledWithinWindow,
   decideF2fWindowStatus,
   decideRecertSign,
+  ADEQUACY_FLAG_CODES,
+  ADEQUACY_REASON_CODES,
+  type AdequacyDecisionSummary,
+  type AdequacyFlagCode,
+  type AdequacyInput,
+  type AdequacyReasonCode,
+  type AdequacyResult,
+  evaluatePeriodAdequacy,
+  f2fRequiredForSequence,
+  pickCertification,
+  pickFaceToFace,
+  summarizeAdequacy,
 } from "./certification";
 
 // M6-T07 — referral & intake (§7.1) + admission wizard (§7.2). The R-AC-01 activation gate is the
@@ -254,6 +279,12 @@ export {
   M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER,
   buildM6LevelOfCareChangeSignedConsumer,
 } from "./outbox-consumers/m11-level-of-care-change-signed";
+// F-223 (#248) — a signed recertification order opens the next PENDING election period (M11 D10).
+export {
+  M6_RECERTIFICATION_SIGNED_CONSUMER,
+  applyRecertificationSigned,
+  buildM6RecertificationSignedConsumer,
+} from "./outbox-consumers/m11-recertification-signed";
 export {
   M6_QUEUES,
   M6_JOB_SCHEDULES,

@@ -111,7 +111,11 @@ async function readEntry(redis: Redis, patientId: string): Promise<SinceLastIdgC
   }
 }
 
-async function writeEntry(redis: Redis, patientId: string, entry: SinceLastIdgCacheEntry): Promise<void> {
+async function writeEntry(
+  redis: Redis,
+  patientId: string,
+  entry: SinceLastIdgCacheEntry,
+): Promise<void> {
   await redis.set(cacheKey(patientId), JSON.stringify(entry), "EX", SINCE_LAST_IDG_TTL_SEC);
 }
 
@@ -143,7 +147,10 @@ export async function appendSinceLastIdgEntry<K extends keyof SinceLastIdgCacheE
 }
 
 /** Read the current cache entry for a patient (exported for the future read-side build worker / tests). */
-export async function readSinceLastIdgEntry(redis: Redis, patientId: string): Promise<SinceLastIdgCacheEntry> {
+export async function readSinceLastIdgEntry(
+  redis: Redis,
+  patientId: string,
+): Promise<SinceLastIdgCacheEntry> {
   return readEntry(redis, patientId);
 }
 

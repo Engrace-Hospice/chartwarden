@@ -26,6 +26,13 @@ import type { CarePlanCodeUsageRecord } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
+import {
+  type ClaimDiagnosisCandidate,
+  type ClaimDiagnosisRecord,
+  type ClaimDiagnosisResult,
+  applyPart2ClaimGate,
+  needsPart2Decision,
+} from "./claim-diagnoses-gate";
 import type {
   CarePlanClockRecord,
   CarePlanElementsRecord,
@@ -395,7 +402,9 @@ export function idgPacketCarePlanContextForOrg(
     const [sudRow] = await tx
       .select({ id: PROB.id })
       .from(PROB)
-      .where(and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active"), eq(PROB.sudRelated, true)))
+      .where(
+        and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active"), eq(PROB.sudRelated, true)),
+      )
       .limit(1);
 
     const asOf = new Date(asOfIso);
@@ -415,4 +424,104 @@ export function idgPacketCarePlanContextForOrg(
       sudFlag: !!sudRow,
     };
   });
+}
+
+export type { ClaimDiagnosisRecord, ClaimDiagnosisResult };
+
+/**
+ * F-214 (#251) — may a `sud_related` diagnosis code go on a Medicare claim? Decided by M39's
+ * `ConsentEvaluator` (resolved opaquely through the M1 registry — M7 takes no `@wardenx/consent` edge, the
+ * `part2ReleaseAllowed` / M22 `resolveSudConsentPresent` shape), org-explicit (no request scope: the assembly
+ * worker is not a request). The question asked: is a `42_cfr_part_2_release` consent active, effective,
+ * unexpired, unrevoked (with at least one active named recipient, patient not deceased — all decided by the
+ * evaluator) AS OF NOW? NOW, not the service dates: the disclosure to the MAC happens when the claim is
+ * assembled/sent, and M39 defines revocation as blocking FUTURE disclosures (ARCHITECTURE §M39: "revoked ->
+ * future record disclosures blocked; past disclosures audited"). FAIL-CLOSED: an unbound seam, a throw, or
+ * anything but `allowed === true` withholds the code.
+ */
+async function part2BillingDisclosureAllowed(
+  organizationId: string,
+  patientId: string,
+): Promise<boolean> {
+  try {
+    const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluatorShape;
+    const verdict = await evaluator.evaluate({
+      organizationId,
+      patientId,
+      consentType: "42_cfr_part_2_release",
+      sessionContext: { sessionClass: "staff" },
+      callerModule: "m23",
+    });
+    return verdict.allowed === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * F-209 (#251) — the diagnosis sequence M23 claim assembly needs, org-explicit and patient-keyed (the
+ * `idgPacketCarePlanContextForOrg` shape; the assembly worker has no request scope). Reads the patient's
+ * `problem` rows across ALL of their care plans (`problem.organization_id` + the plan's `patient_id`).
+ *
+ * Selection: `status = 'active'`, non-null/non-blank `icd10_code`, overlapping the service range —
+ * `onset_at` (null = onset unknown, kept) is before the END of `to`, and `resolved_at` is null or after
+ * the START of `from`. This is an APPROXIMATE as-of read: `problem` keeps no status history, so a problem
+ * since flipped to `resolved`/`inactive` is excluded even if it was active during the range (never
+ * fabricates a past status). Ordered terminal, related, unrelated, then `created_at`, `id`; capped at
+ * `CLAIM_DIAGNOSIS_MAX` (12); positions 1..n. A code repeated across problems keeps its first (highest
+ * ranked) occurrence — a claim lists each diagnosis once. Whether the sequence is a VALID claim sequence
+ * (exactly one terminal, first) is deliberately NOT decided here: the M23 `icd10_sequencing` rule judges it.
+ *
+ * F-214 (#251) — PART 2 GATE, enforced here where the rows are read (defense in depth: there is no ungated
+ * variant for a future caller to reach for). A `problem.sud_related` code is included only when
+ * {@link part2BillingDisclosureAllowed}; otherwise it is WITHHELD (never in `sequence`), the rest re-ranked
+ * contiguously, and `withheldForConsentCount` / `terminalWithheldForConsent` (no codes) report it so the M23
+ * rule layer can hold the claim. See `claim-diagnoses-gate.ts`.
+ */
+export function claimDiagnosesForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+  range: { readonly from: string; readonly to: string },
+): Promise<ClaimDiagnosisResult> {
+  const fromStart = new Date(`${range.from}T00:00:00.000Z`);
+  const toExclusive = new Date(`${range.to}T00:00:00.000Z`);
+  toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+  return withOrgContext(
+    db,
+    { organizationId, userId: CARE_PLAN_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const rows = await tx
+        .select({ code: PROB.icd10Code, kind: PROB.kind, sudRelated: PROB.sudRelated })
+        .from(PROB)
+        .innerJoin(CP, eq(CP.id, PROB.carePlanId))
+        .where(
+          and(
+            eq(PROB.organizationId, organizationId),
+            eq(CP.organizationId, organizationId),
+            eq(CP.patientId, patientId),
+            eq(PROB.status, "active"),
+            sql`${PROB.icd10Code} IS NOT NULL AND btrim(${PROB.icd10Code}) <> ''`,
+            sql`(${PROB.onsetAt} IS NULL OR ${PROB.onsetAt} < ${toExclusive.toISOString()}::timestamptz)`,
+            sql`(${PROB.resolvedAt} IS NULL OR ${PROB.resolvedAt} > ${fromStart.toISOString()}::timestamptz)`,
+          ),
+        )
+        .orderBy(
+          sql`CASE ${PROB.kind} WHEN 'terminal' THEN 0 WHEN 'related' THEN 1 ELSE 2 END`,
+          asc(PROB.createdAt),
+          asc(PROB.id),
+        );
+      const candidates: ClaimDiagnosisCandidate[] = rows.map((r) => ({
+        code: (r.code ?? "").trim(),
+        kind: r.kind as ClaimDiagnosisCandidate["kind"],
+        sudRelated: r.sudRelated === true,
+      }));
+      // F-214: the consent round-trip happens only when a SUD-flagged code is actually in play. The gate is
+      // applied HERE, where the data is read, so no caller can obtain a Part 2 code without the decision.
+      const part2Allowed = needsPart2Decision(candidates)
+        ? await part2BillingDisclosureAllowed(organizationId, patientId)
+        : true;
+      return applyPart2ClaimGate(candidates, part2Allowed);
+    },
+  );
 }

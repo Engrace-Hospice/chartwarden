@@ -12,6 +12,10 @@ test.describe("Consent", () => {
     const patientId = await openFirstPatientChart(page);
     await page.goto(`/patients/${patientId}/consents/new`);
     await expect(page.getByRole("heading", { name: "Capture a new consent" })).toBeVisible();
+    // The form defaults to the catalog's first type, which is `portal_access` — a patient e-sign type whose
+    // capture-method floor is `electronic_portal_signature` only, so the form's own default staff method
+    // (typed signature) is refused as "below the platform floor". Pick a type staff can capture that way.
+    await page.locator("#capture-type").selectOption("hipaa_release");
     await page
       .getByPlaceholder("What this consent authorises, in plain language.")
       .fill("WX-PR-018 E2E: authorize routine care coordination.");

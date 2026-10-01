@@ -230,7 +230,7 @@ export function decideProposal(
 export function expireProposal(
   snapshot: Pick<ProposalSnapshot, "id" | "organizationId" | "proposalStatus">,
   now: Date,
-  reason: string = "auto_expired_pending_ttl_exceeded",
+  reason = "auto_expired_pending_ttl_exceeded",
 ): {
   readonly update: ProposalDecisionUpdate;
   readonly event: {

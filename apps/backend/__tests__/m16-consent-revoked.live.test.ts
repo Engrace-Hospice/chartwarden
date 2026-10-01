@@ -35,261 +35,258 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
-describe.skipIf(!DB_URL)(
-  "F-151 — M16's M39 consent-revocation cascade — LIVE Postgres",
-  () => {
-    let admin: Client;
-    let handle: ReturnType<typeof createDbClient>;
-    let providerA: string;
-    let providerB: string;
-    let consumer: ReturnType<typeof buildM16ConsentRevokedConsumer>;
+describe.skipIf(!DB_URL)("F-151 — M16's M39 consent-revocation cascade — LIVE Postgres", () => {
+  let admin: Client;
+  let handle: ReturnType<typeof createDbClient>;
+  let providerA: string;
+  let providerB: string;
+  let consumer: ReturnType<typeof buildM16ConsentRevokedConsumer>;
 
-    async function resetSchema() {
-      await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
-      await admin.query("CREATE SCHEMA public");
-      for (const role of ROLES) {
-        await admin.query(
-          `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN ` +
-            `EXECUTE 'DROP OWNED BY ${role} CASCADE'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$;`,
-        );
-      }
+  async function resetSchema() {
+    await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
+    await admin.query("CREATE SCHEMA public");
+    for (const role of ROLES) {
+      await admin.query(
+        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN ` +
+          `EXECUTE 'DROP OWNED BY ${role} CASCADE'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$;`,
+      );
     }
-    async function applyMigrations() {
-      for (const file of readdirSync(MIGRATIONS_DIR)
-        .filter((f) => f.endsWith(".sql"))
-        .sort()) {
-        await admin.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-      }
+  }
+  async function applyMigrations() {
+    for (const file of readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()) {
+      await admin.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
     }
+  }
 
-    /** Seed a bereavement_plan + one bereaved_contact directly (this consumer is not the plan creator). */
-    async function seedContact(opts: {
-      organizationId: string;
-      providerEntityId: string;
-      consentRecordId: string;
-      status: "active" | "proposed" | "opted_out";
-    }): Promise<{ planId: string; contactId: string }> {
-      const planRow = await admin.query(
-        `INSERT INTO bereavement_plan
+  /** Seed a bereavement_plan + one bereaved_contact directly (this consumer is not the plan creator). */
+  async function seedContact(opts: {
+    organizationId: string;
+    providerEntityId: string;
+    consentRecordId: string;
+    status: "active" | "proposed" | "opted_out";
+  }): Promise<{ planId: string; contactId: string }> {
+    const planRow = await admin.query(
+      `INSERT INTO bereavement_plan
            (organization_id, patient_id, admission_id, provider_entity_id, status, death_date)
          VALUES ($1, gen_random_uuid(), gen_random_uuid(), $2, 'eligible', CURRENT_DATE)
          RETURNING id`,
-        [opts.organizationId, opts.providerEntityId],
-      );
-      const planId = planRow.rows[0].id as string;
-      const contactRow = await admin.query(
-        `INSERT INTO bereaved_contact
+      [opts.organizationId, opts.providerEntityId],
+    );
+    const planId = planRow.rows[0].id as string;
+    const contactRow = await admin.query(
+      `INSERT INTO bereaved_contact
            (organization_id, provider_entity_id, plan_id, status, display_name, relationship_code,
             consent_record_id)
          VALUES ($1, $2, $3, $4, 'Test Survivor', 'spouse', $5)
          RETURNING id`,
-        [opts.organizationId, opts.providerEntityId, planId, opts.status, opts.consentRecordId],
-      );
-      return { planId, contactId: contactRow.rows[0].id as string };
-    }
+      [opts.organizationId, opts.providerEntityId, planId, opts.status, opts.consentRecordId],
+    );
+    return { planId, contactId: contactRow.rows[0].id as string };
+  }
 
-    async function scheduleOutreach(
-      contactId: string,
-      planId: string,
-      organizationId: string,
-      providerEntityId: string,
-    ) {
-      await admin.query(
-        `INSERT INTO bereavement_outreach
+  async function scheduleOutreach(
+    contactId: string,
+    planId: string,
+    organizationId: string,
+    providerEntityId: string,
+  ) {
+    await admin.query(
+      `INSERT INTO bereavement_outreach
            (organization_id, provider_entity_id, plan_id, bereaved_contact_id, kind, status,
             death_anchor_at, due_at, late_grace_until)
          VALUES ($1, $2, $3, $4, 'phone_call', 'scheduled',
                  CURRENT_DATE, now() + interval '7 days', now() + interval '14 days')`,
-        [organizationId, providerEntityId, planId, contactId],
-      );
-    }
+      [organizationId, providerEntityId, planId, contactId],
+    );
+  }
 
-    async function contactRow(contactId: string) {
-      const { rows } = await admin.query(
-        `SELECT status, version, opted_out_at FROM bereaved_contact WHERE id = $1`,
-        [contactId],
-      );
-      return rows[0];
-    }
+  async function contactRow(contactId: string) {
+    const { rows } = await admin.query(
+      `SELECT status, version, opted_out_at FROM bereaved_contact WHERE id = $1`,
+      [contactId],
+    );
+    return rows[0];
+  }
 
-    async function optOutRows(contactId: string) {
-      const { rows } = await admin.query(
-        `SELECT opt_out_kind, source_kind, recorded_by_user_id FROM bereavement_opt_out
+  async function optOutRows(contactId: string) {
+    const { rows } = await admin.query(
+      `SELECT opt_out_kind, source_kind, recorded_by_user_id FROM bereavement_opt_out
          WHERE bereaved_contact_id = $1`,
-        [contactId],
-      );
-      return rows;
-    }
+      [contactId],
+    );
+    return rows;
+  }
 
-    async function outreachStatuses(contactId: string) {
-      const { rows } = await admin.query(
-        `SELECT status FROM bereavement_outreach WHERE bereaved_contact_id = $1`,
-        [contactId],
-      );
-      return rows.map((r) => r.status as string);
-    }
+  async function outreachStatuses(contactId: string) {
+    const { rows } = await admin.query(
+      `SELECT status FROM bereavement_outreach WHERE bereaved_contact_id = $1`,
+      [contactId],
+    );
+    return rows.map((r) => r.status as string);
+  }
 
-    async function outboxRows(organizationId: string, eventType: string) {
-      const { rows } = await admin.query(
-        `SELECT payload FROM outbox_event WHERE organization_id = $1 AND event_type = $2`,
-        [organizationId, eventType],
-      );
-      return rows;
-    }
+  async function outboxRows(organizationId: string, eventType: string) {
+    const { rows } = await admin.query(
+      `SELECT payload FROM outbox_event WHERE organization_id = $1 AND event_type = $2`,
+      [organizationId, eventType],
+    );
+    return rows;
+  }
 
-    beforeAll(async () => {
-      admin = new Client({ connectionString: DB_URL });
-      await admin.connect();
-      await resetSchema();
-      await applyMigrations();
-      await admin.query(
-        `INSERT INTO organization (id,slug,legal_name,display_name)
+  beforeAll(async () => {
+    admin = new Client({ connectionString: DB_URL });
+    await admin.connect();
+    await resetSchema();
+    await applyMigrations();
+    await admin.query(
+      `INSERT INTO organization (id,slug,legal_name,display_name)
          VALUES ($1,'m16-consent-revoked-a','M16 Consent Revoked A','M16 Consent Revoked A'),
                 ($2,'m16-consent-revoked-b','M16 Consent Revoked B','M16 Consent Revoked B')`,
-        [ORG_A, ORG_B],
-      );
-      providerA = (
-        await admin.query(
-          `INSERT INTO provider_entity
+      [ORG_A, ORG_B],
+    );
+    providerA = (
+      await admin.query(
+        `INSERT INTO provider_entity
              (organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
            VALUES ($1,'M16CR-A','Consent Revoked Provider A','1100000001','enc','12-31') RETURNING id`,
-          [ORG_A],
-        )
-      ).rows[0].id as string;
-      providerB = (
-        await admin.query(
-          `INSERT INTO provider_entity
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    providerB = (
+      await admin.query(
+        `INSERT INTO provider_entity
              (organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
            VALUES ($1,'M16CR-B','Consent Revoked Provider B','1100000002','enc','12-31') RETURNING id`,
-          [ORG_B],
-        )
-      ).rows[0].id as string;
-      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
-      handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+        [ORG_B],
+      )
+    ).rows[0].id as string;
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
-      const catalog = new Map<string, unknown>(M16_OUTBOX_EVENTS.map((e) => [e.eventName, e]));
-      consumer = buildM16ConsentRevokedConsumer({
-        db: handle.db,
-        outbox: {
-          async publish(tx, input) {
-            const entry = catalog.get(input.eventName);
-            if (!entry) throw new Error(`m16 test publisher: undeclared event ${input.eventName}`);
-            await (tx as typeof handle.db).execute(sql`
+    const catalog = new Map<string, unknown>(M16_OUTBOX_EVENTS.map((e) => [e.eventName, e]));
+    consumer = buildM16ConsentRevokedConsumer({
+      db: handle.db,
+      outbox: {
+        async publish(tx, input) {
+          const entry = catalog.get(input.eventName);
+          if (!entry) throw new Error(`m16 test publisher: undeclared event ${input.eventName}`);
+          await (tx as typeof handle.db).execute(sql`
                 INSERT INTO outbox_event
                   (organization_id, event_type, aggregate_kind, aggregate_id, payload)
                 VALUES (${input.organizationId}, ${input.eventName}, ${input.aggregateKind},
                         ${input.aggregateId}, ${JSON.stringify(input.payload)}::jsonb)
               `);
-          },
         },
-      });
-    }, 120_000);
+      },
+    });
+  }, 120_000);
 
-    afterAll(async () => {
-      await handle?.close();
-      if (admin) await admin.end();
+  afterAll(async () => {
+    await handle?.close();
+    if (admin) await admin.end();
+  });
+
+  it("cascades an active contact to opted_out, publishes the event, and cancels future outreach", async () => {
+    const consentId = "aaaaaaaa-0000-4000-8000-000000000001";
+    const { planId, contactId } = await seedContact({
+      organizationId: ORG_A,
+      providerEntityId: providerA,
+      consentRecordId: consentId,
+      status: "active",
+    });
+    await scheduleOutreach(contactId, planId, ORG_A, providerA);
+
+    await consumer.handle({
+      organizationId: ORG_A,
+      payload: { consentRecordId: consentId },
     });
 
-    it("cascades an active contact to opted_out, publishes the event, and cancels future outreach", async () => {
-      const consentId = "aaaaaaaa-0000-4000-8000-000000000001";
-      const { planId, contactId } = await seedContact({
-        organizationId: ORG_A,
-        providerEntityId: providerA,
-        consentRecordId: consentId,
-        status: "active",
-      });
-      await scheduleOutreach(contactId, planId, ORG_A, providerA);
+    const contact = await contactRow(contactId);
+    expect(contact.status).toBe("opted_out");
+    expect(contact.opted_out_at).not.toBeNull();
+    expect(contact.version).toBe(1);
 
-      await consumer.handle({
+    const optOuts = await optOutRows(contactId);
+    expect(optOuts).toHaveLength(1);
+    expect(optOuts[0].opt_out_kind).toBe("full");
+    expect(optOuts[0].source_kind).toBe("m39_revocation_cascade");
+    expect(optOuts[0].recorded_by_user_id).toBeNull();
+
+    expect(await outreachStatuses(contactId)).toEqual(["cancelled"]);
+
+    const events = await outboxRows(ORG_A, "m16.bereavement.contact_opted_out");
+    expect(events).toHaveLength(1);
+    expect(events[0].payload).toMatchObject({
+      planId,
+      contactId,
+      optOutKind: "full",
+      source: "m39_revocation_cascade",
+    });
+  });
+
+  it("is a no-op redelivery once the contact already opted out (idempotent)", async () => {
+    const consentId = "aaaaaaaa-0000-4000-8000-000000000002";
+    const { contactId } = await seedContact({
+      organizationId: ORG_A,
+      providerEntityId: providerA,
+      consentRecordId: consentId,
+      status: "opted_out",
+    });
+
+    await consumer.handle({
+      organizationId: ORG_A,
+      payload: { consentRecordId: consentId },
+    });
+
+    expect(await optOutRows(contactId)).toHaveLength(0);
+    const contact = await contactRow(contactId);
+    expect(contact.version).toBe(0);
+  });
+
+  it("is a no-op for a consent id no contact in this org tracks", async () => {
+    await expect(
+      consumer.handle({
+        organizationId: ORG_A,
+        payload: { consentRecordId: "aaaaaaaa-0000-4000-8000-0000000000ff" },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws ILLEGAL_TRANSITION for a still-proposed (unconfirmed) contact — the documented decider/machine gap", async () => {
+    const consentId = "aaaaaaaa-0000-4000-8000-000000000003";
+    await seedContact({
+      organizationId: ORG_A,
+      providerEntityId: providerA,
+      consentRecordId: consentId,
+      status: "proposed",
+    });
+
+    await expect(
+      consumer.handle({
         organizationId: ORG_A,
         payload: { consentRecordId: consentId },
-      });
+      }),
+    ).rejects.toThrow(/ILLEGAL_TRANSITION|cannot optOut from 'proposed'/);
+  });
 
-      const contact = await contactRow(contactId);
-      expect(contact.status).toBe("opted_out");
-      expect(contact.opted_out_at).not.toBeNull();
-      expect(contact.version).toBe(1);
-
-      const optOuts = await optOutRows(contactId);
-      expect(optOuts).toHaveLength(1);
-      expect(optOuts[0].opt_out_kind).toBe("full");
-      expect(optOuts[0].source_kind).toBe("m39_revocation_cascade");
-      expect(optOuts[0].recorded_by_user_id).toBeNull();
-
-      expect(await outreachStatuses(contactId)).toEqual(["cancelled"]);
-
-      const events = await outboxRows(ORG_A, "m16.bereavement.contact_opted_out");
-      expect(events).toHaveLength(1);
-      expect(events[0].payload).toMatchObject({
-        planId,
-        contactId,
-        optOutKind: "full",
-        source: "m39_revocation_cascade",
-      });
+  it("does not cross tenants — org B's identical consent id is invisible to org A's delivery", async () => {
+    const sharedConsentId = "aaaaaaaa-0000-4000-8000-000000000004";
+    const { contactId: contactB } = await seedContact({
+      organizationId: ORG_B,
+      providerEntityId: providerB,
+      consentRecordId: sharedConsentId,
+      status: "active",
     });
 
-    it("is a no-op redelivery once the contact already opted out (idempotent)", async () => {
-      const consentId = "aaaaaaaa-0000-4000-8000-000000000002";
-      const { contactId } = await seedContact({
-        organizationId: ORG_A,
-        providerEntityId: providerA,
-        consentRecordId: consentId,
-        status: "opted_out",
-      });
-
-      await consumer.handle({
-        organizationId: ORG_A,
-        payload: { consentRecordId: consentId },
-      });
-
-      expect(await optOutRows(contactId)).toHaveLength(0);
-      const contact = await contactRow(contactId);
-      expect(contact.version).toBe(0);
+    await consumer.handle({
+      organizationId: ORG_A,
+      payload: { consentRecordId: sharedConsentId },
     });
 
-    it("is a no-op for a consent id no contact in this org tracks", async () => {
-      await expect(
-        consumer.handle({
-          organizationId: ORG_A,
-          payload: { consentRecordId: "aaaaaaaa-0000-4000-8000-0000000000ff" },
-        }),
-      ).resolves.toBeUndefined();
-    });
-
-    it("throws ILLEGAL_TRANSITION for a still-proposed (unconfirmed) contact — the documented decider/machine gap", async () => {
-      const consentId = "aaaaaaaa-0000-4000-8000-000000000003";
-      await seedContact({
-        organizationId: ORG_A,
-        providerEntityId: providerA,
-        consentRecordId: consentId,
-        status: "proposed",
-      });
-
-      await expect(
-        consumer.handle({
-          organizationId: ORG_A,
-          payload: { consentRecordId: consentId },
-        }),
-      ).rejects.toThrow(/ILLEGAL_TRANSITION|cannot optOut from 'proposed'/);
-    });
-
-    it("does not cross tenants — org B's identical consent id is invisible to org A's delivery", async () => {
-      const sharedConsentId = "aaaaaaaa-0000-4000-8000-000000000004";
-      const { contactId: contactB } = await seedContact({
-        organizationId: ORG_B,
-        providerEntityId: providerB,
-        consentRecordId: sharedConsentId,
-        status: "active",
-      });
-
-      await consumer.handle({
-        organizationId: ORG_A,
-        payload: { consentRecordId: sharedConsentId },
-      });
-
-      const contact = await contactRow(contactB);
-      expect(contact.status).toBe("active"); // org A's delivery never touched org B's contact
-      expect(await optOutRows(contactB)).toHaveLength(0);
-    });
-  },
-);
+    const contact = await contactRow(contactB);
+    expect(contact.status).toBe("active"); // org A's delivery never touched org B's contact
+    expect(await optOutRows(contactB)).toHaveLength(0);
+  });
+});

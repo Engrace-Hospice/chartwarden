@@ -14,6 +14,8 @@ const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "22222222-2222-2222-2222-222222222222";
 const PE_A = "33333333-3333-4333-8333-333333333333";
 const PE_B = "44444444-4444-4444-8444-444444444444";
+const OTHER_ORG = "55555555-5555-4555-8555-555555555555";
+const PE_OTHER = "66666666-6666-4666-8666-666666666666";
 
 describe.skipIf(!DB_URL)("M1 location lookup route — LIVE Postgres", () => {
   let admin: Client;
@@ -72,6 +74,23 @@ describe.skipIf(!DB_URL)("M1 location lookup route — LIVE Postgres", () => {
          ($2, $3, '100002', 'Beta Hospice', '2222222222', 'enc-tax-b', '1231')`,
       [PE_A, PE_B, ORG],
     );
+    // A second tenant whose location must never appear in ORG's lookup (`location` has no RLS of
+    // its own; the route walls it through provider_entity).
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'other-tenant','Other Tenant','Other Tenant')",
+      [OTHER_ORG],
+    );
+    await admin.query(
+      `INSERT INTO provider_entity
+         (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+       VALUES ($1, $2, '100003', 'Other Hospice', '3333333333', 'enc-tax-c', '1231')`,
+      [PE_OTHER, OTHER_ORG],
+    );
+    await admin.query(
+      `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+       VALUES ($1, 'Other Tenant Office', '40 Elm Lane', 'Denver', 'CO', '80203', 'America/Denver')`,
+      [PE_OTHER],
+    );
     await admin.query(
       `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
        VALUES
@@ -106,6 +125,25 @@ describe.skipIf(!DB_URL)("M1 location lookup route — LIVE Postgres", () => {
       "Alpha North",
       "Alpha South",
     ]);
+  });
+
+  it("never lists another tenant's locations", async () => {
+    const all = await app.inject({ method: "GET", url: "/api/v1/locations" });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().items.map((item: { name: string }) => item.name)).toEqual([
+      "Alpha North",
+      "Alpha South",
+      "Beta East",
+    ]);
+
+    // Naming the other tenant's provider entity or matching its address still returns nothing.
+    const byId = await app.inject({
+      method: "GET",
+      url: `/api/v1/locations?providerEntityId=${PE_OTHER}`,
+    });
+    expect(byId.json().items).toEqual([]);
+    const bySearch = await app.inject({ method: "GET", url: "/api/v1/locations?q=Elm" });
+    expect(bySearch.json().items).toEqual([]);
   });
 
   it("searches locations by q across address fields", async () => {

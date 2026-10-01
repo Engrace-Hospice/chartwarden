@@ -69,10 +69,9 @@ describe.skipIf(!DB_URL)(
     }
 
     async function seedUser(): Promise<string> {
-      const row = await admin.query(
-        `INSERT INTO "user" (email) VALUES ($1) RETURNING id`,
-        [`${nextId("user")}@example.test`],
-      );
+      const row = await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+        `${nextId("user")}@example.test`,
+      ]);
       return row.rows[0].id as string;
     }
 

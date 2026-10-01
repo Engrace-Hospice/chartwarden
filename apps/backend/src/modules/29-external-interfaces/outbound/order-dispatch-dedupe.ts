@@ -91,7 +91,10 @@ export async function ormOutboundEvidenceForOrder(
   tx: DbClient,
   organizationId: string,
   orderId: string,
-): Promise<{ readonly owningRowStatuses: readonly string[]; readonly labObservationCount: number }> {
+): Promise<{
+  readonly owningRowStatuses: readonly string[];
+  readonly labObservationCount: number;
+}> {
   const rows = await tx
     .select({ status: HMO.status })
     .from(HMO)
@@ -107,7 +110,10 @@ export async function ormOutboundEvidenceForOrder(
     .select({ id: schema.labObservation.id })
     .from(schema.labObservation)
     .where(
-      and(eq(schema.labObservation.organizationId, organizationId), eq(schema.labObservation.orderId, orderId)),
+      and(
+        eq(schema.labObservation.organizationId, organizationId),
+        eq(schema.labObservation.orderId, orderId),
+      ),
     )
     .limit(1);
   return {

@@ -1,11 +1,11 @@
 import {
-  Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
-  OffsetPagination,
-  PageHeader,
+  Panel,
   StatusPill,
-  WorkQueueLayout,
+  t,
+  tint,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/14-idg — My Action Items (M14 §4.1/§5, Track B / ADR-0030).
@@ -18,13 +18,34 @@ import {
 // `idg.act` and contract-enriched the whole time. An item is never RE-OPENED — `open` is genesis-only in
 // the §1.1/D8 machine — so the three offered transitions are the three the route accepts.
 //
+// 2026-09 redesign: the org-level page anatomy shared with Billing / Admissions (idg-page-kit.tsx: page
+// head, sub-page tabs, label-first KPI strip, boxed filter panel, table + footer, right rail), meeting / patient
+// deep links, an assignee column and a carry-forward flag. CARRY-FORWARD IS DERIVED, not returned: the
+// route has no carry-forward field, so an open / in-progress item past its due date is flagged (the spec's
+// "overdue action items from prior meetings"); the 3+ compliance alert is a client-side advisory of the
+// same count, not the server's alert. OMITTED because no route returns them: assignee display name and
+// discipline (only `assignedToMembershipId`; the queue is `assignee=me`, so it is the caller), action-item
+// title/description, and the linked artifact's id-resolved name. `linkedArtifactId` / `decisionId` are
+// returned but not drawn (no reader screen to link to).
+//
 // The link-artifact and add-note surfaces stay deferred: no route mints either. The SERVER owns the §2.7
 // auto-close (an item linked to a downstream artifact closes when that artifact reaches an absorbing state)
 // and the §4.7 is_assignee ABAC (ADR-0030 — no frontend authz). Reads GET /api/v1/idg/action-items via the
 // typed client.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { Link } from "react-router-dom";
 import { type ActionItemPatchStatus, updateActionItem } from "./idg-api";
+import {
+  IdgFilter,
+  IdgFilterPanel,
+  IdgPageHead,
+  IdgStat,
+  IdgSubtabs,
+  IdgTableFooter,
+  PAGE_SIZE,
+} from "./idg-page-kit";
+import { PatientLabel, type PatientRef, patientText, shortId } from "./idg-people";
 import { ACTION_TONE, stateLabel } from "./idg-status";
 
 /** The three statuses `PATCH /idg/action-items/:id` accepts (`open` is genesis-only). */
@@ -38,6 +59,8 @@ interface ActionItemRow {
   id: string;
   meetingId: string;
   patientId: string | null;
+  patient?: PatientRef | null;
+  assignedToMembershipId: string;
   status: string;
   dueDate: string;
   linkedArtifactKind: string | null;
@@ -53,7 +76,6 @@ export function MyActionItems(): JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,6 +132,7 @@ export function MyActionItems(): JSX.Element {
         a.id.toLowerCase().includes(q) ||
         a.meetingId.toLowerCase().includes(q) ||
         (a.patientId?.toLowerCase().includes(q) ?? false) ||
+        (a.patient?.displayName.toLowerCase().includes(q) ?? false) ||
         a.status.toLowerCase().includes(q) ||
         (a.linkedArtifactKind?.toLowerCase().includes(q) ?? false);
       return matchesDue && matchesStatus && matchesArtifact && matchesSearch;
@@ -128,9 +151,19 @@ export function MyActionItems(): JSX.Element {
     artifact !== "",
     dueFilter !== "all",
   ].filter(Boolean).length;
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const activePage = Math.min(page, pageCount);
-  const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const pagedRows = rows.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
+
+  const kpis = useMemo(() => {
+    const count = (s: string) => items.filter((a) => a.status === s).length;
+    return {
+      open: count("open"),
+      inProgress: count("in_progress"),
+      overdue: items.filter((a) => isActionable(a.status) && Date.parse(a.dueDate) < now).length,
+      done: items.filter((a) => a.status === "completed" || a.status === "auto_closed").length,
+    };
+  }, [items, now]);
 
   const clearFilters = (): void => {
     setSearchQuery("");
@@ -140,121 +173,139 @@ export function MyActionItems(): JSX.Element {
     setPage(1);
   };
 
+  const upcoming = items
+    .filter((a) => isActionable(a.status))
+    .sort((a, b) => Date.parse(a.dueDate) - Date.parse(b.dueDate))
+    .slice(0, 4);
+  const statusMix = ["open", "in_progress", "completed", "auto_closed", "cancelled"]
+    .map((s) => ({ status: s, count: items.filter((a) => a.status === s).length }))
+    .filter((s) => s.count > 0);
+  const maxMix = Math.max(...statusMix.map((s) => s.count), 1);
+
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="My Action Items" breadcrumb="Clinical / IDG">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Track IDG follow-ups assigned to you by due date, status, and linked artifact.
-          </div>
-          {notice ? (
-            <output
-              style={{
-                display: "block",
-                color: "var(--color-on-surface-variant)",
-                fontSize: "0.8rem",
-                marginTop: "0.35rem",
-              }}
-            >
-              {notice}
-            </output>
-          ) : null}
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
-            </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Queue</span>
-              <strong>{rows.length} matching action items</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search item, meeting, patient..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search IDG action items"
-                  style={searchInputStyle}
-                />
-              </div>
-              <select
-                aria-label="Action item due filter"
-                value={dueFilter}
-                onChange={(e) => {
-                  setDueFilter(e.target.value as typeof dueFilter);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">Due: All</option>
-                <option value="overdue">Overdue</option>
-                <option value="next7">Next 7 days</option>
-              </select>
-              <select
-                aria-label="Action item status"
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Status: All</option>
-                <option value="open">Open</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="auto_closed">Auto closed</option>
-              </select>
-              <select
-                aria-label="Linked artifact"
-                value={artifact}
-                onChange={(e) => {
-                  setArtifact(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Linked: All</option>
-                {artifactOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
+    <div className="wx-with-rail">
+      <div className="wx-with-rail-main" aria-busy={loading}>
+        <IdgPageHead
+          title="My Action Items"
+          subtitle="Track IDG follow-ups assigned to you by due date, status, and linked artifact."
+          actions={
+            <Link to="/idg/schedule" className="wx-btn-secondary">
+              <Glyph name="calendar" size={16} /> IDG Schedule
+            </Link>
+          }
+        />
+
+        <IdgSubtabs current="actions" />
+
+        {notice ? (
+          <output style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
+        ) : null}
+
+        <div className="wx-stat-grid" aria-label="Action item summary">
+          <IdgStat icon="clipboard-check" label="Open" value={kpis.open} hint="Not started" />
+          <IdgStat
+            icon="activity"
+            label="In progress"
+            value={kpis.inProgress}
+            hint="Being worked"
+            color="var(--color-viz-violet)"
+          />
+          <IdgStat
+            icon="alert"
+            label="Carry-forward"
+            value={kpis.overdue}
+            hint={kpis.overdue ? "Overdue, still open" : "None overdue"}
+            color={kpis.overdue ? t.error : t.primary}
+          />
+          <IdgStat
+            icon="check-circle"
+            label="Closed"
+            value={kpis.done}
+            hint="Finished items"
+            color={t.success}
+          />
         </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
+
+        {kpis.overdue >= 3 ? (
+          <output style={warnBannerStyle}>
+            <Glyph name="alert" size={16} />
+            <span>
+              {kpis.overdue} overdue items are carrying forward. Three or more carry-forwards are a
+              compliance concern for the IDG review.
+            </span>
+          </output>
+        ) : null}
+
+        <IdgFilterPanel
+          searchLabel="Search IDG action items"
+          placeholder="Search by item, meeting or patient…"
+          search={searchQuery}
+          onSearch={(v) => {
+            setSearchQuery(v);
+            setPage(1);
+          }}
+          onClear={activeFilters > 0 ? clearFilters : undefined}
+        >
+          <IdgFilter
+            label="Due"
+            ariaLabel="Action item due filter"
+            value={dueFilter}
+            onChange={(v) => {
+              setDueFilter(v as typeof dueFilter);
+              setPage(1);
+            }}
+          >
+            <option value="all">All due dates</option>
+            <option value="overdue">Overdue</option>
+            <option value="next7">Next 7 days</option>
+          </IdgFilter>
+          <IdgFilter
+            label="Status"
+            ariaLabel="Action item status"
+            value={status}
+            onChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+          >
+            <option value="">All statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="auto_closed">Auto closed</option>
+          </IdgFilter>
+          <IdgFilter
+            label="Linked"
+            ariaLabel="Linked artifact"
+            value={artifact}
+            onChange={(v) => {
+              setArtifact(v);
+              setPage(1);
+            }}
+          >
+            <option value="">All artifacts</option>
+            {artifactOptions.map((option) => (
+              <option key={option} value={option}>
+                {stateLabel(option)}
+              </option>
+            ))}
+          </IdgFilter>
+        </IdgFilterPanel>
+
+        {error ? (
+          <div role="alert" className="wx-list-state">
+            <EmptyState title="Action items unavailable" description={error} />
+            <button type="button" className="wx-btn-secondary" onClick={() => void load()}>
+              Try again
+            </button>
           </div>
         ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+          <div className="wx-list-state">
             <LoadingSpinner />
           </div>
         ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
+          <div className="wx-list-state">
             <EmptyState
               title={activeFilters > 0 ? "No matching action items" : "No action items"}
               description={
@@ -262,98 +313,93 @@ export function MyActionItems(): JSX.Element {
                   ? "Try adjusting the action item filters."
                   : "You have no IDG action items assigned."
               }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
             />
+            {activeFilters > 0 ? (
+              <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+                Clear filters
+              </button>
+            ) : null}
           </div>
         ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+          <div className="wx-list-table-wrap">
+            <table className="wx-list-table wx-list-table-static">
+              <caption className="wx-sr-only">My IDG action items</caption>
               <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "22%" }}>Action item</th>
-                  <th style={{ ...thStyle, width: "15%" }}>Meeting</th>
-                  <th style={{ ...thStyle, width: "15%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Linked</th>
-                  <th style={{ ...thStyle, width: "11%" }}>Status</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Due</th>
-                  <th style={{ ...thStyle, width: "15%", textAlign: "right" }}>Advance</th>
+                <tr>
+                  <th scope="col">Action item</th>
+                  <th scope="col">Meeting</th>
+                  <th scope="col">Patient</th>
+                  <th scope="col">Assignee</th>
+                  <th scope="col">Linked</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Due</th>
+                  <th scope="col" style={{ textAlign: "right" }}>
+                    Advance
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {pagedRows.map((a) => {
                   const overdue = isActionable(a.status) && Date.parse(a.dueDate) < now;
                   return (
-                    <tr key={a.id} style={rowStyle}>
-                      <td style={tdStyle}>
-                        <div style={primaryCellStyle}>
-                          <span style={primaryTextStyle}>IDG follow-up</span>
-                          <code className="wx-data-md" style={codeStyle}>
-                            {shortId(a.id)}
-                          </code>
-                        </div>
+                    <tr key={a.id}>
+                      <td>
+                        <span className="wx-row-title">IDG follow-up</span>
+                        <span className="wx-row-sub wx-nums">{shortId(a.id)}</span>
                       </td>
-                      <td style={tdStyle}>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(a.meetingId)}
-                        </code>
+                      <td className="wx-nums">
+                        <Link to={`/idg/meetings/${a.meetingId}`}>{shortId(a.meetingId)}</Link>
                       </td>
-                      <td style={tdStyle}>
+                      <td>
                         {a.patientId ? (
-                          <code className="wx-data-md" style={codeStyle}>
-                            {shortId(a.patientId)}
-                          </code>
+                          <Link
+                            to={`/patients/${a.patientId}/idg-history`}
+                            aria-label={`IDG history for ${patientText(a.patientId, a.patient)}`}
+                          >
+                            <PatientLabel patientId={a.patientId} patient={a.patient} />
+                          </Link>
                         ) : (
-                          <span style={{ color: "var(--color-muted)" }}>—</span>
+                          <span style={{ color: t.muted }}>—</span>
                         )}
                       </td>
-                      <td style={tdStyle}>
-                        {a.linkedArtifactKind ? stateLabel(a.linkedArtifactKind) : "—"}
+                      <td title={a.assignedToMembershipId}>
+                        You{" "}
+                        <span className="wx-row-sub">({shortId(a.assignedToMembershipId)})</span>
                       </td>
-                      <td style={tdStyle}>
+                      <td>{a.linkedArtifactKind ? stateLabel(a.linkedArtifactKind) : "—"}</td>
+                      <td>
                         <StatusPill
                           label={stateLabel(a.status)}
                           tone={ACTION_TONE[a.status] ?? "neutral"}
                         />
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "flex-end",
-                            gap: "0.35rem",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {formatDate(a.dueDate)}
-                          {overdue ? <StatusPill label="Overdue" tone="error" /> : null}
-                        </span>
+                      <td className="wx-nums">
+                        {formatDate(a.dueDate)}
+                        {overdue ? (
+                          <div style={{ marginTop: "0.25rem" }}>
+                            <StatusPill label="Carry-forward" tone="error" />
+                          </div>
+                        ) : null}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <td style={{ textAlign: "right" }}>
                         {isActionable(a.status) ? (
-                          <span style={{ display: "inline-flex", gap: "0.35rem" }}>
+                          <span style={{ display: "inline-flex", gap: "0.375rem" }}>
                             {PATCH_STATUSES.filter(
                               (p) => !(a.status === "in_progress" && p.value === "in_progress"),
                             ).map((p) => (
-                              <Button
+                              <button
                                 key={p.value}
-                                tone="tertiary"
-                                size="sm"
+                                type="button"
+                                className="wx-btn-secondary wx-btn-sm"
                                 disabled={busyId === a.id}
                                 onClick={() => void advance(a.id, p.value)}
                               >
                                 {p.label}
-                              </Button>
+                              </button>
                             ))}
                           </span>
                         ) : (
-                          <span style={{ color: "var(--color-muted)" }}>—</span>
+                          <span style={{ color: t.muted }}>—</span>
                         )}
                       </td>
                     </tr>
@@ -361,27 +407,108 @@ export function MyActionItems(): JSX.Element {
                 })}
               </tbody>
             </table>
-            <OffsetPagination
+            <IdgTableFooter
               page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={IDG_PAGE_SIZES}
+              pages={pageCount}
+              pageSize={PAGE_SIZE}
+              total={rows.length}
               noun="action items"
+              onPage={setPage}
             />
           </div>
-        )
-      }
-      fullPageScroll
-    />
+        )}
+      </div>
+
+      <aside className="wx-with-rail-side" aria-label="Action item context">
+        <Panel title="Due next" icon="clock">
+          {upcoming.length === 0 ? (
+            <p className="wx-rail-empty" style={{ padding: 0 }}>
+              {loading ? "Loading…" : "Nothing open or in progress."}
+            </p>
+          ) : (
+            <ul
+              style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.625rem" }}
+            >
+              {upcoming.map((a) => {
+                const overdue = Date.parse(a.dueDate) < now;
+                return (
+                  <li
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "0.5rem",
+                      fontSize: "0.8125rem",
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <Link to={`/idg/meetings/${a.meetingId}`} className="wx-row-title">
+                        Meeting {shortId(a.meetingId)}
+                      </Link>
+                      <span className="wx-row-sub">
+                        {a.patientId ? patientText(a.patientId, a.patient) : "No patient"}
+                      </span>
+                    </span>
+                    <span
+                      className="wx-nums"
+                      style={{ color: overdue ? t.error : undefined, whiteSpace: "nowrap" }}
+                    >
+                      {formatDate(a.dueDate)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="Quick actions" icon="zap">
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <Link
+              to="/idg/schedule"
+              className="wx-btn-secondary"
+              style={{ justifyContent: "flex-start" }}
+            >
+              <Glyph name="calendar" size={16} /> IDG schedule
+            </Link>
+            <button
+              type="button"
+              className="wx-btn-secondary"
+              style={{ justifyContent: "flex-start" }}
+              disabled={kpis.overdue === 0}
+              onClick={() => {
+                clearFilters();
+                setDueFilter("overdue");
+              }}
+            >
+              <Glyph name="alert" size={16} /> Show carry-forward
+            </button>
+          </div>
+        </Panel>
+
+        <Panel title="Items by status" icon="bar-chart">
+          {statusMix.length === 0 ? (
+            <p className="wx-rail-empty" style={{ padding: 0 }}>
+              No action items assigned.
+            </p>
+          ) : (
+            <ul className="wx-hbars">
+              {statusMix.map((s) => (
+                <li key={s.status}>
+                  <span>{stateLabel(s.status)}</span>
+                  <span className="wx-hbar-track">
+                    <span style={{ width: `${(s.count / maxMix) * 100}%` }} />
+                  </span>
+                  <strong className="wx-nums">{s.count}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </aside>
+    </div>
   );
 }
-
-const IDG_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
 function isPresent(value: string | null): value is string {
   return Boolean(value);
@@ -404,141 +531,13 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function shortId(id: string): string {
-  return id.length > 18 ? `${id.slice(0, 8)}...${id.slice(-6)}` : id;
-}
-
-const filterShellStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "0.75rem",
-  padding: "0 1.5rem 0.75rem",
-};
-
-const toolbarStyle = {
-  display: "flex",
-  flexWrap: "wrap" as const,
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-};
-
-const toolbarTitleStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "0.125rem",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-
-const toolbarEyebrowStyle = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
-};
-
-const controlGroupStyle = {
+const warnBannerStyle = {
+  padding: "0.625rem 1rem",
+  borderRadius: t.radiusMd,
+  background: tint(t.warning),
+  color: t.warning,
+  fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",
   gap: "0.5rem",
-  flexWrap: "wrap" as const,
-};
-
-const searchWrapStyle = {
-  minWidth: "15rem",
-};
-
-const searchInputStyle = {
-  width: "100%",
-  height: "2.25rem",
-  fontSize: "0.85rem",
-};
-
-const selectStyle = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
-const errorBannerStyle = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
-  fontSize: "0.85rem",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-};
-
-const dismissButtonStyle = {
-  border: "none",
-  background: "none",
-  color: "inherit",
-  cursor: "pointer",
-  fontWeight: 600,
-};
-
-const tableWrapStyle = {
-  width: "100%",
-  overflowX: "auto" as const,
-  padding: "0 1.5rem 1.5rem 1.5rem",
-};
-
-const tableStyle = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: "0.875rem",
-};
-
-const headerRowStyle = {
-  textAlign: "left" as const,
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-
-const rowStyle = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-
-const thStyle = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
-};
-
-const tdStyle = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle" as const,
-};
-
-const primaryCellStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "0.25rem",
-  minWidth: 0,
-};
-
-const primaryTextStyle = {
-  fontWeight: 600,
-  color: "var(--color-on-surface)",
-};
-
-const codeStyle = {
-  display: "inline-block",
-  maxWidth: "13rem",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap" as const,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container)",
-  borderRadius: "var(--radius-sm)",
-  padding: "0.1rem 0.3rem",
-  fontSize: "0.75rem",
-};
+} as const;

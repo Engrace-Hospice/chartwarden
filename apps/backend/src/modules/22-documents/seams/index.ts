@@ -32,14 +32,17 @@ import {
 } from "./readers";
 import {
   type DocumentReaderStore,
+  type PortalAccessLogPort,
   type PortalConsentPort,
   createInMemoryDocumentReaderStore,
+  createInMemoryPortalAccessLog,
   createInMemoryPortalConsentPort,
 } from "./readers-store";
 import { createDocumentRenderer } from "./renderer";
 import { createDocumentStorageProvider } from "./storage-provider";
 export {
   createDrizzleDocumentReaderStore,
+  createDrizzlePortalAccessLog,
   createRefusingObjectStore,
 } from "./drizzle-readers-store";
 export { RENDER_SYSTEM_MEMBERSHIP_ID, createDrizzleDocumentSeamStore } from "./drizzle-seam-store";
@@ -101,6 +104,9 @@ export {
   type PortalConsentPort,
   type RenderedAggregateRow,
   createInMemoryDocumentReaderStore,
+  type PortalAccessLogEntry,
+  type PortalAccessLogPort,
+  createInMemoryPortalAccessLog,
   createInMemoryPortalConsentPort,
   createSudConsentEvaluatorPortalConsentPort,
 } from "./readers-store";
@@ -122,6 +128,8 @@ export interface DocumentSeamDeps {
   readers?: DocumentReaderStore;
   /** The §4.3 portal SUD-consent gate (M39 ConsentEvaluator in prod; in-memory map in tests). */
   portalConsent?: PortalConsentPort;
+  /** F-225 (#248) — the §164.528 `document_access_log` appender the portal mint writes through (Drizzle in prod). */
+  portalAccessLog?: PortalAccessLogPort;
 }
 
 /**
@@ -137,6 +145,7 @@ export function registerDocumentSeams(deps: DocumentSeamDeps = {}): void {
   const objects = deps.objects ?? createInMemoryObjectStore().store;
   const readers = deps.readers ?? createInMemoryDocumentReaderStore().store;
   const portalConsent = deps.portalConsent ?? createInMemoryPortalConsentPort();
+  const portalAccessLog = deps.portalAccessLog ?? createInMemoryPortalAccessLog();
   registerSeam("DocumentRenderer", createDocumentRenderer({ store, objects }));
   registerSeam("DocumentStorageProvider", createDocumentStorageProvider({ objects }));
   // §4.3 the five PUBLISHED reader seams — all real impls over the shared reader port (+ object/consent ports
@@ -145,7 +154,12 @@ export function registerDocumentSeams(deps: DocumentSeamDeps = {}): void {
   registerSeam("DocumentReader", createDocumentReader(readers));
   registerSeam(
     "PortalDocumentReader",
-    createPortalDocumentReader({ store: readers, objects, consent: portalConsent }),
+    createPortalDocumentReader({
+      store: readers,
+      objects,
+      consent: portalConsent,
+      accessLog: portalAccessLog,
+    }),
   );
   registerSeam("IntakeMetricsProvider", createIntakeMetricsProvider(readers));
   registerSeam("ExtractionProvenanceReader", createExtractionProvenanceReader(readers));

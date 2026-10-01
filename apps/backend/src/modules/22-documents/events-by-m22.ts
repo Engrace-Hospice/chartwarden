@@ -62,10 +62,15 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-108 — m27 joins on the commit that binds `m27.document-backref`, exactly as the header above
     // requires. Its three `ecr_submission` back-ref columns are the ECR file, the Print Image and the
     // supporting-doc bundle; the pure decider for them shipped with M27-T09 and had no caller at all.
-    // F-139 (#248) — m31 ADDED: M31's own §4.10 "M31 consumes" table names this event (patient-facing
-    // kinds) with a real consumer file (`m22-document-rendered-patient-facing.ts`) that creates a
-    // `portal_document_share` row for active grants — a real relationship the catalog never declared.
-    declaredConsumers: ["m6", "m11", "m12", "m13", "m21", "m27", "m31", "m33"],
+    // F-139 (#248) — m31 was ADDED here (M31's §4.10 table names this event -> a `portal_document_share`
+    // row). F-225 (#248) — m31 DROPPED again (user-approved, F-221): M31 answers "what can this account see"
+    // by SEAM PULL (`PortalDocumentReader.documentsForPatient`), a push on render cannot record a VIEW, and
+    // the disclosure accounting it was presumed to back now exists where it belongs — M22's
+    // `document_access_log` row appended by `mintPortalDownloadUrl` + the route's M4 read-audit.
+    // See docs/history/m31-portal-deferrals.md. `m31` is recorded as a `seamConsumers` entry (the F-043 / #103
+    // / F-180 shape): a real relationship the outbox does not carry.
+    declaredConsumers: ["m6", "m11", "m12", "m13", "m14", "m21", "m27", "m33"],
+    seamConsumers: ["m31"],
     isOutboxOnly: true,
   },
 ];

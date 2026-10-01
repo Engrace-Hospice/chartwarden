@@ -10,7 +10,10 @@
 // pass) is the real processor. Every one of these three events carries `patientId` directly on its
 // LOCKED payload (`05-patient/events-by-m5.ts` / `08-encounters/events-by-m8.ts`) — no cross-module id
 // resolution needed, unlike M23's admissionId/encounterId cases.
-import type { DispatchableOutboxEvent, OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
+import type {
+  DispatchableOutboxEvent,
+  OutboxConsumerBinding,
+} from "../../../bootstrap/outbox-dispatcher";
 import type { RevalidateJob } from "../jobs/revalidate-jobs";
 
 export const M24_REVALIDATE_TRIGGER_EVENTS = [

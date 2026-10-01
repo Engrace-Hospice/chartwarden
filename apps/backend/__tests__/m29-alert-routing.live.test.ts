@@ -17,11 +17,6 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  createDrizzleAlertEmitter,
-  registerMessagingSeams,
-  wireAlertRuleSeed,
-} from "../src/modules/36-messaging/index";
-import {
   OUTBOUND_ALERT_WINDOW_MS,
   buildOutboundAlertEmit,
   emitOutboundAlert,
@@ -30,6 +25,11 @@ import {
   OUTBOUND_ALERT_KINDS,
   type OutboundAlert,
 } from "../src/modules/29-external-interfaces/outbound/outbound-events";
+import {
+  createDrizzleAlertEmitter,
+  registerMessagingSeams,
+  wireAlertRuleSeed,
+} from "../src/modules/36-messaging/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -40,7 +40,10 @@ const ORG_B = "88888888-8888-8888-8888-888888888888";
 const FEED = "11111111-1111-1111-1111-111111111111";
 const T0 = new Date("2026-05-01T10:00:00Z");
 
-const intent = (kind: OutboundAlert["kind"], severity: OutboundAlert["severity"] = "HIGH"): OutboundAlert => ({
+const intent = (
+  kind: OutboundAlert["kind"],
+  severity: OutboundAlert["severity"] = "HIGH",
+): OutboundAlert => ({
   kind,
   severity,
   channel: kind === "hl7_outbound.transmission_failed" ? "operator-on-call" : "compliance",
@@ -69,7 +72,12 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
       .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
-  async function addMember(orgId: string, tag: string, roleKey: string, category: string): Promise<string> {
+  async function addMember(
+    orgId: string,
+    tag: string,
+    roleKey: string,
+    category: string,
+  ): Promise<string> {
     const roleId = (
       await admin.query(
         "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,$3) RETURNING id",
@@ -92,10 +100,14 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     return userId;
   }
   /** Emit exactly what the worker emits for `alert` at `now`, on the real emitter. */
-  const emit = (orgId: string, alert: OutboundAlert, now: Date) => emitter.emit(orgId, buildOutboundAlertEmit(alert, now));
+  const emit = (orgId: string, alert: OutboundAlert, now: Date) =>
+    emitter.emit(orgId, buildOutboundAlertEmit(alert, now));
   const recipientsOf = async (alertId: string): Promise<string[]> =>
     (
-      await admin.query("SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1", [alertId])
+      await admin.query(
+        "SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1",
+        [alertId],
+      )
     ).rows
       .map((r) => r.recipient_user_id as string)
       .sort();
@@ -114,7 +126,12 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
         [id, slug],
       );
     user.orgAdmin = await addMember(ORG_A, "a-admin", "org_admin", "admin_executive");
-    user.compliance = await addMember(ORG_A, "a-compliance", "compliance_officer", "compliance_quality");
+    user.compliance = await addMember(
+      ORG_A,
+      "a-compliance",
+      "compliance_officer",
+      "compliance_quality",
+    );
     user.clinicalLead = await addMember(ORG_A, "a-lead", "clinical_lead", "clinical_leadership");
     user.bystander = await addMember(ORG_A, "a-biller", "biller", "billing_finance");
     user.otherTenantAdmin = await addMember(ORG_B, "b-admin", "org_admin", "admin_executive");
@@ -137,12 +154,18 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
       "SELECT event_type FROM alert_rule WHERE organization_id IS NULL AND enabled AND event_type = ANY($1)",
       [[...OUTBOUND_ALERT_KINDS]],
     );
-    expect(rows.map((r) => r.event_type as string).sort()).toEqual([...OUTBOUND_ALERT_KINDS].sort());
+    expect(rows.map((r) => r.event_type as string).sort()).toEqual(
+      [...OUTBOUND_ALERT_KINDS].sort(),
+    );
   });
 
   it("a failed transmission notifies the operator (org_admin) and the M11 owners — and nobody else", async () => {
     for (const severity of ["HIGH", "NORMAL"] as const) {
-      const res = await emit(ORG_A, intent("hl7_outbound.transmission_failed", severity), new Date(T0.getTime() + (severity === "HIGH" ? 0 : 7 * 86_400_000)));
+      const res = await emit(
+        ORG_A,
+        intent("hl7_outbound.transmission_failed", severity),
+        new Date(T0.getTime() + (severity === "HIGH" ? 0 : 7 * 86_400_000)),
+      );
       expect(res.resolvedRecipientCount).toBe(2);
       expect(await recipientsOf(res.alertId)).toEqual([user.orgAdmin, user.clinicalLead].sort());
       const { rows } = await admin.query("SELECT severity FROM alert WHERE id=$1", [res.alertId]);
@@ -176,7 +199,9 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
   it("a tenant's alert resolves only that tenant's people (ORG_B gets its own admin, not ORG_A's)", async () => {
     const res = await emit(ORG_B, intent("hl7_outbound.transmission_failed"), T0);
     expect(await recipientsOf(res.alertId)).toEqual([user.otherTenantAdmin]);
-    const { rows } = await admin.query("SELECT organization_id FROM alert WHERE id=$1", [res.alertId]);
+    const { rows } = await admin.query("SELECT organization_id FROM alert WHERE id=$1", [
+      res.alertId,
+    ]);
     expect(rows[0].organization_id).toBe(ORG_B);
   });
 
@@ -187,7 +212,9 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     const storm = await emit(ORG_A, intent(kind), new Date(base.getTime() + 20 * 60_000));
     expect(storm.alertId).toBe(first.alertId); // absorbed: same window, same (kind, feed)
     const deliveriesAfterStorm = (
-      await admin.query("SELECT count(*)::int n FROM notification_delivery WHERE alert_id=$1", [first.alertId])
+      await admin.query("SELECT count(*)::int n FROM notification_delivery WHERE alert_id=$1", [
+        first.alertId,
+      ])
     ).rows[0].n as number;
     expect(deliveriesAfterStorm).toBe(2); // one page (org_admin + clinical_lead), not one per retry
 
@@ -198,11 +225,17 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     );
     expect(nextWindow.alertId).not.toBe(first.alertId);
     expect(nextWindow.resolvedRecipientCount).toBe(2); // the pre-F-188 permanent id would have swallowed this forever
-    expect(await recipientsOf(nextWindow.alertId)).toEqual([user.orgAdmin, user.clinicalLead].sort());
+    expect(await recipientsOf(nextWindow.alertId)).toEqual(
+      [user.orgAdmin, user.clinicalLead].sort(),
+    );
   });
 
   it("the payload that reaches M36 carries ids and a summary only — no PHI fields", async () => {
-    const res = await emit(ORG_A, intent("external_feed.baa_missing"), new Date("2026-07-01T00:00:00Z"));
+    const res = await emit(
+      ORG_A,
+      intent("external_feed.baa_missing"),
+      new Date("2026-07-01T00:00:00Z"),
+    );
     const { rows } = await admin.query("SELECT payload FROM alert WHERE id=$1", [res.alertId]);
     expect(Object.keys(rows[0].payload as object).sort()).toEqual(["detail", "feedId"]);
   });
@@ -232,13 +265,21 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
       )
     ).rows as Array<{ id: string; severity: string; payload: Record<string, unknown> }>;
   const deliveriesOf = async (alertId: string) =>
-    (await admin.query("SELECT count(*)::int n FROM notification_delivery WHERE alert_id=$1", [alertId])).rows[0].n as number;
+    (
+      await admin.query("SELECT count(*)::int n FROM notification_delivery WHERE alert_id=$1", [
+        alertId,
+      ])
+    ).rows[0].n as number;
 
   it("F-199 baseline: WITHOUT countRepeats a repeat is silently absorbed — the alert never changes (unchanged for every other producer)", async () => {
     const feed = feedIn(1);
     const at = new Date("2026-08-01T03:00:00Z");
-    const a = await emitter.emit(ORG_A, buildOutboundAlertEmit({ ...intent(KIND), feedId: feed }, at));
-    for (let i = 0; i < 50; i++) await emitter.emit(ORG_A, buildOutboundAlertEmit({ ...intent(KIND), feedId: feed }, at));
+    const a = await emitter.emit(
+      ORG_A,
+      buildOutboundAlertEmit({ ...intent(KIND), feedId: feed }, at),
+    );
+    for (let i = 0; i < 50; i++)
+      await emitter.emit(ORG_A, buildOutboundAlertEmit({ ...intent(KIND), feedId: feed }, at));
     const rows = await alertsOf(ORG_A, KIND, feed);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.id).toBe(a.alertId);
@@ -267,8 +308,14 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     const escalations = await alertsOf(ORG_A, STORM_KIND, feed);
     expect(escalations).toHaveLength(1);
     expect(escalations[0]!.severity).toBe("critical");
-    expect(escalations[0]!.payload).toMatchObject({ feedId: feed, occurrences: 10, windowMinutes: 60 });
-    expect(await recipientsOf(escalations[0]!.id)).toEqual([user.orgAdmin, user.clinicalLead].sort());
+    expect(escalations[0]!.payload).toMatchObject({
+      feedId: feed,
+      occurrences: 10,
+      windowMinutes: 60,
+    });
+    expect(await recipientsOf(escalations[0]!.id)).toEqual(
+      [user.orgAdmin, user.clinicalLead].sort(),
+    );
   });
 
   it("F-199: below the threshold there is a count but no escalation", async () => {
@@ -306,16 +353,28 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect((await alertsOf(ORG_A, KIND, feed))[0]!.payload.occurrences).toBe(6);
     expect((await alertsOf(ORG_B, KIND, feed))[0]!.payload.occurrences).toBe(6);
     expect((await alertsOf(ORG_A, KIND, feedIn(8)))[0]!.payload.occurrences).toBe(6);
-    for (const [org, f] of [[ORG_A, feed], [ORG_B, feed], [ORG_A, feedIn(8)]] as const)
+    for (const [org, f] of [
+      [ORG_A, feed],
+      [ORG_B, feed],
+      [ORG_A, feedIn(8)],
+    ] as const)
       expect(await alertsOf(org, STORM_KIND, f)).toHaveLength(0);
-    expect(await recipientsOf((await alertsOf(ORG_B, KIND, feed))[0]!.id)).toEqual([user.otherTenantAdmin]);
+    expect(await recipientsOf((await alertsOf(ORG_B, KIND, feed))[0]!.id)).toEqual([
+      user.otherTenantAdmin,
+    ]);
   });
 
   it("F-199: BAA alerts are counted but never escalated", async () => {
     const at = new Date("2026-08-08T03:00:00Z");
     const feed = feedIn(9);
     for (let i = 0; i < 30; i++)
-      await emitOutboundAlert(emitter, ORG_A, { ...intent("external_feed.baa_expired"), feedId: feed }, at, 10);
+      await emitOutboundAlert(
+        emitter,
+        ORG_A,
+        { ...intent("external_feed.baa_expired"), feedId: feed },
+        at,
+        10,
+      );
     const rows = await alertsOf(ORG_A, "external_feed.baa_expired", feed);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.payload.occurrences).toBe(30);
@@ -327,7 +386,12 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     const [fail] = await alertsOf(ORG_A, KIND, feed);
     const [esc] = await alertsOf(ORG_A, STORM_KIND, feed);
     expect(Object.keys(fail!.payload).sort()).toEqual(["detail", "feedId", "occurrences"]);
-    expect(Object.keys(esc!.payload).sort()).toEqual(["detail", "feedId", "occurrences", "windowMinutes"]);
+    expect(Object.keys(esc!.payload).sort()).toEqual([
+      "detail",
+      "feedId",
+      "occurrences",
+      "windowMinutes",
+    ]);
     expect(JSON.stringify([fail!.payload, esc!.payload])).not.toMatch(/MRN|DOB|PID\||patient/i);
   });
 
@@ -338,6 +402,9 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].severity_floor).toBe("critical");
-    expect((rows[0].resolver_args as { roleKeys: string[] }).roleKeys.sort()).toEqual(["clinical_lead", "org_admin"]);
+    expect((rows[0].resolver_args as { roleKeys: string[] }).roleKeys.sort()).toEqual([
+      "clinical_lead",
+      "org_admin",
+    ]);
   });
 });

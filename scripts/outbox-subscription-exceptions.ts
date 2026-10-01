@@ -171,13 +171,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     events: ["m9.prn_reassessment_overdue"],
   },
   {
-    module: "m14",
-    kind: "would-defer-a-bound-event",
-    reason:
-      "`m22.document.rendered` is delivered TODAY — all five declared consumers (m11, m12, m13, m21, m33) bind their back-refs live. M14's §4.4 PDF back-ref has no consumer, so declaring `m14` would stop the event dispatching for those five as well.",
-    events: ["m22.document.rendered"],
-  },
-  {
     module: "m23",
     kind: "self-consumption",
     reason:

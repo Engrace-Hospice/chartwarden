@@ -1708,12 +1708,21 @@ export interface PortalDocumentReader {
     sinceCursor?: string
   }): Promise<ReadonlyArray<PortalDocumentDigest>>
 
+  /** F-225: the document's ACTIVE version for the session patient's own patient-facing document, else null. */
+  resolvePortalDocumentVersion(args: {
+    documentId: string
+    patientId: string
+    organizationId: string
+  }): Promise<{ documentVersionId: string } | null>
+
+  /** F-225: a successful mint appends one `document_access_log` row (portal_view / patient_access) before returning. */
   mintPortalDownloadUrl(args: {
     documentVersionId: string
     portalSessionId: string
+    portalAccountId: string
     patientId: string
     organizationId: string
-  }): Promise<{ url: string; expiresAt: string } | { denied: true; reason: 'sud_consent_absent' | 'not_patient_facing' | 'not_owner' }>
+  }): Promise<{ url: string; expiresAt: string } | { denied: true; reason: 'sud_consent_absent' | 'not_patient_facing' | 'not_owner' | 'not_active' }>
 }
 
 /** Used by M33 reporting + M30 quality measures: how many intake bundles processed, time-to-review, etc. */

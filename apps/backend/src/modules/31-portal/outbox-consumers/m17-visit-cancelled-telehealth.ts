@@ -67,7 +67,9 @@ function factsOf(payload: unknown): { visitId: string; reason: string } {
  * means at most one row can ever match, and the WHERE clause below only ever matches a row that is still
  * pre-ended, so a redelivery (or a visit with no telehealth room at all) finds nothing left to do.
  */
-export function buildM31VisitCancelledTelehealthConsumer(deps: VisitCancelledTelehealthConsumerDeps) {
+export function buildM31VisitCancelledTelehealthConsumer(
+  deps: VisitCancelledTelehealthConsumerDeps,
+) {
   return {
     consumerName: M31_VISIT_CANCELLED_TELEHEALTH_CONSUMER.consumerName,
     consumerModule: "m31" as const,
@@ -79,44 +81,50 @@ export function buildM31VisitCancelledTelehealthConsumer(deps: VisitCancelledTel
       const facts = factsOf(event.payload);
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const [row] = await tx
-          .select({
-            id: TV.id,
-            lifecycleState: TV.lifecycleState,
-            visitStartedAt: TV.visitStartedAt,
-            version: TV.version,
-          })
-          .from(TV)
-          .where(and(eq(TV.organizationId, organizationId), eq(TV.m17VisitId, facts.visitId)))
-          .limit(1);
-        if (!row) return; // this M17 visit never had a telehealth room minted — nothing to end.
+          const [row] = await tx
+            .select({
+              id: TV.id,
+              lifecycleState: TV.lifecycleState,
+              visitStartedAt: TV.visitStartedAt,
+              version: TV.version,
+            })
+            .from(TV)
+            .where(and(eq(TV.organizationId, organizationId), eq(TV.m17VisitId, facts.visitId)))
+            .limit(1);
+          if (!row) return; // this M17 visit never had a telehealth room minted — nothing to end.
 
-        const current = row.lifecycleState as TelehealthLifecycleState;
-        if (!canTransitionTelehealth(current, "ended_aborted")) return; // already ended/reconciled.
+          const current = row.lifecycleState as TelehealthLifecycleState;
+          if (!canTransitionTelehealth(current, "ended_aborted")) return; // already ended/reconciled.
 
-        const startedMs = row.visitStartedAt ? row.visitStartedAt.getTime() : null;
-        const now = new Date();
+          const startedMs = row.visitStartedAt ? row.visitStartedAt.getTime() : null;
+          const now = new Date();
 
-        await tx
-          .update(TV)
-          .set({
-            lifecycleState: "ended_aborted",
-            visitEndedAt: now,
-            endReason: "other", // no `cancelled`/`rescheduled` member exists on TelehealthEndReason (§3.3)
-            totalDurationSec: startedMs ? Math.max(0, Math.round((now.getTime() - startedMs) / 1000)) : null,
-            version: row.version + 1,
-            updatedAt: now,
-          })
-          .where(and(eq(TV.id, row.id), eq(TV.version, row.version)));
-        // No `.returning()` check needed beyond the WHERE-on-version race guard: a lost race here means
-        // another writer already moved the row past this transition in the same tick, which is the
-        // correct outcome to leave alone (the M18 consumer precedent's "lost a version race — the next
-        // tick sees it" reasoning, except there is no next tick for a one-shot cancellation — the row is
-        // already where this consumer wanted it).
-      });
+          await tx
+            .update(TV)
+            .set({
+              lifecycleState: "ended_aborted",
+              visitEndedAt: now,
+              endReason: "other", // no `cancelled`/`rescheduled` member exists on TelehealthEndReason (§3.3)
+              totalDurationSec: startedMs
+                ? Math.max(0, Math.round((now.getTime() - startedMs) / 1000))
+                : null,
+              version: row.version + 1,
+              updatedAt: now,
+            })
+            .where(and(eq(TV.id, row.id), eq(TV.version, row.version)));
+          // No `.returning()` check needed beyond the WHERE-on-version race guard: a lost race here means
+          // another writer already moved the row past this transition in the same tick, which is the
+          // correct outcome to leave alone (the M18 consumer precedent's "lost a version race — the next
+          // tick sees it" reasoning, except there is no next tick for a one-shot cancellation — the row is
+          // already where this consumer wanted it).
+        },
+      );
     },
   };
 }

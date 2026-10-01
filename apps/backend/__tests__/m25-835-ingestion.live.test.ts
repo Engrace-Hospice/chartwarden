@@ -502,7 +502,12 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     };
     const service = buildDrizzleM25IngestService(handle.db, {
       client: fakeClient(new Map([[objectKey, parsed]])),
-      claims: { medicare: fakeClaims({ "ICN-RECOUP": [{ claimId: CLAIM_RECOUP, payerIcn: "ICN-RECOUP" }] }, {}) },
+      claims: {
+        medicare: fakeClaims(
+          { "ICN-RECOUP": [{ claimId: CLAIM_RECOUP, payerIcn: "ICN-RECOUP" }] },
+          {},
+        ),
+      },
     });
     const received = await service.receiveAdvice(actor, {
       providerEntityId: PE_A,

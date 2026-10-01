@@ -97,12 +97,7 @@ export function createDbStepUpSessionResolver(db: DbClient): SessionResolver {
           lastStepUpFactor: schema.sessions.lastStepUpFactor,
         })
         .from(schema.sessions)
-        .where(
-          and(
-            eq(schema.sessions.id, sessionId),
-            eq(schema.sessions.userId, userId),
-          ),
-        )
+        .where(and(eq(schema.sessions.id, sessionId), eq(schema.sessions.userId, userId)))
         .limit(1);
 
       if (!session) return null;

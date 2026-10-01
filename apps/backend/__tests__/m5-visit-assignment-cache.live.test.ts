@@ -21,6 +21,10 @@ import { createDbClient } from "@wardenx/db";
 import IORedis from "ioredis";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  buildM5VisitAssignedConsumer,
+  buildM5VisitUnassignedConsumer,
+} from "../src/modules/05-patient/outbox-consumers/m17-visit-assignment";
 import { createCaseloadProvider } from "../src/modules/05-patient/seams/caseload-provider";
 import {
   createDrizzleCaseloadStore,
@@ -30,10 +34,6 @@ import {
   createCaseloadStoreWithShiftCache,
   readShiftAssignedPatientIds,
 } from "../src/modules/05-patient/seams/shift-caseload-cache";
-import {
-  buildM5VisitAssignedConsumer,
-  buildM5VisitUnassignedConsumer,
-} from "../src/modules/05-patient/outbox-consumers/m17-visit-assignment";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -128,7 +128,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         [ORG_A, ORG_B],
       );
       userClinicianA = (
-        await admin.query(`INSERT INTO "user" (email) VALUES ('f165-clinician-a@x.test') RETURNING id`)
+        await admin.query(
+          `INSERT INTO "user" (email) VALUES ('f165-clinician-a@x.test') RETURNING id`,
+        )
       ).rows[0].id as string;
       memberA = (
         await admin.query(
@@ -228,7 +230,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         }),
       ).toBe(true);
 
-      const ids = await provider.caseloadPatientIds({ organizationId: ORG_A, userId: userClinicianA });
+      const ids = await provider.caseloadPatientIds({
+        organizationId: ORG_A,
+        userId: userClinicianA,
+      });
       expect(ids).toEqual(expect.arrayContaining([shiftPatientId, standingPatientId]));
     });
 
@@ -297,15 +302,21 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
       // No cache entry was written under EITHER org for this visit — the resolver returned null and the
       // consumer no-op'd, rather than guessing at a user id.
-      expect(await readShiftAssignedPatientIds(redis, ORG_A, userClinicianA)).not.toContain(patientId);
-      expect(await readShiftAssignedPatientIds(redis, ORG_B, userClinicianA)).not.toContain(patientId);
+      expect(await readShiftAssignedPatientIds(redis, ORG_A, userClinicianA)).not.toContain(
+        patientId,
+      );
+      expect(await readShiftAssignedPatientIds(redis, ORG_B, userClinicianA)).not.toContain(
+        patientId,
+      );
     });
 
     it("a malformed cache entry is skipped rather than thrown on the ABAC hot read path", async () => {
       const key = `wardenx:m5:caseload-cache:${ORG_A}:${userClinicianA}`;
       await redis.hset(key, "not-json-visit", "{this is not json");
 
-      await expect(readShiftAssignedPatientIds(redis, ORG_A, userClinicianA)).resolves.toBeDefined();
+      await expect(
+        readShiftAssignedPatientIds(redis, ORG_A, userClinicianA),
+      ).resolves.toBeDefined();
     });
   },
 );

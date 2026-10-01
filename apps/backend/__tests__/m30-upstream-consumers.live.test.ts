@@ -121,7 +121,10 @@ describe.skipIf(!DB_URL)("M30 upstream-event consumers — enqueueRecompute — 
       aggregateId: "44444444-4444-4444-8444-444444444444",
       attemptCount: 0,
       createdAt: new Date(),
-      payload: { submissionId: "44444444-4444-4444-8444-444444444444", providerEntityId: providerEntityA },
+      payload: {
+        submissionId: "44444444-4444-4444-8444-444444444444",
+        providerEntityId: providerEntityA,
+      },
     };
     await consumer.handle(event);
     await consumer.handle(event); // redelivery — must debounce onto the same pending row, not duplicate

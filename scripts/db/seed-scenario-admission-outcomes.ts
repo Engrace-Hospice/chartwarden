@@ -13,18 +13,23 @@
  * see real data on:
  *   - Whitfield  → active, routine home care (the flagship patient later scenario scripts build on)
  *   - Okonkwo    → active, general inpatient care (M37 IPU / GIP billing-rate scenario)
- *   - Delgado    → transfer-in from another hospice (documented gap below — never reaches
- *                  admission.active; the inherited election period is what's real here)
+ *   - Delgado    → transfer-in from another hospice (mid benefit period 2). This script stops at the
+ *                  transfer-in itself; `db:seed:scenario-delgado-active` (run right after) signs her
+ *                  election statement and activates the admission — see "Transfer-in activation" below
  *   - Nakamura   → discharged (moved_out_of_service_area)
  *   - Brandt     → revoked
  *   - Fairbanks  → death discharge (feeds M16 bereavement — a later scenario script's prerequisite)
  *
  * Genuine platform gaps found and left DOCUMENTED rather than silently worked around (the original
  * (1), activation demanding an attending CTI signature, is gone: since #241 the hospice-MD signature
- * alone signs the CTI). (2) `transferIn` never calls
- * `transitionAdmission` at all, so the admission's own `status` column never advances past whatever
- * `createAdmission` left it at — only the inherited election period is genuinely "active"; there is
- * no discoverable way to also flip `admission.status` for a transfer-in through the real API today.
+ * alone signs the CTI). (2) — "`transferIn` never reaches `admission.active`" — was a REAL M6 bug and is
+ * FIXED (D9): `gateFacts` hard-wired the activation period to `sequence_number = 1`, which a transfer-in
+ * never has (it gets the inherited active period + the next pending one), so the gate could never see her
+ * election statement and demanded a CTI the receiving hospice does not owe on the inherited period; and
+ * signing the election statement was refused because the inherited period is already `active`. Both are
+ * fixed in `admission-route-service-db.ts` (live test in m6-admission-write-lifecycle.live.test.ts).
+ * Transfer-in activation: a transfer-in still needs the ordinary election-statement + NOR ceremony, which
+ * this script does not drive — run `bun run db:seed:scenario-delgado-active` after it.
  * (3) `patient.status` never syncs from ANY M6 lifecycle event through any live mechanism — the
  * event catalog declares M5 as a consumer of `m6.admission.activated`, but no M5 consumer was ever
  * implemented, and more broadly the declarative `M<n>_OUTBOX_SUBSCRIPTIONS` arrays ~10 modules
@@ -33,6 +38,13 @@
  * real, sizeable missing subsystem, not a missing handler — out of scope to build here — so
  * `syncPatientStatus()` below sets `patient.status` directly via SQL after each scenario, honestly
  * standing in for the consumer that doesn't exist yet rather than pretending the API produces it.
+ *
+ * Benefit-period dating through the real API: activation stamps period 1 `[today, today+89]` (so
+ * Whitfield/Okonkwo are period 1, recert ~90 days out, F2F not required); the only lever that dates
+ * a period relative to an arbitrary day is transfer-in's `priorElectionStartDate`, so Delgado is seeded
+ * mid-cycle (period 2 started 80 days ago → recert/period 3 due in 10 days, F2F window open, F2F booked).
+ * There is no API to backdate an activation or attest-then-age a period, so an "overdue"/"attested"
+ * example would need raw SQL and is deliberately not seeded here.
  *
  * Idempotent: wipes any prior admission (+ every child row: election periods, CTIs, election
  * statements, NOR, discharge/revocation/transfer events, level-of-care periods, compliance windows,
@@ -192,6 +204,9 @@ const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:or
 const LOCATION_IPU_ID = "55555555-0000-4000-8000-000000000002"; // db:seed:org-structure
 
 const today = (): string => new Date().toISOString().slice(0, 10);
+/** `today()` shifted by `days` (UTC calendar days; negative = past). */
+const daysFromToday = (days: number): string =>
+  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 /**
  * The admission day: yesterday (UTC). A same-day admission dated with the UTC date sits in the org's
  * timezone "tomorrow" for the hours before local midnight, so HOPE's admission window (opening at local
@@ -377,9 +392,8 @@ async function main(): Promise<void> {
   }
 
   // ── 3. Delgado — transfer-in from another hospice ─────────────────────────────────────────────
-  // GENUINE GAP (see file header): transferIn never calls transitionAdmission, so admission.status
-  // never leaves its post-create value here — inspect patient.status after this run to see what
-  // actually happens rather than assume it.
+  // Stops at the transfer-in (inherited period active, next period pending). Activation is the ordinary
+  // election-statement + NOR ceremony, driven by `db:seed:scenario-delgado-active` (see file header, D9).
   try {
     const patientId = await findPatientIdByLastName(session, "Delgado");
     const adm = await session.client.POST("/api/v1/admissions", {
@@ -394,7 +408,12 @@ async function main(): Promise<void> {
         effectiveDate: today(),
         otherHospiceName: "Piedmont Community Hospice",
         priorBenefitPeriodSequence: 2,
-        priorElectionStartDate: "2026-05-01",
+        // DATED RELATIVE TO TODAY (was a hard-coded 2026-05-01, which drifts into "recert long overdue"
+        // as the calendar advances, and left the M14 IDG "Recert & F2F windows" pane on a stale/undated
+        // period). The inherited period's window is `[start, start + 89]` (90-day period, 42 CFR 418.21),
+        // so starting it 80 days ago puts the recertification (period 3) due in 10 days, with the
+        // period-3 face-to-face window (`[due - 30, due - 1]`, 418.22(a)(4)) OPEN right now.
+        priorElectionStartDate: daysFromToday(-80),
         hospiceMedicalDirectorId: HOSPICE_MD,
         attendingPhysicianId: ATTENDING,
         narrative:
@@ -403,9 +422,36 @@ async function main(): Promise<void> {
       },
     });
     if (xfer.error) throw new Error(`transfer-in failed: ${JSON.stringify(xfer.error)}`);
+    // Book (not attest) the period-3 face-to-face inside its open window so the IDG pane can show
+    // "window open, F2F scheduled". Best-effort: the dated periods above are the load-bearing part.
+    try {
+      const eps = await session.client.GET("/api/v1/admissions/{id}/election-periods", {
+        params: { path: { id: adm.data.id } },
+      });
+      // The list is ordered by sequence_number and carries no sequence field: the transfer-in's NEXT
+      // (pending, period 3) period is the last row.
+      const next = (
+        eps.data as unknown as { items?: Array<{ id: string; state?: string }> } | undefined
+      )?.items?.at(-1);
+      if (!next || next.state !== "pending") throw new Error("pending period 3 not found");
+      const f2f = await session.client.POST("/api/v1/admissions/{id}/face-to-face", {
+        params: { path: { id: adm.data.id } },
+        body: {
+          electionPeriodId: next.id,
+          scheduledDate: daysFromToday(3),
+          windowStart: daysFromToday(-20),
+          windowEnd: daysFromToday(9),
+          clinicianRole: "hospice_md",
+          scheduledClinicianId: (physicianSession ?? session).userId,
+        },
+      });
+      if (f2f.error) throw new Error(JSON.stringify(f2f.error));
+    } catch (err) {
+      console.log(`  (Delgado: F2F booking skipped — ${String(err)})`);
+    }
     await syncPatientStatus(patientId, "active");
     log.ok(
-      `Delgado: transferred in (admission ${adm.data.id}, inherited period active — admission.status not advanced, see file header)`,
+      `Delgado: transferred in (admission ${adm.data.id}, inherited period active — run db:seed:scenario-delgado-active to activate)`,
     );
   } catch (err) {
     log.fail(`Delgado: ${String(err)}`);

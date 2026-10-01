@@ -119,9 +119,10 @@ describe.skipIf(!DB_URL)("#138/F-060/F-116 — M33 day-one dashboards, LIVE Post
       share_scope: string;
       owner_membership_id: string;
       status: string;
-    }>(`SELECT share_scope, owner_membership_id, status FROM report_view WHERE organization_id = $1`, [
-      ORG_A,
-    ]);
+    }>(
+      `SELECT share_scope, owner_membership_id, status FROM report_view WHERE organization_id = $1`,
+      [ORG_A],
+    );
     expect(viewRows.rows).toHaveLength(3);
     for (const v of viewRows.rows) {
       expect(v.share_scope).toBe("org");
@@ -150,8 +151,11 @@ describe.skipIf(!DB_URL)("#138/F-060/F-116 — M33 day-one dashboards, LIVE Post
     await seedOrgAndMembership(ORG_B, userB, membershipB);
     // Deliberately do NOT seed dashboards for org B — its own read of org A's rows must be empty under
     // its own tenant context, proving isolation rather than merely "org B has none of its own yet".
-    const rows = await withOrgContext(appHandle.db, { organizationId: ORG_B, userId: userB }, (tx) =>
-      tx.select().from(schema.reportView).where(eq(schema.reportView.organizationId, ORG_A)),
+    const rows = await withOrgContext(
+      appHandle.db,
+      { organizationId: ORG_B, userId: userB },
+      (tx) =>
+        tx.select().from(schema.reportView).where(eq(schema.reportView.organizationId, ORG_A)),
     );
     expect(rows).toEqual([]);
     // Control: org A's OWN scoped connection sees its 3 rows — proving the empty result above is
@@ -159,7 +163,8 @@ describe.skipIf(!DB_URL)("#138/F-060/F-116 — M33 day-one dashboards, LIVE Post
     const ownRows = await withOrgContext(
       appHandle.db,
       { organizationId: ORG_A, userId: USER_A },
-      (tx) => tx.select().from(schema.reportView).where(eq(schema.reportView.organizationId, ORG_A)),
+      (tx) =>
+        tx.select().from(schema.reportView).where(eq(schema.reportView.organizationId, ORG_A)),
     );
     expect(ownRows).toHaveLength(3);
   });
@@ -187,7 +192,9 @@ describe.skipIf(!DB_URL)("#138/F-060/F-116 — M33 day-one dashboards, LIVE Post
       [ORG_C],
     );
     expect(definitions.rows).toHaveLength(3); // never 6
-    const views = await admin.query(`SELECT id FROM report_view WHERE organization_id = $1`, [ORG_C]);
+    const views = await admin.query(`SELECT id FROM report_view WHERE organization_id = $1`, [
+      ORG_C,
+    ]);
     expect(views.rows).toHaveLength(3);
   });
 });

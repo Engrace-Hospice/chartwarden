@@ -29,7 +29,9 @@ function stringField(payload: unknown, key: string): string | null {
 }
 
 /** `m11.order.discontinued` → the shared `orderChanges` slot. */
-export function buildM14OrderDiscontinuedConsumer(deps: SinceLastIdgOrderDeps): OutboxConsumerBinding {
+export function buildM14OrderDiscontinuedConsumer(
+  deps: SinceLastIdgOrderDeps,
+): OutboxConsumerBinding {
   return {
     consumerName: "m14.m11-order-discontinued",
     consumerModule: "m14",

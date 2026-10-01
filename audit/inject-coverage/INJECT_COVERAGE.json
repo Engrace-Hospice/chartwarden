@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1311,
-    "coveredRoutes": 1311,
-    "directRoutesReferenced": 1253
+    "routes": 1332,
+    "coveredRoutes": 1332,
+    "directRoutesReferenced": 1273
   },
   "modules": [
     {
@@ -150,13 +150,17 @@
     },
     {
       "module": "14-idg",
-      "routes": 30,
+      "routes": 36,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/idg-discipline-notes.test.ts",
+        "apps/backend/__tests__/idg-enrichment.test.ts",
         "apps/backend/__tests__/idg-inject.test.ts",
-        "apps/backend/__tests__/idg-routes.test.ts"
+        "apps/backend/__tests__/idg-packet-content.test.ts",
+        "apps/backend/__tests__/idg-routes.test.ts",
+        "apps/backend/__tests__/idg-schedule-meeting.test.ts"
       ],
-      "directRoutesReferenced": 30
+      "directRoutesReferenced": 36
     },
     {
       "module": "15-discipline-care-plans",
@@ -198,12 +202,12 @@
     },
     {
       "module": "19-oncall",
-      "routes": 39,
+      "routes": 40,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/oncall-inject.test.ts"
       ],
-      "directRoutesReferenced": 38
+      "directRoutesReferenced": 39
     },
     {
       "module": "20-field-safety",
@@ -230,18 +234,22 @@
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
         "apps/backend/__tests__/document-routes.test.ts",
-        "apps/backend/__tests__/document-workflow-acceptance.test.ts"
+        "apps/backend/__tests__/document-workflow-acceptance.test.ts",
+        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts"
       ],
       "directRoutesReferenced": 35
     },
     {
       "module": "23-billing-medicare",
-      "routes": 43,
+      "routes": 56,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/billing-medicare-inject.test.ts"
+        "apps/backend/__tests__/billing-medicare-inject.test.ts",
+        "apps/backend/__tests__/m23-rate-table-routes.test.ts",
+        "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
+        "apps/backend/__tests__/m23-wage-index-routes.test.ts"
       ],
-      "directRoutesReferenced": 43
+      "directRoutesReferenced": 55
     },
     {
       "module": "24-billing-medicaid",
@@ -313,6 +321,7 @@
       "routes": 53,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
       "directRoutesReferenced": 53
@@ -366,12 +375,12 @@
     },
     {
       "module": "37-ipu",
-      "routes": 51,
+      "routes": 52,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/ipu-inject.test.ts"
       ],
-      "directRoutesReferenced": 51
+      "directRoutesReferenced": 52
     },
     {
       "module": "38-terminology",

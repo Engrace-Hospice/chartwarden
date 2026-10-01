@@ -106,10 +106,17 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     payloadSchema: Type.Object({
       meetingId: id,
       builtPacketCount: Type.Integer({ minimum: 0 }),
+      // Honestly 0: M14 has no invitee roster (idg_attendance rows are check-ins from START on). M36 resolves the
+      // expected attendees itself at consume time from `locationId` (members holding idg.attend / idg.coordinate
+      // scoped to that location, plus the coordinator).
       scheduledAttendees: Type.Integer({ minimum: 0 }),
+      // Additive + optional (the M36 alert consumer's inputs; absent on pre-fix events).
+      locationId: Type.Optional(id),
+      scheduledStart: Type.Optional(isoInstant),
+      coordinatorMembershipId: Type.Optional(id),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -167,9 +174,13 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       wasQuorate: Type.Boolean(),
       recordedByMembershipId: id,
       recordedAt: isoInstant,
+      // Additive + optional — the non-quorate notice's inputs (M36 raises `m14.decision.non_quorate` only when
+      // `wasQuorate` is false): the meeting's coordinator and the quorum slots that were unmet.
+      coordinatorMembershipId: Type.Optional(id),
+      missingDisciplines: Type.Optional(Type.Array(Type.String())),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -188,8 +199,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
        *  even have learned the link from the announcement. */
       linkedArtifactId: nullableId,
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -226,15 +237,17 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     eventName: "m14.action_item.carry_forward",
     moduleOwner: "m14",
     description:
-      "The T-24h cron of the next meeting carried an open action item forward; ≥3 carries is a compliance alert.",
+      "The T-24h cron of the next meeting carried an open action item forward; `isComplianceAlert` is true only on the CROSSING to the third distinct non-cancelled meeting (M36 raises the critical compliance alert once per item).",
     payloadSchema: Type.Object({
       priorActionItemId: id,
       newAgendaItemId: id,
       carryForwardCount: Type.Integer({ minimum: 1 }),
       isComplianceAlert: Type.Boolean(),
+      // The target meeting's coordinator — the compliance alert's meeting-scoped audience (additive, optional).
+      coordinatorMembershipId: Type.Optional(id),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── the canonical cross-module decision seam (§4.4; locked legacy name, M7 D4) ───────────────────────────
@@ -333,9 +346,9 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     // aspirational: `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts` calls
     // `getSeam("IdgScheduleProvider")`, feeding `idg_cadence_adherence`, one of the currently-registered
     // `OPERATIONAL_BOUND_MEASURE_CODES`. Never an outbox push, matching M30's own blanket §1.1
-    // principle.
-    declaredConsumers: [],
-    seamConsumers: ["m30", "m33", "m36"],
+    // principle. M36 is a real PUSH consumer (the compliance audit alert — `m36.idg-review-floor-override-alert`).
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -355,11 +368,14 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
         Type.Literal("t_plus_1"),
       ]),
       severity: Type.Union([Type.Literal("clinical_routine"), Type.Literal("critical")]),
+      // Additive + optional — the location's IDG coordinator (next upcoming meeting's, else the active recurring
+      // policy's default) for the M36 alert's coordinator tier; absent when the location has neither.
+      coordinatorMembershipId: Type.Optional(id),
     }),
     // F-149 (#248) — m30 MOVED to seamConsumers: same active `IdgScheduleProvider` seam — see
-    // `review_floor.override_recorded` above.
-    declaredConsumers: [],
-    seamConsumers: ["m30", "m33", "m36"],
+    // `review_floor.override_recorded` above. M36 is a real PUSH consumer (`m36.idg-review-clock-alert`).
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   // ── minutes finalize + amendment + packet freeze (§2.2 / §4.4) ──────────────────────────────────────────
@@ -396,6 +412,27 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     }),
     declaredConsumers: ["m22"],
     seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m14.discipline_note.addendum_recorded",
+    moduleOwner: "m14",
+    description:
+      "A late discipline-note ADDENDUM was recorded on an ADJOURNED meeting; asks M22 to append a new version of the minutes PDF carrying the 'Addenda' appendix (the frozen minutes snapshot is never touched).",
+    payloadSchema: Type.Object({
+      minutesId: id,
+      meetingId: id,
+      // The addendum that triggered this render and the live addendum count at emit time — together the
+      // request identity (M22 keys idempotency on the delivered outbox event id, one event per addendum).
+      addendumId: id,
+      addendumCount: Type.Integer({ minimum: 1 }),
+      recordedByMembershipId: id,
+      // The same `renderPayload` shape `.signed`/`.amended` send (the frozen snapshot columns, unchanged)
+      // PLUS `disciplineAddenda` built from the LIVE addendum rows at emit time (42 CFR Part 2: text and
+      // reason are elided for withheld patients exactly like `disciplineNoteSnapshot`).
+      renderPayload: Type.Unknown(),
+    }),
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {

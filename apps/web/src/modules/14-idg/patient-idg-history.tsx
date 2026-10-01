@@ -196,9 +196,12 @@ export function PatientIdgHistory(): JSX.Element {
         if (!active) return;
         if (r.error) throw new Error("Request failed");
         // `meetings` is published loosely on the wire (see idg-typebox note); the rich shape is `MeetingRow`.
-        const rows = ((r.data as unknown as { meetings?: MeetingRow[] })?.meetings ?? []).sort(
-          (a, b) => meetingDate(b).localeCompare(meetingDate(a)),
-        );
+        // Older payloads omit `decisions` / `actionItems`; default them so the rows never throw.
+        const rows = ((r.data as unknown as { meetings?: Partial<MeetingRow>[] })?.meetings ?? [])
+          .map((m) => ({ ...m, decisions: m.decisions ?? [], actionItems: m.actionItems ?? [] }))
+          .sort((a, b) =>
+            meetingDate(b as MeetingRow).localeCompare(meetingDate(a as MeetingRow)),
+          ) as MeetingRow[];
         setMeetings(rows);
       })
       .catch(() => {
@@ -213,7 +216,19 @@ export function PatientIdgHistory(): JSX.Element {
     void client
       .GET("/api/v1/patients/{patientId}/care-plan", { params: { path: { patientId } } })
       .then((r) => {
-        if (active) setPlan(r.error ? null : ((r.data as unknown as PlanSummary) ?? null));
+        if (!active) return;
+        // The read can answer 200 with a body that has no plan on it (no plan of care started yet);
+        // a plan without a versions array is "no plan", not a plan to render.
+        const body = r.error ? null : (r.data as unknown as Partial<PlanSummary> | null);
+        setPlan(
+          body && Array.isArray(body.versions)
+            ? ({
+                goals: [],
+                ...body,
+                versions: body.versions.map((v) => ({ ...v, signatures: v.signatures ?? [] })),
+              } as PlanSummary)
+            : null,
+        );
       })
       .catch(() => active && setPlan(null));
     return () => {

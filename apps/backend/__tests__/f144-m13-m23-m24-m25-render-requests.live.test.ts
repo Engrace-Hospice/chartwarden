@@ -59,23 +59,20 @@ import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
+import {
+  type EmarMedicationOrderPort,
+  type EmarWriteOutboxPort,
+  createDbEmarBackend,
+} from "../src/modules/13-emar/emar-route-service-db";
+import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
 import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
-import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
-import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
-import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
-import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
-import {
-  type CredentialResolverPort,
-  type M24SubmissionWorkerDeps,
-  type WorkerOutboxPort,
-  runClaimSubmit,
-} from "../src/modules/24-billing-medicaid/jobs/submission-jobs";
 import {
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
@@ -83,21 +80,25 @@ import {
   createDrizzleDocumentSeamStore,
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
-import {
-  type EmarMedicationOrderPort,
-  type EmarWriteOutboxPort,
-  createDbEmarBackend,
-} from "../src/modules/13-emar/emar-route-service-db";
-import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
 import {
   type BillingWriteActor,
   buildClaimStateService,
 } from "../src/modules/23-billing-medicare/services/claim-state-service";
 import { buildNoeNotrStateService } from "../src/modules/23-billing-medicare/services/noe-notr-state-service";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
+import {
+  type CredentialResolverPort,
+  type M24SubmissionWorkerDeps,
+  type WorkerOutboxPort,
+  runClaimSubmit,
+} from "../src/modules/24-billing-medicaid/jobs/submission-jobs";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
-import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
 import type { M25WriteActor } from "../src/modules/25-remittance/routes/actor";
+import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
+import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -188,7 +189,12 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-F144-${org.slice(0, 4)}`, `F144 ${org.slice(0, 4)}`, `NPI-F144-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-F144-${org.slice(0, 4)}`,
+            `F144 ${org.slice(0, 4)}`,
+            `NPI-F144-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       locationOf[org] = (
@@ -227,6 +233,7 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
       M16_OUTBOX_EVENTS,
       M17_OUTBOX_EVENTS,
       M18_OUTBOX_EVENTS,
+      M19_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,
@@ -261,16 +268,32 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
 
     // ── M23 ──────────────────────────────────────────────────────────────────────────────────────────
     const m23Outbox = {
-      publish: (tx: unknown, e: { eventName: string; payload: Record<string, unknown>; organizationId: string; aggregateKind: string; aggregateId: string }) =>
-        publisher.publish(tx as never, { ...e, callerModule: "m23" }),
+      publish: (
+        tx: unknown,
+        e: {
+          eventName: string;
+          payload: Record<string, unknown>;
+          organizationId: string;
+          aggregateKind: string;
+          aggregateId: string;
+        },
+      ) => publisher.publish(tx as never, { ...e, callerModule: "m23" }),
     };
     claims = buildClaimStateService(handle.db as never, { outbox: m23Outbox });
     notices = buildNoeNotrStateService(handle.db as never, { outbox: m23Outbox });
 
     // ── M25 ──────────────────────────────────────────────────────────────────────────────────────────
     const m25Outbox = {
-      publish: (tx: unknown, e: { eventName: string; payload: Record<string, unknown>; organizationId: string; aggregateKind: string; aggregateId: string }) =>
-        publisher.publish(tx as never, { ...e, callerModule: "m25" }),
+      publish: (
+        tx: unknown,
+        e: {
+          eventName: string;
+          payload: Record<string, unknown>;
+          organizationId: string;
+          aggregateKind: string;
+          aggregateId: string;
+        },
+      ) => publisher.publish(tx as never, { ...e, callerModule: "m25" }),
     };
     denials = buildDrizzleM25WriteService(handle.db, m25Outbox);
 
@@ -438,7 +461,12 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
   // F-158's own live-suite fixture bug, one file over: `claim_active_by_range_uidx` is a partial unique
   // index on (provider_entity_id, patient_id, service_from, service_to), so every seeded claim in this
   // suite needs its OWN service period — a fixed literal collides the moment a second test seeds one.
-  async function seedClaim(state: string, ccn: string, serviceFrom: string, serviceTo: string): Promise<string> {
+  async function seedClaim(
+    state: string,
+    ccn: string,
+    serviceFrom: string,
+    serviceTo: string,
+  ): Promise<string> {
     return (
       await admin.query(
         `INSERT INTO claim (
@@ -518,7 +546,16 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
          $1,$2,$3,$4,$5,$6,'OR','hospice_only','811','2026-09-01','2026-09-30',$7,
          'PLAN-1','MCD-CTL-1','SUBMITTED',$8,$8
        )`,
-      [claimId, ORG_A, providerOf[ORG_A], PATIENT, randomUUID(), ADMISSION, randomUUID(), memberOf[ORG_A]],
+      [
+        claimId,
+        ORG_A,
+        providerOf[ORG_A],
+        PATIENT,
+        randomUUID(),
+        ADMISSION,
+        randomUUID(),
+        memberOf[ORG_A],
+      ],
     );
     await admin.query(
       `INSERT INTO medicaid_submission (
@@ -554,7 +591,11 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
       submit: async () => ({
         result: "accepted_sync",
         vendorTransactionId: "vendor-tx-1",
-        ack277ca: { kind: "sync_277ca", outcome: "accepted", payerClaimControlNumber: "PAYER-MCD-1" },
+        ack277ca: {
+          kind: "sync_277ca",
+          outcome: "accepted",
+          payerClaimControlNumber: "PAYER-MCD-1",
+        },
       }),
       poll: async () => {
         throw new Error("not used in this test");
@@ -568,7 +609,12 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
       rateLookup: async () => {
         throw new Error("not used in this test");
       },
-      healthy: async () => ({ ok: true, lastChecked: new Date().toISOString(), latencyMs: 1, channelStatus: {} }),
+      healthy: async () => ({
+        ok: true,
+        lastChecked: new Date().toISOString(),
+        latencyMs: 1,
+        channelStatus: {},
+      }),
     };
     const adapters: MedicaidAdapterRegistry = {
       adapterForState: (state: string) => (state === "OR" ? fakeAdapter : null),
@@ -648,7 +694,12 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
   it("resolving a denial with a claim requests + renders the resolution letter, patientId resolved from M23", async () => {
     const claimId = await seedClaim("PAID", "CLM-CTL-DEN-1", "2026-11-01", "2026-11-30");
     const denialId = await seedDenial(claimId);
-    const result = await denials.resolveDenial(actorFor2(ORG_A), denialId, { reason: "resolved" }, 1);
+    const result = await denials.resolveDenial(
+      actorFor2(ORG_A),
+      denialId,
+      { reason: "resolved" },
+      1,
+    );
     expect(result.id).toBe(denialId);
 
     const emitted = await outboxFor(denialId);

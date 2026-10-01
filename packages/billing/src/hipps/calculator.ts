@@ -13,9 +13,22 @@
 // election history (M6 + external eligibility data) that no seam provides yet; when it lands, pass the
 // cumulative day-1 anchor as `hospiceAdmissionDate` and this math is already right.
 //
-// Each resolved per-diem is the wage-index-ADJUSTED CMS base rate; the wage index factor is PASSED IN
+// Each resolved rate is the wage-index-ADJUSTED CMS base rate; the wage index factor is PASSED IN
 // and SNAPSHOTTED into the result (the Phase-3 service persists it onto the `hipps_calculation` row so
 // a later wage-index file reload cannot retroactively change historic math).
+//
+// PAYMENT MATH (F-211, audit M23-F02, ADR-0016 D1/D2):
+//   1. The wage index adjusts ONLY the LABOR SHARE of a rate (CMS publishes a labor share per level of care):
+//        adjusted = base × (laborShare × wageIndex + (1 − laborShare)),   rounded half-up to whole cents once.
+//      The labor shares are carried on the injected `HippsRateTable` (tenant-entered with the rates).
+//   2. CHC is paid HOURLY, not as a per-diem: each CHC day is `adjustedHourlyRate × documented CHC hours` for that
+//      day (the day's hours come from the LOC period's `chcDocumentedHours`). CMS requires at least 8 hours of
+//      predominantly-nursing care in the 24-hour day for CHC; a day is priced on at most 24 hours; hours are
+//      reported in 15-minute units so the hours must be a multiple of 0.25. A CHC day that is UNDOCUMENTED, below 8
+//      hours, above 24, or not on a quarter-hour throws {@link ChcHoursError} — the calculator never guesses
+//      hours and never silently reprices a sub-8-hour day as RHC (that is a level-of-care decision for M6/M8).
+//      Each CHC day is its own segment (one line per day, `days = 1`, the day's charge as the unit rate) because
+//      the charge differs day to day with the hours.
 //
 // The exact CMS base per-diem rate table (per FY, per LOC, the RHC two-tier amounts) and the precise
 // 5-position HIPPS character encoding are PUBLISHED CMS fixtures — they are NOT fabricated here. The base
@@ -26,7 +39,29 @@
 import type { IsoDate, LevelOfCare } from "../contracts";
 import { dayOfStay, fromEpochDay, toEpochDay } from "../domain/dates";
 import type { Cents } from "../domain/money";
-import { applyWageIndexFactor, perDiemAmountCents, sumCents } from "../domain/money";
+import {
+  applyWageIndexToLaborShare,
+  lineChargeCents,
+  perDiemAmountCents,
+  sumCents,
+} from "../domain/money";
+
+/** CMS: a CHC day needs at least this many hours of care (predominantly skilled nursing) in the 24-hour day. */
+export const CHC_MIN_HOURS_PER_DAY = 8;
+/** A day's CHC payment is on at most 24 hours. */
+export const CHC_MAX_HOURS_PER_DAY = 24;
+
+/** Thrown when a CHC day's documented hours cannot be priced (undocumented, < 8, > 24, or not a quarter-hour). */
+export class ChcHoursError extends RangeError {
+  constructor(
+    readonly dates: readonly IsoDate[],
+    readonly reason: "undocumented" | "below_minimum" | "above_maximum" | "not_quarter_hour",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ChcHoursError";
+  }
+}
 
 /** ADR-0001: last election day paid at the RHC-High tier; day 61+ pays RHC-Low (80 FR 47142). */
 export const RHC_HIGH_TIER_LAST_DAY = 60;
@@ -50,21 +85,26 @@ export function levelOfCareToCode(loc: LevelOfCare): "RHC" | "CHC" | "IRC" | "GI
 
 /**
  * The INJECTED CMS base per-diem rate table for the claim's FY (whole cents, PRE-wage-index). The caller
- * resolves these from the loaded annual CMS hospice rate file — they are NOT hard-coded here.
- * TODO(CMS-fixture): the published FY per-diem amounts (RHC two-tier, CHC full-day, IRC, GIP) populate
- * this structure at the service layer from the rate file; the calculator applies the wage index to them.
+ * resolves these from the TENANT-ENTERED `hospice_rate_table` (F-210: a billing administrator keys the
+ * published FY amounts via `POST /billing/rate-tables`; there is no bundled CMS file) — they are NOT
+ * hard-coded here. The calculator applies the wage index to them.
  */
 export interface HippsRateTable {
   /** RHC-High per-diem for election days 1-60 (ADR-0001). */
   readonly rhcDays1to60PerDiemCents: Cents;
   /** RHC-Low per-diem for election day 61 and after (ADR-0001). */
   readonly rhcDays61PlusPerDiemCents: Cents;
-  /** CHC full-day per-diem (the hourly-derived 24-hour amount). */
-  readonly chcPerDiemCents: Cents;
+  /** CHC HOURLY rate (F-211: CHC is priced hourly x documented hours, never as a per-diem). */
+  readonly chcHourlyRateCents: Cents;
   /** IRC (inpatient respite) per-diem. */
   readonly ircPerDiemCents: Cents;
   /** GIP (general inpatient) per-diem. */
   readonly gipPerDiemCents: Cents;
+  /** F-211 — the CMS-published labor share per level of care, decimal strings (e.g. `"0.6871"`). */
+  readonly rhcLaborShare: string;
+  readonly chcLaborShare: string;
+  readonly ircLaborShare: string;
+  readonly gipLaborShare: string;
 }
 
 /** One injected level-of-care period (M6 `LevelOfCareReader`), clipped against the claim range below. */
@@ -72,6 +112,11 @@ export interface HippsLocPeriodInput {
   readonly levelOfCare: LevelOfCare;
   readonly from: IsoDate;
   readonly to: IsoDate;
+  /**
+   * F-211 — for a CHC period, the documented CHC hours PER DAY (M6 `chcDocumentedHours`; the same per-day reading the
+   * `level_of_care_coherence` rule applies). Required to price a CHC day; `null`/absent fails closed.
+   */
+  readonly chcDocumentedHours?: number | null;
 }
 
 /** The pure HIPPS calculator input — all plain data; nothing is read from a seam or clock. */
@@ -102,6 +147,10 @@ export interface HippsSegmentResult {
   /** The wage-index-ADJUSTED per-diem actually billed for this segment. */
   readonly ratePerDiemCents: Cents;
   readonly rhcDayBucket: RhcDayBucket;
+  /** F-211 — CHC only: the documented hours this (single-day) segment was priced on; `null` for other levels of care. */
+  readonly chcHours: number | null;
+  /** F-211 — CHC only: the wage-index-adjusted HOURLY rate the day was priced at; `null` for other levels of care. */
+  readonly chcAdjustedHourlyRateCents: Cents | null;
   /** 1-based position of this segment in the HIPPS code (mirrors `hipps_calculation.segments`). */
   readonly hippsCharPosition: number;
   /** `ratePerDiemCents × days` — the segment's total charge. */
@@ -124,7 +173,10 @@ export interface HippsCalculationResult {
   readonly totalCents: Cents;
 }
 
-/** Resolve the CMS base per-diem for a (level-of-care, RHC-bucket) pair from the injected rate table. */
+/**
+ * Resolve the CMS base rate for a (level-of-care, RHC-bucket) pair from the injected rate table: a per-diem for
+ * RHC/IRC/GIP, the HOURLY rate for CHC (priced separately by hours in the day loop).
+ */
 function baseRateFor(rateTable: HippsRateTable, loc: LevelOfCare, bucket: RhcDayBucket): Cents {
   switch (loc) {
     case "routine_home_care":
@@ -132,12 +184,59 @@ function baseRateFor(rateTable: HippsRateTable, loc: LevelOfCare, bucket: RhcDay
         ? rateTable.rhcDays1to60PerDiemCents
         : rateTable.rhcDays61PlusPerDiemCents;
     case "continuous_home_care":
-      return rateTable.chcPerDiemCents;
+      return rateTable.chcHourlyRateCents;
     case "inpatient_respite_care":
       return rateTable.ircPerDiemCents;
     case "general_inpatient_care":
       return rateTable.gipPerDiemCents;
   }
+}
+
+/** The labor share (decimal string) the wage index applies to for a level of care. */
+function laborShareFor(rateTable: HippsRateTable, loc: LevelOfCare): string {
+  switch (loc) {
+    case "routine_home_care":
+      return rateTable.rhcLaborShare;
+    case "continuous_home_care":
+      return rateTable.chcLaborShare;
+    case "inpatient_respite_care":
+      return rateTable.ircLaborShare;
+    case "general_inpatient_care":
+      return rateTable.gipLaborShare;
+  }
+}
+
+/** Validate a CHC day's documented hours (see the header); throws {@link ChcHoursError}. */
+function assertChcHours(hours: number | null | undefined, iso: IsoDate): number {
+  if (hours === null || hours === undefined || !Number.isFinite(hours)) {
+    throw new ChcHoursError(
+      [iso],
+      "undocumented",
+      `CHC day ${iso} has no documented continuous-care hours; CHC is paid hourly and cannot be priced without them`,
+    );
+  }
+  if (hours < CHC_MIN_HOURS_PER_DAY) {
+    throw new ChcHoursError(
+      [iso],
+      "below_minimum",
+      `CHC day ${iso} has ${hours} documented hours, below the ${CHC_MIN_HOURS_PER_DAY}-hour CMS minimum for continuous home care`,
+    );
+  }
+  if (hours > CHC_MAX_HOURS_PER_DAY) {
+    throw new ChcHoursError(
+      [iso],
+      "above_maximum",
+      `CHC day ${iso} has ${hours} documented hours, above the ${CHC_MAX_HOURS_PER_DAY}-hour day`,
+    );
+  }
+  if (!Number.isInteger(hours * 4)) {
+    throw new ChcHoursError(
+      [iso],
+      "not_quarter_hour",
+      `CHC day ${iso} has ${hours} documented hours; hours are reported in 15-minute units (a multiple of 0.25)`,
+    );
+  }
+  return hours;
 }
 
 /**
@@ -169,6 +268,8 @@ interface DayResolution {
   readonly bucket: RhcDayBucket;
   readonly baseRatePerDiemCents: Cents;
   readonly ratePerDiemCents: Cents;
+  readonly chcHours: number | null;
+  readonly chcAdjustedHourlyRateCents: Cents | null;
 }
 
 /**
@@ -204,20 +305,46 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
           ? "days_1_60"
           : "days_61_plus"
         : "n/a";
-    const baseRatePerDiemCents = baseRateFor(input.rateTable, loc, bucket);
-    const ratePerDiemCents = applyWageIndexFactor(
-      baseRatePerDiemCents,
+    const baseRate = baseRateFor(input.rateTable, loc, bucket);
+    // The wage index adjusts the LABOR SHARE only (F-211): base × (labor × WI + (1 − labor)).
+    const adjustedRate = applyWageIndexToLaborShare(
+      baseRate,
       input.wageIndexFactorDecimal,
+      laborShareFor(input.rateTable, loc),
     );
-    days.push({ iso, levelOfCare: loc, bucket, baseRatePerDiemCents, ratePerDiemCents });
+    if (loc === "continuous_home_care") {
+      // CHC is HOURLY (F-211): the day's charge is the adjusted hourly rate × the day's documented hours.
+      const hours = assertChcHours(period.chcDocumentedHours, iso);
+      days.push({
+        iso,
+        levelOfCare: loc,
+        bucket,
+        baseRatePerDiemCents: lineChargeCents(hours, baseRate),
+        ratePerDiemCents: lineChargeCents(hours, adjustedRate),
+        chcHours: hours,
+        chcAdjustedHourlyRateCents: adjustedRate,
+      });
+    } else {
+      days.push({
+        iso,
+        levelOfCare: loc,
+        bucket,
+        baseRatePerDiemCents: baseRate,
+        ratePerDiemCents: adjustedRate,
+        chcHours: null,
+        chcAdjustedHourlyRateCents: null,
+      });
+    }
   }
 
-  // 2. Coalesce contiguous days sharing (levelOfCare, bucket) into segments.
+  // 2. Coalesce contiguous days sharing (levelOfCare, bucket) into segments. CHC days never coalesce: each day's
+  //    charge depends on that day's hours, so a CHC day is its own single-day segment.
   const segments: HippsSegmentResult[] = [];
   let position = 0;
   for (const dayRes of days) {
     const open = segments[segments.length - 1];
     const sameAsOpen =
+      dayRes.levelOfCare !== "continuous_home_care" &&
       open !== undefined &&
       open.levelOfCare === dayRes.levelOfCare &&
       open.rhcDayBucket === dayRes.bucket;
@@ -240,6 +367,8 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         baseRatePerDiemCents: dayRes.baseRatePerDiemCents,
         ratePerDiemCents: dayRes.ratePerDiemCents,
         rhcDayBucket: dayRes.bucket,
+        chcHours: dayRes.chcHours,
+        chcAdjustedHourlyRateCents: dayRes.chcAdjustedHourlyRateCents,
         hippsCharPosition: position,
         segmentTotalCents: perDiemAmountCents(dayRes.ratePerDiemCents, 1),
       });

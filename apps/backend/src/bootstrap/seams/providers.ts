@@ -250,6 +250,9 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
   residenceAt() {
     throw new NotImplementedError("PatientAddressReader");
   },
+  residencesBetween() {
+    throw new NotImplementedError("PatientAddressReader");
+  },
 };
 
 /**
@@ -330,6 +333,9 @@ export const documentReaderDenyStub: DocumentReader = {
 /** M22 — portal-safe document read + download-URL mint (M31). Denies until M22 registers the real reader. */
 export const portalDocumentReaderDenyStub: PortalDocumentReader = {
   documentsForPatient() {
+    throw new NotImplementedError("PortalDocumentReader");
+  },
+  resolvePortalDocumentVersion() {
     throw new NotImplementedError("PortalDocumentReader");
   },
   mintPortalDownloadUrl() {

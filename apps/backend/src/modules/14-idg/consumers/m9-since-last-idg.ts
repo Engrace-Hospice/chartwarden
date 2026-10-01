@@ -37,7 +37,9 @@ function boolField(payload: unknown, key: string): boolean {
  * -cache.ts`'s header for why this shares the one typed slot the packet builder declares rather than a
  * new untyped one.
  */
-export function buildM14AssessmentRecordedConsumer(deps: SinceLastIdgRedisDeps): OutboxConsumerBinding {
+export function buildM14AssessmentRecordedConsumer(
+  deps: SinceLastIdgRedisDeps,
+): OutboxConsumerBinding {
   return {
     consumerName: "m14.m9-assessment-recorded",
     consumerModule: "m14",
@@ -47,16 +49,27 @@ export function buildM14AssessmentRecordedConsumer(deps: SinceLastIdgRedisDeps):
       const assessmentId = stringField(event.payload, "assessmentId");
       const scaleType = stringField(event.payload, "scaleType");
       const capturedAt = stringField(event.payload, "capturedAt");
-      if (patientId === null || assessmentId === null || scaleType === null || capturedAt === null) {
+      if (
+        patientId === null ||
+        assessmentId === null ||
+        scaleType === null ||
+        capturedAt === null
+      ) {
         throw new Error("m14.m9-assessment-recorded: payload missing a required field");
       }
-      await appendSinceLastIdgEntry(deps.redis, patientId, "significantAssessmentChanges", event.id, {
-        _digestId: event.id,
-        assessmentId,
-        scaleKind: scaleType,
-        changeKind: boolField(event.payload, "isCorrection") ? "corrected" : "recorded",
-        occurredAt: capturedAt,
-      });
+      await appendSinceLastIdgEntry(
+        deps.redis,
+        patientId,
+        "significantAssessmentChanges",
+        event.id,
+        {
+          _digestId: event.id,
+          assessmentId,
+          scaleKind: scaleType,
+          changeKind: boolField(event.payload, "isCorrection") ? "corrected" : "recorded",
+          occurredAt: capturedAt,
+        },
+      );
     },
   };
 }
@@ -87,13 +100,19 @@ export function buildM14AssessmentSignificantChangeConsumer(
       ) {
         throw new Error("m14.m9-significant-change: payload missing a required field");
       }
-      await appendSinceLastIdgEntry(deps.redis, patientId, "significantAssessmentChanges", event.id, {
-        _digestId: event.id,
-        assessmentId,
-        scaleKind: scaleType,
-        changeKind: ruleId,
-        occurredAt: detectedAt,
-      });
+      await appendSinceLastIdgEntry(
+        deps.redis,
+        patientId,
+        "significantAssessmentChanges",
+        event.id,
+        {
+          _digestId: event.id,
+          assessmentId,
+          scaleKind: scaleType,
+          changeKind: ruleId,
+          occurredAt: detectedAt,
+        },
+      );
     },
   };
 }

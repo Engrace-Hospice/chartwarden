@@ -30,6 +30,12 @@ import {
 } from "./providers";
 import { type HopeSeamStore, createInMemoryHopeSeamStore } from "./store";
 export { createDrizzleHopeSeamStore, hopeAssessmentPatientIdForOrg } from "./drizzle-store";
+// M14 IDG packet `hopeContext` — the org-explicit, BATCHED HOPE timepoint/SFV context read.
+export {
+  IDG_HOPE_CONTEXT_MAX_PATIENTS,
+  type IdgHopeContext,
+  idgHopeContextForOrg,
+} from "./idg-hope-context-for-org";
 
 export {
   type HopeSeamSeed,

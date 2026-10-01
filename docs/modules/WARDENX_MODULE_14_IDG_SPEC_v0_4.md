@@ -473,7 +473,7 @@ The discriminated union is **exhaustive** — adding a new decision kind is a co
 | `ADJOURN` transition | coordinator clicks "Adjourn" + step-up within 5 min | for each `status='open'` `idg_decision` of actionable kind, emit `idg.decision_recorded` to outbox (single transaction with status flip to `emitted`); finalize minutes; freeze packets; **stamp `idg_patient_packet.last_idg_reviewed_at = adjourned_at` for every included patient (M14-F01 / ADR-0018 D2 — resets the per-patient 15-day review floor)**; emit `m14.meeting.adjourned` |
 | **Per-patient review-floor guard on CANCEL / RESCHEDULE (M14-F01 / ADR-0018 D2)** | `CANCEL` or `RESCHEDULE` attempted on a `scheduled`/`packets_ready` meeting | `perPatientReviewFloorClear` evaluated: for each included patient, compute floor = `last_idg_reviewed_at + 15 days` (fallback admission `activated_at + 15 days` when never reviewed). If the meeting being cancelled/rescheduled is the **only** covering review on or before that floor, the transition is **refused** with `PER_PATIENT_REVIEW_FLOOR_BREACH (422)`. The floor is **per patient against `last_idg_reviewed_at`**, never the location cadence. Override path: `idg.override_review_floor` permission + step-up; the override writes an `audit_event` capturing the breaching `{patientId, floorAt}[]` set and the reason, and emits `m14.review_floor.override_recorded` |
 | **Per-patient review-clock escalation (M14-F01 / ADR-0018 D2)** | `idg.review-clock-sweep` daily cron evaluates each active admission's `last_idg_reviewed_at` | at **T-3 days** before floor → M36 `clinical_routine` alert to IDG Coordinator; at **T-0** (floor day, no covering meeting completed) → escalate to `critical`; at **T+1** (floor breached) → `critical` Compliance alert to Compliance inbox + Clinical Supervisor. Payload `IdgPerPatientReviewClockAlert` (§4.10); ships Phase 1 |
-| Carry-forward computation | T-24h cron on next meeting build | open action items past `due_date` are added as `idg_agenda_item` of `kind='carry_forward'` with `carried_from_action_item_id` set; `meeting_carry_forward_count` incremented; if ≥ 3, emit critical-severity Compliance alert via M36 |
+| Carry-forward computation | T-24h cron on next meeting build | open action items past `due_date` are added as `idg_agenda_item` of `kind='carry_forward'` with `carried_from_action_item_id` set; `meeting_carry_forward_count` re-derived (distinct non-cancelled meetings carried into); when it crosses 3, emit the critical-severity Compliance alert via M36 (once per item) |
 | Auto-close on downstream artifact | M7 `m7.care_plan.version_signed`, M11 `m11.order.signed`/`m11.order.completed`, M8 `m8.encounter.signed` matching assignee, M12 `m12.medication_order.signed`/`m12.medication_order.active` | action item flips to `auto_closed`; `linked_artifact_id` confirmed; `closed_at = now()`; M36 informational confirmation to assignee |
 | Step-up gate on adjournment | `ADJOURN` attempted without fresh step-up | 412 `STEP_UP_REQUIRED`; M2 step-up flow redirects; on success, retry adjournment |
 | SUD redaction at packet read | caller session lacks active 42 CFR Part 2 release | SQL filter elides SUD-flagged blocks from `built_snapshot.discipline_views` and `since_last_idg`; `appliedSudRedaction=true` set on the read response; M4 sampled audit per Module 3 D5 |
@@ -977,21 +977,21 @@ Every state change emits one event row into the M1 outbox table inside the same 
 | `m14.meeting.scheduled` | route + schedule worker | `meetingId, locationId, scheduledStart, scheduledEnd` | M33 |
 | `m14.packets.build_started` | `BUILD_PACKETS` transition | `meetingId, includedPatientCount` | M33 |
 | `m14.packets.build_failed_for_patient` | packet builder catch path | `meetingId, patientId, reason, willRetry` | M36 (warn), M33 |
-| `m14.packets.ready` | `PACKETS_READY` transition | `meetingId, builtPacketCount, scheduledAttendees` | M36 (T-24h reminder fanout), M33 |
+| `m14.packets.ready` | `PACKETS_READY` transition | `meetingId, builtPacketCount, scheduledAttendees` (+ optional `locationId, scheduledStart, coordinatorMembershipId` — the M36 reminder's inputs; `scheduledAttendees` is honestly `0`, M14 has no invitee roster) | M36 (T-24h reminder fanout), M33 |
 | `m14.packet.render_requested` | mirror of `packets.ready` for M22 | `meetingId, patientId, packetId, renderPayload` | M22 |
 | `m14.meeting.started` | `START` transition | `meetingId, startedByMembershipId, startedAt` | M36, M33 |
 | `m14.attendance.checked_in` | `POST /attendance` | `meetingId, attendanceId, membershipId, discipline, checkedInAt, isTardy` | M33 |
-| `m14.decision.recorded_open` | `POST /decisions` | `decisionId, meetingId, patientId, decisionKind, wasQuorate, recordedByMembershipId, recordedAt` | M36 (if `was_quorate=false`, low-severity notice to coordinator), M33 |
+| `m14.decision.recorded_open` | `POST /decisions` | `decisionId, meetingId, patientId, decisionKind, wasQuorate, recordedByMembershipId, recordedAt` (+ optional `coordinatorMembershipId, missingDisciplines`, set only when `wasQuorate=false`) | M36 (if `was_quorate=false`, low-severity notice to coordinator), M33 |
 | `m14.action_item.created` | `POST /action-items` | `actionItemId, meetingId, decisionId, patientId, assignedToMembershipId, dueDate, linkedArtifactKind` | M36 (DM to assignee), M33 |
 | `m14.action_item.status_changed` | `PATCH /action-items/:id` | `actionItemId, fromStatus, toStatus, actorMembershipId` | M36 (if completed), M33 |
 | `m14.action_item.auto_closed` | auto-close consumer | `actionItemId, linkedArtifactKind, linkedArtifactId, closeTrigger` | M36 (info to assignee), M33 |
-| `m14.action_item.carry_forward` | T-24h cron of next meeting | `priorActionItemId, newAgendaItemId, carryForwardCount, isComplianceAlert` | M36 (critical if `count≥3`), M33 |
+| `m14.action_item.carry_forward` | T-24h cron of next meeting | `priorActionItemId, newAgendaItemId, carryForwardCount, isComplianceAlert` | M36 (critical alert on the count *crossing* 3, once per item), M33 |
 | **`idg.decision_recorded`** | adjournment-time emitter (one per actionable decision) | `decisionId, meetingId, patientId, organizationId, decisionKind, payload: IdgDecisionPayload, payloadSchemaVersion, recordedByMembershipId, recordedAt, meetingAdjournedAt, wasQuorate, quorumSnapshot` | **M7** (`apply-idg-decision.worker`), **M11** (`idg-decision-intake`), **M12** (medication-recommendation consumer), **M16** (bereavement-risk-flag consumer when M16 locks), M22 (decision rendering on minutes PDF), M28 (FHIR mapping), M30 (decision-latency measure), M33 |
 | `m14.meeting.adjourned` | `ADJOURN` transition | `meetingId, adjournedByMembershipId, adjournedAt, decisionsEmittedCount, actionItemsAssignedCount, attendanceSnapshot` | M22 (minutes render trigger via `m14.minutes.signed`), M28, M30, M33 |
 | `m14.meeting.cancelled` | `CANCEL` transition | `meetingId, cancelledBy, cancellationReason, cancelledAt` | M36 (warn to attendees), M33 |
 | `m14.meeting.rescheduled` | `RESCHEDULE` transition | `priorMeetingId, newMeetingId, newScheduledStart, reason` | M36, M33 |
 | `m14.review_floor.override_recorded` | CANCEL/RESCHEDULE override path (M14-F01 / ADR-0018 D2) | `meetingId, actorMembershipId, reason, breachingPatients: {patientId, floorAt}[], overriddenAt` | M36 (warn to Compliance), M30 (cadence-adherence measure), M33 |
-| `m14.review_clock.escalated` | `idg.review-clock-sweep` cron (M14-F01 / ADR-0018 D2) | `admissionId, patientId, locationId, lastIdgReviewedAt, floorAt, stage: 't_minus_3'\|'t_zero'\|'t_plus_1', severity` | M36 (clinical_routine → critical), M30, M33 |
+| `m14.review_clock.escalated` | `idg.review-clock-sweep` cron (M14-F01 / ADR-0018 D2) | `admissionId, patientId, locationId, lastIdgReviewedAt, floorAt, stage: 't_minus_3'\|'t_zero'\|'t_plus_1', severity` (+ optional `coordinatorMembershipId` — the location's next upcoming meeting's coordinator, else its active recurring policy's default) | M36 (clinical_routine → critical), M30, M33 |
 | `m14.minutes.signed` | adjournment-time (mirror of `meeting.adjourned` for M22) | `minutesId, meetingId, finalizedByMembershipId, renderPayload` | M22 |
 | `m14.minutes.amended` | `POST /amendments` approved | `amendmentId, minutesId, requestedByMembershipId, approvedByMembershipId, amendmentReasonHash` | M22 (re-render), M28, M33 |
 | `m14.packet.frozen` | `ADJOURN` transition (per packet) | `meetingId, patientId, packetId, frozenAt` | M33 |
@@ -1219,6 +1219,8 @@ export function initM14(reg: SeamRegistry): void {
 | `idg.decision-emitter` (`emit-decisions-on-adjournment`) | 10 (critical — adjournment is the commit point; clinicians waiting on resolution) | 5 | exponential 5 s base, max 120 s total wait | 1 per meeting (single-threaded per meeting to maintain transactional ordering; no cross-meeting concurrency limit) | `idg.decision-emitter.dlq` | BLOCKER: if the emit-decisions job lands in DLQ, the meeting is stuck in `live` state with `status='open'` decisions; alert OPS-on-call + Clinical Supervisor immediately; manual DLQ replay after investigation; do NOT silently discard — every item in this DLQ is an undelivered `idg.decision_recorded` envelope that M7/M11/M12 have not received |
 | `idg.eraser` (`erase-idg-records`) | 3 (lowest — destruction runs under a compliance-approved certificate; not time-critical at the second level) | 3 | fixed 60 s | 1 (erases are serialized per patient to avoid FK cascade races) | `idg.eraser.dlq` | alert M4 destruction-certificate workflow; flag certificate as `partially_applied`; destruction cannot be considered complete until DLQ is drained; do not close the certificate |
 
+> **`idg.carry-forward` as built (`apps/backend/src/modules/14-idg/jobs/carry-forward.ts`, migration 0285).** The cron runs **hourly at :30** (before the :00 `idg.packets-cron` build) rather than inside the packets sweep, and targets, per location, the **earliest `scheduled | packets_building | packets_ready` meeting starting within 36 h** (wider than the 24 h build window so a built packet's `carryForwardCount` already includes that meeting). An overdue (`due_date < now`), `open | in_progress` item is carried onto that meeting iff its origin meeting is a different, earlier meeting; its location is the item's own `location_id`, else the origin meeting's. **Idempotency:** the `idg_agenda_item` row *is* the "item X carried into meeting Y" marker — a partial unique index on `(organization_id, idg_meeting_id, carried_from_action_item_id) WHERE kind='carry_forward'` (0285) makes the insert `ON CONFLICT DO NOTHING`, and `meeting_carry_forward_count` is incremented and `m14.action_item.carry_forward` published **only when a row was inserted**, in the same per-org transaction. Re-runs, retries, concurrent ticks and on-demand packet builds (which only *read* the count) therefore never double-increment; agenda rows have no DELETE grant so the marker cannot vanish. **Count = distinct NON-cancelled meetings carried into.** `meeting_carry_forward_count` is *derived*, not blindly incremented: it is the number of distinct meetings holding a `kind='carry_forward'` agenda row for the item whose status is neither `cancelled` nor `rescheduled` (`jobs/carry-forward-count.ts`). It is re-derived inside the cron's per-org tx right after a new carry row is inserted, **and** in the same tx as the meeting `CANCEL` / `RESCHEDULE` transition for every item that meeting had carried — so a cancelled/rescheduled-away meeting never counts toward the 3-meeting threshold and the packet builder's stored-count reader is never stale. **Compliance alert = the crossing, once per item:** `isComplianceAlert` on `m14.action_item.carry_forward` is true only when a carry moves the stored count from < 3 to ≥ 3 (`isComplianceCrossing`), not on every later carry. **M36 consumes the event** (`m36.idg-carry-forward-compliance-alert`, `apps/backend/src/modules/36-messaging/outbox-consumers/idg-carry-forward-compliance.ts`): on a flagged event it validates the payload against this module's `m14.action_item.carry_forward.compliance` catalog entry and emits the CRITICAL typed alert with correlation id `m14.carry_forward.compliance:<actionItemId>` (`alert` is unique on `(organization_id, correlation_id)`), so a redelivery — or an item that dips below 3 after a cancellation and crosses again — never pages twice (**one alert per action item, ever**; no repeat/escalation cadence is specified). Recipient resolution is M36's (ADR-0024): the platform `alert_rule` for that event type is a `role_set` over `compliance_officer` + `clinical_supervisor` + `org_admin` (the catalog's `idg_compliance_inbox`), plus the target meeting's coordinator (the event carries an optional `coordinatorMembershipId`; M36 resolves it to an active user and passes `coordinatorUserId` to `role_set.userIdPaths`). The payload is ids + the count + a constant body template (no patient id, title or link). The carry-forward agenda row has a constant title (the action item's free-text title is not copied into a non-denylisted audit column), `added_by_membership_id` = the target meeting's coordinator, and the tick runs with an empty audit actor (the M4 write-audit triggers FK `actor_user_id` to `"user"`; the worker pseudo-user has no user row).
+
 **DLQ global policy (OPS-035):** All seven DLQ topics are monitored by the M33 operational dashboard with a `queue_dlq_depth_gauge` metric; depth > 0 on `idg.decision-emitter.dlq` triggers a P1 PagerDuty alert; depth > 0 on `idg.packets.dlq`, `idg.packets-cron.dlq`, or `idg.review-clock-sweep.dlq` triggers a P2 alert (the last because a stalled per-patient review-clock sweep is a CoP §418.56(d) citation risk per M14-F01 / ADR-0018 D2); all others trigger P3. DLQ items are retained for 14 days; at expiry an `idg.dlq.item_expired` audit event is emitted (severity `warn`) and the item is permanently dropped. DLQ message shape: `{ originalJobId, queueName, failedAt, attemptNumber, errorMessage, jobData }` — `jobData` carries the original BullMQ job payload verbatim (PHI-bearing; DLQ storage inherits the same Valkey encryption-at-rest and RLS-equivalent key-scoping as the live queue).
 
 ### 4.10 M36 Typed Alert Payloads
@@ -1300,6 +1302,33 @@ export type IdgReviewFloorOverrideAlert = {
   bodyTemplate: string
 }
 ```
+
+#### 4.10.1 As built: the remaining typed alerts (M36 consumers)
+
+> Every payload above has a live M36 consumer (`36-messaging/outbox-consumers/idg-alerts.ts`, sibling of the
+> carry-forward consumer; M36 never imports M14 — the composition root hands each consumer the registered catalog
+> entry). Each validates its payload against this catalog entry before emitting through the real `AlertEmitter` and
+> **throws** (relay retry → DLQ) on a malformed event or a catalog failure; a legitimately empty audience raises nothing.
+> The catalog's resolver names are **not** values of the closed `alert_recipient_resolver` enum — each is realised as a
+> platform `alert_rule` (`role_set` + `userIdPaths` / `roleKeysPath`; no migration).
+>
+> | Alert | Source event | Audience | Emit severity / channels | Correlation id (idempotency) |
+> |---|---|---|---|---|
+> | `m14.packets.ready` | `m14.packets.ready` | the meeting's **expected attendees** — M14 has no invitee roster, so M36 derives it: active members whose unexpired enabled role grants `idg.attend` or `idg.coordinate` and whose location scope (`membership.default_location_ids`) contains the meeting's location, plus the coordinator | info / in-app + push | `m14.packets.ready:<meetingId>` (one per **meeting**, never per packet) |
+> | `m14.action_item.created` | `m14.action_item.created` | the assignee (`assignedToMembershipId` → active user) | info / in-app | `m14.action_item.created:<actionItemId>` |
+> | `m14.decision.non_quorate` | `m14.decision.recorded_open` with `wasQuorate=false` | the meeting's coordinator (§4.10: the notice is to the coordinator) | info (`low`) / in-app | `m14.decision.non_quorate:<decisionId>` |
+> | `m14.review_clock.escalated` | `m14.review_clock.escalated` | tiered by stage: T-3 the coordinator; T-0 + `clinical_supervisor`; T+1 + `compliance_officer` (+ `org_admin` backstop) | warn at T-3, critical at T-0/T+1 / in-app + email | `m14.review_clock:<patientId>:<stage>:<floorAt>` (per patient, tier and clock cycle — a new review moves `floorAt`) |
+> | `m14.review_floor.override_recorded` | `m14.review_floor.override_recorded` | `compliance_officer`, `clinical_supervisor`, `org_admin` (backstop) | warn / in-app + email | `m14.review_floor.override_recorded:<meetingId>` |
+>
+> Notes. (1) `decision.non_quorate` fires from the recorded decision's `wasQuorate=false`; in practice the
+> `quorate_decision` ABAC refuses a non-quorate `POST /decisions` (403) **before** any write, so the refusal emits no
+> event and the alert is only reachable when quorum changes between the predicate and the write — the spec's
+> "alert on the refused attempt" (§7.5) has no emit site (`idg.non_quorate_attempt` is likewise unwritten). (2) The
+> override `reason` is free text and is **not** carried onto the alert (catalog `reason` is optional); it lives in the
+> audit record. (3) Catalog loosening (all backwards-compatible): `review_clock.recipients.idgCoordinatorMembershipId`,
+> `override_recorded.recipients.clinicalSupervisorMembershipId` and `override_recorded.reason` are optional.
+> (4) No action-item due/overdue reminder alert exists in the catalog (only the carry-forward compliance alert, §2.7) —
+> none is built.
 
 ### 4.11 Notification-Composition Consumers — Superseded by ADR-0024
 
@@ -1858,6 +1887,93 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
    per-tenant overlay, and the cross-module composers that previously lived here are now owned by
    M36 (SD-017). Refinements on locale support, template versioning, and composer surfaces are
    tracked in M36's spec, not M14's.
+
+2. **Per-discipline meeting notes and late addenda (implementation extension; migrations 0282 / 0283 / 0284).** The
+   spec records only agenda-item body text and the minutes closing note; a live IDG is run by disciplines that
+   each keep their own notes, so the implementation adds `idg_discipline_note` (M14-owned; org-scoped `app.org_id`
+   RLS ENABLED + FORCED; `wardenx_app` SELECT/INSERT/UPDATE, no DELETE; `body_text` denylisted in the M4 audit
+   trigger). A note is about one agenda patient or the meeting as a whole, for one discipline
+   (`GET/POST /idg/meetings/{id}/discipline-notes`, `PATCH /idg/discipline-notes/{id}`; `idg.attend` or
+   `idg.coordinate`; a non-coordinator must be present/tardy/partial for that discipline; `idg_meeting_scope` ABAC
+   unchanged; 42 CFR Part 2 text withheld on read, fail-closed). Live notes are editable (If-Match) only while the
+   meeting is `live` and are frozen at adjournment into `idg_minutes.discipline_note_snapshot` (D10).
+   **Late addenda.** After adjournment the frozen snapshot and final minutes are never modified. A note POSTed to an
+   `adjourned` meeting is instead recorded as an **addendum**: a new append-only row with `is_addendum = true`,
+   `addendum_recorded_at` (server clock) and a REQUIRED `reason` (non-blank, at most 500 characters; a DB CHECK ties
+   the three columns together).
+   **`reason` is optional context on every note (migration 0284).** The single `reason` column (0283's
+   `addendum_reason`, renamed) may also be set on a live note (at most 500 characters; blank/whitespace is treated as
+   absent, stored as NULL), and a live original's `reason` may be edited with the text (`PATCH` body
+   `{bodyText?, reason?}`, at least one; `reason: null`/blank clears it; If-Match/Idempotency-Key unchanged). Only an
+   addendum REQUIRES it (`ADDENDUM_REASON_REQUIRED`); the old `NOTE_REASON_NOT_APPLICABLE` rejection is gone. It is free
+   text, so it is denylisted in the M4 audit trigger (redefined in 0284), withheld (`null`) under Part 2 exactly when
+   `bodyText` is (`bodyWithheld`), and frozen into `discipline_note_snapshot` with the same elision as the body, so the
+   `m14.minutes.signed` / `.amended` / `addendum_recorded` render payloads carry it consistently.
+   **Addendum window (window B).** An addendum is accepted only while ALL hold: (1) the meeting is `adjourned`;
+   (2) within `DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS` (14, `@wardenx/idg` policy) of the meeting's `actual_end`
+   (`ADDENDUM_WINDOW_CLOSED` beyond it); (3) for a PATIENT-scoped note, no NEWER ADJOURNED IDG of the org (another
+   `idg_meeting` with `status = 'adjourned'` and a later `actual_end`) included the patient, judged by that meeting's
+   stored `idg_patient_packet` rows or patient-scoped agenda items (the same two signals as D9 inclusion) —
+   otherwise `422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG`. Meeting-level addenda keep the 14-day rule only. The lookup is
+   one batched read under the org context and fails closed (`503 ADDENDUM_ELIGIBILITY_UNAVAILABLE`, retryable). The
+   minutes read exposes `addendumState {open, closesAt, closedReason, supersededPatientIds}` so a UI can show why an
+   addendum is unavailable. Addenda cannot be edited (`ADDENDUM_IMMUTABLE`; a correction
+   is a further addendum) and original notes of an adjourned meeting stay frozen (`MEETING_NOT_LIVE`). Other
+   states give `MEETING_NOT_LIVE`; a missing addendum reason gives `ADDENDUM_REASON_REQUIRED`. The minutes read exposes
+   `disciplineAddendumCount` (a live count, separate from the frozen `disciplineNoteCount`; text is read through
+   the notes route). The M4 write audit records every addendum insert.
+   **Minutes re-render (Addenda appendix).** Recording an addendum emits `m14.discipline_note.addendum_recorded`
+   (declared consumer `m22`) through the transactional outbox in the SAME transaction as the addendum insert.
+   Payload: `{minutesId, meetingId, addendumId, addendumCount, recordedByMembershipId, renderPayload}`, where
+   `renderPayload` is the same shape `m14.minutes.signed` / `.amended` send (the three frozen snapshot columns plus
+   `disciplineNoteSnapshot`, re-read and unchanged) plus `disciplineAddenda`: every live addendum of the meeting,
+   oldest first, as `{noteId, patientId, discipline, authorMembershipId, authorName, recordedAt, reason, bodyText,
+   bodyWithheld}`. It is built from live rows at emit time under the org context (minutes row locked so concurrent
+   addenda serialise and the newest event always carries the full set), and author names come from M2's batched,
+   name-only membership display seam, resolved before the write transaction (an unresolvable name is `null`). 42 CFR
+   Part 2 handling is the frozen snapshot's: for a patient whose text must be withheld (active SUD flag, or no packet
+   to vouch for them) `bodyText` AND `reason` are `null` with `bodyWithheld: true`, metadata only. M22 maps the event
+   to template `idg_minutes` on aggregate `minutesId` with `appends: true`, so each addendum appends a NEW VERSION of
+   the SAME minutes document (M22 idempotency is keyed by the delivered outbox event id, so a redelivery renders
+   nothing and one addendum is exactly one render); `idg_minutes.minutes_document_id` is stable and the frozen
+   snapshot is never mutated. `m14.minutes.amended` re-renders also carry `disciplineAddenda`, so the newest version
+   never drops addenda an earlier version showed.
+
+3. **Attendance trust (implementation extension; migration 0286).** `idg_attendance.discipline` feeds the §2.7 quorum and
+   the per-discipline note authorization, so it is a CLOSED vocabulary the server validates against the member's
+   authoritative M3 role keys (`IDG_ATTENDANCE_DISCIPLINES_BY_ROLE_KEY`; an M3-owned, org-explicit, batched role-key seam bound
+   at the composition root). A non-`idg.coordinate` caller may record ONLY themself (403 `ATTENDANCE_SELF_ONLY`) as a
+   discipline their roles confer (422 `DISCIPLINE_NOT_HELD`). A coordinator may record others; an unheld discipline needs an
+   explicit `coordinatorAttested` override, stored flagged (`discipline_attested`, `recorded_by_membership_id`), never for
+   themself (403 `ATTESTATION_SELF_FORBIDDEN`). `administrator` is an attendable, non-quorum seat. Pre-0286 rows are grandfathered.
+   `GET /idg/meetings/{id}/attendance-eligibility` tells the check-in UI what the caller may attest.
+
+4. **Render context for the M22 PDFs (implementation extension; no migration).** The `idg_minutes` and
+   `idg_patient_packet` documents are rendered as real PDFs by M22 from the `renderPayload` of `m14.minutes.signed` /
+   `.amended` / `m14.discipline_note.addendum_recorded` and `m14.packet.render_requested`. Besides the frozen
+   snapshots, M14 adds display-only context that is **re-derived at every emit, rides only the outbox payload, and is
+   never stored** (the frozen `decision_list_snapshot` / `built_snapshot` are not changed):
+   (a) **Header names** — `meeting.organizationName` / `meeting.locationName` (the organization's display name, else
+   legal name, and the location's name), through an org-explicit, batched, names-only M1 seam (`siteDisplayForOrg`,
+   `apps/backend/src/bootstrap/site-display-for-org.ts`) that M14 consumes as the structural port `IdgSiteDisplayPort`
+   (route backend `createDbIdgBackend`, and the packet-build worker deps), bound at the composition root
+   (`apps/backend/src/index.ts`) and in `scripts/db/run-idg-packet-build.ts`; resolved before the write transaction;
+   an unbound or failing port omits the names (never blocks a sign, addendum or packet build).
+   (b) **Decision content** — minutes payloads carry `decisionContent`: per live `idg_decision` row of the meeting
+   `{decisionId, decisionKind, status, recordedAt, supersededByDecisionId, patientId, withheld, summary[]}`, where
+   `summary` is a safe projection of the typed payload (only the known fields of each of the nine kinds; ids never
+   printed; each free-text field capped at 1000 characters with a truncation marker; at most 20 items per decision).
+   Decisions are immutable once `emitted`, but may be superseded after adjournment, so the live status and supersede
+   link are shown. 42 CFR Part 2 is the discipline-note snapshot's rule, fail-closed: for a patient who needs a release
+   (active SUD flag, or no packet to vouch for them) the entry is metadata only with `withheld: true`, an empty
+   `summary` and `patientId: null`; the builder prints "Withheld — 42 CFR Part 2" and does not label the patient.
+   (c) **Named carry-forward assignees** — the packet `renderPayload` carries `meeting` (ids + header names) and
+   `memberNames` (membership id to display name, name only) for the assignees present in the **redacted** snapshot's
+   `carryForwardActionItems`, resolved once per meeting through M2's `membershipDisplayForOrg` (port
+   `IdgMembershipDisplayPort`) inside the worker; an item the Part 2 redactor elided is never named, and names are never
+   written into `built_snapshot`.
+   Because a packet build is replace-in-place (same `packetId`), M22 treats `m14.packet.render_requested` as an
+   appending request (per delivered event id), so a rebuilt packet renders a new version of the same document.
 
 -----
 

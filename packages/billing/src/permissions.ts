@@ -47,6 +47,12 @@ export const M23_PERMISSIONS = [
   // MAC credentials
   "billing.mac_credential.read",
   "billing.mac_credential.admin",
+  // hospice rate table (F-210: tenant-entered CMS per-diem rates)
+  "billing.rate_table.read",
+  "billing.rate_table.admin",
+  // tenant-entered wage index (F-211)
+  "billing.wage_index.read",
+  "billing.wage_index.admin",
 ] as const;
 
 export type M23PermissionKey = (typeof M23_PERMISSIONS)[number];

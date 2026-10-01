@@ -20,6 +20,16 @@ export interface ResolverArgs {
   readonly disciplines?: readonly string[];
   readonly roleKeys?: readonly string[];
   readonly userIds?: readonly string[];
+  /** `role_set` only — payload keys that each hold a user id (a string) OR a list of user ids (string[]) to add
+   *  to the role audience: per-event audience members the role set cannot express (an IDG meeting's coordinator, a
+   *  meeting's expected attendees, an action item's assignee). Absent/non-string values are skipped; the
+   *  producer-side consumer is responsible for putting only ACTIVE org members' user ids there. */
+  readonly userIdPaths?: readonly string[];
+  /** `role_set` only — a payload key holding a list of role keys (string[]) added to `roleKeys`: a per-event
+   *  audience TIER (e.g. the IDG review-clock escalation adds the clinical supervisor at T-0 and the compliance
+   *  officer at T+1). Set by the trusted producer-side consumer, never by request input; absent/non-string
+   *  entries are skipped. */
+  readonly roleKeysPath?: string;
   /** Payload key holding the patient id for `care_team` (default `patientId`). */
   readonly patientIdPath?: string;
   /** Payload key holding the provider entity id for `on_call` (default `providerEntityId`). */
@@ -67,6 +77,15 @@ function readPath(payload: Record<string, unknown>, key: string): string | null 
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+/** A payload value that is one non-empty string OR an array of them → the non-empty strings (else `[]`). */
+function readStrings(payload: Record<string, unknown>, key: string): string[] {
+  const v = payload[key];
+  if (typeof v === "string") return v.length > 0 ? [v] : [];
+  return Array.isArray(v)
+    ? v.filter((x): x is string => typeof x === "string" && x.length > 0)
+    : [];
+}
+
 /** De-duplicate user ids, preserving first-seen order so delivery rows are deterministic. */
 function dedupe(userIds: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -99,7 +118,15 @@ export function createRecipientResolverRegistry(
       return providerEntityId === null ? [] : ports.onCallMembers(orgId, providerEntityId);
     },
     discipline: async (orgId, args) => ports.disciplineMembers(orgId, args.disciplines ?? []),
-    role_set: async (orgId, args) => ports.roleSetMembers(orgId, args.roleKeys ?? []),
+    role_set: async (orgId, args, payload) => {
+      const roleKeys = [
+        ...(args.roleKeys ?? []),
+        ...(args.roleKeysPath === undefined ? [] : readStrings(payload, args.roleKeysPath)),
+      ];
+      const fromRoles = await ports.roleSetMembers(orgId, [...new Set(roleKeys)]);
+      const fromPayload = (args.userIdPaths ?? []).flatMap((k) => readStrings(payload, k));
+      return [...fromRoles, ...fromPayload];
+    },
     tenant_admins: async (orgId) => ports.tenantAdmins(orgId),
     // user_list is fully static — the one resolver with no source-of-truth port (§3.6 userIds).
     user_list: async (_orgId, args) => args.userIds ?? [],

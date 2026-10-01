@@ -59,7 +59,12 @@ describe("M26 §4.4 consumer dispatch", () => {
     const r = await dispatchM26UpstreamEvent(
       {
         topic: "m23.claim.replaced",
-        payload: { organizationId: "o1", originalClaimId: "c1", replacementClaimId: "c2", reason: "x" },
+        payload: {
+          organizationId: "o1",
+          originalClaimId: "c1",
+          replacementClaimId: "c2",
+          reason: "x",
+        },
       },
       store,
     );

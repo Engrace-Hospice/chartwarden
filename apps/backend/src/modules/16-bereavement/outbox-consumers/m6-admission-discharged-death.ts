@@ -59,7 +59,11 @@ export interface DischargeDeathSecondaryDeps {
   readonly resolveAdmission: AdmissionAnchorResolver;
 }
 
-function factsOf(payload: unknown): { admissionId: AdmissionId; reason: string; dischargeDate: string } {
+function factsOf(payload: unknown): {
+  admissionId: AdmissionId;
+  reason: string;
+  dischargeDate: string;
+} {
   const p = (payload ?? {}) as Record<string, unknown>;
   const read = (key: string): string => {
     const value = p[key];

@@ -42,7 +42,9 @@ function factsOf(payload: unknown): {
   const readStr = (key: string): string => {
     const value = p[key];
     if (typeof value !== "string" || value.length === 0) {
-      throw new Error(`${M17_EVV_LATE_CHECK_RESOLVED_CONSUMER.consumerName}: payload has no ${key}`);
+      throw new Error(
+        `${M17_EVV_LATE_CHECK_RESOLVED_CONSUMER.consumerName}: payload has no ${key}`,
+      );
     }
     return value;
   };

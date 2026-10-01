@@ -1,6 +1,6 @@
 # M23 claim-assembly seams (#250 / #251)
 
-> F-119 and F-121–F-128: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, and M25's 835 pipeline scoping. Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
+> F-119, F-121–F-128, F-210 and F-213: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, M25's 835 pipeline scoping, and the tenant-entered hospice rate table (F-210). Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
 
 **#250's own scoping investigation was itself checked rather than trusted, and it was wrong about M25
 and half-wrong about M23 (F-119).** A first-pass agent read `boot-assembly.ts`'s header and #250's issue
@@ -176,12 +176,11 @@ not employed/paid by the hospice) and GW (service unrelated to the terminal diag
 (`level_of_care`, `place_of_service_q_codes`) — the same scale of fix, not the "no table exists" scale of
 the CMS rate-table gap below. The constant is exported from `@wardenx/billing` (`CMS_HOSPICE_MODIFIER_
 VALUE_SET`) so the rule and the M23 adapter share one literal rather than each carrying its own copy.
-**`icd10Billable` is honestly `{}`, traced rather than assumed**: `icd10_sequencing` is the only reader of
-that map, over `ctx.claim.icd10Sequence` — and `claim-assembly.ts`'s own line-assembly hardcodes
-`icd10Sequence: []` on every claim it assembles today (no seam anywhere populates a diagnosis sequence at
-assembly time; a separate, real M23-side gap this pass did not create and does not fix, reported here
-rather than silently worked around). With no diagnosis code ever on the claim to ask about, there is
-nothing to bulk-resolve. Net effect on `POST /claims/assemble` reachability: none, stated precisely —
+**`icd10Billable` was honestly `{}` AT F-124 time (superseded by F-209 below), traced rather than
+assumed**: `icd10_sequencing` is the only reader of that map, over `ctx.claim.icd10Sequence` — and
+`claim-assembly.ts`'s own line-assembly then hardcoded `icd10Sequence: []` on every claim it assembled (no
+seam populated a diagnosis sequence at assembly time; reported here rather than silently worked around, and
+fixed by F-209). With no diagnosis code on the claim to ask about, there was nothing to bulk-resolve. Net effect on `POST /claims/assemble` reachability: none, stated precisely —
 `terminology` sits later in call order than the still-unbound `referenceData.hippsRateTable`, so the live
 wall is unmoved; real, individually-verified progress on a fourth M23 seam this pass (patientPayer/M6/M8/
 M18/terminology is now 10 of the 11 named ports), not a further unblock. Proven by
@@ -189,7 +188,7 @@ M18/terminology is now 10 of the 11 named ports), not a further unblock. Proven 
 org's own tenant extension (`value_set_tenant_extension`, seeded directly since hcpcs has no Phase-1
 concept table and so no code on it could ever pass `addTenantExtension`'s own add-time validation — a
 separate, real limit on who can extend an hcpcs-keyed set, reported and not fixed here) is included for
-that org and NOT for a sibling org, and `icd10Billable` comes back empty.
+that org and NOT for a sibling org, and (at F-124 time) `icd10Billable` came back empty.
 
 **`mdm.resolveClinicalParticipants` was recorded as one "genuinely unbuilt" verdict, and it was two
 independent facts with opposite answers (F-127, #251).** Physician IDENTITY is real, bound the M6/M8/M18/
@@ -283,3 +282,201 @@ RLS — this module's migrations already grant and policy the six tables the pip
 fix makes the file's own claim true rather than finding a defect it happened to have been hiding. Proven
 live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live suite, all 38
 `arch:fitness` gates, `db:migrate` + `db:provision-roles` + `check:boot:platform`.
+
+**`icd10Sequence: []` was hardcoded on every assembled claim, so `icd10_sequencing` could never pass and
+`icd10Billable` resolved to `{}` (F-209, #251).** The F-124 paragraph above traced this and left it: no seam
+anywhere produced a claim's diagnosis sequence. The owner is M7 (`problem`: `kind` terminal/related/
+unrelated, nullable `icd10_code`, `status`, `onset_at`/`resolved_at`), and M23 may not import it (manifest
+`dependsOn` is `[1,6,8,22,38,40]`). Bound the F-121/F-122 way:
+`claimDiagnosesForOrg(db, orgId, patientId, {from,to})` (`07-care-plan/seams/drizzle-store.ts`, exported
+through `seams/index.ts` and the module barrel) is org-explicit and patient-keyed — `withOrgContext` plus an
+explicit `organization_id` predicate on both `problem` and its `care_plan` — and projects code +
+relationship ONLY (never the free-text `description`). M23 declares a local structural port
+(`M7ClaimDiagnosesReader`), an optional `ports.m7ClaimDiagnoses` on `buildM23BootAssemblyService` (absent =>
+`buildM23BootDiagnosesSeam` returns a fail-closed `SEAM_UNBOUND` stub, NEVER an empty sequence — an unbound
+read must not masquerade as "no diagnoses"), and `index.ts` injects it beside `m6ClaimRange`. `diagnoses`
+joins `ClaimAssemblySeams`.
+
+*Selection (documented approximation).* `status = 'active'`, non-blank `icd10_code`, overlapping the service
+range (`onset_at` null or before the END of `to`; `resolved_at` null or after the START of `from`). `problem`
+keeps NO status history, so a problem since flipped to `resolved`/`inactive` is excluded even if it was
+active during the range — the read never fabricates a past status; an as-of-exact read needs a history
+table (out of scope). Ordered terminal, related, unrelated, then `created_at`, `id`; positions 1..12 (the
+X12 ceiling); a repeated code keeps its highest-ranked occurrence. Multiple `terminal` problems are NOT
+collapsed here: the sequence is passed through and the `icd10_sequencing` rule reports "a second terminal
+diagnosis" — a data defect the biller must see, not one the seam should hide.
+
+*Wiring in `claim-assembly.ts`.* The sequence is read BEFORE `terminology.resolveForClaim`, whose optional
+third parameter now carries the codes; the same sequence is the ctx `icd10Sequence`. Line pointer policy
+(deliberately simple): every line points at the TERMINAL position(s) only (hospice per-diem lines bill the
+terminal illness; related/unrelated conditions are claim-level context); no terminal => no pointer. The
+sequence is NOT persisted to a claim column (none exists; out of scope) — it is re-read at each
+(re)validation from M7's current state.
+
+*`icd10Billable`.* `buildM23TerminologyAdapter` now resolves the asked codes through M38's bulk
+`lookupBatch("icd10cm", codes, asOf)`: `true` iff the concept exists, is `active`, and
+`properties.isBillableLeaf === true`; unknown, deprecated/retired-at-the-service-date, or non-leaf header
+codes are `false`. As-of is the claim's service-from, so a since-retired code still resolves at its service
+date. No codes => no M38 round trip (`{}`).
+
+*Behaviour change to expect.* Claims with real, billable diagnoses can now PASS `icd10_sequencing`; claims
+whose patient has no active coded problem in the window still fail it ("no ICD-10 diagnosis sequence"),
+now for a true reason. The end-to-end `POST /claims/assemble` wall is unmoved (`hippsRateTable`, earlier in
+call order). Proven by `m23-claim-assembly-seams.live.test.ts` on the real NOBYPASSRLS `wardenx_app` role:
+ordering, terminal first, resolved/inactive/null/blank-code exclusion, range overlap edges, the 12 cap,
+cross-org and cross-patient isolation, and M38 billability (leaf/non-leaf/retired/unknown/as-of) over real
+`concept_icd10cm` rows; unit coverage in `assembly.test.ts` and `diagnoses-seam.test.ts`.
+
+**The CMS rate-table wall is removed by CODE + TENANT DATA, not by a bundled CMS file (F-210).** Every earlier
+paragraph above that calls `referenceData.hippsRateTable`/`chcHourlyRateCents` "genuine new infrastructure" or the
+live `SEAM_UNBOUND` wall is point-in-time and now superseded: the decision is that the per-diem rates are
+**tenant-entered** (a bundled file would be a financial input that silently goes stale each October). Migration
+`0279_m23_hospice_rate_table.sql` adds the M23-owned, org-scoped (RLS enabled + FORCED), effective-dated,
+**append-only** `hospice_rate_table`: one row is one *version* of one provider entity's rates over
+`[effective_from, effective_to]` — exactly the six numbers the calculators read, all PRE-wage-index whole cents
+(`rhc_days_1_60`, `rhc_days_61_plus`, `chc_per_diem`, `irc`, `gip`, plus `chc_hourly_rate_cents` for the SIA add-on;
+no invented fields — the quality-reporting reduction and labor share are NOT modelled because no calculator reads
+them). A correction **supersedes** a row (`superseded_at`/`superseded_by_id`, the only app-updatable columns, by
+column-level GRANT plus a guard trigger; the app role can neither edit a rate nor delete a row; only the
+destruction role deletes, for org erasure). A btree_gist `EXCLUDE` constraint makes two *live* versions for one
+provider entity with overlapping dates impossible at the database, so the service's overlap pre-check (a 409 that
+names the clashing version) is a courtesy over a race-safe backstop. CHECKs guard the hand-keyed money: positive
+whole cents inside a plausibility band that catches dollars-keyed-as-cents (`215` for `$215.00`), RHC day 1-60
+>= day 61+ (ADR-0001), CHC hourly x 24 within 24 cents of the CHC per-diem, and the window inside its federal
+fiscal year (an omitted `effectiveTo` defaults to Sep 30, so a rate set never silently rolls into the next year).
+API: `GET/POST /api/v1/billing/rate-tables`, `GET .../effective?providerEntityId&onDate`, `GET .../:id`,
+`POST .../:id/supersede`, gated by the new `billing.rate_table.read` / `billing.rate_table.admin` keys
+(`provider_entity_billing_scope`; the migration and the catalog sync grant them to `administrator`/`org_admin`
+only, deliberately), AI-block + `Idempotency-Key` on writes, audit rows written by the M4 write trigger. TypeBox
+`Value.Convert` **truncates** a fractional number into an `Integer` field (215.5 became 215), so the route rejects a
+fractional `*Cents` on the raw body first. The binding needed no injected port (the table is M23's own):
+`buildM23ReferenceDataAdapter(db)` reads the live version covering the claim's **service-from** date through the
+org-explicit `hospiceRateTableEffectiveForOrg` (own `withOrgContext`, the F-121 pattern), which required widening
+the two port methods with a `RateLookupScope { orgId, providerEntityId, serviceFrom }` (the CMS-file design keyed on
+MAC + fiscal year only, which cannot address a tenant table). No covering version fails closed with
+`RATE_TABLE_MISSING` (422) naming the date, the provider entity, and the endpoint to enter rates — never
+`SEAM_UNBOUND`, never a guess. The CHC hourly is wage-adjusted with the same factor the per-diems get.
+
+**What this does NOT unblock, checked against the code (not assumed).** `POST /claims/assemble` no longer stops at
+`SEAM_UNBOUND`, and with a rate table + sequestration policy + wage-index row the live suite proves the call order
+moves past `hippsRateTable`/`activeSequestrationPolicy` (to the next stub only where a port is not injected). It
+can still be refused by DATA, each with a typed 4xx: `WAGE_INDEX_UNAVAILABLE` (`wage_index_factor` is
+platform-shared and has **no loader** — only the five non-authoritative migration-0080 placeholder CCNs, FY
+starting 2026, exist; a real provider CCN will not resolve — this is now the larger practical wall),
+`RATE_TABLE_MISSING`, `SEQUESTRATION_POLICY_UNAVAILABLE`, and the clinical preconditions. `placeOfService` is not a
+wall (null falls back to Q5009 "place N.O.S."), but the earlier claim that no producer exists is stale: M24's
+follow-up #2 built one (`PatientAddressReader.residenceAt`, `facility.kind`, migration 0183) that M23 does not use
+yet, so real claims carry the imprecise Q5009. Two pre-existing payment-math gaps from `audit/AUDIT_M23.md` M23-F02
+are untouched and matter once real rates flow: the wage index is applied to the **whole** per-diem (CMS applies it
+to the labor share only), and CHC is priced as per-diem days. Tenant-entered rates mean a wrong entry prices claims
+wrong; the guards above catch order-of-magnitude and internal-consistency slips, not a plausible-but-wrong number.
+A rate change never reprices an already-assembled claim (lines and `hipps_calculation.segments` snapshot the
+per-diem); it does affect a DRAFT that is re-assembled afterwards. Proven live: `m23-rate-table.live.test.ts` (real
+NOBYPASSRLS role, cross-tenant, overlap incl. the EXCLUDE backstop, append-only, lookup boundaries, adapter),
+`m23-claim-assembly-seams.live.test.ts` (wall now `RATE_TABLE_MISSING`, and moves past it with data), and the route
+smoke `m23-rate-table-routes.test.ts`.
+
+**The wage-index wall is removed by a TENANT-ENTERED, org-scoped value, and the payment math is corrected to CMS's labor-share and hourly-CHC rules (F-211, #252, audit M23-F02).** After F-210 `POST /claims/assemble` stopped at `WAGE_INDEX_UNAVAILABLE`: `wage_index_factor` is platform-shared (D12: no `organization_id`, `wardenx_app` SELECT-only), has no loader, and holds only the five migration-0080 placeholder CCNs. Migration `0280_m23_wage_index_labor_share.sql` adds (1) the org-scoped, append-only `tenant_wage_index` (FORCEd RLS, superseded-columns-only UPDATE grant + guard trigger, M4 audit trigger, destruction-role erase, one LIVE row per (org, CCN, fiscal year) by partial unique index, `numeric(6,4)` factor CHECKed 0.5..2.5, required `source_reference`); (2) `wage_index_factor.is_authoritative` (default true; the five 0080 rows flipped to false); (3) four nullable `labor_share_*` `numeric(5,4)` columns on `hospice_rate_table` (band 0.30..0.90, all-or-none, frozen by the guard). **Decision, stated because the task preferred reuse: a tenant write path into the shared `wage_index_factor` was rejected** — it would let one tenant's hand-keyed value silently reprice every tenant, contradicting the table's own platform-read-only design; the entry surface is a separate org-scoped table instead. API `GET/POST /api/v1/billing/wage-indexes` (+ `/effective`, `/:id`, `/:id/supersede`), keys `billing.wage_index.read/admin` (admin roles only), AI-block + `Idempotency-Key`, a non-string `factorDecimal` rejected on the raw body (`Value.Convert` would coerce a JSON number). `wageIndexForCcn(ccn, fy, orgId)` resolves the tenant's live row, then a platform row **only if authoritative**, else null -> `WAGE_INDEX_UNAVAILABLE` naming the endpoint; **a placeholder never prices a claim** (behaviour change: the dev CCNs 010001/050002/380001/450003/999999 no longer assemble without a tenant entry). Pure rules: `packages/billing/src/wage-index`.
+
+**Payment math (M23-F02 b and d), CMS rules relied on.** (b) The wage index adjusts only the LABOR SHARE: `adjusted = base x (labor x WI + (1 - labor))`, rounded half-up to whole cents once (`applyWageIndexToLaborShare`; ADR-0016 D1 states the formula). CMS publishes a labor share per level of care per fiscal year and they differ; **no repository document states a value**, so the four shares are tenant-entered with the rate set (a wrong entry prices wrong, as with the rates; the band catches percent-keyed and order-of-magnitude slips only). Rate versions entered under 0279 have NULL shares and **fail closed** `RATE_TABLE_LABOR_SHARE_MISSING` until superseded with shares. Hand check: RHC 20,000 at WI 0.9234, labor 0.66 -> 18,989 (the old whole-rate multiply gave 18,468). (d) CHC is paid HOURLY (ADR-0016 D2): each CHC day = adjusted hourly rate x that day's documented hours (M6 `chcDocumentedHours`, read per day like the `level_of_care_coherence` rule), one single-day segment per CHC day, `HippsRateTable` now carries `chcHourlyRateCents` instead of `chcPerDiemCents`. The calculator throws `ChcHoursError` (-> `CHC_HOURS_UNPRICEABLE` 422) for undocumented, < 8 h, > 24 h, or non-quarter-hour days rather than guessing or silently repricing a sub-8-hour day as RHC. **Today M6 always reports `chcDocumentedHours = null`, so every CHC claim fails closed** (as the coherence rule already failed it). Still open, unchanged: M23-F02(c) the wage index is keyed by provider CCN, not the site-of-service CBSA (value codes 61/G8); 837I CHC unit reporting in 15-minute units (M23-F04); the SIA add-on's hourly rate now uses the CHC labor share. Also noticed, not changed: migration 0080 seeds `fiscal_year_starting = 2026` labelled "FY2026", but the repo convention (`hospiceFiscalYearStarting`) makes 2026 = FY2027 (Oct 2026 - Sep 2027); moot now that placeholders never price. Proven: `m23-wage-index.live.test.ts` (real NOBYPASSRLS role: cross-tenant, one-live-per-key incl. the unique-index backstop, append-only, precedence), `m23-rate-table.live.test.ts` (labor-share adapter, CHECKs, legacy-NULL fail-closed), `m23-claim-assembly-seams.live.test.ts`, route smoke `m23-wage-index-routes.test.ts`, and pure `hipps.test.ts` / `wage-index.test.ts` / `rate-table.test.ts`.
+**The sequestration-policy write path is completed, not built from scratch (F-212, #252).** Checked before writing
+anything: `POST/GET /billing/sequestration-policies` and a web screen already existed, with the
+`billing.sequestration_policy.read`/`.edit` keys registered; the issue's "nothing lets a tenant create a row" was true
+only in effect. The real defects were (1) the write service refused any `effectiveFrom <= today` (forward-only, D11),
+so a tenant could never cover a *current or past* service date, which is exactly what `POST /claims/assemble` asks
+for; (2) no supersede semantics: the app role held UPDATE on every column, so a mis-keyed percentage could only be
+"fixed" by editing history; (3) nothing prevented two rows covering one date (the lookup silently picked the newest
+start); (4) `percentage` was unconstrained text (`"20"` was accepted). Migration `0281_m23_sequestration_policy_append_only.sql`
+mirrors F-210's `hospice_rate_table`: `superseded_at`/`superseded_by_id`, a btree_gist `EXCLUDE` over LIVE rows per
+provider entity, CHECKs (percentage a decimal in [0, 2], `effective_from >= 2013-04-01`, period order; `NOT VALID`
+so legacy rows never block the migration), a column-level UPDATE GRANT narrowed to `effective_to` + the two supersede
+columns, and a guard trigger (an open period may only be CLOSED, a closed or superseded row is frozen, DELETE is the
+destruction role's alone, unchanged for org erasure). The old "one open row per (entity, start)" unique index now
+ignores superseded rows, or the commonest correction (right start, wrong percentage) could not be inserted beside
+the row it replaces. **Legacy data is repaired in the migration, not left to fail it:** the old forward-date path closed
+the predecessor's `effective_to` *on* the successor's start (a one-day inclusive overlap the new EXCLUDE would reject);
+step 1 shifts that to the day before, step 2 supersedes any older row that still overlaps a newer one (newest wins,
+as the old lookup did). Proven on a scratch DB with both patterns seeded, and the migration re-applies cleanly.
+The routes were rewritten over a new `SequestrationPolicyRouteService` (the F-210 shape; the old read/write-service
+methods and `ForwardDateSequestrationBodySchema` were removed rather than left dead): list (`includeSuperseded`),
+`/active`, `/effective?onDate`, `/:id`, `POST` (create, may be back-dated, optional `effectiveTo`) and
+`POST /:id/supersede`, on the existing keys (the spec already models them; no new key was needed), AI-block +
+`Idempotency-Key` + `provider_entity_billing_scope`. An open-ended entry starting after a live open-ended row *takes
+over* (closes it the day before: the annual-change case the old route did); any other overlap is a 409 naming the
+clashing row. `validateSequestrationPolicyEntry` (`@wardenx/billing`, pure) holds the band: 0 to 2 (the Medicare FFS
+statutory cap; 0 is legitimate for the CARES-Act moratorium 2020-05-01..2022-03-31, 1 for the Apr-Jun 2022 step-down),
+a `setReason` required for anything other than exactly 2, start not before 2013-04-01 and not more than two years
+ahead. **No silent default, deliberately:** a tenant with no row still gets `SEQUESTRATION_POLICY_UNAVAILABLE`, now
+naming the date, the provider entity, `POST /api/v1/billing/sequestration-policies` and
+`billing.sequestration_policy.edit`. The tradeoff: a default of 2% would be right for every service date after
+2022-07-01 and unblock every new tenant, but it would be wrong for 2020-05 to 2022-06 dates and would hide the
+"nobody entered the schedule" state behind plausible-looking numbers on money claims; the cost of fail-closed is one
+extra onboarding step per provider entity (an onboarding-time seed, if wanted, must be an explicit, audited row
+written by a person or a documented platform job, never a read-time fallback). Residual risks: the [0, 2] band is a
+code+DB constraint, so a future statutory change above 2% (e.g. S-PAYGO) needs a migration; an entry of exactly 2%
+with the wrong dates is plausible-but-wrong and unguarded; the web screen still constrains its date picker to
+tomorrow-or-later (`sequestration-policy.tsx`), so back-dated entry is API-only until that screen is revised.
+Permission grants: `administrator`/`org_admin` only (migration 0281 + the catalog sync), not Compliance Officer as the
+module spec table suggests. Proven live: `m23-sequestration-policy.live.test.ts` (real NOBYPASSRLS role: RLS
+isolation incl. forged org and un-contexted reads, back-dated create, the full 2013-2026 timeline lookup, overlap 409 +
+EXCLUDE backstop, takeover, supersede incl. same-start open correction, append-only GRANT/trigger, audit trail, adapter
+ignores superseded rows), `m23-claim-assembly-seams.live.test.ts`, and the route smoke `m23-sequestration-policy-routes.test.ts`.
+**`placeOfService` bound to M5 address history + M40 `facility.kind` (F-213, #252).** Verified, not assumed: the
+F-210 note above is right that a producer exists, but it is **M5's, not M24's** — `PatientAddressReader.residenceAt`
+(`05-patient/address-reader.ts`) over `patient_address` (effective-dated, `is_primary`), with `facility_id` -> M40
+`facility.kind`. Migration 0183 extended `facility_kind` to `hospital|alf|snf|nf|ipu|ltch|psych|clinic|other`, the
+taxonomy F-127 believed absent. `residenceAt` is a POINT read, though, and a claim spans a range, so F-213 added
+`PatientAddressReader.residencesBetween` (kind + facility id + effective window only, org-explicit predicate on top of
+RLS) and `40-mdm/facility-kind-reader.ts` (`facilityKindsForIds`, chases `merged_into_id` to the survivor's kind).
+M23 imports neither module (no `dependsOn` edge): `place-of-service-resolver.ts` declares structural ports injected by
+`index.ts` (`ports.placeOfService`); `resolveClinicalParticipants` gained an optional `range` argument.
+**Mapping (target `POS_BY_QCODE`, F-125):** address `home` -> Q5001; facility kind `alf` -> Q5002, `nf` -> Q5003
+(`ltc`), `snf` -> Q5004, `hospital` -> Q5005, `ipu` -> Q5006, `ltch` -> Q5007, `psych` -> Q5008. **Left null (Q5009):**
+`clinic`, `other`, address kinds `mailing`/`temporary`/`prior`, a facility address with no/unknown facility, Q5010
+(no facility kind exists for a hospice residential home). **Also null, by design:** (a) any level-of-care period in the
+range that is not routine/continuous home care — GIP/IRC are delivered in an inpatient bed the LOC period names, a
+home address says nothing about it, and M6's range read does not yet carry the LOC `facility_id`/`ipu_bed_assignment_id`
+(follow-up: extend it, as M24's `LevelOfCarePeriodReaderPort` does); (b) a range not covered end to end by primary
+address history; (c) a range spanning a move between DIFFERENT sites — one claim-level Q-code cannot be honest (splitting
+lines at the move date is the proper fix). Proven live on the real NOBYPASSRLS role in `m23-claim-assembly-seams.live.test.ts`.
+
+**F-214 (#251) — Part 2 (42 CFR Part 2) consent gate on the claim's diagnosis sequence.** F-209's
+`claimDiagnosesForOrg` did not exclude `problem.sud_related = true`, so a substance-use diagnosis code would have
+been put on the Medicare claim (a disclosure to the MAC/CMS) with no consent check. **Fix, at the point the rows are
+read (M7's org-explicit seam function — there is no ungated variant for a future caller to reach):** a `sud_related`
+code is included only when M39's `ConsentEvaluator.evaluate` (resolved opaquely via `getSeam`, no `@wardenx/consent`
+edge — the `part2ReleaseAllowed`/M22 F-197 `resolveSudConsentPresent` shape) says a `42_cfr_part_2_release` is
+effective, `active`, unexpired, unrevoked, has at least one active named recipient and the patient is not deceased
+(post-death scope) **as of now**; otherwise the code is WITHHELD. The pure rule set is
+`07-care-plan/seams/claim-diagnoses-gate.ts` (`applyPart2ClaimGate`). Fail-closed on an unbound seam, a throw, or any
+non-`allowed` verdict. The consent round-trip is skipped when no SUD-flagged code is in play.
+*As of when:* assembly time (now), NOT the service dates — the disclosure happens when the claim is assembled/sent,
+and the architecture's M39 cascade says a revoked Part 2 release blocks FUTURE disclosures (past ones are audited), so
+a release revoked last week must withhold a claim assembled today even for March service dates, and a release that
+only became effective after the service dates still covers today's disclosure.
+*Shape:* `claimDiagnosesForOrg` now returns `{ sequence, withheldForConsentCount, terminalWithheldForConsent }`
+(count + flag only — never a code or description). Withholding happens BEFORE ranking: positions are re-ranked
+contiguously, the 12-position cap applies after it, a same-code non-SUD twin cannot smuggle a withheld code out, and a
+withheld terminal is NOT replaced (the next diagnosis keeps its own `related`/`unrelated` relationship, so no
+promotion and the terminal-only line pointers are empty). M23's local structural port (`M7ClaimDiagnosesReader`)
+and `DiagnosisSequenceReader` carry the result; `ValidationContext.claim` gained the REQUIRED
+`diagnosesWithheldForConsent` / `terminalDiagnosisWithheldForConsent` (required so a context producer cannot silently
+omit them). `icd10_sequencing` (error, regulatory) now FAILS — it holds the claim — whenever any diagnosis was
+withheld, even if the remaining sequence is otherwise valid, never skips on it (not even with M38 unbound), names a
+withheld terminal first, and its message/`observed` values carry counts only.
+*Audit of the rest of M23 (grep):* the diagnoses seam is the ONLY place M23 reads problem/ICD/SUD data. No claim column
+stores an ICD code (`claim_line.icd_pointer_positions` are integers), NOE/NOTR drafts and the 837 build contain no
+diagnosis, and M23 reads no `sud_related` flag anywhere. The one thing NOT covered: `claim-validation-service`'s
+`ValidationContextPort` (re-validation) is still unbound in production and would need the same flag when bound.
+*Semantics chosen and what the repo does NOT define (compliance/counsel must confirm):* M39 has no payer/MAC recipient
+kind (`consent_recipient_kind` = physician/facility/pharmacy/irb/family/attorney/employer/researcher/free_text) and no
+structured payment/TPO purpose (`consent_record_recipient.purpose_code` is an unused free M38 reference,
+`purpose_of_disclosure` free text; `StoredRecipient` does not even carry it), so "release names the MAC for payment"
+cannot be checked. The gate therefore requires a valid patient-level Part 2 release (the same fact M22's F-197 mint gate
+and M7's clinician gate use), not one that names CMS/the MAC or payment. Post-death: the evaluator's D13 rule withholds
+on a deceased patient unless the release `survives_death`, which matters for final claims. Proven live on the real
+NOBYPASSRLS role with real `consent_record`/`consent_record_recipient` rows in `m23-claim-assembly-seams.live.test.ts`
+(active -> included; none/expired/revoked/wrong type/no active recipient/other patient/other org -> omitted + flagged;
+withheld terminal fails `icd10_sequencing`; evaluator throw fails closed), 5 mutations killed (drop gate, ignore
+revocation, ignore expiry, fail open on error, accept `hipaa_release`); pure gate + rule tests in
+`f214-claim-diagnoses-part2-gate.test.ts` and `packages/billing/__tests__/rules.test.ts`.

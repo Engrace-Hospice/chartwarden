@@ -8,10 +8,19 @@
 // (or a sibling M23 table) already owns and already has a repository for. The FIVE M6 seams below (F-121,
 // #251) needed exactly that owning-module read-surface addition — `claimAssemblyRangeContextForOrg`
 // (`06-admission/seams/drizzle-store.ts`) — and this file is the adapter over it, not the read itself.
-import { CMS_HOSPICE_MODIFIER_VALUE_SET, repositories } from "@wardenx/billing";
+import {
+  CMS_HOSPICE_MODIFIER_VALUE_SET,
+  applyWageIndexToLaborShare,
+  hasLaborShares,
+  repositories,
+  toHippsRateTable,
+} from "@wardenx/billing";
 import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
+import { WardenXError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
+import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
+import { resolveWageIndexForOrg } from "../routes/wage-index-service";
 import type { ProviderCcnPort } from "../routes/write-service";
 import type {
   AdmissionContextReader,
@@ -19,6 +28,7 @@ import type {
   BillingReferenceDataReader,
   CertificationReader,
   DateRange,
+  DiagnosisSequenceReader,
   ElectionPeriodReader,
   EvvComplianceReader,
   FaceToFaceReader,
@@ -27,9 +37,11 @@ import type {
   MedicarePrimaryResolution,
   PatientPayerReader,
   ProviderEntityDirectoryEntry,
+  RateLookupScope,
   SignedEncountersReader,
   TerminologyProvider,
 } from "./claim-assembly";
+import { type PlaceOfServicePorts, resolvePlaceOfService } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;
 
@@ -278,59 +290,96 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// 4 & 5. referenceData.{wageIndexForCcn,activeSequestrationPolicy} — real, over M23's own tables.
+// 4 & 5. referenceData.{wageIndexForCcn,activeSequestrationPolicy,hippsRateTable,chcHourlyRateCents} — real,
+//        over M23's own tables (the last two are the TENANT-ENTERED `hospice_rate_table`, F-210).
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
  * `BillingReferenceDataReader` was documented as a single unit of "genuine new infrastructure" (#250's
  * scoping). Checked per method rather than accepted as a bundle (the F-099/F-101 lesson): two of its four
- * methods DO have a real, already-migrated, already-repositoried backing table and are bound here for
- * real; the other two (`hippsRateTable`, `chcHourlyRateCents`) stay `unbound()` in `boot-assembly.ts` —
- * `packages/billing/src/hipps/calculator.ts`'s own `HippsRateTable` doc carries a `TODO(CMS-fixture)`
- * admitting no CMS per-diem rate file has ever been loaded anywhere in this repository, and no table
- * exists to load one into. That absence is real and is NOT papered over by this file.
+ * methods had a real, already-migrated, already-repositoried backing table (#250); the other two
+ * (`hippsRateTable`, `chcHourlyRateCents`) had none — no CMS per-diem rate file has ever been loaded anywhere in
+ * this repository — and were `SEAM_UNBOUND` until F-210 decided rates are TENANT-ENTERED (no bundled CMS data file
+ * to go stale): a billing administrator keys each fiscal year's national base per-diems per provider entity through
+ * `POST /billing/rate-tables`, into the M23-owned, effective-dated, append-only `hospice_rate_table`. Both methods
+ * now read the version covering the claim's service-from date, org-explicitly (`hospiceRateTableEffectiveForOrg`),
+ * and fail CLOSED with the typed, actionable `RATE_TABLE_MISSING` (422) — never a guess, never `SEAM_UNBOUND` —
+ * when no table covers the date. The CHC hourly rate is wage-adjusted here with the SAME factor the per-diems get.
  *
- * `wageIndexForCcn` reads `wage_index_factor` — a real, migrated, PLATFORM-SHARED table
- * (`WageIndexFactorRepository.findByCcnAndFiscalYear`) whose own doc comment already names the exact
- * failure mode this binds to: "Returns `null` when CMS has not loaded a factor for that CCN/year (the
- * calculator then fails closed / surfaces a validation error)". The real annual CMS wage-index file has
- * never been loaded by the platform loader in any environment, BUT the table is not actually empty:
- * migration `0080_billing_m23_seed.sql` pre-seeds 5 REPRESENTATIVE placeholder rows for FY2026 (CCNs
- * 010001/050002/380001/450003/999999), its own `load_source_ref` explicitly marked "TODO(cms-fixture) …
- * not authoritative" — checked live rather than assumed empty (`m23-claim-assembly-seams.live.test.ts`
- * originally asserted null for CCN 999999 and got back that exact placeholder row instead). So this
- * resolves a REAL (if non-authoritative) factor for those 5 CCN/FY2026 pairs today, and `null` — the
- * documented, correctly-typed `WAGE_INDEX_UNAVAILABLE` (422) `claim-assembly.ts` already throws for it,
- * line ~464-470, not the generic `SEAM_UNBOUND` (503) infrastructure-absent signal — for every other
- * CCN/year. Binding the real table is what makes loading the actual annual CMS file turn assembly on
- * broadly, rather than requiring a second code change alongside that data load.
+ * `wageIndexForCcn` (F-211) resolves, org-explicitly (`resolveWageIndexForOrg`, pure precedence
+ * `resolveWageIndex`): the tenant's own live `tenant_wage_index` row (a billing administrator keys the CMS
+ * value through `POST /billing/wage-indexes`; ORG-SCOPED because the platform-shared `wage_index_factor`
+ * must never take a tenant write), else a platform `wage_index_factor` row ONLY when `is_authoritative`
+ * (nothing loads real CMS rows today). The 5 migration-0080 placeholder rows are `is_authoritative = false`
+ * and never price a claim. `null` — the documented, correctly-typed `WAGE_INDEX_UNAVAILABLE` (422)
+ * `claim-assembly.ts` throws for it, not the generic `SEAM_UNBOUND` (503) — when neither exists.
+ *
+ * The labor share (F-211, audit M23-F02): the wage index adjusts ONLY the labor share of each rate
+ * (`applyWageIndexToLaborShare`); the four labor shares are tenant-entered on the rate table, and a rate
+ * version without them (entered before migration 0280) fails closed `RATE_TABLE_LABOR_SHARE_MISSING`.
  *
  * `activeSequestrationPolicy` reads `sequestration_policy` — ORG-SCOPED, admin-settable through the real
  * `sequestration-policy.routes.ts` surface (an operational fact, never CMS-loaded), via
  * `SequestrationPolicyRepository.findEffectiveOn`.
  */
 // Same boot-time-closure reasoning as the MDM adapter above: no ambient/`tx` handle reaches an object
-// built once at boot, so each read opens its own explicit `withOrgContext`. `wage_index_factor`'s RLS is
-// `SELECT USING (true)` (platform-shared, no org predicate) — its own repository header nonetheless says
-// "the service still runs them under withOrgContext for uniformity", which this preserves; the org id used
-// there is a fixed platform-reads sentinel since the read is not actually org-scoped.
-const PLATFORM_READ_ORG = "00000000-0000-0000-0000-000000000000";
+// built once at boot, so each read opens its own explicit `withOrgContext`.
 
-export function buildM23ReferenceDataAdapter(
-  db: BillingDb,
-  unboundHipps: BillingReferenceDataReader["hippsRateTable"],
-  unboundChc: BillingReferenceDataReader["chcHourlyRateCents"],
-): BillingReferenceDataReader {
+/** F-210 — the fail-closed error when no tenant-entered rate table covers the claim's service date. */
+function rateTableMissing(scope: RateLookupScope): WardenXError {
+  return new WardenXError(
+    "RATE_TABLE_MISSING",
+    `no hospice rate table covers service date ${scope.serviceFrom} for provider entity ${scope.providerEntityId}; enter the CMS hospice per-diem rates for that fiscal year (POST /api/v1/billing/rate-tables, permission billing.rate_table.admin) and retry`,
+    422,
+  );
+}
+
+/** F-211 — fail closed on a rate version entered before migration 0280 (no labor shares); never guess a share. */
+function laborSharesMissing(rateTableId: string): WardenXError {
+  return new WardenXError(
+    "RATE_TABLE_LABOR_SHARE_MISSING",
+    `hospice rate table ${rateTableId} carries no labor shares (entered before they were required); the wage index adjusts only the labor share of each rate. Supersede it with the CMS-published labor shares (POST /api/v1/billing/rate-tables/:id/supersede) and retry`,
+    422,
+  );
+}
+
+export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDataReader {
   return {
-    hippsRateTable: unboundHipps,
-    chcHourlyRateCents: unboundChc,
-    async wageIndexForCcn(ccn, fiscalYearStarting) {
-      return withOrgContext(db, { organizationId: PLATFORM_READ_ORG, userId: "" }, async (tx) => {
-        const wageIndexFactors = new repositories.WageIndexFactorRepository(tx);
-        const row = await wageIndexFactors.findByCcnAndFiscalYear(ccn, fiscalYearStarting);
-        if (!row) return null;
-        return { factorDecimal: row.factorDecimal, cbsaCode: row.cbsaCode };
-      });
+    async hippsRateTable(_macJurisdiction, _fiscalYearStarting, scope) {
+      const row = await hospiceRateTableEffectiveForOrg(
+        db,
+        scope.orgId,
+        scope.providerEntityId,
+        scope.serviceFrom,
+      );
+      if (!row) throw rateTableMissing(scope);
+      if (!hasLaborShares(row)) throw laborSharesMissing(row.id);
+      return toHippsRateTable(row);
+    },
+    async chcHourlyRateCents(_fiscalYearStarting, wageIndexFactorDecimal, scope) {
+      const row = await hospiceRateTableEffectiveForOrg(
+        db,
+        scope.orgId,
+        scope.providerEntityId,
+        scope.serviceFrom,
+      );
+      if (!row) throw rateTableMissing(scope);
+      if (row.laborShareChc === null) throw laborSharesMissing(row.id);
+      // The wage index adjusts the CHC hourly rate's LABOR SHARE only (F-211), like every other rate.
+      return applyWageIndexToLaborShare(
+        row.chcHourlyRateCents,
+        wageIndexFactorDecimal,
+        row.laborShareChc,
+      );
+    },
+    async wageIndexForCcn(ccn, fiscalYearStarting, orgId) {
+      // F-211: the tenant's own `tenant_wage_index` row, else a platform AUTHORITATIVE `wage_index_factor` row; a
+      // non-authoritative placeholder (migration 0080) never prices a claim, so this returns null and assembly fails
+      // closed `WAGE_INDEX_UNAVAILABLE`.
+      const resolved = await resolveWageIndexForOrg(db, orgId, ccn, fiscalYearStarting);
+      return resolved
+        ? { factorDecimal: resolved.factorDecimal, cbsaCode: resolved.cbsaCode }
+        : null;
     },
     async activeSequestrationPolicy(orgId, providerEntityId, serviceFrom) {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
@@ -512,6 +561,17 @@ export interface M38TerminologyReader {
       readonly orgId?: string;
     },
   ): AsyncIterable<{ readonly code: string }>;
+  /** F-209 — the bulk ICD-10-CM concept lookup (`TerminologyProvider.lookupBatch`), as-of a date. */
+  lookupBatch(
+    system: "icd10cm",
+    codes: readonly string[],
+    asOf?: Date,
+  ): Promise<
+    ReadonlyMap<
+      string,
+      { readonly status: string; readonly properties: { readonly isBillableLeaf?: boolean } }
+    >
+  >;
 }
 
 /**
@@ -538,20 +598,20 @@ export interface M38TerminologyReader {
  * hospice modifiers (GV, GW) are now curated in `@wardenx/terminology`'s seed alongside the platform's
  * other small, fully-enumerated reference sets (`level_of_care`, `place_of_service_q_codes`).
  *
- * `icd10Billable` is honestly `{}`. Traced rather than assumed: `icd10_sequencing` is the only reader of
- * this map, over `ctx.claim.icd10Sequence` — and `claim-assembly.ts`'s own line-assembly hardcodes
- * `icd10Sequence: []` on every claim it assembles today (no seam anywhere populates a diagnosis sequence
- * at assembly time; a separate, real M23-side gap this pass did not create and did not fix — it is not
- * part of #251's M38 item). With no diagnosis code ever on the claim to ask about, there is nothing to
- * bulk-resolve; `{}` is what a per-code map looks like with zero codes asked about, not a placeholder for
- * unknown data.
+ * `icd10Billable` (F-209, #251) is now REAL. It used to be an honest `{}` because `claim-assembly.ts` hardcoded
+ * `icd10Sequence: []` (no diagnosis ever reached this call); assembly now reads M7's diagnosis sequence first
+ * and passes its codes as `icd10Codes`. Each is resolved through M38's bulk `lookupBatch("icd10cm", codes,
+ * asOf)` — as-of the claim's service-from, so a since-retired code still resolves at its service date — and is
+ * `true` iff the concept exists, is `active`, and `properties.isBillableLeaf === true` (a truncated
+ * non-leaf, a deprecated/retired-at-that-date, or an unknown code is `false`; a code never asked about is
+ * simply absent, which `icd10_sequencing` also treats as not billable). No codes ⇒ no M38 round trip.
  */
 export function buildM23TerminologyAdapter(
   resolve: () => M38TerminologyReader = () =>
     getSeam("TerminologyProvider") as M38TerminologyReader,
 ): TerminologyProvider {
   return {
-    async resolveForClaim(orgId, asOfDate) {
+    async resolveForClaim(orgId, asOfDate, icd10Codes = []) {
       const reader = resolve();
       const asOf = new Date(`${asOfDate}T00:00:00Z`);
       const members: string[] = [];
@@ -562,9 +622,67 @@ export function buildM23TerminologyAdapter(
       })) {
         members.push(m.code);
       }
+      const icd10Billable: Record<string, boolean> = {};
+      const distinct = [...new Set(icd10Codes)];
+      if (distinct.length > 0) {
+        const concepts = await reader.lookupBatch("icd10cm", distinct, asOf);
+        for (const code of distinct) {
+          const c = concepts.get(code);
+          icd10Billable[code] =
+            c !== undefined && c.status === "active" && c.properties.isBillableLeaf === true;
+        }
+      }
       return {
         valueSetMembership: { [CMS_HOSPICE_MODIFIER_VALUE_SET]: members },
-        icd10Billable: {},
+        icd10Billable,
+      };
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// 9b. diagnoses.forRange (M7) — REAL (F-209, #251).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The exact shape of M7's `claimDiagnosesForOrg` (`07-care-plan/seams/drizzle-store.ts`), duplicated locally
+ * per the {@link M5CoverageSeam} no-package-import posture — M7 is NOT in M23's manifest `dependsOn`
+ * ([1, 6, 8, 22, 38, 40]), so the composition root injects the org-explicit function through this port.
+ */
+export interface M7ClaimDiagnosesReader {
+  forRange(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<{
+    readonly sequence: ReadonlyArray<{
+      readonly position: number;
+      readonly code: string;
+      readonly relationship: "terminal" | "related" | "unrelated";
+    }>;
+    /** F-214 (#251) — Part 2 codes M7 withheld for want of consent: a COUNT, never the codes. */
+    readonly withheldForConsentCount: number;
+    readonly terminalWithheldForConsent: boolean;
+  }>;
+}
+
+/**
+ * F-209 (#251) — `diagnoses.forRange`. M7 already projects to exactly the rule context's `Icd10Pointer`
+ * shape (position, code, relationship — never the free-text description), so this is a pass-through port
+ * that only re-freezes the rows into M23's own vocabulary.
+ */
+export function buildM23DiagnosesAdapter(reader: M7ClaimDiagnosesReader): DiagnosisSequenceReader {
+  return {
+    async forRange(orgId, patientId, range) {
+      const res = await reader.forRange(orgId, patientId, range);
+      return {
+        sequence: res.sequence.map((r) => ({
+          position: r.position,
+          code: r.code,
+          relationship: r.relationship,
+        })),
+        withheldForConsentCount: res.withheldForConsentCount,
+        terminalWithheldForConsent: res.terminalWithheldForConsent,
       };
     },
   };
@@ -637,25 +755,20 @@ async function toPhysicianResolution(
  * unbuilt" verdict. Physician IDENTITY is real: `admission.hospice_physician_id` /
  * (a SIGNED) `election_statement.attending_physician_id` are both M40 physician ids the M6 range read now
  * carries (extended alongside the F-121 shapes, over the SAME `m6ClaimRange` port — no new
- * `boot-assembly.ts` port needed), resolved through M40's real `resolvePhysician`. `placeOfService` stays
- * honestly `null` — checked against the whole schema, not assumed: no table anywhere (not `patient_address`,
- * whose `kind` enum distinguishes only `home`/`facility`/`mailing`/`temporary`/`prior` with no facility-type
- * taxonomy beneath `facility`; not M40's `CanonicalFacilityFields`, which carries `ccn`/`npi`/
- * `sendingFacilityCodes` and no site-type field) records which of home/ALF/SNF/hospital/IPU a patient is
- * currently receiving care in. That is genuine new infrastructure — a producer decision comparable to
- * `referenceData.hippsRateTable`'s CMS-fixture gap, not a wiring task — and is NOT invented here; guessing
- * a heuristic off `patient_address.kind` (`facility` could mean any of five different Q-code sites) would
- * be exactly the "guessed provider entity is a mis-stated cost report" mistake F-102 already named for a
- * different module. `place_of_service_consistency` (§4.5) therefore fails, honestly, for every claim until
- * a real producer exists — the rule's own `documentedPos === null` branch is the designed path for exactly
- * this, not a new blocker.
+ * `boot-assembly.ts` port needed), resolved through M40's real `resolvePhysician`. `placeOfService` was
+ * `null` here through F-127 (which wrongly concluded no producer existed); F-213 (#252) binds it over
+ * M5's effective-dated address history + M40 `facility.kind` (migration 0183) - the mapping, the
+ * RHC/CHC-only rule and every reason it still returns `null` live in `place-of-service-resolver.ts`. With
+ * the `placeOfServicePorts` argument absent it stays `null` and the line Q-code falls to Q5009.
  */
 export function buildM23ClinicalParticipantsAdapter(
   m6ClaimRange: M6ClaimRangeReader,
   resolveM40: () => M40PhysicianReader = () => getSeam("MdmEntityProvider") as M40PhysicianReader,
+  /** F-213 (#252) — the M5 residence + M40 facility-kind ports. Absent, `placeOfService` stays `null`. */
+  placeOfServicePorts?: PlaceOfServicePorts,
 ): Pick<MdmEntityProvider, "resolveClinicalParticipants"> {
   return {
-    async resolveClinicalParticipants(orgId, patientId, asOf) {
+    async resolveClinicalParticipants(orgId, patientId, asOf, range) {
       const ctx = await m6ClaimRange.forRange(orgId, patientId, { from: asOf, to: asOf });
       const hospicePhysicianId = ctx?.admission.hospicePhysicianId ?? null;
       const attendingPhysicianId = ctx?.electionPeriods[0]?.attendingPhysicianId ?? null;
@@ -664,7 +777,21 @@ export function buildM23ClinicalParticipantsAdapter(
         toPhysicianResolution(m40Physicians, orgId, hospicePhysicianId),
         toPhysicianResolution(m40Physicians, orgId, attendingPhysicianId),
       ]);
-      return { attending, hospicePhysician, placeOfService: null };
+      // F-213 (#252) — placeOfService from the M5 address history + M40 `facility.kind` (see
+      // `place-of-service-resolver.ts` for the mapping and every reason it returns null).
+      const claimRange = range ?? { from: asOf, to: asOf };
+      let placeOfService: string | null = null;
+      if (placeOfServicePorts) {
+        const rangeCtx = await m6ClaimRange.forRange(orgId, patientId, claimRange);
+        placeOfService = await resolvePlaceOfService(
+          placeOfServicePorts,
+          orgId,
+          patientId,
+          claimRange,
+          (rangeCtx?.levelOfCarePeriods ?? []).map((p) => p.levelOfCare),
+        );
+      }
+      return { attending, hospicePhysician, placeOfService };
     },
   };
 }

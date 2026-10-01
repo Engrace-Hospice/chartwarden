@@ -27,15 +27,18 @@ import { runWithRequestContext } from "@wardenx/tenancy";
 import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { createDbSignedUrlObjectResolver } from "../src/modules/22-documents/documents-route-service-db";
+import { createSignedUrlService } from "../src/modules/22-documents/routes/signed-url-service";
+import {
+  createDrizzleDocumentReaderStore,
+  createDrizzlePortalAccessLog,
+} from "../src/modules/22-documents/seams/drizzle-readers-store";
 import {
   createInMemoryObjectStore,
   createPortalDocumentReader,
   createSudConsentEvaluatorPortalConsentPort,
 } from "../src/modules/22-documents/seams/index";
-import { createDrizzleDocumentReaderStore } from "../src/modules/22-documents/seams/drizzle-readers-store";
-import { createSignedUrlService } from "../src/modules/22-documents/routes/signed-url-service";
+import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -160,6 +163,9 @@ describe.skipIf(!DB_URL)("F-197 (#248) — mint-time SUD-consent re-check — LI
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
+    // F-225 — the portal mint now appends a `document_access_log` row whose M4 audit trigger records the
+    // acting user (`app.user_id` = this suite's request-context user), which must be a real `user` row.
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f197@x.test')`, [MEMBERSHIP]);
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   }, 120_000);
@@ -252,6 +258,7 @@ describe.skipIf(!DB_URL)("F-197 (#248) — mint-time SUD-consent re-check — LI
         store,
         objects: noopObjects,
         consent: createSudConsentEvaluatorPortalConsentPort(),
+        accessLog: createDrizzlePortalAccessLog(handle.db),
       });
     }
 
@@ -263,7 +270,8 @@ describe.skipIf(!DB_URL)("F-197 (#248) — mint-time SUD-consent re-check — LI
         () =>
           portal().mintPortalDownloadUrl({
             documentVersionId: versionId,
-            portalSessionId: "s",
+            portalSessionId: "77777777-7777-4777-8777-777777777777",
+            portalAccountId: "88888888-8888-4888-8888-888888888888",
             patientId: PATIENT_A,
             organizationId: ORG_A,
           }),
@@ -279,7 +287,8 @@ describe.skipIf(!DB_URL)("F-197 (#248) — mint-time SUD-consent re-check — LI
         () =>
           portal().mintPortalDownloadUrl({
             documentVersionId: versionId,
-            portalSessionId: "s",
+            portalSessionId: "77777777-7777-4777-8777-777777777777",
+            portalAccountId: "88888888-8888-4888-8888-888888888888",
             patientId: PATIENT_A,
             organizationId: ORG_A,
           }),
@@ -291,7 +300,8 @@ describe.skipIf(!DB_URL)("F-197 (#248) — mint-time SUD-consent re-check — LI
         () =>
           portal().mintPortalDownloadUrl({
             documentVersionId: versionId,
-            portalSessionId: "s",
+            portalSessionId: "77777777-7777-4777-8777-777777777777",
+            portalAccountId: "88888888-8888-4888-8888-888888888888",
             patientId: PATIENT_A,
             organizationId: ORG_A,
           }),

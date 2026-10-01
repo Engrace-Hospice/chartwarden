@@ -22,6 +22,9 @@ export { type NowClock, createCarePlanReader } from "./reader";
 // TASK-002 — the FULL Drizzle-backed store (no in-memory fallback); the composition root binds it as
 // `registerCarePlanSeams({ store: createDrizzleCarePlanReaderStore(db) })` (the M8 pattern).
 export {
+  type ClaimDiagnosisRecord,
+  type ClaimDiagnosisResult,
+  claimDiagnosesForOrg,
   createDrizzleCarePlanReaderStore,
   type IdgPacketCarePlanContext,
   idgPacketCarePlanContextForOrg,

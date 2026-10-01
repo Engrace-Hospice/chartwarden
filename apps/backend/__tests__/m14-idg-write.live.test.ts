@@ -20,6 +20,8 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { siteDisplayForOrg } from "../src/bootstrap/site-display-for-org";
+import { membershipRoleKeysForOrg } from "../src/modules/03-authorization/membership-role-keys-for-org";
 import {
   type IdgWriteOutboxPort,
   createDbIdgBackend,
@@ -91,6 +93,20 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
            coordinator_membership_id, tenant_quorum_snapshot)
          VALUES ($1,$2, now(), now() + interval '2 hours', $3, $4, '{}'::jsonb) RETURNING id`,
         [org, locationOf[org], status, MEMBER],
+      )
+    ).rows[0].id as string;
+  }
+  /** Seed a user + a membership of the given status in `org`; returns the membership id. */
+  async function seedMembership(org: string, status: string): Promise<string> {
+    const userId = randomUUID();
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
+      userId,
+      `m14-${userId}@x.test`,
+    ]);
+    return (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,$3) RETURNING id`,
+        [userId, org, status],
       )
     ).rows[0].id as string;
   }
@@ -168,7 +184,17 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     outbox = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m14" }),
     };
-    svc = createDbIdgBackend(handle.db, outbox);
+    svc = createDbIdgBackend(
+      handle.db,
+      outbox,
+      {
+        // Deterministic stand-in for M2's batched name-only display seam (the addenda appendix's `authorName`).
+        displayForMemberships: async (_org, ids) =>
+          new Map(ids.map((i) => [i, { displayName: `Name-${i.slice(0, 8)}` }])),
+      },
+      // The REAL M1 site-display seam over the real wardenx_app connection (org + location NAMES for the PDF header).
+      { displayForSite: (o, ids) => siteDisplayForOrg(handle.db, o, ids) },
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -257,6 +283,17 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     });
     expect(actionable.status).toBe("open");
     expect(await eventsFor(actionable.id)).toContain("m14.decision.recorded_open");
+    // The M36 non-quorate notice's inputs ride the event only when the decision was recorded without quorum
+    // (no attendance is seeded for `m`, so this one was): the meeting's coordinator + the unmet quorum slots.
+    {
+      const { rows: ro } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.decision.recorded_open'",
+        [actionable.id],
+      );
+      expect(ro[0].payload).toMatchObject({ wasQuorate: false, coordinatorMembershipId: MEMBER });
+      expect(Array.isArray(ro[0].payload.missingDisciplines)).toBe(true);
+      expect(ro[0].payload.missingDisciplines.length).toBeGreaterThan(0);
+    }
     // A patient-less team note is recorded but carries no recorded_open event (strict payload needs a patient).
     const note = await svc.recordDecision(ORG_A, MEMBER, m, {
       patientId: null,
@@ -417,6 +454,46 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(rescheduled.status).toBe("rescheduled");
     expect(await eventsFor(r)).toContain("m14.meeting.rescheduled");
     expect(await meetingStatus(r)).toBe("rescheduled");
+  });
+
+  it("cancel / reschedule re-derive meeting_carry_forward_count in the same tx (a cancelled meeting is not counted — D8)", async () => {
+    const origin = await seedMeeting(ORG_A, "adjourned");
+    const item = (
+      await admin.query(
+        `INSERT INTO idg_action_item (organization_id, provider_entity_id, location_id, idg_meeting_id,
+            assigned_to_membership_id, title, due_date, status, meeting_carry_forward_count)
+         VALUES ($1,$2,$3,$4,$5,'t', now() - interval '3 days','open',3) RETURNING id`,
+        [ORG_A, peOf[ORG_A], locationOf[ORG_A], origin, MEMBER],
+      )
+    ).rows[0].id as string;
+    const carried = async (meetingId: string) =>
+      admin.query(
+        `INSERT INTO idg_agenda_item (organization_id, location_id, idg_meeting_id, title, kind,
+            carried_from_action_item_id, added_by_membership_id)
+         VALUES ($1,$2,$3,'Carried-forward action item','carry_forward',$4,$5)`,
+        [ORG_A, locationOf[ORG_A], meetingId, item, MEMBER],
+      );
+    const adj = await seedMeeting(ORG_A, "adjourned");
+    const toCancel = await seedMeeting(ORG_A, "scheduled");
+    const toMove = await seedMeeting(ORG_A, "scheduled");
+    for (const m of [adj, toCancel, toMove]) await carried(m);
+    const countOf = async () =>
+      (
+        await admin.query(
+          "SELECT meeting_carry_forward_count AS n FROM idg_action_item WHERE id=$1",
+          [item],
+        )
+      ).rows[0].n as number;
+    expect(await countOf()).toBe(3); // seeded stored count agrees with the 3 carry rows
+
+    await svc.cancelMeeting(ORG_A, MEMBER, toCancel, "location closed");
+    expect(await countOf()).toBe(2);
+    await svc.rescheduleMeeting(ORG_A, MEMBER, toMove, {
+      reason: "quorum unavailable",
+      newScheduledStart: new Date(Date.now() + 86400000).toISOString(),
+      newScheduledEnd: new Date(Date.now() + 90000000).toISOString(),
+    });
+    expect(await countOf()).toBe(1);
   });
 
   it("adjourn stamps last_idg_reviewed_at on each included patient's packet (GAP-020)", async () => {
@@ -630,7 +707,13 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       ["m14.review_clock.escalated", patientId],
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].payload).toMatchObject({ patientId, stage: "t_zero", severity: "critical" });
+    expect(rows[0].payload).toMatchObject({
+      patientId,
+      stage: "t_zero",
+      severity: "critical",
+      // the M36 alert's coordinator tier: the location's upcoming meeting's coordinator (`laterUnreviewed`)
+      coordinatorMembershipId: MEMBER,
+    });
   });
 
   it("idg.review-clock-sweep does not escalate a patient whose floor is not at T-3/T-0/T+1 today", async () => {
@@ -654,9 +737,838 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(rows).toHaveLength(0);
   });
 
+  it("scheduleMeeting persists a 'scheduled' ad-hoc meeting, defaults + honours the coordinator, emits m14.meeting.scheduled, rejects overlap", async () => {
+    const start = new Date("2031-03-04T15:00:00.000Z");
+    const end = new Date("2031-03-04T17:00:00.000Z");
+    const args = {
+      locationId: locationOf[ORG_A],
+      scheduledStart: start.toISOString(),
+      scheduledEnd: end.toISOString(),
+    };
+    const created = await svc.scheduleMeeting(ORG_A, MEMBER, args);
+    expect(created).toMatchObject({
+      status: "scheduled",
+      locationId: locationOf[ORG_A],
+      coordinatorMembershipId: MEMBER, // defaults to the acting membership
+      adjournedAt: null,
+    });
+    expect(await eventsFor(created.id)).toContain("m14.meeting.scheduled");
+    const { rows } = await admin.query(
+      "SELECT recurring_policy_id, organization_id, status FROM idg_meeting WHERE id=$1",
+      [created.id],
+    );
+    expect(rows[0]).toMatchObject({
+      recurring_policy_id: null,
+      organization_id: ORG_A,
+      status: "scheduled",
+    });
+
+    // the coordinator reaches the read model (detail + schedule list)
+    expect((await svc.getMeeting(ORG_A, created.id)).coordinatorMembershipId).toBe(MEMBER);
+    const listed = await svc.listSchedule(ORG_A, {
+      location: locationOf[ORG_A],
+      from: "2031-03-01T00:00:00.000Z",
+      to: "2031-03-31T00:00:00.000Z",
+    });
+    expect(listed.find((m) => m.id === created.id)?.coordinatorMembershipId).toBe(MEMBER);
+
+    // overlap → 409 IDG_MEETING_OVERLAP; back-to-back + explicit coordinator OK
+    await expect(
+      svc.scheduleMeeting(ORG_A, MEMBER, {
+        ...args,
+        scheduledStart: new Date(start.getTime() + 3_600_000).toISOString(),
+        scheduledEnd: new Date(end.getTime() + 3_600_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "IDG_MEETING_OVERLAP" });
+    const other = await seedMembership(ORG_A, "active"); // an explicit coordinator must be a real active member
+    const adjacent = await svc.scheduleMeeting(ORG_A, MEMBER, {
+      ...args,
+      scheduledStart: end.toISOString(),
+      scheduledEnd: new Date(end.getTime() + 3_600_000).toISOString(),
+      coordinatorMembershipId: other,
+    });
+    expect(adjacent.coordinatorMembershipId).toBe(other);
+
+    // a cancelled meeting frees its slot
+    await svc.cancelMeeting(ORG_A, MEMBER, adjacent.id, "test");
+    await expect(
+      svc.scheduleMeeting(ORG_A, MEMBER, {
+        ...args,
+        scheduledStart: end.toISOString(),
+        scheduledEnd: new Date(end.getTime() + 3_600_000).toISOString(),
+      }),
+    ).resolves.toMatchObject({ status: "scheduled" });
+  });
+
+  it("scheduleMeeting: org B cannot see org A's ad-hoc meeting (RLS, wardenx_app)", async () => {
+    const m = await svc.scheduleMeeting(ORG_A, MEMBER, {
+      locationId: locationOf[ORG_A],
+      scheduledStart: "2032-03-04T15:00:00.000Z",
+      scheduledEnd: "2032-03-04T16:00:00.000Z",
+    });
+    await expect(svc.getMeeting(ORG_B, m.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
   it("RLS: org B cannot start or read org A's meeting (404 under the wardenx_app policy)", async () => {
     const m = await seedMeeting(ORG_A, "packets_ready");
     await expect(svc.getMeeting(ORG_B, m)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.startMeeting(ORG_B, MEMBER, m)).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("scheduleMeeting: coordinatorMembershipId must be an ACTIVE membership of the caller's org (422, uniform, wardenx_app)", async () => {
+    const active = await seedMembership(ORG_A, "active");
+    const pending = await seedMembership(ORG_A, "pending");
+    const revoked = await seedMembership(ORG_A, "revoked");
+    const foreignOrg = await seedMembership(ORG_B, "active");
+    const window = (day: number) => ({
+      locationId: locationOf[ORG_A],
+      scheduledStart: `2033-05-${String(day).padStart(2, "0")}T15:00:00.000Z`,
+      scheduledEnd: `2033-05-${String(day).padStart(2, "0")}T16:00:00.000Z`,
+    });
+    const messages: string[] = [];
+    for (const bad of [foreignOrg, pending, revoked, randomUUID()]) {
+      const err = await svc
+        .scheduleMeeting(ORG_A, MEMBER, { ...window(2), coordinatorMembershipId: bad })
+        .then(
+          () => null,
+          (e: { statusCode?: number; code?: string; message?: string }) => e,
+        );
+      expect(err).toMatchObject({ statusCode: 422, code: "VALIDATION_FAILED" });
+      messages.push(JSON.stringify(err));
+    }
+    // foreign-org id is indistinguishable from a made-up id (no cross-tenant existence oracle)
+    expect(messages[0]).toBe(messages[3]);
+    // nothing was persisted for the rejected attempts
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM idg_meeting WHERE organization_id=$1 AND scheduled_start=$2",
+      [ORG_A, "2033-05-02T15:00:00.000Z"],
+    );
+    expect(rows[0].n).toBe(0);
+    const ok = await svc.scheduleMeeting(ORG_A, MEMBER, {
+      ...window(3),
+      coordinatorMembershipId: active,
+    });
+    expect(ok.coordinatorMembershipId).toBe(active);
+  });
+  it("per-discipline notes: live-only, discipline-authorised, If-Match, Part 2 elision, minutes freeze, RLS, no DELETE", async () => {
+    const PATIENT_FLAGGED = "66666666-6666-6666-6666-666666666666";
+    const PATIENT_CLEAR = "77777777-7777-7777-7777-777777777777";
+    const PATIENT_OFF_AGENDA = "88888888-8888-8888-8888-888888888888";
+    const RN = "33333333-3333-3333-3333-3333333333a1";
+    const MSW = "33333333-3333-3333-3333-3333333333a2";
+    const COORD = { membershipId: MEMBER, isCoordinator: true };
+    const rn = { membershipId: RN, isCoordinator: false };
+    const msw = { membershipId: MSW, isCoordinator: false };
+    const err = (p: Promise<unknown>) =>
+      p.then(
+        () => null,
+        (e: { statusCode?: number; code?: string }) => e,
+      );
+
+    // Not live -> refused (packets_ready is a real pre-start status).
+    const early = await seedMeeting(ORG_A, "packets_ready");
+    expect(
+      await err(svc.createDisciplineNote(ORG_A, COORD, early, { discipline: "rn", bodyText: "x" })),
+    ).toMatchObject({ statusCode: 422, code: "MEETING_NOT_LIVE" });
+
+    const m = await seedMeeting(ORG_A, "live");
+    await svc.recordAttendance(ORG_A, RN, m, { membershipId: RN, discipline: "rn" });
+    await svc.recordAttendance(ORG_A, MSW, m, {
+      membershipId: MSW,
+      discipline: "msw",
+      status: "absent",
+    });
+    // Two agenda patients whose packets vouch (or not) for the SUD flag; a third is undeterminable (no packet).
+    for (const [pid, flag] of [
+      [PATIENT_FLAGGED, true],
+      [PATIENT_CLEAR, false],
+    ] as const) {
+      await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: pid });
+      await admin.query(
+        `INSERT INTO idg_patient_packet
+           (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id, admission_id,
+            since_cursor_iso, built_snapshot, discipline_views, cover_summary_layer1)
+         VALUES ($1,$2,$3,$4,$5,$6, now(), $7::jsonb,'{}'::jsonb,'seed')`,
+        [
+          ORG_A,
+          peOf[ORG_A],
+          locationOf[ORG_A],
+          m,
+          pid,
+          ADMISSION,
+          JSON.stringify({ patientCover: { activeSudFlag: flag } }),
+        ],
+      );
+    }
+
+    // Authorisation: the RN writes rn; an ABSENT msw may not; a coordinator may write any discipline.
+    const clear = await svc.createDisciplineNote(ORG_A, rn, m, {
+      patientId: PATIENT_CLEAR,
+      discipline: "rn",
+      bodyText: "RN: pain controlled on current regimen",
+      reason: "  RN-CLEAR-REASON  ", // optional context on a LIVE note: trimmed
+    });
+    expect(clear).toMatchObject({
+      discipline: "rn",
+      authorMembershipId: RN,
+      version: 0,
+      isAddendum: false,
+      reason: "RN-CLEAR-REASON",
+    });
+    expect(
+      await err(svc.createDisciplineNote(ORG_A, rn, m, { discipline: "msw", bodyText: "x" })),
+    ).toMatchObject({
+      statusCode: 403,
+    });
+    expect(
+      await err(svc.createDisciplineNote(ORG_A, msw, m, { discipline: "msw", bodyText: "x" })),
+    ).toMatchObject({
+      statusCode: 403,
+    });
+    const flagged = await svc.createDisciplineNote(ORG_A, COORD, m, {
+      patientId: PATIENT_FLAGGED,
+      discipline: "msw",
+      bodyText: "MSW: SUD history discussed with family",
+      reason: "FLAGGED-LIVE-REASON-SECRET",
+    });
+    const meetingLevel = await svc.createDisciplineNote(ORG_A, rn, m, {
+      discipline: "rn",
+      bodyText: "RN: census reviewed",
+      reason: "   ", // blank => absent
+    });
+    expect(meetingLevel.reason).toBeNull();
+    expect(meetingLevel.patientId).toBeNull();
+    // patient not on the agenda -> 422 (URL-tamper defence)
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, COORD, m, {
+          patientId: PATIENT_OFF_AGENDA,
+          discipline: "rn",
+          bodyText: "x",
+        }),
+      ),
+    ).toMatchObject({ statusCode: 422, code: "INCLUSION_CRITERIA_FAILED" });
+
+    // Edit: If-Match. Stale -> 412; right version bumps; another discipline's non-coordinator -> 403.
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, rn, clear.id, { bodyText: "edit" }, 5)),
+    ).toMatchObject({
+      statusCode: 412,
+      code: "STALE_VERSION",
+    });
+    const edited = await svc.updateDisciplineNote(
+      ORG_A,
+      rn,
+      clear.id,
+      { bodyText: "RN: pain now 2/10" },
+      0,
+    );
+    expect(edited).toMatchObject({
+      version: 1,
+      bodyText: "RN: pain now 2/10",
+      reason: "RN-CLEAR-REASON",
+    });
+    // PATCH may edit the reason alone (text untouched); blank clears it; then restore for the snapshot checks below.
+    const reasonOnly = await svc.updateDisciplineNote(
+      ORG_A,
+      rn,
+      clear.id,
+      { reason: "RN-EDITED-REASON" },
+      1,
+    );
+    expect(reasonOnly).toMatchObject({
+      version: 2,
+      bodyText: "RN: pain now 2/10",
+      reason: "RN-EDITED-REASON",
+    });
+    const cleared = await svc.updateDisciplineNote(ORG_A, rn, clear.id, { reason: "  " }, 2);
+    expect(cleared).toMatchObject({ version: 3, reason: null });
+    const restored = await svc.updateDisciplineNote(
+      ORG_A,
+      rn,
+      clear.id,
+      { reason: "RN-CLEAR-REASON" },
+      3,
+    );
+    expect(restored.version).toBe(4);
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, msw, clear.id, { bodyText: "hijack" }, 4)),
+    ).toMatchObject({
+      statusCode: 403,
+    });
+    expect(await svc.disciplineNoteMeetingId(ORG_A, clear.id)).toBe(m);
+    expect(await svc.disciplineNoteMeetingId(ORG_B, clear.id)).toBeNull();
+    expect(
+      await err(svc.updateDisciplineNote(ORG_B, COORD, clear.id, { bodyText: "x" }, 4)),
+    ).toMatchObject({
+      statusCode: 404,
+    });
+    expect(await err(svc.listDisciplineNotes(ORG_B, m, {}))).toMatchObject({ statusCode: 404 });
+
+    // Part 2: the flagged patient's text is WITHHELD with no viewer (fail-closed) or a denying one; visible
+    // only when the viewer proves a release. The packet-vouched-clear patient + the meeting-level note always show.
+    const denied = await svc.listDisciplineNotes(ORG_A, m, {});
+    expect(denied.map((n) => [n.id, n.bodyWithheld, n.bodyText === null])).toEqual([
+      [clear.id, false, false],
+      [flagged.id, true, true],
+      [meetingLevel.id, false, false],
+    ]);
+    // the original note's reason is withheld with its body (Part 2), shown otherwise
+    expect(denied.find((n) => n.id === flagged.id)?.reason).toBeNull();
+    expect(JSON.stringify(denied)).not.toContain("FLAGGED-LIVE-REASON-SECRET");
+    expect(denied.find((n) => n.id === clear.id)?.reason).toBe("RN-CLEAR-REASON");
+    const allowed = await svc.listDisciplineNotes(
+      ORG_A,
+      m,
+      { patientId: PATIENT_FLAGGED },
+      { sudDisclosureAllowed: async () => true },
+    );
+    expect(allowed).toHaveLength(1);
+    expect(allowed[0]?.bodyText).toBe("MSW: SUD history discussed with family");
+    expect(allowed[0]?.reason).toBe("FLAGGED-LIVE-REASON-SECRET");
+    const throwing = await svc.listDisciplineNotes(
+      ORG_A,
+      m,
+      { patientId: PATIENT_FLAGGED },
+      {
+        sudDisclosureAllowed: async () => {
+          throw new Error("M39 down");
+        },
+      },
+    );
+    expect(throwing[0]?.bodyWithheld).toBe(true);
+
+    // Audit trigger: the write is audited and body_text never lands in audit_event.
+    const { rows: audits } = await admin.query(
+      "SELECT after::text AS after FROM audit_event WHERE resource_kind='idg_discipline_note' AND resource_id=$1",
+      [clear.id],
+    );
+    expect(audits.length).toBeGreaterThanOrEqual(2); // insert + update
+    for (const a of audits) {
+      expect(a.after).not.toContain("pain");
+      expect(a.after).not.toContain("RN-CLEAR-REASON"); // the (now general) reason column is scrubbed too
+      expect(a.after).not.toContain("RN-EDITED-REASON");
+    }
+    const { rows: audFlagged } = await admin.query(
+      "SELECT after::text AS after FROM audit_event WHERE resource_kind='idg_discipline_note' AND resource_id=$1",
+      [flagged.id],
+    );
+    for (const a of audFlagged) expect(a.after).not.toContain("FLAGGED-LIVE-REASON-SECRET");
+
+    // The app role has NO delete grant (append/edit-only).
+    const app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+    await app.connect();
+    try {
+      await app.query("BEGIN");
+      await app.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
+      await expect(
+        app.query("DELETE FROM idg_discipline_note WHERE id=$1", [clear.id]),
+      ).rejects.toThrow(/permission denied/i);
+      await app.query("ROLLBACK");
+      // cross-tenant: another org's context sees no rows at all (FORCE RLS as the real NOBYPASSRLS role)
+      await app.query("BEGIN");
+      await app.query("SELECT set_config('app.org_id',$1,true)", [ORG_B]);
+      const cross = await app.query("SELECT count(*)::int AS n FROM idg_discipline_note");
+      expect(cross.rows[0].n).toBe(0);
+      await app.query("ROLLBACK");
+    } finally {
+      await app.end();
+    }
+
+    // Decisions for the minutes render's DECISION CONTENT: a clear patient (text shown), a SUD-flagged patient
+    // (Part 2: metadata only), and a meeting-level team note (no patient: never withheld).
+    const decClear = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT_CLEAR,
+      decisionKind: "care_plan_update",
+      payload: {
+        kind: "care_plan_update",
+        mutations: [
+          {
+            op: "problem_add",
+            icd10Code: null,
+            snomedCode: null,
+            description: "CLEAR-DECISION-TEXT dyspnea",
+            problemKind: "related",
+          },
+        ],
+      },
+    });
+    const decFlagged = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT_FLAGGED,
+      decisionKind: "level_of_care_consideration",
+      payload: {
+        kind: "level_of_care_consideration",
+        consideredLevel: "general_inpatient",
+        rationaleText: "FLAGGED-DECISION-SECRET",
+      },
+    });
+    const decTeam = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: null,
+      decisionKind: "team_note",
+      payload: { kind: "team_note", noteText: "MEETING-LEVEL-DECISION-TEXT" },
+    });
+
+    // Adjournment freezes the notes into the minutes; SUD-flagged text is elided in the snapshot.
+    const adjourned = await svc.adjournMeeting(ORG_A, MEMBER, m, true);
+    expect(adjourned.status).toBe("adjourned");
+    const minutes = await svc.getMinutes(ORG_A, m);
+    expect(minutes.disciplineNoteCount).toBe(3);
+    const { rows: snap } = await admin.query(
+      "SELECT discipline_note_snapshot AS s FROM idg_minutes WHERE id=$1",
+      [minutes.id],
+    );
+    const byId = new Map(
+      (
+        snap[0].s as Array<{
+          noteId: string;
+          bodyText: string | null;
+          reason: string | null;
+          bodyWithheld: boolean;
+        }>
+      ).map((n) => [n.noteId, n]),
+    );
+    expect(byId.get(clear.id)).toMatchObject({
+      bodyText: "RN: pain now 2/10",
+      reason: "RN-CLEAR-REASON",
+      bodyWithheld: false,
+    });
+    expect(byId.get(meetingLevel.id)?.bodyText).toBe("RN: census reviewed");
+    expect(byId.get(flagged.id)).toMatchObject({
+      bodyText: null,
+      reason: null,
+      bodyWithheld: true,
+    });
+    expect(byId.get(meetingLevel.id)?.reason).toBeNull();
+    const { rows: ev } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.minutes.signed'",
+      [minutes.id],
+    );
+    expect(ev[0].payload.renderPayload.disciplineNoteSnapshot).toHaveLength(3);
+    expect(JSON.stringify(ev[0].payload)).not.toContain("SUD history");
+    expect(JSON.stringify(ev[0].payload)).not.toContain("FLAGGED-LIVE-REASON-SECRET");
+    expect(ev[0].payload.renderPayload.disciplineNoteSnapshot).toEqual(snap[0].s); // reason rides in the render payload
+
+    // PDF header names (real M1 seam, as wardenx_app) + live DECISION CONTENT, re-derived at emit.
+    const signedRp = ev[0].payload.renderPayload;
+    expect(signedRp.meeting).toMatchObject({
+      organizationName: "A",
+      locationName: "Loc",
+      locationId: locationOf[ORG_A],
+    });
+    const content = new Map(
+      (
+        signedRp.decisionContent as Array<{
+          decisionId: string;
+          withheld: boolean;
+          patientId: string | null;
+          summary: string[];
+          status: string;
+        }>
+      ).map((d) => [d.decisionId, d]),
+    );
+    expect(content.size).toBe(3);
+    expect(content.get(decClear.id)).toMatchObject({
+      withheld: false,
+      patientId: PATIENT_CLEAR,
+      status: "emitted",
+      summary: ["Add problem (Related) | CLEAR-DECISION-TEXT dyspnea"],
+    });
+    // 42 CFR Part 2 (fail-closed, same set as the note snapshot): metadata only, patient NOT labelled.
+    expect(content.get(decFlagged.id)).toMatchObject({
+      withheld: true,
+      patientId: null,
+      summary: [],
+    });
+    expect(JSON.stringify(ev[0].payload)).not.toContain("FLAGGED-DECISION-SECRET");
+    expect(content.get(decTeam.id)).toMatchObject({
+      withheld: false,
+      patientId: null,
+      summary: ["MEETING-LEVEL-DECISION-TEXT"],
+    });
+    // The frozen decision_list_snapshot is NOT mutated by any of this: kind + metadata only, no content.
+    const { rows: dsnap } = await admin.query(
+      "SELECT decision_list_snapshot::text AS s FROM idg_minutes WHERE id=$1",
+      [minutes.id],
+    );
+    expect(dsnap[0].s).not.toContain("CLEAR-DECISION-TEXT");
+    expect(dsnap[0].s).not.toContain("MEETING-LEVEL-DECISION-TEXT");
+    expect(JSON.parse(dsnap[0].s)).toHaveLength(3);
+
+    // Final minutes are frozen for ORIGINAL notes: no edit once the meeting is no longer live...
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, COORD, clear.id, { bodyText: "late" }, 4)),
+    ).toMatchObject({
+      statusCode: 422,
+      code: "MEETING_NOT_LIVE",
+    });
+    // ...but a note may still be added as a LATE ADDENDUM (new row, reason required), never touching the snapshot.
+    expect(minutes.disciplineAddendumCount).toBe(0);
+    expect(
+      await err(svc.createDisciplineNote(ORG_A, COORD, m, { discipline: "rn", bodyText: "late" })),
+    ).toMatchObject({ statusCode: 422, code: "ADDENDUM_REASON_REQUIRED" });
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, COORD, m, {
+          discipline: "rn",
+          bodyText: "late",
+          reason: "   ",
+        }),
+      ),
+    ).toMatchObject({ statusCode: 422, code: "ADDENDUM_REASON_REQUIRED" });
+    // attendance persists after adjournment: the RN (present) may add an rn addendum; the absent msw may not.
+    const addendum = await svc.createDisciplineNote(ORG_A, rn, m, {
+      patientId: PATIENT_FLAGGED,
+      discipline: "rn",
+      bodyText: "ADDENDUM-BODY-SECRET",
+      reason: "ADDENDUM-REASON-SECRET missed vitals",
+    });
+    expect(addendum).toMatchObject({ isAddendum: true, version: 0, discipline: "rn" });
+    expect(addendum.addendumRecordedAt).toBe(addendum.createdAt);
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, msw, m, { discipline: "msw", bodyText: "x", reason: "r" }),
+      ),
+    ).toMatchObject({ statusCode: 403 });
+    // append-only: PATCH of an addendum is refused; PATCH of an original stays MEETING_NOT_LIVE
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, COORD, addendum.id, { reason: "x" }, 0)),
+    ).toMatchObject({
+      statusCode: 422,
+      code: "ADDENDUM_IMMUTABLE",
+    });
+    // The frozen snapshot + count are untouched; the addendum count is LIVE; Part 2 elides body AND reason.
+    const after = await svc.getMinutes(ORG_A, m);
+    expect(after.disciplineNoteCount).toBe(3);
+    expect(after.disciplineAddendumCount).toBe(1);
+    const { rows: snap2 } = await admin.query(
+      "SELECT discipline_note_snapshot AS s FROM idg_minutes WHERE id=$1",
+      [minutes.id],
+    );
+    expect(snap2[0].s).toEqual(snap[0].s);
+    expect(JSON.stringify(snap2[0].s)).not.toContain("ADDENDUM-");
+    const listed = await svc.listDisciplineNotes(ORG_A, m, {});
+    expect(listed).toHaveLength(4);
+    const hidden = listed.find((n) => n.id === addendum.id);
+    expect(hidden).toMatchObject({
+      isAddendum: true,
+      bodyText: null,
+      reason: null,
+      bodyWithheld: true,
+    });
+    const shown = await svc.listDisciplineNotes(
+      ORG_A,
+      m,
+      { patientId: PATIENT_FLAGGED },
+      { sudDisclosureAllowed: async () => true },
+    );
+    expect(shown.find((n) => n.id === addendum.id)).toMatchObject({
+      bodyText: "ADDENDUM-BODY-SECRET",
+      reason: "ADDENDUM-REASON-SECRET missed vitals",
+    });
+    // The addendum emitted `m14.discipline_note.addendum_recorded` in ITS transaction (M22 appends a minutes
+    // version): live rows -> `disciplineAddenda`, Part 2 elision identical to the frozen snapshot, name only.
+    const { rows: aev } = await admin.query(
+      `SELECT payload FROM outbox_event
+        WHERE aggregate_id=$1 AND event_type='m14.discipline_note.addendum_recorded' ORDER BY created_at`,
+      [minutes.id],
+    );
+    expect(aev).toHaveLength(1);
+    expect(aev[0].payload).toMatchObject({
+      minutesId: minutes.id,
+      meetingId: m,
+      addendumId: addendum.id,
+      addendumCount: 1,
+      recordedByMembershipId: rn.membershipId,
+    });
+    const rp = aev[0].payload.renderPayload;
+    expect(rp.disciplineNoteSnapshot).toEqual(snap[0].s); // frozen snapshot rides along, untouched
+    expect(rp.disciplineAddenda).toEqual([
+      {
+        noteId: addendum.id,
+        patientId: PATIENT_FLAGGED,
+        discipline: "rn",
+        authorMembershipId: rn.membershipId,
+        authorName: `Name-${rn.membershipId.slice(0, 8)}`,
+        recordedAt: addendum.addendumRecordedAt,
+        reason: null,
+        bodyText: null,
+        bodyWithheld: true,
+      },
+    ]);
+    // The render CONTEXT the M22 PDF needs rides the payload (dates, names, status) — never stored.
+    expect(rp.minutesStatus).toBe("final");
+    expect(rp.amendmentCount).toBe(0);
+    expect(rp.meeting).toMatchObject({ meetingId: m, organizationName: "A", locationName: "Loc" });
+    expect(rp.meeting.actualEnd).toEqual(expect.any(String));
+    // decision content is re-derived at the addendum emit too (same Part 2 verdicts)
+    expect(rp.decisionContent).toEqual(signedRp.decisionContent);
+    expect(rp.memberNames[rn.membershipId]).toBe(`Name-${rn.membershipId.slice(0, 8)}`);
+    expect(JSON.stringify(aev[0].payload)).not.toContain("ADDENDUM-");
+    // audit: the INSERT is audited, and neither body_text nor reason lands in audit_event
+    const { rows: aaud } = await admin.query(
+      "SELECT after::text AS after FROM audit_event WHERE resource_kind='idg_discipline_note' AND resource_id=$1",
+      [addendum.id],
+    );
+    expect(aaud.length).toBeGreaterThanOrEqual(1);
+    for (const a of aaud) expect(a.after).not.toContain("ADDENDUM-");
+    // reason on a LIVE meeting is refused elsewhere; out of window: adjournment 15 days ago => window closed
+    await admin.query(
+      "UPDATE idg_meeting SET actual_end = now() - interval '15 days' WHERE id=$1",
+      [m],
+    );
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, COORD, m, { discipline: "rn", bodyText: "x", reason: "r" }),
+      ),
+    ).toMatchObject({ statusCode: 422, code: "ADDENDUM_WINDOW_CLOSED" });
+    await admin.query(
+      "UPDATE idg_meeting SET actual_end = now() - interval '13 days' WHERE id=$1",
+      [m],
+    );
+    expect(
+      (
+        await svc.createDisciplineNote(ORG_A, COORD, m, {
+          discipline: "rn",
+          bodyText: "in window",
+          reason: "r",
+        })
+      ).isAddendum,
+    ).toBe(true);
+    // A second addendum re-emits with the FULL live set (count 2, oldest first) — the newest event always
+    // carries every addendum, so the last appended document version is complete.
+    const { rows: aev2 } = await admin.query(
+      `SELECT payload FROM outbox_event
+        WHERE aggregate_id=$1 AND event_type='m14.discipline_note.addendum_recorded' ORDER BY created_at`,
+      [minutes.id],
+    );
+    expect(aev2).toHaveLength(2);
+    expect(aev2[1].payload.addendumCount).toBe(2);
+    expect(aev2[1].payload.renderPayload.disciplineAddenda).toHaveLength(2);
+    expect(aev2[1].payload.renderPayload.disciplineAddenda[1]).toMatchObject({
+      bodyText: "in window",
+      reason: "r",
+      bodyWithheld: false,
+      patientId: null,
+    });
+    // DB CHECK as the real NOBYPASSRLS app role: an addendum without a reason / a non-addendum with one is refused.
+    const app2 = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+    await app2.connect();
+    try {
+      for (const [flag, reason] of [
+        [true, null],
+        [true, "  "],
+        [false, "  "],
+        [false, "x".repeat(501)],
+        [true, "x".repeat(501)],
+      ] as const) {
+        await app2.query("BEGIN");
+        await app2.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
+        await expect(
+          app2.query(
+            `INSERT INTO idg_discipline_note (organization_id, idg_meeting_id, discipline, body_text,
+               author_membership_id, is_addendum, addendum_recorded_at, reason)
+             VALUES ($1,$2,'rn','x',$3,$4,$5,$6)`,
+            [ORG_A, m, COORD.membershipId, flag, flag ? new Date() : null, reason],
+          ),
+        ).rejects.toThrow(/idg_discipline_note_addendum_chk/);
+        await app2.query("ROLLBACK");
+      }
+      // an ORIGINAL note may now carry a (non-blank) reason...
+      await app2.query("BEGIN");
+      await app2.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
+      await app2.query(
+        `INSERT INTO idg_discipline_note (organization_id, idg_meeting_id, discipline, body_text,
+           author_membership_id, is_addendum, addendum_recorded_at, reason)
+         VALUES ($1,$2,'rn','x',$3,false,NULL,'context')`,
+        [ORG_A, m, COORD.membershipId],
+      );
+      await app2.query("ROLLBACK");
+      // still no DELETE on an addendum
+      await app2.query("BEGIN");
+      await app2.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
+      await expect(
+        app2.query("DELETE FROM idg_discipline_note WHERE id=$1", [addendum.id]),
+      ).rejects.toThrow(/permission denied/i);
+      await app2.query("ROLLBACK");
+    } finally {
+      await app2.end();
+    }
+    // ...and the amendment below re-renders the frozen notes (addenda are not IN the snapshot) PLUS the live
+    // 'Addenda' appendix, so the newest document version never drops addenda an earlier version showed.
+    await svc.submitAmendment(ORG_A, MEMBER, minutes.id, "typo");
+    const { rows: amended } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.minutes.amended'",
+      [minutes.id],
+    );
+    expect(amended[0].payload.renderPayload.disciplineNoteSnapshot).toHaveLength(3);
+    expect(amended[0].payload.renderPayload.disciplineAddenda).toHaveLength(2);
+    expect(JSON.stringify(amended[0].payload)).not.toContain("ADDENDUM-");
+
+    // WINDOW B — supersession by a NEWER ADJOURNED IDG. `m` was adjourned 13 days ago (actual_end set above).
+    const newer = await seedMeeting(ORG_A, "live");
+    await svc.addAgendaItem(ORG_A, MEMBER, newer, {
+      kind: "patient_review",
+      patientId: PATIENT_CLEAR,
+    });
+    // a LIVE newer meeting supersedes nothing
+    expect((await svc.getMinutes(ORG_A, m)).addendumState).toMatchObject({
+      open: true,
+      closedReason: null,
+      supersededPatientIds: [],
+    });
+    await admin.query(
+      "UPDATE idg_meeting SET status='adjourned', actual_end = now() - interval '1 day' WHERE id=$1",
+      [newer],
+    );
+    // patient reached through a patient-scoped AGENDA item of the newer adjourned meeting
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, COORD, m, {
+          patientId: PATIENT_CLEAR,
+          discipline: "rn",
+          bodyText: "too late for this patient",
+          reason: "r",
+        }),
+      ),
+    ).toMatchObject({ statusCode: 422, code: "ADDENDUM_SUPERSEDED_BY_NEWER_IDG" });
+    // ...and through a stored PACKET of the newer adjourned meeting
+    await seedPacket(ORG_A, newer, PATIENT_FLAGGED, new Date().toISOString());
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, COORD, m, {
+          patientId: PATIENT_FLAGGED,
+          discipline: "msw",
+          bodyText: "too late",
+          reason: "r",
+        }),
+      ),
+    ).toMatchObject({ statusCode: 422, code: "ADDENDUM_SUPERSEDED_BY_NEWER_IDG" });
+    // ORG isolation of the lookup: org B's meetings are never consulted (RLS under wardenx_app); the read model:
+    const st = (await svc.getMinutes(ORG_A, m)).addendumState;
+    expect(st).toMatchObject({ open: true, closedReason: null });
+    expect([...st.supersededPatientIds].sort()).toEqual([PATIENT_CLEAR, PATIENT_FLAGGED].sort());
+    expect(st.closesAt).not.toBeNull();
+    // a meeting-level addendum keeps the 14-day rule only
+    expect(
+      (
+        await svc.createDisciplineNote(ORG_A, COORD, m, {
+          discipline: "rn",
+          bodyText: "meeting-level still ok",
+          reason: "r",
+        })
+      ).isAddendum,
+    ).toBe(true);
+    // the newer meeting does not supersede ITSELF nor an EARLIER one: `m` is not newer than `newer`
+    expect(
+      (await svc.getMinutes(ORG_A, newer).catch(() => null))?.addendumState?.supersededPatientIds ??
+        [],
+    ).toEqual([]);
+  });
+  it("minutes header names degrade: a throwing / unbound site-display port never blocks adjourn and omits the names", async () => {
+    const degraded = createDbIdgBackend(handle.db, outbox, undefined, {
+      displayForSite: async () => {
+        throw new Error("site port down");
+      },
+    });
+    const m = await seedMeeting(ORG_A, "live");
+    await degraded.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" });
+    expect((await degraded.adjournMeeting(ORG_A, MEMBER, m, true)).status).toBe("adjourned");
+    const minutes = await degraded.getMinutes(ORG_A, m);
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.minutes.signed'",
+      [minutes.id],
+    );
+    const meeting = rows[0].payload.renderPayload.meeting;
+    expect(meeting.meetingId).toBe(m);
+    expect(meeting.organizationName).toBeUndefined();
+    expect(meeting.locationName).toBeUndefined();
+    expect(rows[0].payload.renderPayload.decisionContent).toEqual([]);
+  });
+
+  it("attendance trust (0286): the recorder + attestation flag persist; a legacy write defaults to null/false and still counts toward quorum", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    const coordinator = await seedMembership(ORG_A, "active");
+    const chaplain = await seedMembership(ORG_A, "active");
+    const attested = await svc.recordAttendance(ORG_A, coordinator, m, {
+      membershipId: chaplain,
+      discipline: "chaplain",
+      recordedByMembershipId: coordinator,
+      disciplineAttested: true,
+    });
+    expect(attested).toMatchObject({
+      recordedByMembershipId: coordinator,
+      disciplineAttested: true,
+    });
+    const legacy = await svc.recordAttendance(ORG_A, coordinator, m, {
+      membershipId: coordinator,
+      discipline: "msw",
+    });
+    expect(legacy).toMatchObject({ recordedByMembershipId: null, disciplineAttested: false });
+    const { rows } = await admin.query(
+      "SELECT discipline, recorded_by_membership_id, discipline_attested FROM idg_attendance WHERE idg_meeting_id=$1 ORDER BY discipline",
+      [m],
+    );
+    expect(rows).toEqual([
+      {
+        discipline: "chaplain",
+        recorded_by_membership_id: coordinator,
+        discipline_attested: true,
+      },
+      { discipline: "msw", recorded_by_membership_id: null, discipline_attested: false },
+    ]);
+    // The roster read surfaces the flag; the quorum present-set is unchanged (attested + legacy rows both count).
+    const roster = await svc.listAttendance(ORG_A, m);
+    expect(roster.map((r) => [r.discipline, r.disciplineAttested])).toEqual([
+      ["chaplain", true],
+      ["msw", false],
+    ]);
+    expect((await svc.loadPresentDisciplines(ORG_A, m))?.slice().sort()).toEqual([
+      "chaplain",
+      "msw",
+    ]);
+  });
+
+  it("membershipRoleKeysForOrg (M3 seam, as wardenx_app): live enabled+unexpired role keys only; unknown / revoked / cross-tenant are ABSENT", async () => {
+    const mk = async (org: string, key: string, enabled = true): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category, scope_level, enabled)
+           VALUES ($1,$2,$2,'clinical_staff','organization',$3) RETURNING id`,
+          [org, key, enabled],
+        )
+      ).rows[0].id as string;
+    const grant = (org: string, membership: string, role: string, expires: string | null) =>
+      admin.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)`,
+        [org, membership, role, expires],
+      );
+    const rn = await mk(ORG_A, "rn_seam");
+    const chaplain = await mk(ORG_A, "chaplain_seam");
+    const disabled = await mk(ORG_A, "msw_seam", false);
+    const expired = await mk(ORG_A, "np_seam");
+    const otherOrgRole = await mk(ORG_B, "rn_seam");
+    const staff = await seedMembership(ORG_A, "active");
+    const bare = await seedMembership(ORG_A, "active");
+    const revoked = await seedMembership(ORG_A, "revoked");
+    const foreign = await seedMembership(ORG_B, "active");
+    await grant(ORG_A, staff, rn, null);
+    await grant(ORG_A, staff, chaplain, "2999-01-01T00:00:00Z");
+    await grant(ORG_A, staff, disabled, null);
+    await grant(ORG_A, staff, expired, "2000-01-01T00:00:00Z");
+    await grant(ORG_A, revoked, rn, null);
+    await grant(ORG_B, foreign, otherOrgRole, null);
+
+    const got = await membershipRoleKeysForOrg(handle.db, ORG_A, [
+      staff,
+      bare,
+      revoked,
+      foreign,
+      randomUUID(),
+    ]);
+    expect(got.get(staff)).toEqual(["chaplain_seam", "rn_seam"]);
+    expect(got.get(bare)).toEqual([]);
+    expect(got.has(revoked)).toBe(false);
+    expect(got.has(foreign)).toBe(false);
+    expect(got.size).toBe(2);
+    expect((await membershipRoleKeysForOrg(handle.db, ORG_A, [])).size).toBe(0);
   });
 });

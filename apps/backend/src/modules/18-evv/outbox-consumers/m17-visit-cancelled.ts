@@ -105,7 +105,12 @@ export function buildM18VisitCancelledConsumer(deps: VisitCancelledConsumerDeps)
 
         // (a) cancel every non-terminal aggregator submission for the visit (D7).
         const submissions = await tx
-          .select({ id: AGG.id, status: AGG.status, stateCode: AGG.stateCode, version: AGG.version })
+          .select({
+            id: AGG.id,
+            status: AGG.status,
+            stateCode: AGG.stateCode,
+            version: AGG.version,
+          })
           .from(AGG)
           .where(
             and(
@@ -115,10 +120,14 @@ export function buildM18VisitCancelledConsumer(deps: VisitCancelledConsumerDeps)
             ),
           );
         for (const s of submissions) {
-          if (!isAggregatorSubmissionCancellable(s.status as EvvAggregatorSubmissionStatus)) continue;
-          const transition = transitionAggregatorSubmission(s.status as EvvAggregatorSubmissionStatus, {
-            type: "cancel",
-          });
+          if (!isAggregatorSubmissionCancellable(s.status as EvvAggregatorSubmissionStatus))
+            continue;
+          const transition = transitionAggregatorSubmission(
+            s.status as EvvAggregatorSubmissionStatus,
+            {
+              type: "cancel",
+            },
+          );
           const [updated] = await tx
             .update(AGG)
             .set({

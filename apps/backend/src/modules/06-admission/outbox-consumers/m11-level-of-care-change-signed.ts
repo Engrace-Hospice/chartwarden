@@ -52,8 +52,8 @@
 // foundation outbox (the `m22-document-rendered.ts` / `m29-proposal-accepted.ts` precedent one file
 // over), so this adds no `dependsOn` edge.
 import { type DbClient, schema } from "@wardenx/db";
-import type { LevelOfCare } from "@wardenx/types";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { LevelOfCare } from "@wardenx/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { AdmissionWriteOutboxPort } from "../admission-route-service-db";
 import { transitionLevelOfCare } from "../state-machines/level-of-care";
@@ -99,10 +99,14 @@ function payloadOf(payload: unknown): Payload {
   const effectiveAt = p.effectiveAt;
   const admissionId = p.admissionId;
   if (typeof orderId !== "string" || orderId.length === 0) {
-    throw new Error(`${M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER.consumerName}: payload has no orderId`);
+    throw new Error(
+      `${M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER.consumerName}: payload has no orderId`,
+    );
   }
   if (typeof toLevel !== "string" || toLevel.length === 0) {
-    throw new Error(`${M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER.consumerName}: payload has no toLevel`);
+    throw new Error(
+      `${M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER.consumerName}: payload has no toLevel`,
+    );
   }
   if (typeof effectiveAt !== "string" || effectiveAt.length === 0) {
     throw new Error(

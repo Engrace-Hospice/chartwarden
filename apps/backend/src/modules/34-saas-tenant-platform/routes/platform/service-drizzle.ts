@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 // `tenant.shred` (whose worker calls the `m34_destroy_tenant_key_ring` SECURITY DEFINER fn + M4 destruction-
 // cert registry — never this request thread); this adapter never nulls DEK ciphertext directly.
 import { type DbClient, schema } from "@wardenx/db";
+import type { AlertEmitter } from "@wardenx/messaging";
 import {
   BaaRegisterRepository,
   OnboardingRepository,
@@ -47,7 +48,6 @@ import {
   startSupportSession,
   transitionTenant,
 } from "@wardenx/saas-tenant-platform";
-import type { AlertEmitter } from "@wardenx/messaging";
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
@@ -190,14 +190,29 @@ function outboxPayloadFor(
         billingContactEmail: account.billingContactEmail,
       };
     case "m34.tenant.suspension_initiated":
-      return { ...base, reason: event.transitionReason, initiatedByMembershipId: actorMembershipId, initiatedAt: occurredAt };
+      return {
+        ...base,
+        reason: event.transitionReason,
+        initiatedByMembershipId: actorMembershipId,
+        initiatedAt: occurredAt,
+      };
     case "m34.tenant.reactivated":
-      return { ...base, reason: event.transitionReason, actorMembershipId, reactivatedAt: occurredAt };
+      return {
+        ...base,
+        reason: event.transitionReason,
+        actorMembershipId,
+        reactivatedAt: occurredAt,
+      };
     case "m34.tenant.at_risk":
       return { ...base, reason: event.transitionReason, actorMembershipId, flaggedAt: occurredAt };
     case "m34.tenant.offboarding_initiated":
       return event.type === "initiateOffboarding"
-        ? { ...base, purpose: event.exportPurpose, initiatedByMembershipId: actorMembershipId, initiatedAt: occurredAt }
+        ? {
+            ...base,
+            purpose: event.exportPurpose,
+            initiatedByMembershipId: actorMembershipId,
+            initiatedAt: occurredAt,
+          }
         : null;
     default:
       // `activated`/`final_export_pending`/`retained`/`destruction_pending` — the machine can name
@@ -326,11 +341,17 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         // Deliberately just this — it does NOT also call M2's organization-lifecycle writer (a SEPARATE
         // platform-ops action, per the M35 spec's own worked example naming M2's admin route, not this
         // one); a platform-ops actor who wants both suspends the tenant here AND the org there.
-        await tx.delete(schema.sessions).where(eq(schema.sessions.activeOrganizationId, account.organizationId));
+        await tx
+          .delete(schema.sessions)
+          .where(eq(schema.sessions.activeOrganizationId, account.organizationId));
       } else if (eff.kind === "alert") {
         await deps.lifecycleAlerts.emit(account.organizationId, {
           eventType: eff.alertKey,
-          payload: { tenantAccountId: account.id, reason: event.transitionReason, actorMembershipId },
+          payload: {
+            tenantAccountId: account.id,
+            reason: event.transitionReason,
+            actorMembershipId,
+          },
           severity: eff.audience.includes("platform_security_owner") ? "critical" : "warn",
           correlationId: `m34-lifecycle-${account.id}-${occurredAt}`,
         });

@@ -51,9 +51,7 @@ const toLocalDate = (dt: Date): LocalDate =>
 
 /** Add (or subtract) whole calendar days to a `yyyy-mm-dd` date; returns a `yyyy-mm-dd` date. */
 export function addCalendarDays(date: LocalDate, days: number): LocalDate {
-  return toLocalDate(
-    new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000),
-  );
+  return toLocalDate(new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000));
 }
 
 /**
@@ -73,8 +71,7 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
     minute: "2-digit",
   });
   const parts = dtf.formatToParts(new Date(utcMs));
-  const get = (t: string): number =>
-    Number(parts.find((p) => p.type === t)?.value);
+  const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
   const localMinute = Date.UTC(
     get("year"),
     get("month") - 1,
@@ -83,6 +80,16 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
     get("minute"),
   );
   return localMinute - Math.floor(utcMs / 60_000) * 60_000;
+}
+
+/**
+ * The org-local calendar date (`yyyy-mm-dd`) of the instant `instant` in `timeZone` (D8 — "stored
+ * `*_date` fields are the org-local calendar date"). Used to classify a signature as same-day/late
+ * against a period start date.
+ */
+export function localDateOfInstant(instant: string, timeZone: string): LocalDate {
+  const utcMs = Date.parse(instant);
+  return toLocalDate(new Date(utcMs + tzOffsetMs(utcMs, timeZone)));
 }
 
 /**
@@ -102,21 +109,12 @@ export function endOfOrgDayInstant(date: LocalDate, timeZone: string): string {
  * at 23:59 in the org's timezone, returned as a UTC instant (§7.3 late-cert path). If the written
  * cert is not captured by this instant, the caller fires `m6.compliance.window.overdue`.
  */
-export function computeWrittenCertDeadline(
-  periodStartDate: LocalDate,
-  timeZone: string,
-): string {
-  return endOfOrgDayInstant(
-    addCalendarDays(periodStartDate, WRITTEN_CERT_DEADLINE_DAYS),
-    timeZone,
-  );
+export function computeWrittenCertDeadline(periodStartDate: LocalDate, timeZone: string): string {
+  return endOfOrgDayInstant(addCalendarDays(periodStartDate, WRITTEN_CERT_DEADLINE_DAYS), timeZone);
 }
 
 /** Has `asOfInstant` passed the written-cert `deadlineInstant`? (strictly after → overdue). */
-export function isWrittenCertOverdue(
-  deadlineInstant: string,
-  asOfInstant: string,
-): boolean {
+export function isWrittenCertOverdue(deadlineInstant: string, asOfInstant: string): boolean {
   return Date.parse(asOfInstant) > Date.parse(deadlineInstant);
 }
 
@@ -128,18 +126,9 @@ export interface F2fWindow {
 }
 
 /** Compute the F2F window `[period_start − 30, period_start − 1]` in org-local calendar days (§7.4). */
-export function computeF2fWindow(
-  periodStartDate: LocalDate,
-  timeZone: string,
-): F2fWindow {
-  const windowStart = addCalendarDays(
-    periodStartDate,
-    -F2F_PRIOR_WINDOW.earliestDaysBefore,
-  );
-  const windowEnd = addCalendarDays(
-    periodStartDate,
-    -F2F_PRIOR_WINDOW.latestDaysBefore,
-  );
+export function computeF2fWindow(periodStartDate: LocalDate, timeZone: string): F2fWindow {
+  const windowStart = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.earliestDaysBefore);
+  const windowEnd = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.latestDaysBefore);
   return {
     windowStart,
     windowEnd,
@@ -148,13 +137,8 @@ export function computeF2fWindow(
 }
 
 /** W-F2F-01: is the scheduled F2F date inside the window? (`yyyy-mm-dd` lexical compare is date order). */
-export function isF2fScheduledWithinWindow(
-  scheduledDate: LocalDate,
-  window: F2fWindow,
-): boolean {
-  return (
-    scheduledDate >= window.windowStart && scheduledDate <= window.windowEnd
-  );
+export function isF2fScheduledWithinWindow(scheduledDate: LocalDate, window: F2fWindow): boolean {
+  return scheduledDate >= window.windowStart && scheduledDate <= window.windowEnd;
 }
 
 /** F2F window monitor verdict (§7.4 W-F2F-04): `attested` closes it; an unattested past-end is `missed`. */

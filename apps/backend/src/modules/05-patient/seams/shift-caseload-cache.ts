@@ -114,9 +114,7 @@ async function readUnexpiredEntries(
       if (typeof parsed.patientId !== "string" || typeof parsed.expiresAt !== "string") continue;
       if (Date.parse(parsed.expiresAt) <= now) continue; // expired — filtered at read time, not evicted
       out.push({ patientId: parsed.patientId, expiresAt: parsed.expiresAt });
-    } catch {
-      continue; // malformed entry — skip rather than fail a hot ABAC read on garbage
-    }
+    } catch {}
   }
   return out;
 }
@@ -150,7 +148,10 @@ export async function readShiftIsAssigned(
  * (a standing caseload patient) never pays a Redis round trip, and a shift-only patient falls through to
  * the cache. See the file header for why a Redis read error degrades rather than propagates.
  */
-export function createCaseloadStoreWithShiftCache(base: CaseloadStore, redis: Redis): CaseloadStore {
+export function createCaseloadStoreWithShiftCache(
+  base: CaseloadStore,
+  redis: Redis,
+): CaseloadStore {
   return {
     async isAssigned(organizationId, userId, patientId) {
       if (await base.isAssigned(organizationId, userId, patientId)) return true;

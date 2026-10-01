@@ -30,12 +30,14 @@ import {
   type CapProjectionProvider,
   type Cents,
   type CertificationSnapshot,
+  ChcHoursError,
   type ClaimAssembleRequest,
   type ClaimAssembleResponse,
   type ElectionPeriodSnapshot,
   type EvvBracketSnapshot,
   type FaceToFaceSnapshot,
   type HippsRateTable,
+  type Icd10Pointer,
   type IsoDate,
   type LevelOfCare,
   type LevelOfCarePeriodSnapshot,
@@ -211,12 +213,40 @@ export interface MdmEntityProvider {
     orgId: string,
     patientId: string,
     asOf: IsoDate,
+    /** F-213 — the claim's whole service range, so `placeOfService` can be resolved over the range
+     *  rather than at `asOf` alone (a range can span a move). Absent = `[asOf, asOf]`. */
+    range?: DateRange,
   ): Promise<MdmResolution>;
 }
 
-/** M38 — terminology resolution (value-set membership + ICD billability) as-of `claim.service_from`. */
+/**
+ * M7 — the claim's ICD-10 diagnosis sequence over the service window (F-209, #251): position 1..12, code,
+ * relationship. Code + relationship only (no free-text description). Empty when the patient has no active,
+ * coded problem in the window — the `icd10_sequencing` rule then fails honestly ("no ICD-10 diagnosis sequence").
+ *
+ * F-214 (#251) — the owning module (M7) has ALREADY applied the 42 CFR Part 2 consent gate: a `sud_related`
+ * diagnosis with no valid release on file is absent from `sequence` (positions re-ranked contiguously) and
+ * reported only as a NON-PHI summary — a count + whether the principal was among them, never a code.
+ */
+export interface DiagnosisSequenceResult {
+  readonly sequence: readonly Icd10Pointer[];
+  readonly withheldForConsentCount: number;
+  readonly terminalWithheldForConsent: boolean;
+}
+export interface DiagnosisSequenceReader {
+  forRange(orgId: string, patientId: string, range: DateRange): Promise<DiagnosisSequenceResult>;
+}
+
+/**
+ * M38 — terminology resolution (value-set membership + ICD billability) as-of `claim.service_from`.
+ * `icd10Codes` (F-209) are the claim's diagnosis codes; `icd10Billable` is resolved for exactly these.
+ */
 export interface TerminologyProvider {
-  resolveForClaim(orgId: string, asOfDate: IsoDate): Promise<TerminologyResolution>;
+  resolveForClaim(
+    orgId: string,
+    asOfDate: IsoDate,
+    icd10Codes?: readonly string[],
+  ): Promise<TerminologyResolution>;
 }
 
 /** Platform reference-data resolution (the CMS rate file, wage index, sequestration schedule). */
@@ -235,15 +265,43 @@ export interface SequestrationPolicyResolution {
   readonly effectiveTo: IsoDate | null;
 }
 
+/**
+ * F-210 — who/when the TENANT-ENTERED rate table is read for: the rate table is org + provider-entity scoped and
+ * effective-dated, so the reader needs more than the (MAC, fiscal year) the CMS-file design assumed.
+ */
+export interface RateLookupScope {
+  readonly orgId: string;
+  readonly providerEntityId: string;
+  /** The claim's service-from date; the rate version whose effective window covers it is the one priced from. */
+  readonly serviceFrom: IsoDate;
+}
+
 export interface BillingReferenceDataReader {
-  /** The CMS per-diem base rate table for the claim's MAC jurisdiction + hospice fiscal year (PRE-wage-index). */
+  /**
+   * The per-diem base rate table (PRE-wage-index) in effect on `scope.serviceFrom`, TENANT-ENTERED (F-210). Throws the
+   * typed `RATE_TABLE_MISSING` (422) when no table covers the date — never a guess and never `SEAM_UNBOUND`.
+   */
   hippsRateTable(
     macJurisdiction: MacJurisdiction,
     fiscalYearStarting: number,
+    scope: RateLookupScope,
   ): Promise<HippsRateTable>;
-  /** The wage-index-ADJUSTED CHC hourly rate (whole cents) the SIA add-on is priced at. */
-  chcHourlyRateCents(fiscalYearStarting: number, wageIndexFactorDecimal: string): Promise<Cents>;
-  wageIndexForCcn(ccn: string, fiscalYearStarting: number): Promise<WageIndexResolution | null>;
+  /** The wage-index-ADJUSTED CHC hourly rate (whole cents) the SIA add-on is priced at (same `RATE_TABLE_MISSING`). */
+  chcHourlyRateCents(
+    fiscalYearStarting: number,
+    wageIndexFactorDecimal: string,
+    scope: RateLookupScope,
+  ): Promise<Cents>;
+  /**
+   * The CMS hospice wage index for a CCN + fiscal year, or `null` (the caller fails closed `WAGE_INDEX_UNAVAILABLE`).
+   * F-211: `orgId` lets the reader prefer the TENANT-ENTERED value (`tenant_wage_index`) over a platform AUTHORITATIVE
+   * `wage_index_factor` row; a non-authoritative placeholder row never qualifies.
+   */
+  wageIndexForCcn(
+    ccn: string,
+    fiscalYearStarting: number,
+    orgId: string,
+  ): Promise<WageIndexResolution | null>;
   activeSequestrationPolicy(
     orgId: string,
     providerEntityId: string,
@@ -273,6 +331,7 @@ export interface ClaimAssemblySeams {
   readonly certifications: CertificationReader; // M6
   readonly faceToFace: FaceToFaceReader; // M6
   readonly levelOfCare: LevelOfCareReader; // M6
+  readonly diagnoses: DiagnosisSequenceReader; // M7 (F-209)
   readonly billableEncounters: BillableEncounterReader; // M8
   readonly signedEncounters: SignedEncountersReader; // M8
   readonly evvCompliance: EvvComplianceReader; // M18
@@ -459,17 +518,23 @@ export function buildClaimAssemblyService(
         );
       }
       const fiscalYearStarting = hospiceFiscalYearStarting(serviceFrom);
-      const wageIndex = await seams.referenceData.wageIndexForCcn(pe.ccn, fiscalYearStarting);
+      const wageIndex = await seams.referenceData.wageIndexForCcn(
+        pe.ccn,
+        fiscalYearStarting,
+        orgId,
+      );
       if (!wageIndex) {
         throw new WardenXError(
           "WAGE_INDEX_UNAVAILABLE",
-          `no wage-index factor is loaded for CCN ${pe.ccn} FY${fiscalYearStarting} (D12)`,
+          `no authoritative wage-index factor is available for CCN ${pe.ccn} fiscal year starting ${fiscalYearStarting} (D12); enter it (POST /api/v1/billing/wage-indexes, permission billing.wage_index.admin) and retry`,
           422,
         );
       }
+      const rateScope = { orgId, providerEntityId, serviceFrom };
       const rateTable = await seams.referenceData.hippsRateTable(
         pe.macJurisdiction,
         fiscalYearStarting,
+        rateScope,
       );
       const seqPolicy = await seams.referenceData.activeSequestrationPolicy(
         orgId,
@@ -479,7 +544,7 @@ export function buildClaimAssemblyService(
       if (!seqPolicy) {
         throw new WardenXError(
           "SEQUESTRATION_POLICY_UNAVAILABLE",
-          "no active sequestration policy resolved for the service period (D11)",
+          `no sequestration policy covers service date ${serviceFrom} for provider entity ${providerEntityId} (D11); enter the Medicare sequestration schedule for that period (POST /api/v1/billing/sequestration-policies, permission billing.sequestration_policy.edit) and retry`,
           422,
         );
       }
@@ -498,8 +563,24 @@ export function buildClaimAssemblyService(
         orgId,
         patientId,
         serviceFrom,
+        range,
       );
-      const terminology = await seams.terminology.resolveForClaim(orgId, serviceFrom);
+      // F-209 (#251) — the claim's real diagnosis sequence (M7), read BEFORE terminology so M38 can resolve
+      // `icd10Billable` for exactly these codes. Not persisted to a claim column (no such column exists).
+      const diagnosisRead = await seams.diagnoses.forRange(orgId, patientId, range);
+      const icd10Sequence = diagnosisRead.sequence;
+      const terminology = await seams.terminology.resolveForClaim(
+        orgId,
+        serviceFrom,
+        icd10Sequence.map((d) => d.code),
+      );
+      // Line pointer policy (documented, deliberately simple): every line points at the TERMINAL diagnosis
+      // position(s) only. Hospice per-diem lines all bill the terminal illness; a related/unrelated
+      // condition is claim-level context, never a line-level pointer. No terminal ⇒ no pointer (the
+      // `icd10_sequencing` rule reports the missing principal).
+      const icdPointerPositions = icd10Sequence
+        .filter((d) => d.relationship === "terminal")
+        .map((d) => d.position);
       // M26 §11.A cap projection (D8). Cap year is the federal FY (Oct–Sep): a service date in Oct–Dec
       // belongs to the NEXT FY. The provider degrades to status:"unavailable" when M26 is unbound or has no
       // projection — the cap rules then warn-skip; a bound projection makes them live (warn-or-block, D8).
@@ -570,20 +651,30 @@ export function buildClaimAssemblyService(
         });
 
         // ── 3. HIPPS per-diem math (D7) — lines are derived, never client-supplied ───────────────────
-        const hipps = calculateHipps({
-          claimServiceFrom: serviceFrom,
-          claimServiceTo: serviceTo,
-          hospiceAdmissionDate: admission.hospiceAdmissionDate,
-          levelOfCarePeriods: resolvedLoc.map((p) => ({
-            levelOfCare: p.levelOfCare,
-            from: p.from,
-            to: p.to,
-          })),
-          rateTable,
-          wageIndexCcn: pe.ccn,
-          wageIndexFiscalYear: fiscalYearStarting,
-          wageIndexFactorDecimal: wageIndex.factorDecimal,
-        });
+        let hipps: ReturnType<typeof calculateHipps>;
+        try {
+          hipps = calculateHipps({
+            claimServiceFrom: serviceFrom,
+            claimServiceTo: serviceTo,
+            hospiceAdmissionDate: admission.hospiceAdmissionDate,
+            levelOfCarePeriods: resolvedLoc.map((p) => ({
+              levelOfCare: p.levelOfCare,
+              from: p.from,
+              to: p.to,
+              chcDocumentedHours: p.chcDocumentedHours,
+            })),
+            rateTable,
+            wageIndexCcn: pe.ccn,
+            wageIndexFiscalYear: fiscalYearStarting,
+            wageIndexFactorDecimal: wageIndex.factorDecimal,
+          });
+        } catch (err) {
+          // F-211 — CHC is paid hourly; an undocumented / sub-8h / >24h / non-quarter-hour CHC day cannot be priced.
+          if (err instanceof ChcHoursError) {
+            throw new WardenXError("CHC_HOURS_UNPRICEABLE", err.message, 422);
+          }
+          throw err;
+        }
 
         const placeOfService = qCodeForPlaceOfService(mdmResolution.placeOfService);
         const lineInputs: repositories.NewClaimLineInput[] = hipps.segments.map((seg, idx) => {
@@ -620,7 +711,7 @@ export function buildClaimAssemblyService(
             lineChargeCents: seg.ratePerDiemCents * seg.days,
             levelOfCarePeriodId: owningPeriod.levelOfCarePeriodId,
             backingEncounterIds,
-            icdPointerPositions: [],
+            icdPointerPositions: [...icdPointerPositions],
             modifiers: [],
           };
         });
@@ -633,6 +724,7 @@ export function buildClaimAssemblyService(
           const chcHourlyRateCents = await seams.referenceData.chcHourlyRateCents(
             fiscalYearStarting,
             wageIndex.factorDecimal,
+            rateScope,
           );
           const sia = calculateSia({
             deceasedDate: admission.deceasedDate,
@@ -745,7 +837,9 @@ export function buildClaimAssemblyService(
             serviceFrom,
             serviceTo,
             replacesClaimId: null,
-            icd10Sequence: [],
+            icd10Sequence,
+            diagnosesWithheldForConsent: diagnosisRead.withheldForConsentCount,
+            terminalDiagnosisWithheldForConsent: diagnosisRead.terminalWithheldForConsent,
             totalChargeCents: grossCents,
             priorClaimTob: priorClaim?.tob ?? null,
             priorClaimServiceTo: priorClaim?.serviceTo ?? null,

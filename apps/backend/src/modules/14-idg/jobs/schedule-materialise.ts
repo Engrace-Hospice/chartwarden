@@ -55,7 +55,13 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
   });
   const parts = dtf.formatToParts(new Date(utcMs));
   const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
-  const localMinute = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+  const localMinute = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+  );
   return localMinute - Math.floor(utcMs / 60_000) * 60_000;
 }
 
@@ -108,7 +114,10 @@ export function computeOccurrenceDays(
   return days;
 }
 
-async function activePoliciesForOrg(tx: DbClient, organizationId: string): Promise<MaterialisePolicyRow[]> {
+async function activePoliciesForOrg(
+  tx: DbClient,
+  organizationId: string,
+): Promise<MaterialisePolicyRow[]> {
   const rows = await tx
     .select({
       id: POL.id,
@@ -132,7 +141,9 @@ async function latestScheduledStartForPolicy(
   const [row] = await tx
     .select({ scheduledStart: MTG.scheduledStart })
     .from(MTG)
-    .where(and(eq(MTG.organizationId, organizationId), eq(MTG.recurringPolicyId, recurringPolicyId)))
+    .where(
+      and(eq(MTG.organizationId, organizationId), eq(MTG.recurringPolicyId, recurringPolicyId)),
+    )
     .orderBy(desc(MTG.scheduledStart))
     .limit(1);
   return row?.scheduledStart ?? null;
@@ -175,7 +186,11 @@ async function materialisePolicy(
   const anchorFromMs = latest ? utcMidnight(latest) + DAY_MS : utcMidnight(now);
   const days = computeOccurrenceDays(policy, anchorFromMs, windowEndMs);
   if (days.length === 0) return 0;
-  const timezone = await timezoneForLocation(locationTimezonePort, organizationId, policy.locationId);
+  const timezone = await timezoneForLocation(
+    locationTimezonePort,
+    organizationId,
+    policy.locationId,
+  );
   let inserted = 0;
   for (const dayMidnightUtc of days) {
     const scheduledStart = atLocalTime(dayMidnightUtc, policy.startTimeLocal, timezone);
@@ -224,36 +239,32 @@ export async function runScheduleMaterialiseCron(deps: ScheduleMaterialiseDeps):
   const failures: { organizationId: string; error: unknown }[] = [];
   for (const { organizationId } of orgs) {
     try {
-      await withOrgContext(
-        deps.db,
-        { organizationId, userId: "" },
-        async (txRaw) => {
-          const tx = txRaw as unknown as DbClient;
-          const policies = await activePoliciesForOrg(tx, organizationId);
-          for (const policy of policies) {
-            const meetingsCreated = await materialisePolicy(
-              tx,
-              organizationId,
-              policy,
-              now,
-              windowEndMs,
-              deps.locationTimezone,
-            );
-            if (meetingsCreated === 0) continue;
-            await deps.outbox.publish(tx, {
-              eventName: "m14.schedule.materialised",
-              payload: {
-                recurringPolicyId: policy.id,
-                meetingsCreated,
-                windowEndIso: new Date(windowEndMs).toISOString(),
-              },
-              organizationId,
-              aggregateKind: "idg_recurring_policy",
-              aggregateId: policy.id,
-            });
-          }
-        },
-      );
+      await withOrgContext(deps.db, { organizationId, userId: "" }, async (txRaw) => {
+        const tx = txRaw as unknown as DbClient;
+        const policies = await activePoliciesForOrg(tx, organizationId);
+        for (const policy of policies) {
+          const meetingsCreated = await materialisePolicy(
+            tx,
+            organizationId,
+            policy,
+            now,
+            windowEndMs,
+            deps.locationTimezone,
+          );
+          if (meetingsCreated === 0) continue;
+          await deps.outbox.publish(tx, {
+            eventName: "m14.schedule.materialised",
+            payload: {
+              recurringPolicyId: policy.id,
+              meetingsCreated,
+              windowEndIso: new Date(windowEndMs).toISOString(),
+            },
+            organizationId,
+            aggregateKind: "idg_recurring_policy",
+            aggregateId: policy.id,
+          });
+        }
+      });
     } catch (error) {
       failures.push({ organizationId, error });
     }

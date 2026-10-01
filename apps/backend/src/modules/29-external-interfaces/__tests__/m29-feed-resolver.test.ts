@@ -1,8 +1,8 @@
 // F-181 (#248) — `selectOutboundFeed`, the pure routing + MSH-identity rules of the outbound feed resolver.
 import { describe, expect, it } from "vitest";
 import {
-  type OutboundFeedCandidateRow,
   OUTBOUND_SENDING_APPLICATION,
+  type OutboundFeedCandidateRow,
   selectOutboundFeed,
 } from "../outbound/feed-resolver";
 
@@ -34,23 +34,45 @@ function feed(id: string, over: Partial<OutboundFeedCandidateRow> = {}): Outboun
 
 describe("selectOutboundFeed — routing", () => {
   it("routes to the feed linked to the requested facility, ignoring a sibling", () => {
-    const r = selectOutboundFeed([feed("a", { labDestinationFacilityId: FX }), feed("b", { labDestinationFacilityId: FY })], NOW, FY);
+    const r = selectOutboundFeed(
+      [feed("a", { labDestinationFacilityId: FX }), feed("b", { labDestinationFacilityId: FY })],
+      NOW,
+      FY,
+    );
     expect(r).toMatchObject({ kind: "resolved", feed: { id: "b" } });
   });
 
   it("two feeds linked to the SAME facility is ambiguous, never a silent pick", () => {
-    const r = selectOutboundFeed([feed("a", { labDestinationFacilityId: FX }), feed("b", { labDestinationFacilityId: FX })], NOW, FX);
-    expect(r).toEqual({ kind: "unresolved", reason: "ambiguous_feed", candidateFeedIds: ["a", "b"] });
+    const r = selectOutboundFeed(
+      [feed("a", { labDestinationFacilityId: FX }), feed("b", { labDestinationFacilityId: FX })],
+      NOW,
+      FX,
+    );
+    expect(r).toEqual({
+      kind: "unresolved",
+      reason: "ambiguous_feed",
+      candidateFeedIds: ["a", "b"],
+    });
   });
 
   it("single-feed fallback: exactly one feed whose link is absent serves any (or no) destination", () => {
-    expect(selectOutboundFeed([feed("a")], NOW, FX)).toMatchObject({ kind: "resolved", feed: { id: "a" } });
-    expect(selectOutboundFeed([feed("a")], NOW, null)).toMatchObject({ kind: "resolved", feed: { id: "a" } });
+    expect(selectOutboundFeed([feed("a")], NOW, FX)).toMatchObject({
+      kind: "resolved",
+      feed: { id: "a" },
+    });
+    expect(selectOutboundFeed([feed("a")], NOW, null)).toMatchObject({
+      kind: "resolved",
+      feed: { id: "a" },
+    });
   });
 
   it("no fallback for a single feed linked to a DIFFERENT facility", () => {
     const r = selectOutboundFeed([feed("a", { labDestinationFacilityId: FY })], NOW, FX);
-    expect(r).toEqual({ kind: "unresolved", reason: "no_feed_for_destination", candidateFeedIds: ["a"] });
+    expect(r).toEqual({
+      kind: "unresolved",
+      reason: "no_feed_for_destination",
+      candidateFeedIds: ["a"],
+    });
   });
 
   it("no fallback when the request names no facility and the only feed is linked elsewhere", () => {
@@ -64,10 +86,19 @@ describe("selectOutboundFeed — routing", () => {
   });
 
   it("no feeds, an expired/not-yet-active window, or a hostless row is no_active_feed", () => {
-    expect(selectOutboundFeed([], NOW, FX)).toEqual({ kind: "unresolved", reason: "no_active_feed" });
-    expect(selectOutboundFeed([feed("a", { activeThrough: new Date("2026-01-01") })], NOW, null)).toMatchObject({ reason: "no_active_feed" });
-    expect(selectOutboundFeed([feed("a", { activeFrom: new Date("2027-01-01") })], NOW, null)).toMatchObject({ reason: "no_active_feed" });
-    expect(selectOutboundFeed([feed("a", { host: null })], NOW, null)).toMatchObject({ reason: "no_active_feed" });
+    expect(selectOutboundFeed([], NOW, FX)).toEqual({
+      kind: "unresolved",
+      reason: "no_active_feed",
+    });
+    expect(
+      selectOutboundFeed([feed("a", { activeThrough: new Date("2026-01-01") })], NOW, null),
+    ).toMatchObject({ reason: "no_active_feed" });
+    expect(
+      selectOutboundFeed([feed("a", { activeFrom: new Date("2027-01-01") })], NOW, null),
+    ).toMatchObject({ reason: "no_active_feed" });
+    expect(selectOutboundFeed([feed("a", { host: null })], NOW, null)).toMatchObject({
+      reason: "no_active_feed",
+    });
   });
 });
 
@@ -85,7 +116,11 @@ describe("selectOutboundFeed — MSH identity", () => {
         },
       },
     });
-    const overridden = selectOutboundFeed([feed("a", { mshSendingApplication: "EHR-X" })], NOW, null);
+    const overridden = selectOutboundFeed(
+      [feed("a", { mshSendingApplication: "EHR-X" })],
+      NOW,
+      null,
+    );
     expect(overridden).toMatchObject({ feed: { endpoint: { sendingApplication: "EHR-X" } } });
   });
 

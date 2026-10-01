@@ -100,6 +100,7 @@ import {
   buildPortalAbacResolverFromStore,
   mountM31Routes,
 } from "../src/modules/31-portal/index";
+import type { M17VisitForRoom } from "../src/modules/31-portal/telehealth/room-mint";
 
 // ── the header-auth test shim (the M11 `orders-routes.test.ts` precedent), extended with the portal
 // session attributes M31's `actor.ts` reads (`bereavement-inject.test.ts`'s `x-test-portal-account`
@@ -120,6 +121,10 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof portalAccount === "string" && portalAccount.length > 0) {
     request.context.attributes.portalAccountId = portalAccount;
   }
+  const portalSession = request.headers["x-test-session-id"];
+  if (typeof portalSession === "string" && portalSession.length > 0) {
+    request.context.attributes.sessionId = portalSession;
+  }
   const portalPatient = request.headers["x-test-portal-patient"];
   if (typeof portalPatient === "string" && portalPatient.length > 0) {
     request.context.attributes.sessionPatientId = portalPatient;
@@ -134,6 +139,7 @@ const PATIENT = "22222222-2222-4222-8222-222222222222";
 const GRANT_ID = "33333333-3333-4333-8333-333333333333";
 const MED_ORDER_ID = "44444444-4444-4444-8444-444444444444";
 const DOCUMENT_ID = "55555555-5555-4555-8555-555555555555";
+const SESSION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const UPLOAD_ID = "66666666-6666-4666-8666-666666666666";
 const PREFERENCE_ID = "77777777-7777-4777-8777-777777777777";
 const INVITATION_ID = "88888888-8888-4888-8888-888888888888";
@@ -295,6 +301,30 @@ function createFakePortalStore(): {
     async telehealthById(_orgId, id) {
       return visits.get(id) ?? null;
     },
+    async telehealthByM17VisitId(_orgId, m17VisitId) {
+      return [...visits.values()].find((v) => v.m17VisitId === m17VisitId) ?? null;
+    },
+    async insertTelehealthVisitIfAbsent(_orgId, _userId, row) {
+      if ([...visits.values()].some((v) => v.m17VisitId === row.m17VisitId)) return null;
+      const digest: TelehealthVisitDigest = {
+        telehealthVisitId: row.id as TelehealthVisitDigest["telehealthVisitId"],
+        m17VisitId: row.m17VisitId as TelehealthVisitDigest["m17VisitId"],
+        patientId: row.patientId as TelehealthVisitDigest["patientId"],
+        assignedMembershipId:
+          row.assignedMembershipId as TelehealthVisitDigest["assignedMembershipId"],
+        lifecycleState: "room_minted",
+        vendor: row.vendor,
+        scheduledVisitSetting: row.scheduledVisitSetting,
+        audioOnlyFallbackActive: false,
+        visitStartedAt: null,
+        visitEndedAt: null,
+        totalDurationSec: null,
+        endReason: null,
+        linkedEncounterId: null,
+      };
+      visits.set(row.id, digest);
+      return digest;
+    },
     async telehealthList() {
       return [...visits.values()];
     },
@@ -372,6 +402,9 @@ function makeServer(
     /** Leave the #117 reason cipher UNBOUND, so suspend/reinstate refuse rather than record a status
      *  change with no reason. Bound by default — the composition root binds it. */
     readonly reasonCipherUnbound?: boolean;
+    /** F-220 — bind the lazy room mint: the M17 visit the published reader returns, and whether the vendor
+     *  adapter can `mintRoom` (absent ⇒ the fail-closed NOOP shape production has today). */
+    readonly lazyMint?: { readonly visit: M17VisitForRoom | null; readonly vendorCanMint: boolean };
   } = {},
 ) {
   const backend = createFakePortalStore();
@@ -530,14 +563,39 @@ function makeServer(
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  const telehealth: TelehealthAdapterPort =
-    opts.telehealthWebhookSignatureValid === false
+  const mintedRooms: { telehealthVisitId: string }[] = [];
+  const telehealth: TelehealthAdapterPort = {
+    ...(opts.telehealthWebhookSignatureValid === false
       ? { ...FAKE_TELEHEALTH_ADAPTER, verifyWebhookSignature: () => false }
-      : FAKE_TELEHEALTH_ADAPTER;
+      : FAKE_TELEHEALTH_ADAPTER),
+    ...(opts.lazyMint?.vendorCanMint
+      ? {
+          async mintRoom(input: { telehealthVisitId: string }) {
+            mintedRooms.push({ telehealthVisitId: input.telehealthVisitId });
+            return { vendorRoomId: "room-xyz", vendorRoomUrl: "https://vendor.invalid/room-xyz" };
+          },
+        }
+      : {}),
+  };
   const deps: PortalRouteDeps = {
     store: backend.store,
     telehealth,
     now: () => new Date(NOW),
+    ...(opts.lazyMint
+      ? {
+          visitReader: {
+            async visitForOrg(orgId: string, visitId: string) {
+              const v = opts.lazyMint?.visit ?? null;
+              return v && v.id === visitId && v.organizationId === orgId ? v : null;
+            },
+          },
+          roomCipher: {
+            async encrypt(_org: string, column: string, plaintext: string) {
+              return `sealed:${column}:${plaintext}`;
+            },
+          },
+        }
+      : {}),
     ...(opts.reasonCipherUnbound
       ? {}
       : {
@@ -802,8 +860,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     label: "19 GET /portal/documents/:documentId/download-url",
     method: "GET",
     url: `/api/v1/portal/documents/${DOCUMENT_ID}/download-url`,
-    headers: CAREGIVER,
-    expectStatus: 200,
+    // F-225 — no M22 reader is registered in this harness (deny-stub) ⇒ fail CLOSED: 503, never a 200 with
+    // an empty url (the old behaviour, which let M4's read-audit record a read that disclosed nothing).
+    headers: { ...CAREGIVER, "x-test-session-id": SESSION_ID },
+    expectStatus: 503,
   },
   {
     label: "20 GET /portal/messages/channel",
@@ -1274,5 +1334,183 @@ describe("M31 §4.1 — the account status-change reason is read, sealed and sto
     expect(res.json().error?.code).toBe("PORTAL_REASON_CIPHER_UNBOUND");
     // The account is untouched — a refusal, not a partial write.
     expect(backend.statusChangeReasons).toEqual([]);
+  });
+});
+
+// ── F-220 (#248) — the LAZY telehealth room mint on the first clinician join of a `telephonic` visit ────
+describe("M31 §4.1 — lazy telehealth room mint on clinician join (F-220)", () => {
+  const M17_VISIT = "33333333-3333-4333-8333-333333333333";
+  const telephonicVisit: M17VisitForRoom = {
+    id: M17_VISIT,
+    organizationId: ORG,
+    patientId: PATIENT,
+    providerEntityId: "44444444-4444-4444-8444-444444444444",
+    locationId: null,
+    assignedMembershipId: "55555555-5555-4555-8555-555555555555",
+    visitSetting: "telephonic",
+    scheduledStartedAt: NOW,
+    status: "published",
+  };
+  const join = (app: ReturnType<typeof makeServer>["app"], key: string, id = M17_VISIT) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${id}/join`,
+      headers: { ...STAFF, ...IDEMP(key) },
+    });
+
+  it("mints the room on the first join, seals both columns, and is idempotent on the second join", async () => {
+    const { app, backend } = makeServer({
+      lazyMint: { visit: telephonicVisit, vendorCanMint: true },
+    });
+    const first = await join(app, "f220-a");
+    expect(first.statusCode).toBe(200);
+    const rooms = await backend.store.telehealthList("org_a");
+    expect(rooms.filter((r) => r.m17VisitId === M17_VISIT)).toHaveLength(1);
+    const minted = rooms.find((r) => r.m17VisitId === M17_VISIT);
+    expect(minted?.lifecycleState).toBe("clinician_joined");
+    expect(minted?.scheduledVisitSetting).toBe("telephonic");
+
+    // The second join — by the M17 id again, then by the now-existing telehealth id — mints nothing new.
+    expect((await join(app, "f220-b")).statusCode).toBe(200);
+    expect((await join(app, "f220-c", minted?.telehealthVisitId)).statusCode).toBe(200);
+    expect(
+      (await backend.store.telehealthList("org_a")).filter((r) => r.m17VisitId === M17_VISIT),
+    ).toHaveLength(1);
+  });
+
+  it("404s for a visit that is not telephonic, is terminal, or is unknown — and writes no row", async () => {
+    for (const visit of [
+      { ...telephonicVisit, visitSetting: "patient_home" },
+      { ...telephonicVisit, status: "cancelled" },
+      null,
+    ]) {
+      const { app, backend } = makeServer({ lazyMint: { visit, vendorCanMint: true } });
+      expect((await join(app, "f220-ne")).statusCode).toBe(404);
+      expect(
+        (await backend.store.telehealthList("org_a")).some((r) => r.m17VisitId === M17_VISIT),
+      ).toBe(false);
+    }
+  });
+
+  it("fails CLOSED with 503 when no vendor adapter can mint (production today) — no half-written row", async () => {
+    const { app, backend } = makeServer({
+      lazyMint: { visit: telephonicVisit, vendorCanMint: false },
+    });
+    const res = await join(app, "f220-503");
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error?.code).toBe("TELEHEALTH_VENDOR_UNAVAILABLE");
+    expect(
+      (await backend.store.telehealthList("org_a")).some((r) => r.m17VisitId === M17_VISIT),
+    ).toBe(false);
+  });
+
+  it("without the lazy-mint deps bound, an unknown id is still a plain 404 (behaviour unchanged)", async () => {
+    const { app } = makeServer();
+    expect((await join(app, "f220-legacy")).statusCode).toBe(404);
+  });
+
+  it("never mints for a visit of another tenant", async () => {
+    const { app, backend } = makeServer({
+      lazyMint: { visit: { ...telephonicVisit, organizationId: "org_b" }, vendorCanMint: true },
+    });
+    expect((await join(app, "f220-xorg")).statusCode).toBe(404);
+    expect(
+      (await backend.store.telehealthList("org_a")).some((r) => r.m17VisitId === M17_VISIT),
+    ).toBe(false);
+  });
+});
+
+// F-225 (#248) — the download route: governed-version resolution, the session-sourced mint args, and the
+// ONE indistinguishable refusal. (The §164.528 `document_access_log` row + the M4 read-audit row are proven
+// against real Postgres in `f225-portal-document-access-log.live.test.ts`.)
+describe("M31 download-url — F-225", () => {
+  const VERSION_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const URL_ = `/api/v1/portal/documents/${DOCUMENT_ID}/download-url`;
+  const HEADERS = { ...CAREGIVER, "x-test-session-id": SESSION_ID };
+
+  function bindReader(opts: {
+    resolve?: () => Promise<{ documentVersionId: string } | null>;
+    mint?: () => Promise<{ url: string; expiresAt: string } | { denied: true; reason: string }>;
+  }) {
+    const calls: { resolve: unknown[]; mint: unknown[] } = { resolve: [], mint: [] };
+    registerSeam("PortalDocumentReader", {
+      async documentsForPatient() {
+        return [];
+      },
+      async resolvePortalDocumentVersion(args: unknown) {
+        calls.resolve.push(args);
+        return opts.resolve ? opts.resolve() : { documentVersionId: VERSION_ID };
+      },
+      async mintPortalDownloadUrl(args: unknown) {
+        calls.mint.push(args);
+        return opts.mint
+          ? opts.mint()
+          : { url: "https://objects.example/x?sig=1", expiresAt: "2026-07-30T13:00:00.000Z" };
+      },
+    } as never);
+    return calls;
+  }
+
+  it("resolves the governed version, mints with the SESSION's account/session/patient, and returns the url", async () => {
+    const { app } = makeServer();
+    const calls = bindReader({});
+    const res = await app.inject({ method: "GET", url: URL_, headers: HEADERS });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      url: "https://objects.example/x?sig=1",
+      expiresAt: "2026-07-30T13:00:00.000Z",
+      patientId: PATIENT,
+    });
+    expect(calls.resolve).toEqual([
+      { organizationId: ORG, patientId: PATIENT, documentId: DOCUMENT_ID },
+    ]);
+    expect(calls.mint).toEqual([
+      {
+        organizationId: ORG,
+        patientId: PATIENT,
+        documentVersionId: VERSION_ID,
+        portalAccountId: ACCOUNT,
+        portalSessionId: SESSION_ID,
+      },
+    ]);
+    await app.close();
+  });
+
+  it("an unresolvable document, a denial and a malformed id are ALL the same 404 (no gate oracle) and never a 200", async () => {
+    for (const [resolve, mint, url] of [
+      [async () => null, undefined, URL_],
+      [undefined, async () => ({ denied: true as const, reason: "not_owner" }), URL_],
+      [undefined, async () => ({ denied: true as const, reason: "sud_consent_absent" }), URL_],
+      [undefined, undefined, "/api/v1/portal/documents/not-a-uuid/download-url"],
+    ] as const) {
+      const { app } = makeServer();
+      const calls = bindReader({ resolve, mint });
+      const res = await app.inject({ method: "GET", url, headers: HEADERS });
+      expect(res.statusCode).toBe(404);
+      expect(res.json().url).toBeUndefined();
+      if (url !== URL_) expect(calls.mint).toEqual([]);
+      await app.close();
+    }
+  });
+
+  it("a mint/ledger failure is a 503, not a 200 with an empty url", async () => {
+    const { app } = makeServer();
+    bindReader({
+      mint: async () => {
+        throw new Error("ledger down");
+      },
+    });
+    const res = await app.inject({ method: "GET", url: URL_, headers: HEADERS });
+    expect(res.statusCode).toBe(503);
+    await app.close();
+  });
+
+  it("a portal session with no session id is refused (403) before any M22 call", async () => {
+    const { app } = makeServer();
+    const calls = bindReader({});
+    const res = await app.inject({ method: "GET", url: URL_, headers: CAREGIVER });
+    expect(res.statusCode).toBe(403);
+    expect(calls.resolve).toEqual([]);
+    await app.close();
   });
 });

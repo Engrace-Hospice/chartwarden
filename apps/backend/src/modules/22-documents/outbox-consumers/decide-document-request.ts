@@ -193,6 +193,9 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // call site, a separate producer-side defect), but the re-rendered minutes now carry real content
   // rather than nothing.
   "m14.minutes.amended", // idg_minutes (append)
+  // M14 spec §13 — a late discipline-note addendum on an adjourned meeting: a NEW VERSION of the SAME
+  // `minutesId` document, carrying the 'Addenda' appendix built from live addendum rows at emit time.
+  "m14.discipline_note.addendum_recorded", // idg_minutes (append)
   // M12 §4.4 — the transmit-to-pharmacy confirmation. Reuses `medication_order` on the SAME `orderId`
   // `.document_requested` renders at sign; the transmitted PDF is a new version carrying the pharmacy
   // transmission facts.
@@ -206,6 +209,13 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // latest version is simply the current summary, not an archive of independently-addressable dated
   // snapshots. Mig 0277 adds the `assessment_summary` aggregate type.
   "m9.assessment.summary_requested", // assessment_summary (append)
+  // ── F-224 (#248) — the M19 caregiver/attending triage summary. The user decided its producer: an EXPLICIT
+  // staff action (`POST /api/v1/triage-calls/:id/request-summary`), not a policy/disposition trigger. One
+  // document per (triage call, audience) — `recipientKind` picks `triage_summary_caregiver` or
+  // `triage_summary_attending` — appending a new version per explicit request (F-168). Mig 0290 adds both
+  // aggregate types. The payload is an allowlist of enumerated facts (no free text, no SUD-class content),
+  // so the render needs no per-document SUD consent gate; see M19's `clinical/triage-summary.ts`.
+  "m19.triage.summary_requested", // triage_summary_caregiver | triage_summary_attending (append)
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —

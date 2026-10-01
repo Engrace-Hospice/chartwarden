@@ -39,13 +39,25 @@ const ACTOR: ClaimAssemblyActor = {
   actorKind: "user",
 };
 
+/** F-214 — a diagnosis read with nothing withheld for Part 2 consent. */
+const NO_WITHHOLD = <T>(sequence: T) => ({
+  sequence,
+  withheldForConsentCount: 0,
+  terminalWithheldForConsent: false,
+});
+
 const RATE_TABLE = {
   // TODO(CMS-fixture): the published FY per-diem amounts replace these representative values.
   rhcDays1to60PerDiemCents: 20_000,
   rhcDays61PlusPerDiemCents: 16_000,
-  chcPerDiemCents: 150_000,
+  chcHourlyRateCents: 6_250,
   ircPerDiemCents: 50_000,
   gipPerDiemCents: 100_000,
+  // F-211 labor shares (wage index is 1.0000 here, so they do not move any price in this suite).
+  rhcLaborShare: "0.6600",
+  chcLaborShare: "0.6600",
+  ircLaborShare: "0.5400",
+  gipLaborShare: "0.6400",
 } as const;
 
 /** One trivial always-pass rule so the initial validation run executes deterministically (all_pass). */
@@ -118,6 +130,7 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
         },
       ],
     },
+    diagnoses: { forRange: async () => NO_WITHHOLD([]) },
     signedEncounters: { inWindow: async () => [] },
     evvCompliance: { bracketsForEncounters: async () => [] },
     mdm: {
@@ -350,5 +363,156 @@ describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produ
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
     await svc.assemble(ACTOR, REQUEST);
     expect(store.sia).toHaveLength(0);
+  });
+});
+
+describe("F-209 (#251) — the claim carries the real M7 diagnosis sequence", () => {
+  const SEQ = [
+    { position: 1, code: "C34.90", relationship: "terminal" as const },
+    { position: 2, code: "J44.9", relationship: "related" as const },
+    { position: 3, code: "I10", relationship: "unrelated" as const },
+  ];
+
+  it("threads the sequence into the validation context, the terminology call, and terminal-only line pointers", async () => {
+    let seenSequence: unknown = null;
+    const registry = new BillingRuleRegistry();
+    registry.registerRule({
+      ...trivialPassRule,
+      key: "test.capture_sequence",
+      check: (ctx) => {
+        seenSequence = ctx.claim.icd10Sequence;
+        return pass("test.capture_sequence", "error", "ok");
+      },
+    });
+    registry.freeze();
+    const terminologyCalls: Array<readonly string[] | undefined> = [];
+    const forRange = vi.fn(async () => NO_WITHHOLD(SEQ));
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      diagnoses: { forRange },
+      terminology: {
+        resolveForClaim: async (_org, _asOf, codes) => {
+          terminologyCalls.push(codes);
+          return { valueSetMembership: {}, icd10Billable: {} };
+        },
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+
+    expect(forRange).toHaveBeenCalledWith(ORG, "pat-1", {
+      from: REQUEST.serviceFrom,
+      to: REQUEST.serviceTo,
+    });
+    expect(terminologyCalls).toEqual([["C34.90", "J44.9", "I10"]]);
+    expect(seenSequence).toEqual(SEQ);
+    expect(store.lines.length).toBeGreaterThan(0);
+    for (const line of store.lines) expect(line.icdPointerPositions).toEqual([1]);
+  });
+
+  it("with no diagnoses: empty sequence, empty pointers (the icd10_sequencing rule reports the gap honestly)", async () => {
+    const seams = buildSeams();
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    for (const line of store.lines) expect(line.icdPointerPositions).toEqual([]);
+  });
+
+  it("F-214: threads the withheld-for-consent summary (count + terminal flag, never codes) into the validation context", async () => {
+    let seen: unknown = null;
+    const registry = new BillingRuleRegistry();
+    registry.registerRule({
+      ...trivialPassRule,
+      key: "test.capture_withheld",
+      check: (ctx) => {
+        seen = {
+          n: ctx.claim.diagnosesWithheldForConsent,
+          t: ctx.claim.terminalDiagnosisWithheldForConsent,
+        };
+        return pass("test.capture_withheld", "error", "ok");
+      },
+    });
+    registry.freeze();
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      diagnoses: {
+        forRange: async () => ({
+          sequence: [{ position: 1, code: "J44.9", relationship: "related" as const }],
+          withheldForConsentCount: 1,
+          terminalWithheldForConsent: true,
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(seen).toEqual({ n: 1, t: true });
+    // The withheld terminal is not replaced: a `related` diagnosis is never promoted, so no line points at it.
+    for (const line of store.lines) expect(line.icdPointerPositions).toEqual([]);
+  });
+
+  it("propagates an unbound diagnoses seam fail-closed (never reads as 'no diagnoses')", async () => {
+    const seams = buildSeams({
+      diagnoses: {
+        forRange: async () => {
+          throw new Error("SEAM_UNBOUND");
+        },
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await expect(svc.assemble(ACTOR, REQUEST)).rejects.toThrow("SEAM_UNBOUND");
+    expect(store.claims.size).toBe(0);
+  });
+});
+
+describe("F-212 - no sequestration policy fails CLOSED with an actionable error (never a silent 0% / 2% default)", () => {
+  it("names the service date, the provider entity, the route and the permission, and persists nothing", async () => {
+    const seams = buildSeams({
+      referenceData: {
+        hippsRateTable: async () => RATE_TABLE,
+        chcHourlyRateCents: async () => 6_000,
+        wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
+        activeSequestrationPolicy: async () => null,
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const err = await svc.assemble(ACTOR, REQUEST).then(
+      () => null,
+      (e: unknown) => e as { code: string; statusCode: number; message: string },
+    );
+    expect(err).toMatchObject({ code: "SEQUESTRATION_POLICY_UNAVAILABLE", statusCode: 422 });
+    expect(err?.message).toContain("POST /api/v1/billing/sequestration-policies");
+    expect(err?.message).toContain("billing.sequestration_policy.edit");
+    expect(store.claims.size).toBe(0);
+  });
+});
+
+describe("F-213 (#252) — placeOfService is resolved over the whole claim range and drives the line Q-code", () => {
+  it.each([
+    ["home", "Q5001"],
+    ["alf", "Q5002"],
+    ["ltc", "Q5003"],
+    ["snf", "Q5004"],
+    ["hospital", "Q5005"],
+    ["ipu", "Q5006"],
+    ["ltch", "Q5007"],
+    ["psych", "Q5008"],
+    [null, "Q5009"],
+  ] as const)("resolved placeOfService %s -> every line Q-code %s", async (pos, qCode) => {
+    const resolve = vi.fn(async () => ({
+      attending: null,
+      hospicePhysician: null,
+      placeOfService: pos,
+    }));
+    const seams = buildSeams({
+      mdm: { ...buildSeams().mdm, resolveClinicalParticipants: resolve },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    // The resolver gets the WHOLE service range (a range can span a move), not just serviceFrom.
+    expect(resolve).toHaveBeenCalledWith(ORG, "pat-1", REQUEST.serviceFrom, {
+      from: REQUEST.serviceFrom,
+      to: REQUEST.serviceTo,
+    });
+    expect(store.lines.length).toBeGreaterThan(0);
+    for (const line of store.lines) expect(line.qCode).toBe(qCode);
   });
 });

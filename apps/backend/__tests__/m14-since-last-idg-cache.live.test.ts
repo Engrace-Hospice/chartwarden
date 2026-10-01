@@ -27,14 +27,20 @@ import { createDbClient } from "@wardenx/db";
 import IORedis from "ioredis";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildM14AssessmentRecordedConsumer, buildM14AssessmentSignificantChangeConsumer } from "../src/modules/14-idg/consumers/m9-since-last-idg";
-import { buildM14HopeJ2051TriggerConsumer, buildM14HopeSfvCreatedConsumer } from "../src/modules/14-idg/consumers/m10-since-last-idg";
-import { buildM14OrderDiscontinuedConsumer } from "../src/modules/14-idg/consumers/m11-since-last-idg";
-import { buildM14MedicationOrderDiscontinuedConsumer } from "../src/modules/14-idg/consumers/m12-since-last-idg";
-import { SINCE_LAST_IDG_TTL_SEC } from "../src/modules/14-idg/consumers/since-last-idg-cache";
 import { hopeAssessmentPatientIdForOrg } from "../src/modules/10-hope/seams/drizzle-store";
 import { orderPatientAndKindForOrg } from "../src/modules/11-orders/seams/drizzle-store";
 import { medicationOrderPatientAndDrugForOrg } from "../src/modules/12-dosespot/seams/drizzle-store";
+import {
+  buildM14AssessmentRecordedConsumer,
+  buildM14AssessmentSignificantChangeConsumer,
+} from "../src/modules/14-idg/consumers/m9-since-last-idg";
+import {
+  buildM14HopeJ2051TriggerConsumer,
+  buildM14HopeSfvCreatedConsumer,
+} from "../src/modules/14-idg/consumers/m10-since-last-idg";
+import { buildM14OrderDiscontinuedConsumer } from "../src/modules/14-idg/consumers/m11-since-last-idg";
+import { buildM14MedicationOrderDiscontinuedConsumer } from "../src/modules/14-idg/consumers/m12-since-last-idg";
+import { SINCE_LAST_IDG_TTL_SEC } from "../src/modules/14-idg/consumers/since-last-idg-cache";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -84,7 +90,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     let j2051Consumer: ReturnType<typeof buildM14HopeJ2051TriggerConsumer>;
     let sfvConsumer: ReturnType<typeof buildM14HopeSfvCreatedConsumer>;
     let orderDiscontinuedConsumer: ReturnType<typeof buildM14OrderDiscontinuedConsumer>;
-    let medOrderDiscontinuedConsumer: ReturnType<typeof buildM14MedicationOrderDiscontinuedConsumer>;
+    let medOrderDiscontinuedConsumer: ReturnType<
+      typeof buildM14MedicationOrderDiscontinuedConsumer
+    >;
 
     async function resetSchema() {
       await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -121,7 +129,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       return { id: rows[0].id as string, patientId: rows[0].patient_id as string };
     }
 
-    async function seedOrder(opts: { organizationId: string; providerEntityId: string; kind: string }) {
+    async function seedOrder(opts: {
+      organizationId: string;
+      providerEntityId: string;
+      kind: string;
+    }) {
       const { rows } = await admin.query(
         `INSERT INTO order_record
            (organization_id, provider_entity_id, patient_id, admission_id, kind, kind_version, data,
@@ -202,9 +214,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       redis = new IORedis({ ...parseRedisUrl(REDIS_URL as string), maxRetriesPerRequest: null });
-      await redis.keys("wardenx:m14:idg:since-last-idg:*").then((keys) =>
-        keys.length ? redis.del(...keys) : undefined,
-      );
+      await redis
+        .keys("wardenx:m14:idg:since-last-idg:*")
+        .then((keys) => (keys.length ? redis.del(...keys) : undefined));
 
       recordedConsumer = buildM14AssessmentRecordedConsumer({ redis });
       significantChangeConsumer = buildM14AssessmentSignificantChangeConsumer({ redis });
@@ -220,7 +232,8 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       });
       orderDiscontinuedConsumer = buildM14OrderDiscontinuedConsumer({
         redis,
-        orderPatientAndKind: (orgId, orderId) => orderPatientAndKindForOrg(handle.db, orgId, orderId),
+        orderPatientAndKind: (orgId, orderId) =>
+          orderPatientAndKindForOrg(handle.db, orgId, orderId),
       });
       medOrderDiscontinuedConsumer = buildM14MedicationOrderDiscontinuedConsumer({
         redis,
@@ -412,9 +425,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         );
         // org A's read of org B's assessment id resolves to nothing — no key was ever created keyed on a
         // patient this org cannot see. Assert directly against the DB that the row really is org B's.
-        const { rows } = await admin.query("SELECT organization_id FROM hope_assessment WHERE id=$1", [
-          assessmentId,
-        ]);
+        const { rows } = await admin.query(
+          "SELECT organization_id FROM hope_assessment WHERE id=$1",
+          [assessmentId],
+        );
         expect(rows[0].organization_id).toBe(ORG_B);
       });
     });
@@ -506,9 +520,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
             effectiveAt: "2026-06-12T00:00:00.000Z",
           }),
         );
-        const { rows } = await admin.query("SELECT organization_id FROM medication_order WHERE id=$1", [
-          orderId,
-        ]);
+        const { rows } = await admin.query(
+          "SELECT organization_id FROM medication_order WHERE id=$1",
+          [orderId],
+        );
         expect(rows[0].organization_id).toBe(ORG_B); // untouched by org A's delivery
       });
     });

@@ -25,6 +25,7 @@ import {
   type AnyColumn,
   type SQL,
   and,
+  asc,
   desc,
   eq,
   ilike,
@@ -49,9 +50,11 @@ import {
   requirementsForUploadedNoticeOfRights,
 } from "./admission-uploaded-evidence";
 import {
-  computeCtiSignatureDueAt,
-  computeWrittenCertDeadline,
-} from "./certification/window-math";
+  type AdequacyResult,
+  evaluatePeriodAdequacy,
+  summarizeAdequacy,
+} from "./certification/adequacy";
+import { computeCtiSignatureDueAt, computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
   type DischargeReason,
@@ -239,6 +242,63 @@ const TE = schema.transferEvents;
 const RE = schema.revocationEvents;
 const RA = schema.referralActivities;
 const RN = schema.referralNotes;
+
+/**
+ * F-223 — the ONE place a PENDING election-period shell is opened: next `sequence_number`, the §418.21(a)
+ * `period_kind`, the row, and `m6.election.period_started`, all on the caller's tx. Shared by the HTTP
+ * route (`createElectionPeriod`) and the `m11.order.recertification_signed` consumer so the insert logic is
+ * never duplicated. It opens a PENDING shell only: the F2F/CTI adequacy gate is enforced at ACTIVATION
+ * (`signCtiHospiceMd` → `evaluatePeriodAdequacy`), never here, so calling this cannot bypass it.
+ *
+ * `sourceOrderId` (logical M11 order id, migration 0297) is stamped by the consumer. When it is given the
+ * insert is `ON CONFLICT DO NOTHING` (either `(admission, sequence)` — staff already opened the period —
+ * or `(org, source_order_id)` — a redelivery) and `null` is returned instead of a 23505 that would abort
+ * the transaction; the route (no `sourceOrderId`) keeps the plain, throwing insert.
+ */
+export async function openNextElectionPeriodInTx(
+  tx: DbClient,
+  outbox: AdmissionWriteOutboxPort,
+  args: { organizationId: string; admissionId: string; sourceOrderId?: string },
+): Promise<{ id: string; status: string; version: number; sequence: number } | null> {
+  const { organizationId, admissionId, sourceOrderId } = args;
+  const [adm] = await tx.select({ id: ADM.id }).from(ADM).where(eq(ADM.id, admissionId)).limit(1);
+  if (!adm) throw new ResourceNotFoundError(admissionId);
+  const [max] = await tx
+    .select({ seq: sql<number>`coalesce(max(${EP.sequenceNumber}), 0)` })
+    .from(EP)
+    .where(eq(EP.admissionId, admissionId));
+  const nextSequence = Number(max?.seq ?? 0) + 1;
+  const insert = tx.insert(EP).values({
+    organizationId,
+    admissionId,
+    sequenceNumber: nextSequence,
+    // 42 CFR 418.21(a): periods 1 and 2 are 90-day, every later period is 60-day. This was a
+    // hard-coded `ninety_day` at every insert site, which is right only for the two seeds that
+    // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
+    // number, and the kind is what `scheduled_end_at` is derived from.
+    periodKind: electionPeriodKindForSequence(nextSequence),
+    ...(sourceOrderId ? { sourceOrderId } : {}),
+  });
+  const returning = { id: EP.id, status: EP.status, version: EP.version };
+  let ep: { id: string; status: string; version: number } | undefined;
+  if (sourceOrderId) {
+    [ep] = await insert.onConflictDoNothing().returning(returning);
+    if (!ep) return null;
+  } else {
+    ep = firstOrThrow(await insert.returning(returning), "election period insert returned no row");
+  }
+  await outbox.publish(tx, {
+    eventName: "m6.election.period_started",
+    // F-100 — `sequence` is required and was omitted, so `POST /election-periods` raised
+    // `payload_schema_violation` and rolled back for every caller: no admission could open a
+    // benefit period past the one its activation seeds, which is 42 CFR 418.21(a) recertification.
+    payload: { electionPeriodId: ep.id, admissionId, sequence: nextSequence },
+    organizationId,
+    aggregateKind: "election_period",
+    aggregateId: ep.id,
+  });
+  return { id: ep.id, status: ep.status, version: Number(ep.version), sequence: nextSequence };
+}
 
 /** §4.2.7 discharge reason → the §2.3.1 `executeDischarge` discriminator the pure state machine reads. */
 const REASON_TO_SM_TYPE: Record<
@@ -691,6 +751,86 @@ export function createDbAdmissionRouteService(
     return !!row;
   }
 
+  /**
+   * F-217 — load every fact the F2F/CTI adequacy predicate (`certification/adequacy.ts`) needs for one
+   * election period, org-scoped (RLS via the caller's `withOrgContext`), and evaluate it. `startDate` is
+   * the org-local start the period is ABOUT to be stamped with (the recert path activates "today").
+   * `windowBasis: 'recorded'` — `completeF2f` does not yet capture the real encounter/period dates (it
+   * stamps a placeholder), so the persisted R-F2F-02 `within_window` is the only honest window evidence.
+   */
+  async function evaluateAdequacyForPeriod(
+    tx: DbClient,
+    periodId: string,
+    startDate: string,
+  ): Promise<AdequacyResult | null> {
+    const [ep] = await tx
+      .select({
+        id: EP.id,
+        sequenceNumber: EP.sequenceNumber,
+        periodKind: EP.periodKind,
+        admissionId: EP.admissionId,
+      })
+      .from(EP)
+      .where(eq(EP.id, periodId))
+      .limit(1);
+    if (!ep) return null;
+    const [adm] = await tx
+      .select({ hospicePhysicianId: ADM.hospicePhysicianId })
+      .from(ADM)
+      .where(eq(ADM.id, ep.admissionId))
+      .limit(1);
+    const ctis = await tx
+      .select({
+        electionPeriodId: CTI.electionPeriodId,
+        status: CTI.status,
+        hospiceMdId: CTI.hospiceMdId,
+        hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+        attendingMdId: CTI.attendingMdId,
+        attendingMdSignedAt: CTI.attendingMdSignedAt,
+        narrative: CTI.narrative,
+        signedLate: CTI.signedLate,
+        lateReason: CTI.lateReason,
+      })
+      .from(CTI)
+      .where(eq(CTI.electionPeriodId, periodId))
+      .orderBy(asc(CTI.createdAt));
+    const f2fs = await tx
+      .select({
+        electionPeriodId: F2F.electionPeriodId,
+        status: F2F.status,
+        performerRole: F2F.performerRole,
+        encounterDate: F2F.encounterDate,
+        withinWindow: F2F.withinWindow,
+        windowOverride: F2F.windowOverride,
+        windowOverrideReason: F2F.windowOverrideReason,
+        windowOverrideBy: F2F.windowOverrideBy,
+        attestationSignedAt: F2F.attestationSignedAt,
+      })
+      .from(F2F)
+      .where(eq(F2F.electionPeriodId, periodId))
+      .orderBy(asc(F2F.createdAt));
+    return evaluatePeriodAdequacy({
+      period: {
+        electionPeriodId: ep.id,
+        sequenceNumber: Number(ep.sequenceNumber),
+        periodKind: ep.periodKind,
+        startDate,
+      },
+      admissionHospicePhysicianId: adm?.hospicePhysicianId ?? null,
+      timeZone: DEFAULT_ORG_TZ,
+      windowBasis: "recorded",
+      ctis: ctis.map((c) => ({
+        ...c,
+        hospiceMdSignedAt: c.hospiceMdSignedAt ? c.hospiceMdSignedAt.toISOString() : null,
+        attendingMdSignedAt: c.attendingMdSignedAt ? c.attendingMdSignedAt.toISOString() : null,
+      })),
+      f2fs: f2fs.map((f) => ({
+        ...f,
+        attestationSignedAt: f.attestationSignedAt ? f.attestationSignedAt.toISOString() : null,
+      })),
+    });
+  }
+
   /** A `Date` → the UTC `YYYY-MM-DD` string M6's `date` columns store. */
   function isoDay(d: Date): string {
     return d.toISOString().slice(0, 10);
@@ -874,6 +1014,53 @@ export function createDbAdmissionRouteService(
   }
 
   /**
+   * The period activation is gated on: the admission's FIRST election period. For an ordinary admission
+   * that is sequence 1; for a transfer-in (D9) it is the INHERITED period (sequence = the carried
+   * `priorBenefitPeriodSequence`, never 1), which `transferIn` inserts already `active` and which runs on
+   * the sending hospice's certification. This used to be hard-wired to `sequence_number = 1`, so a
+   * transfer-in found no period at all and could never satisfy the election-statement / CTI gate.
+   */
+  async function activationPeriodFor(
+    tx: DbClient,
+    admissionId: string,
+  ): Promise<{
+    period:
+      | {
+          id: string;
+          sequenceNumber: number;
+          effectiveAt: string | null;
+          scheduledEndAt: string | null;
+        }
+      | undefined;
+    inherited: boolean;
+  }> {
+    const [period] = await tx
+      .select({
+        id: EP.id,
+        sequenceNumber: EP.sequenceNumber,
+        effectiveAt: EP.effectiveAt,
+        scheduledEndAt: EP.scheduledEndAt,
+      })
+      .from(EP)
+      .where(eq(EP.admissionId, admissionId))
+      .orderBy(EP.sequenceNumber)
+      .limit(1);
+    if (!period) return { period, inherited: false };
+    const [xin] = await tx
+      .select({ id: TE.id })
+      .from(TE)
+      .where(
+        and(
+          eq(TE.admissionId, admissionId),
+          eq(TE.direction, "in"),
+          eq(TE.periodSequenceAtTransfer, period.sequenceNumber),
+        ),
+      )
+      .limit(1);
+    return { period, inherited: !!xin };
+  }
+
+  /**
    * The R-AC-01 gate facts (§7.2). This now resolves NOR/election/CTI completion through admission
    * evidence, and returns the period-1 id/dates so `activateAdmission` can build the
    * `m6.election.period_started` outbox payload without a second query.
@@ -890,18 +1077,11 @@ export function createDbAdmissionRouteService(
     periodId: string | null;
     periodEffectiveAt: string | null;
     periodScheduledEndAt: string | null;
+    /** D9 — the activation period is the sending hospice's inherited one (transfer-in). */
+    inheritedPeriod: boolean;
   }> {
     await backfillLegacyEvidenceForAdmission(tx, organizationId, admissionId);
-    const [period] = await tx
-      .select({
-        id: EP.id,
-        sequenceNumber: EP.sequenceNumber,
-        effectiveAt: EP.effectiveAt,
-        scheduledEndAt: EP.scheduledEndAt,
-      })
-      .from(EP)
-      .where(and(eq(EP.admissionId, admissionId), eq(EP.sequenceNumber, 1)))
-      .limit(1);
+    const { period, inherited } = await activationPeriodFor(tx, admissionId);
     let electionSigned = false;
     let ctiHospiceMdSigned = false;
     if (period) {
@@ -919,19 +1099,23 @@ export function createDbAdmissionRouteService(
           electionPeriodId: period.id,
           requirementType: "election_signature",
         }));
+      // D9 — a transfer-in's inherited period runs on the SENDING hospice's certification, so the
+      // receiving hospice owes no CTI (or F2F) on it; our own CTI is drafted against the NEXT pending
+      // period and gates that period's activation, not this admission's.
       ctiHospiceMdSigned =
-        (await evidence.hasValidEvidence({
+        inherited ||
+        ((await evidence.hasValidEvidence({
           organizationId,
           admissionId,
           electionPeriodId: period.id,
           requirementType: "cti",
         })) &&
-        (await evidence.hasValidEvidence({
-          organizationId,
-          admissionId,
-          electionPeriodId: period.id,
-          requirementType: "cti_signature",
-        }));
+          (await evidence.hasValidEvidence({
+            organizationId,
+            admissionId,
+            electionPeriodId: period.id,
+            requirementType: "cti_signature",
+          })));
     }
     const evidence = createAdmissionEvidenceService(tx);
     const norAcknowledged = await evidence.hasValidEvidence({
@@ -948,6 +1132,7 @@ export function createDbAdmissionRouteService(
       periodId: period?.id ?? null,
       periodEffectiveAt: period?.effectiveAt ?? null,
       periodScheduledEndAt: period?.scheduledEndAt ?? null,
+      inheritedPeriod: inherited,
     };
   }
 
@@ -1141,16 +1326,7 @@ export function createDbAdmissionRouteService(
           .limit(1)
       : [null];
 
-    const [period] = await tx
-      .select({
-        id: EP.id,
-        sequenceNumber: EP.sequenceNumber,
-        effectiveAt: EP.effectiveAt,
-      })
-      .from(EP)
-      .where(eq(EP.admissionId, admissionId))
-      .orderBy(EP.sequenceNumber)
-      .limit(1);
+    const { period, inherited: inheritedPeriod } = await activationPeriodFor(tx, admissionId);
 
     const [es] = period
       ? await tx
@@ -1257,19 +1433,37 @@ export function createDbAdmissionRouteService(
         evidence: evidenceFacts.electionStatement,
         signatureEvidence: evidenceFacts.electionSignature,
       },
-      cti: {
-        exists: !!evidenceFacts.cti,
-        status: cti?.status ?? null,
-        evidence: evidenceFacts.cti,
-        signatureEvidence: evidenceFacts.ctiSignature,
-        hospiceMdSigned: !!evidenceFacts.ctiSignature,
-      },
+      // D9 — an inherited (transfer-in) period is certified by the sending hospice: no CTI and no F2F
+      // are owed on it by us (our CTI/F2F gate the NEXT pending period).
+      cti: inheritedPeriod
+        ? {
+            exists: true,
+            status: "inherited",
+            hospiceMdSigned: true,
+            evidence: {
+              sourceType: "structured",
+              evidenceId: "inherited",
+              structuredEntityId: "inherited",
+            },
+            signatureEvidence: {
+              sourceType: "structured",
+              evidenceId: "inherited",
+              structuredEntityId: "inherited",
+            },
+          }
+        : {
+            exists: !!evidenceFacts.cti,
+            status: cti?.status ?? null,
+            evidence: evidenceFacts.cti,
+            signatureEvidence: evidenceFacts.ctiSignature,
+            hospiceMdSigned: !!evidenceFacts.ctiSignature,
+          },
       f2f: {
-        required: (period?.sequenceNumber ?? 1) >= 3,
+        required: !inheritedPeriod && (period?.sequenceNumber ?? 1) >= 3,
         exists: !!f2f,
         status: f2f?.status ?? null,
         completed: f2f?.status === "completed" || f2f?.status === "attested",
-        attestationRequired: (period?.sequenceNumber ?? 1) >= 3,
+        attestationRequired: !inheritedPeriod && (period?.sequenceNumber ?? 1) >= 3,
         attested: !!f2f?.attestationSignedAt || f2f?.status === "attested",
         satisfiedBy: f2f?.windowOverride ? "override" : undefined,
       },
@@ -1525,7 +1719,9 @@ export function createDbAdmissionRouteService(
                   ev.dischargeType === "death"
                     ? (ev.deathCertifierId ??
                       (() => {
-                        throw conflict("m6.discharge.death cannot be emitted without deathCertifierId");
+                        throw conflict(
+                          "m6.discharge.death cannot be emitted without deathCertifierId",
+                        );
                       })())
                     : undefined,
               },
@@ -1881,9 +2077,7 @@ export function createDbAdmissionRouteService(
           const electionSignatureEvidence = evidenceFacts?.electionSignature;
 
           const uploadedElection =
-            electionEvidence?.sourceType === "uploaded"
-              ? electionEvidence
-              : undefined;
+            electionEvidence?.sourceType === "uploaded" ? electionEvidence : undefined;
 
           const uploadedElectionSignature =
             electionSignatureEvidence?.sourceType === "uploaded"
@@ -1911,13 +2105,9 @@ export function createDbAdmissionRouteService(
                 }
               : uploadedElection
                 ? {
-                    id:
-                      uploadedElection.documentId ??
-                      `uploaded-election-${p.id}`,
+                    id: uploadedElection.documentId ?? `uploaded-election-${p.id}`,
                     status: uploadedElectionSignature ? "signed" : "drafted",
-                    signerKind: uploadedElectionSignature
-                      ? "uploaded"
-                      : "unknown",
+                    signerKind: uploadedElectionSignature ? "uploaded" : "unknown",
                     signedAt: uploadedElectionSignature?.completedAt ?? null,
                     sourceType: "uploaded" as const,
                   }
@@ -3453,7 +3643,9 @@ export function createDbAdmissionRouteService(
         // completed, skipping active entirely). `runEffects` doesn't handle this (no `SideEffect` kind
         // exists for it, same "folded into the caller" posture as `set_timestamp`/`set_flag`), so fold
         // it in here directly, mirroring the recert path's `signCtiHospiceMd` period activation.
-        if (facts.periodId) {
+        // D9 — the inherited period was inserted `active` (dated from `priorElectionStartDate`) by
+        // `transferIn`; it must not be re-run through `setActive` (illegal from `active`) nor re-dated.
+        if (facts.periodId && !facts.inheritedPeriod) {
           // §2.3.2 `setActive`. R-AC-01 (`computeActivationGate`, above) has already refused an
           // admission missing its signed election / NOR / CTI signatures, so these guards are the
           // machine's own restatement of that for the PERIOD — plus the recert F2F rule, which the
@@ -3651,7 +3843,18 @@ export function createDbAdmissionRouteService(
           organizationId,
           electedPeriod,
         );
-        const transition = transitionElectionPeriod(electedPeriod.status, {
+        // D9 — a transfer-in's INHERITED period is inserted `active`, and the receiving hospice still needs
+        // its own signed election statement against it (§2.3.6: "re-acknowledged by the patient"). The graph
+        // rightly refuses re-electing an `active` period, so the validators run from `pending` and the period
+        // itself is NOT moved (it stays `active`, keeping the window `transferIn` dated).
+        const activation =
+          electedPeriod.status === "active"
+            ? await activationPeriodFor(tx as DbClient, electedPeriod.admissionId)
+            : null;
+        const inheritedElection =
+          !!activation?.inherited && activation.period?.id === cur.electionPeriodId;
+        const fromStatus = inheritedElection ? "pending" : electedPeriod.status;
+        const transition = transitionElectionPeriod(fromStatus, {
           type: "signElectionStatement",
           signerKind,
           // R-EL-01 — resolved through the composition-root port over M39, and DENIED when unbound.
@@ -3669,14 +3872,15 @@ export function createDbAdmissionRouteService(
           existingActiveElectionElsewhere: concurrent.existingActiveElectionElsewhere,
           wouldOverlap: concurrent.wouldOverlap,
         });
-        await tx
-          .update(EP)
-          .set({
-            status: transition.to,
-            version: sql`${EP.version} + 1`,
-            updatedAt: now(),
-          })
-          .where(and(eq(EP.id, cur.electionPeriodId), ne(EP.status, transition.to)));
+        if (!inheritedElection)
+          await tx
+            .update(EP)
+            .set({
+              status: transition.to,
+              version: sql`${EP.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(EP.id, cur.electionPeriodId), ne(EP.status, transition.to)));
 
         const signedAt = new Date().toISOString().slice(0, 10);
         const [r] = await tx
@@ -3762,45 +3966,9 @@ export function createDbAdmissionRouteService(
     },
     async createElectionPeriod(organizationId, admissionId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [adm] = await tx
-          .select({ id: ADM.id })
-          .from(ADM)
-          .where(eq(ADM.id, admissionId))
-          .limit(1);
-        if (!adm) throw new ResourceNotFoundError(admissionId);
-        const [max] = await tx
-          .select({ seq: sql<number>`coalesce(max(${EP.sequenceNumber}), 0)` })
-          .from(EP)
-          .where(eq(EP.admissionId, admissionId));
-        const nextSequence = Number(max?.seq ?? 0) + 1;
-        const ep = firstOrThrow(
-          await tx
-            .insert(EP)
-            .values({
-              organizationId,
-              admissionId,
-              sequenceNumber: nextSequence,
-              // 42 CFR 418.21(a): periods 1 and 2 are 90-day, every later period is 60-day. This was a
-              // hard-coded `ninety_day` at every insert site, which is right only for the two seeds that
-              // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
-              // number, and the kind is what `scheduled_end_at` is derived from.
-              periodKind: electionPeriodKindForSequence(nextSequence),
-            })
-            .returning({ id: EP.id, status: EP.status, version: EP.version }),
-          "election period insert returned no row",
-        );
-        await outbox.publish(tx, {
-          eventName: "m6.election.period_started",
-          // F-100 — `sequence` is required and was omitted, so `POST /election-periods` raised
-          // `payload_schema_violation` and rolled back for every caller: no admission could open a
-          // benefit period past the one its activation seeds, which is 42 CFR 418.21(a) recertification.
-          // The value was already computed two statements up for the row's own `sequence_number`.
-          payload: { electionPeriodId: ep.id, admissionId, sequence: nextSequence },
-          organizationId,
-          aggregateKind: "election_period",
-          aggregateId: ep.id,
-        });
-        return { id: ep.id, state: ep.status, version: Number(ep.version) };
+        const ep = await openNextElectionPeriodInTx(tx, outbox, { organizationId, admissionId });
+        if (!ep) throw new WardenXError("NOT_FOUND", "election period insert returned no row", 404);
+        return { id: ep.id, state: ep.status, version: ep.version };
       });
     },
     async patchElectionPeriod(organizationId, id, ifVersion): Promise<MutationResult> {
@@ -3878,9 +4046,7 @@ export function createDbAdmissionRouteService(
           );
         }
         const signatureRequestedAt = now();
-        const signatureDueAt = new Date(
-          computeCtiSignatureDueAt(signatureRequestedAt),
-        );
+        const signatureDueAt = new Date(computeCtiSignatureDueAt(signatureRequestedAt));
 
         const cti = firstOrThrow(
           await tx
@@ -4033,6 +4199,22 @@ export function createDbAdmissionRouteService(
               effectiveAt: isoDay(now()),
             });
           }
+          // F-217 — M11 D10 / R-F2F-04 / §2.3.3: the F2F + CTI ADEQUACY gate. `transitionElectionPeriod`
+          // above only asks "is there an attested F2F?"; the predicate also requires the performer role,
+          // the prior-to window (or a valid override), the signer, the narrative minimum and — for every
+          // recert — that the CTI is actually signed. FAIL-CLOSED: the whole tx (including the CTI
+          // signature just written) rolls back and the period stays `pending`. Late CTI / overridden window
+          // are FLAGS (R-CTI-01, D4), never a refusal. Period 1 is NOT routed here (R-AC-01's
+          // `evaluateAdmissionReadiness` governs it, incl. the D3 attending-co-sign / verbal-cert grace).
+          const adequacy = await evaluateAdequacyForPeriod(tx as DbClient, cti.epId, isoDay(now()));
+          if (adequacy && adequacy.verdict === "inadequate") {
+            throw new WardenXError(
+              "ELECTION_PERIOD_ADEQUACY_FAILED",
+              `The election period cannot start: its certification of terminal illness and/or face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
+              409,
+              adequacy.reasonCodes.map((code) => ({ code, message: code })),
+            );
+          }
           await tx
             .update(EP)
             .set({
@@ -4051,6 +4233,7 @@ export function createDbAdmissionRouteService(
               electionPeriodId: cti.epId,
               sequence: period?.seq ?? 1,
               ...(period?.admissionId ? { admissionId: period.admissionId } : {}),
+              ...(adequacy ? { adequacy: summarizeAdequacy(adequacy) } : {}),
             },
             organizationId,
             aggregateKind: "election_period",

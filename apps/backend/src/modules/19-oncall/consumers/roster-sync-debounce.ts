@@ -1,3 +1,4 @@
+import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/19-oncall/consumers/roster-sync-debounce.ts — the live `m17.visit.assigned`
 // outbox consumer for the §4.5 path 1 / §4.8 `m19.shift-sync.debounced` roster sync (m19
 // `handlers-unbound` group, #248; F-155's own finding, now built).
@@ -21,7 +22,6 @@
 // output would be dead code, not an honored decision (its rule — react to every assignment, unfiltered —
 // is already what "one debounce row per org, regardless of payload" implements).
 import { withOrgContext } from "@wardenx/tenancy";
-import type { DbClient } from "@wardenx/db";
 import type { OrgId } from "@wardenx/types";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS } from "../jobs/index";
@@ -51,15 +51,19 @@ export function buildOncallRosterSyncDebounceConsumer(
       const organizationId = event.organizationId as OrgId;
       const at = clock();
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (handle) => {
-        const repo = new OnCallRosterSyncQueueRepository(handle as DbClient);
-        await repo.triggerDebounce({
-          organizationId,
-          triggeringEventOutboxId: event.id,
-          now: at,
-          debounceWindowMs,
-        });
-      });
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (handle) => {
+          const repo = new OnCallRosterSyncQueueRepository(handle as DbClient);
+          await repo.triggerDebounce({
+            organizationId,
+            triggeringEventOutboxId: event.id,
+            now: at,
+            debounceWindowMs,
+          });
+        },
+      );
     },
   };
 }

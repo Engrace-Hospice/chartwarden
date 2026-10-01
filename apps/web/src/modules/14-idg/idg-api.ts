@@ -63,7 +63,12 @@ export type AgendaItemView = Ok<operations["getApiV1IdgMeetingsByIdAgenda"]>[num
 export type DecisionView = Ok<operations["getApiV1IdgMeetingsByIdDecisions"]>[number];
 export type ActionItemView = Ok<operations["getApiV1IdgActionitems"]>[number];
 export type MinutesView = Ok<operations["getApiV1IdgMeetingsByIdMinutes"]>;
+/** Whether late addenda are still open on an adjourned meeting, and which patients a newer IDG now supersedes. */
+export type AddendumState = MinutesView["addendumState"];
 export type PacketDigestView = Ok<operations["getApiV1IdgMeetingsByIdPackets"]>[number];
+/** What the caller may attest at the check-in (held disciplines + a coordinator's attestable vocabulary). */
+export type AttendanceEligibility = Ok<operations["getApiV1IdgMeetingsByIdAttendanceeligibility"]>;
+export type DisciplineNoteView = Ok<operations["getApiV1IdgMeetingsByIdDisciplinenotes"]>[number];
 
 export type RecordAttendanceBody = ReqBody<operations["postApiV1IdgMeetingsByIdAttendance"]>;
 export type AddAgendaItemBody = ReqBody<operations["postApiV1IdgMeetingsByIdAgenda"]>;
@@ -105,6 +110,27 @@ export type WriteResult<T> =
  * is not on this meeting's agenda. 409 is the §2.2 machine — the meeting moved under the caller, which
  * on a surface several people share is ordinary.
  */
+/**
+ * Attendance-trust refusals (M14 0286), by server error code. Each is a different next step: `ATTENDANCE_SELF_ONLY` and
+ * `DISCIPLINE_NOT_HELD` are the controls working (the caller asked to record someone else / a discipline their roles do
+ * not confer), the attestation codes name who may override, and `..._UNAVAILABLE` is retryable. Keyed by CODE, not status,
+ * because a 403 here must not read as the generic "your role is not permitted".
+ */
+export const ATTENDANCE_ERROR_COPY: Readonly<Record<string, string>> = {
+  ATTENDANCE_SELF_ONLY:
+    "You can only check yourself in. Ask the meeting coordinator to record someone else.",
+  DISCIPLINE_NOT_HELD:
+    "That discipline is not one of the member's roles. Choose a discipline they hold, or have a coordinator attest it.",
+  UNKNOWN_DISCIPLINE: "That is not a recognised IDG discipline.",
+  ATTESTATION_REQUIRES_COORDINATOR:
+    "Only a coordinator can attest a discipline the member's roles do not confer.",
+  ATTESTATION_SELF_FORBIDDEN:
+    "A coordinator cannot attest a discipline for themself. Ask another coordinator to record it.",
+  ATTENDANCE_MEMBERSHIP_NOT_FOUND: "That person is not an active member of this organization.",
+  ATTENDANCE_AUTHORITY_UNAVAILABLE:
+    "Could not verify the attendee's disciplines just now. Try again in a moment.",
+};
+
 function failure(status: number | undefined, body: unknown): WriteResult<never> {
   const code = typeof status === "number" ? status : null;
   const err =
@@ -113,18 +139,21 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
       : undefined;
   const detail = typeof err?.message === "string" ? err.message : null;
   const errCode = typeof err?.code === "string" ? err.code : null;
+  const attendanceCopy = errCode ? ATTENDANCE_ERROR_COPY[errCode] : undefined;
   const message =
-    errCode === "STEP_UP_REQUIRED" || code === 412
-      ? "Adjourning is a commit point and needs a fresh re-authentication (§2.2 D13). Re-authenticate, then adjourn again."
-      : code === 403
-        ? (detail ?? "Your role is not permitted to take this action on this meeting.")
-        : code === 409
-          ? (detail ?? "This meeting changed before your action was applied. Reload the surface.")
-          : code === 404
-            ? "That meeting is no longer available to you."
-            : code === 422
-              ? (detail ?? "The server rejected the details supplied.")
-              : (detail ?? "The action could not be completed.");
+    attendanceCopy !== undefined
+      ? attendanceCopy
+      : errCode === "STEP_UP_REQUIRED" || code === 412
+        ? "Adjourning is a commit point and needs a fresh re-authentication (§2.2 D13). Re-authenticate, then adjourn again."
+        : code === 403
+          ? (detail ?? "Your role is not permitted to take this action on this meeting.")
+          : code === 409
+            ? (detail ?? "This meeting changed before your action was applied. Reload the surface.")
+            : code === 404
+              ? "That meeting is no longer available to you."
+              : code === 422
+                ? (detail ?? "The server rejected the details supplied.")
+                : (detail ?? "The action could not be completed.");
   return { ok: false, status: code, message };
 }
 
@@ -170,6 +199,23 @@ export async function recordAttendance(
   });
   if (error || !data) return failure(response?.status, error);
   return ok(data as AttendanceView);
+}
+
+/**
+ * What may be attested at the check-in. With no `membershipId` it is the CALLER's own held disciplines (from their real
+ * roles); a coordinator may name another member and also receives the vocabulary they may attest for them.
+ */
+export async function loadAttendanceEligibility(
+  client: ApiClient,
+  id: string,
+  membershipId?: string,
+): Promise<WriteResult<AttendanceEligibility>> {
+  const { data, error, response } = await client.GET(
+    "/api/v1/idg/meetings/{id}/attendance-eligibility",
+    { params: { path: { id }, query: membershipId ? { membershipId } : {} } },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return ok(data as AttendanceEligibility);
 }
 
 /** Amend a participation status (present ↔ tardy ↔ partial ↔ absent ↔ excused). */
@@ -374,3 +420,147 @@ export async function submitAmendment(
 
 /** ISO instant for a `date-time` field the server records as client-observed time. */
 export const nowIso = (): string => new Date().toISOString();
+
+// ── schedule a single (ad-hoc) meeting ─────────────────────────────────────────────────────────────────
+
+export type ScheduleMeetingBody = ReqBody<operations["postApiV1IdgMeetings"]>;
+
+/** The wire code of a refusal (`{ error: { code } }`), when the server sent one. */
+const errorCodeOf = (body: unknown): string | null => {
+  const err =
+    body && typeof body === "object" && "error" in body
+      ? (body as { error?: { code?: unknown } }).error
+      : undefined;
+  return typeof err?.code === "string" ? err.code : null;
+};
+
+/**
+ * `POST /api/v1/idg/meetings` — schedule ONE meeting for a location. The server owns every rule
+ * (permission `idg.schedule`, overlap with the location's other meetings, end after start, the 12-hour
+ * ceiling, start not in the past, location scope); this only maps each refusal to copy the coordinator
+ * can act on. 403 is surfaced, never pre-empted (ADR-0030 — no frontend authz). The typed client adds
+ * the required `Idempotency-Key` header (`client.ts`); it is named here so the contract stays typed.
+ */
+export async function scheduleMeeting(
+  client: ApiClient,
+  body: ScheduleMeetingBody,
+): Promise<WriteResult<MeetingView>> {
+  const { data, error, response } = await client.POST("/api/v1/idg/meetings", {
+    params: { header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
+    body,
+  });
+  if (!error && data) return ok(data as MeetingView);
+  const status = response?.status;
+  const detail = failure(status, error);
+  if (detail.ok) return detail;
+  const code = errorCodeOf(error);
+  const message =
+    status === 409 || code === "IDG_MEETING_OVERLAP"
+      ? "That time overlaps another IDG meeting at this location. Choose a different time."
+      : status === 404
+        ? "That location is not available to you."
+        : status === 403
+          ? "Your role is not permitted to schedule IDG meetings."
+          : status === 422
+            ? detail.message
+            : "The meeting could not be scheduled. Try again.";
+  return { ok: false, status: detail.status, message };
+}
+
+// ── per-discipline meeting notes (live meeting only) ───────────────────────────────────────────────────
+
+/** The wire error code of a refusal (`{ error: { code } }`), when the server sent one. */
+const noteErrorCode = (body: unknown): string | null => {
+  const err =
+    body && typeof body === "object" && "error" in body
+      ? (body as { error?: { code?: unknown } }).error
+      : undefined;
+  return typeof err?.code === "string" ? err.code : null;
+};
+
+/**
+ * Copy for a refused note write. The server owns every rule (ADR-0030): 403 = not present for that
+ * discipline / not the author, 422 = meeting not live or patient not on the agenda, 412 = the note
+ * changed since it was read, 428 = the version precondition was missing.
+ */
+function noteFailure(status: number | undefined, body: unknown): WriteResult<never> {
+  const base = failure(status, body);
+  if (base.ok) return base;
+  const code = noteErrorCode(body);
+  const byCode: Record<string, string> = {
+    MEETING_NOT_LIVE: "This meeting is no longer live, so notes can no longer be added or edited.",
+    ADDENDUM_REASON_REQUIRED: "A reason is required for a late addendum.",
+    ADDENDUM_WINDOW_CLOSED: "The window for late addenda on this meeting has closed.",
+    ADDENDUM_SUPERSEDED_BY_NEWER_IDG:
+      "A newer IDG has adjourned for this patient; its record now supersedes this meeting — add your note there.",
+    ADDENDUM_ELIGIBILITY_UNAVAILABLE: "Could not verify addendum eligibility — try again.",
+    ADDENDUM_IMMUTABLE: "A late addendum cannot be edited once recorded.",
+    INCLUSION_CRITERIA_FAILED:
+      "That patient is not on this meeting's agenda, so a note cannot be recorded for them.",
+  };
+  const message =
+    status === 412 || code === "STALE_VERSION"
+      ? "This note was changed by someone else since you opened it."
+      : status === 428
+        ? "The note version was missing from the request. Reload the meeting and try again."
+        : ((code ? byCode[code] : undefined) ?? base.message);
+  return { ok: false, status: base.status, message };
+}
+
+/** The meeting's discipline notes, oldest first. Readable in any status; Part 2 text arrives withheld. */
+export async function loadDisciplineNotes(
+  client: ApiClient,
+  id: string,
+  patientId?: string,
+  signal?: AbortSignal,
+): Promise<WriteResult<DisciplineNoteView[]>> {
+  const { data, error, response } = await client.GET("/api/v1/idg/meetings/{id}/discipline-notes", {
+    params: { path: { id }, query: patientId ? { patientId } : {} },
+    signal,
+  });
+  if (error || !Array.isArray(data)) return failure(response?.status, error);
+  return ok(data as DisciplineNoteView[]);
+}
+
+/**
+ * Write a note (`patientId` null/omitted = meeting-level). A `live` meeting takes an ordinary note whose `reason`
+ * is optional context (omit it when blank); an `adjourned` one takes a LATE ADDENDUM, which requires a non-blank
+ * `reason`, only opens for a bounded window after adjournment, and only while no newer IDG has adjourned for the
+ * patient (422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG; 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE is retryable).
+ */
+export async function createDisciplineNote(
+  client: ApiClient,
+  id: string,
+  body: { patientId: string | null; discipline: string; bodyText: string; reason?: string },
+): Promise<WriteResult<DisciplineNoteView>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/idg/meetings/{id}/discipline-notes",
+    {
+      params: { path: { id }, header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
+      body,
+    },
+  );
+  if (error || !data) return noteFailure(response?.status, error);
+  return ok(data as DisciplineNoteView);
+}
+
+/**
+ * Edit a note. `patch` carries only the changed fields (at least one): `bodyText` and/or `reason` (`null` clears
+ * it). `version` is the row version the caller last read (sent as `If-Match`).
+ */
+export async function updateDisciplineNote(
+  client: ApiClient,
+  noteId: string,
+  version: number,
+  patch: { bodyText?: string; reason?: string | null },
+): Promise<WriteResult<DisciplineNoteView>> {
+  const { data, error, response } = await client.PATCH("/api/v1/idg/discipline-notes/{id}", {
+    params: {
+      path: { id: noteId },
+      header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
+    },
+    body: patch,
+  });
+  if (error || !data) return noteFailure(response?.status, error);
+  return ok(data as DisciplineNoteView);
+}

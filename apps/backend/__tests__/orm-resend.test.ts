@@ -53,10 +53,13 @@ describe("F-182 — classifyOrmResend: which failures a resend may act on", () =
     "feed_identity_incomplete",
     "payload_invalid",
     "dependency_unavailable",
-  ])("an orm_refused:%s failure is resendable (the fact lives outside the signed order)", (reason) => {
-    const v = classifyOrmResend(refused(reason));
-    expect(v).toEqual({ ok: true, priorReason: `orm_refused:${reason}` });
-  });
+  ])(
+    "an orm_refused:%s failure is resendable (the fact lives outside the signed order)",
+    (reason) => {
+      const v = classifyOrmResend(refused(reason));
+      expect(v).toEqual({ ok: true, priorReason: `orm_refused:${reason}` });
+    },
+  );
 
   it("a SUD refusal is never resendable — a compliance decision, not a data fix", () => {
     const v = classifyOrmResend(refused("sud_restricted"));
@@ -66,7 +69,10 @@ describe("F-182 — classifyOrmResend: which failures a resend may act on", () =
   it.each([...ORM_REFUSALS_NEEDING_CORRECTED_ORDER])(
     "%s comes from the immutable signed order — not resendable, needs a corrected order",
     (reason) => {
-      expect(classifyOrmResend(refused(reason))).toMatchObject({ ok: false, code: "needs_corrected_order" });
+      expect(classifyOrmResend(refused(reason))).toMatchObject({
+        ok: false,
+        code: "needs_corrected_order",
+      });
     },
   );
 
@@ -97,7 +103,9 @@ describe("F-182 — classifyOrmResend: which failures a resend may act on", () =
   it.each(["pending", "pending_retry", "transmitted", "not_required"])(
     "a %s order is not resendable (not_failed)",
     (transmissionStatus) => {
-      expect(classifyOrmResend(refused("patient_sex_unrecorded", { transmissionStatus }))).toMatchObject({
+      expect(
+        classifyOrmResend(refused("patient_sex_unrecorded", { transmissionStatus })),
+      ).toMatchObject({
         ok: false,
         code: "not_failed",
       });
@@ -138,12 +146,21 @@ const NOW = "2026-06-08T12:00:00.000Z";
 const PERMISSION_SEED = [
   {
     userId: "rn_1",
-    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
+    permissions: [
+      "orders.read",
+      "orders.draft",
+      "orders.sign",
+      "orders.amend",
+      "orders.transmission.recover",
+    ],
   },
   // Holds everything a clinician does EXCEPT the amend key.
   { userId: "rn_no_amend", permissions: ["orders.read", "orders.draft", "orders.sign"] },
   // F-203 — holds `orders.amend` (the key the resend USED to be gated on) but NOT the recovery authority the resend is now gated on.
-  { userId: "amend_only", permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"] },
+  {
+    userId: "amend_only",
+    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"],
+  },
   { userId: "viewer_1", permissions: ["orders.read"] },
 ];
 
@@ -168,8 +185,16 @@ function makeServer() {
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
-const RN_NO_AMEND = { "x-test-user": "rn_no_amend", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
-const AMEND_ONLY = { "x-test-user": "amend_only", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
+const RN_NO_AMEND = {
+  "x-test-user": "rn_no_amend",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+};
+const AMEND_ONLY = {
+  "x-test-user": "amend_only",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+};
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const UNKNOWN_ORDER = "99999999-9999-4999-8999-999999999999";
 
@@ -199,7 +224,12 @@ afterEach(() => {
 
 describe("F-182 — POST /api/v1/orders/:id/resend-transmission", () => {
   async function draft(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
-    const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody,
+    });
     expect(res.statusCode).toBe(201);
     return res.json().id as string;
   }
@@ -220,7 +250,10 @@ describe("F-182 — POST /api/v1/orders/:id/resend-transmission", () => {
 
   it("is unauthenticated-safe: no session is 401", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/orders/${UNKNOWN_ORDER}/resend-transmission` });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${UNKNOWN_ORDER}/resend-transmission`,
+    });
     expect(res.statusCode).toBe(401);
     await app.close();
   });

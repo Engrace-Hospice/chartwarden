@@ -346,9 +346,9 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     mountCompose();
     const save = await waitFor(() => screen.getByRole("button", { name: "Save draft" }));
     expect((save as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Finalize note" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(
+      (screen.getByRole("button", { name: "Finalize note" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     expect((screen.getByRole("button", { name: "Vitals" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
@@ -374,7 +374,13 @@ describe("#91 — vitals capture", () => {
 describe("#91 — My Drafts leads somewhere a draft can be finished", () => {
   it("a draft row opens the COMPOSER, not the read screen", async () => {
     mount("/work/drafts", <MyDrafts />, "/work/drafts");
-    const row = await waitFor(() => screen.getByRole("button", { name: /Routine Visit/i }));
+    // The row holds its own controls, so it is a focusable row, not `role="button"` (a button may not
+    // wrap focusable content — see `interactiveRowProps`). Find it by its content instead.
+    const row = await waitFor(() => {
+      const el = screen.getByText(/Routine Visit/i).closest("tr");
+      if (!el) throw new Error("draft row not rendered");
+      return el;
+    });
     fireEvent.click(row);
     // Until the composer existed, every row in the author's unfinished-work queue led to a read-only
     // view of the thing they came here to write.

@@ -48,17 +48,29 @@ function intentOf(payload: unknown): AlertIntent {
   const severity = p.severity;
   const correlationId = p.correlationId;
   const alertPayload = p.alertPayload;
-  if (typeof alertType !== "string" || !(M11_RECOVERY_ALERT_TYPES as readonly string[]).includes(alertType)) {
+  if (
+    typeof alertType !== "string" ||
+    !(M11_RECOVERY_ALERT_TYPES as readonly string[]).includes(alertType)
+  ) {
     // A permanent (poison) failure: name it and let the relay dead-letter it rather than retry forever.
     throw new Error(`${name}: unknown alertType '${String(alertType)}'`);
   }
-  if (typeof severity !== "string" || typeof correlationId !== "string" || correlationId.length === 0) {
+  if (
+    typeof severity !== "string" ||
+    typeof correlationId !== "string" ||
+    correlationId.length === 0
+  ) {
     throw new Error(`${name}: payload has no severity / correlationId`);
   }
   if (typeof alertPayload !== "object" || alertPayload === null || Array.isArray(alertPayload)) {
     throw new Error(`${name}: payload has no alertPayload object`);
   }
-  return { alertType, severity, correlationId, alertPayload: alertPayload as Record<string, unknown> };
+  return {
+    alertType,
+    severity,
+    correlationId,
+    alertPayload: alertPayload as Record<string, unknown>,
+  };
 }
 
 export function buildM11RecoveryAlertConsumer(deps: RecoveryAlertDeps) {

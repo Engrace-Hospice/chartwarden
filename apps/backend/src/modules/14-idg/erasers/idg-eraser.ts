@@ -36,6 +36,8 @@ export interface IdgEraseCounts {
   readonly actionItems: number;
   /** `idg_agenda_item` rows deleted for the patient (patient-scoped agenda entries only). */
   readonly agendaItems: number;
+  /** `idg_discipline_note` rows deleted for the patient (patient-scoped notes only; meeting-level notes survive). */
+  readonly disciplineNotes: number;
   /** `idg_minutes` rows whose patient-specific snapshot references were hash-redacted (rows NOT deleted, §8.4). */
   readonly minutesRedacted: number;
 }
@@ -88,7 +90,12 @@ export async function eraseIdgRecord(
 
   const counts = await store.erasePatientRecords(organizationId, patientId, retentionAsOf);
   // minutesRedacted is bookkeeping (rows redacted-in-place, not deleted) — excluded from the deleted-row tally.
-  const erased = counts.packets + counts.decisions + counts.actionItems + counts.agendaItems;
+  const erased =
+    counts.packets +
+    counts.decisions +
+    counts.actionItems +
+    counts.agendaItems +
+    counts.disciplineNotes;
   return { erased, counts };
 }
 
@@ -108,6 +115,7 @@ export function createInMemoryIdgEraseStore(seed: InMemoryIdgEraseSeed = {}): {
     decisions: 0,
     actionItems: 0,
     agendaItems: 0,
+    disciplineNotes: 0,
     minutesRedacted: 0,
   };
   const counts: IdgEraseCounts = { ...zero, ...seed.counts };
@@ -143,6 +151,7 @@ export function createInMemoryIdgEraseStore(seed: InMemoryIdgEraseSeed = {}): {
  */
 export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
   const AGENDA = schema.idgAgendaItem;
+  const NOTE = schema.idgDisciplineNote;
   const DEC = schema.idgDecision;
   const ACT = schema.idgActionItem;
   const PKT = schema.idgPatientPacket;
@@ -180,13 +189,19 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
           .select({ id: ACT.id, meetingId: ACT.idgMeetingId })
           .from(ACT)
           .where(and(eq(ACT.patientId, patientId), lt(ACT.createdAt, boundary)));
+        const noteRows = await tx
+          .select({ id: NOTE.id, meetingId: NOTE.idgMeetingId })
+          .from(NOTE)
+          .where(and(eq(NOTE.patientId, patientId), lt(NOTE.createdAt, boundary)));
         const packetRows = await tx
           .select({ id: PKT.id, meetingId: PKT.idgMeetingId })
           .from(PKT)
           .where(and(eq(PKT.patientId, patientId), lt(PKT.builtAt, boundary)));
         const meetingIds = [
           ...new Set(
-            [...agendaRows, ...decisionRows, ...actionRows, ...packetRows].map((r) => r.meetingId),
+            [...agendaRows, ...decisionRows, ...actionRows, ...noteRows, ...packetRows].map(
+              (r) => r.meetingId,
+            ),
           ),
         ];
 
@@ -234,6 +249,17 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
                   .returning({ id: AGENDA.id }),
               );
 
+        // Patient-scoped discipline notes (free-text PHI): plain delete — nothing references them.
+        const disciplineNotes =
+          noteRows.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(NOTE)
+                  .where(inArray(NOTE.id, ids(noteRows)))
+                  .returning({ id: NOTE.id }),
+              );
+
         // The partitioned packet parent, via the partition-key predicate (row-delete; DETACH+DROP is a
         // DDL maintenance path the RLS-scoped app role cannot run).
         const packets = await del(() =>
@@ -261,6 +287,7 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
                     attendanceSnapshot: redact(MIN.attendanceSnapshot),
                     decisionListSnapshot: redact(MIN.decisionListSnapshot),
                     actionItemListSnapshot: redact(MIN.actionItemListSnapshot),
+                    disciplineNoteSnapshot: redact(MIN.disciplineNoteSnapshot),
                   })
                   .where(
                     and(
@@ -269,13 +296,14 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
                         sql`${MIN.attendanceSnapshot}::text LIKE ${needle}`,
                         sql`${MIN.decisionListSnapshot}::text LIKE ${needle}`,
                         sql`${MIN.actionItemListSnapshot}::text LIKE ${needle}`,
+                        sql`${MIN.disciplineNoteSnapshot}::text LIKE ${needle}`,
                       ),
                     ),
                   )
                   .returning({ id: MIN.id })
               ).length;
 
-        return { packets, decisions, actionItems, agendaItems, minutesRedacted };
+        return { packets, decisions, actionItems, agendaItems, disciplineNotes, minutesRedacted };
       });
     },
   };

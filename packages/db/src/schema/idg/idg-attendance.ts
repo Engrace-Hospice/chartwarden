@@ -4,7 +4,7 @@
 // meeting (cascade) + the tenancy spine (organization); membership_id → M1 membership is plain uuid
 // app-validated. `absence_note` is free-text → denylisted in the M4 write-audit trigger (§3.3). RLS +
 // grants + trigger land in the RLS migration (M14-T02).
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { idgAttendanceStatus } from "../../enums";
 import { organizations } from "../organizations";
 import { idgMeeting } from "./idg-meetings";
@@ -21,6 +21,10 @@ export const idgAttendance = pgTable(
       .references(() => idgMeeting.id, { onDelete: "cascade" }),
     membershipId: uuid("membership_id").notNull(), // M1 membership (no cross-module FK)
     discipline: text("discipline").notNull(),
+    // Attendance trust (0286): who wrote the row (null = legacy, pre-0286) and whether a coordinator ATTESTED a
+    // discipline the member's roles do not confer. Grandfathered rows: null / false.
+    recordedByMembershipId: uuid("recorded_by_membership_id"),
+    disciplineAttested: boolean("discipline_attested").notNull().default(false),
     status: idgAttendanceStatus("status").notNull().default("absent"),
     checkInAt: timestamp("check_in_at", { withTimezone: true }),
     checkOutAt: timestamp("check_out_at", { withTimezone: true }),

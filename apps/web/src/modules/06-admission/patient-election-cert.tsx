@@ -10,20 +10,24 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 import type { StatusTone } from "@wardenx/ui";
-import { useSession } from "../../shell/session";
 // apps/web/src/modules/06-admission — patient-scoped Election & Certification (M6 §5.2/§5.3, Track B).
-// Spec: docs/modules/WARDENX_MODULE_06_ADMISSION_SPEC — the per-patient slice reached from the patient
-// chart "Election & Certification" tab. A Patient Workspace (banner + shared module rail) over the
-// patient's current admission and its benefit-period ladder — each period's election statement / CTI /
-// F2F recert bundle — with the admission's compliance windows on the right rail. Backed by the M6
+// Spec: docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md — the
+// per-patient slice reached from the patient chart "Election & Certification" tab. A Patient
+// Workspace (banner + shared module rail) over the patient's current admission, its single hospice
+// election, and its benefit-period CTI / F2F ladder — with the admission's compliance windows on the
+// right rail. Backed by the M6
 // aggregate read GET /api/v1/patients/:patientId/election-certification (+ the patient summary for the
 // banner) via the typed client. The SERVER owns authoritative state (ADR-0030, no frontend authz); a
 // patient with no admission renders an honest empty state, never fabricated certification data.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { useParams, Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
+import { CtiDetailModal } from "./cti-detail-modal";
+import { ElectionStatementDetailModal } from "./election-statement-detail-modal";
+import { FaceToFaceDetailModal } from "./face-to-face-detail-modal";
 
 interface Bundle {
   id: string;
@@ -123,6 +127,9 @@ export function PatientElectionCert(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [signingCtiId, setSigningCtiId] = useState<string | null>(null);
+  const [electionDetailOpen, setElectionDetailOpen] = useState(false);
+  const [ctiDetailPeriod, setCtiDetailPeriod] = useState<Period | null>(null);
+  const [f2fDetailPeriod, setF2fDetailPeriod] = useState<Period | null>(null);
 
   const roles = session?.roles ?? [];
 
@@ -132,8 +139,7 @@ export function PatientElectionCert(): JSX.Element {
     roles.includes("medical_director") ||
     roles.includes("hospice_physician");
 
-  const canSignCti =
-    roles.includes("medical_director") || roles.includes("hospice_physician");
+  const canSignCti = roles.includes("medical_director") || roles.includes("hospice_physician");
 
   const canManageF2f =
     roles.includes("medical_director") ||
@@ -175,16 +181,13 @@ export function PatientElectionCert(): JSX.Element {
       setSigningCtiId(ctiId);
       setActionError(null);
 
-      const { data: currentCti, error: readError } = await client.GET(
-        "/api/v1/cti/{id}",
-        {
-          params: {
-            path: {
-              id: ctiId,
-            },
+      const { data: currentCti, error: readError } = await client.GET("/api/v1/cti/{id}", {
+        params: {
+          path: {
+            id: ctiId,
           },
         },
-      );
+      });
 
       if (readError || !currentCti) {
         setActionError("Could not load the current CTI.");
@@ -196,19 +199,16 @@ export function PatientElectionCert(): JSX.Element {
         version: number;
       };
 
-      const { error: signError } = await client.POST(
-        "/api/v1/cti/{id}/sign-hospice-md",
-        {
-          params: {
-            path: {
-              id: ctiId,
-            },
+      const { error: signError } = await client.POST("/api/v1/cti/{id}/sign-hospice-md", {
+        params: {
+          path: {
+            id: ctiId,
           },
-          body: {
-            ifVersion: detail.version,
-          } as never,
         },
-      );
+        body: {
+          ifVersion: detail.version,
+        } as never,
+      });
 
       if (signError) {
         setActionError(
@@ -244,6 +244,8 @@ export function PatientElectionCert(): JSX.Element {
 
   const admission = data?.admission ?? null;
   const windows = data?.complianceWindows ?? [];
+  const electionPeriod = data?.periods.find((period) => period.electionStatement !== null) ?? null;
+  const electionStatement = electionPeriod?.electionStatement ?? null;
 
   return (
     <PatientWorkspaceLayout banner={banner}>
@@ -251,7 +253,7 @@ export function PatientElectionCert(): JSX.Element {
         <ChartModuleRail patientId={patientId ?? ""} current="election" />
 
         <div style={contentWithRail}>
-          {/* Center — admission + benefit-period ladder */}
+          {/* Center — admission + hospice election + benefit-period ladder */}
           <main style={mainContent}>
             <h1
               style={{
@@ -290,7 +292,7 @@ export function PatientElectionCert(): JSX.Element {
                       gap: "0.6rem",
                     }}
                   >
-                    <h2 style={{ ...cardHeading, margin: 0 }}>Admission</h2>
+                    <h2 style={{ ...cardHeading, margin: 0 }}>Admission summary</h2>
                     <StatusPill
                       label={stateLabel(admission.state)}
                       tone={ADMISSION_TONE[admission.state] ?? "neutral"}
@@ -304,21 +306,73 @@ export function PatientElectionCert(): JSX.Element {
                     {admission.dischargedAt ? (
                       <>
                         <dt style={dtStyle}>Discharged</dt>
-                        <dd style={ddStyle}>
-                          {fmtDate(admission.dischargedAt)}
-                        </dd>
+                        <dd style={ddStyle}>{fmtDate(admission.dischargedAt)}</dd>
                       </>
                     ) : null}
                   </dl>
                 </section>
 
-                <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>
-                  Benefit periods
-                </h2>
+                <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>Hospice Election</h2>
+                <section
+                  style={{
+                    ...cardSurface,
+                    padding: "1rem 1.125rem",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  <div style={certificationHeader}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={electionTitle}>Election Statement</div>
+                      {!electionStatement ? (
+                        <p style={electionEmptyMessage}>
+                          No Election Statement has been created for this admission.
+                        </p>
+                      ) : null}
+                    </div>
+                    <StatusPill
+                      label={electionStatement ? stateLabel(electionStatement.status) : "Missing"}
+                      tone={electionStatement ? subTone(electionStatement.status) : "warning"}
+                    />
+                  </div>
+
+                  {electionStatement ? (
+                    <>
+                      <dl style={electionDetailGrid}>
+                        <dt style={dtStyle}>Effective date</dt>
+                        <dd style={ddStyle}>
+                          {fmtDate(electionPeriod?.effectiveAt ?? electionStatement.signedAt)}
+                        </dd>
+
+                        <dt style={dtStyle}>Signed by</dt>
+                        <dd style={ddStyle}>{stateLabel(electionStatement.signerKind)}</dd>
+
+                        <dt style={dtStyle}>Statement type</dt>
+                        <dd style={ddStyle}>
+                          {electionStatement.sourceType === "uploaded"
+                            ? "Uploaded document"
+                            : "Structured"}
+                        </dd>
+
+                        <dt style={dtStyle}>Signed date</dt>
+                        <dd style={ddStyle}>{fmtDate(electionStatement.signedAt)}</dd>
+                      </dl>
+                      <div style={standaloneDetailAction}>
+                        <button
+                          type="button"
+                          aria-label="View Election Statement details"
+                          style={secondaryAction}
+                          onClick={() => setElectionDetailOpen(true)}
+                        >
+                          View details
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+                </section>
+
+                <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>Benefit periods</h2>
                 {data && data.periods.length === 0 ? (
-                  <p style={meta}>
-                    No benefit periods opened yet for this admission.
-                  </p>
+                  <p style={meta}>No benefit periods opened yet for this admission.</p>
                 ) : (
                   <div
                     style={{
@@ -327,242 +381,167 @@ export function PatientElectionCert(): JSX.Element {
                       gap: "0.75rem",
                     }}
                   >
-                    {data?.periods.map((p) => (
-                      <section
-                        key={p.id}
-                        style={{ ...cardSurface, padding: "1rem 1.125rem" }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.6rem",
-                            marginBottom: "0.5rem",
-                          }}
-                        >
-                          <span style={{ fontWeight: 700, color: t.onSurface }}>
-                            Period {p.sequenceNumber}
-                          </span>
-                          <span style={{ color: t.muted, fontSize: "0.78rem" }}>
-                            {stateLabel(p.periodKind)}
-                          </span>
-                          <StatusPill
-                            label={stateLabel(p.status)}
-                            tone={subTone(p.status)}
-                          />
-                          <span
+                    {data?.periods.map((p) => {
+                      const isF2fRequired = p.sequenceNumber >= 3;
+                      const f2fStatus = !isF2fRequired
+                        ? "not_required"
+                        : (p.faceToFace?.status ?? "missing");
+
+                      return (
+                        <section key={p.id} style={{ ...cardSurface, padding: "1rem 1.125rem" }}>
+                          <div
                             style={{
-                              marginLeft: "auto",
-                              color: t.muted,
-                              fontSize: "0.78rem",
+                              display: "flex",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              gap: "0.6rem",
+                              marginBottom: "0.5rem",
                             }}
                           >
-                            {p.effectiveAt ? `${p.effectiveAt}` : "—"}
-                            {p.scheduledEndAt ? ` → ${p.scheduledEndAt}` : ""}
-                          </span>
-                        </div>
-                        <div style={bundleGrid}>
-                          <BundleCell
-                            label="Election statement"
-                            present={!!p.electionStatement}
-                            status={p.electionStatement?.status}
-                            detail={
-                              p.electionStatement
-                                ? p.electionStatement.sourceType === "uploaded"
-                                  ? [
-                                      "Uploaded document",
-                                      p.electionStatement.signedAt
-                                        ? `Signed ${fmtDate(p.electionStatement.signedAt)}`
-                                        : "Signature pending",
-                                    ].join(" · ")
-                                  : [
-                                      stateLabel(
-                                        p.electionStatement.signerKind,
-                                      ),
-                                      p.electionStatement.signedAt
-                                        ? `Signed ${fmtDate(p.electionStatement.signedAt)}`
-                                        : "Signature pending",
-                                    ].join(" · ")
-                                : "Not drafted"
-                            }
-                          />
-                          <CertificationCard
-                            title="Certification of Terminal Illness"
-                            status={p.cti?.status ?? "missing"}
-                            summary={
-                              p.cti
-                                ? p.cti.sourceType === "uploaded"
-                                  ? [
-                                      "Uploaded document",
-                                      p.cti.hospiceMdSigned
-                                        ? "Hospice MD signed"
-                                        : "Hospice MD signature pending",
-                                    ].join(" · ")
-                                  : [
-                                      p.cti.hospiceMdSigned
-                                        ? "Hospice MD signed"
-                                        : "Hospice MD pending",
-                                      p.cti.attendingMdSigned
-                                        ? "Attending signed"
-                                        : "Attending pending",
-                                      p.cti.signedLate ? "Signed late" : null,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" · ")
-                                : "No CTI created for this period."
-                            }
-                            details={
-                              p.cti ? (
-                                <dl style={compactDetailGrid}>
-                                  <dt style={dtStyle}>Source</dt>
-                                  <dd style={ddStyle}>
-                                    {p.cti.sourceType === "uploaded"
-                                      ? "Uploaded document"
-                                      : "Structured CTI"}
-                                  </dd>
+                            <span style={{ fontWeight: 700, color: t.onSurface }}>
+                              Period {p.sequenceNumber}
+                            </span>
+                            <span style={{ color: t.muted, fontSize: "0.78rem" }}>
+                              {stateLabel(p.periodKind)}
+                            </span>
+                            <StatusPill label={stateLabel(p.status)} tone={subTone(p.status)} />
+                            <span
+                              style={{
+                                marginLeft: "auto",
+                                color: t.muted,
+                                fontSize: "0.78rem",
+                              }}
+                            >
+                              {fmtDate(p.effectiveAt)}
+                              {p.scheduledEndAt ? ` → ${fmtDate(p.scheduledEndAt)}` : ""}
+                            </span>
+                          </div>
+                          <div style={bundleGrid}>
+                            <CertificationCard
+                              title={`CTI — ${
+                                p.sequenceNumber === 1 ? "Initial Certification" : "Recertification"
+                              }`}
+                              status={p.cti?.status ?? "missing"}
+                              summary={
+                                p.cti
+                                  ? p.cti.sourceType === "uploaded"
+                                    ? [
+                                        "Uploaded document",
+                                        p.cti.hospiceMdSigned
+                                          ? "Hospice MD signed"
+                                          : "Hospice MD signature pending",
+                                      ].join(" · ")
+                                    : [
+                                        p.cti.hospiceMdSigned
+                                          ? "Hospice MD signed"
+                                          : "Hospice MD pending",
+                                        p.sequenceNumber === 1
+                                          ? p.cti.attendingMdSigned
+                                            ? "Attending signed"
+                                            : "Attending pending"
+                                          : null,
+                                        p.cti.signedLate ? "Signed late" : null,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")
+                                  : "No CTI created for this period."
+                              }
+                              actions={
+                                <>
+                                  {p.cti ? (
+                                    <button
+                                      type="button"
+                                      aria-label={`View Period ${p.sequenceNumber} CTI details`}
+                                      style={secondaryAction}
+                                      onClick={() => setCtiDetailPeriod(p)}
+                                    >
+                                      View details
+                                    </button>
+                                  ) : null}
 
-                                  <dt style={dtStyle}>Status</dt>
-                                  <dd style={ddStyle}>
-                                    {stateLabel(p.cti.status)}
-                                  </dd>
+                                  {canPrepareCti && !p.cti ? (
+                                    <Link
+                                      to={`/admissions/${admission.id}`}
+                                      style={primaryLinkAction}
+                                    >
+                                      Create CTI
+                                    </Link>
+                                  ) : null}
 
-                                  <dt style={dtStyle}>Period start</dt>
-                                  <dd style={ddStyle}>
-                                    {fmtDate(p.cti.periodStart)}
-                                  </dd>
+                                  {canSignCti &&
+                                  p.cti &&
+                                  p.cti.sourceType !== "uploaded" &&
+                                  !p.cti.hospiceMdSigned &&
+                                  p.cti.status !== "voided" ? (
+                                    <button
+                                      type="button"
+                                      style={primaryAction}
+                                      disabled={signingCtiId === p.cti.id}
+                                      onClick={() => {
+                                        return p?.cti && void signCti(p.cti.id);
+                                      }}
+                                    >
+                                      {signingCtiId === p.cti.id ? "Signing..." : "Sign CTI"}
+                                    </button>
+                                  ) : null}
+                                </>
+                              }
+                            />
 
-                                  <dt style={dtStyle}>Period end</dt>
-                                  <dd style={ddStyle}>
-                                    {fmtDate(p.cti.periodEnd)}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Hospice MD</dt>
-                                  <dd style={ddStyle}>
-                                    {p.cti.hospiceMdSigned
-                                      ? "Signed"
-                                      : "Pending"}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Attending</dt>
-                                  <dd style={ddStyle}>
-                                    {p.cti.attendingMdSigned
-                                      ? "Signed"
-                                      : "Pending"}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Late</dt>
-                                  <dd style={ddStyle}>
-                                    {p.cti.signedLate ? "Yes" : "No"}
-                                  </dd>
-                                </dl>
-                              ) : null
-                            }
-                            actions={
-                              <>
-                                {canPrepareCti && !p.cti ? (
-                                  <Link
-                                    to={`/admissions/${admission.id}`}
-                                    style={primaryLinkAction}
-                                  >
-                                    Create CTI
-                                  </Link>
-                                ) : null}
-
-                                {canSignCti &&
-                                p.cti &&
-                                p.cti.sourceType !== "uploaded" &&
-                                !p.cti.hospiceMdSigned &&
-                                p.cti.status !== "voided" ? (
+                            <CertificationCard
+                              title="Face-to-Face"
+                              status={f2fStatus}
+                              statusLabel={
+                                !isF2fRequired
+                                  ? "Not required"
+                                  : !p.faceToFace
+                                    ? "Required — not scheduled"
+                                    : undefined
+                              }
+                              statusTone={
+                                !isF2fRequired ? "neutral" : !p.faceToFace ? "warning" : undefined
+                              }
+                              summary={
+                                !isF2fRequired
+                                  ? "Not required for this benefit period."
+                                  : p.faceToFace
+                                    ? [
+                                        stateLabel(p.faceToFace.performerRole),
+                                        p.faceToFace.encounterDate
+                                          ? fmtDate(p.faceToFace.encounterDate)
+                                          : null,
+                                        p.faceToFace.attested ? "Attested" : "Pending attestation",
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")
+                                    : "A Face-to-Face encounter is required and has not been scheduled."
+                              }
+                              actions={
+                                p.faceToFace ? (
                                   <button
                                     type="button"
-                                    style={primaryAction}
-                                    disabled={signingCtiId === p.cti.id}
-                                    onClick={() => {
-                                      return p?.cti && void signCti(p.cti.id);
-                                    }}
+                                    aria-label={`View Period ${p.sequenceNumber} Face-to-Face details`}
+                                    style={secondaryAction}
+                                    onClick={() => setF2fDetailPeriod(p)}
                                   >
-                                    {signingCtiId === p.cti.id
-                                      ? "Signing..."
-                                      : "Sign CTI"}
+                                    View details
                                   </button>
-                                ) : null}
-                              </>
-                            }
-                          />
-
-                          <CertificationCard
-                            title="Face-to-Face"
-                            status={p.faceToFace?.status ?? "missing"}
-                            summary={
-                              p.faceToFace
-                                ? [
-                                    stateLabel(p.faceToFace.performerRole),
-                                    p.faceToFace.encounterDate
-                                      ? fmtDate(p.faceToFace.encounterDate)
-                                      : null,
-                                    p.faceToFace.attested
-                                      ? "Attested"
-                                      : "Pending attestation",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")
-                                : "No Face-to-Face encounter scheduled."
-                            }
-                            details={
-                              p.faceToFace ? (
-                                <dl style={compactDetailGrid}>
-                                  <dt style={dtStyle}>Status</dt>
-                                  <dd style={ddStyle}>
-                                    {stateLabel(p.faceToFace.status)}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Performer</dt>
-                                  <dd style={ddStyle}>
-                                    {stateLabel(p.faceToFace.performerRole)}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Encounter date</dt>
-                                  <dd style={ddStyle}>
-                                    {fmtDate(p.faceToFace.encounterDate)}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Within window</dt>
-                                  <dd style={ddStyle}>
-                                    {p.faceToFace.withinWindow == null
-                                      ? "—"
-                                      : p.faceToFace.withinWindow
-                                        ? "Yes"
-                                        : "No"}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Window override</dt>
-                                  <dd style={ddStyle}>
-                                    {p.faceToFace.windowOverride ? "Yes" : "No"}
-                                  </dd>
-
-                                  <dt style={dtStyle}>Attestation</dt>
-                                  <dd style={ddStyle}>
-                                    {p.faceToFace.attested
-                                      ? "Attested"
-                                      : "Pending"}
-                                  </dd>
-                                </dl>
-                              ) : null
-                            }
-                            footer={
-                              canManageF2f ? (
-                                <span style={permissionHint}>
-                                  Hospice MD / NP actions available for this
-                                  record.
-                                </span>
-                              ) : (
-                                <span style={permissionHint}>Read only</span>
-                              )
-                            }
-                          />
-                        </div>
-                      </section>
-                    ))}
+                                ) : null
+                              }
+                              footer={
+                                isF2fRequired && canManageF2f ? (
+                                  <span style={permissionHint}>
+                                    Hospice MD / NP actions available for this record.
+                                  </span>
+                                ) : isF2fRequired ? (
+                                  <span style={permissionHint}>Read only</span>
+                                ) : null
+                              }
+                            />
+                          </div>
+                        </section>
+                      );
+                    })}
                   </div>
                 )}
               </>
@@ -580,9 +559,7 @@ export function PatientElectionCert(): JSX.Element {
               <h2 style={railTitle}>Compliance windows</h2>
 
               {windows.length === 0 ? (
-                <p style={meta}>
-                  No open compliance windows for this admission.
-                </p>
+                <p style={meta}>No open compliance windows for this admission.</p>
               ) : (
                 <ul
                   style={{
@@ -637,6 +614,65 @@ export function PatientElectionCert(): JSX.Element {
           </aside>
         </div>
       </div>
+
+      <ElectionStatementDetailModal
+        open={electionDetailOpen}
+        statementId={electionStatement?.id ?? null}
+        snapshot={
+          electionStatement
+            ? {
+                effectiveDate: electionPeriod?.effectiveAt ?? electionStatement.signedAt,
+                signerKind: electionStatement.signerKind,
+                signedAt: electionStatement.signedAt,
+                sourceType: electionStatement.sourceType,
+              }
+            : null
+        }
+        onOpenChange={setElectionDetailOpen}
+      />
+
+      <CtiDetailModal
+        open={ctiDetailPeriod !== null}
+        ctiId={ctiDetailPeriod?.cti?.id ?? null}
+        snapshot={
+          ctiDetailPeriod?.cti
+            ? {
+                sequenceNumber: ctiDetailPeriod.sequenceNumber,
+                effectiveAt: ctiDetailPeriod.effectiveAt,
+                scheduledEndAt: ctiDetailPeriod.scheduledEndAt,
+                sourceType: ctiDetailPeriod.cti.sourceType,
+                hospiceMdSigned: ctiDetailPeriod.cti.hospiceMdSigned,
+                attendingMdSigned: ctiDetailPeriod.cti.attendingMdSigned,
+                signedLate: ctiDetailPeriod.cti.signedLate,
+                periodStart: ctiDetailPeriod.cti.periodStart,
+                periodEnd: ctiDetailPeriod.cti.periodEnd,
+              }
+            : null
+        }
+        onOpenChange={(open) => {
+          if (!open) setCtiDetailPeriod(null);
+        }}
+      />
+
+      <FaceToFaceDetailModal
+        open={f2fDetailPeriod !== null}
+        faceToFaceId={f2fDetailPeriod?.faceToFace?.id ?? null}
+        snapshot={
+          f2fDetailPeriod?.faceToFace
+            ? {
+                sequenceNumber: f2fDetailPeriod.sequenceNumber,
+                performerRole: f2fDetailPeriod.faceToFace.performerRole,
+                encounterDate: f2fDetailPeriod.faceToFace.encounterDate,
+                withinWindow: f2fDetailPeriod.faceToFace.withinWindow,
+                windowOverride: f2fDetailPeriod.faceToFace.windowOverride,
+                attested: f2fDetailPeriod.faceToFace.attested,
+              }
+            : null
+        }
+        onOpenChange={(open) => {
+          if (!open) setF2fDetailPeriod(null);
+        }}
+      />
     </PatientWorkspaceLayout>
   );
 }
@@ -644,15 +680,17 @@ export function PatientElectionCert(): JSX.Element {
 function CertificationCard({
   title,
   status,
+  statusLabel,
+  statusTone,
   summary,
-  details,
   actions,
   footer,
 }: {
   title: string;
   status: string;
+  statusLabel?: string;
+  statusTone?: StatusTone;
   summary: string;
-  details?: ReactNode;
   actions?: ReactNode;
   footer?: ReactNode;
 }): JSX.Element {
@@ -668,64 +706,14 @@ function CertificationCard({
         </div>
 
         <StatusPill
-          label={missing ? "Missing" : stateLabel(status)}
-          tone={missing ? "neutral" : subTone(status)}
+          label={statusLabel ?? (missing ? "Missing" : stateLabel(status))}
+          tone={statusTone ?? (missing ? "warning" : subTone(status))}
         />
       </div>
-
-      {details ? (
-        <details style={detailsBlock}>
-          <summary style={detailsSummary}>View details</summary>
-
-          <div style={detailsContent}>{details}</div>
-        </details>
-      ) : null}
 
       {actions ? <div style={certificationActions}>{actions}</div> : null}
 
       {footer ? <div style={certificationFooter}>{footer}</div> : null}
-    </div>
-  );
-}
-
-function BundleCell({
-  label,
-  present,
-  status,
-  detail,
-}: {
-  label: string;
-  present: boolean;
-  status?: string;
-  detail: string;
-}): JSX.Element {
-  return (
-    <div
-      style={{
-        ...cardSurface,
-        background: t.surfaceLow,
-        padding: "0.75rem 0.85rem",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "0.72rem",
-          color: t.onSurfaceVariant,
-          marginBottom: "0.35rem",
-        }}
-      >
-        {label}
-      </div>
-      {present && status ? (
-        <StatusPill label={stateLabel(status)} tone={subTone(status)} />
-      ) : (
-        <StatusPill label="Missing" tone="neutral" />
-      )}
-      <div
-        style={{ color: t.muted, fontSize: "0.74rem", marginTop: "0.35rem" }}
-      >
-        {detail}
-      </div>
     </div>
   );
 }
@@ -763,18 +751,20 @@ const workspaceBody: CSSProperties = {
 
 const contentWithRail: CSSProperties = {
   display: "flex",
+  flexWrap: "wrap",
+  alignContent: "flex-start",
   flex: "1 1 auto",
   minHeight: 0,
   minWidth: 0,
-  overflow: "hidden",
+  overflowY: "auto",
+  overflowX: "hidden",
 };
 
 const rightRail: CSSProperties = {
-  flex: "0 0 19rem",
-  width: "19rem",
-  minWidth: "19rem",
-  height: "100%",
-  overflowY: "auto",
+  flex: "1 1 16rem",
+  width: "auto",
+  minWidth: "min(100%, 16rem)",
+  overflowY: "visible",
   overflowX: "hidden",
   padding: "1.5rem",
   borderLeft: `1px solid ${t.outlineVariant}`,
@@ -782,10 +772,9 @@ const rightRail: CSSProperties = {
 };
 
 const mainContent: CSSProperties = {
-  flex: "1 1 auto",
+  flex: "999 1 32rem",
   minWidth: 0,
-  height: "100%",
-  overflowY: "auto",
+  overflowY: "visible",
   overflowX: "hidden",
   padding: "1.5rem",
 };
@@ -802,6 +791,24 @@ const cardHeading: CSSProperties = {
   fontWeight: 500,
   fontSize: "1rem",
   color: t.onSurface,
+};
+const electionTitle: CSSProperties = {
+  fontSize: "0.9rem",
+  fontWeight: 650,
+  color: t.onSurface,
+};
+const electionEmptyMessage: CSSProperties = {
+  margin: "0.35rem 0 0",
+  color: t.onSurfaceVariant,
+  fontSize: "0.8rem",
+  lineHeight: 1.45,
+};
+const electionDetailGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
+  gap: "0.35rem 1rem",
+  margin: "0.9rem 0 0",
+  fontSize: "0.8rem",
 };
 const bundleGrid: CSSProperties = {
   display: "grid",
@@ -865,29 +872,20 @@ const certificationFooter: CSSProperties = {
   paddingTop: "0.15rem",
 };
 
-const detailsBlock: CSSProperties = {
-  borderTop: `1px solid ${t.outlineVariant}`,
-  paddingTop: "0.55rem",
+const standaloneDetailAction: CSSProperties = {
+  marginTop: "0.9rem",
 };
 
-const detailsSummary: CSSProperties = {
-  cursor: "pointer",
+const secondaryAction: CSSProperties = {
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: "var(--radius-sm)",
+  background: t.surfaceLowest,
   color: t.primary,
+  padding: "0.45rem 0.75rem",
+  font: "inherit",
   fontSize: "0.76rem",
-  fontWeight: 600,
-  userSelect: "none",
-};
-
-const detailsContent: CSSProperties = {
-  marginTop: "0.65rem",
-};
-
-const compactDetailGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(7rem, auto) 1fr",
-  gap: "0.4rem 0.85rem",
-  margin: 0,
-  fontSize: "0.76rem",
+  fontWeight: 650,
+  cursor: "pointer",
 };
 
 const primaryAction: CSSProperties = {

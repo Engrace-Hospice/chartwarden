@@ -17,8 +17,8 @@
 // never a fabricated membership id.
 import { type DbClient, schema } from "@wardenx/db";
 import {
-  computeBillingPseudonym,
   type PseudonymKeyProvider,
+  computeBillingPseudonym,
   toBillingYearMonth,
 } from "@wardenx/subscription-billing";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -52,7 +52,9 @@ async function membershipIdForUserForOrg(
     const [nonRevoked] = await t
       .select({ id: MB.id })
       .from(MB)
-      .where(and(eq(MB.organizationId, organizationId), eq(MB.userId, userId), ne(MB.status, "revoked")))
+      .where(
+        and(eq(MB.organizationId, organizationId), eq(MB.userId, userId), ne(MB.status, "revoked")),
+      )
       .limit(1);
     if (nonRevoked) return nonRevoked.id;
     const [mostRecent] = await t

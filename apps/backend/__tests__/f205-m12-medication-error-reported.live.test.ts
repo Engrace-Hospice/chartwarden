@@ -116,7 +116,12 @@ describe.skipIf(!DB_URL)(
           await admin.query(
             `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
              VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-            [org, `CCN-F205-${org.slice(0, 4)}`, `F205 ${org.slice(0, 4)}`, `NPI-F205-${org.slice(0, 4)}`],
+            [
+              org,
+              `CCN-F205-${org.slice(0, 4)}`,
+              `F205 ${org.slice(0, 4)}`,
+              `NPI-F205-${org.slice(0, 4)}`,
+            ],
           )
         ).rows[0].id as string;
         const location = (

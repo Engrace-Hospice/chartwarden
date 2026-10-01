@@ -8,7 +8,7 @@
 // aggregator submission id; the doc backref on (aggregateType, aggregateId). Migration 0249
 // (`denial_case_source_idempotency_key_uq`, F-153/F-156 #248) is what actually enforces it now — the store
 // just conditions its INSERT on that constraint.
-import { effectiveCategory, type DenialCategory, type TaxonomyStatus } from "../domain";
+import { type DenialCategory, type TaxonomyStatus, effectiveCategory } from "../domain";
 
 /** CARC/RARC → category lookup — the same shape `ingest/service.ts`'s `TerminologyLookupPort` publishes
  *  (a structural mirror rather than a re-export, so this file stays import-free of `../ingest/service` —

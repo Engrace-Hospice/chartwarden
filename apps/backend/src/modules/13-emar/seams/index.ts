@@ -34,6 +34,13 @@ export {
   createMedicationAdministrationProvider,
   createReconciliationProvider,
 } from "./providers";
+// M14 IDG packet `flaggedEvents` — the org-explicit, BATCHED missed-dose read.
+export {
+  IDG_MISSED_DOSES_MAX_PATIENTS,
+  type IdgMissedDoseEvent,
+  idgMissedDosesForOrg,
+  missedDoseSeverity,
+} from "./idg-missed-doses-for-org";
 // TASK-002 — the FULL production Drizzle-backed store (per-consumer reads under the ambient request RLS
 // context; the two org-aggregate measure reads self-scope on their explicit organizationId).
 export { createDrizzleEmarSeamStore } from "./drizzle-store";

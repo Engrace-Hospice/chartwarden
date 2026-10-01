@@ -218,19 +218,16 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursMinutes: Count,
       status: Str,
     }),
-    // F-180 (#248) — m30 STAYS declared, genuinely blocked (freshly re-verified, not stale): M30's real
-    // `DisciplineComplianceProvider.volunteerHourCostRatio` (`packages/types/src/discipline-plans.ts`)
-    // exists and is registered, but its `staffPatientCareMinutes` dep is hard-defaulted to `null`
-    // (`seams/drizzle-store.ts`) and the composition root (`apps/backend/src/index.ts`, own comment)
-    // never supplies it — M27 still ships no hours seam anywhere (`packages/quality/src/seams/consumed/`
-    // has no M27 entry; M27's own module has zero "hours" hits). Note M30's own spec never names THIS
-    // 5% ratio measure specifically (only the separate `volunteer_compliance_gate_rate`), and the
-    // denominator is resolved at READ time per M15's own spec (M15-F04) — so once M27 lands, this may
-    // resolve as a seam-pull at measurement time rather than genuine outbox consumption of this event,
-    // which could mean a future round drops it even after the M27 blocker clears. Today: correctly
-    // deferred, blocked on a real, confirmed-current gap.
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-215 (#248) — m30 DROPPED from `declaredConsumers` (F-180 had kept it, flagging exactly this
+    // possibility): the event carries only the volunteer-minute NUMERATOR (M15-F04 — the denominator is
+    // M27's patient-care hours, resolved at READ time), M30's own spec names only
+    // `volunteer_compliance_gate_rate` from M15 (a seam pull on `DisciplineComplianceProvider`), and no
+    // recompute trigger or measure consumes this push. M30's volunteer-hours ratio is a read-time seam
+    // relationship, not outbox consumption. The separate, NON-outbox gap remains: nothing supplies M30's
+    // denominator (`staffPatientCareMinutes` defaults `null` in `seams/drizzle-store.ts`; M27 ships no
+    // hours seam) — recorded in docs/history, not here.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {

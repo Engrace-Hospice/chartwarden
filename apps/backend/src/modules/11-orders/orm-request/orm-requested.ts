@@ -82,7 +82,7 @@ export type OrmDestinationResult =
   | { readonly ok: true; readonly facilityId: string }
   | {
       readonly ok: false;
-      readonly reason: 
+      readonly reason:
         | "no_routing_lab"
         | "lab_facility_unresolved"
         | "no_active_feed"
@@ -183,7 +183,9 @@ export function toHl7Priority(priority: string | null): "R" | "S" | "A" {
 
 /** M5 `sex_assigned_at_birth` → HL7 table 0001. `"unrecorded"` (UNK/blank) and `null` (unmappable) are DISTINCT
  *  refusals — the first is "nobody has recorded it", the second is "someone recorded something we cannot read". */
-export function toHl7Sex(code: string | null | undefined): "M" | "F" | "O" | "U" | "unrecorded" | null {
+export function toHl7Sex(
+  code: string | null | undefined,
+): "M" | "F" | "O" | "U" | "unrecorded" | null {
   const c = (code ?? "").trim().toUpperCase();
   if (c === "" || c === "UNK") return "unrecorded";
   if (c === "M" || c === "MALE" || c === "248153007") return "M";
@@ -211,7 +213,8 @@ export function planOrmRequested(input: {
   if (patient.sudRestricted) return refuse("sud_restricted");
   if (patient.status === "merged") return refuse("patient_merged");
   if (!nonBlank(patient.mrn)) return refuse("patient_mrn_missing");
-  if (!nonBlank(patient.familyName) || !nonBlank(patient.givenName)) return refuse("patient_name_missing");
+  if (!nonBlank(patient.familyName) || !nonBlank(patient.givenName))
+    return refuse("patient_name_missing");
   if (!nonBlank(patient.dateOfBirth)) return refuse("patient_dob_missing");
   const sex = toHl7Sex(patient.sexCode);
   if (sex === "unrecorded") return refuse("patient_sex_unrecorded");
@@ -261,7 +264,10 @@ export function planOrmRequested(input: {
         codingSystem: "LN",
       },
       orderingProviderNpi: physician.npi,
-      orderingProviderName: { family: physician.lastName.trim(), given: physician.firstName.trim() },
+      orderingProviderName: {
+        family: physician.lastName.trim(),
+        given: physician.firstName.trim(),
+      },
       priority,
       ...(notes.length > 0 ? { clinicalNotes: notes } : {}),
       patientDemographics: {
@@ -310,7 +316,8 @@ export async function resolveOrmRequested(
     const physician = await ports.physician(order.organizationId, order.orderingPhysicianMdmId);
     const routingLabId = (order.data as { routingLabId?: unknown } | null)?.routingLabId;
     const destination = await ports.destination(tx, order.organizationId, {
-      routingLabId: typeof routingLabId === "string" && routingLabId.length > 0 ? routingLabId : null,
+      routingLabId:
+        typeof routingLabId === "string" && routingLabId.length > 0 ? routingLabId : null,
     });
     return planOrmRequested({ order, patient, physician, destination });
   } catch {

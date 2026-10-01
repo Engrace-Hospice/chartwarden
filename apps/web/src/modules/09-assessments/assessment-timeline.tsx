@@ -36,18 +36,11 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 
 import { useNavigate, useParams } from "react-router-dom";
 
-import {
-  ChartModuleRail,
-  PatientChartBail,
-} from "../../shell/chart-module-rail";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 
 import { ASSESSMENT_TONE, stateLabel } from "./assessment-status";
 
-import {
-  type ScaleDefinition,
-  loadPatientAdmissions,
-  loadScaleCatalog,
-} from "./assessments-api";
+import { type ScaleDefinition, loadPatientAdmissions, loadScaleCatalog } from "./assessments-api";
 
 import { RecordAssessmentModal } from "./record-assessment-modal";
 
@@ -137,7 +130,6 @@ export function AssessmentTimeline(): JSX.Element {
   }, [client, patientId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed capture bumps, not read in the body.
-
   useEffect(() => {
     let active = true;
 
@@ -185,15 +177,12 @@ export function AssessmentTimeline(): JSX.Element {
   const scales = useMemo(() => {
     const by = new Map<string, AssessmentRow[]>();
 
-    for (const a of items)
-      by.set(a.scaleType, [...(by.get(a.scaleType) ?? []), a]);
+    for (const a of items) by.set(a.scaleType, [...(by.get(a.scaleType) ?? []), a]);
 
     return [...by.entries()]
 
       .map(([scaleType, rows]) => {
-        const sorted = [...rows].sort((a, b) =>
-          b.capturedAt.localeCompare(a.capturedAt),
-        );
+        const sorted = [...rows].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
 
         return {
           scaleType,
@@ -259,11 +248,7 @@ export function AssessmentTimeline(): JSX.Element {
 
   if (loading) {
     return (
-      <PatientChartBail
-        banner={banner}
-        patientId={patientId}
-        current="assessments"
-      >
+      <PatientChartBail banner={banner} patientId={patientId} current="assessments">
         <div style={centeredStateStyle}>
           <LoadingSpinner />
           <span style={stateHelperText}>Loading assessments…</span>
@@ -283,11 +268,7 @@ export function AssessmentTimeline(): JSX.Element {
               title="Assessments could not be loaded"
               message={error}
               action={
-                <Button
-                  size="sm"
-                  tone="secondary"
-                  onClick={() => setReloadKey((k) => k + 1)}
-                >
+                <Button size="sm" tone="secondary" onClick={() => setReloadKey((k) => k + 1)}>
                   Try again
                 </Button>
               }
@@ -316,8 +297,7 @@ export function AssessmentTimeline(): JSX.Element {
                 <p style={eyebrowStyle}>Clinical assessments</p>
                 <h1 style={pageTitleStyle}>Assessment history</h1>
                 <p style={pageDescriptionStyle}>
-                  Record standardized clinical scales and follow changes over
-                  time.
+                  Record standardized clinical scales and follow changes over time.
                 </p>
               </div>
               {recordControls}
@@ -336,9 +316,6 @@ export function AssessmentTimeline(): JSX.Element {
                 title="No assessments recorded"
                 description="Once a clinician records a scale, its latest score, history, status and trend will appear here."
               />
-              {!admissionRequired ? (
-                <div style={{ marginTop: "1rem" }}>{recordControls}</div>
-              ) : null}
             </section>
           </main>
         </div>
@@ -347,9 +324,7 @@ export function AssessmentTimeline(): JSX.Element {
   }
 
   const selected = scales.find((s) => s.scaleType === scale) ?? scales[0]!;
-  const series = [...selected.rows]
-    .reverse()
-    .filter((r) => r.score != null) as (AssessmentRow & {
+  const series = [...selected.rows].reverse().filter((r) => r.score != null) as (AssessmentRow & {
     score: number;
   })[];
   const pendingCosignCount = selected.rows.filter(
@@ -389,8 +364,7 @@ export function AssessmentTimeline(): JSX.Element {
             <nav aria-label="Assessment scales" style={scaleNavStyle}>
               {scales.map((s) => {
                 const active = s.scaleType === selected.scaleType;
-                const needsCosign =
-                  s.latest.cosignRequired && !s.latest.cosignedAt;
+                const needsCosign = s.latest.cosignRequired && !s.latest.cosignedAt;
                 return (
                   <button
                     key={s.scaleType}
@@ -403,9 +377,7 @@ export function AssessmentTimeline(): JSX.Element {
                     }}
                   >
                     <span style={scaleItemPrimaryStyle}>
-                      <span style={scaleNameStyle}>
-                        {formatScaleName(s.scaleType)}
-                      </span>
+                      <span style={scaleNameStyle}>{formatScaleName(s.scaleType)}</span>
                       <span style={scaleItemSecondaryStyle}>
                         Latest {formatCapturedDate(s.latest.capturedAt)}
                       </span>
@@ -421,11 +393,7 @@ export function AssessmentTimeline(): JSX.Element {
                         />
                       ) : null}
                       {s.latest.sudContext ? (
-                        <Glyph
-                          name="lock"
-                          size={12}
-                          label="Substance-use context"
-                        />
+                        <Glyph name="lock" size={12} label="Substance-use context" />
                       ) : null}
                     </span>
                   </button>
@@ -441,16 +409,13 @@ export function AssessmentTimeline(): JSX.Element {
                 <div style={{ minWidth: 0 }}>
                   <p style={eyebrowStyle}>Selected scale</p>
                   <div style={titleWithBadgeStyle}>
-                    <h1 style={selectedScaleTitleStyle}>
-                      {formatScaleName(selected.scaleType)}
-                    </h1>
+                    <h1 style={selectedScaleTitleStyle}>{formatScaleName(selected.scaleType)}</h1>
                     <span style={captureCountChipStyle}>
                       {selected.count} capture{selected.count === 1 ? "" : "s"}
                     </span>
                   </div>
                   <p style={pageDescriptionStyle}>
-                    Review the latest result and the complete capture history
-                    for this instrument.
+                    Review the latest result and the complete capture history for this instrument.
                   </p>
                 </div>
 
@@ -478,8 +443,7 @@ export function AssessmentTimeline(): JSX.Element {
                   <div>
                     <h2 style={sectionTitleStyle}>Capture history</h2>
                     <p style={sectionDescriptionStyle}>
-                      Newest first. Open a capture to review its assessment
-                      details.
+                      Newest first. Open a capture to review its assessment details.
                     </p>
                   </div>
                 </div>
@@ -492,10 +456,7 @@ export function AssessmentTimeline(): JSX.Element {
                         key={a.id}
                         type="button"
                         onClick={() =>
-                          patientId &&
-                          navigate(
-                            `/patients/${patientId}/assessments/${a.id}`,
-                          )
+                          patientId && navigate(`/patients/${patientId}/assessments/${a.id}`)
                         }
                         style={{
                           ...captureRow,
@@ -503,15 +464,10 @@ export function AssessmentTimeline(): JSX.Element {
                         }}
                       >
                         <span style={captureDateColumnStyle}>
-                          <span
-                            className="tabular-nums"
-                            style={captureDateStyle}
-                          >
+                          <span className="tabular-nums" style={captureDateStyle}>
                             {formatCapturedDateTime(a.capturedAt)}
                           </span>
-                          <span style={captureMetaStyle}>
-                            {stateLabel(a.capturedByDiscipline)}
-                          </span>
+                          <span style={captureMetaStyle}>{stateLabel(a.capturedByDiscipline)}</span>
                         </span>
 
                         <span style={captureScoreColumnStyle}>
@@ -521,10 +477,7 @@ export function AssessmentTimeline(): JSX.Element {
                             </span>
                           ) : (
                             <>
-                              <span
-                                className="tabular-nums"
-                                style={captureScoreStyle}
-                              >
+                              <span className="tabular-nums" style={captureScoreStyle}>
                                 {a.score ?? "—"}
                               </span>
                               {a.scoreInterpretation ? (
@@ -532,9 +485,7 @@ export function AssessmentTimeline(): JSX.Element {
                                   {a.scoreInterpretation}
                                 </span>
                               ) : (
-                                <span style={captureInterpretationStyle}>
-                                  No interpretation
-                                </span>
+                                <span style={captureInterpretationStyle}>No interpretation</span>
                               )}
                             </>
                           )}
@@ -545,9 +496,7 @@ export function AssessmentTimeline(): JSX.Element {
                             label={stateLabel(a.status)}
                             tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
                           />
-                          {needsCosign ? (
-                            <StatusPill label="Cosign needed" tone="warning" />
-                          ) : null}
+                          {needsCosign ? <StatusPill label="Cosign needed" tone="warning" /> : null}
                         </span>
 
                         <span style={rowArrowStyle}>
@@ -558,7 +507,6 @@ export function AssessmentTimeline(): JSX.Element {
                   })}
                 </div>
               </section>
-
             </div>
           </main>
 
@@ -569,12 +517,9 @@ export function AssessmentTimeline(): JSX.Element {
                 <div style={trendHeaderStyle}>
                   <div>
                     <p style={eyebrowStyle}>Score trend</p>
-                    <h2 style={railTitle}>
-                      {formatScaleName(selected.scaleType)}
-                    </h2>
+                    <h2 style={railTitle}>{formatScaleName(selected.scaleType)}</h2>
                   </div>
-                  {!selected.latest.redacted &&
-                  selected.latest.score != null ? (
+                  {!selected.latest.redacted && selected.latest.score != null ? (
                     <span className="tabular-nums" style={railScoreStyle}>
                       {selected.latest.score}
                     </span>
@@ -584,9 +529,7 @@ export function AssessmentTimeline(): JSX.Element {
                 {series.length === 0 ? (
                   <div style={trendEmptyStyle}>
                     <Glyph name="bar-chart" size={18} />
-                    <p style={{ ...meta, margin: 0 }}>
-                      No numeric scores to trend yet.
-                    </p>
+                    <p style={{ ...meta, margin: 0 }}>No numeric scores to trend yet.</p>
                   </div>
                 ) : (
                   <Trend series={series} />
@@ -596,19 +539,13 @@ export function AssessmentTimeline(): JSX.Element {
                   <TrendStat label="Captures" value={String(series.length)} />
                   <TrendStat
                     label="Latest"
-                    value={
-                      selected.latest.score != null
-                        ? String(selected.latest.score)
-                        : "—"
-                    }
+                    value={selected.latest.score != null ? String(selected.latest.score) : "—"}
                   />
                 </div>
 
                 {selected.latest.scoreInterpretation ? (
                   <div style={interpretationBoxStyle}>
-                    <span style={interpretationLabelStyle}>
-                      Latest interpretation
-                    </span>
+                    <span style={interpretationLabelStyle}>Latest interpretation</span>
                     <span style={interpretationValueStyle}>
                       {selected.latest.scoreInterpretation}
                     </span>
@@ -616,8 +553,8 @@ export function AssessmentTimeline(): JSX.Element {
                 ) : null}
 
                 <p style={railHelperText}>
-                  Scores are ordered oldest to newest. Significant changes
-                  continue to be triaged through the changes inbox.
+                  Scores are ordered oldest to newest. Significant changes continue to be triaged
+                  through the changes inbox.
                 </p>
               </section>
             </div>
@@ -687,9 +624,7 @@ function LatestScoreCard({
       <span style={latestScoreInterpretationStyle}>
         {assessment.scoreInterpretation ?? "No interpretation available"}
       </span>
-      <span style={latestScoreDateStyle}>
-        Captured {formatCapturedDate(assessment.capturedAt)}
-      </span>
+      <span style={latestScoreDateStyle}>Captured {formatCapturedDate(assessment.capturedAt)}</span>
     </div>
   );
 }
@@ -725,11 +660,7 @@ function InlineAlert({
   compact?: boolean;
 }): JSX.Element {
   const toneStyle =
-    tone === "error"
-      ? alertErrorStyle
-      : tone === "warning"
-        ? alertWarningStyle
-        : alertInfoStyle;
+    tone === "error" ? alertErrorStyle : tone === "warning" ? alertWarningStyle : alertInfoStyle;
 
   return (
     <div
@@ -757,9 +688,7 @@ function MonoChip({ children }: { children: ReactNode }): JSX.Element {
 }
 
 function formatScaleName(scaleType: string): string {
-  return scaleType
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return scaleType.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function formatCapturedDateTime(value: string): string {

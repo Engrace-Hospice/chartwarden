@@ -745,14 +745,18 @@ export function buildDrizzleM21WriteService(
         assertCaregiverSignatureCaptureAllowed({
           deliveredAt: row.deliveredAt ? iso(row.deliveredAt) : null,
           existing: {
-            capturedAt: row.caregiverSignatureCapturedAt ? iso(row.caregiverSignatureCapturedAt) : null,
+            capturedAt: row.caregiverSignatureCapturedAt
+              ? iso(row.caregiverSignatureCapturedAt)
+              : null,
           },
         });
         requireCaregiverSignatureEvidence(input.captureMethod, input);
         // Only the witnessed method's evidence document rides onto the row — a stray id sent alongside a
         // typed or declined capture is not this method's evidence and must not be persisted as if it were.
         const evidenceDocumentId =
-          input.captureMethod === "witnessed_verbal_documented" ? (input.evidenceDocumentId ?? null) : null;
+          input.captureMethod === "witnessed_verbal_documented"
+            ? (input.evidenceDocumentId ?? null)
+            : null;
         await tx
           .update(REQUEST)
           .set({
@@ -763,7 +767,10 @@ export function buildDrizzleM21WriteService(
             // follows (routes/actor.ts).
             caregiverSignatureCapturedByMembershipId: actor.membershipId,
             caregiverSignatureEvidenceDocumentId: evidenceDocumentId,
-            caregiverSignatureEvidenceJsonb: caregiverSignatureEvidenceJsonbOf(input.captureMethod, input),
+            caregiverSignatureEvidenceJsonb: caregiverSignatureEvidenceJsonbOf(
+              input.captureMethod,
+              input,
+            ),
             updatedAt: at,
           })
           .where(eq(REQUEST.id, row.id));

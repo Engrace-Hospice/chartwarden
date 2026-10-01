@@ -39,8 +39,8 @@
 // (`scheduled_dose` has no actor column at all; `comfort_kit_deployment.deployed_by_membership_id` is the
 // DEPLOYMENT actor, set once at deploy time, never touched by a return-required flip).
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import { planDischargeCascade } from "@wardenx/emar";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { AdmissionId, IsoInstant, PatientId } from "@wardenx/types";
 import { and, eq, gt } from "drizzle-orm";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
@@ -160,7 +160,9 @@ export function buildM13AdmissionDischargedCascadeConsumer(deps: DischargeCascad
           activeDeployments: candidateDeployments.map((k) => ({
             deploymentId: k.id as never,
             disposalStatus: k.disposalStatus,
-            returnRequiredAt: k.returnRequiredAt ? (k.returnRequiredAt.toISOString() as never) : null,
+            returnRequiredAt: k.returnRequiredAt
+              ? (k.returnRequiredAt.toISOString() as never)
+              : null,
           })),
         });
 

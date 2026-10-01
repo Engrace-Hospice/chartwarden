@@ -94,7 +94,10 @@ export const M17_OUTBOX_SUBSCRIPTIONS = [
   // F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
   { eventName: "m18.evv.check_in_recorded", consumerName: "m17.m18-evv-check-in" },
   { eventName: "m18.evv.at_patient_address", consumerName: "m17.m18-evv-at-patient-address" },
-  { eventName: "m20.safety.visit_cancellation_requested", consumerName: "m17.m20-safety-visit-cancellation" },
+  {
+    eventName: "m20.safety.visit_cancellation_requested",
+    consumerName: "m17.m20-safety-visit-cancellation",
+  },
   // F-158 (#248) — the §3.3 EVV checkout/correction provenance pointers.
   { eventName: "m18.evv.check_out_recorded", consumerName: "m17.m18-evv-check-out" },
   { eventName: "m18.evv.event_corrected", consumerName: "m17.m18-evv-event-corrected" },

@@ -34,6 +34,7 @@ import type {
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
 import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { pickCertification, pickFaceToFace } from "../certification/adequacy";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
 
 const ADM = schema.admissions;
@@ -431,8 +432,10 @@ export async function claimAssemblyRangeContextForOrg(
           .orderBy(asc(CTI.createdAt));
         for (const periodId of overlappingIds) {
           const rows = ctiRows.filter((r) => r.electionPeriodId === periodId);
-          const pick =
-            rows.find((r) => r.status !== "voided" && r.status !== "superseded") ?? rows.at(-1);
+          // F-217 — the SAME row-selection the adequacy predicate uses (`pickCertification`), so the
+          // claim-assembly facts M23 rules read and the activation gate's verdict cannot pick different
+          // CTIs for one period.
+          const pick = pickCertification(rows);
           if (!pick) continue;
           certifications.push({
             electionPeriodSequence: bySequence.get(periodId)!,
@@ -455,7 +458,7 @@ export async function claimAssemblyRangeContextForOrg(
           .orderBy(asc(F2F.createdAt));
         for (const periodId of overlappingIds) {
           const rows = f2fRows.filter((r) => r.electionPeriodId === periodId);
-          const pick = rows.find((r) => r.status === "attested") ?? rows[0];
+          const pick = pickFaceToFace(rows); // F-217 — shared with the adequacy predicate
           if (!pick) continue;
           faceToFace.push({
             electionPeriodSequence: bySequence.get(periodId)!,
@@ -1137,13 +1140,19 @@ export function idgCurrentLevelOfCareForOrg(
     { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
     async (tx) => {
       const rows = await tx
-        .select({ levelOfCare: LOC.levelOfCare, effectiveAt: LOC.effectiveAt, endedAt: LOC.endedAt })
+        .select({
+          levelOfCare: LOC.levelOfCare,
+          effectiveAt: LOC.effectiveAt,
+          endedAt: LOC.endedAt,
+        })
         .from(LOC)
         .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
         .orderBy(desc(LOC.effectiveAt));
       if (rows.length === 0) return null;
       const asOf = new Date(asOfIso);
-      const open = rows.find((r) => r.effectiveAt <= asOf && (r.endedAt === null || r.endedAt > asOf));
+      const open = rows.find(
+        (r) => r.effectiveAt <= asOf && (r.endedAt === null || r.endedAt > asOf),
+      );
       return (open ?? rows[0])!.levelOfCare;
     },
   );

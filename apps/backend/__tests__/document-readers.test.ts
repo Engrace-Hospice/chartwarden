@@ -19,6 +19,7 @@ import {
   createExtractionProvenanceReader,
   createInMemoryDocumentReaderStore,
   createInMemoryObjectStore,
+  createInMemoryPortalAccessLog,
   createInMemoryPortalConsentPort,
   createIntakeMetricsProvider,
   createPortalDocumentReader,
@@ -163,7 +164,12 @@ describe("PortalDocumentReader", () => {
     const { store } = createInMemoryDocumentReaderStore(seed);
     const objects = createInMemoryObjectStore().store;
     const consent = createInMemoryPortalConsentPort(seed.sudConsentByPatient);
-    return createPortalDocumentReader({ store, objects, consent });
+    return createPortalDocumentReader({
+      store,
+      objects,
+      consent,
+      accessLog: createInMemoryPortalAccessLog(),
+    });
   }
 
   // F-197 (#248) — a SUD-class variant of SEED: `d1`'s `retentionClass` flags it, the same signal
@@ -199,6 +205,7 @@ describe("PortalDocumentReader", () => {
     const res = await portal.mintPortalDownloadUrl({
       documentVersionId: "d1-v1",
       portalSessionId: "sess-1",
+      portalAccountId: "acct-1",
       patientId: "pat-1",
       organizationId: ORG,
     });
@@ -210,6 +217,7 @@ describe("PortalDocumentReader", () => {
     const res = await portal.mintPortalDownloadUrl({
       documentVersionId: "d4-v1", // pat-2's
       portalSessionId: "s",
+      portalAccountId: "acct-1",
       patientId: "pat-1",
       organizationId: ORG,
     });
@@ -221,6 +229,7 @@ describe("PortalDocumentReader", () => {
     const res = await portal.mintPortalDownloadUrl({
       documentVersionId: "d3-v1", // patient_facing:false
       portalSessionId: "s",
+      portalAccountId: "acct-1",
       patientId: "pat-1",
       organizationId: ORG,
     });
@@ -232,6 +241,7 @@ describe("PortalDocumentReader", () => {
     const res = await portal.mintPortalDownloadUrl({
       documentVersionId: "d1-v1",
       portalSessionId: "s",
+      portalAccountId: "acct-1",
       patientId: "pat-1",
       organizationId: ORG,
     });
@@ -244,6 +254,7 @@ describe("PortalDocumentReader", () => {
     const res = await portal.mintPortalDownloadUrl({
       documentVersionId: "d1-v1",
       portalSessionId: "s",
+      portalAccountId: "acct-1",
       patientId: "pat-1",
       organizationId: ORG,
     });
@@ -312,5 +323,100 @@ describe("boot wiring (registerDocumentSeams)", () => {
         organizationId: ORG,
       }),
     ).toThrowError(NotImplementedError);
+  });
+
+  // F-225 (#248) — the §164.528 ledger + the governed-version resolution.
+  describe("F-225 access-log + version resolution", () => {
+    function makeLogged(seed: DocumentReaderSeed = SEED, failAppend = false) {
+      const { store } = createInMemoryDocumentReaderStore(seed);
+      const log = createInMemoryPortalAccessLog();
+      const accessLog = failAppend
+        ? {
+            async appendPortalDownload() {
+              throw new Error("ledger down");
+            },
+          }
+        : log;
+      const portal = createPortalDocumentReader({
+        store,
+        objects: createInMemoryObjectStore().store,
+        consent: createInMemoryPortalConsentPort(seed.sudConsentByPatient),
+        accessLog,
+        now: () => new Date("2026-09-30T00:00:00.000Z"),
+      });
+      return { portal, log };
+    }
+    const ARGS = {
+      portalSessionId: "sess-1",
+      portalAccountId: "acct-1",
+      patientId: "pat-1",
+      organizationId: ORG,
+    } as const;
+
+    it("appends exactly one row per successful mint, ids only, and another on a repeat", async () => {
+      const { portal, log } = makeLogged();
+      await portal.mintPortalDownloadUrl({ ...ARGS, documentVersionId: "d1-v1" });
+      expect(log.rows).toEqual([
+        {
+          organizationId: ORG,
+          documentId: "d1",
+          documentVersionId: "d1-v1",
+          patientId: "pat-1",
+          portalAccountId: "acct-1",
+          portalSessionId: "sess-1",
+          correlationId: "portal-mint:sess-1",
+          accessedAt: "2026-09-30T00:00:00.000Z",
+        },
+      ]);
+      await portal.mintPortalDownloadUrl({ ...ARGS, documentVersionId: "d1-v1" });
+      expect(log.rows).toHaveLength(2);
+    });
+
+    it("logs nothing for any denial (other patient, not patient-facing, SUD w/o consent, unknown, superseded)", async () => {
+      const seed: DocumentReaderSeed = {
+        ...SEED,
+        documents: [
+          ...(SEED.documents ?? []).map((d) =>
+            d.documentId === "d1" ? { ...d, retentionClass: "compliance_42cfr_part2" as const } : d,
+          ),
+          digest({
+            documentId: "d5",
+            createdAt: "2026-06-19T00:00:00.000Z",
+            status: "superseded",
+          }),
+        ],
+      };
+      const { portal, log } = makeLogged(seed);
+      for (const v of ["d4-v1", "d3-v1", "d1-v1", "nope-v1", "d5-v1"]) {
+        const res = await portal.mintPortalDownloadUrl({ ...ARGS, documentVersionId: v });
+        expect("denied" in res).toBe(true);
+      }
+      expect(log.rows).toEqual([]);
+    });
+
+    it("fails closed when the ledger append fails: the mint throws, no URL is returned", async () => {
+      const { portal } = makeLogged(SEED, true);
+      await expect(
+        portal.mintPortalDownloadUrl({ ...ARGS, documentVersionId: "d1-v1" }),
+      ).rejects.toThrow("ledger down");
+    });
+
+    it("resolves the ACTIVE version for the session patient's own patient-facing document only", async () => {
+      const { portal } = makeLogged();
+      const base = { patientId: "pat-1", organizationId: ORG } as const;
+      expect(await portal.resolvePortalDocumentVersion({ ...base, documentId: "d1" })).toEqual({
+        documentVersionId: "d1-v1",
+      });
+      expect(await portal.resolvePortalDocumentVersion({ ...base, documentId: "d3" })).toBeNull();
+      expect(await portal.resolvePortalDocumentVersion({ ...base, documentId: "d4" })).toBeNull();
+      expect(await portal.resolvePortalDocumentVersion({ ...base, documentId: "zz" })).toBeNull();
+      expect(
+        await portal.resolvePortalDocumentVersion({
+          patientId: "pat-1",
+          organizationId: "other-org",
+          documentId: "d1",
+        }),
+      ).toBeNull();
+    });
   });
 });

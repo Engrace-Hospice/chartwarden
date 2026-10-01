@@ -56,7 +56,10 @@ export interface CarePlanClockRecord {
  */
 export interface CarePlanReaderStore {
   /** The active care plan's problems/goals/interventions for a patient + the D7 redaction decision. */
-  activeCarePlanElements(patientId: PatientId, admissionId?: string): Promise<CarePlanElementsRecord | null>;
+  activeCarePlanElements(
+    patientId: PatientId,
+    admissionId?: string,
+  ): Promise<CarePlanElementsRecord | null>;
   /** The active care plan's overdue-gate clock facts for a patient (initial/review due columns). */
   activeCarePlanClock(patientId: PatientId): Promise<CarePlanClockRecord | null>;
   /**

@@ -222,7 +222,8 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
          RETURNING (payload->>'occurrences')::int AS occurrences
           `);
           const occurrences = Number(res.rows[0]?.occurrences);
-          if (!Number.isInteger(occurrences)) throw new Error("alert occurrence bump returned no row");
+          if (!Number.isInteger(occurrences))
+            throw new Error("alert occurrence bump returned no row");
           return { alertId, occurrences };
         };
 
@@ -290,4 +291,70 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
 /** Build the real production {@link AlertEmitter} (GAP-096). */
 export function createDrizzleAlertEmitter(db: DbClient): AlertEmitter {
   return createAlertEmitter(createDrizzleAlertEmitterPorts(db));
+}
+
+/** Resolve a membership id to its ACTIVE user id within `orgId` (or null when unknown / not active). Used by outbox
+ *  consumers that must put a per-event audience member's USER id on an alert payload (the `role_set.userIdPaths`
+ *  audience, e.g. the IDG carry-forward compliance alert's meeting coordinator). Org-explicit + `withOrgContext`:
+ *  it runs in the relay, not a request. */
+export function createDrizzleMembershipUserLookup(
+  db: DbClient,
+): (organizationId: string, membershipId: string) => Promise<string | null> {
+  const M = schema.memberships;
+  return (organizationId, membershipId) =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx: Tx) => {
+      const [row] = await tx
+        .select({ userId: M.userId })
+        .from(M)
+        .where(
+          and(eq(M.id, membershipId), eq(M.organizationId, organizationId), eq(M.status, "active")),
+        )
+        .limit(1);
+      return row?.userId ?? null;
+    });
+}
+
+/** The permission keys that make a member an EXPECTED attendee of an IDG meeting: the participation key
+ *  (`idg.attend`, CoP 418.56(a)(1)) and the coordinator key (`idg.coordinate`). Real M14 keys (M14 §4.6). */
+const IDG_ATTENDEE_PERMISSION_KEYS = ["idg.attend", "idg.coordinate"] as const;
+
+/** "Which memberships hold ANY of these permission keys through an enabled, unexpired role?" — M3's answer
+ *  (`createMembershipsHoldingPermissionReader`), injected at the composition root: `role_permission` is an M3 table, so
+ *  M36 never reads it (check-table-ownership) and declares the port locally. */
+export type MembershipsHoldingPermissionPort = (
+  organizationId: string,
+  permissionKeys: readonly string[],
+) => Promise<ReadonlySet<string>>;
+
+/** The expected attendees of an IDG meeting at `locationId` — M14 has no invitee roster (`idg_attendance` rows are
+ *  check-ins from START on), so the roster is DERIVED: every ACTIVE member holding `idg.attend` or `idg.coordinate`
+ *  (M3's holders, via `holders`) whose location scope (`membership.default_location_ids`, what the
+ *  `idg_meeting_scope` predicate reads) contains the meeting's location. Returns membership + user ids, ordered.
+ *  Org-explicit + `withOrgContext` (relay, not a request); reads only the M1/M2 `membership` table itself. */
+export function createDrizzleIdgAttendeeLookup(
+  db: DbClient,
+  holders: MembershipsHoldingPermissionPort,
+): (
+  organizationId: string,
+  locationId: string,
+) => Promise<readonly { membershipId: string; userId: string }[]> {
+  const M = schema.memberships;
+  return async (organizationId, locationId) => {
+    const holding = await holders(organizationId, IDG_ATTENDEE_PERMISSION_KEYS);
+    if (holding.size === 0) return [];
+    return withOrgContext(db, { organizationId, userId: "" }, async (tx: Tx) => {
+      const rows = await tx
+        .select({ membershipId: M.id, userId: M.userId })
+        .from(M)
+        .where(
+          and(
+            eq(M.organizationId, organizationId),
+            eq(M.status, "active"),
+            inArray(M.id, [...holding]),
+            sql`${M.defaultLocationIds} @> ${JSON.stringify([locationId])}::jsonb`,
+          ),
+        );
+      return [...rows].sort((a, b) => a.membershipId.localeCompare(b.membershipId));
+    });
+  };
 }

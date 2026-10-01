@@ -93,18 +93,14 @@ export function buildM17EvvEventCorrectedConsumer(deps: EvvEventCorrectedDeps) {
           const [correctedCheckIn] = await tx
             .update(V)
             .set({ evvCheckInEventId: facts.newEventId, updatedAt: new Date() })
-            .where(
-              and(eq(V.id, facts.visitId), eq(V.evvCheckInEventId, facts.supersededEventId)),
-            )
+            .where(and(eq(V.id, facts.visitId), eq(V.evvCheckInEventId, facts.supersededEventId)))
             .returning({ id: V.id });
           if (correctedCheckIn) return;
 
           await tx
             .update(V)
             .set({ evvCheckOutEventId: facts.newEventId, updatedAt: new Date() })
-            .where(
-              and(eq(V.id, facts.visitId), eq(V.evvCheckOutEventId, facts.supersededEventId)),
-            );
+            .where(and(eq(V.id, facts.visitId), eq(V.evvCheckOutEventId, facts.supersededEventId)));
           // Zero rows on both attempts is a correct no-op (cross-tenant, visit not found, the pointer
           // never named the superseded event, or an already-applied redelivery) — nothing to detect.
         },

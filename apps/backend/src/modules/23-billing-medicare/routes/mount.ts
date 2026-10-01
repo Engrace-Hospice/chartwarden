@@ -23,9 +23,11 @@ import { registerMacCredentialRoutes } from "./mac-credentials.routes";
 import { registerMetricsRoutes } from "./metrics.routes";
 import { registerNoeRoutes } from "./noe.routes";
 import { registerNotrRoutes } from "./notr.routes";
+import { registerRateTableRoutes } from "./rate-table.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerSequestrationPolicyRoutes } from "./sequestration-policy.routes";
 import { registerValidationRoutes } from "./validation.routes";
+import { registerWageIndexRoutes } from "./wage-index.routes";
 
 export { registerClaimsRoutes, type ClaimsRouteDeps } from "./claims.routes";
 export { registerValidationRoutes, type ValidationRouteDeps } from "./validation.routes";
@@ -38,6 +40,8 @@ export {
   type SequestrationPolicyRouteDeps,
 } from "./sequestration-policy.routes";
 export { registerMacCredentialRoutes, type MacCredentialRouteDeps } from "./mac-credentials.routes";
+export { registerRateTableRoutes, type RateTableRouteDeps } from "./rate-table.routes";
+export { registerWageIndexRoutes, type WageIndexRouteDeps } from "./wage-index.routes";
 export { registerMetricsRoutes, type MetricsRouteDeps } from "./metrics.routes";
 export {
   registerInternalSeamRoutes,
@@ -71,8 +75,19 @@ export function mountM23Routes(
   registerNotrRoutes(app, { readService, writeService });
   // Route group E — eligibility / sequestration-policy / MAC credentials.
   registerEligibilityRoutes(app, { readService, writeService });
-  registerSequestrationPolicyRoutes(app, { readService, writeService });
+  // F-212 — the tenant-entered sequestration policy (absent service => the /billing/sequestration-policies routes are not mounted).
+  if (services.sequestrationService) {
+    registerSequestrationPolicyRoutes(app, { sequestrationService: services.sequestrationService });
+  }
   registerMacCredentialRoutes(app, { readService, writeService });
+  // F-210 — the tenant-entered hospice rate table (the per-diem input claim assembly prices from).
+  if (services.rateTableService) {
+    registerRateTableRoutes(app, { rateTableService: services.rateTableService });
+  }
+  // F-211 — the tenant-entered CMS wage index (the other pricing input claim assembly needs).
+  if (services.wageIndexService) {
+    registerWageIndexRoutes(app, { wageIndexService: services.wageIndexService });
+  }
   // Route group F — AR dashboard + metrics (read-only) + the system-principal internal seams (M25/M26/M27).
   registerMetricsRoutes(app, { readService });
   registerInternalSeamRoutes(app, internalSeam ? { internalSeam } : {});

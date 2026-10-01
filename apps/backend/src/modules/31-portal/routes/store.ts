@@ -113,6 +113,25 @@ export interface PortalOwnedTableOps {
   ): Promise<PortalAccountDigest | null>;
   /** Telehealth visit facts (§4.7 predicate + admin detail + join/recording transitions). */
   telehealthById(orgId: string, id: string): Promise<TelehealthVisitDigest | null>;
+  /** F-220 — the room for an M17 visit, if one was minted (unique on `m17_visit_id`). */
+  telehealthByM17VisitId(orgId: string, m17VisitId: string): Promise<TelehealthVisitDigest | null>;
+  /** F-220 — the lazy mint's INSERT; `null` when a row for the M17 visit already exists (lost the race). */
+  insertTelehealthVisitIfAbsent(
+    orgId: string,
+    userId: string,
+    row: {
+      readonly id: string;
+      readonly providerEntityId: string;
+      readonly locationId: string | null;
+      readonly m17VisitId: string;
+      readonly patientId: string;
+      readonly assignedMembershipId: string;
+      readonly vendor: TelehealthVendor;
+      readonly vendorRoomIdCipher: string;
+      readonly vendorRoomUrlCipher: string;
+      readonly scheduledVisitSetting: "telephonic";
+    },
+  ): Promise<TelehealthVisitDigest | null>;
   /** Per-tenant telehealth roster (§4.1 admin). */
   telehealthList(orgId: string): Promise<TelehealthVisitDigest[]>;
   /** Apply a telehealth lifecycle transition + optional side-effect columns, returning the new digest. */
@@ -464,6 +483,31 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
           .where(eq(telehealthVisits.id, id))
           .limit(1);
         return row ? toVisitDigest(row) : null;
+      });
+    },
+    async telehealthByM17VisitId(orgId, m17VisitId) {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(telehealthVisits)
+          .where(
+            and(
+              eq(telehealthVisits.organizationId, orgId),
+              eq(telehealthVisits.m17VisitId, m17VisitId),
+            ),
+          )
+          .limit(1);
+        return row ? toVisitDigest(row) : null;
+      });
+    },
+    async insertTelehealthVisitIfAbsent(orgId, userId, row) {
+      return withOrgContext(db, ctx(orgId, userId), async (tx) => {
+        const [inserted] = await tx
+          .insert(telehealthVisits)
+          .values({ ...row, organizationId: orgId })
+          .onConflictDoNothing({ target: telehealthVisits.m17VisitId })
+          .returning();
+        return inserted ? toVisitDigest(inserted) : null;
       });
     },
     async telehealthList(orgId) {

@@ -223,3 +223,56 @@ object-store data. Re-run `bun run db:migrate` after pulling migrations.
 
 For development architecture and module-extension guidance, continue with
 [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+
+```bash
+cd /opt
+git clone https://github.com/Engrace-Hospice/wardenx.git wardenx-src
+cd /opt/wardenx-src
+git checkout main
+git pull --ff-only origin main
+Pour un dépôt privé, utilisez plutôt SSH :
+git clone git@github.com:Engrace-Hospice/wardenx.git /opt/wardenx-src
+Récupérez le SHA et construisez les deux images directement sur le VPS :
+cd /opt/wardenx-src
+
+COMMIT_SHA=$(git rev-parse HEAD)
+
+docker build \
+  -t "wardenx-backend:manual-${COMMIT_SHA}" \
+  .
+
+docker build \
+  -f Dockerfile.web \
+  -t "wardenx-web:manual-${COMMIT_SHA}" \
+  .
+Copiez ensuite les fichiers de déploiement, sans écraser l’environnement de production :
+cp deploy/production/compose.yml /opt/wardenx/compose.yml
+cp deploy/production/smoke.sh /opt/wardenx/smoke.sh
+chmod +x /opt/wardenx/smoke.sh
+Mettez à jour les images dans .env.production :
+sed -i \
+  "s|^WARDENX_IMAGE=.*|WARDENX_IMAGE=wardenx-backend:manual-${COMMIT_SHA}|" \
+  /opt/wardenx/.env.production
+
+sed -i \
+  "s|^WARDENX_WEB_IMAGE=.*|WARDENX_WEB_IMAGE=wardenx-web:manual-${COMMIT_SHA}|" \
+  /opt/wardenx/.env.production
+Vérifiez que MinIO reste configuré :
+grep -E 'WARDENX_IMAGE|WARDENX_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|MINIO_ROOT' \
+  /opt/wardenx/.env.production
+Puis lancez les migrations, le provisioning et le redémarrage :
+cd /opt/wardenx
+
+docker compose --env-file .env.production run --rm --no-deps migrate \
+  bun run scripts/db/migrate.ts --strict --schema-only
+
+docker compose --env-file .env.production run --rm --no-deps provision
+
+docker compose --env-file .env.production up -d \
+  --no-deps --force-recreate api worker web
+Vérifiez l’état :
+docker compose --env-file .env.production ps
+curl -I https://storage.wardenx.chartwarden.cloud/minio/health/ready
+curl -f http://127.0.0.1:3000/ready
+```

@@ -31,9 +31,9 @@ import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
+  type OrderWriteOutboxPort,
   buildM11DischargeCascadeConsumer,
   createDbOrderBackend,
-  type OrderWriteOutboxPort,
 } from "../src/modules/11-orders/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
@@ -114,7 +114,17 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
          admission_id, kind, kind_version, data, status, drafter_membership_id, drafter_discipline,
          ordering_physician_mdm_id)
        VALUES ($1,$2,$3,$4,$5,$6,'v1','{}'::jsonb,$7,$8,'rn_case_manager',$9) RETURNING id`,
-      [ORG_A, providerEntityId, locationId, patientId, admissionId, kind, status, memberId, PHYSICIAN_MDM],
+      [
+        ORG_A,
+        providerEntityId,
+        locationId,
+        patientId,
+        admissionId,
+        kind,
+        status,
+        memberId,
+        PHYSICIAN_MDM,
+      ],
     );
     return rows[0].id as string;
   }
@@ -142,7 +152,14 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
         kind,
         JSON.stringify(data),
         status,
-        needsRouting ? JSON.stringify({ assignedFulfillmentMode: "internal_hub", assignedVendorId: null, candidatesConsidered: [], routingPolicyDigest: "test" }) : null,
+        needsRouting
+          ? JSON.stringify({
+              assignedFulfillmentMode: "internal_hub",
+              assignedVendorId: null,
+              candidatesConsidered: [],
+              routingPolicyDigest: "test",
+            })
+          : null,
       ],
     );
     return rows[0].id as string;
@@ -377,9 +394,16 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
     // `completeRequest` (packages/supplies/src/lifecycle.ts) is legal only from `received_confirmed` — a
     // rental waits there indefinitely (autoCompletesOnReceipt is false for a monthly cadence) until this
     // consumer's `m11.order.discontinued` binding moves it to `completed`.
-    const request = await seedSupplyRequest(order, admissionId, patientId, "dme", "received_confirmed", {
-      rentalCadence: "monthly",
-    });
+    const request = await seedSupplyRequest(
+      order,
+      admissionId,
+      patientId,
+      "dme",
+      "received_confirmed",
+      {
+        rentalCadence: "monthly",
+      },
+    );
 
     await orderSvc.discontinueOrder(ORG_A, memberId, order, {
       reason: "clinical_judgement",

@@ -75,6 +75,16 @@ If a region needs genuine data the API doesn't return yet (and the owning module
 - `bun run build` (whole-repo `tsc -b`) green.
 - `bun run openapi:check` in sync (if you touched the contract).
 - Relevant module tests pass.
+- Eyeball it without a backend: `apps/web/clinical-preview.html` (and `hope-preview.html`) are
+  dev-only mock-API harnesses. They are **not** production build inputs (`vite.config.ts` builds
+  `index.html` only) but they are typechecked/linted with `src/`. From `apps/web`, run `bunx vite`
+  and open `http://localhost:5173/clinical-preview.html?<mode>` (add `&dark` for dark theme).
+  Modes: `?idg=live|detail|minutes|packet|schedule|actions` (M14 IDG screens; variants `&cf=N`
+  carry-forward count, `&noquorum=1`, `&status=scheduled|packets_building|packets_ready|live|adjourned`,
+  `&f2f=error`, packet content `&sud=1` (Part 2 redacted) / `&nocontent=1` (snapshot null); patient 0 has a
+  rich packet, the others a sparse one with HOPE not captured); live-meeting discipline notes (every note may carry an optional "Context / reason"; live notes in the mock have reasons, inline edit edits text + reason) `&notes=0` (none) / `&notes=sud` (one Part 2 withheld note), `&note412=1` (edits return 412 STALE_VERSION), in-memory POST/PATCH so the composer works; late addenda on `?idg=live&adjourned=1` (originals + 2 addenda, "Add late addendum" composer, no Edit controls; `&addwindow=closed` = window closed, `&superseded=1` = Henry N. superseded by a newer IDG (addendum composer disabled on his tab, meeting-level scope still open), `&notes=sud` adds a withheld note+addendum), and `?idg=minutes&adjourned=1` shows the Late addenda count; `?meds`, `?cp`, `?orders`, `?docs`, `?sched`, `?billing`, `?pclaims`, `?explorer`,
+  `?home`; no flag = patient chart. The IDG mock data is synthetic (no PHI). `hope-preview.html` has no modes.
+
 
 ### 7. Record + commit
 Update the fidelity status in [`scripts/frame-fidelity/registry.ts`](../../scripts/frame-fidelity/registry.ts)

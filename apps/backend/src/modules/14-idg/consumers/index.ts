@@ -39,8 +39,8 @@ export {
 
 /** The §4.5 event → M14-consumer bindings. The live dispatcher wires each `eventName` to `consumerName`'s
  * handler at boot (F-104 — the six D8 auto-close entries ARE bound now, by `./bindings.ts`; the
- * inclusion-cache, projection-cache and M22 back-ref entries are not, and are registered with their
- * reasons in `scripts/outbox-subscription-exceptions.ts`); the D8 auto-close path runs
+ * remaining inclusion-cache / projection-cache entries are not, and are registered with their reasons in
+ * `scripts/outbox-subscription-exceptions.ts`; the M22 back-ref IS bound live, by `./m22-document-backref.ts`); the D8 auto-close path runs
  * `planActionItemAutoClose` + `transitionActionItem`, the
  * projection-cache + back-ref paths run their Valkey/Drizzle effects. Consumer dedup is keyed on `(eventId,
  * consumerName)` per the M1 outbox-consumer pattern; re-delivery is safe. */

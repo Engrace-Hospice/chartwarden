@@ -60,7 +60,9 @@ interface RegisteredScreen {
 }
 
 // ---- the built `web`, statically-routable surface (same boundary as axe-route-walk.spec.ts) --------
-const uiParity = JSON.parse(read("audit/ui-parity/ui-parity.json")) as { screens: RegisteredScreen[] };
+const uiParity = JSON.parse(read("audit/ui-parity/ui-parity.json")) as {
+  screens: RegisteredScreen[];
+};
 const webStatic = uiParity.screens
   .filter((s) => s.app === "web")
   .filter((s) => !s.path.includes(":"))
@@ -76,7 +78,9 @@ function listTsFiles(dir: string): string[] {
 const specFiles = [...listTsFiles("e2e/specs"), ...listTsFiles("e2e/fixtures")];
 const fileText = new Map(specFiles.map((f) => [f, read(f)] as const));
 const axeFiles = new Set(
-  [...fileText.entries()].filter(([, src]) => src.includes("expectNoAxeViolations")).map(([f]) => f),
+  [...fileText.entries()]
+    .filter(([, src]) => src.includes("expectNoAxeViolations"))
+    .map(([f]) => f),
 );
 const allGotoLiterals = new Set(
   specFiles
@@ -89,7 +93,8 @@ const allGotoLiterals = new Set(
 //      and still declares that filter, not a re-derivation of what it does at runtime -------------
 const routeWalkSrc = read("e2e/specs/axe-route-walk.spec.ts");
 const routeWalkSpecPresent =
-  routeWalkSrc.includes('!s.path.includes(":")') && routeWalkSrc.includes('s.permission !== "(none)"');
+  routeWalkSrc.includes('!s.path.includes(":")') &&
+  routeWalkSrc.includes('s.permission !== "(none)"');
 
 interface Row {
   readonly id: string;
@@ -131,7 +136,7 @@ lines.push("");
 lines.push(
   "> **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` " +
     "source text against the built `web`-app screen registry — see the script header for what " +
-    "\"reached\" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage " +
+    '"reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage ' +
     "--check` gate (in `arch:fitness`) keeps it in sync with source.",
 );
 lines.push("");
@@ -147,7 +152,8 @@ if (zeroE2e.length === 0) {
 } else {
   lines.push("| Screen id | Module | Path | Permission |");
   lines.push("|---|---|---|---|");
-  for (const r of zeroE2e) lines.push(`| \`${r.id}\` | ${r.module} | \`${r.path}\` | ${r.permission} |`);
+  for (const r of zeroE2e)
+    lines.push(`| \`${r.id}\` | ${r.module} | \`${r.path}\` | ${r.permission} |`);
 }
 lines.push("");
 lines.push("## Zero axe coverage");
@@ -157,12 +163,11 @@ if (zeroAxe.length === 0) {
 } else {
   lines.push("| Screen id | Module | Path | Permission |");
   lines.push("|---|---|---|---|");
-  for (const r of zeroAxe) lines.push(`| \`${r.id}\` | ${r.module} | \`${r.path}\` | ${r.permission} |`);
+  for (const r of zeroAxe)
+    lines.push(`| \`${r.id}\` | ${r.module} | \`${r.path}\` | ${r.permission} |`);
 }
 lines.push("");
-lines.push(
-  "## Not measured here (by design)",
-);
+lines.push("## Not measured here (by design)");
 lines.push("");
 lines.push(
   "- **Dynamic routes** (116 registered `web` screens carrying a `:param` segment) — opened by " +

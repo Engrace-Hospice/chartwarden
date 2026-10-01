@@ -45,6 +45,7 @@ import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
@@ -220,6 +221,7 @@ describe.skipIf(!DB_URL)("F-108 — M27 ECR/PI back-reference handshake, LIVE Po
       M16_OUTBOX_EVENTS,
       M17_OUTBOX_EVENTS,
       M18_OUTBOX_EVENTS,
+      M19_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,

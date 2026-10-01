@@ -26,7 +26,11 @@ const facts = (over: Partial<LabCancellationFacts>): LabCancellationFacts => ({ 
 describe("decideLabCancellation — does a superseded lab order need a human to tell the lab?", () => {
   it.each([
     ["transmitted", { transmissionStatus: "transmitted" }, "transmitted"],
-    ["pending (ORM requested, not yet acknowledged)", { transmissionStatus: "pending" }, "in_flight"],
+    [
+      "pending (ORM requested, not yet acknowledged)",
+      { transmissionStatus: "pending" },
+      "in_flight",
+    ],
     ["pending_retry", { transmissionStatus: "pending_retry" }, "in_flight"],
     [
       "failed by an M29 terminal failure (delivery unverified)",
@@ -38,20 +42,33 @@ describe("decideLabCancellation — does a superseded lab order need a human to 
       { transmissionStatus: "failed", transmissionFailureReason: null },
       "delivery_unverified",
     ],
-    ["partial results (the lab is still working)", { resultsStatus: "partial_results_received" }, "transmitted"],
+    [
+      "partial results (the lab is still working)",
+      { resultsStatus: "partial_results_received" },
+      "transmitted",
+    ],
     ["results overdue", { resultsStatus: "results_overdue" }, "transmitted"],
   ] as const)("%s → alert", (_name, over, expected) => {
     expect(decideLabCancellation(facts(over))).toBe(expected);
   });
 
   it.each([
-    ["an F-181 refusal never produced an ORM", { transmissionStatus: "failed", transmissionFailureReason: "orm_refused:sud_restricted" }],
+    [
+      "an F-181 refusal never produced an ORM",
+      { transmissionStatus: "failed", transmissionFailureReason: "orm_refused:sud_restricted" },
+    ],
     ["the lab has finished (results received)", { resultsStatus: "results_received" }],
     ["not a lab order", { kind: "dme" }],
     ["`not_required` (not a transmitted order)", { transmissionStatus: "not_required" }],
     // `insertDraft` writes transmission_status='pending' on EVERY lab draft: `pending` alone is not "in flight".
-    ["a never-signed lab draft is born `pending` — no ORM was ever requested", { signedAt: null, transmissionStatus: "pending" }],
-    ["never signed, whatever the status says", { signedAt: null, transmissionStatus: "transmitted" }],
+    [
+      "a never-signed lab draft is born `pending` — no ORM was ever requested",
+      { signedAt: null, transmissionStatus: "pending" },
+    ],
+    [
+      "never signed, whatever the status says",
+      { signedAt: null, transmissionStatus: "transmitted" },
+    ],
   ] as const)("%s → nothing", (_name, over) => {
     expect(decideLabCancellation(facts(over))).toBeNull();
   });
@@ -80,7 +97,9 @@ describe("declarations — the consumer is bindable and reaches a human", () => 
   });
 
   it("the alert has a platform-default rule that resolves recipients from the payload's patientId", () => {
-    const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === M11_LAB_CANCELLATION_ALERT_TYPE);
+    const rule = PLATFORM_DEFAULT_ALERT_RULES.find(
+      (r) => r.eventType === M11_LAB_CANCELLATION_ALERT_TYPE,
+    );
     // Without a rule `AlertEmitterPorts.rulesFor` returns [] and the alert is dropped silently.
     expect(rule).toBeDefined();
     expect(rule?.enabled).toBe(true);
@@ -100,7 +119,10 @@ describe("the consumer refuses malformed events loudly (a dead-letter, never a s
   });
 
   it("subscribes to exactly the two supersession events", () => {
-    expect([...consumer.eventTypes].sort()).toEqual(["m11.order.corrected", "m11.order.discontinued"]);
+    expect([...consumer.eventTypes].sort()).toEqual([
+      "m11.order.corrected",
+      "m11.order.discontinued",
+    ]);
     expect(consumer.consumerModule).toBe("m11");
   });
 
@@ -112,13 +134,21 @@ describe("the consumer refuses malformed events loudly (a dead-letter, never a s
 
   it("a corrected payload with no replacedOrderId throws (the ORIGINAL is the order at the lab)", async () => {
     await expect(
-      consumer.handle({ eventType: "m11.order.corrected", organizationId: "o", payload: { newOrderId: "n" } }),
+      consumer.handle({
+        eventType: "m11.order.corrected",
+        organizationId: "o",
+        payload: { newOrderId: "n" },
+      }),
     ).rejects.toThrow(/no replacedOrderId/);
   });
 
   it("an event this consumer was not subscribed to throws", async () => {
     await expect(
-      consumer.handle({ eventType: "m11.order.completed", organizationId: "o", payload: { orderId: "x" } }),
+      consumer.handle({
+        eventType: "m11.order.completed",
+        organizationId: "o",
+        payload: { orderId: "x" },
+      }),
     ).rejects.toThrow(/unexpected event/);
   });
 });

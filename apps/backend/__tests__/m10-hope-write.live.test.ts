@@ -32,6 +32,7 @@ import {
   buildM10AdmissionWorkflowConsumer,
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
+import { answerHopeForSign } from "./_hope-sign-ready";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -60,7 +61,6 @@ const SFV_DATA = {
   },
 };
 /** Items the workflow writes (control / prefill / SFV reconciliation / sign) — the public answer API refuses them. */
-const WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
 const today = (): string => new Date().toISOString().slice(0, 10);
 
 describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", () => {
@@ -270,50 +270,13 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     });
   }
 
-  /**
-   * Answer a draft until the server's sign-readiness review passes. Since the HOPE workflow rework,
-   * `signTimepoint` refuses (HopeAssessmentNotReadyToSignError) any record whose active, applicable
-   * items are unanswered or that carries an error finding (hope-readiness-service `blockersFor`), so a
-   * sign-path test must first complete the record the way the workspace does. `overrides` are applied
-   * first (e.g. the J2051 branch under test); every remaining UNANSWERED_APPLICABLE_ITEM blocker then
-   * gets its first CMS option (No / Not at all for gates, so skip branches resolve), a date, or text.
-   * A1400A (Medicare payer) is always set — CMS rule -3081 needs at least one A1400 payer source.
-   */
-  async function answerForSign(id: string, overrides: Record<string, string> = {}): Promise<void> {
-    await patch(id, { A1400A: "1", ...overrides });
-    for (let round = 0; round < 6; round++) {
-      const review = await svc.getAssessmentReview(ORG_A, id);
-      if (review.readiness.readyToSign) return;
-      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
-      const items = new Map(ws.sections.flatMap((s) => s.items).map((i) => [i.itemCode, i]));
-      const changes: Record<string, string> = {};
-      for (const b of review.readiness.blockers) {
-        if (b.code !== "UNANSWERED_APPLICABLE_ITEM" || !b.itemCode) continue;
-        if (WORKFLOW_ITEMS.test(b.itemCode)) continue;
-        const item = items.get(b.itemCode);
-        if (!item) continue;
-        const codes = [...item.options]
-          .sort((x, y) => x.sortOrder - y.sortOrder)
-          .map((o) => o.valueCode);
-        const real = codes.filter(
-          (c) => !["Text", "YYYYMMDD", "YYYYMM", "YYYY", "^", "-"].includes(c),
-        );
-        changes[b.itemCode] =
-          codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
-            ? today()
-            : codes.includes("Text")
-              ? "Test"
-              : (real[0] ?? "0");
-      }
-      if (Object.keys(changes).length === 0) {
-        throw new Error(
-          `HOPE ${id} is not sign-ready: ${JSON.stringify(review.readiness.blockers)}`,
-        );
-      }
-      await patch(id, changes);
-    }
-    throw new Error(`HOPE ${id} did not reach sign readiness`);
-  }
+  /** Complete a draft until sign-ready — shared helper (_hope-sign-ready.ts), incl. the A1005/A1010 checklists. */
+  const answerForSign = (id: string, overrides: Record<string, string> = {}): Promise<void> =>
+    answerHopeForSign(
+      { svc, orgId: ORG_A, membershipId: memberOf[ORG_A]!, answerDate: today() },
+      id,
+      overrides,
+    );
 
   it("M6 activation/discharge consumer materializes HOPE schedules idempotently", async () => {
     const adm = await admitted();

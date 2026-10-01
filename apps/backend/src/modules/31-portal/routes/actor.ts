@@ -41,6 +41,8 @@ export interface M31Actor {
   readonly sessionClass: string;
   /** The portal account the session is bound to (portal sessions only; null otherwise). */
   readonly portalAccountId: string | null;
+  /** The M2 session id (`attributes.sessionId`, stamped by the authenticate hook); the portal mint's audit anchor. */
+  readonly sessionId: string | null;
   /** The one patient the portal session is scoped to (null before select-patient / on staff). */
   readonly portalPatientId: string | null;
 }
@@ -57,6 +59,7 @@ export function actorOf(request: FastifyRequest): M31Actor {
     roles: ctx.roles ?? [],
     sessionClass: str(attrs.sessionClass) ?? "staff",
     portalAccountId: str(attrs.portalAccountId),
+    sessionId: str(attrs.sessionId),
     portalPatientId: str(attrs.sessionPatientId),
   };
 }
@@ -79,4 +82,14 @@ export function portalPatientIdOf(actor: M31Actor): string {
     );
   }
   return actor.portalPatientId;
+}
+
+/** The M2 session id the portal access ran under (F-225). Absent ⇒ 403: a disclosure with no session anchor is refused. */
+export function portalSessionIdOf(actor: M31Actor): string {
+  if (actor.sessionId === null) {
+    throw new ForbiddenError(
+      "this portal session carries no session id; document access is refused",
+    );
+  }
+  return actor.sessionId;
 }

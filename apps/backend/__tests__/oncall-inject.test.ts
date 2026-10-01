@@ -370,6 +370,8 @@ function createOncallTestBackend() {
     },
   };
 
+  /** F-224 — every `requestSummary` the route let through to the service (the stub records, never renders). */
+  const summaryRequests: Array<{ triageCallId: string; recipientKind: string }> = [];
   const writeService: M19WriteService = {
     async openTriageCall(_actor, input) {
       const shift = ensureShift(input.providerEntityId);
@@ -517,6 +519,16 @@ function createOncallTestBackend() {
       const updated: CallRow = { ...row, state: "abandoned" };
       calls.set(triageCallId, updated);
       return updated;
+    },
+    async requestSummary(_actor, triageCallId, input) {
+      requireCall(triageCallId);
+      summaryRequests.push({ triageCallId, recipientKind: input.recipientKind });
+      return {
+        requested: true,
+        triageCallId,
+        recipientKind: input.recipientKind,
+        requestedAt: "2026-09-30T12:00:00.000Z",
+      };
     },
     async escalate(_actor, triageCallId, input) {
       const row = requireCall(triageCallId);
@@ -818,7 +830,15 @@ function createOncallTestBackend() {
     },
   };
 
-  return { readService, writeService, resolver, ports, seedProtocolId, seedWorklistId };
+  return {
+    readService,
+    writeService,
+    resolver,
+    ports,
+    seedProtocolId,
+    seedWorklistId,
+    summaryRequests,
+  };
 }
 
 // ── the M15/M16/M21/M24/M26 header-auth shim, extended with the test-only attribute headers M19's
@@ -839,6 +859,10 @@ function headerAuth(request: FastifyRequest): void {
   const sessionClass = request.headers["x-test-session-class"];
   if (typeof sessionClass === "string" && sessionClass.length > 0) {
     request.context.attributes.sessionClass = sessionClass;
+  }
+  const actorKind = request.headers["x-test-actor-kind"];
+  if (typeof actorKind === "string" && actorKind.length > 0) {
+    request.context.attributes.actorKind = actorKind;
   }
   if (request.headers["x-test-step-up"] === "1") {
     request.context.attributes.stepUpRecent = true;
@@ -1095,6 +1119,123 @@ describe("M19-T07 §4.1 triage-call lifecycle (routes 1, 3-14)", () => {
     });
     expect(abandoned.statusCode).toBe(200);
 
+    await app.close();
+  });
+});
+
+// ── F-224 — POST /triage-calls/:id/request-summary ───────────────────────────────────────────────────
+
+describe("F-224 — request the caregiver / attending summary", () => {
+  async function openCall(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/triage-calls",
+      headers: { ...SUPER, ...idemp() },
+      payload: { providerEntityId: PE, inboundChannel: "phone", callerKind: "caregiver" },
+    });
+    return res.json().triageCallId as string;
+  }
+
+  it("a permitted staff actor with an Idempotency-Key reaches the service with the recipientKind", async () => {
+    const { app, backend } = makeServer();
+    const callId = await openCall(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/triage-calls/${callId}/request-summary`,
+      headers: { ...SUPER, ...idemp() },
+      payload: { recipientKind: "caregiver" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      requested: true,
+      triageCallId: callId,
+      recipientKind: "caregiver",
+    });
+    expect(backend.summaryRequests).toEqual([{ triageCallId: callId, recipientKind: "caregiver" }]);
+    await app.close();
+  });
+
+  it("refuses without an Idempotency-Key (400), and never reaches the service", async () => {
+    const { app, backend } = makeServer();
+    const callId = await openCall(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/triage-calls/${callId}/request-summary`,
+      headers: SUPER,
+      payload: { recipientKind: "attending" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(backend.summaryRequests).toEqual([]);
+    await app.close();
+  });
+
+  it("a replay of the SAME Idempotency-Key + body returns the first answer and requests ONCE", async () => {
+    const { app, backend } = makeServer();
+    const callId = await openCall(app);
+    const headers = { ...SUPER, ...idemp() };
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/triage-calls/${callId}/request-summary`,
+      headers,
+      payload: { recipientKind: "attending" },
+    });
+    const replay = await app.inject({
+      method: "POST",
+      url: `/api/v1/triage-calls/${callId}/request-summary`,
+      headers,
+      payload: { recipientKind: "attending" },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toEqual(first.json());
+    expect(backend.summaryRequests).toHaveLength(1);
+    await app.close();
+  });
+
+  it("an AI principal is refused (403) before the service (D13 AI-block)", async () => {
+    const { app, backend } = makeServer();
+    const callId = await openCall(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/triage-calls/${callId}/request-summary`,
+      headers: { ...SUPER, ...idemp(), "x-test-actor-kind": "ai_agent" },
+      payload: { recipientKind: "caregiver" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(backend.summaryRequests).toEqual([]);
+    await app.close();
+  });
+
+  it("an actor without triage.request_summary is refused (403)", async () => {
+    const { app, backend } = makeServer();
+    const callId = await openCall(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/triage-calls/${callId}/request-summary`,
+      headers: { ...NOBODY, ...idemp() },
+      payload: { recipientKind: "caregiver" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(backend.summaryRequests).toEqual([]);
+    await app.close();
+  });
+
+  it("rejects an unknown recipientKind and an extra body field (422)", async () => {
+    const { app } = makeServer();
+    const callId = await openCall(app);
+    for (const payload of [
+      { recipientKind: "family" },
+      { recipientKind: "caregiver", note: "x" },
+      {},
+    ]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/triage-calls/${callId}/request-summary`,
+        headers: { ...SUPER, ...idemp() },
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+    }
     await app.close();
   });
 });
