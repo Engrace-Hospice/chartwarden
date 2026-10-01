@@ -112,7 +112,12 @@ export function OnCallShiftsScreen(): JSX.Element {
           ...(cursor ? { cursor } : {}),
           ...(discipline ? { discipline: discipline as ShiftDiscipline } : {}),
         }),
-        cursor ? Promise.resolve({ current }) : getCurrentOnCall(client, {}),
+        // "Load more" only appends rows, so the current-on-call card is neither re-fetched nor re-set. This
+        // callback must NOT close over `current`: it used to, and `setCurrent` below stores a fresh object on
+        // every fetch, so `load` changed identity, the effect re-ran and the page re-fetched
+        // /oncall/current + /oncall/shifts in a tight loop (~100 requests/second, indefinitely) whenever
+        // someone was on call — which froze the route-walk e2e until its timeout.
+        cursor ? Promise.resolve(null) : getCurrentOnCall(client, {}),
       ]);
       if (list.error) {
         setError(errorMessage(list.error, "The on-call roster could not be loaded."));
@@ -125,11 +130,11 @@ export function OnCallShiftsScreen(): JSX.Element {
       );
       setNextCursor(list.page?.next_cursor ?? null);
       setTruncated(list.page?.has_more ?? false);
-      if (!cursor) setCurrent(now.current);
+      if (now) setCurrent(now.current);
       setLoading(false);
       setLoadingMore(false);
     },
-    [client, current, discipline],
+    [client, discipline],
   );
 
   useEffect(() => {
