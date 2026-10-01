@@ -208,7 +208,9 @@ describe("real registry — the bind point refuses, and binds NOTHING", () => {
       loadCredential: async () => {
         throw new Error("unused");
       },
-      connectionDeps: () => ({ log: () => {} }) as never,
+      // `canConnect` below makes a real connection, so `handleMllpConnection` runs: it needs a numeric
+      // `readTimeoutMs` (`socket.setTimeout(undefined)` throws an uncaught ERR_INVALID_ARG_TYPE).
+      connectionDeps: () => ({ log: () => {}, readTimeoutMs: 1_000 }) as never,
       log: () => {},
       allowPlainProtocol: true,
     });

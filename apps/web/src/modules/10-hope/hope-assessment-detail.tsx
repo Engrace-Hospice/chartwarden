@@ -2677,6 +2677,14 @@ function isTextItem(item: WorkspaceItem): boolean {
   );
 }
 
+/** Drop a leading copy of the option's OWN CMS value code ("1 - Yes" → "Yes"). The previous pattern matched
+ *  any leading word case-insensitively, so "Not at all - symptom does not affect…" lost its "Not" and
+ *  "Not applicable (…)" rendered as "applicable (…)". */
+function stripOwnValueCode(label: string, valueCode: string): string {
+  const escaped = valueCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return label.replace(new RegExp(`^${escaped}(?:\\s*[-.:=)]\\s*|\\s+)`), "");
+}
+
 function answerOptionsForControl(
   item: WorkspaceItem,
 ): WorkspaceItem["options"] {
@@ -2689,7 +2697,7 @@ function answerOptionsForControl(
     )
     .map((option) => ({
       ...option,
-      label: option.label.replace(/^[0-9A-Z^]+(?:\s*[-.:=)]\s*|\s+)/i, ""),
+      label: stripOwnValueCode(option.label, option.valueCode),
     }));
 }
 
