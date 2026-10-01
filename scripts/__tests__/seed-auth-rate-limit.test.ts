@@ -83,4 +83,29 @@ describe("fetchAuthWithRateLimitRetry", () => {
     expect(res.status).toBe(401);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("retries a transient 5xx (the CI hash-wasm trap) and returns the next good response", async () => {
+    const res = await run([new Response("null", { status: 500 }), new Response("ok")]);
+    expect(res.status).toBe(200);
+    expect(log).toHaveBeenCalledWith("sign-in got HTTP 500; retrying in 2s");
+  });
+
+  it("gives up on a persistent 5xx after the bounded retries and returns it for a readable error", async () => {
+    const fetchSpy = vi.fn(async () => new Response("null", { status: 500 }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const pending = fetchAuthWithRateLimitRetry("http://x", {}, "sign-up");
+    await vi.runAllTimersAsync();
+    const res = await pending;
+    expect(res.status).toBe(500);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not let 5xx retries spend the rate-limit budget", async () => {
+    const res = await run([
+      new Response("null", { status: 500 }),
+      tooManyRequests({ "retry-after": "60" }),
+      new Response("ok"),
+    ]);
+    expect(res.status).toBe(200);
+  });
 });
