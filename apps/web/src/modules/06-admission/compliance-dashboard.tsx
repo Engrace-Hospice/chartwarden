@@ -249,7 +249,12 @@ function WindowTable({
   loading: boolean;
 }): JSX.Element {
   return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
+    <section
+      aria-label="Compliance windows"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+      tabIndex={0}
+      style={{ width: "100%", overflowX: "auto" }}
+    >
       <table style={tableStyle}>
         <thead>
           <tr style={tableHeadRowStyle}>
@@ -284,7 +289,7 @@ function WindowTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }
 

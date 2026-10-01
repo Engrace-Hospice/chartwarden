@@ -808,7 +808,10 @@ function Avatar({ name, size }: { name: string; size?: "lg" }): JSX.Element {
     <span
       className={`wx-home-avatar${size === "lg" ? " wx-avatar-lg" : ""}`}
       aria-hidden
-      style={{ color: c, background: `color-mix(in srgb, ${c} 14%, ${t.surfaceLowest})` }}
+      style={{
+        color: `color-mix(in srgb, ${c} 60%, ${t.onSurface})`,
+        background: `color-mix(in srgb, ${c} 14%, ${t.surfaceLowest})`,
+      }}
     >
       {initials(name)}
     </span>

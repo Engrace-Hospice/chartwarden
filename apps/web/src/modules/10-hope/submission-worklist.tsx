@@ -391,7 +391,7 @@ const errorBannerStyle = {
   borderRadius: "var(--radius-md)",
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
+  color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
   fontSize: "0.85rem",
   display: "flex",
   alignItems: "center",

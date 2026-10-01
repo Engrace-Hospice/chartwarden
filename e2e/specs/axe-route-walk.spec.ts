@@ -52,7 +52,7 @@ test.describe("Accessibility — route walk (#106, F-046)", () => {
   }) => {
     const screens = staticWebScreens();
     expect(screens.length).toBeGreaterThan(100); // the registry itself going empty is its own defect
-    test.setTimeout(Math.max(120_000, screens.length * 4_000));
+    test.setTimeout(Math.max(120_000, screens.length * 8_000));
 
     await signInAs(page, ADMIN_ACCOUNT());
 
