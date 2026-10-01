@@ -114,9 +114,7 @@ async function readUnexpiredEntries(
       if (typeof parsed.patientId !== "string" || typeof parsed.expiresAt !== "string") continue;
       if (Date.parse(parsed.expiresAt) <= now) continue; // expired — filtered at read time, not evicted
       out.push({ patientId: parsed.patientId, expiresAt: parsed.expiresAt });
-    } catch {
-      continue; // malformed entry — skip rather than fail a hot ABAC read on garbage
-    }
+    } catch {}
   }
   return out;
 }

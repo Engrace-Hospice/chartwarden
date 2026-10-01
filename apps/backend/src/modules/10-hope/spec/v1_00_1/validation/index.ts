@@ -273,8 +273,20 @@ const skipStateRule: HopeValidationRule = {
   id: "hope-v1.00.1-skip-state-consistency",
   evaluate(ctx) {
     const out: HopeRuleFinding[] = [];
-    if (ctx.mode === "final" && [...ETHNICITY_POSITIVE, ...ETHNICITY_EXCLUSIVE].every((code) => !checked(ctx, code))) {
-      out.push(finding({ ruleId: "-3080", severity: "error", findingKind: "missing_required", itemCode: "A1005", section: "A", message: "At least one A1005 ethnicity selection is required." }));
+    if (
+      ctx.mode === "final" &&
+      [...ETHNICITY_POSITIVE, ...ETHNICITY_EXCLUSIVE].every((code) => !checked(ctx, code))
+    ) {
+      out.push(
+        finding({
+          ruleId: "-3080",
+          severity: "error",
+          findingKind: "missing_required",
+          itemCode: "A1005",
+          section: "A",
+          message: "At least one A1005 ethnicity selection is required.",
+        }),
+      );
     }
     for (const itemCode of activeAssessmentItems(ctx)) {
       const applicability = applicabilityOf(ctx, itemCode);
@@ -372,8 +384,20 @@ const sectionARule: HopeValidationRule = {
         }),
       );
     }
-    if (ctx.mode === "final" && [...RACE_POSITIVE, ...RACE_EXCLUSIVE].every((code) => !checked(ctx, code))) {
-      out.push(finding({ ruleId: "-3090", severity: "error", findingKind: "missing_required", itemCode: "A1010", section: "A", message: "At least one A1010 race selection is required." }));
+    if (
+      ctx.mode === "final" &&
+      [...RACE_POSITIVE, ...RACE_EXCLUSIVE].every((code) => !checked(ctx, code))
+    ) {
+      out.push(
+        finding({
+          ruleId: "-3090",
+          severity: "error",
+          findingKind: "missing_required",
+          itemCode: "A1010",
+          section: "A",
+          message: "At least one A1010 race selection is required.",
+        }),
+      );
     }
     if (
       RACE_EXCLUSIVE.some((code) => checked(ctx, code)) &&

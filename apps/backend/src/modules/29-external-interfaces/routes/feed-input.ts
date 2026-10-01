@@ -36,7 +36,11 @@ export function resolveCertPin(input: {
     derived = certPinFromPem(input.channelCertPem);
   } catch (err) {
     if (err instanceof CertPinError) {
-      refuse("channelCertPem", "CERT_PEM_INVALID", "must contain a valid X.509 certificate in PEM form");
+      refuse(
+        "channelCertPem",
+        "CERT_PEM_INVALID",
+        "must contain a valid X.509 certificate in PEM form",
+      );
     }
     throw err;
   }

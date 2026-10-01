@@ -68,7 +68,11 @@ export function buildM30VisitVerifiedConsumer(deps: {
       const patientId = stringOf(payload, "patientId");
       const verifiedAt = stringOf(payload, "verifiedAt");
 
-      const siting = await deps.evvVisitProviderEntityForOrg(deps.db, event.organizationId, visitId);
+      const siting = await deps.evvVisitProviderEntityForOrg(
+        deps.db,
+        event.organizationId,
+        visitId,
+      );
       if (siting === null) return; // no visit this org recognises — see file header.
 
       await handleEvvVisitVerified(

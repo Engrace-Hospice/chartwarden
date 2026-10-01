@@ -1,3 +1,13 @@
+import { randomUUID } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
+import { type Socket, createServer } from "node:net";
+import { join } from "node:path";
+import { classifyDatabaseError, createDbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
+import { and, eq, sql } from "drizzle-orm";
+import { Client } from "pg";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildM29AbacPredicates } from "../src/modules/29-external-interfaces/abac-predicates";
 /**
  * M29 External Interfaces — F-175 (#248): the T08 outbound MLLP dispatch worker, proven against REAL
  * Postgres (as the NOBYPASSRLS `wardenx_app` role) and a real in-process mock MLLP server over `node:net`
@@ -11,30 +21,15 @@
  * Gated on a live DB: WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run <this file>
  */
 import { buildDrizzleM29AbacResolver } from "../src/modules/29-external-interfaces/abac-resolver-drizzle";
-import { buildM29AbacPredicates } from "../src/modules/29-external-interfaces/abac-predicates";
-import { randomUUID } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { type Socket, createServer } from "node:net";
-import { join } from "node:path";
-import { classifyDatabaseError, createDbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, sql } from "drizzle-orm";
-import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
-import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
-import { buildDrizzleOutboundFeedResolver } from "../src/modules/29-external-interfaces/outbound/feed-resolver";
 import {
-  ormDispatchExistsForOrder,
-  ormDispatchLookupQuery,
-} from "../src/modules/29-external-interfaces/outbound/order-dispatch-dedupe";
-import {
-  type MllpTransport,
-  createNodeMllpTransport,
-} from "../src/modules/29-external-interfaces/outbound/mllp-transport";
+  MllpFrameBuffer,
+  encodeMllpFrame,
+  parseMshEnvelope,
+} from "../src/modules/29-external-interfaces/listener/mllp-framing";
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import { createOutboundPayloadCipher } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import {
@@ -42,12 +37,17 @@ import {
   buildM29OutboundDispatchConsumer,
   runOutboundRetrySweepOnce,
 } from "../src/modules/29-external-interfaces/outbound/dispatch-worker";
+import { buildDrizzleOutboundFeedResolver } from "../src/modules/29-external-interfaces/outbound/feed-resolver";
 import {
-  MllpFrameBuffer,
-  encodeMllpFrame,
-  parseMshEnvelope,
-} from "../src/modules/29-external-interfaces/listener/mllp-framing";
-import { appRoleUrl, LIVE_APP_ROLE_PASSWORD } from "./_live-app-role";
+  type MllpTransport,
+  createNodeMllpTransport,
+} from "../src/modules/29-external-interfaces/outbound/mllp-transport";
+import {
+  ormDispatchExistsForOrder,
+  ormDispatchLookupQuery,
+} from "../src/modules/29-external-interfaces/outbound/order-dispatch-dedupe";
+import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -421,7 +421,11 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(decrypted).toBe(server.receivedWires[0]);
       expect(rows[0]!.payloadCipher).not.toContain("ORM^O01");
 
-      const ackDecrypted = await cipher.decrypt(ORG_A, "ack_payload", rows[0]!.ackPayloadCipher as string);
+      const ackDecrypted = await cipher.decrypt(
+        ORG_A,
+        "ack_payload",
+        rows[0]!.ackPayloadCipher as string,
+      );
       expect(ackDecrypted).toContain("MSA|AA");
     } finally {
       await server.close();
@@ -453,10 +457,18 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(rows).toHaveLength(0);
       // `transmission_failed` needs an outbound row to cite — there is none. F-175 published nothing at all, which
       // left the order `pending` forever; F-187 publishes the row-less terminal signal M11 consumes instead.
-      expect(outbox.published.filter((e) => e.eventName === "m29.lab_order.transmission_failed")).toHaveLength(0);
-      const refused = outbox.published.filter((e) => e.eventName === "m29.lab_order.dispatch_refused");
+      expect(
+        outbox.published.filter((e) => e.eventName === "m29.lab_order.transmission_failed"),
+      ).toHaveLength(0);
+      const refused = outbox.published.filter(
+        (e) => e.eventName === "m29.lab_order.dispatch_refused",
+      );
       expect(refused).toHaveLength(1);
-      expect(refused[0]!.payload).toMatchObject({ orderId, organizationId: ORG_A, reason: "baa_inactive" });
+      expect(refused[0]!.payload).toMatchObject({
+        orderId,
+        organizationId: ORG_A,
+        reason: "baa_inactive",
+      });
       expect(server.receivedWires).toHaveLength(0); // never even attempted the socket
       // The BAA refusal alert intent still fires (compliance-facing), just never `transmission_failed`.
       expect(alerts.emitted.some((a) => a.eventType === "external_feed.baa_missing")).toBe(true);
@@ -496,7 +508,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         orderId,
         reason: "application_reject",
       });
-      expect(alerts.emitted.some((a) => a.eventType === "hl7_outbound.transmission_failed")).toBe(true);
+      expect(alerts.emitted.some((a) => a.eventType === "hl7_outbound.transmission_failed")).toBe(
+        true,
+      );
     } finally {
       await server.close();
     }
@@ -513,7 +527,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       db: handle.db,
       outbox: outbox.port,
       keys: fakeKeyProvider(),
-        destinationPolicy: TEST_POLICY,
+      destinationPolicy: TEST_POLICY,
       alerts: alerts.port,
     });
 
@@ -539,7 +553,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       db: handle.db,
       outbox: outbox.port,
       keys: fakeKeyProvider(),
-        destinationPolicy: TEST_POLICY,
+      destinationPolicy: TEST_POLICY,
       alerts: alerts.port,
     });
 
@@ -570,9 +584,15 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     expect(rows[0]?.retryCount).toBe(5);
     expect(rows[0]?.nextRetryAt).toBeNull();
 
-    const dlqEvents = outbox.published.filter((e) => e.eventName === "m29.lab_order.transmission_failed");
+    const dlqEvents = outbox.published.filter(
+      (e) => e.eventName === "m29.lab_order.transmission_failed",
+    );
     expect(dlqEvents).toHaveLength(1);
-    expect(dlqEvents[0]?.payload).toMatchObject({ orderId, reason: "dlq_exhausted", attemptCount: 5 });
+    expect(dlqEvents[0]?.payload).toMatchObject({
+      orderId,
+      reason: "dlq_exhausted",
+      attemptCount: 5,
+    });
   });
 
   it("redelivery idempotency: the same outbox event delivered twice never double-dispatches", async () => {
@@ -599,7 +619,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       const rows = await outboundRowFor(ORG_A, orderId);
       expect(rows).toHaveLength(1); // never double-dispatched
       expect(server.receivedWires).toHaveLength(1); // the wire was only ever sent once
-      expect(outbox.published.filter((e) => e.eventName === "m29.lab_order.transmitted")).toHaveLength(1);
+      expect(
+        outbox.published.filter((e) => e.eventName === "m29.lab_order.transmitted"),
+      ).toHaveLength(1);
     } finally {
       await server.close();
     }
@@ -630,12 +652,26 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     const serverX = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const serverY = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
-      const feedX = await seedFeed({ organizationId: ORG_A, port: serverX.port, labDestinationFacilityId: FACILITY_X });
-      await seedFeed({ organizationId: ORG_A, port: serverY.port, labDestinationFacilityId: FACILITY_Y });
+      const feedX = await seedFeed({
+        organizationId: ORG_A,
+        port: serverX.port,
+        labDestinationFacilityId: FACILITY_X,
+      });
+      await seedFeed({
+        organizationId: ORG_A,
+        port: serverY.port,
+        labDestinationFacilityId: FACILITY_Y,
+      });
       const { consumer } = buildConsumer();
       const orderId = randomUUID();
       await consumer.handle(
-        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: FACILITY_X })),
+        dispatchEvent(
+          ormRequestedPayload({
+            orderId,
+            organizationId: ORG_A,
+            labDestinationFacilityId: FACILITY_X,
+          }),
+        ),
       );
       expect(serverX.receivedWires).toHaveLength(1);
       expect(serverY.receivedWires).toHaveLength(0);
@@ -653,11 +689,21 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
-      await seedFeed({ organizationId: ORG_A, port: server.port, labDestinationFacilityId: FACILITY_Y });
+      await seedFeed({
+        organizationId: ORG_A,
+        port: server.port,
+        labDestinationFacilityId: FACILITY_Y,
+      });
       const { consumer, alerts } = buildConsumer();
       const orderId = randomUUID();
       await consumer.handle(
-        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: FACILITY_X })),
+        dispatchEvent(
+          ormRequestedPayload({
+            orderId,
+            organizationId: ORG_A,
+            labDestinationFacilityId: FACILITY_X,
+          }),
+        ),
       );
       expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
       expect(server.receivedWires).toHaveLength(0);
@@ -691,7 +737,11 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
-      const feedId = await seedFeed({ organizationId: ORG_A, port: server.port, mshReceivingFacility: null });
+      const feedId = await seedFeed({
+        organizationId: ORG_A,
+        port: server.port,
+        mshReceivingFacility: null,
+      });
       const { consumer, alerts, outbox } = buildConsumer();
       const orderId = randomUUID();
       // F-187: the worker no longer THROWS (the outbox's dead-letter left the order `pending` forever); it publishes
@@ -700,9 +750,16 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
       expect(server.receivedWires).toHaveLength(0);
       expect(JSON.stringify(alerts.emitted)).toContain("feed_identity_incomplete");
-      const refused = outbox.published.filter((e) => e.eventName === "m29.lab_order.dispatch_refused");
+      const refused = outbox.published.filter(
+        (e) => e.eventName === "m29.lab_order.dispatch_refused",
+      );
       expect(refused).toHaveLength(1);
-      expect(refused[0]!.payload).toMatchObject({ orderId, organizationId: ORG_A, feedId, reason: "feed_identity_incomplete" });
+      expect(refused[0]!.payload).toMatchObject({
+        orderId,
+        organizationId: ORG_A,
+        feedId,
+        reason: "feed_identity_incomplete",
+      });
       // Ids and an enum only — never the order's patient, a value, or even the missing field's name.
       expect(JSON.stringify(refused[0]!.payload)).not.toMatch(/Doe|John|MRN|mshReceivingFacility/);
     } finally {
@@ -732,12 +789,20 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
   });
 
   it("F-181 schema: the MSH CHECK refuses a value that would break HL7 framing; RLS hides org A's feed link from org B", async () => {
-    const feedId = await seedFeed({ organizationId: ORG_A, port: 6100, labDestinationFacilityId: FACILITY_X });
+    const feedId = await seedFeed({
+      organizationId: ORG_A,
+      port: 6100,
+      labDestinationFacilityId: FACILITY_X,
+    });
     await expect(
-      admin.query("UPDATE external_feed SET msh_receiving_facility = 'A|B' WHERE id = $1", [feedId]),
+      admin.query("UPDATE external_feed SET msh_receiving_facility = 'A|B' WHERE id = $1", [
+        feedId,
+      ]),
     ).rejects.toThrow(/external_feed_msh_identity_chk/);
     await expect(
-      admin.query("UPDATE external_feed SET msh_sending_facility = E'A\\rB' WHERE id = $1", [feedId]),
+      admin.query("UPDATE external_feed SET msh_sending_facility = E'A\\rB' WHERE id = $1", [
+        feedId,
+      ]),
     ).rejects.toThrow(/external_feed_msh_identity_chk/);
     const asB = await withOrgContext(handle.db, { organizationId: ORG_B, userId: "" }, (tx) =>
       tx.select().from(schema.externalFeed).where(eq(schema.externalFeed.id, feedId)),
@@ -858,7 +923,11 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       dyingAfterDelivery(createNodeMllpTransport()),
     );
     await expect(
-      consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId, ...(attemptId ? { attemptId } : {}) }))),
+      consumer.handle(
+        dispatchEvent(
+          ormRequestedPayload({ orderId, organizationId, ...(attemptId ? { attemptId } : {}) }),
+        ),
+      ),
     ).rejects.toThrow("simulated process death");
     const [row] = await outboundRowFor(organizationId, orderId);
     return { orderId, row: row! };
@@ -987,8 +1056,12 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       const orderId = randomUUID();
       let release!: () => void;
       let entered!: () => void;
-      const gate = new Promise<void>((r) => (release = r));
-      const inSend = new Promise<void>((r) => (entered = r));
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      const inSend = new Promise<void>((r) => {
+        entered = r;
+      });
       const slow: MllpTransport = {
         async send(req) {
           entered();
@@ -999,7 +1072,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       };
       const outbox = fakeOutbox();
       const { consumer } = buildConsumer(outbox, fakeAlerts(), slow);
-      const done = consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+      const done = consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })),
+      );
       await inSend;
 
       // Lease expires while the slow worker is still mid-send: the sweeper takes the row back.
@@ -1060,7 +1135,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     const wrongAck: MllpTransport = {
       async send(req) {
         const env = parseMshEnvelope(req.wireMessage);
-        return { kind: "ack", rawAckPayload: buildAckWire({ ...env, messageControlId: "SOMEONE-ELSES" }, "AA") };
+        return {
+          kind: "ack",
+          rawAckPayload: buildAckWire({ ...env, messageControlId: "SOMEONE-ELSES" }, "AA"),
+        };
       },
     };
     const { consumer } = buildConsumer(fakeOutbox(), fakeAlerts(), wrongAck);
@@ -1112,7 +1190,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     try {
-      const { orderId, row } = await crashedDispatch(server, ORG_A, { receiverDedupesControlId: false });
+      const { orderId, row } = await crashedDispatch(server, ORG_A, {
+        receiverDedupesControlId: false,
+      });
       expect(row.status).toBe("in_flight");
       expect(server.receivedWires).toHaveLength(1);
 
@@ -1174,10 +1254,16 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(rowA!.retryCount).toBe(1);
       expect(rowB!.status).toBe("dlq");
       const kinds = auditIntentsOf(info);
-      expect(kinds).toContainEqual(expect.objectContaining({ kind: "hl7.outbound.reclaimed", outboundMessageId: a.row.id }));
-      expect(kinds).toContainEqual(expect.objectContaining({ kind: "hl7.outbound.held", outboundMessageId: b.row.id }));
+      expect(kinds).toContainEqual(
+        expect.objectContaining({ kind: "hl7.outbound.reclaimed", outboundMessageId: a.row.id }),
+      );
+      expect(kinds).toContainEqual(
+        expect.objectContaining({ kind: "hl7.outbound.held", outboundMessageId: b.row.id }),
+      );
       // The reclaim requeue no longer masquerades as an ordinary dispatch.
-      expect(kinds.filter((k) => k.outboundMessageId === a.row.id).map((k) => k.kind)).not.toContain("hl7.outbound.dispatched");
+      expect(
+        kinds.filter((k) => k.outboundMessageId === a.row.id).map((k) => k.kind),
+      ).not.toContain("hl7.outbound.dispatched");
     } finally {
       info.mockRestore();
       await serverA.close();
@@ -1223,7 +1309,12 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
 
   it("F-183 lease: the RETRY sweep's claim (queued → in_flight) also takes the feed's own lease, not the platform default", async () => {
     registerActiveBaa();
-    await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 90 });
+    await seedFeed({
+      organizationId: ORG_A,
+      port: 2575,
+      receiverDedupesControlId: true,
+      inFlightLeaseSeconds: 90,
+    });
     const orderId = randomUUID();
     const failing: MllpTransport = {
       async send() {
@@ -1240,7 +1331,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       async send(req) {
         const [r] = await outboundRowFor(ORG_A, orderId);
         leaseDuringSend = r!.nextRetryAt!.getTime() - sweepNow.getTime();
-        return { kind: "ack", rawAckPayload: buildAckWire(parseMshEnvelope(req.wireMessage), "AA") };
+        return {
+          kind: "ack",
+          rawAckPayload: buildAckWire(parseMshEnvelope(req.wireMessage), "AA"),
+        };
       },
     };
     await runOutboundRetrySweepOnce({
@@ -1258,7 +1352,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
   });
 
   /** A limiter whose wait advances a virtual clock: the worker's `now` is `clock`, so a "long wait" is instant. */
-  function slowLimiterWorld(args: { readonly waitMs: number; readonly onWaited?: () => Promise<void> }) {
+  function slowLimiterWorld(args: {
+    readonly waitMs: number;
+    readonly onWaited?: () => Promise<void>;
+  }) {
     const clock = { now: new Date() };
     const startedAt = clock.now.getTime();
     const rateLimiter = {
@@ -1272,7 +1369,12 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
 
   it("F-183 limiter: a long rate-limiter wait cannot get a LIVE sender reclaimed — the lease is re-armed when the send BEGINS", async () => {
     registerActiveBaa();
-    await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 60 });
+    await seedFeed({
+      organizationId: ORG_A,
+      port: 2575,
+      receiverDedupesControlId: true,
+      inFlightLeaseSeconds: 60,
+    });
     const orderId = randomUUID();
     const world = slowLimiterWorld({ waitMs: 50_000 }); // the wait eats 50s of the 60s lease before the socket opens
     let statusInSend: string | undefined;
@@ -1284,7 +1386,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         const [r] = await outboundRowFor(ORG_A, orderId);
         statusInSend = r!.status;
         leaseInSend = r!.nextRetryAt;
-        return { kind: "ack", rawAckPayload: buildAckWire(parseMshEnvelope(req.wireMessage), "AA") };
+        return {
+          kind: "ack",
+          rawAckPayload: buildAckWire(parseMshEnvelope(req.wireMessage), "AA"),
+        };
       },
     };
     const outbox = fakeOutbox();
@@ -1312,7 +1417,12 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
 
   it("F-183 limiter: if a reclaimer takes the row DURING the limiter wait, the worker sends NOTHING (the reclaimer's attempt stands) and logs the lost claim", async () => {
     registerActiveBaa();
-    await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 60 });
+    await seedFeed({
+      organizationId: ORG_A,
+      port: 2575,
+      receiverDedupesControlId: true,
+      inFlightLeaseSeconds: 60,
+    });
     const orderId = randomUUID();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const world = slowLimiterWorld({
@@ -1370,13 +1480,22 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
 
     for (const bad of [59, 0, -1, 3601]) {
       await expect(
-        admin.query("UPDATE external_feed SET in_flight_lease_seconds=$2 WHERE id=$1", [feedA, bad]),
+        admin.query("UPDATE external_feed SET in_flight_lease_seconds=$2 WHERE id=$1", [
+          feedA,
+          bad,
+        ]),
       ).rejects.toThrow(/external_feed_in_flight_lease_chk/);
     }
     for (const ok of [60, 3600, null]) {
-      await admin.query("UPDATE external_feed SET in_flight_lease_seconds=$2 WHERE id=$1", [feedA, ok]);
+      await admin.query("UPDATE external_feed SET in_flight_lease_seconds=$2 WHERE id=$1", [
+        feedA,
+        ok,
+      ]);
     }
-    await admin.query("UPDATE external_feed SET receiver_dedupes_control_id=true, in_flight_lease_seconds=90 WHERE id=$1", [feedA]);
+    await admin.query(
+      "UPDATE external_feed SET receiver_dedupes_control_id=true, in_flight_lease_seconds=90 WHERE id=$1",
+      [feedA],
+    );
 
     // RLS as the real NOBYPASSRLS role: org A sees its own policy columns, org B sees no trace of the feed.
     const asA = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
@@ -1421,7 +1540,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         detail: "plain_protocol_refused",
         attemptCount: 1,
       });
-      expect(alerts.emitted.some((a) => a.eventType === "hl7_outbound.transmission_failed")).toBe(true);
+      expect(alerts.emitted.some((a) => a.eventType === "hl7_outbound.transmission_failed")).toBe(
+        true,
+      );
       // PHI discipline: the terminal event/alert carry a fixed label, never the wire message.
       expect(JSON.stringify([outbox.published, alerts.emitted])).not.toContain("Doe");
     } finally {
@@ -1445,7 +1566,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         )
       ).rows[0].id as string;
       const userId = (
-        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`${tag}@f186-outbound.test`])
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `${tag}@f186-outbound.test`,
+        ])
       ).rows[0].id as string;
       const membershipId = (
         await admin.query(
@@ -1493,9 +1616,13 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         destinationPolicy: TEST_POLICY,
         alerts: createDrizzleAlertEmitter(handle.db) as unknown as OutboundAlertPort,
       });
-      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })));
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })),
+      );
 
-      expect(await deliveredTo("external_feed.baa_missing")).toEqual([who.compliance, who.orgAdmin].sort());
+      expect(await deliveredTo("external_feed.baa_missing")).toEqual(
+        [who.compliance, who.orgAdmin].sort(),
+      );
       const { rows } = await admin.query(
         "SELECT severity FROM alert WHERE organization_id=$1 AND event_type='external_feed.baa_missing'",
         [ORG_A],
@@ -1521,7 +1648,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         destinationPolicy: { allowPlain: false, allowLoopback: false },
         alerts: createDrizzleAlertEmitter(handle.db) as unknown as OutboundAlertPort,
       });
-      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })));
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })),
+      );
 
       expect(await deliveredTo("hl7_outbound.transmission_failed")).toEqual(
         [who.orgAdmin, who.clinicalLead].sort(),
@@ -1552,7 +1681,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(rows[0]?.status).toBe("dlq");
       expect(rows[0]?.retryCount).toBe(1);
       expect(server.receivedWires).toHaveLength(0);
-      expect(outbox.published[0]?.payload).toMatchObject({ detail: "destination_loopback", attemptCount: 1 });
+      expect(outbox.published[0]?.payload).toMatchObject({
+        detail: "destination_loopback",
+        attemptCount: 1,
+      });
     } finally {
       await server.close();
     }
@@ -1589,7 +1721,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       return out;
     }
     function rowsRemoved(node: PlanNode): number {
-      return (node["Rows Removed by Filter"] ?? 0) + (node.Plans ?? []).reduce((a, c) => a + rowsRemoved(c), 0);
+      return (
+        (node["Rows Removed by Filter"] ?? 0) +
+        (node.Plans ?? []).reduce((a, c) => a + rowsRemoved(c), 0)
+      );
     }
     /** buffer blocks touched by the whole statement (the root node's counters include its children). */
     function buffers(root: PlanNode): number {
@@ -1614,10 +1749,21 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       return new Set(r.rows.map((x: { relname: string }) => x.relname));
     }
 
-    async function seedBulk(feedA: string, feedB: string): Promise<{ knownOrder: string; partitions: number }> {
+    async function seedBulk(
+      feedA: string,
+      feedB: string,
+    ): Promise<{ knownOrder: string; partitions: number }> {
       // 4 partitions: this month, +1, +2 (all pre-created by 0146) and 2 years back (the DEFAULT partition).
-      const spans = ["now()", "now() + interval '1 month'", "now() + interval '2 months'", "now() - interval '2 years'"];
-      for (const [org, feed] of [[ORG_A, feedA], [ORG_B, feedB]] as const) {
+      const spans = [
+        "now()",
+        "now() + interval '1 month'",
+        "now() + interval '2 months'",
+        "now() - interval '2 years'",
+      ];
+      for (const [org, feed] of [
+        [ORG_A, feedA],
+        [ORG_B, feedB],
+      ] as const) {
         for (const at of spans) {
           await admin.query(
             `INSERT INTO hl7_message_outbound
@@ -1643,7 +1789,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
 
     function planFrom(rows: Array<Record<string, unknown>>): PlanNode {
-      const plan = (rows[0]?.["QUERY PLAN"] ?? Object.values(rows[0] ?? {})[0]) as Array<{ Plan: PlanNode }>;
+      const plan = (rows[0]?.["QUERY PLAN"] ?? Object.values(rows[0] ?? {})[0]) as Array<{
+        Plan: PlanNode;
+      }>;
       return plan[0]!.Plan;
     }
 
@@ -1651,9 +1799,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     async function explainAsApp(orgId: string, orderId: string): Promise<PlanNode> {
       return withOrgContext(handle.db, { organizationId: orgId, userId: "" }, async (tx) => {
         const q = ormDispatchLookupQuery(tx as never, orgId, orderId);
-        const res = (await tx.execute(sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${q.getSQL()}`)) as unknown as
-          | Array<Record<string, unknown>>
-          | { rows: Array<Record<string, unknown>> };
+        const res = (await tx.execute(
+          sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${q.getSQL()}`,
+        )) as unknown as Array<Record<string, unknown>> | { rows: Array<Record<string, unknown>> };
         return planFrom(Array.isArray(res) ? res : res.rows);
       });
     }
@@ -1661,7 +1809,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     /** the same statement on the superuser connection (used for the drop-the-index control only). */
     async function explainAsAdmin(orgId: string, orderId: string): Promise<PlanNode> {
       const q = ormDispatchLookupQuery(handle.db as never, orgId, orderId).toSQL();
-      const r = await admin.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${q.sql}`, q.params as unknown[]);
+      const r = await admin.query(
+        `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${q.sql}`,
+        q.params as unknown[],
+      );
       return planFrom(r.rows);
     }
 
@@ -1679,11 +1830,16 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       // A known order (lives in the +1 month partition) AND an absent one (no partition can short-circuit LIMIT 1).
       for (const orderId of [knownOrder, randomUUID()]) {
         const plan = await explainAsApp(ORG_A, orderId);
-        const onLoaded = scanNodes(plan).filter((n) => n["Relation Name"] !== undefined && loaded.has(n["Relation Name"]!));
+        const onLoaded = scanNodes(plan).filter(
+          (n) => n["Relation Name"] !== undefined && loaded.has(n["Relation Name"]!),
+        );
         expect(onLoaded.length).toBeGreaterThanOrEqual(1);
         for (const n of onLoaded) {
           expect(n["Node Type"], `${n["Relation Name"]}`).not.toBe("Seq Scan");
-          expect(children.has(n["Index Name"] ?? ""), `${n["Relation Name"]} must use a child of ${INDEX}`).toBe(true);
+          expect(
+            children.has(n["Index Name"] ?? ""),
+            `${n["Relation Name"]} must use a child of ${INDEX}`,
+          ).toBe(true);
         }
         expect(rowsRemoved(plan), "an exact-match index scan discards nothing").toBe(0);
       }
@@ -1712,7 +1868,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       // no scan in the dropped-index plan can be using an F-187 child (they did not exist)
       expect(scanNodes(without).some((n) => withChildren.has(n["Index Name"] ?? ""))).toBe(false);
       expect(rowsRemoved(withIndex)).toBe(0);
-      expect(rowsRemoved(without), "org-prefix scan fetches the org's rows then filters them").toBeGreaterThan(5_000);
+      expect(
+        rowsRemoved(without),
+        "org-prefix scan fetches the org's rows then filters them",
+      ).toBeGreaterThan(5_000);
       expect(buffers(without)).toBeGreaterThan(buffers(withIndex) * 10);
     }, 180_000);
 
@@ -1761,8 +1920,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(await exists(ORG_A, otherTenantOrder)).toBe(false);
       expect(await exists(ORG_B, otherTenantOrder)).toBe(true);
       // RLS alone: ORG_A's context asking with ORG_B's org id + order id still sees nothing
-      const smuggled = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
-        ormDispatchExistsForOrder(tx as never, ORG_B, otherTenantOrder),
+      const smuggled = await withOrgContext(
+        handle.db,
+        { organizationId: ORG_A, userId: "" },
+        (tx) => ormDispatchExistsForOrder(tx as never, ORG_B, otherTenantOrder),
       );
       expect(smuggled).toBe(false);
     }, 180_000);
@@ -1859,10 +2020,18 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       const { consumer, outbox } = buildConsumer();
       const orderId = randomUUID();
       await consumer.handle(
-        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: facility })),
+        dispatchEvent(
+          ormRequestedPayload({
+            orderId,
+            organizationId: ORG_A,
+            labDestinationFacilityId: facility,
+          }),
+        ),
       );
       expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
-      const refused = outbox.published.filter((e) => e.eventName === "m29.lab_order.dispatch_refused");
+      const refused = outbox.published.filter(
+        (e) => e.eventName === "m29.lab_order.dispatch_refused",
+      );
       expect(refused).toHaveLength(1);
       expect(refused[0]!.payload).toMatchObject({ orderId, organizationId: ORG_A });
       return refused[0]!.payload as { reason: string; feedId: string | null; refusalId: string };
@@ -1879,7 +2048,11 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(ambiguous.reason).toBe("ambiguous_feed");
 
       const elsewhere = await refusalFor(async () => {
-        await seedFeed({ organizationId: ORG_A, port: server.port, labDestinationFacilityId: FAC_Y });
+        await seedFeed({
+          organizationId: ORG_A,
+          port: server.port,
+          labDestinationFacilityId: FAC_Y,
+        });
       }, FAC_X);
       expect(elsewhere.reason).toBe("no_feed_for_destination");
       expect(server.receivedWires).toHaveLength(0);
@@ -1969,7 +2142,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       const { consumer } = realPublisherConsumer();
       const orderId = randomUUID();
       const attemptId = randomUUID();
-      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })));
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })),
+      );
 
       const [row] = await outboundRowFor(ORG_A, orderId);
       expect(row!.status).toBe("acked");
@@ -1989,7 +2164,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       const { consumer } = realPublisherConsumer();
       const orderId = randomUUID();
       const attemptId = randomUUID();
-      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })));
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })),
+      );
 
       const [row] = await outboundRowFor(ORG_A, orderId);
       expect(row!.status).toBe("naked");
@@ -2007,7 +2184,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     const { port, consumer } = realPublisherConsumer();
     const orderId = randomUUID();
     const attemptId = randomUUID();
-    await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })));
+    await consumer.handle(
+      dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })),
+    );
     const [first] = await outboundRowFor(ORG_A, orderId);
     expect(first!.status).toBe("queued");
     expect(first!.attemptId).toBe(attemptId);
@@ -2027,7 +2206,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         activeOrgs: fakeActiveOrgs(ORG_A),
       });
       const [mid] = await outboundRowFor(ORG_A, orderId);
-      expect(mid!.attemptId, `attempt ${attempt}: the retry must not rewrite the row's attempt`).toBe(attemptId);
+      expect(
+        mid!.attemptId,
+        `attempt ${attempt}: the retry must not rewrite the row's attempt`,
+      ).toBe(attemptId);
     }
     const [done] = await outboundRowFor(ORG_A, orderId);
     expect(done!.status).toBe("dlq");
@@ -2070,7 +2252,12 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     try {
       const attemptId = randomUUID();
-      const { orderId } = await crashedDispatch(server, ORG_A, { receiverDedupesControlId: false }, attemptId);
+      const { orderId } = await crashedDispatch(
+        server,
+        ORG_A,
+        { receiverDedupesControlId: false },
+        attemptId,
+      );
       const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M29_OUTBOX_EVENTS]));
       await sweep({
         now: new Date(Date.now() + 10 * MINUTE),
@@ -2097,11 +2284,15 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       await seedFeed({ organizationId: ORG_A, port: server.port });
       const { consumer } = realPublisherConsumer();
       const bare = randomUUID();
-      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId: bare, organizationId: ORG_A })));
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId: bare, organizationId: ORG_A })),
+      );
       const junk = randomUUID();
       // `hl7_message_outbound.attempt_id` is a uuid; a non-uuid string must not throw at the INSERT.
       await consumer.handle(
-        dispatchEvent(ormRequestedPayload({ orderId: junk, organizationId: ORG_A, attemptId: "not-a-uuid" })),
+        dispatchEvent(
+          ormRequestedPayload({ orderId: junk, organizationId: ORG_A, attemptId: "not-a-uuid" }),
+        ),
       );
       for (const id of [bare, junk]) {
         const [row] = await outboundRowFor(ORG_A, id);
@@ -2130,7 +2321,8 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       "SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid=i.inhrelid WHERE i.inhparent='public.hl7_message_outbound'::regclass",
     );
     expect(parts.length).toBeGreaterThan(0);
-    for (const { relname } of parts as { relname: string }[]) expect(await has(relname), `${relname} has attempt_id`).toBe(true);
+    for (const { relname } of parts as { relname: string }[])
+      expect(await has(relname), `${relname} has attempt_id`).toBe(true);
 
     // A month that does not exist yet, created by the real partition function (`CREATE TABLE … PARTITION OF`).
     await admin.query("SELECT create_hl7_message_outbound_partition(date '2041-03-01')");

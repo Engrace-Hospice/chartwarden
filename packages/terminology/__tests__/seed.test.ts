@@ -83,7 +83,9 @@ describe("PLATFORM_VALUE_SET_MEMBERS — curated reference-set members (§3.9 cu
     const q = PLATFORM_VALUE_SET_MEMBERS.filter((m) => m.valueSetId === "place_of_service_q_codes");
     expect(q).toHaveLength(10); // Q5001..Q5010
     expect(q.every((m) => m.systemId === "hcpcs" && /^Q50(0[1-9]|10)$/.test(m.code))).toBe(true);
-    const modifiers = PLATFORM_VALUE_SET_MEMBERS.filter((m) => m.valueSetId === "cms_hospice_modifiers");
+    const modifiers = PLATFORM_VALUE_SET_MEMBERS.filter(
+      (m) => m.valueSetId === "cms_hospice_modifiers",
+    );
     expect(modifiers.map((m) => m.code).sort()).toEqual(["GV", "GW"]);
     expect(modifiers.every((m) => m.systemId === "hcpcs")).toBe(true);
   });

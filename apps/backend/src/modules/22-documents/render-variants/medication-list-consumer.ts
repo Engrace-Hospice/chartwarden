@@ -112,6 +112,7 @@ export function decideMedicationListRender(
     payload: facts.renderPayload,
     consentPresent: facts.sudConsentPresent,
   });
-  const retentionClass: DocumentRetentionClass = variant.retentionClassOverride ?? "clinical_record";
+  const retentionClass: DocumentRetentionClass =
+    variant.retentionClassOverride ?? "clinical_record";
   return { kind: "render", variant, retentionClass, patientId: payload.patientId };
 }

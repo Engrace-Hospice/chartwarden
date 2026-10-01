@@ -106,9 +106,7 @@ export function buildM12ReconciliationDiscontinueConsumer(
           const [row] = await tx
             .select({ id: MO.id, status: MO.status, version: MO.version })
             .from(MO)
-            .where(
-              and(eq(MO.organizationId, organizationId), eq(MO.id, payload.medicationOrderId)),
-            )
+            .where(and(eq(MO.organizationId, organizationId), eq(MO.id, payload.medicationOrderId)))
             .limit(1);
 
           const action = decideReconciliationDiscontinue(

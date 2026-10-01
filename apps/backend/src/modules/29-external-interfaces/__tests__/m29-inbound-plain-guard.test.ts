@@ -34,13 +34,19 @@ const feed = (over: Partial<SupervisorFeedDescriptor> = {}): SupervisorFeedDescr
 describe("inboundPlainAllowed (pure policy)", () => {
   it("production is NEVER allowed — the opt-in is ignored", () => {
     expect(inboundPlainAllowed({ NODE_ENV: "production" })).toBe(false);
-    expect(inboundPlainAllowed({ NODE_ENV: "production", M29_ALLOW_MLLP_PLAIN: "true" })).toBe(false);
+    expect(inboundPlainAllowed({ NODE_ENV: "production", M29_ALLOW_MLLP_PLAIN: "true" })).toBe(
+      false,
+    );
   });
   it("non-production requires the explicit opt-in", () => {
     expect(inboundPlainAllowed({ NODE_ENV: "development" })).toBe(false);
     expect(inboundPlainAllowed({ NODE_ENV: "test" })).toBe(false);
-    expect(inboundPlainAllowed({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "false" })).toBe(false);
-    expect(inboundPlainAllowed({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })).toBe(true);
+    expect(inboundPlainAllowed({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "false" })).toBe(
+      false,
+    );
+    expect(inboundPlainAllowed({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })).toBe(
+      true,
+    );
     expect(inboundPlainAllowed({ M29_ALLOW_MLLP_PLAIN: "true" })).toBe(true);
   });
   it("only mllp_plain is ever refused", () => {
@@ -102,7 +108,11 @@ describe("supervisor boot gate", () => {
     expect(h.started).toEqual([]);
     expect(h.calls.baa).toBe(0);
     expect(h.alerts).toHaveLength(1);
-    expect(h.alerts[0]).toMatchObject({ severity: "critical", channel: "compliance", feedId: "feed-plain-1" });
+    expect(h.alerts[0]).toMatchObject({
+      severity: "critical",
+      channel: "compliance",
+      feedId: "feed-plain-1",
+    });
     // no allowlist / partner-facility detail leaks into the alert or the log
     expect(JSON.stringify([h.alerts, h.logs])).not.toContain("SENDFAC");
     expect(h.logs.map((l) => l.event)).toContain("hl7.listener.plain_refuse");
@@ -118,7 +128,7 @@ describe("supervisor boot gate", () => {
 
   it("FAIL CLOSED: with no option it derives from the environment (no opt-in set) ⇒ refused", async () => {
     const saved = process.env.M29_ALLOW_MLLP_PLAIN;
-    delete process.env.M29_ALLOW_MLLP_PLAIN;
+    Reflect.deleteProperty(process.env, "M29_ALLOW_MLLP_PLAIN");
     try {
       const h = harness();
       const out = await startFeedListener(feed(), h.deps);
@@ -191,7 +201,7 @@ describe("real registry — the bind point refuses, and binds NOTHING", () => {
 
   it("FAIL CLOSED: no option and no opt-in in the environment ⇒ refused, nothing bound", async () => {
     const saved = process.env.M29_ALLOW_MLLP_PLAIN;
-    delete process.env.M29_ALLOW_MLLP_PLAIN;
+    Reflect.deleteProperty(process.env, "M29_ALLOW_MLLP_PLAIN");
     const port = await freePort();
     try {
       const reg = registry();
@@ -208,7 +218,9 @@ describe("real registry — the bind point refuses, and binds NOTHING", () => {
       loadCredential: async () => {
         throw new Error("unused");
       },
-      connectionDeps: () => ({ log: () => {} }) as never,
+      // `canConnect` below makes a real connection, so `handleMllpConnection` runs: it needs a numeric
+      // `readTimeoutMs` (`socket.setTimeout(undefined)` throws an uncaught ERR_INVALID_ARG_TYPE).
+      connectionDeps: () => ({ log: () => {}, readTimeoutMs: 1_000 }) as never,
       log: () => {},
       allowPlainProtocol: true,
     });

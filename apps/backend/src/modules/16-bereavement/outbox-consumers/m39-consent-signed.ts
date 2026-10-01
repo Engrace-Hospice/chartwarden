@@ -142,80 +142,78 @@ export function buildM16ConsentSignedConsumer(deps: ConsentSignedDeps) {
 
       const organizationId = event.organizationId;
 
-      await runWithRequestContext(
-        { organizationId, userId: CONSUMER_USER_ID },
-        async () =>
-          withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-            const tx = scoped as unknown as DbClient;
+      await runWithRequestContext({ organizationId, userId: CONSUMER_USER_ID }, async () =>
+        withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-            const [contact] = await tx
-              .select()
-              .from(CONTACT)
-              .where(
-                and(
-                  eq(CONTACT.organizationId, organizationId),
-                  eq(CONTACT.consentRecordId, facts.consentRecordId),
-                  eq(CONTACT.status, "proposed"),
-                ),
-              )
-              .limit(1);
-            // No contact this org tracks against this exact consent record, or it already left `proposed`
-            // (confirmed some other way, or the roster moved on) — a true no-op, not an error.
-            if (!contact) return;
+          const [contact] = await tx
+            .select()
+            .from(CONTACT)
+            .where(
+              and(
+                eq(CONTACT.organizationId, organizationId),
+                eq(CONTACT.consentRecordId, facts.consentRecordId),
+                eq(CONTACT.status, "proposed"),
+              ),
+            )
+            .limit(1);
+          // No contact this org tracks against this exact consent record, or it already left `proposed`
+          // (confirmed some other way, or the roster moved on) — a true no-op, not an error.
+          if (!contact) return;
 
-            const [plan] = await tx.select().from(PLAN).where(eq(PLAN.id, contact.planId)).limit(1);
-            if (!plan) return; // orphaned contact row — refuse silently rather than guess a plan.
+          const [plan] = await tx.select().from(PLAN).where(eq(PLAN.id, contact.planId)).limit(1);
+          if (!plan) return; // orphaned contact row — refuse silently rather than guess a plan.
 
-            const at = new Date().toISOString() as IsoInstant;
+          const at = new Date().toISOString() as IsoInstant;
 
-            const transition = transitionBereavedContact(contact.status, {
-              type: "confirmContact",
-              at,
-              hasBereavementOutreachConsent: true,
-              isPrimaryCaregiverWithFamilyAccess: false,
-            });
+          const transition = transitionBereavedContact(contact.status, {
+            type: "confirmContact",
+            at,
+            hasBereavementOutreachConsent: true,
+            isPrimaryCaregiverWithFamilyAccess: false,
+          });
 
-            const effectCtx: EffectContext = {
-              organizationId,
-              at: new Date(at),
-              outbox: deps.outbox,
-              aggregateKind: "bereavement_plan",
-              aggregateId: plan.id,
-              payloads: {
-                "m16.bereavement.contact_active": {
-                  planId: plan.id,
-                  contactId: contact.id,
-                  portalAccountId: contact.portalAccountId ?? null,
-                },
+          const effectCtx: EffectContext = {
+            organizationId,
+            at: new Date(at),
+            outbox: deps.outbox,
+            aggregateKind: "bereavement_plan",
+            aggregateId: plan.id,
+            payloads: {
+              "m16.bereavement.contact_active": {
+                planId: plan.id,
+                contactId: contact.id,
+                portalAccountId: contact.portalAccountId ?? null,
               },
-            };
-            const patch = await runEffects(tx, transition.effects, effectCtx);
+            },
+          };
+          const patch = await runEffects(tx, transition.effects, effectCtx);
 
-            const [updatedContact] = await tx
-              .update(CONTACT)
-              .set({
-                status: transition.to,
-                confirmedAt: patch.confirmedAt ?? new Date(at),
-                version: contact.version + 1,
-                updatedAt: new Date(at),
-              })
-              .where(eq(CONTACT.id, contact.id))
-              .returning();
-            if (!updatedContact) throw new Error("m16: the confirm update returned no row");
+          const [updatedContact] = await tx
+            .update(CONTACT)
+            .set({
+              status: transition.to,
+              confirmedAt: patch.confirmedAt ?? new Date(at),
+              version: contact.version + 1,
+              updatedAt: new Date(at),
+            })
+            .where(eq(CONTACT.id, contact.id))
+            .returning();
+          if (!updatedContact) throw new Error("m16: the confirm update returned no row");
 
-            // §2.6 `recompute_risk` — the confirmed survivor now has a per-contact score. Local
-            // reimplementation of `appendScore` (write-service-drizzle.ts) against `assessedByUserId:
-            // null` — see file header for why the private closure is not imported.
-            await appendContactScore(
-              tx,
-              deps,
-              organizationId,
-              plan as PlanRowShape,
-              updatedContact as ContactRowShape,
-              await sudAllowed({ organizationId, patientId: plan.patientId }),
-              at,
-            );
-          }),
+          // §2.6 `recompute_risk` — the confirmed survivor now has a per-contact score. Local
+          // reimplementation of `appendScore` (write-service-drizzle.ts) against `assessedByUserId:
+          // null` — see file header for why the private closure is not imported.
+          await appendContactScore(
+            tx,
+            deps,
+            organizationId,
+            plan as PlanRowShape,
+            updatedContact as ContactRowShape,
+            await sudAllowed({ organizationId, patientId: plan.patientId }),
+            at,
+          );
+        }),
       );
     },
   };

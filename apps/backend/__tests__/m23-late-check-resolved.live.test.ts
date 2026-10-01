@@ -73,8 +73,10 @@ describe.skipIf(!DB_URL)("F-162 — M23 m18.evv.late_check_resolved, LIVE Postgr
         )
       ).rows[0].id as string;
     }
-    handle = createDbClient({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
-  });
+    handle = createDbClient({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
+  }, 120_000);
 
   afterAll(async () => {
     await admin.end();
@@ -83,10 +85,7 @@ describe.skipIf(!DB_URL)("F-162 — M23 m18.evv.late_check_resolved, LIVE Postgr
 
   /** Seed a minimal, real `encounter` row (as the admin/superuser client — seeding is not the thing under
    *  test) with the given visit id attached, or none. */
-  async function seedEncounter(
-    org: string,
-    visitId: string | null,
-  ): Promise<string> {
+  async function seedEncounter(org: string, visitId: string | null): Promise<string> {
     const row = await admin.query(
       `INSERT INTO encounter
          (organization_id, patient_id, admission_id, encounter_type, discipline,
@@ -249,7 +248,11 @@ describe.skipIf(!DB_URL)("F-162 — M23 m18.evv.late_check_resolved, LIVE Postgr
       });
 
       await expect(
-        consumer.handle({ id: "evt-165", organizationId: ORG_A, payload: { status: "resolved_system" } }),
+        consumer.handle({
+          id: "evt-165",
+          organizationId: ORG_A,
+          payload: { status: "resolved_system" },
+        }),
       ).rejects.toThrow(/carries no visitId/);
     });
   });

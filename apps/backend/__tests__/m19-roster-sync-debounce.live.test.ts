@@ -163,7 +163,12 @@ describe.skipIf(!DB_URL)("F-155 M19 §4.5/§4.8 on_call_roster_sync_queue — LI
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-F155-${org.slice(0, 4)}`, `F155 ${org.slice(0, 4)}`, `NPI-F155-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-F155-${org.slice(0, 4)}`,
+            `F155 ${org.slice(0, 4)}`,
+            `NPI-F155-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       const location = (
@@ -204,7 +209,9 @@ describe.skipIf(!DB_URL)("F-155 M19 §4.5/§4.8 on_call_roster_sync_queue — LI
     expect(rows).toHaveLength(1);
     expect(rows[0].reason).toBe("m17_visit_assigned");
     expect(rows[0].status).toBe("pending");
-    expect(new Date(rows[0].run_after).getTime()).toBe(T0.getTime() + M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS);
+    expect(new Date(rows[0].run_after).getTime()).toBe(
+      T0.getTime() + M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS,
+    );
   });
 
   it("two triggers close together collapse onto ONE pending row — the debounce resets, not duplicates", async () => {
@@ -229,7 +236,9 @@ describe.skipIf(!DB_URL)("F-155 M19 §4.5/§4.8 on_call_roster_sync_queue — LI
       createdAt: T0,
     });
     const first = (await pendingRowsFor(ORG_A))[0];
-    expect(new Date(first.run_after).getTime()).toBe(T0.getTime() + M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS);
+    expect(new Date(first.run_after).getTime()).toBe(
+      T0.getTime() + M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS,
+    );
 
     await buildOncallRosterSyncDebounceConsumer({ db: handle.db, now: () => secondAt }).handle({
       id: crypto.randomUUID(),
@@ -245,8 +254,12 @@ describe.skipIf(!DB_URL)("F-155 M19 §4.5/§4.8 on_call_roster_sync_queue — LI
     expect(rows).toHaveLength(1);
     // Had the debounce NOT reset, run_after would still be T0 + window (already 5s in the past relative
     // to secondAt + window). The bumped value proves the window counts down from the LATEST trigger.
-    expect(new Date(rows[0].run_after).getTime()).toBe(secondAt.getTime() + M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS);
-    expect(new Date(rows[0].run_after).getTime()).toBeGreaterThan(new Date(first.run_after).getTime());
+    expect(new Date(rows[0].run_after).getTime()).toBe(
+      secondAt.getTime() + M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS,
+    );
+    expect(new Date(rows[0].run_after).getTime()).toBeGreaterThan(
+      new Date(first.run_after).getTime(),
+    );
   });
 
   it("two triggers close together drive exactly ONE reconciliation pass, not two", async () => {
@@ -344,7 +357,13 @@ describe.skipIf(!DB_URL)("F-155 M19 §4.5/§4.8 on_call_roster_sync_queue — LI
         },
       ],
     };
-    await reconcileOrgOnCallRoster(handle.db, ORG_A, T0.toISOString() as never, T0, async () => rosterRead);
+    await reconcileOrgOnCallRoster(
+      handle.db,
+      ORG_A,
+      T0.toISOString() as never,
+      T0,
+      async () => rosterRead,
+    );
     const second = await reconcileOrgOnCallRoster(
       handle.db,
       ORG_A,

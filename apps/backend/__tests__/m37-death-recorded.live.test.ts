@@ -26,8 +26,8 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/events-by-m6";
 import {
-  buildM37DeathRecordedConsumer,
   M37_DEATH_RECORDED_CONSUMER,
+  buildM37DeathRecordedConsumer,
 } from "../src/modules/37-ipu/consumers/m6-discharge-death";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -199,7 +199,8 @@ describe.skipIf(!DB_URL)(
         outbox: {
           async publish(tx, input) {
             const eventSchema = catalog.get(input.eventName);
-            if (!eventSchema) throw new Error(`m37 test publisher: undeclared event ${input.eventName}`);
+            if (!eventSchema)
+              throw new Error(`m37 test publisher: undeclared event ${input.eventName}`);
             if (!Value.Check(eventSchema, input.payload)) {
               const details = [...Value.Errors(eventSchema, input.payload)]
                 .map((e) => `${e.path || "/"}: ${e.message}`)
@@ -230,7 +231,9 @@ describe.skipIf(!DB_URL)(
     });
 
     it("has a real payload schema for m6.discharge.death requiring deathCertifierId", () => {
-      const schema = M6_OUTBOX_EVENTS.find((e) => e.eventName === "m6.discharge.death")?.payloadSchema;
+      const schema = M6_OUTBOX_EVENTS.find(
+        (e) => e.eventName === "m6.discharge.death",
+      )?.payloadSchema;
       expect(schema).toBeDefined();
       expect(
         Value.Check(schema as never, {

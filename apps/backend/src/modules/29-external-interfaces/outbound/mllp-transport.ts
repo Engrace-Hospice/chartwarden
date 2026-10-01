@@ -75,7 +75,7 @@
 // `wireMessage` or the raw ACK bytes into an error path — `rawAckPayload` is returned ONLY on the `ack`
 // outcome, where it is up to the caller (never this file) to decide what of it is safe to log.
 import { lookup as dnsLookup } from "node:dns/promises";
-import { type Socket, connect as netConnect, isIP } from "node:net";
+import { type Socket, isIP, connect as netConnect } from "node:net";
 import { type PeerCertificate, type TLSSocket, connect as tlsConnect } from "node:tls";
 import { certPinFromDer } from "../feed/cert-pin";
 import { MllpFrameBuffer, MllpFramingError, encodeMllpFrame } from "../listener/mllp-framing";
@@ -295,7 +295,10 @@ function sendOverMllp(input: MllpTransportSendInput): Promise<MllpTransportOutco
     const onClose = (): void => {
       settle({
         kind: "malformed_response",
-        errorClass: frameBuffer.pendingBytes > 0 ? "connection_closed_mid_frame" : "connection_closed_no_response",
+        errorClass:
+          frameBuffer.pendingBytes > 0
+            ? "connection_closed_mid_frame"
+            : "connection_closed_no_response",
       });
     };
 
@@ -313,7 +316,10 @@ function sendOverMllp(input: MllpTransportSendInput): Promise<MllpTransportOutco
       settle({ kind: "malformed_response", errorClass: classifyError(err) });
     };
 
-    const policy: OutboundDestinationPolicy = { allowPlain: true, allowLoopback: input.allowLoopback };
+    const policy: OutboundDestinationPolicy = {
+      allowPlain: true,
+      allowLoopback: input.allowLoopback,
+    };
     void resolveDestination(input.host, policy).then((resolved) => {
       if (settled) return;
       if ("refused" in resolved) {

@@ -23,10 +23,16 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
-import { type OutboxConsumerBinding, createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
+import {
+  type OutboxConsumerBinding,
+  createOutboxDispatcher,
+} from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
-import { M29_OUTBOX_EVENTS, buildM29PatientDeceasedConsumer } from "../src/modules/29-external-interfaces/index";
+import {
+  M29_OUTBOX_EVENTS,
+  buildM29PatientDeceasedConsumer,
+} from "../src/modules/29-external-interfaces/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -112,7 +118,11 @@ describe.skipIf(!DB_URL)(
         publisher.publish(tx as never, { ...e, callerModule } as never),
     });
 
-    async function publishDeceased(organizationId: string, patientId: string, deceasedDate: string) {
+    async function publishDeceased(
+      organizationId: string,
+      patientId: string,
+      deceasedDate: string,
+    ) {
       await withOrgContext(handle.db, { organizationId, userId: "" }, async (tx) => {
         await bind("m5").publish(tx as never, {
           eventName: "m5.patient.deceased",

@@ -88,7 +88,8 @@ describe.skipIf(!DB_URL)(
       // `telehealth_visit_ended_requires_end_reason` requires a non-null end_reason for either ended
       // state — the check the consumers themselves must satisfy on every UPDATE, so the fixture has to
       // satisfy it too when seeding a row that starts out already ended.
-      const endReason = lifecycleState === "ended_clean" || lifecycleState === "ended_aborted" ? "clean" : null;
+      const endReason =
+        lifecycleState === "ended_clean" || lifecycleState === "ended_aborted" ? "clean" : null;
       const row = await admin.query(
         `INSERT INTO telehealth_visit
            (organization_id, provider_entity_id, m17_visit_id, patient_id, assigned_membership_id,
@@ -151,7 +152,12 @@ describe.skipIf(!DB_URL)(
 
       await cancelConsumer.handle({
         organizationId: ORG_A,
-        payload: { visitId: m17VisitId, cancelledBy: crypto.randomUUID(), reason: "patient request", reasonCode: "patient" },
+        payload: {
+          visitId: m17VisitId,
+          cancelledBy: crypto.randomUUID(),
+          reason: "patient request",
+          reasonCode: "patient",
+        },
       });
 
       const row = await visitRow(rowId);
@@ -163,7 +169,12 @@ describe.skipIf(!DB_URL)(
       // Redelivery is a true no-op — already ended.
       await cancelConsumer.handle({
         organizationId: ORG_A,
-        payload: { visitId: m17VisitId, cancelledBy: crypto.randomUUID(), reason: "patient request", reasonCode: "patient" },
+        payload: {
+          visitId: m17VisitId,
+          cancelledBy: crypto.randomUUID(),
+          reason: "patient request",
+          reasonCode: "patient",
+        },
       });
       expect((await visitRow(rowId)).version).toBe(1);
     });
@@ -181,7 +192,12 @@ describe.skipIf(!DB_URL)(
 
       await cancelConsumer.handle({
         organizationId: ORG_A,
-        payload: { visitId: m17VisitId, cancelledBy: crypto.randomUUID(), reason: "", reasonCode: "" },
+        payload: {
+          visitId: m17VisitId,
+          cancelledBy: crypto.randomUUID(),
+          reason: "",
+          reasonCode: "",
+        },
       });
 
       const row = await visitRow(rowId);
@@ -194,7 +210,12 @@ describe.skipIf(!DB_URL)(
       await expect(
         cancelConsumer.handle({
           organizationId: ORG_A,
-          payload: { visitId: crypto.randomUUID(), cancelledBy: crypto.randomUUID(), reason: "", reasonCode: "" },
+          payload: {
+            visitId: crypto.randomUUID(),
+            cancelledBy: crypto.randomUUID(),
+            reason: "",
+            reasonCode: "",
+          },
         }),
       ).resolves.not.toThrow();
     });
@@ -209,7 +230,12 @@ describe.skipIf(!DB_URL)(
 
       await cancelConsumer.handle({
         organizationId: ORG_A,
-        payload: { visitId: m17VisitId, cancelledBy: crypto.randomUUID(), reason: "", reasonCode: "" },
+        payload: {
+          visitId: m17VisitId,
+          cancelledBy: crypto.randomUUID(),
+          reason: "",
+          reasonCode: "",
+        },
       });
 
       expect((await visitRow(rowId)).lifecycle_state).toBe("room_minted");
@@ -294,7 +320,11 @@ describe.skipIf(!DB_URL)(
       // Redelivery is a true no-op — reconciled is terminal.
       await signedConsumer.handle({
         organizationId: ORG_A,
-        payload: { encounterId: crypto.randomUUID(), visitId: m17VisitId, patientId: crypto.randomUUID() },
+        payload: {
+          encounterId: crypto.randomUUID(),
+          visitId: m17VisitId,
+          patientId: crypto.randomUUID(),
+        },
       });
       const after = await visitRow(rowId);
       expect(after.version).toBe(1);
@@ -312,7 +342,11 @@ describe.skipIf(!DB_URL)(
 
       await signedConsumer.handle({
         organizationId: ORG_A,
-        payload: { encounterId: crypto.randomUUID(), visitId: m17VisitId, patientId: crypto.randomUUID() },
+        payload: {
+          encounterId: crypto.randomUUID(),
+          visitId: m17VisitId,
+          patientId: crypto.randomUUID(),
+        },
       });
 
       const row = await visitRow(rowId);
@@ -341,7 +375,11 @@ describe.skipIf(!DB_URL)(
 
       await signedConsumer.handle({
         organizationId: ORG_A,
-        payload: { encounterId: crypto.randomUUID(), visitId: m17VisitId, patientId: crypto.randomUUID() },
+        payload: {
+          encounterId: crypto.randomUUID(),
+          visitId: m17VisitId,
+          patientId: crypto.randomUUID(),
+        },
       });
 
       expect((await visitRow(rowId)).lifecycle_state).toBe("ended_clean");

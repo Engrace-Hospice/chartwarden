@@ -184,7 +184,11 @@ export class ClaimRepository {
    */
   async listRevalidationTargets(
     organizationId: string,
-    fact: { readonly patientId?: string; readonly admissionId?: string; readonly encounterId?: string },
+    fact: {
+      readonly patientId?: string;
+      readonly admissionId?: string;
+      readonly encounterId?: string;
+    },
   ): Promise<readonly { readonly claimId: string }[]> {
     const activeStates = [claimStateCodec.toDb("validating"), claimStateCodec.toDb("ready")];
     const factClauses = [
@@ -198,7 +202,13 @@ export class ClaimRepository {
       const rows = await this.db
         .select({ id: C.id })
         .from(C)
-        .where(and(eq(C.organizationId, organizationId), inArray(C.state, activeStates), or(...factClauses)));
+        .where(
+          and(
+            eq(C.organizationId, organizationId),
+            inArray(C.state, activeStates),
+            or(...factClauses),
+          ),
+        );
       for (const r of rows) ids.add(r.id);
     }
 

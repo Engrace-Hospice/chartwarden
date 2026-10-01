@@ -21,12 +21,12 @@ import { createDbClient } from "@wardenx/db";
 import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDbConsentStore } from "../src/modules/39-consent/consent-store-db";
-import { registerConsentSeams } from "../src/modules/39-consent/seams";
-import { registerBereavementSeams } from "../src/modules/16-bereavement/seams/index";
 import { createDrizzleBereavementSeamStore } from "../src/modules/16-bereavement/seams/drizzle-store";
+import { registerBereavementSeams } from "../src/modules/16-bereavement/seams/index";
 import { bereavedContactFlipCandidatesForPlanForOrg } from "../src/modules/16-bereavement/seams/plan-provider-entity-for-org";
 import { buildM31BereavementPlanOpenedConsumer } from "../src/modules/31-portal/outbox-consumers/m16-bereavement-plan-opened";
+import { createDbConsentStore } from "../src/modules/39-consent/consent-store-db";
+import { registerConsentSeams } from "../src/modules/39-consent/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -121,7 +121,11 @@ describe.skipIf(!DB_URL)(
       return row.rows[0].id as string;
     }
 
-    async function grantRowForPatient(organizationId: string, portalAccountId: string, patientId: string) {
+    async function grantRowForPatient(
+      organizationId: string,
+      portalAccountId: string,
+      patientId: string,
+    ) {
       const { rows } = await admin.query(
         `SELECT id, grant_kind, revoked_at, revoke_cascade_source, version, source_consent_record_id,
                 source_consent_version, granted_by_membership_id, provider_entity_id, location_id,

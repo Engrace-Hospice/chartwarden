@@ -127,7 +127,9 @@ export function selectOutboundFeed(
 
   let picked: OutboundFeedCandidateRow | undefined;
   if (labDestinationFacilityId) {
-    const linked = candidates.filter((r) => r.labDestinationFacilityId === labDestinationFacilityId);
+    const linked = candidates.filter(
+      (r) => r.labDestinationFacilityId === labDestinationFacilityId,
+    );
     if (linked.length > 1) {
       return {
         kind: "unresolved",
@@ -157,7 +159,12 @@ export function selectOutboundFeed(
   if (!row.mshReceivingApplication) missingFields.push("mshReceivingApplication");
   if (!row.mshReceivingFacility) missingFields.push("mshReceivingFacility");
   if (missingFields.length > 0) {
-    return { kind: "unresolved", reason: "feed_identity_incomplete", feedId: row.id, missingFields };
+    return {
+      kind: "unresolved",
+      reason: "feed_identity_incomplete",
+      feedId: row.id,
+      missingFields,
+    };
   }
   return {
     kind: "resolved",

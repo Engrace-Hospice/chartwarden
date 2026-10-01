@@ -57,9 +57,15 @@ function unavailableFactsOf(payload: unknown): UnavailableFacts {
     (typeof p.lastSeenUpAt !== "string" && p.lastSeenUpAt !== null) ||
     typeof p.downedAt !== "string"
   ) {
-    throw new Error(`${M1_MAC_PORTAL_HEALTH_CONSUMER.consumerName}: malformed m23.mac_portal.unavailable payload`);
+    throw new Error(
+      `${M1_MAC_PORTAL_HEALTH_CONSUMER.consumerName}: malformed m23.mac_portal.unavailable payload`,
+    );
   }
-  return { macJurisdiction: p.macJurisdiction, lastSeenUpAt: p.lastSeenUpAt ?? null, downedAt: p.downedAt };
+  return {
+    macJurisdiction: p.macJurisdiction,
+    lastSeenUpAt: p.lastSeenUpAt ?? null,
+    downedAt: p.downedAt,
+  };
 }
 
 function recoveredFactsOf(payload: unknown): RecoveredFacts {
@@ -69,7 +75,9 @@ function recoveredFactsOf(payload: unknown): RecoveredFacts {
     typeof p.downedAt !== "string" ||
     typeof p.recoveredAt !== "string"
   ) {
-    throw new Error(`${M1_MAC_PORTAL_HEALTH_CONSUMER.consumerName}: malformed m23.mac_portal.recovered payload`);
+    throw new Error(
+      `${M1_MAC_PORTAL_HEALTH_CONSUMER.consumerName}: malformed m23.mac_portal.recovered payload`,
+    );
   }
   return { macJurisdiction: p.macJurisdiction, downedAt: p.downedAt, recoveredAt: p.recoveredAt };
 }
@@ -127,7 +135,9 @@ export function buildM1MacPortalHealthConsumer(deps: MacPortalHealthStatusConsum
           });
         return;
       }
-      throw new Error(`${M1_MAC_PORTAL_HEALTH_CONSUMER.consumerName}: unexpected event type ${event.eventType}`);
+      throw new Error(
+        `${M1_MAC_PORTAL_HEALTH_CONSUMER.consumerName}: unexpected event type ${event.eventType}`,
+      );
     },
   };
 }

@@ -74,7 +74,9 @@ export function buildDrizzleM25IngestService(
   const client = deps.client;
 
   /** F-172 — the per-payer candidate provider, defaulting to the honest "no candidates" degrade. */
-  function claimCandidatesFor(payerKind: ReceiveAdviceInput["payerKind"]): ClaimMatchCandidateProvider {
+  function claimCandidatesFor(
+    payerKind: ReceiveAdviceInput["payerKind"],
+  ): ClaimMatchCandidateProvider {
     return claimsByPayer[payerKind] ?? NO_CLAIM_MATCH_CANDIDATES;
   }
 
@@ -250,7 +252,10 @@ export function buildDrizzleM25IngestService(
         // `handleClaimReversed` to parse a decimal string through its `cents()` helper (which does not
         // convert dollars → cents at all — a real, separate defect this pass declined to touch, since
         // every other `cents()` caller already passes it a pre-converted integer).
-        const patientId = await claimCandidates.patientIdForClaim(actor.organizationId, match.claimId as string);
+        const patientId = await claimCandidates.patientIdForClaim(
+          actor.organizationId,
+          match.claimId as string,
+        );
         await outbox.publish(tx, {
           eventName: "m25.remittance.claim_recouped",
           organizationId: actor.organizationId,

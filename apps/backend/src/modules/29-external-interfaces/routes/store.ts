@@ -765,7 +765,9 @@ export function createInMemoryM29Store(
         mshReceivingFacility: args.mshReceivingFacility ?? f.mshReceivingFacility,
         receiverDedupesControlId: args.receiverDedupesControlId ?? f.receiverDedupesControlId,
         inFlightLeaseSeconds:
-          args.inFlightLeaseSeconds === undefined ? f.inFlightLeaseSeconds : args.inFlightLeaseSeconds,
+          args.inFlightLeaseSeconds === undefined
+            ? f.inFlightLeaseSeconds
+            : args.inFlightLeaseSeconds,
       });
       return feedDetailOf(f);
     },

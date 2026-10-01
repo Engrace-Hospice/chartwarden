@@ -394,15 +394,19 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
             baaContractRef: args.baaContractRef ?? feed.baaContractRef,
             baaExpiresOn: args.baaExpiresOn ? new Date(args.baaExpiresOn) : feed.baaExpiresOn,
             rateLimitMsgPerSec: args.rateLimitMsgPerSec ?? feed.rateLimitMsgPerSec,
-            labDestinationFacilityId: args.labDestinationFacilityId ?? feed.labDestinationFacilityId,
+            labDestinationFacilityId:
+              args.labDestinationFacilityId ?? feed.labDestinationFacilityId,
             mshSendingApplication: args.mshSendingApplication ?? feed.mshSendingApplication,
             mshSendingFacility: args.mshSendingFacility ?? feed.mshSendingFacility,
             mshReceivingApplication: args.mshReceivingApplication ?? feed.mshReceivingApplication,
             mshReceivingFacility: args.mshReceivingFacility ?? feed.mshReceivingFacility,
-            receiverDedupesControlId: args.receiverDedupesControlId ?? feed.receiverDedupesControlId,
+            receiverDedupesControlId:
+              args.receiverDedupesControlId ?? feed.receiverDedupesControlId,
             // `null` is meaningful here (clear back to the platform default), so only `undefined` keeps the value.
             inFlightLeaseSeconds:
-              args.inFlightLeaseSeconds === undefined ? feed.inFlightLeaseSeconds : args.inFlightLeaseSeconds,
+              args.inFlightLeaseSeconds === undefined
+                ? feed.inFlightLeaseSeconds
+                : args.inFlightLeaseSeconds,
             updatedAt: new Date(),
           })
           .where(and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId)))

@@ -67,8 +67,5 @@ export function requiredVitalsCapture(
   }
   const roster = requiredVitalsFor(template);
   if (roster.length === 0) return null;
-  return roster.reduce<VitalsInput>(
-    (acc, field) => ({ ...acc, ...NORMAL_VITALS_BY_FIELD[field] }),
-    {},
-  );
+  return Object.assign({}, ...roster.map((field) => NORMAL_VITALS_BY_FIELD[field])) as VitalsInput;
 }

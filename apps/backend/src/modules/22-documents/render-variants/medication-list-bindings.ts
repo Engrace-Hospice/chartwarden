@@ -1,3 +1,4 @@
+import { runWithRequestContext } from "@wardenx/tenancy";
 // apps/backend/src/modules/22-documents/render-variants/medication-list-bindings.ts — F-171 (#248) the
 // LIVE `m12.medication_order.list_changed` → `patient_medication_list` render binding. Unlike
 // `lab-backref-bindings.ts` (deny-stub, M29 unbuilt), M12's `MedicationOrderProvider` seam is real and
@@ -15,18 +16,16 @@
 // convention (F-102) for a system-attributed read — this is a READ, so it never reaches an
 // `actorMembershipId` column the way F-102's write-path convention does.
 import type { MedicationOrderDto } from "@wardenx/types";
-import { runWithRequestContext } from "@wardenx/tenancy";
+import { getSeam } from "../../../bootstrap/index";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
-import { getSeam } from "../../../bootstrap/index";
+import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
+import type { DocumentRenderedEmit } from "../outbox-consumers/render-consumer";
 import { getDocumentRenderer } from "../seams";
 import { PLATFORM_TEMPLATE_TABLE, type TemplateDescriptor } from "../seams/renderer";
 import type { DocumentSeamStore } from "../seams/store";
-import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
-import { type DocumentRenderedEmit } from "../outbox-consumers/render-consumer";
-import type { PatientMedicationListRenderPayload } from "./render-variants";
 import {
   M22_MEDICATION_LIST_CONSUMER,
   M22_MEDICATION_LIST_EVENT,
@@ -34,6 +33,7 @@ import {
   type MedicationListFacts,
   decideMedicationListRender,
 } from "./medication-list-consumer";
+import type { PatientMedicationListRenderPayload } from "./render-variants";
 
 /** Raised when the delivered `.list_changed` payload does not carry a usable `patientId` (malformed — the
  * dispatcher retries then dead-letters, §7.2; never a silent skip of a real request). */
@@ -160,7 +160,8 @@ export function buildM22MedicationListConsumer(
 ): OutboxConsumerBinding {
   const templates = deps.templates ?? PLATFORM_TEMPLATE_TABLE;
   const renderer = deps.renderer ?? getDocumentRenderer;
-  const resolveActiveMedications = deps.resolveActiveMedications ?? resolveActiveMedicationsForPatient;
+  const resolveActiveMedications =
+    deps.resolveActiveMedications ?? resolveActiveMedicationsForPatient;
   const resolveConsentPresent = deps.resolveConsentPresent ?? resolveSudConsentPresent;
   const now = deps.now ?? (() => new Date().toISOString());
   const descriptor = templates.patient_medication_list;
@@ -212,7 +213,11 @@ export function buildM22MedicationListConsumer(
         // version, never render a second one for this one request (render-consumer.ts's identical
         // "idempotent_skip must still announce" reasoning — a source module's own back-ref, if wired
         // later, would otherwise be permanently lost for exactly the redelivered case).
-        await announce({ organizationId: event.organizationId, patientId: payload.patientId, row: prior });
+        await announce({
+          organizationId: event.organizationId,
+          patientId: payload.patientId,
+          row: prior,
+        });
         return;
       }
 
@@ -244,20 +249,19 @@ export function buildM22MedicationListConsumer(
               } satisfies PatientMedicationListRenderPayload),
         // Skip the M39 seam call entirely when nothing on the resolved set needs it (the render-consumer
         // .ts "only when flagged" optimization).
-        sudConsentPresent:
-          medications !== null && medications.some((m) => m.isSudTreatment)
-            ? await resolveConsentPresent({
-                organizationId: event.organizationId,
-                patientId: payload.patientId,
-              })
-            : false,
+        sudConsentPresent: medications?.some((m) => m.isSudTreatment)
+          ? await resolveConsentPresent({
+              organizationId: event.organizationId,
+              patientId: payload.patientId,
+            })
+          : false,
       };
 
       const action = decideMedicationListRender(payload, facts);
       switch (action.kind) {
         case "idempotent_skip":
           return; // structurally unreachable here (the early-return above already handled it); kept so
-          // the decider's own type stays exhaustive and testable in isolation from this wiring
+        // the decider's own type stays exhaustive and testable in isolation from this wiring
         case "medications_unresolved":
           deps.onRefusal?.({
             eventType: event.eventType,
@@ -293,7 +297,11 @@ export function buildM22MedicationListConsumer(
             organizationId: event.organizationId,
           });
           if (written) {
-            await announce({ organizationId: event.organizationId, patientId: action.patientId, row: written });
+            await announce({
+              organizationId: event.organizationId,
+              patientId: action.patientId,
+              row: written,
+            });
           }
           return;
         }

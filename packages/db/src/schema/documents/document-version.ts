@@ -71,10 +71,7 @@ export const documentVersions = pgTable(
     ),
     // F-168 (#248, migration 0261) — NULLS DISTINCT (Postgres default): the many NULL-keyed
     // non-request-driven rows coexist freely; only rows carrying the same (org, source_event_id) collide.
-    bySourceEvent: unique("document_version_source_event_uq").on(
-      t.organizationId,
-      t.sourceEventId,
-    ),
+    bySourceEvent: unique("document_version_source_event_uq").on(t.organizationId, t.sourceEventId),
   }),
 );
 

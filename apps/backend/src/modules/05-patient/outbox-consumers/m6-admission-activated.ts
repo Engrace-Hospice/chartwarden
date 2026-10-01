@@ -99,16 +99,20 @@ export function buildM5AdmissionSitingConsumer(deps: AdmissionSitingDeps) {
       // later event for the same admission (or a later admission) will re-resolve correctly.
       if (!siting) return;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        await tx
-          .update(P)
-          .set({
-            providerEntityId: siting.providerEntityId,
-            locationId: siting.locationId,
-          })
-          .where(eq(P.id, facts.patientId));
-      });
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          await tx
+            .update(P)
+            .set({
+              providerEntityId: siting.providerEntityId,
+              locationId: siting.locationId,
+            })
+            .where(eq(P.id, facts.patientId));
+        },
+      );
     },
   };
 }

@@ -4,8 +4,8 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
 import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
-import type { OrmRequestedPorts } from "./orm-request/orm-requested";
 import type { RecoveryControls } from "./orm-request/orm-recovery-dual-control";
+import type { OrmRequestedPorts } from "./orm-request/orm-requested";
 import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
 
 export { buildM11OrmRequestedPorts } from "./orm-request/ports";

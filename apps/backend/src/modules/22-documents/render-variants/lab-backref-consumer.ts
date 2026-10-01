@@ -30,8 +30,8 @@
 // no M22-produced event and no edge.
 import type { DocumentRetentionClass } from "@wardenx/types";
 import {
-  type LabResultsRenderPayload,
   type LabResultValue,
+  type LabResultsRenderPayload,
   type RenderVariantResult,
   planLabResultsRender,
 } from "./render-variants";

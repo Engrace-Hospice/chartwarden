@@ -63,7 +63,9 @@ export function ScaleLicenseRegistry(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [recording, setRecording] = useState(false);
-  const [editing, setEditing] = useState<{ license: LicenseRow; action: LicenseAction } | null>(null);
+  const [editing, setEditing] = useState<{ license: LicenseRow; action: LicenseAction } | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<LicenseDraft>(newDraft);
 

@@ -272,7 +272,11 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
   /** Complete a draft until sign-ready — shared helper (_hope-sign-ready.ts), incl. the A1005/A1010 checklists. */
   const answerForSign = (id: string, overrides: Record<string, string> = {}): Promise<void> =>
-    answerHopeForSign({ svc, orgId: ORG_A, membershipId: memberOf[ORG_A]!, answerDate: today() }, id, overrides);
+    answerHopeForSign(
+      { svc, orgId: ORG_A, membershipId: memberOf[ORG_A]!, answerDate: today() },
+      id,
+      overrides,
+    );
 
   it("M6 activation/discharge consumer materializes HOPE schedules idempotently", async () => {
     const adm = await admitted();

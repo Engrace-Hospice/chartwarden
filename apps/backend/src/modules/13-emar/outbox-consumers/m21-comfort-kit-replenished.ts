@@ -40,8 +40,8 @@
 // only a SECOND, distinct `m21.comfort_kit.replenished` event racing a still-in-flight first one, which
 // the capped-add tolerates safely.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import { applyKitReplenishment } from "@wardenx/emar";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { M21ComfortKitReplenishedPayload } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 
@@ -61,9 +61,7 @@ export interface ComfortKitReplenishedConsumerDeps {
  * delivered amount, capped at the drawdown's own `expected_quantity`. A line with no `medicationOrderId`
  * or no matching drawdown row is skipped, not fabricated — see the file header.
  */
-export function buildM13ComfortKitReplenishedConsumer(
-  deps: ComfortKitReplenishedConsumerDeps,
-) {
+export function buildM13ComfortKitReplenishedConsumer(deps: ComfortKitReplenishedConsumerDeps) {
   return {
     consumerName: M13_COMFORT_KIT_REPLENISHED_CONSUMER.consumerName,
     consumerModule: "m13" as const,
@@ -115,7 +113,10 @@ export function buildM13ComfortKitReplenishedConsumer(
             .update(DRAWDOWN)
             .set({ remainingQuantity: String(result.newRemainingQuantity), updatedAt: new Date() })
             .where(
-              and(eq(DRAWDOWN.comfortKitDeploymentId, deploymentId), eq(DRAWDOWN.medicationOrderId, orderId)),
+              and(
+                eq(DRAWDOWN.comfortKitDeploymentId, deploymentId),
+                eq(DRAWDOWN.medicationOrderId, orderId),
+              ),
             );
         }
       });

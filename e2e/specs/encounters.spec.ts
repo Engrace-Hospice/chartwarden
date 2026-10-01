@@ -109,26 +109,46 @@ test.describe("Encounters", () => {
     });
 
     // Every REQUIRED section, because the §2.6 Layer-3 gate refuses a note that says nothing and that
-    // refusal is the server's — the composer marks required sections with an asterisk and never
+    // refusal is the server's — the composer captions required sections "Required" and never
     // pre-empts it. The tabs are the section nav; a section is satisfied by an entry OR by prose, and
     // the shipped vocabulary has no entries for several of them, so free text is what always works.
     const tabs = page.locator("nav button");
-    const required = tabs.filter({ hasText: "*" });
+    const required = tabs.filter({ hasText: "Required" });
     const count = await required.count();
     expect(count).toBeGreaterThan(0);
     for (let i = 0; i < count; i += 1) {
-      // Re-resolve each time: the tab's own label loses its "*" and gains a "✓" as it is filled, so the
-      // filtered list shrinks under us. Always take the first still-unfilled one.
-      await tabs.filter({ hasText: "*" }).first().click();
+      // Re-resolve each time: the tab's own caption changes from "Required" to "Documented" as it is
+      // filled, so the filtered list shrinks under us. Always take the first still-unfilled one.
+      await tabs.filter({ hasText: "Required" }).first().click();
       await page
-        .getByLabel("Additional notes (recorded verbatim)")
+        .getByLabel("Additional notes")
         .fill("Patient resting comfortably; no new symptoms reported this visit.");
     }
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save draft" }).click();
     // The server assembles the Layer-1 narrative and hands it back — the composer never assembles prose.
     // Its appearance is what proves the tree PERSISTED, which is the defect #114 fixed one layer down.
     await expect(page.getByText("Patient resting comfortably").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // The Layer-3 gate also requires the routine-visit vitals (BP, HR, RR, T, SpO₂, pain) — they live in the
+    // composer's Vitals panel, not in a note section, so prose alone no longer finalizes.
+    await page.getByRole("button", { name: "Vitals", exact: true }).click();
+    for (const [label, value] of [
+      ["BP systolic", "118"],
+      ["BP diastolic", "74"],
+      ["Heart rate", "72"],
+      ["Respiratory rate", "16"],
+      ["Temperature", "98.4"],
+      ["SpO₂", "97"],
+      ["Pain score", "2"],
+    ] as const) {
+      await page.getByLabel(label, { exact: true }).fill(value);
+    }
+    await page.getByRole("button", { name: "Record vitals" }).click();
+    // The panel closes itself once the server accepts the vitals.
+    await expect(page.getByRole("button", { name: "Record vitals" })).toBeHidden({
       timeout: 15_000,
     });
 
@@ -138,7 +158,7 @@ test.describe("Encounters", () => {
     // assembled narrative under the tenant DEK and pins it, so what M22 prints and M28 exposes is what
     // was assembled here rather than what today's corpus would produce from the same selections.
     await page.getByRole("button", { name: "Finalize" }).click();
-    await expect(page.getByText("Finalized. Sign it from the encounter record.")).toBeVisible({
+    await expect(page.getByText("Note finalized", { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 

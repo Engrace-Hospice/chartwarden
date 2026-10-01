@@ -17,9 +17,9 @@ import { NotFoundError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { registerRateTableRoutes } from "../src/modules/23-billing-medicare/routes/rate-table.routes";
 import type { RateTableRouteService } from "../src/modules/23-billing-medicare/routes/rate-table-service";
 import type { RateTableView } from "../src/modules/23-billing-medicare/routes/rate-table-typebox";
+import { registerRateTableRoutes } from "../src/modules/23-billing-medicare/routes/rate-table.routes";
 
 const ORG = "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a";
 const PE = "77777777-7777-4777-8777-777777777777";
@@ -108,7 +108,9 @@ function fakeService() {
 
 function makeServer() {
   const { service, calls } = fakeService();
-  const perms = (keys: string[]) => [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: keys }];
+  const perms = (keys: string[]) => [
+    { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: keys },
+  ];
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       {
@@ -153,9 +155,22 @@ afterEach(() => {
 describe("M23 rate-table routes (F-210)", () => {
   it("401s without a session and 403s a session with no rate-table grant", async () => {
     const { app } = makeServer();
-    expect((await app.inject({ method: "GET", url: `/api/v1/billing/rate-tables?providerEntityId=${PE}` })).statusCode).toBe(401);
     expect(
-      (await app.inject({ method: "GET", url: `/api/v1/billing/rate-tables?providerEntityId=${PE}`, headers: NONE })).statusCode,
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/billing/rate-tables?providerEntityId=${PE}`,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/billing/rate-tables?providerEntityId=${PE}`,
+          headers: NONE,
+        })
+      ).statusCode,
     ).toBe(403);
     await app.close();
   });
@@ -163,14 +178,46 @@ describe("M23 rate-table routes (F-210)", () => {
   it("a read-only holder can list / get / look up, but cannot create or supersede (403)", async () => {
     const { app, calls } = makeServer();
     const q = `providerEntityId=${PE}`;
-    expect((await app.inject({ method: "GET", url: `/api/v1/billing/rate-tables?${q}`, headers: READER })).statusCode).toBe(200);
-    expect((await app.inject({ method: "GET", url: `/api/v1/billing/rate-tables/${RT}?${q}`, headers: READER })).statusCode).toBe(200);
     expect(
-      (await app.inject({ method: "GET", url: `/api/v1/billing/rate-tables/effective?${q}&onDate=2026-02-01`, headers: READER })).statusCode,
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/billing/rate-tables?${q}`,
+          headers: READER,
+        })
+      ).statusCode,
     ).toBe(200);
-    const create = await app.inject({ method: "POST", url: "/api/v1/billing/rate-tables", headers: { ...READER, ...idem() }, payload: BODY });
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/billing/rate-tables/${RT}?${q}`,
+          headers: READER,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/v1/billing/rate-tables/effective?${q}&onDate=2026-02-01`,
+          headers: READER,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/billing/rate-tables",
+      headers: { ...READER, ...idem() },
+      payload: BODY,
+    });
     expect(create.statusCode).toBe(403);
-    const sup = await app.inject({ method: "POST", url: `/api/v1/billing/rate-tables/${RT}/supersede`, headers: { ...READER, ...idem() }, payload: BODY });
+    const sup = await app.inject({
+      method: "POST",
+      url: `/api/v1/billing/rate-tables/${RT}/supersede`,
+      headers: { ...READER, ...idem() },
+      payload: BODY,
+    });
     expect(sup.statusCode).toBe(403);
     expect(calls).toEqual([]);
     await app.close();
@@ -178,10 +225,20 @@ describe("M23 rate-table routes (F-210)", () => {
 
   it("an admin creates (201) and supersedes (201)", async () => {
     const { app, calls } = makeServer();
-    const create = await app.inject({ method: "POST", url: "/api/v1/billing/rate-tables", headers: { ...ADMIN, ...idem() }, payload: BODY });
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/billing/rate-tables",
+      headers: { ...ADMIN, ...idem() },
+      payload: BODY,
+    });
     expect(create.statusCode).toBe(201);
     expect(create.json().rateTableId).toBe(RT);
-    const sup = await app.inject({ method: "POST", url: `/api/v1/billing/rate-tables/${RT}/supersede`, headers: { ...ADMIN, ...idem() }, payload: BODY });
+    const sup = await app.inject({
+      method: "POST",
+      url: `/api/v1/billing/rate-tables/${RT}/supersede`,
+      headers: { ...ADMIN, ...idem() },
+      payload: BODY,
+    });
     expect(sup.statusCode).toBe(201);
     expect(calls).toEqual([`create:${PE}`, `supersede:${RT}`]);
     await app.close();
@@ -189,9 +246,25 @@ describe("M23 rate-table routes (F-210)", () => {
 
   it("requires an Idempotency-Key on both mutations", async () => {
     const { app, calls } = makeServer();
-    expect((await app.inject({ method: "POST", url: "/api/v1/billing/rate-tables", headers: ADMIN, payload: BODY })).statusCode).toBeGreaterThanOrEqual(400);
     expect(
-      (await app.inject({ method: "POST", url: `/api/v1/billing/rate-tables/${RT}/supersede`, headers: ADMIN, payload: BODY })).statusCode,
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/billing/rate-tables",
+          headers: ADMIN,
+          payload: BODY,
+        })
+      ).statusCode,
+    ).toBeGreaterThanOrEqual(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/v1/billing/rate-tables/${RT}/supersede`,
+          headers: ADMIN,
+          payload: BODY,
+        })
+      ).statusCode,
     ).toBeGreaterThanOrEqual(400);
     expect(calls).toEqual([]);
     await app.close();
@@ -212,7 +285,11 @@ describe("M23 rate-table routes (F-210)", () => {
 
   it("gates by the provider entity: an out-of-scope entity 404s (existence-non-leak) on read and write", async () => {
     const { app, calls } = makeServer();
-    const read = await app.inject({ method: "GET", url: `/api/v1/billing/rate-tables?providerEntityId=${OTHER_PE}`, headers: ADMIN });
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/rate-tables?providerEntityId=${OTHER_PE}`,
+      headers: ADMIN,
+    });
     expect(read.statusCode).toBe(404);
     const write = await app.inject({
       method: "POST",

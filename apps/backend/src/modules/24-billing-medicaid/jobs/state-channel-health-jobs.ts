@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // apps/backend/src/modules/24-billing-medicaid/jobs/state-channel-health-jobs.ts — the M24 §4.9
 // `state-channel-health` cron (§7.8: "the Oregon CCO clearinghouse goes down (the state-channel-health
 // cron detects three consecutive failed health probes); M24 emits m24.medicaid_state_channel.unavailable;
@@ -52,7 +53,6 @@ import type { OregonGatewayPort, TradingPartnerCredentials } from "@wardenx/medi
 import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
-import { createHash } from "node:crypto";
 import { type CredentialCipherPort, isUsableCipher } from "../credential-crypto";
 import { M24_CRON_QUEUES, M24_JOB_SCHEDULES, M24_QUEUE_PARAMS } from "./queues";
 
@@ -434,7 +434,9 @@ export function registerM24StateChannelHealthWorker(
 
 /** Register the §4.9 repeatable `state-channel-health` schedule (every 15 min, UTC). Returns the Queue so
  * the composition root can `close()` it. */
-export async function scheduleM24StateChannelHealthJob(connection: ConnectionOptions): Promise<Queue> {
+export async function scheduleM24StateChannelHealthJob(
+  connection: ConnectionOptions,
+): Promise<Queue> {
   const queue = new Queue(M24_CRON_QUEUES.stateChannelHealth, { connection });
   await queue.add(
     "tick",

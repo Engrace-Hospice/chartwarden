@@ -22,7 +22,7 @@ export function OrderAdmissionLookup(props: Props & { patientId: string }): JSX.
           (x) => ({
             id: x.id,
             label: `Admission ${x.id.slice(0, 8)}`,
-            searchLabel:`Admission ${x.id.slice(0, 5)}...`,
+            searchLabel: `Admission ${x.id.slice(0, 5)}...`,
             description: x.state,
           }),
         ),

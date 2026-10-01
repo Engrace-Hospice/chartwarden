@@ -47,20 +47,20 @@ import type {
 } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
-import { patchSupplyRequest } from "../routes/write-service-drizzle";
-import type { EffectPatch } from "../routes/effects-runner";
-import type { OutboxEmission, WriteOutboxPort } from "../routes/write-service";
 import {
-  M11_ORDER_DISCONTINUED_EVENT,
-  M11_SUPPLY_CANCELLATION_REQUESTED_EVENT,
   type M11OrderDiscontinuedPayload,
   type M11SupplyCancellationRequestedPayload,
+  M11_ORDER_DISCONTINUED_EVENT,
+  M11_SUPPLY_CANCELLATION_REQUESTED_EVENT,
   type SupplyCancellationTarget,
   type SupplyDiscontinuationTarget,
   decideOrderDiscontinued,
   decideSupplyCancellationCascade,
 } from "../consumers/m11-orders";
 import { transitionSupplyRequest } from "../lifecycle/index";
+import type { EffectPatch } from "../routes/effects-runner";
+import type { OutboxEmission, WriteOutboxPort } from "../routes/write-service";
+import { patchSupplyRequest } from "../routes/write-service-drizzle";
 
 const REQUEST = schema.supplyRequest;
 
@@ -153,92 +153,102 @@ export function buildM21SupplyCancellationConsumer(
       }
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const target = await loadTargetRow(tx, organizationId, payload.orderId);
-        const action = decideSupplyCancellationCascade(payload, target);
-        if (action.kind === "no_match" || action.kind === "already_cancelling") return;
-        if (!target) return; // unreachable — every non-`no_match` action requires a resolved target
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const target = await loadTargetRow(tx, organizationId, payload.orderId);
+          const action = decideSupplyCancellationCascade(payload, target);
+          if (action.kind === "no_match" || action.kind === "already_cancelling") return;
+          if (!target) return; // unreachable — every non-`no_match` action requires a resolved target
 
-        const at = now();
-        if (action.kind === "cancel_no_op") {
-          await deps.outbox.publish(tx, {
-            eventName: "m21.supply_request.cancel_no_op",
-            organizationId,
-            aggregateKind: "supply_request",
-            aggregateId: target.id,
-            payload: {
-              orgId: organizationId,
+          const at = now();
+          if (action.kind === "cancel_no_op") {
+            await deps.outbox.publish(tx, {
+              eventName: "m21.supply_request.cancel_no_op",
+              organizationId,
+              aggregateKind: "supply_request",
+              aggregateId: target.id,
+              payload: {
+                orgId: organizationId,
+                supplyRequestId: target.id,
+                sourceOrderId: payload.orderId,
+                terminalStatus: action.terminalStatus,
+                occurredAt: at.toISOString(),
+              },
+            } satisfies OutboxEmission);
+            return;
+          }
+
+          // `action.kind` is now `"cancel" | "request_cancellation"` — both pre-checked legal by
+          // `decideSupplyCancellationCascade` against the SAME `canTransition` edge table
+          // `transitionSupplyRequest` enforces, so this never throws `M21_INVALID_STATUS_TRANSITION` in
+          // practice; it is still run (not assumed) so a future machine edge cannot silently drift from it.
+          const preOrdered = action.kind === "cancel";
+          const transition = transitionSupplyRequest(target.status, target.kind, {
+            type: preOrdered ? "cancel" : "requestCancellation",
+            reason: action.reason,
+            at: at.toISOString() as IsoInstant,
+          });
+          const anchor = anchorOf(target);
+          const payloads: Partial<Record<string, Record<string, unknown>>> = {
+            "m21.supply_request.status_changed": {
+              ...anchor,
               supplyRequestId: target.id,
-              sourceOrderId: payload.orderId,
-              terminalStatus: action.terminalStatus,
+              kind: target.kind,
+              sourceOrderId: target.sourceOrderId,
+              fromStatus: transition.from,
+              toStatus: transition.to,
               occurredAt: at.toISOString(),
             },
-          } satisfies OutboxEmission);
-          return;
-        }
-
-        // `action.kind` is now `"cancel" | "request_cancellation"` — both pre-checked legal by
-        // `decideSupplyCancellationCascade` against the SAME `canTransition` edge table
-        // `transitionSupplyRequest` enforces, so this never throws `M21_INVALID_STATUS_TRANSITION` in
-        // practice; it is still run (not assumed) so a future machine edge cannot silently drift from it.
-        const preOrdered = action.kind === "cancel";
-        const transition = transitionSupplyRequest(target.status, target.kind, {
-          type: preOrdered ? "cancel" : "requestCancellation",
-          reason: action.reason,
-          at: at.toISOString() as IsoInstant,
-        });
-        const anchor = anchorOf(target);
-        const payloads: Partial<Record<string, Record<string, unknown>>> = {
-          "m21.supply_request.status_changed": {
-            ...anchor,
-            supplyRequestId: target.id,
-            kind: target.kind,
-            sourceOrderId: target.sourceOrderId,
-            fromStatus: transition.from,
-            toStatus: transition.to,
-            occurredAt: at.toISOString(),
-          },
-        };
-        if (preOrdered) {
-          payloads["m21.supply_request.cancelled"] = {
-            ...anchor,
-            supplyRequestId: target.id,
-            sourceOrderId: target.sourceOrderId,
-            reason: action.reason,
-            cancelledAt: at.toISOString(),
-            requiredVendorConfirmation: false,
           };
-        }
-        for (const effect of transition.effects) {
-          if (effect.kind !== "outbox") continue;
-          const effectPayload = payloads[effect.event];
-          if (!effectPayload) {
-            throw new Error(
-              `m21.supply-cancellation-cascade: transition emitted '${effect.event}' with no payload built`,
-            );
+          if (preOrdered) {
+            payloads["m21.supply_request.cancelled"] = {
+              ...anchor,
+              supplyRequestId: target.id,
+              sourceOrderId: target.sourceOrderId,
+              reason: action.reason,
+              cancelledAt: at.toISOString(),
+              requiredVendorConfirmation: false,
+            };
           }
-          await deps.outbox.publish(tx, {
-            eventName: effect.event as OutboxEmission["eventName"],
-            organizationId,
-            aggregateKind: "supply_request",
-            aggregateId: target.id,
-            payload: effectPayload,
-          });
-        }
-        const patch: EffectPatch = {};
-        for (const effect of transition.effects) {
-          if (effect.kind === "set_timestamp") {
-            if (effect.field === "cancelled_at") patch.cancelledAt = new Date(effect.at);
-            if (effect.field === "cancellation_pending_at")
-              patch.cancellationPendingAt = new Date(effect.at);
+          for (const effect of transition.effects) {
+            if (effect.kind !== "outbox") continue;
+            const effectPayload = payloads[effect.event];
+            if (!effectPayload) {
+              throw new Error(
+                `m21.supply-cancellation-cascade: transition emitted '${effect.event}' with no payload built`,
+              );
+            }
+            await deps.outbox.publish(tx, {
+              eventName: effect.event as OutboxEmission["eventName"],
+              organizationId,
+              aggregateKind: "supply_request",
+              aggregateId: target.id,
+              payload: effectPayload,
+            });
           }
-          if (effect.kind === "record_cancellation") {
-            patch.cancellationReason = effect.reason;
+          const patch: EffectPatch = {};
+          for (const effect of transition.effects) {
+            if (effect.kind === "set_timestamp") {
+              if (effect.field === "cancelled_at") patch.cancelledAt = new Date(effect.at);
+              if (effect.field === "cancellation_pending_at")
+                patch.cancellationPendingAt = new Date(effect.at);
+            }
+            if (effect.kind === "record_cancellation") {
+              patch.cancellationReason = effect.reason;
+            }
           }
-        }
-        await patchSupplyRequest(tx as Parameters<typeof patchSupplyRequest>[0], target.id, transition.to, patch, at);
-      });
+          await patchSupplyRequest(
+            tx as Parameters<typeof patchSupplyRequest>[0],
+            target.id,
+            transition.to,
+            patch,
+            at,
+          );
+        },
+      );
     },
   };
 }
@@ -264,64 +274,74 @@ export function buildM21OrderDiscontinuedConsumer(
       }
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const row = await loadTargetRow(tx, organizationId, payload.orderId);
-        const target: SupplyDiscontinuationTarget | null =
-          row === null
-            ? null
-            : {
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const row = await loadTargetRow(tx, organizationId, payload.orderId);
+          const target: SupplyDiscontinuationTarget | null =
+            row === null
+              ? null
+              : {
+                  supplyRequestId: row.id,
+                  kind: row.kind,
+                  status: row.status,
+                  rentalCadence:
+                    row.kind === "dme"
+                      ? (((row.data ?? {}) as { rentalCadence?: DmeRentalCadence }).rentalCadence ??
+                        null)
+                      : null,
+                };
+          const action = decideOrderDiscontinued(payload, target);
+          if (action.kind === "no_op" || row === null) return;
+
+          const at = now();
+          const transition = transitionSupplyRequest(row.status, row.kind, {
+            type: "completeRequest",
+            at: at.toISOString() as IsoInstant,
+            rentalCadence: target?.rentalCadence ?? null,
+            orderDiscontinued: true,
+          });
+          const anchor = anchorOf(row);
+          for (const effect of transition.effects) {
+            if (effect.kind !== "outbox") continue;
+            if (effect.event !== "m21.supply_request.status_changed") {
+              throw new Error(
+                `m21.order-discontinued-rental-closeout: transition emitted '${effect.event}' with no payload built`,
+              );
+            }
+            await deps.outbox.publish(tx, {
+              eventName: effect.event as OutboxEmission["eventName"],
+              organizationId,
+              aggregateKind: "supply_request",
+              aggregateId: row.id,
+              payload: {
+                ...anchor,
                 supplyRequestId: row.id,
                 kind: row.kind,
-                status: row.status,
-                rentalCadence:
-                  row.kind === "dme"
-                    ? (((row.data ?? {}) as { rentalCadence?: DmeRentalCadence }).rentalCadence ??
-                      null)
-                    : null,
-              };
-        const action = decideOrderDiscontinued(payload, target);
-        if (action.kind === "no_op" || row === null) return;
-
-        const at = now();
-        const transition = transitionSupplyRequest(row.status, row.kind, {
-          type: "completeRequest",
-          at: at.toISOString() as IsoInstant,
-          rentalCadence: target?.rentalCadence ?? null,
-          orderDiscontinued: true,
-        });
-        const anchor = anchorOf(row);
-        for (const effect of transition.effects) {
-          if (effect.kind !== "outbox") continue;
-          if (effect.event !== "m21.supply_request.status_changed") {
-            throw new Error(
-              `m21.order-discontinued-rental-closeout: transition emitted '${effect.event}' with no payload built`,
-            );
+                sourceOrderId: row.sourceOrderId,
+                fromStatus: transition.from,
+                toStatus: transition.to,
+                occurredAt: at.toISOString(),
+              },
+            });
           }
-          await deps.outbox.publish(tx, {
-            eventName: effect.event as OutboxEmission["eventName"],
-            organizationId,
-            aggregateKind: "supply_request",
-            aggregateId: row.id,
-            payload: {
-              ...anchor,
-              supplyRequestId: row.id,
-              kind: row.kind,
-              sourceOrderId: row.sourceOrderId,
-              fromStatus: transition.from,
-              toStatus: transition.to,
-              occurredAt: at.toISOString(),
-            },
-          });
-        }
-        const patch: EffectPatch = {};
-        for (const effect of transition.effects) {
-          if (effect.kind === "set_timestamp" && effect.field === "completed_at") {
-            patch.completedAt = new Date(effect.at);
+          const patch: EffectPatch = {};
+          for (const effect of transition.effects) {
+            if (effect.kind === "set_timestamp" && effect.field === "completed_at") {
+              patch.completedAt = new Date(effect.at);
+            }
           }
-        }
-        await patchSupplyRequest(tx as Parameters<typeof patchSupplyRequest>[0], row.id, transition.to, patch, at);
-      });
+          await patchSupplyRequest(
+            tx as Parameters<typeof patchSupplyRequest>[0],
+            row.id,
+            transition.to,
+            patch,
+            at,
+          );
+        },
+      );
     },
   };
 }

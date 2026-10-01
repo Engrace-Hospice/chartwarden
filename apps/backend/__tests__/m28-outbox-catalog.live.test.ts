@@ -27,8 +27,8 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDrizzleFhirGatewayStore } from "../src/modules/28-fhir/index";
-import { validatingM28Outbox } from "./_m28-outbox";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { validatingM28Outbox } from "./_m28-outbox";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");

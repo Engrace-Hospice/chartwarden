@@ -77,7 +77,8 @@ export function createDrizzleActivePeriodStore(db: DbClient): ActivePeriodStore 
           // financial computation.
           const row = inserted[0];
           return {
-            inserted: row !== undefined && row.firstSessionAt?.getTime() === input.becameActiveAt.getTime(),
+            inserted:
+              row !== undefined && row.firstSessionAt?.getTime() === input.becameActiveAt.getTime(),
           };
         },
       );

@@ -152,7 +152,12 @@ const LEGAL_EDGES: ReadonlyArray<{
   { from: "suspended", type: "reactivate", to: "active", outbox: "m34.tenant.reactivated" },
   { from: "active", type: "flagAtRisk", to: "at_risk", outbox: "m34.tenant.at_risk" },
   { from: "at_risk", type: "resolveAtRisk", to: "active", outbox: "m34.tenant.reactivated" },
-  { from: "at_risk", type: "suspendFromAtRisk", to: "suspended", outbox: "m34.tenant.suspension_initiated" },
+  {
+    from: "at_risk",
+    type: "suspendFromAtRisk",
+    to: "suspended",
+    outbox: "m34.tenant.suspension_initiated",
+  },
   {
     from: "active",
     type: "initiateOffboarding",

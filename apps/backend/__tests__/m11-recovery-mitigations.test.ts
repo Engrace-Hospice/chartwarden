@@ -23,11 +23,23 @@ const HOUR = 3_600_000;
 
 describe("F-203 — decideRecoveryEscalation: the collusion bound", () => {
   it("below the bound nothing is required; AT the bound a high-trust co-signer is", () => {
-    expect(decideRecoveryEscalation({ requesterExecuted: 0, pairExecuted: 0 })).toEqual({ required: false });
-    expect(decideRecoveryEscalation({ requesterExecuted: RECOVERY_ESCALATION_THRESHOLD - 1, pairExecuted: 0 })).toEqual({
+    expect(decideRecoveryEscalation({ requesterExecuted: 0, pairExecuted: 0 })).toEqual({
       required: false,
     });
-    expect(decideRecoveryEscalation({ requesterExecuted: RECOVERY_ESCALATION_THRESHOLD, pairExecuted: 0 })).toEqual({
+    expect(
+      decideRecoveryEscalation({
+        requesterExecuted: RECOVERY_ESCALATION_THRESHOLD - 1,
+        pairExecuted: 0,
+      }),
+    ).toEqual({
+      required: false,
+    });
+    expect(
+      decideRecoveryEscalation({
+        requesterExecuted: RECOVERY_ESCALATION_THRESHOLD,
+        pairExecuted: 0,
+      }),
+    ).toEqual({
       required: true,
       reason: "requester_bound",
     });
@@ -42,8 +54,12 @@ describe("F-203 — decideRecoveryEscalation: the collusion bound", () => {
 
   it("the threshold is injectable and the default is three", () => {
     expect(RECOVERY_ESCALATION_THRESHOLD).toBe(3);
-    expect(decideRecoveryEscalation({ requesterExecuted: 1, pairExecuted: 0 }, 1).required).toBe(true);
-    expect(decideRecoveryEscalation({ requesterExecuted: 4, pairExecuted: 0 }, 5).required).toBe(false);
+    expect(decideRecoveryEscalation({ requesterExecuted: 1, pairExecuted: 0 }, 1).required).toBe(
+      true,
+    );
+    expect(decideRecoveryEscalation({ requesterExecuted: 4, pairExecuted: 0 }, 5).required).toBe(
+      false,
+    );
   });
 });
 
@@ -82,12 +98,22 @@ describe("F-203 — decideRecoveryCosign names a SUPERSEDED request and its reas
   });
 
   it("superseded outranks self-cosign and expiry (a settled request reports THAT, never who is asking)", () => {
-    const stale = { ...base, expiresAt: new Date(NOW.getTime() - HOUR), status: "superseded", supersededReason: "x_y" };
-    expect(decideRecoveryCosign(stale, "u-req", NOW)).toMatchObject({ ok: false, code: "superseded" });
+    const stale = {
+      ...base,
+      expiresAt: new Date(NOW.getTime() - HOUR),
+      status: "superseded",
+      supersededReason: "x_y",
+    };
+    expect(decideRecoveryCosign(stale, "u-req", NOW)).toMatchObject({
+      ok: false,
+      code: "superseded",
+    });
   });
 
   it("a pending, unexpired request from someone else still passes", () => {
-    expect(decideRecoveryCosign({ ...base, status: "pending_cosign" }, "u-other", NOW)).toEqual({ ok: true });
+    expect(decideRecoveryCosign({ ...base, status: "pending_cosign" }, "u-other", NOW)).toEqual({
+      ok: true,
+    });
   });
 });
 
@@ -104,7 +130,12 @@ describe("F-203 — buildRecoveryAnomalyAlert: critical, deduplicated per window
     const a = buildRecoveryAnomalyAlert("repeat_pair", { ...facts, pairUserIds: ["b", "a"] });
     expect(a.severity).toBe("critical");
     expect(a.eventType).toBe("m11.order.recovery_anomaly");
-    expect(a.payload).toMatchObject({ signal: "repeat_pair", executionsInWindow: 3, threshold: 3, windowHours: 24 });
+    expect(a.payload).toMatchObject({
+      signal: "repeat_pair",
+      executionsInWindow: 3,
+      threshold: 3,
+      windowHours: 24,
+    });
   });
 
   it("the pair's correlation id is SYMMETRIC (A/B and B/A are one pair) and identical within a window", () => {
@@ -129,14 +160,25 @@ describe("F-203 — buildRecoveryAnomalyAlert: critical, deduplicated per window
       pairUserIds: ["a", "b"],
     });
     const other = buildRecoveryAnomalyAlert("repeat_pair", { ...facts, pairUserIds: ["a", "c"] });
-    const rate = buildRecoveryAnomalyAlert("org_rate", { ...facts, threshold: RECOVERY_ORG_RATE_THRESHOLD });
+    const rate = buildRecoveryAnomalyAlert("org_rate", {
+      ...facts,
+      threshold: RECOVERY_ORG_RATE_THRESHOLD,
+    });
     expect(new Set([ab, nextDay, other, rate].map((x) => x.correlationId)).size).toBe(4);
   });
 
   it("carries no field that could hold a name, a lab reference or a patient", () => {
     const a = buildRecoveryAnomalyAlert("repeat_pair", { ...facts, pairUserIds: ["a", "b"] });
     expect(Object.keys(a.payload).sort()).toEqual(
-      ["deepLink", "executionsInWindow", "orderId", "pairUserIds", "signal", "threshold", "windowHours"].sort(),
+      [
+        "deepLink",
+        "executionsInWindow",
+        "orderId",
+        "pairUserIds",
+        "signal",
+        "threshold",
+        "windowHours",
+      ].sort(),
     );
     expect(JSON.stringify(a)).not.toMatch(/contact|labReference|patient|Reyes|REF-/i);
   });
@@ -151,7 +193,11 @@ describe("F-203 — the executed alert turns critical for a repeated PAIR and sa
   };
 
   it("a lone execution warns; a repeated pair is critical and flagged; the escalation flag is carried", () => {
-    const calm = buildRecoveryAlert("m11.order.recovery_executed", { ...facts, requesterCountInWindow: 1, pairExecutionsInWindow: 1 });
+    const calm = buildRecoveryAlert("m11.order.recovery_executed", {
+      ...facts,
+      requesterCountInWindow: 1,
+      pairExecutionsInWindow: 1,
+    });
     expect(calm.severity).toBe("warn");
     expect(calm.payload).toMatchObject({ repeatPair: false, escalatedCosign: false });
 
@@ -162,7 +208,11 @@ describe("F-203 — the executed alert turns critical for a repeated PAIR and sa
       escalatedCosign: true,
     });
     expect(pair.severity).toBe("critical");
-    expect(pair.payload).toMatchObject({ repeatPair: true, repeatAttester: false, escalatedCosign: true });
+    expect(pair.payload).toMatchObject({
+      repeatPair: true,
+      repeatAttester: false,
+      escalatedCosign: true,
+    });
   });
 });
 
@@ -198,7 +248,9 @@ describe("F-203 — buildM11RecoveryAlertConsumer: durable delivery of the alert
       throw new Error("emitter down");
     });
     const consumer = buildM11RecoveryAlertConsumer({ alerts: { emit } });
-    await expect(consumer.handle(event(recoveryAlertEventPayload(alert)))).rejects.toThrow("emitter down");
+    await expect(consumer.handle(event(recoveryAlertEventPayload(alert)))).rejects.toThrow(
+      "emitter down",
+    );
   });
 
   it("a redelivery after a failure re-sends the SAME correlation id (so M36 dedupes it), never a new one", async () => {
@@ -210,13 +262,18 @@ describe("F-203 — buildM11RecoveryAlertConsumer: durable delivery of the alert
       return {};
     });
     const consumer = buildM11RecoveryAlertConsumer({ alerts: { emit } });
-    await expect(consumer.handle(event(recoveryAlertEventPayload(alert)))).rejects.toThrow("transient");
+    await expect(consumer.handle(event(recoveryAlertEventPayload(alert)))).rejects.toThrow(
+      "transient",
+    );
     await consumer.handle(event(recoveryAlertEventPayload(alert)));
     expect(ids).toEqual([alert.correlationId, alert.correlationId]);
   });
 
   it.each([
-    ["an unknown alert type", { ...recoveryAlertEventPayload(alert), alertType: "m11.order.something_else" }],
+    [
+      "an unknown alert type",
+      { ...recoveryAlertEventPayload(alert), alertType: "m11.order.something_else" },
+    ],
     ["no correlation id", { ...recoveryAlertEventPayload(alert), correlationId: "" }],
     ["no payload object", { ...recoveryAlertEventPayload(alert), alertPayload: null }],
     ["no payload at all", undefined],

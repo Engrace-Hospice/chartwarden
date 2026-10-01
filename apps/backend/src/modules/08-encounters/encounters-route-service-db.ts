@@ -24,8 +24,8 @@ import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
   enhanceNarrative,
-  requiredScalesFor,
   templateKey as hearthnoteTemplateKey,
+  requiredScalesFor,
 } from "@wardenx/hearthnote";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -36,8 +36,8 @@ import {
   type LocalDate,
   NotFoundError,
   type PatientId,
-  type ScaleType,
   STEP_UP_POLICY,
+  type ScaleType,
   type StepUpFactor,
   ValidationError,
 } from "@wardenx/types";
@@ -2324,7 +2324,10 @@ export function createDbEncounterRouteService(
           // F-168 (#248) — the same PHI-safe stand-in `.signed` sends (`final: ""`; the pinned narrative
           // never leaves the outbox in the clear). M22 appends a new `document_version` on the SAME
           // `encounterId` from this.
-          documentRenderPayload: { final: "", addenda: [{ addendumId, reason: a.reason, text: "" }] },
+          documentRenderPayload: {
+            final: "",
+            addenda: [{ addendumId, reason: a.reason, text: "" }],
+          },
         });
         return { status: "signed", signedAt: now.toISOString() };
       });

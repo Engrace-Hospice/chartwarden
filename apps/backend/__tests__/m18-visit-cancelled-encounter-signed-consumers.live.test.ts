@@ -211,7 +211,11 @@ describe.skipIf(!DB_URL)(
       expect(terminal.status).toBe("accepted");
       expect(terminal.version).toBe("0");
 
-      const cancelledEvents = await outboxRowsFor(ORG_A, "m18.evv.aggregator_cancelled", submissionId);
+      const cancelledEvents = await outboxRowsFor(
+        ORG_A,
+        "m18.evv.aggregator_cancelled",
+        submissionId,
+      );
       expect(cancelledEvents).toHaveLength(1);
       expect(cancelledEvents[0].payload).toMatchObject({
         submissionId,
@@ -225,7 +229,9 @@ describe.skipIf(!DB_URL)(
         payload: { visitId, reason: "clinical judgment", reasonCode: "clinical" },
       });
       expect((await submissionRow(submissionId)).version).toBe("1");
-      expect(await outboxRowsFor(ORG_A, "m18.evv.aggregator_cancelled", submissionId)).toHaveLength(1);
+      expect(await outboxRowsFor(ORG_A, "m18.evv.aggregator_cancelled", submissionId)).toHaveLength(
+        1,
+      );
     });
 
     it("m17.visit.cancelled voids an open missing-resolution row via closed_visit_voided, with no resolver stamped", async () => {
@@ -257,7 +263,9 @@ describe.skipIf(!DB_URL)(
         payload: { visitId, reason: "", reasonCode: "clinical" },
       });
       expect((await resolutionRow(resolutionId)).version).toBe("1");
-      expect(await outboxRowsFor(ORG_A, "m18.evv.late_check_resolved", resolutionId)).toHaveLength(1);
+      expect(await outboxRowsFor(ORG_A, "m18.evv.late_check_resolved", resolutionId)).toHaveLength(
+        1,
+      );
     });
 
     it("m17.visit.cancelled never sees another org's rows", async () => {
@@ -291,7 +299,8 @@ describe.skipIf(!DB_URL)(
           visitId,
           signedByMembershipId: signerId,
           evvBracketState: "evv_missing_documented",
-          evvMissingReason: "Device failed to sync at checkout; documented in narrative per policy.",
+          evvMissingReason:
+            "Device failed to sync at checkout; documented in narrative per policy.",
         },
       });
 
@@ -304,7 +313,9 @@ describe.skipIf(!DB_URL)(
       );
       expect(row.encounter_id_source).toBe(encounterId);
 
-      expect(await outboxRowsFor(ORG_A, "m18.evv.late_check_resolved", resolutionId)).toHaveLength(1);
+      expect(await outboxRowsFor(ORG_A, "m18.evv.late_check_resolved", resolutionId)).toHaveLength(
+        1,
+      );
     });
 
     it("m8.encounter.signed (evv_missing_documented) creates an already-closed row when none was open", async () => {
@@ -319,7 +330,8 @@ describe.skipIf(!DB_URL)(
           visitId,
           signedByMembershipId: signerId,
           evvBracketState: "evv_missing_documented",
-          evvMissingReason: "No prior EVV detector flagged this visit; documented directly at sign.",
+          evvMissingReason:
+            "No prior EVV detector flagged this visit; documented directly at sign.",
         },
       });
 

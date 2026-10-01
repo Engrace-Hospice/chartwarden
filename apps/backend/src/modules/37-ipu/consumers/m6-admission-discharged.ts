@@ -94,7 +94,9 @@ function factsOf(payload: unknown): { admissionId: string; reason: string } {
   const admissionId = p.admissionId;
   const reason = p.reason;
   if (typeof admissionId !== "string" || admissionId.length === 0) {
-    throw new Error(`${M37_ADMISSION_DISCHARGED_CONSUMER.consumerName}: payload has no admissionId`);
+    throw new Error(
+      `${M37_ADMISSION_DISCHARGED_CONSUMER.consumerName}: payload has no admissionId`,
+    );
   }
   if (typeof reason !== "string" || reason.length === 0) {
     throw new Error(`${M37_ADMISSION_DISCHARGED_CONSUMER.consumerName}: payload has no reason`);
@@ -123,103 +125,113 @@ export function buildM37AdmissionDischargedConsumer(deps: AdmissionDischargedCon
       // Death discharges are NOT this consumer's job — see file header.
       if (facts.reason === "death") return;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const openAdmissions = await tx
-          .select()
-          .from(A)
-          .where(
-            and(
-              eq(A.organizationId, organizationId),
-              eq(A.admissionId, facts.admissionId),
-              // Drizzle has no `notInArray` shorthand imported here on purpose — an explicit OR-of-`eq`
-              // list keeps the "which states are open" fact in ONE place (the const above) rather than
-              // spread across an inArray-vs-notInArray inversion.
-            ),
-          );
+          const openAdmissions = await tx
+            .select()
+            .from(A)
+            .where(
+              and(
+                eq(A.organizationId, organizationId),
+                eq(A.admissionId, facts.admissionId),
+                // Drizzle has no `notInArray` shorthand imported here on purpose — an explicit OR-of-`eq`
+                // list keeps the "which states are open" fact in ONE place (the const above) rather than
+                // spread across an inArray-vs-notInArray inversion.
+              ),
+            );
 
-        for (const admission of openAdmissions) {
-          if (!(OPEN_ADMISSION_STATES as readonly string[]).includes(admission.state)) continue; // already terminal
+          for (const admission of openAdmissions) {
+            if (!(OPEN_ADMISSION_STATES as readonly string[]).includes(admission.state)) continue; // already terminal
 
-          // Pure, IO-free: throws IpuStateError ILLEGAL_ADMISSION_TRANSITION for a non-`active` open state
-          // (pending/bed_pending/bed_assigned/transferring have no `discharge` edge — file header). Left
-          // to propagate and dead-letter rather than guessed at.
-          const transition = transitionAdmission(admission.state, admission.kind, {
-            type: "discharge",
-            // The event ITSELF is the proof — `dischargeAdmissionTx` only ever fires
-            // `m6.admission.discharged` after the M6 admission row has already been updated to a
-            // discharged state in the SAME transaction.
-            m6AdmissionDischarged: true,
-          });
+            // Pure, IO-free: throws IpuStateError ILLEGAL_ADMISSION_TRANSITION for a non-`active` open state
+            // (pending/bed_pending/bed_assigned/transferring have no `discharge` edge — file header). Left
+            // to propagate and dead-letter rather than guessed at.
+            const transition = transitionAdmission(admission.state, admission.kind, {
+              type: "discharge",
+              // The event ITSELF is the proof — `dischargeAdmissionTx` only ever fires
+              // `m6.admission.discharged` after the M6 admission row has already been updated to a
+              // discharged state in the SAME transaction.
+              m6AdmissionDischarged: true,
+            });
 
-          // CAS on the version this read saw. A lost race (concurrent delivery) or a genuine redelivery
-          // that arrives after an earlier delivery already committed both resolve to zero rows updated.
-          const [updated] = await tx
-            .update(A)
-            .set({ state: transition.to as never, updatedAt: new Date(), version: admission.version + 1 })
-            .where(and(eq(A.id, admission.id), eq(A.version, admission.version)))
-            .returning({ id: A.id });
-          if (!updated) continue;
+            // CAS on the version this read saw. A lost race (concurrent delivery) or a genuine redelivery
+            // that arrives after an earlier delivery already committed both resolve to zero rows updated.
+            const [updated] = await tx
+              .update(A)
+              .set({
+                state: transition.to as never,
+                updatedAt: new Date(),
+                version: admission.version + 1,
+              })
+              .where(and(eq(A.id, admission.id), eq(A.version, admission.version)))
+              .returning({ id: A.id });
+            if (!updated) continue;
 
-          for (const eff of transition.effects) {
-            if (eff.kind === "state_history") {
-              await tx.insert(H).values({
-                organizationId,
-                ipuAdmissionId: admission.id,
-                fromState: transition.from,
-                toState: eff.to,
-                byMembershipId: M37_SYSTEM_MEMBERSHIP_ID,
-                reason: facts.reason,
-              });
-            } else if (eff.kind === "source_bed_cleaning") {
-              // The active (unended) bed assignment for this admission, if any — an `arranged` (remote)
-              // admission has none (`ipu_admission_unit_xor_remote`), and the discharge effect list for
-              // one carries no `source_bed_cleaning` entry to begin with, so this loop body simply never
-              // runs for that kind.
-              const [ba] = await tx
-                .select({ bedId: BA.bedId })
-                .from(BA)
-                .where(and(eq(BA.ipuAdmissionId, admission.id), isNull(BA.endedAt)))
-                .limit(1);
-              if (!ba) continue;
-              const [bed] = await tx.select().from(B).where(eq(B.id, ba.bedId)).limit(1);
-              if (!bed) continue;
-              const bedResult = transitionBedCleaning(bed.cleaningStatus as never, eff.event);
-              await tx
-                .update(B)
-                .set({ cleaningStatus: bedResult.to, cleaningStatusChangedAt: new Date() })
-                .where(eq(B.id, bed.id));
-              await tx.insert(BCE).values({
-                organizationId,
-                bedId: bed.id,
-                fromStatus: bedResult.from,
-                toStatus: bedResult.to,
-                byMembershipId: M37_SYSTEM_MEMBERSHIP_ID,
-              });
-            } else if (eff.kind === "close_irc_episode") {
-              await tx
-                .update(IE)
-                .set({ state: "closed", closedAt: new Date(), closureReason: facts.reason })
-                .where(and(eq(IE.organizationId, organizationId), eq(IE.ipuAdmissionId, admission.id)));
-            } else if (eff.kind === "outbox") {
-              await deps.outbox.publish(tx, {
-                eventName: eff.event,
-                organizationId,
-                aggregateKind: "ipu_admission",
-                aggregateId: admission.id,
-                payload: {
-                  ipuAdmissionId: admission.id,
+            for (const eff of transition.effects) {
+              if (eff.kind === "state_history") {
+                await tx.insert(H).values({
                   organizationId,
+                  ipuAdmissionId: admission.id,
+                  fromState: transition.from,
+                  toState: eff.to,
+                  byMembershipId: M37_SYSTEM_MEMBERSHIP_ID,
                   reason: facts.reason,
-                },
-              });
+                });
+              } else if (eff.kind === "source_bed_cleaning") {
+                // The active (unended) bed assignment for this admission, if any — an `arranged` (remote)
+                // admission has none (`ipu_admission_unit_xor_remote`), and the discharge effect list for
+                // one carries no `source_bed_cleaning` entry to begin with, so this loop body simply never
+                // runs for that kind.
+                const [ba] = await tx
+                  .select({ bedId: BA.bedId })
+                  .from(BA)
+                  .where(and(eq(BA.ipuAdmissionId, admission.id), isNull(BA.endedAt)))
+                  .limit(1);
+                if (!ba) continue;
+                const [bed] = await tx.select().from(B).where(eq(B.id, ba.bedId)).limit(1);
+                if (!bed) continue;
+                const bedResult = transitionBedCleaning(bed.cleaningStatus as never, eff.event);
+                await tx
+                  .update(B)
+                  .set({ cleaningStatus: bedResult.to, cleaningStatusChangedAt: new Date() })
+                  .where(eq(B.id, bed.id));
+                await tx.insert(BCE).values({
+                  organizationId,
+                  bedId: bed.id,
+                  fromStatus: bedResult.from,
+                  toStatus: bedResult.to,
+                  byMembershipId: M37_SYSTEM_MEMBERSHIP_ID,
+                });
+              } else if (eff.kind === "close_irc_episode") {
+                await tx
+                  .update(IE)
+                  .set({ state: "closed", closedAt: new Date(), closureReason: facts.reason })
+                  .where(
+                    and(eq(IE.organizationId, organizationId), eq(IE.ipuAdmissionId, admission.id)),
+                  );
+              } else if (eff.kind === "outbox") {
+                await deps.outbox.publish(tx, {
+                  eventName: eff.event,
+                  organizationId,
+                  aggregateKind: "ipu_admission",
+                  aggregateId: admission.id,
+                  payload: {
+                    ipuAdmissionId: admission.id,
+                    organizationId,
+                    reason: facts.reason,
+                  },
+                });
+              }
+              // `persist_bed_assignment` / `defer_bed_dirty_until_body_release` / `open_body_release` /
+              // `open_irc_episode` never appear in `discharge`'s effect list — no branch needed for them.
             }
-            // `persist_bed_assignment` / `defer_bed_dirty_until_body_release` / `open_body_release` /
-            // `open_irc_episode` never appear in `discharge`'s effect list — no branch needed for them.
           }
-        }
-      });
+        },
+      );
     },
   };
 }

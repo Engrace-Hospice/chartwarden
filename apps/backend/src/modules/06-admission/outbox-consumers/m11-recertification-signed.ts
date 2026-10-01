@@ -35,7 +35,10 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, desc, eq, gt } from "drizzle-orm";
-import { type AdmissionWriteOutboxPort, openNextElectionPeriodInTx } from "../admission-route-service-db";
+import {
+  type AdmissionWriteOutboxPort,
+  openNextElectionPeriodInTx,
+} from "../admission-route-service-db";
 
 export const M6_RECERTIFICATION_SIGNED_CONSUMER = {
   eventName: "m11.order.recertification_signed",
@@ -139,7 +142,9 @@ export async function applyRecertificationSigned(
       const [later] = await tx
         .select({ id: EP.id })
         .from(EP)
-        .where(and(eq(EP.admissionId, admissionId), gt(EP.sequenceNumber, Number(current.sequence))))
+        .where(
+          and(eq(EP.admissionId, admissionId), gt(EP.sequenceNumber, Number(current.sequence))),
+        )
         .limit(1);
       if (later) return { kind: "settled", reason: "next_period_exists" };
 

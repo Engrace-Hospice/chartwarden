@@ -59,14 +59,21 @@ export interface DraftOrderRequestedConsumerDeps {
   ): Promise<DraftOrderAdmissionContext | null>;
 }
 
-const MED_CLASSES: ReadonlySet<string> = new Set(["standard", "controlled_substance", "compounded"]);
+const MED_CLASSES: ReadonlySet<string> = new Set([
+  "standard",
+  "controlled_substance",
+  "compounded",
+]);
 const DEA_SCHEDULES: ReadonlySet<string> = new Set(["II", "III", "IV", "V"]);
 
 function stringField(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   return typeof value === "string" && value.length > 0 ? value : null;
 }
-function nullableStringField(record: Record<string, unknown>, key: string): string | null | undefined {
+function nullableStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | null | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -94,7 +101,8 @@ function parsePayload(payload: unknown): DraftOrderRequestedPayload | null {
   if (!drugName || !strength || !doseForm || !route) return null;
   if (typeof medClass !== "string" || !MED_CLASSES.has(medClass)) return null;
   const deaSchedule = nullableStringField(d, "deaSchedule");
-  if (deaSchedule !== undefined && deaSchedule !== null && !DEA_SCHEDULES.has(deaSchedule)) return null;
+  if (deaSchedule !== undefined && deaSchedule !== null && !DEA_SCHEDULES.has(deaSchedule))
+    return null;
   const rxnormRxcui = nullableStringField(d, "rxnormRxcui");
   const ndc = nullableStringField(d, "ndc");
   if (rxnormRxcui === undefined && d.rxnormRxcui !== undefined) return null; // present but wrong-typed
@@ -149,8 +157,7 @@ export function buildM12DraftOrderRequestedConsumer(
       const context = await deps.resolveAdmissionContext(organizationId, payload.patientId);
       if (!context) {
         throw new Error(
-          `${M12_DRAFT_ORDER_REQUESTED_CONSUMER.consumerName}: patient '${payload.patientId}' has no ` +
-            "active admission; preserving event",
+          `${M12_DRAFT_ORDER_REQUESTED_CONSUMER.consumerName}: patient '${payload.patientId}' has no active admission; preserving event`,
         );
       }
 

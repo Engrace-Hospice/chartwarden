@@ -6,11 +6,23 @@
 // inserts, `.invoice_reconciled` updates the same row. No cross-module FK to M21 (M27's manifest carries
 // no dependsOn edge to 21) — `supply_request_id`/`vendor_id` are opaque uuids. ORG-SCOPED. No PHI (D18):
 // the source events are patient-scoped but patientId is never carried onto this row.
-import { bigint, index, integer, pgEnum, pgTable, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { costReport } from "./cost-report";
 
-export const m27VendorInvoiceStatus = pgEnum("m27_vendor_invoice_status", ["accrued", "reconciled"]);
+export const m27VendorInvoiceStatus = pgEnum("m27_vendor_invoice_status", [
+  "accrued",
+  "reconciled",
+]);
 
 export const vendorInvoiceLine = pgTable(
   "vendor_invoice_line",

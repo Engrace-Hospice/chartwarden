@@ -85,7 +85,9 @@ export function buildM23LateCheckResolvedConsumer(deps: M23LateCheckResolvedCons
         );
       }
 
-      const encounters = await deps.resolveEncounterForVisit.forVisits(event.organizationId, [visitId]);
+      const encounters = await deps.resolveEncounterForVisit.forVisits(event.organizationId, [
+        visitId,
+      ]);
       const encounterId = encounters.get(visitId);
       if (encounterId === undefined) {
         // No M8 encounter is attached to this visit — a real, legal state. Nothing to revalidate; a

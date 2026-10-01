@@ -25,7 +25,7 @@
 // own header for why an unsitable restraint-incident draft is advisory-adjacent rather than integrity-
 // critical.
 import type { DbClient } from "@wardenx/db";
-import { handleRestraintApplied, type IncidentTriggerEvent } from "@wardenx/quality";
+import { type IncidentTriggerEvent, handleRestraintApplied } from "@wardenx/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { M30_SYSTEM_MEMBERSHIP_ID, buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";
 

@@ -91,7 +91,9 @@ export function resolveStormThreshold(env: Readonly<Record<string, string | unde
   const raw = env.M29_ALERT_STORM_THRESHOLD;
   if (raw === undefined || raw.trim() === "") return DEFAULT_STORM_THRESHOLD;
   const n = Number(raw);
-  return Number.isInteger(n) && n >= MIN_STORM_THRESHOLD && n <= MAX_STORM_THRESHOLD ? n : DEFAULT_STORM_THRESHOLD;
+  return Number.isInteger(n) && n >= MIN_STORM_THRESHOLD && n <= MAX_STORM_THRESHOLD
+    ? n
+    : DEFAULT_STORM_THRESHOLD;
 }
 
 /** Which kinds escalate, and to what. Only the per-message failure kind is a RATE worth escalating. */

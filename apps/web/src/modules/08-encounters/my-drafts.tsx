@@ -9,6 +9,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — My Drafts (M8 §5.1, Track B / ADR-0030).
@@ -263,7 +264,12 @@ export function MyDrafts(): JSX.Element {
           </div>
         ) : (
           <>
-            <div style={tableViewportStyle}>
+            <section
+              aria-label="Draft notes"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+              tabIndex={0}
+              style={tableViewportStyle}
+            >
               <table style={tableStyle}>
                 <colgroup>
                   <col style={{ width: "34%" }} />
@@ -287,19 +293,14 @@ export function MyDrafts(): JSX.Element {
                   {pagedItems.map((e) => (
                     <tr
                       key={e.id}
-                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                      role="button"
-                      tabIndex={0}
                       // #91 — a DRAFT opens in the composer, not the read screen. This queue's whole
                       // reason to exist is the note that is not finished yet; until the composer existed
                       // every row led to a read-only view of the thing the author came here to write.
-                      onClick={() => navigate(draftHref(e.patientId, e.id))}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          navigate(draftHref(e.patientId, e.id));
-                        }
-                      }}
+                      {...interactiveRowProps(
+                        () => navigate(draftHref(e.patientId, e.id)),
+                        false,
+                        true,
+                      )}
                       style={{ cursor: "pointer" }}
                     >
                       <td>
@@ -338,7 +339,7 @@ export function MyDrafts(): JSX.Element {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </section>
             <OffsetPagination
               page={activePage}
               pageSize={pageSize}

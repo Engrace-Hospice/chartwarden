@@ -591,9 +591,7 @@ export async function complianceStatesForVisitsForOrg(
     const resolutions = await tx
       .select({ visitId: MR.visitId, status: MR.status })
       .from(MR)
-      .where(
-        and(eq(MR.organizationId, organizationId), inArray(MR.visitId, visitIds as string[])),
-      );
+      .where(and(eq(MR.organizationId, organizationId), inArray(MR.visitId, visitIds as string[])));
 
     const hasCheckIn = new Set<string>();
     const hasCheckOut = new Set<string>();

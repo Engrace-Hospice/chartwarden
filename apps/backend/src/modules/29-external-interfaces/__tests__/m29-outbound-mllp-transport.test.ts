@@ -15,14 +15,15 @@ import * as tls from "node:tls";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { certPinFromPem } from "../feed/cert-pin";
-import { createNodeMllpTransport, type MllpTransportSendInput } from "../outbound/mllp-transport";
 import { MllpFrameBuffer, encodeMllpFrame } from "../listener/mllp-framing";
+import { type MllpTransportSendInput, createNodeMllpTransport } from "../outbound/mllp-transport";
 
 // A wire message carrying an obviously-fake-but-distinctive "PHI-shaped" marker, so test 8 (no PHI
 // leakage) has something identifying to search for in every captured error string.
 const PHI_MARKER = "SSN-999-88-7777-DOE-JOHN-DOB19400101";
 const ORM_WIRE = `MSH|^~\\&|WARDENX|ORG1|LABSYS|LAB1|20260929120000||ORM^O01|MC${Date.now()}|P|2.5.1\rPID|1||MRN1^^^H||DOE^JOHN^^^^^L|||${PHI_MARKER}`;
-const ACK_WIRE = "MSH|^~\\&|LABSYS|LAB1|WARDENX|ORG1|20260929120005||ACK|ACKMC1|P|2.5.1\rMSA|AA|MC1";
+const ACK_WIRE =
+  "MSH|^~\\&|LABSYS|LAB1|WARDENX|ORG1|20260929120005||ACK|ACKMC1|P|2.5.1\rMSA|AA|MC1";
 
 function baseInput(overrides: Partial<MllpTransportSendInput>): MllpTransportSendInput {
   return {
@@ -155,16 +156,19 @@ describe("mllp_plain round trip", () => {
 describe("mllp_tls with channel cert pinning", () => {
   function startTlsAckServer(): { server: tls.Server; receivedFrames: string[] } {
     const receivedFrames: string[] = [];
-    const server = tls.createServer({ cert: tlsCertPem, key: tlsKeyPem, minVersion: "TLSv1.3" }, (socket) => {
-      const buf = new MllpFrameBuffer();
-      socket.on("data", (chunk) => {
-        buf.append(chunk);
-        for (const frame of buf.drain()) {
-          receivedFrames.push(frame);
-          socket.write(encodeMllpFrame(ACK_WIRE));
-        }
-      });
-    });
+    const server = tls.createServer(
+      { cert: tlsCertPem, key: tlsKeyPem, minVersion: "TLSv1.3" },
+      (socket) => {
+        const buf = new MllpFrameBuffer();
+        socket.on("data", (chunk) => {
+          buf.append(chunk);
+          for (const frame of buf.drain()) {
+            receivedFrames.push(frame);
+            socket.write(encodeMllpFrame(ACK_WIRE));
+          }
+        });
+      },
+    );
     return { server, receivedFrames };
   }
 
@@ -257,7 +261,12 @@ describe("connect_timeout", () => {
 
     const transport = createNodeMllpTransport();
     const outcome = await transport.send(
-      baseInput({ protocol: "mllp_tls", channelCertPin: correctPinHex, port, connectTimeoutMs: 200 }),
+      baseInput({
+        protocol: "mllp_tls",
+        channelCertPin: correctPinHex,
+        port,
+        connectTimeoutMs: 200,
+      }),
     );
 
     expect(outcome).toEqual({ kind: "connect_timeout" });
@@ -322,7 +331,10 @@ describe("malformed_response", () => {
     const transport = createNodeMllpTransport();
     const outcome = await transport.send(baseInput({ port }));
 
-    expect(outcome).toEqual({ kind: "malformed_response", errorClass: "connection_closed_mid_frame" });
+    expect(outcome).toEqual({
+      kind: "malformed_response",
+      errorClass: "connection_closed_mid_frame",
+    });
   });
 });
 
@@ -344,7 +356,10 @@ describe("PHI discipline", () => {
 
     // tls_error (pin mismatch)
     {
-      const server = tls.createServer({ cert: tlsCertPem, key: tlsKeyPem, minVersion: "TLSv1.3" }, () => {});
+      const server = tls.createServer(
+        { cert: tlsCertPem, key: tlsKeyPem, minVersion: "TLSv1.3" },
+        () => {},
+      );
       trackConnections(server);
       currentServer = server;
       const port = await listen(server);
@@ -384,14 +399,17 @@ describe("PHI discipline", () => {
 
 describe("F-181 channelCertPin canonical convention through the real transport", () => {
   function tlsAckServer(): tls.Server {
-    const server = tls.createServer({ key: tlsKeyPem, cert: tlsCertPem, minVersion: "TLSv1.3" }, (socket) => {
-      const buf = new MllpFrameBuffer();
-      socket.on("data", (chunk) => {
-        buf.append(chunk);
-        for (const _ of buf.drain()) socket.write(encodeMllpFrame(ACK_WIRE));
-      });
-      socket.on("error", () => undefined);
-    });
+    const server = tls.createServer(
+      { key: tlsKeyPem, cert: tlsCertPem, minVersion: "TLSv1.3" },
+      (socket) => {
+        const buf = new MllpFrameBuffer();
+        socket.on("data", (chunk) => {
+          buf.append(chunk);
+          for (const _ of buf.drain()) socket.write(encodeMllpFrame(ACK_WIRE));
+        });
+        socket.on("error", () => undefined);
+      },
+    );
     trackConnections(server);
     return server;
   }
@@ -424,12 +442,15 @@ describe("F-181 channelCertPin canonical convention through the real transport",
 
   it("a pin of the PEM TEXT (the old schema-comment convention) is refused as a mismatch and sends zero bytes", async () => {
     let bytesReceived = 0;
-    const server = tls.createServer({ key: tlsKeyPem, cert: tlsCertPem, minVersion: "TLSv1.3" }, (socket) => {
-      socket.on("data", (c) => {
-        bytesReceived += c.length;
-      });
-      socket.on("error", () => undefined);
-    });
+    const server = tls.createServer(
+      { key: tlsKeyPem, cert: tlsCertPem, minVersion: "TLSv1.3" },
+      (socket) => {
+        socket.on("data", (c) => {
+          bytesReceived += c.length;
+        });
+        socket.on("error", () => undefined);
+      },
+    );
     trackConnections(server);
     currentServer = server;
     const port = await listen(server);
@@ -456,7 +477,10 @@ describe("F-181 destination policy in the transport", () => {
     const outcome = await createNodeMllpTransport().send(
       baseInput({ host: "metadata.google.internal", port: 80, allowLoopback: true }),
     );
-    expect(outcome).toEqual({ kind: "destination_refused", errorClass: "destination_metadata_host" });
+    expect(outcome).toEqual({
+      kind: "destination_refused",
+      errorClass: "destination_metadata_host",
+    });
   });
 
   it("refuses an IPv4-mapped IPv6 spelling of a link-local address", async () => {

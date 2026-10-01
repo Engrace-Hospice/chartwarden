@@ -54,10 +54,7 @@ import {
   evaluatePeriodAdequacy,
   summarizeAdequacy,
 } from "./certification/adequacy";
-import {
-  computeCtiSignatureDueAt,
-  computeWrittenCertDeadline,
-} from "./certification/window-math";
+import { computeCtiSignatureDueAt, computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
   type DischargeReason,
@@ -1722,7 +1719,9 @@ export function createDbAdmissionRouteService(
                   ev.dischargeType === "death"
                     ? (ev.deathCertifierId ??
                       (() => {
-                        throw conflict("m6.discharge.death cannot be emitted without deathCertifierId");
+                        throw conflict(
+                          "m6.discharge.death cannot be emitted without deathCertifierId",
+                        );
                       })())
                     : undefined,
               },
@@ -2078,9 +2077,7 @@ export function createDbAdmissionRouteService(
           const electionSignatureEvidence = evidenceFacts?.electionSignature;
 
           const uploadedElection =
-            electionEvidence?.sourceType === "uploaded"
-              ? electionEvidence
-              : undefined;
+            electionEvidence?.sourceType === "uploaded" ? electionEvidence : undefined;
 
           const uploadedElectionSignature =
             electionSignatureEvidence?.sourceType === "uploaded"
@@ -2108,13 +2105,9 @@ export function createDbAdmissionRouteService(
                 }
               : uploadedElection
                 ? {
-                    id:
-                      uploadedElection.documentId ??
-                      `uploaded-election-${p.id}`,
+                    id: uploadedElection.documentId ?? `uploaded-election-${p.id}`,
                     status: uploadedElectionSignature ? "signed" : "drafted",
-                    signerKind: uploadedElectionSignature
-                      ? "uploaded"
-                      : "unknown",
+                    signerKind: uploadedElectionSignature ? "uploaded" : "unknown",
                     signedAt: uploadedElectionSignature?.completedAt ?? null,
                     sourceType: "uploaded" as const,
                   }
@@ -4053,9 +4046,7 @@ export function createDbAdmissionRouteService(
           );
         }
         const signatureRequestedAt = now();
-        const signatureDueAt = new Date(
-          computeCtiSignatureDueAt(signatureRequestedAt),
-        );
+        const signatureDueAt = new Date(computeCtiSignatureDueAt(signatureRequestedAt));
 
         const cti = firstOrThrow(
           await tx
@@ -4219,8 +4210,7 @@ export function createDbAdmissionRouteService(
           if (adequacy && adequacy.verdict === "inadequate") {
             throw new WardenXError(
               "ELECTION_PERIOD_ADEQUACY_FAILED",
-              "The election period cannot start: its certification of terminal illness and/or " +
-                `face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
+              `The election period cannot start: its certification of terminal illness and/or face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
               409,
               adequacy.reasonCodes.map((code) => ({ code, message: code })),
             );

@@ -551,7 +551,7 @@ const validationItemStyle = (valid: boolean): CSSProperties => ({
   background: valid
     ? "color-mix(in srgb, var(--color-success) 10%, transparent)"
     : "color-mix(in srgb, var(--color-warning) 12%, transparent)",
-  color: valid ? "var(--color-success)" : "var(--color-warning)",
+  color: `color-mix(in srgb, ${valid ? "var(--color-success)" : "var(--color-warning)"} 60%, var(--color-on-surface))`,
   fontSize: "0.75rem",
   fontWeight: 650,
 });

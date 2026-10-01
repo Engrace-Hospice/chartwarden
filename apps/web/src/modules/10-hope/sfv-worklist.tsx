@@ -270,7 +270,12 @@ export function SfvWorklist(): JSX.Element {
             </div>
           ) : (
             <>
-              <div style={tableViewportStyle}>
+              <section
+                aria-label="SFV worklist"
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+                tabIndex={0}
+                style={tableViewportStyle}
+              >
                 <table style={tableStyle}>
                   <colgroup>
                     <col style={{ width: "19%" }} />
@@ -335,7 +340,7 @@ export function SfvWorklist(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </section>
               <OffsetPagination
                 page={activePage}
                 pageSize={pageSize}
@@ -426,7 +431,7 @@ const errorBannerStyle: CSSProperties = {
   padding: "0.65rem 0.75rem",
   borderRadius: "0.5rem",
   border: "1px solid var(--color-error)",
-  color: "var(--color-error)",
+  color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
   background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
   fontSize: "0.875rem",
 };

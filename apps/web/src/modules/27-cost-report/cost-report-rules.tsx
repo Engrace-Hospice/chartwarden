@@ -360,7 +360,12 @@ export function CostReportRules(): JSX.Element {
           </div>
         ) : (
           <>
-            <div style={tableViewportStyle}>
+            <section
+              aria-label="Validation rules"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+              tabIndex={0}
+              style={tableViewportStyle}
+            >
               <table style={rulesTableStyle}>
                 <colgroup>
                   <col style={{ width: "34%" }} />
@@ -420,7 +425,7 @@ export function CostReportRules(): JSX.Element {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </section>
             <OffsetPagination
               page={activePage}
               pageSize={pageSize}

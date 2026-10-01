@@ -12,13 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-  ATTENTION_TONE,
-  WORKFLOW_TONE,
-  attentionLabel,
-  rfaLabel,
-  stateLabel,
-} from "./hope-status";
+import { ATTENTION_TONE, WORKFLOW_TONE, attentionLabel, rfaLabel, stateLabel } from "./hope-status";
 
 type FixedKind = "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
 
@@ -81,10 +75,7 @@ interface WorkflowState {
   };
 }
 
-const FIXED_LABELS: Record<
-  FixedKind,
-  { title: string; subtitle: string; action: string }
-> = {
+const FIXED_LABELS: Record<FixedKind, { title: string; subtitle: string; action: string }> = {
   "01_admission": {
     title: "HOPE Admission Assessment",
     subtitle: "Admission RFA",
@@ -121,12 +112,9 @@ export function AdmissionHopeOverview(): JSX.Element {
     if (!admissionId) return;
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET(
-      "/api/v1/admissions/{admissionId}/hope",
-      {
-        params: { path: { admissionId } },
-      },
-    );
+    const { data, error: err } = await client.GET("/api/v1/admissions/{admissionId}/hope", {
+      params: { path: { admissionId } },
+    });
     if (err || !data) {
       setError("Unable to load HOPE workflow.");
       setLoading(false);
@@ -142,41 +130,32 @@ export function AdmissionHopeOverview(): JSX.Element {
   }, [load]);
 
   useEffect(() => {
-    if(!state?.patientId) return;
+    if (!state?.patientId) return;
     (async () => {
-      const { data: patientData, error: patientError } = await client.GET(
-        "/api/v1/patients/{id}",
-        {
-          params: {
-            path: {
-              id: state.patientId as string,
-            },
+      const { data: patientData, error: patientError } = await client.GET("/api/v1/patients/{id}", {
+        params: {
+          path: {
+            id: state.patientId as string,
           },
         },
-      );
+      });
 
       if (!patientError && patientData) {
         setPatient(patientData as PatientSummary);
       }
     })();
-      
-  }, [state]);
+  }, [state, client]);
 
   const orderedItems = useMemo(() => {
     if (!state) return [];
-    return [
-      state.admissionAssessment,
-      state.huv1,
-      state.huv2,
-      state.dischargeAssessment,
-    ].sort((a, b) => priority(a.status) - priority(b.status));
+    return [state.admissionAssessment, state.huv1, state.huv2, state.dischargeAssessment].sort(
+      (a, b) => priority(a.status) - priority(b.status),
+    );
   }, [state]);
 
   if (loading) {
     return (
-      <DetailPageLayout
-        header={<PageHeader title="HOPE" breadcrumb="Admissions / HOPE" />}
-      >
+      <DetailPageLayout header={<PageHeader title="HOPE" breadcrumb="Admissions / HOPE" />}>
         <div style={skeletonGrid} aria-label="Loading HOPE workflow">
           {SKELETON_KEYS.map((key) => (
             <div key={key} style={skeletonCard} />
@@ -188,9 +167,7 @@ export function AdmissionHopeOverview(): JSX.Element {
 
   if (error || !state) {
     return (
-      <DetailPageLayout
-        header={<PageHeader title="HOPE" breadcrumb="Admissions / HOPE" />}
-      >
+      <DetailPageLayout header={<PageHeader title="HOPE" breadcrumb="Admissions / HOPE" />}>
         <EmptyState
           title="Unable to load HOPE workflow"
           description={error ?? "The workflow summary was not available."}
@@ -229,39 +206,25 @@ export function AdmissionHopeOverview(): JSX.Element {
                   textDecoration: "none",
                 }}
               >
-                {patient
-                  ? `${patient.firstName} ${patient.lastName}`
-                  : "Loading patient..."}
+                {patient ? `${patient.firstName} ${patient.lastName}` : "Loading patient..."}
               </Link>
             </span>
-            {state.admissionAt
-              ? ` · Admission ${fmtDate(state.admissionAt)}`
-              : ""}
-            {state.admissionStatus
-              ? ` · ${stateLabel(state.admissionStatus)}`
-              : ""}
+            {state.admissionAt ? ` · Admission ${fmtDate(state.admissionAt)}` : ""}
+            {state.admissionStatus ? ` · ${stateLabel(state.admissionStatus)}` : ""}
           </span>
         </PageHeader>
       }
       aside={
         <aside style={summaryPanel} aria-label="HOPE status summary">
           <h2 style={sideTitle}>HOPE status</h2>
-          <Metric
-            label="Action required"
-            value={state.summary.actionableCount}
-          />
+          <Metric label="Action required" value={state.summary.actionableCount} />
           <Metric label="Completed" value={state.summary.completedCount} />
           <Metric label="Overdue/missed" value={state.summary.overdueCount} />
           <Metric label="Due soon" value={state.summary.dueSoonCount ?? 0} />
-          <Metric
-            label="Workflow issues"
-            value={state.summary.workflowIssueCount ?? 0}
-          />
+          <Metric label="Workflow issues" value={state.summary.workflowIssueCount ?? 0} />
           <div style={{ marginTop: "0.75rem" }}>
             <span style={smallLabel}>Next deadline</span>
-            <strong style={deadlineText}>
-              {fmtDate(state.summary.nextDeadline)}
-            </strong>
+            <strong style={deadlineText}>{fmtDate(state.summary.nextDeadline)}</strong>
           </div>
         </aside>
       }
@@ -281,15 +244,10 @@ export function AdmissionHopeOverview(): JSX.Element {
             tone={
               (state.summary.highestSeverity ?? "none") === "none"
                 ? "success"
-                : (ATTENTION_TONE[
-                    severityToAttention(state.summary.highestSeverity ?? "none")
-                  ] ?? "warning")
+                : (ATTENTION_TONE[severityToAttention(state.summary.highestSeverity ?? "none")] ??
+                  "warning")
             }
-            glyph={
-              (state.summary.highestSeverity ?? "none") === "none"
-                ? "check-circle"
-                : "alert"
-            }
+            glyph={(state.summary.highestSeverity ?? "none") === "none" ? "check-circle" : "alert"}
           />
         </section>
 
@@ -299,12 +257,8 @@ export function AdmissionHopeOverview(): JSX.Element {
               key={item.kind}
               item={item}
               onAction={() => {
-                if (item.assessmentId)
-                  navigate(`/hope/assessments/${item.assessmentId}`);
-                else
-                  navigate(
-                    `/admissions/${state.admissionId}/hope/timepoints/${item.kind}`,
-                  );
+                if (item.assessmentId) navigate(`/hope/assessments/${item.assessmentId}`);
+                else navigate(`/admissions/${state.admissionId}/hope/timepoints/${item.kind}`);
               }}
             />
           ))}
@@ -316,23 +270,16 @@ export function AdmissionHopeOverview(): JSX.Element {
               <h2 id="sfv-heading" style={sectionTitle}>
                 Symptom Follow-Up Visits
               </h2>
-              <p style={bodyText}>
-                Triggered follow-ups stay separate from fixed RFA timepoints.
-              </p>
+              <p style={bodyText}>Triggered follow-ups stay separate from fixed RFA timepoints.</p>
             </div>
             <StatusPill
               label={`${state.sfvs.filter((s) => s.status === "open" || s.status === "overdue").length} open`}
-              tone={
-                state.sfvs.some((s) => s.status === "overdue")
-                  ? "warning"
-                  : "progress"
-              }
+              tone={state.sfvs.some((s) => s.status === "overdue") ? "warning" : "progress"}
             />
           </div>
           {state.sfvs.length === 0 ? (
             <p style={emptyText}>
-              No symptom follow-up visits are currently linked to this
-              admission.
+              No symptom follow-up visits are currently linked to this admission.
             </p>
           ) : (
             <div
@@ -346,19 +293,11 @@ export function AdmissionHopeOverview(): JSX.Element {
                 <SfvRow
                   key={sfv.id}
                   sfv={sfv}
-                  onAction={() =>
-                    navigate(
-                      `/admissions/${state.admissionId}/hope/sfv/${sfv.id}`,
-                    )
-                  }
+                  onAction={() => navigate(`/admissions/${state.admissionId}/hope/sfv/${sfv.id}`)}
                   onView={() =>
                     sfv.completingAssessmentId
-                      ? navigate(
-                          `/hope/assessments/${sfv.completingAssessmentId}`,
-                        )
-                      : navigate(
-                          `/admissions/${state.admissionId}/hope/sfv/${sfv.id}`,
-                        )
+                      ? navigate(`/hope/assessments/${sfv.completingAssessmentId}`)
+                      : navigate(`/admissions/${state.admissionId}/hope/sfv/${sfv.id}`)
                   }
                 />
               ))}
@@ -370,16 +309,13 @@ export function AdmissionHopeOverview(): JSX.Element {
           <div>
             <h2 style={sectionTitle}>Clinical Admission Assessment</h2>
             <p style={bodyText}>
-              M9 clinical admission assessment remains separate from the M10
-              HOPE Admission RFA.
+              M9 clinical admission assessment remains separate from the M10 HOPE Admission RFA.
             </p>
           </div>
           {state.patientId ? (
             <button
               type="button"
-              onClick={() =>
-                navigate(`/patients/${state.patientId}/assessments`)
-              }
+              onClick={() => navigate(`/patients/${state.patientId}/assessments`)}
               style={ghostBtn}
             >
               <Glyph name="clipboard-check" size={14} /> Open M9 Assessments
@@ -407,11 +343,7 @@ function HopeTimepointCard({
     !!item.assessmentId;
   const hasDraft = !!item.assessmentId && item.status !== "completed";
   const actionLabel =
-    item.status === "completed"
-      ? "View Assessment"
-      : hasDraft
-        ? "Continue draft"
-        : labels.action;
+    item.status === "completed" ? "View Assessment" : hasDraft ? "Continue draft" : labels.action;
   return (
     <article style={workflowCard}>
       <div style={sectionHeader}>
@@ -430,16 +362,11 @@ function HopeTimepointCard({
               ? (WORKFLOW_TONE[item.status] ?? "neutral")
               : (ATTENTION_TONE[attention.state] ?? "neutral")
           }
-          glyph={glyphFor(
-            attention.state === "none" ? item.status : attention.state,
-          )}
+          glyph={glyphFor(attention.state === "none" ? item.status : attention.state)}
         />
       </div>
       <dl style={definitionList}>
-        <Field
-          label="Window"
-          value={formatWindow(item.windowStart, item.windowEnd)}
-        />
+        <Field label="Window" value={formatWindow(item.windowStart, item.windowEnd)} />
         <Field label="Late deadline" value={fmtDate(item.lateDeadline)} />
         <Field
           label="Status"
@@ -491,9 +418,7 @@ function SfvRow({
       <div style={sfvFacts}>
         <StatusPill
           label={
-            attention.state === "none"
-              ? stateLabel(sfv.status)
-              : attentionLabel(attention.state)
+            attention.state === "none" ? stateLabel(sfv.status) : attentionLabel(attention.state)
           }
           tone={
             attention.state === "none"
@@ -504,9 +429,7 @@ function SfvRow({
         <span style={bodyText}>
           {attention.message
             ? `${attention.message}${
-                attention.deadline
-                  ? ` Deadline ${fmtDate(attention.deadline)}`
-                  : ""
+                attention.deadline ? ` Deadline ${fmtDate(attention.deadline)}` : ""
               }`
             : sfv.status === "completed" && sfv.completedAt
               ? `Completed ${fmtDate(sfv.completedAt)}`
@@ -557,12 +480,7 @@ function Field({
 }
 
 function priority(status: string): number {
-  if (
-    status === "expired" ||
-    status === "overdue" ||
-    status === "missed" ||
-    status === "late"
-  )
+  if (status === "expired" || status === "overdue" || status === "missed" || status === "late")
     return 0;
   if (status === "open") return 1;
   if (status === "upcoming") return 2;
@@ -570,9 +488,7 @@ function priority(status: string): number {
   return 4;
 }
 
-function glyphFor(
-  status: string,
-): "clock" | "check-circle" | "block" | "dot" | "alert" {
+function glyphFor(status: string): "clock" | "check-circle" | "block" | "dot" | "alert" {
   if (status === "completed") return "check-circle";
   if (
     status === "expired" ||
@@ -582,12 +498,7 @@ function glyphFor(
     status === "workflow_issue"
   )
     return "block";
-  if (
-    status === "late" ||
-    status === "overdue" ||
-    status === "due" ||
-    status === "due_soon"
-  )
+  if (status === "late" || status === "overdue" || status === "due" || status === "due_soon")
     return "alert";
   if (status === "upcoming") return "clock";
   return "dot";
@@ -607,10 +518,8 @@ function guidanceFor(item: WorkflowTimepoint): string {
   if (item.status === "late")
     return `Normal window closed ${fmtDate(item.windowEnd)}; late reason required`;
   if (item.status === "expired") return "Allowed capture period has expired";
-  if (item.status === "not_applicable")
-    return "Not applicable for this admission";
-  if (item.status === "workflow_not_initialized")
-    return "Schedule is missing for this admission";
+  if (item.status === "not_applicable") return "Not applicable for this admission";
+  if (item.status === "workflow_not_initialized") return "Schedule is missing for this admission";
   return stateLabel(item.status);
 }
 
@@ -634,11 +543,9 @@ function summaryLabel(state: WorkflowState): string {
   const dueSoonCount = state.summary.dueSoonCount ?? 0;
   if (workflowIssueCount > 0)
     return `${workflowIssueCount} workflow issue${workflowIssueCount === 1 ? "" : "s"}`;
-  if (state.summary.overdueCount > 0)
-    return `${state.summary.overdueCount} overdue or missed`;
+  if (state.summary.overdueCount > 0) return `${state.summary.overdueCount} overdue or missed`;
   if (dueSoonCount > 0) return `${dueSoonCount} due soon`;
-  if (state.summary.actionableCount > 0)
-    return `${state.summary.actionableCount} action required`;
+  if (state.summary.actionableCount > 0) return `${state.summary.actionableCount} action required`;
   return "Up to date";
 }
 
@@ -847,6 +754,5 @@ const skeletonGrid: CSSProperties = {
 const skeletonCard: CSSProperties = {
   minHeight: "8rem",
   borderRadius: "var(--radius-md)",
-  background:
-    "color-mix(in srgb, var(--color-surface-container) 70%, transparent)",
+  background: "color-mix(in srgb, var(--color-surface-container) 70%, transparent)",
 };

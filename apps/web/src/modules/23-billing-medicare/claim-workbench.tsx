@@ -9,6 +9,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM WORKBENCH (R2, §5.1 #2).
@@ -301,17 +302,7 @@ function ClaimTable({
         {claims.map((c) => (
           <tr
             key={c.claimId}
-            // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-            role="button"
-            tabIndex={0}
-            aria-pressed={c.claimId === selectedId}
-            onClick={() => onSelect(c)}
-            onKeyDown={(ev) => {
-              if (ev.key === "Enter" || ev.key === " ") {
-                ev.preventDefault();
-                onSelect(c);
-              }
-            }}
+            {...interactiveRowProps(() => onSelect(c), c.claimId === selectedId, true)}
             className="wx-data-row-interactive"
             style={{
               borderBottom:

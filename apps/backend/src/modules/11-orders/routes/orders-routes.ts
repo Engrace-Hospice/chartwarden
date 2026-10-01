@@ -23,8 +23,8 @@ import {
   CorrectOrderRequest,
   CosignRequest,
   CreateOrderRequest,
-  CreateVerbalOrderRequest,
   CreateStandingOrderRequest,
+  CreateVerbalOrderRequest,
   DiscontinueRequest,
   DiscontinueStandingOrderRequest,
   OrderListQuerySchema,
@@ -48,10 +48,7 @@ import {
 import type { OrderDetailActor, OrderRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (
-  request: FastifyRequest,
-  reply: FastifyReply,
-) => Promise<void>;
+type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OrderRouteDeps {
   service: OrderRouteService;
@@ -66,15 +63,12 @@ function actorOf(request: FastifyRequest): {
   // M7/M8/M9/M10: this used to read `ctx.userId` (the raw Better Auth user id, a DIFFERENT id from
   // the org membership), FK-violating `order_record_drafter_membership_id_membership_id_fk`.
   const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string")
-    throw new UnauthorizedError();
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 /** Assemble the read-projection actor from the authenticated request context and M3's existing resolver. */
-async function detailActorOf(
-  request: FastifyRequest,
-): Promise<OrderDetailActor> {
+async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor> {
   const { organizationId, userId: membershipId } = actorOf(request);
   const ctx = request.context;
   const granted = await resolveActorPermissions({ organizationId, userId: ctx.userId });
@@ -101,9 +95,17 @@ const RECOVER = P("orders.transmission.recover");
 const RECOVER_COSIGN: PreHandler = async (request) => {
   const ctx = request.context;
   if (!ctx?.organizationId) throw new UnauthorizedError();
-  const granted = await resolveActorPermissions({ organizationId: ctx.organizationId, userId: ctx.userId });
-  if (!granted.has("orders.transmission.recover") && !granted.has("orders.transmission.cosign_escalated")) {
-    throw new ForbiddenError("requires permission 'orders.transmission.recover' or 'orders.transmission.cosign_escalated'");
+  const granted = await resolveActorPermissions({
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+  });
+  if (
+    !granted.has("orders.transmission.recover") &&
+    !granted.has("orders.transmission.cosign_escalated")
+  ) {
+    throw new ForbiddenError(
+      "requires permission 'orders.transmission.recover' or 'orders.transmission.cosign_escalated'",
+    );
   }
 };
 // F-188 — a fresh, server-verified second factor for the attested recovery (see the route).
@@ -129,15 +131,9 @@ const ABAC_AMEND = requireAbac("orders.amend", "discipline_can_order", {
   getTarget: kindTarget,
 }) as PreHandler;
 const ABAC_SIGN = requireAbac("orders.sign", "signer_eligible") as PreHandler; // target = :id
-const ABAC_COSIGN = requireAbac(
-  "orders.cosign",
-  "m11.cosigner_role_match",
-) as PreHandler; // target = :id
+const ABAC_COSIGN = requireAbac("orders.cosign", "m11.cosigner_role_match") as PreHandler; // target = :id
 
-export function registerOrderRoutes(
-  app: FastifyInstance,
-  deps: OrderRouteDeps,
-): void {
+export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps): void {
   const { service } = deps;
 
   // 1 — list orders by patient / admission / kind / status.
@@ -252,15 +248,24 @@ export function registerOrderRoutes(
     return reply.code(201).send(res);
   });
 
-  app.post("/api/v1/verbal-orders", { preHandler: [DRAFT, ABAC_DRAFT, VERBAL] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CreateVerbalOrderRequest, request.body);
-    const res = await service.createVerbalOrder(organizationId, userId, {
-      order: body.order,
-      verbal: body.verbal,
-    }, await detailActorOf(request));
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/verbal-orders",
+    { preHandler: [DRAFT, ABAC_DRAFT, VERBAL] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CreateVerbalOrderRequest, request.body);
+      const res = await service.createVerbalOrder(
+        organizationId,
+        userId,
+        {
+          order: body.order,
+          verbal: body.verbal,
+        },
+        await detailActorOf(request),
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   // 2 — order detail with signatures + discontinuation history.
   app.get(
@@ -475,20 +480,24 @@ export function registerOrderRoutes(
   // F-188 — `requireStepUp("order.recover_transmission")`: BOTH attestations are gated (a wrong `not_received_by_lab`
   // orders the test twice; a wrong `received_by_lab` hides an order the lab never got), so a fresh, server-verified
   // second-factor is required on top of `orders.amend`. The body also carries STRUCTURED lab-contact evidence.
-  app.post("/api/v1/orders/:id/recover-transmission", { preHandler: [RECOVER, RECOVER_STEP_UP] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(RecoverLabTransmissionRequest, request.body);
-    return service.recoverLabTransmission(
-      organizationId,
-      userId,
-      id,
-      body.attestation,
-      { contactName: body.contactName, labReference: body.labReference },
-      await detailActorOf(request),
-      request.context?.userId ?? "",
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/recover-transmission",
+    { preHandler: [RECOVER, RECOVER_STEP_UP] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(RecoverLabTransmissionRequest, request.body);
+      return service.recoverLabTransmission(
+        organizationId,
+        userId,
+        id,
+        body.attestation,
+        { contactName: body.contactName, labReference: body.labReference },
+        await detailActorOf(request),
+        request.context?.userId ?? "",
+      );
+    },
+  );
 
   // F-202 — the SECOND person of the two-person control on `not_received_by_lab`. The first call above only FILED a
   // request (`outcome: "pending_cosign"`); THIS executes the re-dispatch, and only for a DIFFERENT user than the one who
@@ -560,42 +569,34 @@ export function registerOrderRoutes(
     },
   );
   // 20 — create template.
-  app.post(
-    "/api/v1/standing-orders",
-    { preHandler: [STANDING_MANAGE] },
-    async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
-      const body = parse(CreateStandingOrderRequest, request.body);
-      const res = await service.createStandingOrder(organizationId, userId, {
-        patientId: body.patientId,
-        admissionId: body.admissionId,
-        kind: body.kind,
-        signerDiscipline: body.signerDiscipline,
-        orderingPhysicianMdmId: body.orderingPhysicianMdmId,
-        cadence: body.cadence,
-        data: body.data,
-        effectiveFrom: body.effectiveFrom,
-        effectiveUntil: body.effectiveUntil,
-        maxSpawns: body.maxSpawns,
-      });
-      return reply.code(201).send(res);
-    },
-  );
+  app.post("/api/v1/standing-orders", { preHandler: [STANDING_MANAGE] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const body = parse(CreateStandingOrderRequest, request.body);
+    const res = await service.createStandingOrder(organizationId, userId, {
+      patientId: body.patientId,
+      admissionId: body.admissionId,
+      kind: body.kind,
+      signerDiscipline: body.signerDiscipline,
+      orderingPhysicianMdmId: body.orderingPhysicianMdmId,
+      cadence: body.cadence,
+      data: body.data,
+      effectiveFrom: body.effectiveFrom,
+      effectiveUntil: body.effectiveUntil,
+      maxSpawns: body.maxSpawns,
+    });
+    return reply.code(201).send(res);
+  });
   // 21 — edit (limited fields when active).
-  app.patch(
-    "/api/v1/standing-orders/:id",
-    { preHandler: [STANDING_MANAGE] },
-    async (request) => {
-      const { organizationId } = actorOf(request);
-      const { id } = parse(StandingOrderParamsSchema, request.params);
-      const body = parse(UpdateStandingOrderRequest, request.body);
-      return service.editStandingOrder(organizationId, id, {
-        data: body.data,
-        effectiveUntil: body.effectiveUntil,
-        maxSpawns: body.maxSpawns,
-      });
-    },
-  );
+  app.patch("/api/v1/standing-orders/:id", { preHandler: [STANDING_MANAGE] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(StandingOrderParamsSchema, request.params);
+    const body = parse(UpdateStandingOrderRequest, request.body);
+    return service.editStandingOrder(organizationId, id, {
+      data: body.data,
+      effectiveUntil: body.effectiveUntil,
+      maxSpawns: body.maxSpawns,
+    });
+  });
   // 22 — pause (no new spawns).
   app.post(
     "/api/v1/standing-orders/:id/pause",
@@ -683,11 +684,7 @@ export function registerOrderRoutes(
       const { organizationId } = actorOf(request);
       const { id } = parse(VerbalTimerParamsSchema, request.params);
       parse(RegenerateVerbalTimerRequest, request.body);
-      return service.regenerateVerbalTimer(
-        organizationId,
-        id,
-        await detailActorOf(request),
-      );
+      return service.regenerateVerbalTimer(organizationId, id, await detailActorOf(request));
     },
   );
 }

@@ -76,7 +76,11 @@ export type OrmResendVerdict =
 /** PURE. Decide whether a resend may act on this order's current state. */
 export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
   if (order.kind !== "lab") {
-    return { ok: false, code: "not_a_lab_order", message: "only a lab order has an outbound HL7 request" };
+    return {
+      ok: false,
+      code: "not_a_lab_order",
+      message: "only a lab order has an outbound HL7 request",
+    };
   }
   if (order.status !== "active") {
     return { ok: false, code: "order_not_active", message: "the order is not active" };
@@ -92,7 +96,7 @@ export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
   // F-187 — a worker refusal (`dispatch_refused:*`) wrote no outbound row either: resendable, and the cause
   // (an inactive/unlinked feed, an incomplete MSH identity, a lapsed BAA) lives outside the order, so there is
   // no SUD / immutable-order carve-out to apply — the producer re-runs its own gates on the resend.
-  if (reason !== null && reason.startsWith(DISPATCH_REFUSED_PREFIX)) {
+  if (reason?.startsWith(DISPATCH_REFUSED_PREFIX)) {
     return { ok: true, priorReason: reason };
   }
   if (reason === null || !reason.startsWith(ORM_REFUSAL_PREFIX)) {
@@ -146,10 +150,16 @@ export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
 export const RECOVERY_BLOCKED_PREFIX = "recovery_blocked:";
 
 export type RecoveryAttestation = "not_received_by_lab" | "received_by_lab";
-export const RECOVERY_ATTESTATIONS: readonly RecoveryAttestation[] = ["not_received_by_lab", "received_by_lab"];
+export const RECOVERY_ATTESTATIONS: readonly RecoveryAttestation[] = [
+  "not_received_by_lab",
+  "received_by_lab",
+];
 
 /** The M29-terminal failure reasons `LabTransmissionApplier` writes verbatim (no prefix). */
-export const RECOVERABLE_M29_FAILURE_REASONS: ReadonlySet<string> = new Set(["dlq_exhausted", "application_reject"]);
+export const RECOVERABLE_M29_FAILURE_REASONS: ReadonlySet<string> = new Set([
+  "dlq_exhausted",
+  "application_reject",
+]);
 
 export type TransmissionRecoveryVerdict =
   | { readonly ok: true; readonly priorReason: string }
@@ -170,7 +180,11 @@ export function classifyTransmissionRecovery(
   attestation: RecoveryAttestation,
 ): TransmissionRecoveryVerdict {
   if (order.kind !== "lab") {
-    return { ok: false, code: "not_a_lab_order", message: "only a lab order has an outbound HL7 request" };
+    return {
+      ok: false,
+      code: "not_a_lab_order",
+      message: "only a lab order has an outbound HL7 request",
+    };
   }
   if (order.status !== "active") {
     return { ok: false, code: "order_not_active", message: "the order is not active" };
@@ -186,7 +200,8 @@ export function classifyTransmissionRecovery(
   // F-188 — a `recovery_blocked:*` reason (an attested re-dispatch the worker could not honour) is recoverable AGAIN,
   // through this attested path only; the contradiction check below re-verifies the outbound evidence first.
   const recoverable =
-    reason !== null && (RECOVERABLE_M29_FAILURE_REASONS.has(reason) || reason.startsWith(RECOVERY_BLOCKED_PREFIX));
+    reason !== null &&
+    (RECOVERABLE_M29_FAILURE_REASONS.has(reason) || reason.startsWith(RECOVERY_BLOCKED_PREFIX));
   if (reason === null || !recoverable) {
     return {
       ok: false,
@@ -245,7 +260,8 @@ export function classifyRecoveryContradiction(
   if (evidence === null) {
     return {
       code: "evidence_unavailable",
-      message: "the outbound evidence needed to verify the attestation is not available, so the re-dispatch is refused",
+      message:
+        "the outbound evidence needed to verify the attestation is not available, so the re-dispatch is refused",
     };
   }
   if (
@@ -256,19 +272,22 @@ export function classifyRecoveryContradiction(
   ) {
     return {
       code: "lab_result_received",
-      message: "the lab has already returned a result for this order, so it cannot have not received it",
+      message:
+        "the lab has already returned a result for this order, so it cannot have not received it",
     };
   }
   if (evidence.owningRowStatuses.includes("acked")) {
     return {
       code: "lab_acknowledged",
-      message: "the lab acknowledged the outbound message for this order, so it cannot have not received it",
+      message:
+        "the lab acknowledged the outbound message for this order, so it cannot have not received it",
     };
   }
   if (evidence.owningRowStatuses.some((s) => s === "queued" || s === "in_flight")) {
     return {
       code: "send_in_progress",
-      message: "a send for this order is still queued or in flight — wait for it to settle before attesting",
+      message:
+        "a send for this order is still queued or in flight — wait for it to settle before attesting",
     };
   }
   return null;

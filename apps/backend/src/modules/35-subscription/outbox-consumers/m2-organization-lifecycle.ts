@@ -127,7 +127,12 @@ export function buildM35OrgLifecycleConsumer(deps: OrgLifecycleConsumerDeps) {
           });
           await deps.outbox.publish(tx, {
             eventName: "m35.subscription.paused",
-            payload: { subscriptionId: sub.id, organizationId, pausedAt: isoReq(at), pausedUntil: null },
+            payload: {
+              subscriptionId: sub.id,
+              organizationId,
+              pausedAt: isoReq(at),
+              pausedUntil: null,
+            },
             organizationId,
             aggregateKind: "subscription",
             aggregateId: sub.id,

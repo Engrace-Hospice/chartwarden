@@ -98,7 +98,9 @@ export interface DeathRecordedConsumerDeps {
 function stringOf(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${M37_DEATH_RECORDED_CONSUMER.consumerName}: '${key}' must be a non-empty string`);
+    throw new Error(
+      `${M37_DEATH_RECORDED_CONSUMER.consumerName}: '${key}' must be a non-empty string`,
+    );
   }
   return value;
 }
@@ -146,114 +148,118 @@ export function buildM37DeathRecordedConsumer(deps: DeathRecordedConsumerDeps) {
         );
       }
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const candidateAdmissions = await tx
-          .select()
-          .from(A)
-          .where(and(eq(A.organizationId, organizationId), eq(A.admissionId, facts.admissionId)));
+          const candidateAdmissions = await tx
+            .select()
+            .from(A)
+            .where(and(eq(A.organizationId, organizationId), eq(A.admissionId, facts.admissionId)));
 
-        for (const admission of candidateAdmissions) {
-          if (!(OPEN_ADMISSION_STATES as readonly string[]).includes(admission.state)) continue; // already terminal (or already deceased)
+          for (const admission of candidateAdmissions) {
+            if (!(OPEN_ADMISSION_STATES as readonly string[]).includes(admission.state)) continue; // already terminal (or already deceased)
 
-          // Pure, IO-free: throws IpuStateError ILLEGAL_ADMISSION_TRANSITION for any state other than
-          // `active` (pending/bed_pending/bed_assigned/transferring have no `recordDeath` edge — file
-          // header). Left to propagate and dead-letter rather than guessed at.
-          const transition = transitionAdmission(admission.state, admission.kind, {
-            type: "recordDeath",
-            // The event ITSELF is the proof, the `m6-admission-discharged.ts` precedent: this consumer
-            // IS the M6 death-event subscriber, and `admission.admissionId === facts.admissionId` was
-            // already the SELECT's own filter.
-            deathEventReferencesAdmission: true,
-            isSystemActor: true,
-          });
+            // Pure, IO-free: throws IpuStateError ILLEGAL_ADMISSION_TRANSITION for any state other than
+            // `active` (pending/bed_pending/bed_assigned/transferring have no `recordDeath` edge — file
+            // header). Left to propagate and dead-letter rather than guessed at.
+            const transition = transitionAdmission(admission.state, admission.kind, {
+              type: "recordDeath",
+              // The event ITSELF is the proof, the `m6-admission-discharged.ts` precedent: this consumer
+              // IS the M6 death-event subscriber, and `admission.admissionId === facts.admissionId` was
+              // already the SELECT's own filter.
+              deathEventReferencesAdmission: true,
+              isSystemActor: true,
+            });
 
-          // CAS on the version this read saw. A lost race (concurrent delivery) or a genuine redelivery
-          // that arrives after an earlier delivery already committed both resolve to zero rows updated.
-          const [updated] = await tx
-            .update(A)
-            .set({
-              state: transition.to as never,
-              deathEventId: facts.dischargeEventId,
-              updatedAt: new Date(),
-              version: admission.version + 1,
-            })
-            .where(and(eq(A.id, admission.id), eq(A.version, admission.version)))
-            .returning({ id: A.id });
-          if (!updated) continue;
+            // CAS on the version this read saw. A lost race (concurrent delivery) or a genuine redelivery
+            // that arrives after an earlier delivery already committed both resolve to zero rows updated.
+            const [updated] = await tx
+              .update(A)
+              .set({
+                state: transition.to as never,
+                deathEventId: facts.dischargeEventId,
+                updatedAt: new Date(),
+                version: admission.version + 1,
+              })
+              .where(and(eq(A.id, admission.id), eq(A.version, admission.version)))
+              .returning({ id: A.id });
+            if (!updated) continue;
 
-          for (const eff of transition.effects) {
-            if (eff.kind === "state_history") {
-              await tx.insert(H).values({
-                organizationId,
-                ipuAdmissionId: admission.id,
-                fromState: transition.from,
-                toState: eff.to,
-                byMembershipId: M37_SYSTEM_MEMBERSHIP_ID,
-                reason: "death",
-              });
-            } else if (eff.kind === "open_body_release") {
-              // Every fact `ipu_body_release` needs beyond the death itself is already ON `ipu_admission`
-              // (ARCH-011) — no cross-module read (see file header).
-              const [br] = await tx
-                .insert(BR)
-                .values({
+            for (const eff of transition.effects) {
+              if (eff.kind === "state_history") {
+                await tx.insert(H).values({
                   organizationId,
                   ipuAdmissionId: admission.id,
-                  providerEntityId: admission.providerEntityId,
-                  locationId: admission.locationId,
-                  patientId: admission.patientId,
-                  deathEventId: facts.dischargeEventId,
-                  pronouncingPhysicianId: facts.deathCertifierId,
-                  pronouncedAt,
-                })
-                .returning({ id: BR.id });
-              if (!br) {
-                throw new Error(
-                  `${M37_DEATH_RECORDED_CONSUMER.consumerName}: ipu_body_release insert returned no row`,
-                );
-              }
-              // `planOpenBodyRelease()` is pure and IO-free (no facts to inject) — the `[*] → pending`
-              // edge, emitting `m37.body_release.pending`.
-              const bodyReleaseTransition = planOpenBodyRelease();
-              for (const brEff of bodyReleaseTransition.effects) {
-                if (brEff.kind === "outbox") {
-                  await deps.outbox.publish(tx, {
-                    eventName: brEff.event,
+                  fromState: transition.from,
+                  toState: eff.to,
+                  byMembershipId: M37_SYSTEM_MEMBERSHIP_ID,
+                  reason: "death",
+                });
+              } else if (eff.kind === "open_body_release") {
+                // Every fact `ipu_body_release` needs beyond the death itself is already ON `ipu_admission`
+                // (ARCH-011) — no cross-module read (see file header).
+                const [br] = await tx
+                  .insert(BR)
+                  .values({
                     organizationId,
-                    aggregateKind: "ipu_body_release",
-                    aggregateId: br.id,
-                    payload: {
-                      ipuAdmissionId: admission.id,
-                      organizationId,
-                      bodyReleaseId: br.id,
-                    },
-                  });
+                    ipuAdmissionId: admission.id,
+                    providerEntityId: admission.providerEntityId,
+                    locationId: admission.locationId,
+                    patientId: admission.patientId,
+                    deathEventId: facts.dischargeEventId,
+                    pronouncingPhysicianId: facts.deathCertifierId,
+                    pronouncedAt,
+                  })
+                  .returning({ id: BR.id });
+                if (!br) {
+                  throw new Error(
+                    `${M37_DEATH_RECORDED_CONSUMER.consumerName}: ipu_body_release insert returned no row`,
+                  );
                 }
-                // `state` needs no interpreter here — the row above was already INSERTed with the
-                // machine's own `to` value (`pending`, the schema column's own default and the only
-                // value this transition ever produces).
-              }
-            } else if (eff.kind === "outbox") {
-              await deps.outbox.publish(tx, {
-                eventName: eff.event,
-                organizationId,
-                aggregateKind: "ipu_admission",
-                aggregateId: admission.id,
-                payload: {
-                  ipuAdmissionId: admission.id,
+                // `planOpenBodyRelease()` is pure and IO-free (no facts to inject) — the `[*] → pending`
+                // edge, emitting `m37.body_release.pending`.
+                const bodyReleaseTransition = planOpenBodyRelease();
+                for (const brEff of bodyReleaseTransition.effects) {
+                  if (brEff.kind === "outbox") {
+                    await deps.outbox.publish(tx, {
+                      eventName: brEff.event,
+                      organizationId,
+                      aggregateKind: "ipu_body_release",
+                      aggregateId: br.id,
+                      payload: {
+                        ipuAdmissionId: admission.id,
+                        organizationId,
+                        bodyReleaseId: br.id,
+                      },
+                    });
+                  }
+                  // `state` needs no interpreter here — the row above was already INSERTed with the
+                  // machine's own `to` value (`pending`, the schema column's own default and the only
+                  // value this transition ever produces).
+                }
+              } else if (eff.kind === "outbox") {
+                await deps.outbox.publish(tx, {
+                  eventName: eff.event,
                   organizationId,
-                  deathEventId: facts.dischargeEventId,
-                },
-              });
+                  aggregateKind: "ipu_admission",
+                  aggregateId: admission.id,
+                  payload: {
+                    ipuAdmissionId: admission.id,
+                    organizationId,
+                    deathEventId: facts.dischargeEventId,
+                  },
+                });
+              }
+              // `defer_bed_dirty_until_body_release` needs no interpreter: its entire job is that no
+              // `source_bed_cleaning` effect fires on THIS transition (the machine's own effect list for
+              // `recordDeath` never includes one — §2.11: the bed stays occupied until release completes).
             }
-            // `defer_bed_dirty_until_body_release` needs no interpreter: its entire job is that no
-            // `source_bed_cleaning` effect fires on THIS transition (the machine's own effect list for
-            // `recordDeath` never includes one — §2.11: the bed stays occupied until release completes).
           }
-        }
-      });
+        },
+      );
     },
   };
 }

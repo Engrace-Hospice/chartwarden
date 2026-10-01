@@ -44,9 +44,9 @@ import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import { getSeam } from "../../../bootstrap/index";
 import {
   DENY_DENIAL_TERMINOLOGY,
-  handleEvvAggregatorRejected,
   type DenialSeedStore,
   type DenialTerminologyLookupPort,
+  handleEvvAggregatorRejected,
 } from "../consumers/handlers";
 import type { WriteOutboxPort } from "../routes/write-service";
 
@@ -107,17 +107,14 @@ async function defaultResolveProviderEntityForVisit(
   visitId: string,
 ): Promise<string | null> {
   try {
-    return await runWithRequestContext(
-      { organizationId, userId: CONSUMER_USER_ID },
-      async () => {
-        // `getSeam` resolves against the M1 registry (packages/types' `VisitReader` contract), not a
-        // compile-time import of M17's own module code — the `claim-match-adapter.ts` shape one file
-        // over, applied across a module boundary M25's manifest `dependsOn` does not include.
-        const reader = getSeam("VisitReader");
-        const visit = await reader.visitForEncounter(organizationId, visitId);
-        return visit?.providerEntityId ?? null;
-      },
-    );
+    return await runWithRequestContext({ organizationId, userId: CONSUMER_USER_ID }, async () => {
+      // `getSeam` resolves against the M1 registry (packages/types' `VisitReader` contract), not a
+      // compile-time import of M17's own module code — the `claim-match-adapter.ts` shape one file
+      // over, applied across a module boundary M25's manifest `dependsOn` does not include.
+      const reader = getSeam("VisitReader");
+      const visit = await reader.visitForEncounter(organizationId, visitId);
+      return visit?.providerEntityId ?? null;
+    });
   } catch {
     return null;
   }

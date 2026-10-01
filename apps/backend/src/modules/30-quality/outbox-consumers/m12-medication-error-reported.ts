@@ -34,7 +34,7 @@
 // gap; a medication-error report against an order this org cannot site is advisory-adjacent, not
 // integrity-critical.
 import type { DbClient } from "@wardenx/db";
-import { handleMedicationErrorReported, type IncidentTriggerEvent } from "@wardenx/quality";
+import { type IncidentTriggerEvent, handleMedicationErrorReported } from "@wardenx/quality";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { buildM30UpstreamConsumerPorts } from "./upstream-consumer-ports";
 

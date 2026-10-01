@@ -89,7 +89,14 @@ describe.skipIf(!DB_URL)(
          VALUES ($1,$2,gen_random_uuid(),gen_random_uuid(),$3,'v1','{}'::jsonb,$4,$5,
                  'rn_case_manager',$6)
          RETURNING id`,
-        [opts.organizationId, opts.providerEntityId, opts.kind, opts.status, memberA, PHYSICIAN_MDM],
+        [
+          opts.organizationId,
+          opts.providerEntityId,
+          opts.kind,
+          opts.status,
+          memberA,
+          PHYSICIAN_MDM,
+        ],
       );
       return rows[0].id as string;
     }

@@ -55,7 +55,7 @@ export function GuardChip({
           display: "inline-flex",
           alignItems: "center",
           gap: "0.2rem",
-          color: fg,
+          color: `color-mix(in srgb, ${fg} 60%, ${t.onSurface})`,
           fontWeight: 600,
           textDecoration: "none",
         }}
@@ -75,7 +75,7 @@ export function GuardChip({
         padding: "0.25rem 0.6rem",
         borderRadius: "9999px",
         background: tint(fg),
-        color: fg,
+        color: `color-mix(in srgb, ${fg} 60%, ${t.onSurface})`,
         fontFamily: t.fontSans,
         fontSize: "0.75rem",
         fontWeight: 500,

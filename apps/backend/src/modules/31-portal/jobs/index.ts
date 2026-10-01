@@ -18,5 +18,8 @@ export {
   graceCutoffDate,
   runPostDischargeGraceSweepOnce,
 } from "./post-discharge-grace-sweep";
-export { registerM31PostDischargeGraceWorker, scheduleM31PostDischargeGraceJob } from "./cron-workers";
+export {
+  registerM31PostDischargeGraceWorker,
+  scheduleM31PostDischargeGraceJob,
+} from "./cron-workers";
 export { M31_PLATFORM_JOB_ID, wireM31Tenancy } from "./wiring";

@@ -1,9 +1,7 @@
 {
   "version": "0.2",
   "language": "en",
-  "ignoreRegExpList": [
-    "/\\b[A-Z][A-Z0-9]*(_[A-Z0-9]+)+\\b/g"
-  ],
+  "ignoreRegExpList": ["/\\b[A-Z][A-Z0-9]*(_[A-Z0-9]+)+\\b/g"],
   "words": [
     "ABAC",
     "acked",

@@ -19,8 +19,7 @@ import type { createDbHopeBackend } from "../src/modules/10-hope/hope-route-serv
 type HopeSvc = ReturnType<typeof createDbHopeBackend>;
 
 /** Items the workflow owns (A0050 type-of-record, J2052/J2053 SFV outputs, ...) — never generically answered. */
-export const HOPE_WORKFLOW_ITEMS =
-  /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
+export const HOPE_WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
 
 /** Required-at-least-one checklists: [stem, the real CMS value we check when the record has none]. */
 const CHECKLIST_GROUPS: ReadonlyArray<readonly [stem: string, pick: string]> = [
@@ -100,9 +99,7 @@ export async function answerHopeForSign(
             : (real[0] ?? "0");
     }
     if (Object.keys(changes).length === 0) {
-      throw new Error(
-        `HOPE ${id} is not sign-ready: ${JSON.stringify(review.readiness.blockers)}`,
-      );
+      throw new Error(`HOPE ${id} is not sign-ready: ${JSON.stringify(review.readiness.blockers)}`);
     }
     await patch(changes);
   }

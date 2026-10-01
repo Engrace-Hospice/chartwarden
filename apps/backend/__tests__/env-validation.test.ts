@@ -312,6 +312,8 @@ describe("F-181 — M29_ALLOW_MLLP_PLAIN is forbidden in production", () => {
       collectEnvProblems({ ...GOOD, M29_ALLOW_MLLP_PLAIN: "false" }).map((p) => p.key),
     ).toContain("M29_ALLOW_MLLP_PLAIN");
     expect(collectEnvProblems(GOOD).map((p) => p.key)).not.toContain("M29_ALLOW_MLLP_PLAIN");
-    expect(collectEnvProblems({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })).toEqual([]);
+    expect(collectEnvProblems({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })).toEqual(
+      [],
+    );
   });
 });

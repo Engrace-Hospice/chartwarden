@@ -77,7 +77,9 @@ export class OnCallRosterSyncQueueRepository {
    * untouched: the catch-up's whole job is to cover an org NOTHING has recently touched, not to race an
    * event-triggered window.
    */
-  async ensureCatchUpPending(input: EnsureCatchUpPendingInput): Promise<{ readonly created: boolean }> {
+  async ensureCatchUpPending(
+    input: EnsureCatchUpPendingInput,
+  ): Promise<{ readonly created: boolean }> {
     const now = input.now ?? new Date();
     const [row] = await this.db
       .insert(Q)

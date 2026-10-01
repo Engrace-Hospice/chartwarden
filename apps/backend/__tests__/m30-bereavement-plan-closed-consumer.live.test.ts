@@ -13,8 +13,8 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildM30BereavementPlanClosedConsumer } from "../src/modules/30-quality/index";
 import { bereavementPlanSitingForOrg } from "../src/modules/16-bereavement/seams/plan-provider-entity-for-org";
+import { buildM30BereavementPlanClosedConsumer } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -91,7 +91,10 @@ describe.skipIf(!DB_URL)(
     });
 
     it("resolves providerEntityId via the plan and enqueues ONLY bereavement_coverage_rate, and a redelivery does not duplicate the row", async () => {
-      const consumer = buildM30BereavementPlanClosedConsumer({ db: handle.db, bereavementPlanSitingForOrg });
+      const consumer = buildM30BereavementPlanClosedConsumer({
+        db: handle.db,
+        bereavementPlanSitingForOrg,
+      });
       const event = {
         id: "88888888-8888-4888-8888-888888888888",
         organizationId: ORG_A,
@@ -122,7 +125,10 @@ describe.skipIf(!DB_URL)(
     });
 
     it("a planId this org does not recognise (cross-tenant / stale redelivery) is a silent no-op", async () => {
-      const consumer = buildM30BereavementPlanClosedConsumer({ db: handle.db, bereavementPlanSitingForOrg });
+      const consumer = buildM30BereavementPlanClosedConsumer({
+        db: handle.db,
+        bereavementPlanSitingForOrg,
+      });
       const event = {
         id: "99999999-9999-4999-8999-999999999999",
         organizationId: ORG_B, // planA belongs to ORG_A

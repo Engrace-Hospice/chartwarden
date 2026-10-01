@@ -331,8 +331,12 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
             },
             scope,
           ),
-          scope.fromIso !== undefined ? gte(COP_CREDIT.deathDate, scope.fromIso.slice(0, 10)) : undefined,
-          scope.toIso !== undefined ? lte(COP_CREDIT.deathDate, scope.toIso.slice(0, 10)) : undefined,
+          scope.fromIso !== undefined
+            ? gte(COP_CREDIT.deathDate, scope.fromIso.slice(0, 10))
+            : undefined,
+          scope.toIso !== undefined
+            ? lte(COP_CREDIT.deathDate, scope.toIso.slice(0, 10))
+            : undefined,
         ].filter((f): f is NonNullable<typeof f> => f !== undefined);
         const [creditRow] = await tx
           .select({ n: sql<number>`count(*)::int` })

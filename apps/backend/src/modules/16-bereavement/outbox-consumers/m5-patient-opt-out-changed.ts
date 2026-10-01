@@ -54,8 +54,8 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { BereavementPlanClosureReason, IsoInstant, MembershipId } from "@wardenx/types";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { BereavementSideEffect } from "../lifecycle/effects";
 import { decidePatientOptOutFlip } from "../lifecycle/cascades";
+import type { BereavementSideEffect } from "../lifecycle/effects";
 import { transitionBereavementPlan } from "../lifecycle/index";
 import { type EffectContext, runEffects } from "../routes/effects-runner";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -85,10 +85,14 @@ function factsOf(payload: unknown): { patientId: string; optedOut: boolean } {
   const patientId = p.patientId;
   const optedOut = p.optedOut;
   if (typeof patientId !== "string" || patientId.length === 0) {
-    throw new Error(`${M16_PATIENT_OPT_OUT_CHANGED_CONSUMER.consumerName}: payload has no patientId`);
+    throw new Error(
+      `${M16_PATIENT_OPT_OUT_CHANGED_CONSUMER.consumerName}: payload has no patientId`,
+    );
   }
   if (typeof optedOut !== "boolean") {
-    throw new Error(`${M16_PATIENT_OPT_OUT_CHANGED_CONSUMER.consumerName}: payload has no optedOut flag`);
+    throw new Error(
+      `${M16_PATIENT_OPT_OUT_CHANGED_CONSUMER.consumerName}: payload has no optedOut flag`,
+    );
   }
   return { patientId, optedOut };
 }
@@ -122,7 +126,9 @@ export function buildM16PatientOptOutChangedConsumer(deps: PatientOptOutChangedD
           const plans = await tx
             .select()
             .from(PLAN)
-            .where(and(eq(PLAN.organizationId, organizationId), eq(PLAN.patientId, facts.patientId)));
+            .where(
+              and(eq(PLAN.organizationId, organizationId), eq(PLAN.patientId, facts.patientId)),
+            );
 
           for (const plan of plans) {
             const action = decidePatientOptOutFlip(plan.status, facts.optedOut);
@@ -276,7 +282,11 @@ async function cancelFutureOutreach(
     .select({ id: OUTREACH.id })
     .from(OUTREACH)
     .where(
-      and(eq(OUTREACH.planId, planId), eq(OUTREACH.status, "scheduled"), gte(OUTREACH.dueAt, new Date(at))),
+      and(
+        eq(OUTREACH.planId, planId),
+        eq(OUTREACH.status, "scheduled"),
+        gte(OUTREACH.dueAt, new Date(at)),
+      ),
     );
   if (rows.length === 0) return;
   await tx

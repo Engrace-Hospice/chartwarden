@@ -1,3 +1,7 @@
+import { capYearForDate } from "@wardenx/cap-management";
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
+import { and, eq, sql } from "drizzle-orm";
 // apps/backend/src/modules/26-cap/consumers/drizzle-store.ts — the Drizzle-backed `CapConsumerStore`
 // (F-131, #248). `./handlers.ts`'s five §4.4 handlers (`handleRemittancePosted`, `handleClaimReversed`,
 // `handleInpatientDay`, `handleFreeze`, `handleTransfer`) have been complete, pure and unit-tested since
@@ -36,15 +40,7 @@
 // having happened (checked via `.returning()`), so a replay increments nothing twice. The roll-up
 // UPDATEs themselves are single atomic `SET col = col + delta` statements — safe under concurrent
 // deliveries for the same patient, never a read-then-write-back race.
-import {
-  type AccrualLineToRecord,
-  type CapConsumerStore,
-  type InpatientDayToRecord,
-} from "./handlers";
-import { capYearForDate } from "@wardenx/cap-management";
-import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, sql } from "drizzle-orm";
+import type { AccrualLineToRecord, CapConsumerStore, InpatientDayToRecord } from "./handlers";
 
 const P = schema.capPeriod;
 const BA = schema.capBeneficiaryAccrual;
@@ -97,14 +93,18 @@ export function createDrizzleCapConsumerStore(
     dateIso: string,
   ): Promise<CapPeriodRow | null> {
     const capYear = capYearForDate(dateIso.slice(0, 10));
-    return withOrgContext(db, { organizationId, userId: CAP_CONSUMER_SYSTEM_USER_ID }, async (tx) => {
-      const [row] = await tx
-        .select({ id: P.id, startsOn: P.startsOn, endsOn: P.endsOn })
-        .from(P)
-        .where(and(eq(P.organizationId, organizationId), eq(P.capYear, capYear)))
-        .limit(1);
-      return row ?? null;
-    });
+    return withOrgContext(
+      db,
+      { organizationId, userId: CAP_CONSUMER_SYSTEM_USER_ID },
+      async (tx) => {
+        const [row] = await tx
+          .select({ id: P.id, startsOn: P.startsOn, endsOn: P.endsOn })
+          .from(P)
+          .where(and(eq(P.organizationId, organizationId), eq(P.capYear, capYear)))
+          .limit(1);
+        return row ?? null;
+      },
+    );
   }
 
   /**

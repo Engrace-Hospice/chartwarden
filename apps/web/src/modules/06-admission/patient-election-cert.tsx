@@ -10,7 +10,6 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 import type { StatusTone } from "@wardenx/ui";
-import { useSession } from "../../shell/session";
 // apps/web/src/modules/06-admission — patient-scoped Election & Certification (M6 §5.2/§5.3, Track B).
 // Spec: docs/modules/WARDENX_MODULE_06_ADMISSION_SPEC — the per-patient slice reached from the patient
 // chart "Election & Certification" tab. A Patient Workspace (banner + shared module rail) over the
@@ -21,8 +20,9 @@ import { useSession } from "../../shell/session";
 // patient with no admission renders an honest empty state, never fabricated certification data.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { useParams, Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 
 interface Bundle {
@@ -132,8 +132,7 @@ export function PatientElectionCert(): JSX.Element {
     roles.includes("medical_director") ||
     roles.includes("hospice_physician");
 
-  const canSignCti =
-    roles.includes("medical_director") || roles.includes("hospice_physician");
+  const canSignCti = roles.includes("medical_director") || roles.includes("hospice_physician");
 
   const canManageF2f =
     roles.includes("medical_director") ||
@@ -175,16 +174,13 @@ export function PatientElectionCert(): JSX.Element {
       setSigningCtiId(ctiId);
       setActionError(null);
 
-      const { data: currentCti, error: readError } = await client.GET(
-        "/api/v1/cti/{id}",
-        {
-          params: {
-            path: {
-              id: ctiId,
-            },
+      const { data: currentCti, error: readError } = await client.GET("/api/v1/cti/{id}", {
+        params: {
+          path: {
+            id: ctiId,
           },
         },
-      );
+      });
 
       if (readError || !currentCti) {
         setActionError("Could not load the current CTI.");
@@ -196,19 +192,16 @@ export function PatientElectionCert(): JSX.Element {
         version: number;
       };
 
-      const { error: signError } = await client.POST(
-        "/api/v1/cti/{id}/sign-hospice-md",
-        {
-          params: {
-            path: {
-              id: ctiId,
-            },
+      const { error: signError } = await client.POST("/api/v1/cti/{id}/sign-hospice-md", {
+        params: {
+          path: {
+            id: ctiId,
           },
-          body: {
-            ifVersion: detail.version,
-          } as never,
         },
-      );
+        body: {
+          ifVersion: detail.version,
+        } as never,
+      });
 
       if (signError) {
         setActionError(
@@ -304,21 +297,15 @@ export function PatientElectionCert(): JSX.Element {
                     {admission.dischargedAt ? (
                       <>
                         <dt style={dtStyle}>Discharged</dt>
-                        <dd style={ddStyle}>
-                          {fmtDate(admission.dischargedAt)}
-                        </dd>
+                        <dd style={ddStyle}>{fmtDate(admission.dischargedAt)}</dd>
                       </>
                     ) : null}
                   </dl>
                 </section>
 
-                <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>
-                  Benefit periods
-                </h2>
+                <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>Benefit periods</h2>
                 {data && data.periods.length === 0 ? (
-                  <p style={meta}>
-                    No benefit periods opened yet for this admission.
-                  </p>
+                  <p style={meta}>No benefit periods opened yet for this admission.</p>
                 ) : (
                   <div
                     style={{
@@ -328,10 +315,7 @@ export function PatientElectionCert(): JSX.Element {
                     }}
                   >
                     {data?.periods.map((p) => (
-                      <section
-                        key={p.id}
-                        style={{ ...cardSurface, padding: "1rem 1.125rem" }}
-                      >
+                      <section key={p.id} style={{ ...cardSurface, padding: "1rem 1.125rem" }}>
                         <div
                           style={{
                             display: "flex",
@@ -346,10 +330,7 @@ export function PatientElectionCert(): JSX.Element {
                           <span style={{ color: t.muted, fontSize: "0.78rem" }}>
                             {stateLabel(p.periodKind)}
                           </span>
-                          <StatusPill
-                            label={stateLabel(p.status)}
-                            tone={subTone(p.status)}
-                          />
+                          <StatusPill label={stateLabel(p.status)} tone={subTone(p.status)} />
                           <span
                             style={{
                               marginLeft: "auto",
@@ -376,9 +357,7 @@ export function PatientElectionCert(): JSX.Element {
                                         : "Signature pending",
                                     ].join(" · ")
                                   : [
-                                      stateLabel(
-                                        p.electionStatement.signerKind,
-                                      ),
+                                      stateLabel(p.electionStatement.signerKind),
                                       p.electionStatement.signedAt
                                         ? `Signed ${fmtDate(p.electionStatement.signedAt)}`
                                         : "Signature pending",
@@ -422,38 +401,26 @@ export function PatientElectionCert(): JSX.Element {
                                   </dd>
 
                                   <dt style={dtStyle}>Status</dt>
-                                  <dd style={ddStyle}>
-                                    {stateLabel(p.cti.status)}
-                                  </dd>
+                                  <dd style={ddStyle}>{stateLabel(p.cti.status)}</dd>
 
                                   <dt style={dtStyle}>Period start</dt>
-                                  <dd style={ddStyle}>
-                                    {fmtDate(p.cti.periodStart)}
-                                  </dd>
+                                  <dd style={ddStyle}>{fmtDate(p.cti.periodStart)}</dd>
 
                                   <dt style={dtStyle}>Period end</dt>
-                                  <dd style={ddStyle}>
-                                    {fmtDate(p.cti.periodEnd)}
-                                  </dd>
+                                  <dd style={ddStyle}>{fmtDate(p.cti.periodEnd)}</dd>
 
                                   <dt style={dtStyle}>Hospice MD</dt>
                                   <dd style={ddStyle}>
-                                    {p.cti.hospiceMdSigned
-                                      ? "Signed"
-                                      : "Pending"}
+                                    {p.cti.hospiceMdSigned ? "Signed" : "Pending"}
                                   </dd>
 
                                   <dt style={dtStyle}>Attending</dt>
                                   <dd style={ddStyle}>
-                                    {p.cti.attendingMdSigned
-                                      ? "Signed"
-                                      : "Pending"}
+                                    {p.cti.attendingMdSigned ? "Signed" : "Pending"}
                                   </dd>
 
                                   <dt style={dtStyle}>Late</dt>
-                                  <dd style={ddStyle}>
-                                    {p.cti.signedLate ? "Yes" : "No"}
-                                  </dd>
+                                  <dd style={ddStyle}>{p.cti.signedLate ? "Yes" : "No"}</dd>
                                 </dl>
                               ) : null
                             }
@@ -481,9 +448,7 @@ export function PatientElectionCert(): JSX.Element {
                                       return p?.cti && void signCti(p.cti.id);
                                     }}
                                   >
-                                    {signingCtiId === p.cti.id
-                                      ? "Signing..."
-                                      : "Sign CTI"}
+                                    {signingCtiId === p.cti.id ? "Signing..." : "Sign CTI"}
                                   </button>
                                 ) : null}
                               </>
@@ -500,9 +465,7 @@ export function PatientElectionCert(): JSX.Element {
                                     p.faceToFace.encounterDate
                                       ? fmtDate(p.faceToFace.encounterDate)
                                       : null,
-                                    p.faceToFace.attested
-                                      ? "Attested"
-                                      : "Pending attestation",
+                                    p.faceToFace.attested ? "Attested" : "Pending attestation",
                                   ]
                                     .filter(Boolean)
                                     .join(" · ")
@@ -512,19 +475,13 @@ export function PatientElectionCert(): JSX.Element {
                               p.faceToFace ? (
                                 <dl style={compactDetailGrid}>
                                   <dt style={dtStyle}>Status</dt>
-                                  <dd style={ddStyle}>
-                                    {stateLabel(p.faceToFace.status)}
-                                  </dd>
+                                  <dd style={ddStyle}>{stateLabel(p.faceToFace.status)}</dd>
 
                                   <dt style={dtStyle}>Performer</dt>
-                                  <dd style={ddStyle}>
-                                    {stateLabel(p.faceToFace.performerRole)}
-                                  </dd>
+                                  <dd style={ddStyle}>{stateLabel(p.faceToFace.performerRole)}</dd>
 
                                   <dt style={dtStyle}>Encounter date</dt>
-                                  <dd style={ddStyle}>
-                                    {fmtDate(p.faceToFace.encounterDate)}
-                                  </dd>
+                                  <dd style={ddStyle}>{fmtDate(p.faceToFace.encounterDate)}</dd>
 
                                   <dt style={dtStyle}>Within window</dt>
                                   <dd style={ddStyle}>
@@ -542,9 +499,7 @@ export function PatientElectionCert(): JSX.Element {
 
                                   <dt style={dtStyle}>Attestation</dt>
                                   <dd style={ddStyle}>
-                                    {p.faceToFace.attested
-                                      ? "Attested"
-                                      : "Pending"}
+                                    {p.faceToFace.attested ? "Attested" : "Pending"}
                                   </dd>
                                 </dl>
                               ) : null
@@ -552,8 +507,7 @@ export function PatientElectionCert(): JSX.Element {
                             footer={
                               canManageF2f ? (
                                 <span style={permissionHint}>
-                                  Hospice MD / NP actions available for this
-                                  record.
+                                  Hospice MD / NP actions available for this record.
                                 </span>
                               ) : (
                                 <span style={permissionHint}>Read only</span>
@@ -580,9 +534,7 @@ export function PatientElectionCert(): JSX.Element {
               <h2 style={railTitle}>Compliance windows</h2>
 
               {windows.length === 0 ? (
-                <p style={meta}>
-                  No open compliance windows for this admission.
-                </p>
+                <p style={meta}>No open compliance windows for this admission.</p>
               ) : (
                 <ul
                   style={{
@@ -721,11 +673,7 @@ function BundleCell({
       ) : (
         <StatusPill label="Missing" tone="neutral" />
       )}
-      <div
-        style={{ color: t.muted, fontSize: "0.74rem", marginTop: "0.35rem" }}
-      >
-        {detail}
-      </div>
+      <div style={{ color: t.muted, fontSize: "0.74rem", marginTop: "0.35rem" }}>{detail}</div>
     </div>
   );
 }
