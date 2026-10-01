@@ -190,7 +190,7 @@ export function ReferralDetail(): JSX.Element {
                       })
                     }
                   >
-                    Mark Qualified
+                    Ready to process
                   </Button>
                 ) : null}
               </div>
