@@ -8,7 +8,8 @@ on:
   pull_request:
     branches:
       # - develop
-      - main
+      # - main
+      - fix/admission
 
   # Callable as a reusable workflow so `deploy.yml` can require THIS ENTIRE workflow — every job
   # below, live-DB suites included — before it publishes an image or touches the production VPS
