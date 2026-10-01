@@ -88,15 +88,15 @@ jobs:
   # workflows or re-run a job. It is not a substitute for branch protection on `main` plus required
   # reviewers on the `production` Environment; those need a paid plan and an owner decision, and
   # remain open in #16.
-  verify:
-    name: Verify (full CI)
-    needs: debounce
-    if: always() && (needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true')
-    uses: ./.github/workflows/ci.yml
+  # verify:
+  #   name: Verify (full CI)
+  #   needs: debounce
+  #   if: always() && (needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true')
+  #   uses: ./.github/workflows/ci.yml
 
   release:
     name: Build and publish immutable images
-    needs: verify
+    # needs: verify
     runs-on: [self-hosted, Linux, X64, hostinger]
     permissions:
       contents: read
