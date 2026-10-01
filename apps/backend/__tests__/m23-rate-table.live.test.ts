@@ -135,7 +135,7 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
     ]);
     appUrl = await appRoleConnectionString(admin, DB_URL as string);
     handle = createDbClient({ connectionString: appUrl });
-  });
+  }, 180_000);
 
   afterAll(async () => {
     await handle?.close();
