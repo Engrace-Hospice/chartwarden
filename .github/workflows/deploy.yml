@@ -95,6 +95,8 @@ jobs:
   #   uses: ./.github/workflows/ci.yml
 
   release:
+    needs: debounce
+    if: needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true'
     name: Build and publish immutable images
     # needs: verify
     runs-on: [self-hosted, Linux, X64, hostinger]

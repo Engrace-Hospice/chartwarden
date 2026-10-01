@@ -21,6 +21,12 @@
 FROM oven/bun:1.3.5-slim AS base
 WORKDIR /app
 
+# Refresh OS packages (fixes the util-linux/bsdutils findings, which all have fixes)
+ARG OS_REFRESH=none
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+
 # Manifest-first layer caching would normally COPY every workspace package.json individually before
 # the full source; with 48 packages + 4 apps (architecture/module-manifest.ts) that COPY list would
 # silently drift out of sync as new modules are scaffolded. Trading some cache granularity for a
