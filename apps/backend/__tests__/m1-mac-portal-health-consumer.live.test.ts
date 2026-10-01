@@ -104,7 +104,9 @@ describe.skipIf(!DB_URL)(
 
     /** Every `outbox_event` row with this event type, read via the ADMIN (superuser/BYPASSRLS) connection
      *  — see the file header for why `wardenx_app` itself cannot read a NULL-organization_id row back. */
-    async function platformRowsFor(eventType: string): Promise<Array<{ payload: unknown; organization_id: string | null }>> {
+    async function platformRowsFor(
+      eventType: string,
+    ): Promise<Array<{ payload: unknown; organization_id: string | null }>> {
       const res = await admin.query(
         `SELECT payload, organization_id FROM outbox_event WHERE event_type = $1 ORDER BY created_at`,
         [eventType],
@@ -138,7 +140,8 @@ describe.skipIf(!DB_URL)(
           probeHealth: async (j: string) => opts.probeUp[j] ?? true,
         },
         jurisdictions: {
-          listJurisdictions: async () => opts.jurisdictions.map((macJurisdiction) => ({ macJurisdiction })),
+          listJurisdictions: async () =>
+            opts.jurisdictions.map((macJurisdiction) => ({ macJurisdiction })),
         },
       } as M23WorkerDeps;
     }
@@ -266,7 +269,10 @@ describe.skipIf(!DB_URL)(
     it("scopes two jurisdictions probed in the same tick to two independent system_status components", async () => {
       const breaker = new Map<string, MacPortalBreakerState>([
         ["ngs-j6", { up: true, lastUpAt: new Date("2026-09-28T13:00:00.000Z"), downedAt: null }],
-        ["palmetto-jj", { up: true, lastUpAt: new Date("2026-09-28T13:00:00.000Z"), downedAt: null }],
+        [
+          "palmetto-jj",
+          { up: true, lastUpAt: new Date("2026-09-28T13:00:00.000Z"), downedAt: null },
+        ],
       ]);
       const published: Array<{ eventName: string; payload: unknown }> = [];
       await runMacPortalHealth(

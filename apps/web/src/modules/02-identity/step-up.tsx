@@ -31,10 +31,7 @@ function toBase64Url(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /**
@@ -82,9 +79,7 @@ export function StepUp(): JSX.Element {
 
   const hasPasskey = webauthnAvailable();
   // Prefer the passkey ceremony when the browser supports it; the TOTP code is always available.
-  const [mode, setMode] = useState<"webauthn" | "totp">(
-    hasPasskey ? "webauthn" : "totp",
-  );
+  const [mode, setMode] = useState<"webauthn" | "totp">(hasPasskey ? "webauthn" : "totp");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -133,9 +128,7 @@ export function StepUp(): JSX.Element {
 
     if (verified.error) {
       if (handledLockout(verified.response?.status)) return;
-      setError(
-        "That code didn’t verify. Check your authenticator app and try again.",
-      );
+      setError("That code didn’t verify. Check your authenticator app and try again.");
       setCode("");
       return;
     }
@@ -198,9 +191,7 @@ export function StepUp(): JSX.Element {
 
     if (verified.error) {
       if (handledLockout(verified.response?.status)) return;
-      setError(
-        "That passkey didn’t verify. Try again, or use an authenticator code.",
-      );
+      setError("That passkey didn’t verify. Try again, or use an authenticator code.");
       return;
     }
     navigate(returnTo); // freshness recorded — resume the action that required step-up
@@ -227,12 +218,7 @@ export function StepUp(): JSX.Element {
 
         {mode === "webauthn" ? (
           <>
-            <button
-              type="button"
-              onClick={verifyPasskey}
-              disabled={busy}
-              style={primaryBtn}
-            >
+            <button type="button" onClick={verifyPasskey} disabled={busy} style={primaryBtn}>
               {busy ? "Waiting for passkey…" : "Verify with a passkey"}
             </button>
             {error ? (
@@ -246,12 +232,7 @@ export function StepUp(): JSX.Element {
                 {error}
               </p>
             ) : null}
-            <button
-              type="button"
-              onClick={() => setMode("totp")}
-              disabled={busy}
-              style={linkBtn}
-            >
+            <button type="button" onClick={() => setMode("totp")} disabled={busy} style={linkBtn}>
               Use an authenticator code instead
             </button>
           </>
@@ -291,11 +272,7 @@ export function StepUp(): JSX.Element {
                 {error}
               </p>
             ) : null}
-            <button
-              type="submit"
-              disabled={busy || code.length !== 6}
-              style={primaryBtn}
-            >
+            <button type="submit" disabled={busy || code.length !== 6} style={primaryBtn}>
               {busy ? "Verifying…" : "Verify"}
             </button>
             {hasPasskey ? (

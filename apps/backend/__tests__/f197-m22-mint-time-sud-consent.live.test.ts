@@ -27,18 +27,18 @@ import { runWithRequestContext } from "@wardenx/tenancy";
 import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { createDbSignedUrlObjectResolver } from "../src/modules/22-documents/documents-route-service-db";
+import { createSignedUrlService } from "../src/modules/22-documents/routes/signed-url-service";
+import {
+  createDrizzleDocumentReaderStore,
+  createDrizzlePortalAccessLog,
+} from "../src/modules/22-documents/seams/drizzle-readers-store";
 import {
   createInMemoryObjectStore,
   createPortalDocumentReader,
   createSudConsentEvaluatorPortalConsentPort,
 } from "../src/modules/22-documents/seams/index";
-import {
-  createDrizzleDocumentReaderStore,
-  createDrizzlePortalAccessLog,
-} from "../src/modules/22-documents/seams/drizzle-readers-store";
-import { createSignedUrlService } from "../src/modules/22-documents/routes/signed-url-service";
+import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;

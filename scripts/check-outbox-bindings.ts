@@ -324,7 +324,9 @@ function regenerate(source: string, unbound: readonly Pair[]): string {
     // Multi-group: only drop what resolved — never adopt an event this group didn't already list,
     // since that would be guessing which sibling group a new pair belongs to. Single-group: the
     // original full-replace, there being no sibling to guess wrong against.
-    const events = (isMultiGroup ? group.events.filter((e) => stillUnbound.has(e)) : [...stillUnbound])
+    const events = (
+      isMultiGroup ? group.events.filter((e) => stillUnbound.has(e)) : [...stillUnbound]
+    )
       .slice()
       .sort();
     const claimed = claimedByModule.get(group.module) ?? new Set<string>();

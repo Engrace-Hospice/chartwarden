@@ -16,7 +16,10 @@ import { createDbClient } from "@wardenx/db";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { M16_OUTBOX_EVENTS, buildM16ConsentSignedConsumer } from "../src/modules/16-bereavement/index";
+import {
+  M16_OUTBOX_EVENTS,
+  buildM16ConsentSignedConsumer,
+} from "../src/modules/16-bereavement/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;

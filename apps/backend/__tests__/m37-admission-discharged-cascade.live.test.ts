@@ -28,8 +28,8 @@ import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  buildM37AdmissionDischargedConsumer,
   M37_ADMISSION_DISCHARGED_CONSUMER,
+  buildM37AdmissionDischargedConsumer,
 } from "../src/modules/37-ipu/consumers/m6-admission-discharged";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -133,17 +133,13 @@ describe.skipIf(!DB_URL)(
     }
 
     async function admissionRow(id: string) {
-      const { rows } = await admin.query(
-        "SELECT state, version FROM ipu_admission WHERE id = $1",
-        [id],
-      );
+      const { rows } = await admin.query("SELECT state, version FROM ipu_admission WHERE id = $1", [
+        id,
+      ]);
       return rows[0] ?? null;
     }
     async function bedRow(id: string) {
-      const { rows } = await admin.query(
-        "SELECT cleaning_status FROM ipu_bed WHERE id = $1",
-        [id],
-      );
+      const { rows } = await admin.query("SELECT cleaning_status FROM ipu_bed WHERE id = $1", [id]);
       return rows[0] ?? null;
     }
     async function ircRow(ipuAdmissionId: string) {
@@ -204,7 +200,8 @@ describe.skipIf(!DB_URL)(
         outbox: {
           async publish(tx, input) {
             const eventSchema = catalog.get(input.eventName);
-            if (!eventSchema) throw new Error(`m37 test publisher: undeclared event ${input.eventName}`);
+            if (!eventSchema)
+              throw new Error(`m37 test publisher: undeclared event ${input.eventName}`);
             if (!Value.Check(eventSchema, input.payload)) {
               const details = [...Value.Errors(eventSchema, input.payload)]
                 .map((e) => `${e.path || "/"}: ${e.message}`)
@@ -253,7 +250,11 @@ describe.skipIf(!DB_URL)(
       await consumer.handle({
         id: "eeeeeeee-0000-4000-8000-000000000001",
         organizationId: ORG_A,
-        payload: { admissionId: m6AdmissionId, reason: "revocation", dischargeDate: "2050-01-01T00:00:00Z" },
+        payload: {
+          admissionId: m6AdmissionId,
+          reason: "revocation",
+          dischargeDate: "2050-01-01T00:00:00Z",
+        },
       });
 
       const admission = await admissionRow(ipuId);
@@ -293,7 +294,11 @@ describe.skipIf(!DB_URL)(
       await consumer.handle({
         id: "eeeeeeee-0000-4000-8000-000000000002",
         organizationId: ORG_A,
-        payload: { admissionId: m6AdmissionId, reason: "transfer", dischargeDate: "2050-01-01T00:00:00Z" },
+        payload: {
+          admissionId: m6AdmissionId,
+          reason: "transfer",
+          dischargeDate: "2050-01-01T00:00:00Z",
+        },
       });
 
       expect((await admissionRow(ipuId))?.state).toBe("discharged");
@@ -321,7 +326,11 @@ describe.skipIf(!DB_URL)(
       await consumer.handle({
         id: "eeeeeeee-0000-4000-8000-000000000003",
         organizationId: ORG_A,
-        payload: { admissionId: m6AdmissionId, reason: "death", dischargeDate: "2050-01-01T00:00:00Z" },
+        payload: {
+          admissionId: m6AdmissionId,
+          reason: "death",
+          dischargeDate: "2050-01-01T00:00:00Z",
+        },
       });
 
       expect((await admissionRow(ipuId))?.state).toBe("active"); // untouched
@@ -365,7 +374,11 @@ describe.skipIf(!DB_URL)(
         consumer.handle({
           id: "eeeeeeee-0000-4000-8000-000000000005",
           organizationId: ORG_A,
-          payload: { admissionId: m6AdmissionId, reason: "revocation", dischargeDate: "2050-01-01T00:00:00Z" },
+          payload: {
+            admissionId: m6AdmissionId,
+            reason: "revocation",
+            dischargeDate: "2050-01-01T00:00:00Z",
+          },
         }),
       ).rejects.toMatchObject({ code: "ILLEGAL_ADMISSION_TRANSITION" });
 
@@ -391,7 +404,11 @@ describe.skipIf(!DB_URL)(
       const event = {
         id: "eeeeeeee-0000-4000-8000-000000000006",
         organizationId: ORG_A,
-        payload: { admissionId: m6AdmissionId, reason: "revocation", dischargeDate: "2050-01-01T00:00:00Z" },
+        payload: {
+          admissionId: m6AdmissionId,
+          reason: "revocation",
+          dischargeDate: "2050-01-01T00:00:00Z",
+        },
       };
       await consumer.handle(event);
       const afterFirst = await outboxRows(ORG_A, "m37.ipu_admission.discharged");
@@ -425,7 +442,11 @@ describe.skipIf(!DB_URL)(
       await consumer.handle({
         id: "eeeeeeee-0000-4000-8000-000000000007",
         organizationId: ORG_A,
-        payload: { admissionId: sharedAdmissionId, reason: "revocation", dischargeDate: "2050-01-01T00:00:00Z" },
+        payload: {
+          admissionId: sharedAdmissionId,
+          reason: "revocation",
+          dischargeDate: "2050-01-01T00:00:00Z",
+        },
       });
 
       expect((await admissionRow(ipuIdB))?.state).toBe("active");

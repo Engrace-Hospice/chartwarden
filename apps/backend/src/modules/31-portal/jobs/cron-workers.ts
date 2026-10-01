@@ -3,7 +3,10 @@
 // `scheduleM29OutboundRetrySweepJob` template: the processor is `runPostDischargeGraceSweepOnce`, driven
 // directly by tests without BullMQ.
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { type PostDischargeGraceSweepDeps, runPostDischargeGraceSweepOnce } from "./post-discharge-grace-sweep";
+import {
+  type PostDischargeGraceSweepDeps,
+  runPostDischargeGraceSweepOnce,
+} from "./post-discharge-grace-sweep";
 import { M31_CRON_QUEUES, M31_JOB_SCHEDULES, M31_QUEUE_PARAMS } from "./queues";
 
 /** Construct the Worker. The caller owns the lifecycle (`close()` on shutdown). */
@@ -29,7 +32,9 @@ export function registerM31PostDischargeGraceWorker(
 }
 
 /** Register the repeatable daily schedule. Returns the Queue so the composition root can `close()` it. */
-export async function scheduleM31PostDischargeGraceJob(connection: ConnectionOptions): Promise<Queue> {
+export async function scheduleM31PostDischargeGraceJob(
+  connection: ConnectionOptions,
+): Promise<Queue> {
   const queue = new Queue(M31_CRON_QUEUES.postDischargeGrace, { connection });
   await queue.add(
     "tick",

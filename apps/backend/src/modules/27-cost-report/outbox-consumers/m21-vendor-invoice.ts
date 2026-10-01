@@ -42,7 +42,10 @@ const CR = schema.costReport;
 const VIL = schema.vendorInvoiceLine;
 
 export const M27_VENDOR_INVOICE_CONSUMER = {
-  eventNames: ["m21.supply_request.invoice_accrued", "m21.supply_request.invoice_reconciled"] as const,
+  eventNames: [
+    "m21.supply_request.invoice_accrued",
+    "m21.supply_request.invoice_reconciled",
+  ] as const,
   consumerName: "m27.m21-vendor-invoice",
 } as const;
 
@@ -64,7 +67,9 @@ interface InvoiceReconciledPayload {
 
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${M27_VENDOR_INVOICE_CONSUMER.consumerName}: '${field}' must be a non-empty string`);
+    throw new Error(
+      `${M27_VENDOR_INVOICE_CONSUMER.consumerName}: '${field}' must be a non-empty string`,
+    );
   }
   return value;
 }
@@ -80,7 +85,9 @@ function requireIsoDate(value: unknown, field: string): { date: Date; dateOnly: 
   const s = requireString(value, field);
   const date = new Date(s);
   if (Number.isNaN(date.getTime())) {
-    throw new Error(`${M27_VENDOR_INVOICE_CONSUMER.consumerName}: '${field}' must be a valid ISO instant`);
+    throw new Error(
+      `${M27_VENDOR_INVOICE_CONSUMER.consumerName}: '${field}' must be a valid ISO instant`,
+    );
   }
   return { date, dateOnly: date.toISOString().slice(0, 10) };
 }
@@ -170,7 +177,9 @@ export function buildM27VendorInvoiceConsumer(deps: M27VendorInvoiceDeps): Outbo
         const [existing] = await tx
           .select({ id: VIL.id, status: VIL.status })
           .from(VIL)
-          .where(and(eq(VIL.organizationId, organizationId), eq(VIL.supplyRequestId, supplyRequestId)))
+          .where(
+            and(eq(VIL.organizationId, organizationId), eq(VIL.supplyRequestId, supplyRequestId)),
+          )
           .limit(1);
         if (existing && existing.status === "reconciled") return; // idempotent redelivery, already applied
 

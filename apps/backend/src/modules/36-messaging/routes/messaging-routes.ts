@@ -26,6 +26,7 @@ import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AddMemberBodySchema,
+  AlertParamsSchema,
   AlertRuleParamsSchema,
   AlertRulePatchSchema,
   AnnounceBodySchema,
@@ -42,7 +43,6 @@ import {
   SendMessageBodySchema,
   VerifyEndpointBodySchema,
   parse,
-  AlertParamsSchema,
 } from "./messaging-typebox";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -304,22 +304,14 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   });
 
   // --- mark one alert read for the current actor -----------------------------------------------
-app.post(
-  "/api/v1/alerts/:id/read",
-  { preHandler: [READ] },
-  async (request, reply) => {
+  app.post("/api/v1/alerts/:id/read", { preHandler: [READ] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(AlertParamsSchema, request.params);
 
-    await service.markAlertRead(
-      organizationId,
-      userId,
-      id,
-    );
+    await service.markAlertRead(organizationId, userId, id);
 
     return reply.code(204).send();
-  },
-);
+  });
 
   // --- tenant + inherited platform alert rules -----------------------------------------------
   app.get("/api/v1/alert-rules", { preHandler: [RULES_READ] }, async (request) => {

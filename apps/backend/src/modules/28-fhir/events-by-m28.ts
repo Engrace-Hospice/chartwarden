@@ -171,7 +171,8 @@ export const M28_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m28.fhir.inbound.rejected",
     moduleOwner: "m28",
-    description: "A reviewer rejected an inbound proposal — a durable record; no consumer applies anything.",
+    description:
+      "A reviewer rejected an inbound proposal — a durable record; no consumer applies anything.",
     payloadSchema: Type.Object({
       proposalId: Type.String({ minLength: 1 }),
       ownerModule: Type.Union([Type.Literal("m5"), Type.Literal("m12")]),

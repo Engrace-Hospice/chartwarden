@@ -12,7 +12,11 @@
 // the injected-port pattern for `m6.cti.signed`'s missing `admissionId`) is kept as-is, repointed at this
 // barrel's `DosespotSyncQueueRepository` instead of a raw BullMQ `Queue.add()`
 // (`../consumers/sync-trigger-queue-adapters.ts`).
-export { type DosespotSyncQueueKind, type DosespotSyncQueueReason, type DosespotSyncQueueRow } from "@wardenx/db/schema";
+export type {
+  DosespotSyncQueueKind,
+  DosespotSyncQueueReason,
+  DosespotSyncQueueRow,
+} from "@wardenx/db/schema";
 export { type EnqueueInput, type EnqueueResult, DosespotSyncQueueRepository } from "./repository";
 export {
   M12DosespotPatientIdUnbound,

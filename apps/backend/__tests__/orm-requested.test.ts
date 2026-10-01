@@ -59,7 +59,12 @@ const dest = { ok: true, facilityId: FACILITY } as const;
 
 describe("planOrmRequested — the happy path builds the exact catalogued payload", () => {
   it("assembles PID/ORC/OBR facts and nothing beyond minimum-necessary", () => {
-    const out = planOrmRequested({ order: order(), patient: patient(), physician: physician(), destination: dest });
+    const out = planOrmRequested({
+      order: order(),
+      patient: patient(),
+      physician: physician(),
+      destination: dest,
+    });
     expect(out.kind).toBe("ok");
     if (out.kind !== "ok") return;
     expect(out.payload).toMatchObject({
@@ -97,7 +102,12 @@ describe("planOrmRequested — the happy path builds the exact catalogued payloa
 
   it("omits the address rather than inventing one, and the notes when there are none", () => {
     const out = planOrmRequested({
-      order: order({ data: { testCodes: [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }], fastingRequired: false } }),
+      order: order({
+        data: {
+          testCodes: [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }],
+          fastingRequired: false,
+        },
+      }),
       patient: patient({ address: null }),
       physician: physician(),
       destination: dest,
@@ -134,7 +144,10 @@ describe("planOrmRequested — every unresolvable fact REFUSES (never a partial 
     ["physician_npi_unconfirmed", { ...base, physician: physician({ npi: null }) }],
     ["physician_name_missing", { ...base, physician: physician({ lastName: "" }) }],
     ["no_routing_lab", { ...base, destination: { ok: false, reason: "no_routing_lab" } as const }],
-    ["lab_facility_unresolved", { ...base, destination: { ok: false, reason: "lab_facility_unresolved" } as const }],
+    [
+      "lab_facility_unresolved",
+      { ...base, destination: { ok: false, reason: "lab_facility_unresolved" } as const },
+    ],
     ["no_active_feed", { ...base, destination: { ok: false, reason: "no_active_feed" } as const }],
     ["ambiguous_feed", { ...base, destination: { ok: false, reason: "ambiguous_feed" } as const }],
     ["lab_test_codes_missing", { ...base, order: order({ data: { testCodes: [] } }) }],
@@ -159,7 +172,11 @@ describe("planOrmRequested — every unresolvable fact REFUSES (never a partial 
 
   it("the Part 2 gate wins over every other fact — a restricted patient is refused before assembly", () => {
     expect(
-      refused({ ...base, patient: patient({ sudRestricted: true, sexCode: "banana", mrn: "" }), physician: null }),
+      refused({
+        ...base,
+        patient: patient({ sudRestricted: true, sexCode: "banana", mrn: "" }),
+        physician: null,
+      }),
     ).toBe("sud_restricted");
   });
 
@@ -170,12 +187,12 @@ describe("planOrmRequested — every unresolvable fact REFUSES (never a partial 
 
 describe("mappings", () => {
   it("priority: stat→S, asap→A, everything else (incl. null) is HL7's default routine", () => {
-    expect([toHl7Priority("stat"), toHl7Priority("asap"), toHl7Priority("routine"), toHl7Priority(null)]).toEqual([
-      "S",
-      "A",
-      "R",
-      "R",
-    ]);
+    expect([
+      toHl7Priority("stat"),
+      toHl7Priority("asap"),
+      toHl7Priority("routine"),
+      toHl7Priority(null),
+    ]).toEqual(["S", "A", "R", "R"]);
   });
   it("sex: HL7, spelled-out and SNOMED forms map; UNK/blank are unrecorded; the rest is unmappable", () => {
     expect(["M", "male", "248153007", "F", "FEMALE", "248152002", "O", "u"].map(toHl7Sex)).toEqual([
@@ -188,7 +205,11 @@ describe("mappings", () => {
       "O",
       "U",
     ]);
-    expect([toHl7Sex("UNK"), toHl7Sex(""), toHl7Sex(null)]).toEqual(["unrecorded", "unrecorded", "unrecorded"]);
+    expect([toHl7Sex("UNK"), toHl7Sex(""), toHl7Sex(null)]).toEqual([
+      "unrecorded",
+      "unrecorded",
+      "unrecorded",
+    ]);
     expect(toHl7Sex("x")).toBeNull();
   });
 });
@@ -206,7 +227,11 @@ describe("resolveOrmRequested — the IO shell", () => {
     const physicianSpy = vi.fn(async () => physician());
     const destinationSpy = vi.fn(async () => dest);
     const out = await resolveOrmRequested(
-      okPorts({ patient: async () => patient({ sudRestricted: true }), physician: physicianSpy, destination: destinationSpy }),
+      okPorts({
+        patient: async () => patient({ sudRestricted: true }),
+        physician: physicianSpy,
+        destination: destinationSpy,
+      }),
       tx,
       order(),
     );
@@ -221,7 +246,11 @@ describe("resolveOrmRequested — the IO shell", () => {
       seen.push(args.routingLabId);
       return dest;
     };
-    await resolveOrmRequested(okPorts({ destination }), tx, order({ data: { ...(order().data as object), routingLabId: FACILITY } }));
+    await resolveOrmRequested(
+      okPorts({ destination }),
+      tx,
+      order({ data: { ...(order().data as object), routingLabId: FACILITY } }),
+    );
     await resolveOrmRequested(okPorts({ destination }), tx, order());
     expect(seen).toEqual([FACILITY, null]);
   });

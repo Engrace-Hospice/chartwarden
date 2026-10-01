@@ -77,7 +77,9 @@ export const visit = pgTable(
     evvMissingReason: text("evv_missing_reason"), // DENYLISTED (§3.6)
     // F-196 (#248, mig 0269) — the `m18.evv.late_check_resolved` stamp. Informational only, does not
     // move `status`: a late-check resolution fires once the visit is already `completed`.
-    evvMissingResolutionResolvedAt: timestamp("evv_missing_resolution_resolved_at", { withTimezone: true }),
+    evvMissingResolutionResolvedAt: timestamp("evv_missing_resolution_resolved_at", {
+      withTimezone: true,
+    }),
     evvMissingResolutionStatus: text("evv_missing_resolution_status"), // mirrors M18's own loose payload typing
     evvMissingResolutionByMembershipId: uuid("evv_missing_resolution_by_membership_id"),
     evvMissingResolutionReason: text("evv_missing_resolution_reason"), // DENYLISTED (§3.6)

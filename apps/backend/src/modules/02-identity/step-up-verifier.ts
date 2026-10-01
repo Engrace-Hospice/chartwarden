@@ -1,7 +1,4 @@
-import {
-  createDbPasskeyCredentialStore,
-  createWebauthnAssertionVerifier,
-} from "@wardenx/auth";
+import { createDbPasskeyCredentialStore, createWebauthnAssertionVerifier } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import type { MfaVerifier } from "./step-up-ports";
 
@@ -19,18 +16,10 @@ export function createProductionStepUpVerifier(
   db: DbClient,
   options: StepUpVerifierOptions,
 ): MfaVerifier {
-  const webauthn = createWebauthnAssertionVerifier(
-    createDbPasskeyCredentialStore(db),
-  );
+  const webauthn = createWebauthnAssertionVerifier(createDbPasskeyCredentialStore(db));
 
   return {
-    async verify({
-      userId,
-      factor,
-      webauthnChallenge,
-      assertion,
-      totpCode,
-    }) {
+    async verify({ userId, factor, webauthnChallenge, assertion, totpCode }) {
       if (factor === "webauthn") {
         if (!webauthnChallenge || !assertion) {
           return {
@@ -61,9 +50,7 @@ export function createProductionStepUpVerifier(
           code: totpCode,
         });
 
-        return ok
-          ? { ok: true }
-          : { ok: false, reason: "totp_verification_failed" };
+        return ok ? { ok: true } : { ok: false, reason: "totp_verification_failed" };
       } catch {
         return {
           ok: false,

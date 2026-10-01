@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/13-emar/outbox-consumers/m12-medication-order-discontinued.ts — the
 // order-level scheduled-dose cascade, live for the first time (F-166, #248).
 //
@@ -23,7 +24,6 @@
 // A consumer-driven write names no acting membership: `scheduled_dose` has no actor column for this
 // transition (the discharge cascade's own header notes the same for this table).
 import { planOrderDiscontinueCascade } from "@wardenx/emar";
-import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IsoInstant } from "@wardenx/types";
 import { and, eq, gt } from "drizzle-orm";
@@ -49,7 +49,9 @@ function factsOf(payload: unknown): { orderId: string; effectiveAt: IsoInstant }
     throw new Error(`${M13_CANCEL_FUTURE_SCHEDULE_CONSUMER.consumerName}: payload has no orderId`);
   }
   if (typeof effectiveAt !== "string" || effectiveAt.length === 0) {
-    throw new Error(`${M13_CANCEL_FUTURE_SCHEDULE_CONSUMER.consumerName}: payload has no effectiveAt`);
+    throw new Error(
+      `${M13_CANCEL_FUTURE_SCHEDULE_CONSUMER.consumerName}: payload has no effectiveAt`,
+    );
   }
   return { orderId, effectiveAt: effectiveAt as IsoInstant };
 }

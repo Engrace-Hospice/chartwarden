@@ -102,7 +102,9 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
   async function reset() {
     // The app role cannot delete; the superuser resets between tests (the guard trigger admits only the
     // destruction role, so disable it for the reset only).
-    await admin.query("ALTER TABLE hospice_rate_table DISABLE TRIGGER trg_hospice_rate_table_guard");
+    await admin.query(
+      "ALTER TABLE hospice_rate_table DISABLE TRIGGER trg_hospice_rate_table_guard",
+    );
     await admin.query("DELETE FROM hospice_rate_table");
     await admin.query("ALTER TABLE hospice_rate_table ENABLE TRIGGER trg_hospice_rate_table_guard");
   }
@@ -129,10 +131,10 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       );
     }
     // The M4 audit trigger dereferences app.user_id as an FK: real user rows.
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f206a@x.test'),($2,'f206b@x.test')`, [
-      USER_A,
-      USER_B,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f206a@x.test'),($2,'f206b@x.test')`,
+      [USER_A, USER_B],
+    );
     appUrl = await appRoleConnectionString(admin, DB_URL as string);
     handle = createDbClient({ connectionString: appUrl });
   });
@@ -145,7 +147,10 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
   describe("create / list / get / effective-on", () => {
     it("creates a version, defaulting effectiveTo to the fiscal-year end, and reads it back", async () => {
       await reset();
-      const created = await svc().createRateTable(actorA, rates({ entryReason: "FY2026 final rule" }));
+      const created = await svc().createRateTable(
+        actorA,
+        rates({ entryReason: "FY2026 final rule" }),
+      );
       expect(created).toMatchObject({
         organizationId: ORG_A,
         providerEntityId: PE_A,
@@ -198,8 +203,12 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
           chcHourlyRateCents: 4_500,
         }),
       );
-      expect((await svc().effectiveRateTable(actorA, PE_A, "2026-09-30"))?.rhcDays1to60PerDiemCents).toBe(21_500);
-      expect((await svc().effectiveRateTable(actorA, PE_A, "2026-10-01"))?.rhcDays1to60PerDiemCents).toBe(22_300);
+      expect(
+        (await svc().effectiveRateTable(actorA, PE_A, "2026-09-30"))?.rhcDays1to60PerDiemCents,
+      ).toBe(21_500);
+      expect(
+        (await svc().effectiveRateTable(actorA, PE_A, "2026-10-01"))?.rhcDays1to60PerDiemCents,
+      ).toBe(22_300);
     });
 
     it("scopes versions to the provider entity", async () => {
@@ -215,7 +224,11 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
   describe("validation (typed 422, nothing written)", () => {
     it.each([
       ["dollars keyed as cents", { rhcDays1to60PerDiemCents: 215 }, /plausible band/],
-      ["RHC tiers reversed", { rhcDays1to60PerDiemCents: 16_000, rhcDays61PlusPerDiemCents: 17_000 }, /ADR-0001/],
+      [
+        "RHC tiers reversed",
+        { rhcDays1to60PerDiemCents: 16_000, rhcDays61PlusPerDiemCents: 17_000 },
+        /ADR-0001/,
+      ],
       ["CHC hourly disagrees with the per-diem", { chcHourlyRateCents: 5_400 }, /must agree/],
       ["window outside the fiscal year", { effectiveFrom: "2025-09-01" }, /fiscal year 2025/],
     ])("rejects %s", async (_name, over, message) => {
@@ -317,21 +330,27 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       expect(v2).toMatchObject({ rhcDays1to60PerDiemCents: 21_600, supersededAt: null });
 
       // the lookup now answers with the correction
-      expect((await svc().effectiveRateTable(actorA, PE_A, "2026-01-01"))?.rateTableId).toBe(v2.rateTableId);
+      expect((await svc().effectiveRateTable(actorA, PE_A, "2026-01-01"))?.rateTableId).toBe(
+        v2.rateTableId,
+      );
       // the old row is retained, flagged, and names its successor
       const old = await svc().getRateTable(actorA, PE_A, v1.rateTableId);
       expect(old.supersededById).toBe(v2.rateTableId);
       expect(old.supersededAt).not.toBeNull();
       expect(old.rhcDays1to60PerDiemCents).toBe(21_500);
       // default list = live only; includeSuperseded = full history
-      expect((await svc().listRateTables(actorA, PE_A, {})).map((r) => r.rateTableId)).toEqual([v2.rateTableId]);
+      expect((await svc().listRateTables(actorA, PE_A, {})).map((r) => r.rateTableId)).toEqual([
+        v2.rateTableId,
+      ]);
       expect(
-        (await svc().listRateTables(actorA, PE_A, { includeSuperseded: true })).map((r) => r.rateTableId).sort(),
+        (await svc().listRateTables(actorA, PE_A, { includeSuperseded: true }))
+          .map((r) => r.rateTableId)
+          .sort(),
       ).toEqual([v1.rateTableId, v2.rateTableId].sort());
       // superseding the superseded row again is a 409, never a second live version
-      await expect(
-        svc().supersedeRateTable(actorA, v1.rateTableId, rates()),
-      ).rejects.toMatchObject({ code: "RATE_TABLE_ALREADY_SUPERSEDED", statusCode: 409 });
+      await expect(svc().supersedeRateTable(actorA, v1.rateTableId, rates())).rejects.toMatchObject(
+        { code: "RATE_TABLE_ALREADY_SUPERSEDED", statusCode: 409 },
+      );
     });
 
     it("an invalid successor leaves the original live (the whole supersede rolls back)", async () => {
@@ -384,7 +403,9 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       const v1 = await svc().createRateTable(actorA, rates());
       await asApp(async (c) => {
         await expect(
-          c.query("UPDATE hospice_rate_table SET gip_per_diem_cents = 1 WHERE id = $1", [v1.rateTableId]),
+          c.query("UPDATE hospice_rate_table SET gip_per_diem_cents = 1 WHERE id = $1", [
+            v1.rateTableId,
+          ]),
         ).rejects.toMatchObject({ code: "42501" });
       });
       await asApp(async (c) => {
@@ -400,7 +421,10 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       await svc().supersedeRateTable(actorA, v1.rateTableId, rates());
       await asApp(async (c) => {
         await expect(
-          c.query("UPDATE hospice_rate_table SET superseded_by_id = gen_random_uuid() WHERE id = $1", [v1.rateTableId]),
+          c.query(
+            "UPDATE hospice_rate_table SET superseded_by_id = gen_random_uuid() WHERE id = $1",
+            [v1.rateTableId],
+          ),
         ).rejects.toMatchObject({ code: "23001" });
       });
     });
@@ -412,11 +436,17 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       const a = await svc().createRateTable(actorA, rates());
       // even when B asks for A's provider entity id by name
       expect(await svc().listRateTables(actorB, PE_A, { includeSuperseded: true })).toEqual([]);
-      await expect(svc().getRateTable(actorB, PE_A, a.rateTableId)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc().getRateTable(actorB, PE_A, a.rateTableId)).rejects.toMatchObject({
+        statusCode: 404,
+      });
       expect(await svc().effectiveRateTable(actorB, PE_A, "2026-01-01")).toBeNull();
       // the org-explicit seam function the assembly adapter uses
-      expect(await hospiceRateTableEffectiveForOrg(handle.db, ORG_B, PE_A, "2026-01-01")).toBeNull();
-      expect((await hospiceRateTableEffectiveForOrg(handle.db, ORG_A, PE_A, "2026-01-01"))?.id).toBe(a.rateTableId);
+      expect(
+        await hospiceRateTableEffectiveForOrg(handle.db, ORG_B, PE_A, "2026-01-01"),
+      ).toBeNull();
+      expect(
+        (await hospiceRateTableEffectiveForOrg(handle.db, ORG_A, PE_A, "2026-01-01"))?.id,
+      ).toBe(a.rateTableId);
     });
 
     it("RLS WITH CHECK refuses a row forged into another organization", async () => {
@@ -466,7 +496,9 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       await reset();
       await svc().createRateTable(actorA, rates());
       const adapter = buildM23ReferenceDataAdapter(handle.db);
-      expect(await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14"))).toEqual({
+      expect(
+        await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
+      ).toEqual({
         rhcDays1to60PerDiemCents: 21_500,
         rhcDays61PlusPerDiemCents: 17_000,
         chcHourlyRateCents: 4_400,
@@ -484,7 +516,9 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       await svc().createRateTable(actorA, rates()); // hourly 4400, CHC labor share 0.68
       const adapter = buildM23ReferenceDataAdapter(handle.db);
       // 4400 x (0.68 x 0.9234 + 0.32) = 4400 x 0.947912 = 4170.8128 -> 4171 (the whole-rate multiply gave 4063)
-      expect(await adapter.chcHourlyRateCents(2025, "0.9234", scope(ORG_A, PE_A, "2026-02-14"))).toBe(4_171);
+      expect(
+        await adapter.chcHourlyRateCents(2025, "0.9234", scope(ORG_A, PE_A, "2026-02-14")),
+      ).toBe(4_171);
     });
 
     it("a version entered BEFORE labor shares existed (NULL set) fails closed RATE_TABLE_LABOR_SHARE_MISSING", async () => {
@@ -510,7 +544,12 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
 
     it("the database CHECKs the labor shares: band, and all-or-none", async () => {
       await reset();
-      const ins = (rhc: string | null, chc: string | null, irc: string | null, gip: string | null) =>
+      const ins = (
+        rhc: string | null,
+        chc: string | null,
+        irc: string | null,
+        gip: string | null,
+      ) =>
         admin.query(
           `INSERT INTO hospice_rate_table (organization_id, provider_entity_id, fiscal_year_starting, effective_from, effective_to,
              rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents, gip_per_diem_cents,
@@ -518,9 +557,15 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
            VALUES ($1,$2,2025,'2025-10-01','2026-09-30',21500,17000,105600,49000,118000,4400,$3,$4,$5,$6,$7)`,
           [ORG_A, PE_A, rhc, chc, irc, gip, MEMBERSHIP_A],
         );
-      await expect(ins("0.2900", "0.68", "0.54", "0.64")).rejects.toThrow(/hospice_rate_table_labor_share_chk/);
-      await expect(ins("0.66", "0.9100", "0.54", "0.64")).rejects.toThrow(/hospice_rate_table_labor_share_chk/);
-      await expect(ins("0.66", "0.68", null, "0.64")).rejects.toThrow(/hospice_rate_table_labor_share_chk/);
+      await expect(ins("0.2900", "0.68", "0.54", "0.64")).rejects.toThrow(
+        /hospice_rate_table_labor_share_chk/,
+      );
+      await expect(ins("0.66", "0.9100", "0.54", "0.64")).rejects.toThrow(
+        /hospice_rate_table_labor_share_chk/,
+      );
+      await expect(ins("0.66", "0.68", null, "0.64")).rejects.toThrow(
+        /hospice_rate_table_labor_share_chk/,
+      );
       await ins("0.66", "0.68", "0.54", "0.64");
     });
 
@@ -528,7 +573,9 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       await reset();
       const created = await svc().createRateTable(actorA, rates());
       await expect(
-        admin.query("UPDATE hospice_rate_table SET labor_share_rhc = 0.5 WHERE id = $1", [created.rateTableId]),
+        admin.query("UPDATE hospice_rate_table SET labor_share_rhc = 0.5 WHERE id = $1", [
+          created.rateTableId,
+        ]),
       ).rejects.toThrow(/append-only/);
     });
 
@@ -540,8 +587,14 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
         rates({ effectiveFrom: "2026-04-01", rhcDays1to60PerDiemCents: 22_000 }),
       );
       const adapter = buildM23ReferenceDataAdapter(handle.db);
-      expect((await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-03-31"))).rhcDays1to60PerDiemCents).toBe(21_500);
-      expect((await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-04-01"))).rhcDays1to60PerDiemCents).toBe(22_000);
+      expect(
+        (await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-03-31")))
+          .rhcDays1to60PerDiemCents,
+      ).toBe(21_500);
+      expect(
+        (await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-04-01")))
+          .rhcDays1to60PerDiemCents,
+      ).toBe(22_000);
     });
 
     it("fails CLOSED with an actionable RATE_TABLE_MISSING (never SEAM_UNBOUND, never a guess)", async () => {

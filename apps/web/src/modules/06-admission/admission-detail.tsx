@@ -1293,14 +1293,11 @@ export function AdmissionDetail(): JSX.Element {
         >
           <div style={admissionDetailsModalStyle}>
             <div style={admissionDetailsModalHeaderStyle}>
-              <h2 style={admissionDetailsModalTitleStyle}>
-                Complete admission details
-              </h2>
+              <h2 style={admissionDetailsModalTitleStyle}>Complete admission details</h2>
 
               <p style={admissionDetailsModalDescriptionStyle}>
-                Set the planned admission/SOC date, hospice provider and Hospice
-                Physician. The CTI step records the terminal diagnosis and
-                certification details.
+                Set the planned admission/SOC date, hospice provider and Hospice Physician. The CTI
+                step records the terminal diagnosis and certification details.
               </p>
             </div>
 
@@ -1354,12 +1351,7 @@ export function AdmissionDetail(): JSX.Element {
             </div>
 
             <div style={admissionDetailsModalActionsStyle}>
-              <button
-                type="button"
-                style={ghostBtn}
-                onClick={closeCeremony}
-                disabled={busy}
-              >
+              <button type="button" style={ghostBtn} onClick={closeCeremony} disabled={busy}>
                 Cancel
               </button>
 
@@ -1897,7 +1889,9 @@ function HopeEntry({
       <div style={hopeEntryStyle}>
         <div>
           <h3 style={miniTitleStyle}>HOPE workflow</h3>
-          <p style={emptyTextStyle}>Activate this admission before accessing or creating HOPE assessments.</p>
+          <p style={emptyTextStyle}>
+            Activate this admission before accessing or creating HOPE assessments.
+          </p>
         </div>
         {/* <button type="button" disabled style={ghostBtn}>Open HOPE</button> */}
       </div>

@@ -66,7 +66,8 @@ const WINDOW_DAYS = 30;
 /** "exceeds 50" (D13) — the count strictly greater than this fires the alert. */
 const OCCURRENCE_THRESHOLD = 50;
 
-export const M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_EVENT = "m25.taxonomy.unmapped_code_observed" as const;
+export const M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_EVENT =
+  "m25.taxonomy.unmapped_code_observed" as const;
 export const M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_ALERT_CODE =
   "m23.taxonomy.unmapped_taxonomy_alert" as const;
 
@@ -110,7 +111,9 @@ function factsOf(payload: unknown): TaxonomyUnmappedCodePayload {
  * `handlers-unbound` group. Records the occurrence, then — only once the org's rolling 30-day count for
  * this CARC code exceeds 50 — dispatches the D13 surfaced alert.
  */
-export function buildM23TaxonomyUnmappedCodeObservedConsumer(deps: M23TaxonomyUnmappedCodeConsumerDeps) {
+export function buildM23TaxonomyUnmappedCodeObservedConsumer(
+  deps: M23TaxonomyUnmappedCodeConsumerDeps,
+) {
   return {
     consumerName: "m23.m25-taxonomy-unmapped-code-observed",
     consumerModule: "m23" as const,
@@ -123,43 +126,47 @@ export function buildM23TaxonomyUnmappedCodeObservedConsumer(deps: M23TaxonomyUn
       const facts = factsOf(event.payload);
       const organizationId = event.organizationId;
 
-      const outcome = await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      const outcome = await withOrgContext(
+        deps.db,
+        { organizationId, userId: "" },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const [inserted] = await tx
-          .insert(OCC)
-          .values({
-            organizationId,
-            carcCode: facts.carcCode,
-            rarcCode: facts.rarcCode,
-            providerEntityId: facts.providerEntityId,
-            denialCaseId: facts.denialCaseId,
-            sourceEventId: event.id,
-          })
-          .onConflictDoNothing({
-            target: [OCC.organizationId, OCC.sourceEventId],
-          })
-          .returning({ id: OCC.id });
+          const [inserted] = await tx
+            .insert(OCC)
+            .values({
+              organizationId,
+              carcCode: facts.carcCode,
+              rarcCode: facts.rarcCode,
+              providerEntityId: facts.providerEntityId,
+              denialCaseId: facts.denialCaseId,
+              sourceEventId: event.id,
+            })
+            .onConflictDoNothing({
+              target: [OCC.organizationId, OCC.sourceEventId],
+            })
+            .returning({ id: OCC.id });
 
-        if (!inserted) {
-          // A redelivery of an already-recorded occurrence — idempotent no-op, nothing to (re-)count.
-          return { fireAlert: false, occurrenceCount: 0 };
-        }
+          if (!inserted) {
+            // A redelivery of an already-recorded occurrence — idempotent no-op, nothing to (re-)count.
+            return { fireAlert: false, occurrenceCount: 0 };
+          }
 
-        const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
-        const [row] = await tx
-          .select({ occurrenceCount: sql<number>`count(*)::int` })
-          .from(OCC)
-          .where(
-            and(
-              eq(OCC.organizationId, organizationId),
-              eq(OCC.carcCode, facts.carcCode),
-              gte(OCC.observedAt, windowStart),
-            ),
-          );
-        const occurrenceCount = row?.occurrenceCount ?? 0;
-        return { fireAlert: occurrenceCount > OCCURRENCE_THRESHOLD, occurrenceCount };
-      });
+          const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+          const [row] = await tx
+            .select({ occurrenceCount: sql<number>`count(*)::int` })
+            .from(OCC)
+            .where(
+              and(
+                eq(OCC.organizationId, organizationId),
+                eq(OCC.carcCode, facts.carcCode),
+                gte(OCC.observedAt, windowStart),
+              ),
+            );
+          const occurrenceCount = row?.occurrenceCount ?? 0;
+          return { fireAlert: occurrenceCount > OCCURRENCE_THRESHOLD, occurrenceCount };
+        },
+      );
 
       if (!outcome.fireAlert) return;
 

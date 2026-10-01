@@ -99,26 +99,30 @@ export function buildM31ConsentRevokedGrantCascadeConsumer(
       const facts = factsOf(event.payload);
       const organizationId = event.organizationId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const now = new Date();
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const now = new Date();
 
-        await tx
-          .update(PAG)
-          .set({
-            revokedAt: now,
-            revokeCascadeSource: "consent_revoked",
-            version: sql`${PAG.version} + 1`,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(PAG.organizationId, organizationId),
-              eq(PAG.sourceConsentRecordId, facts.consentRecordId),
-              isNull(PAG.revokedAt),
-            ),
-          );
-      });
+          await tx
+            .update(PAG)
+            .set({
+              revokedAt: now,
+              revokeCascadeSource: "consent_revoked",
+              version: sql`${PAG.version} + 1`,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(PAG.organizationId, organizationId),
+                eq(PAG.sourceConsentRecordId, facts.consentRecordId),
+                isNull(PAG.revokedAt),
+              ),
+            );
+        },
+      );
     },
   };
 }

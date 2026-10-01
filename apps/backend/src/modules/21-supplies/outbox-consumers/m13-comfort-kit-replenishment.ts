@@ -40,19 +40,19 @@
 // cannot honestly supply (the same reasoning `write-service.ts`'s `createDirect` doc-comment already
 // states for the M11 cascade case).
 import { type DbClient, schema } from "@wardenx/db";
+import { SUPPLY_REQUEST_TERMINAL_STATUSES } from "@wardenx/supplies";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
-import { SUPPLY_REQUEST_TERMINAL_STATUSES } from "@wardenx/supplies";
-import { SupplyStateError } from "../lifecycle/index";
-import { insertSupplyRequest } from "../routes/write-service-drizzle";
-import type { WriteOutboxPort } from "../routes/write-service";
 import {
-  M13_REPLENISHMENT_NEEDED_EVENT,
   type ComfortKitDispatchContext,
   type M13ReplenishmentNeededPayload,
+  M13_REPLENISHMENT_NEEDED_EVENT,
   decideReplenishmentIntake,
 } from "../consumers/m13-comfort-kit";
+import { SupplyStateError } from "../lifecycle/index";
+import type { WriteOutboxPort } from "../routes/write-service";
+import { insertSupplyRequest } from "../routes/write-service-drizzle";
 
 const DISPATCH = schema.comfortKitDispatch;
 const DISPATCHED = schema.comfortKitDispatchedContent;
@@ -133,171 +133,185 @@ export function buildM21ComfortKitReplenishmentIntakeConsumer(
       const organizationId = event.organizationId;
       const at = deps.now?.() ?? new Date();
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        // A redelivery of the SAME outbox row resolves `existingForEventId` below — checked by the
-        // provenance column this insert always writes (`source_replenishment_event_id`), not by a DB
-        // unique constraint (the schema carries only a plain index; see `supply-requests.ts`).
-        const existingForEvent = await tx
-          .select({ id: REQUEST.id })
-          .from(REQUEST)
-          .where(
-            and(
-              eq(REQUEST.organizationId, organizationId),
-              eq(REQUEST.sourceReplenishmentEventId, event.id),
-            ),
-          )
-          .limit(1);
-
-        const dispatchRows = await tx
-          .select()
-          .from(DISPATCH)
-          .where(
-            and(
-              eq(DISPATCH.organizationId, organizationId),
-              eq(DISPATCH.m13DeploymentId, payload.deploymentId),
-            ),
-          )
-          .limit(1);
-        const dispatchRow = dispatchRows[0] as DispatchRow | undefined;
-
-        let dispatchContext: ComfortKitDispatchContext | null = null;
-        if (dispatchRow) {
-          const containsControlledSubstance = await dispatchContainsControlledSubstance(
-            tx,
-            dispatchRow.id,
-          );
-          dispatchContext = toDispatchContext(dispatchRow, containsControlledSubstance);
-        }
-
-        // An open (non-terminal) replenish request for the same dispatch + medication line already exists
-        // — a redelivery-adjacent case distinct from `existingForEvent` above: M13's own retry cadence
-        // re-fires this event on every subsequent administration until the kit is actually topped up, so
-        // without this check every dose would open a second parallel top-up request.
-        let openReplenishRequestId: string | null = null;
-        if (dispatchRow) {
-          const candidates = await tx
-            .select({ id: REQUEST.id, status: REQUEST.status, data: REQUEST.data })
+          // A redelivery of the SAME outbox row resolves `existingForEventId` below — checked by the
+          // provenance column this insert always writes (`source_replenishment_event_id`), not by a DB
+          // unique constraint (the schema carries only a plain index; see `supply-requests.ts`).
+          const existingForEvent = await tx
+            .select({ id: REQUEST.id })
             .from(REQUEST)
             .where(
-              and(eq(REQUEST.organizationId, organizationId), eq(REQUEST.kind, "comfort_kit_replenish")),
+              and(
+                eq(REQUEST.organizationId, organizationId),
+                eq(REQUEST.sourceReplenishmentEventId, event.id),
+              ),
+            )
+            .limit(1);
+
+          const dispatchRows = await tx
+            .select()
+            .from(DISPATCH)
+            .where(
+              and(
+                eq(DISPATCH.organizationId, organizationId),
+                eq(DISPATCH.m13DeploymentId, payload.deploymentId),
+              ),
+            )
+            .limit(1);
+          const dispatchRow = dispatchRows[0] as DispatchRow | undefined;
+
+          let dispatchContext: ComfortKitDispatchContext | null = null;
+          if (dispatchRow) {
+            const containsControlledSubstance = await dispatchContainsControlledSubstance(
+              tx,
+              dispatchRow.id,
             );
-          for (const c of candidates) {
-            if (TERMINAL_STATUSES.includes(c.status)) continue;
-            const data = c.data as { sourceDeploymentId?: string; contents?: { medicationOrderId?: string }[] };
-            if (data?.sourceDeploymentId !== payload.deploymentId) continue;
-            if (!data.contents?.some((line) => line.medicationOrderId === payload.medicationOrderId)) continue;
-            openReplenishRequestId = c.id;
-            break;
+            dispatchContext = toDispatchContext(dispatchRow, containsControlledSubstance);
           }
-        }
 
-        const action = decideReplenishmentIntake(payload, {
-          sourceReplenishmentEventId: event.id,
-          existingForEventId: existingForEvent[0]?.id ?? null,
-          openReplenishRequestId,
-          dispatch: dispatchContext,
-        });
-        if (action.kind !== "open_replenish_request") return;
-        if (!dispatchRow) return; // decider already threw M21_DISPATCH_NOT_FOUND when dispatch is null
+          // An open (non-terminal) replenish request for the same dispatch + medication line already exists
+          // — a redelivery-adjacent case distinct from `existingForEvent` above: M13's own retry cadence
+          // re-fires this event on every subsequent administration until the kit is actually topped up, so
+          // without this check every dose would open a second parallel top-up request.
+          let openReplenishRequestId: string | null = null;
+          if (dispatchRow) {
+            const candidates = await tx
+              .select({ id: REQUEST.id, status: REQUEST.status, data: REQUEST.data })
+              .from(REQUEST)
+              .where(
+                and(
+                  eq(REQUEST.organizationId, organizationId),
+                  eq(REQUEST.kind, "comfort_kit_replenish"),
+                ),
+              );
+            for (const c of candidates) {
+              if (TERMINAL_STATUSES.includes(c.status)) continue;
+              const data = c.data as {
+                sourceDeploymentId?: string;
+                contents?: { medicationOrderId?: string }[];
+              };
+              if (data?.sourceDeploymentId !== payload.deploymentId) continue;
+              if (
+                !data.contents?.some((line) => line.medicationOrderId === payload.medicationOrderId)
+              )
+                continue;
+              openReplenishRequestId = c.id;
+              break;
+            }
+          }
 
-        // The pharmacy identity: the ORIGINAL DISPATCHED line for this (dispatch, medicationOrderId), the
-        // same record the DEA perpetual log's outbound half carries.
-        const lineRows = await tx
-          .select({
-            rxnorm: DISPATCHED.rxnorm,
-            ndc: DISPATCHED.ndc,
-            drugName: DISPATCHED.drugName,
-            strength: DISPATCHED.strength,
-            dosageForm: DISPATCHED.dosageForm,
-            routeOfAdministration: DISPATCHED.routeOfAdministration,
-            isControlledSubstance: DISPATCHED.isControlledSubstance,
-            controlledSubstanceSchedule: DISPATCHED.controlledSubstanceSchedule,
-            dispatchedUnit: DISPATCHED.dispatchedUnit,
-            comfortKitTemplateMedicationId: DISPATCHED.comfortKitTemplateMedicationId,
-            replenishmentThresholdPct: TEMPLATE_MED.replenishmentThresholdPct,
-          })
-          .from(DISPATCHED)
-          .leftJoin(TEMPLATE_MED, eq(TEMPLATE_MED.id, DISPATCHED.comfortKitTemplateMedicationId))
-          .where(
-            and(
-              eq(DISPATCHED.dispatchId, dispatchRow.id),
-              eq(DISPATCHED.medicationOrderId, payload.medicationOrderId),
-            ),
-          )
-          .limit(1);
-        const line = lineRows[0];
-        if (!line) {
-          throw new SupplyStateError(
-            "M21_REPLENISHMENT_LINE_NOT_FOUND",
-            `no dispatched line for medication ${payload.medicationOrderId} on dispatch ${dispatchRow.id}; ` +
-              "a replenishment cannot be assembled without the pharmacy identity the original dispatch recorded",
-          );
-        }
+          const action = decideReplenishmentIntake(payload, {
+            sourceReplenishmentEventId: event.id,
+            existingForEventId: existingForEvent[0]?.id ?? null,
+            openReplenishRequestId,
+            dispatch: dispatchContext,
+          });
+          if (action.kind !== "open_replenish_request") return;
+          if (!dispatchRow) return; // decider already threw M21_DISPATCH_NOT_FOUND when dispatch is null
 
-        // The delivery address: reused VERBATIM from the dispatch's own originating supply_request. An
-        // IPU-room deployment's originating request carries none (§2.1's optional `deliveryAddress` on
-        // `comfort_kit_deploy`), and `comfort_kit_replenish`'s schema requires one unconditionally — a real
-        // gap this consumer refuses rather than papers over with a fabricated address.
-        const originalRows = await tx
-          .select({ data: REQUEST.data })
-          .from(REQUEST)
-          .where(eq(REQUEST.id, dispatchRow.supplyRequestId))
-          .limit(1);
-        const deliveryAddress = (originalRows[0]?.data as OriginalRequestData | undefined)
-          ?.deliveryAddress;
-        if (deliveryAddress === undefined || deliveryAddress === null) {
-          throw new SupplyStateError(
-            "M21_REPLENISHMENT_ADDRESS_UNRESOLVED",
-            `dispatch ${dispatchRow.id}'s originating supply_request carries no deliveryAddress snapshot ` +
-              "(an IPU-room deployment has none); a comfort_kit_replenish request cannot be assembled " +
-              "without one and this consumer refuses to fabricate an address on a DEA-adjacent record",
-          );
-        }
+          // The pharmacy identity: the ORIGINAL DISPATCHED line for this (dispatch, medicationOrderId), the
+          // same record the DEA perpetual log's outbound half carries.
+          const lineRows = await tx
+            .select({
+              rxnorm: DISPATCHED.rxnorm,
+              ndc: DISPATCHED.ndc,
+              drugName: DISPATCHED.drugName,
+              strength: DISPATCHED.strength,
+              dosageForm: DISPATCHED.dosageForm,
+              routeOfAdministration: DISPATCHED.routeOfAdministration,
+              isControlledSubstance: DISPATCHED.isControlledSubstance,
+              controlledSubstanceSchedule: DISPATCHED.controlledSubstanceSchedule,
+              dispatchedUnit: DISPATCHED.dispatchedUnit,
+              comfortKitTemplateMedicationId: DISPATCHED.comfortKitTemplateMedicationId,
+              replenishmentThresholdPct: TEMPLATE_MED.replenishmentThresholdPct,
+            })
+            .from(DISPATCHED)
+            .leftJoin(TEMPLATE_MED, eq(TEMPLATE_MED.id, DISPATCHED.comfortKitTemplateMedicationId))
+            .where(
+              and(
+                eq(DISPATCHED.dispatchId, dispatchRow.id),
+                eq(DISPATCHED.medicationOrderId, payload.medicationOrderId),
+              ),
+            )
+            .limit(1);
+          const line = lineRows[0];
+          if (!line) {
+            throw new SupplyStateError(
+              "M21_REPLENISHMENT_LINE_NOT_FOUND",
+              `no dispatched line for medication ${payload.medicationOrderId} on dispatch ${dispatchRow.id}; a replenishment cannot be assembled without the pharmacy identity the original dispatch recorded`,
+            );
+          }
 
-        const draft = action.draft;
-        await insertSupplyRequest(tx as unknown as Parameters<typeof insertSupplyRequest>[0], deps.outbox, {
-          organizationId,
-          patientId: draft.patientId,
-          admissionId: draft.admissionId,
-          locationId: draft.locationId,
-          providerEntityId: draft.providerEntityId,
-          kind: draft.kind,
-          data: {
-            sourceDeploymentId: draft.sourceDeploymentId,
-            triggeringReplenishmentEventId: draft.sourceReplenishmentEventId,
-            urgencyKind: draft.urgencyKind,
-            deliveryAddress,
-            contents: [
-              {
-                medicationOrderId: draft.medicationOrderId,
-                comfortKitTemplateMedicationId: line.comfortKitTemplateMedicationId,
-                rxNorm: line.rxnorm,
-                ...(line.ndc ? { ndc: line.ndc } : {}),
-                drugName: line.drugName,
-                strength: line.strength,
-                dosageForm: line.dosageForm,
-                routeOfAdministration: line.routeOfAdministration,
-                isControlledSubstance: line.isControlledSubstance,
-                ...(line.controlledSubstanceSchedule
-                  ? { controlledSubstanceSchedule: line.controlledSubstanceSchedule }
-                  : {}),
-                expectedQuantity: Number(draft.requestedQuantity),
-                expectedUnit: line.dispatchedUnit,
-                replenishmentThresholdPct: Number(line.replenishmentThresholdPct ?? "0.25"),
+          // The delivery address: reused VERBATIM from the dispatch's own originating supply_request. An
+          // IPU-room deployment's originating request carries none (§2.1's optional `deliveryAddress` on
+          // `comfort_kit_deploy`), and `comfort_kit_replenish`'s schema requires one unconditionally — a real
+          // gap this consumer refuses rather than papers over with a fabricated address.
+          const originalRows = await tx
+            .select({ data: REQUEST.data })
+            .from(REQUEST)
+            .where(eq(REQUEST.id, dispatchRow.supplyRequestId))
+            .limit(1);
+          const deliveryAddress = (originalRows[0]?.data as OriginalRequestData | undefined)
+            ?.deliveryAddress;
+          if (deliveryAddress === undefined || deliveryAddress === null) {
+            throw new SupplyStateError(
+              "M21_REPLENISHMENT_ADDRESS_UNRESOLVED",
+              `dispatch ${dispatchRow.id}'s originating supply_request carries no deliveryAddress snapshot (an IPU-room deployment has none); a comfort_kit_replenish request cannot be assembled without one and this consumer refuses to fabricate an address on a DEA-adjacent record`,
+            );
+          }
+
+          const draft = action.draft;
+          await insertSupplyRequest(
+            tx as unknown as Parameters<typeof insertSupplyRequest>[0],
+            deps.outbox,
+            {
+              organizationId,
+              patientId: draft.patientId,
+              admissionId: draft.admissionId,
+              locationId: draft.locationId,
+              providerEntityId: draft.providerEntityId,
+              kind: draft.kind,
+              data: {
+                sourceDeploymentId: draft.sourceDeploymentId,
+                triggeringReplenishmentEventId: draft.sourceReplenishmentEventId,
+                urgencyKind: draft.urgencyKind,
+                deliveryAddress,
+                contents: [
+                  {
+                    medicationOrderId: draft.medicationOrderId,
+                    comfortKitTemplateMedicationId: line.comfortKitTemplateMedicationId,
+                    rxNorm: line.rxnorm,
+                    ...(line.ndc ? { ndc: line.ndc } : {}),
+                    drugName: line.drugName,
+                    strength: line.strength,
+                    dosageForm: line.dosageForm,
+                    routeOfAdministration: line.routeOfAdministration,
+                    isControlledSubstance: line.isControlledSubstance,
+                    ...(line.controlledSubstanceSchedule
+                      ? { controlledSubstanceSchedule: line.controlledSubstanceSchedule }
+                      : {}),
+                    expectedQuantity: Number(draft.requestedQuantity),
+                    expectedUnit: line.dispatchedUnit,
+                    replenishmentThresholdPct: Number(line.replenishmentThresholdPct ?? "0.25"),
+                  },
+                ],
               },
-            ],
-          },
-          sourceOrderId: null,
-          sourceReplenishmentEventId: event.id,
-          requestedByMembershipId: null,
-          deliveryInstructions: null,
-          at,
-          // §7.1 acceptance 3 / this file's own header — a system cascade must not claim a human origin.
-          emitCreatedFromExternal: false,
-        });
-      });
+              sourceOrderId: null,
+              sourceReplenishmentEventId: event.id,
+              requestedByMembershipId: null,
+              deliveryInstructions: null,
+              at,
+              // §7.1 acceptance 3 / this file's own header — a system cascade must not claim a human origin.
+              emitCreatedFromExternal: false,
+            },
+          );
+        },
+      );
     },
   };
 }

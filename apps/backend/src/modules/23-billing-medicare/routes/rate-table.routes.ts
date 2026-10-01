@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { P, PROVIDER_SCOPE, targetProviderFromBody, targetProviderFromQuery } from "./guards";
+import type { RateTableRouteService } from "./rate-table-service";
 import {
   CreateRateTableBodySchema,
   RateTableEffectiveQuerySchema,
@@ -21,7 +22,6 @@ import {
   assertWholeCents,
   parse,
 } from "./rate-table-typebox";
-import type { RateTableRouteService } from "./rate-table-service";
 
 export interface RateTableRouteDeps {
   readonly rateTableService: RateTableRouteService;

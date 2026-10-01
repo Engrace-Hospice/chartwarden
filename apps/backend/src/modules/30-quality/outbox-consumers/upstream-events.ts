@@ -65,7 +65,9 @@ export function buildM30HopeSubmissionAcceptedConsumer(deps: {
  * `claim-state-service.ts` already emits a complete payload (`claimId`, `providerEntityId`, …) on every
  * paid/partial-paid/denied adjudication.
  */
-export function buildM30ClaimAdjudicatedConsumer(deps: { readonly db: DbClient }): OutboxConsumerBinding {
+export function buildM30ClaimAdjudicatedConsumer(deps: {
+  readonly db: DbClient;
+}): OutboxConsumerBinding {
   const ports = buildM30UpstreamConsumerPorts(deps.db);
   return {
     consumerName: "m30.claim-adjudicated",

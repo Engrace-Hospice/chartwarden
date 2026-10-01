@@ -257,6 +257,8 @@ export { registerOrganizationLifecycleRoutes } from "./routes/organization-lifec
 import type { DbClient } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
+import type Redis from "ioredis";
+import { registerM2AbacPredicates as _registerM2AbacPredicates } from "./abac-predicates";
 import type {
   DeviceAttestationChallenge as _DeviceAttestationChallenge,
   DeviceAttestationChallengeStore as _DeviceAttestationChallengeStore,
@@ -269,8 +271,8 @@ import {
 } from "./elevated-approvals";
 import {
   type IdentityRouteDeps,
-  createContextActorResolver as _ctxActor,
   createInMemoryCollaboratorLinkStore as _collabStore,
+  createContextActorResolver as _ctxActor,
   createOrgScopedAuditExecutor as _orgScopedAuditExecutor,
   createOrgScopedIdentityOutbox as _orgScopedIdentityOutbox,
 } from "./identity-ports";
@@ -283,7 +285,6 @@ import {
   type OrganizationLifecycleOutboxPort,
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
 } from "./organization-lifecycle";
-import { registerM2AbacPredicates as _registerM2AbacPredicates } from "./abac-predicates";
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { registerOrganizationLifecycleRoutes as _registerOrganizationLifecycleRoutes } from "./routes/organization-lifecycle-routes";
@@ -295,9 +296,8 @@ import {
   createDbMfaVerifier as _dbMfaVerifier,
   createDbSessionStepUpWriter as _dbSessionStepUpWriter,
 } from "./step-up-adapters-db";
-import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
 import { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
-import type Redis from "ioredis";
+import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
 
 /**
  * Mount the M2 identity REST routes on a server (composition root, via buildServer's
@@ -378,12 +378,8 @@ export function mountIdentityRoutes(
     // GAP-043 — the §3.7 named-approval-authority write surface over the real table. This is what makes
     // M27's approver predicate reachable: the seam READS `membership_elevated_approval`, these routes are
     // the only thing that ever puts a row in it.
-    elevatedApprovals: _elevatedApprovalService(
-      _drizzleElevatedApprovalStore(db),
-    ),
-    ...(invite?.emailTransport
-      ? { emailTransport: invite.emailTransport }
-      : {}),
+    elevatedApprovals: _elevatedApprovalService(_drizzleElevatedApprovalStore(db)),
+    ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
     ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
     ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),

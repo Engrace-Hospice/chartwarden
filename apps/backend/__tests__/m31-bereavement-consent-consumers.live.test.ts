@@ -22,8 +22,8 @@ import { createDbClient } from "@wardenx/db";
 import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { registerBereavementSeams } from "../src/modules/16-bereavement/seams/index";
 import { createDrizzleBereavementSeamStore } from "../src/modules/16-bereavement/seams/drizzle-store";
+import { registerBereavementSeams } from "../src/modules/16-bereavement/seams/index";
 import { buildM31BereavementPlanClosedConsumer } from "../src/modules/31-portal/outbox-consumers/m16-bereavement-plan-closed";
 import { buildM31ConsentRevokedGrantCascadeConsumer } from "../src/modules/31-portal/outbox-consumers/m39-consent-revoked";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -297,7 +297,11 @@ describe.skipIf(!DB_URL)(
           await expect(
             planClosedConsumer.handle({
               organizationId: ORG_A,
-              payload: { planId: planIdOrgB, closedAt: new Date().toISOString(), outreachStats: {} },
+              payload: {
+                planId: planIdOrgB,
+                closedAt: new Date().toISOString(),
+                outreachStats: {},
+              },
             }),
           ).resolves.not.toThrow();
         });

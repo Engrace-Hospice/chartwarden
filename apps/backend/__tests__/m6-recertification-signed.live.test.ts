@@ -293,7 +293,9 @@ describe.skipIf(!DB_URL)(
       expect(p2a?.status).toBe("active");
 
       const d2 = await deliver(ORG_A, a.admissionId, p2a?.end as string);
-      expect(d2.outcome, JSON.stringify(await periods(a.admissionId))).toMatchObject({ kind: "opened" });
+      expect(d2.outcome, JSON.stringify(await periods(a.admissionId))).toMatchObject({
+        kind: "opened",
+      });
       const p3 = (await periods(a.admissionId))[2];
       expect(p3).toMatchObject({ seq: 3, kind: "sixty_day", status: "pending" });
       await activatePending(p3?.id as string, 3);

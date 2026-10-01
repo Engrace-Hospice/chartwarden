@@ -630,7 +630,10 @@ export interface OrderRouteService extends OrderAbacResolver {
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 interface OrderRecord
   extends Mutable<
-    Omit<OrderDetailView, "requirements" | "allowedActions" | "transmissionAttestations" | "pendingRecovery">
+    Omit<
+      OrderDetailView,
+      "requirements" | "allowedActions" | "transmissionAttestations" | "pendingRecovery"
+    >
   > {
   organizationId: string;
   cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null;

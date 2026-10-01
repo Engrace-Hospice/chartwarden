@@ -46,21 +46,17 @@ export function bereavementPlanSitingForOrg(
   organizationId: string,
   planId: string,
 ): Promise<BereavementPlanSitingForOrg | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: PLAN_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const [row] = await tx
-        .select({ id: PLAN.id, providerEntityId: PLAN.providerEntityId })
-        .from(PLAN)
-        // The explicit organization_id predicate is the second wall behind RLS (the M6 precedent), so a
-        // misconfigured GUC cannot widen this read.
-        .where(and(eq(PLAN.organizationId, organizationId), eq(PLAN.id, planId)))
-        .limit(1);
-      if (!row) return null;
-      return { planId: row.id, providerEntityId: row.providerEntityId };
-    },
-  );
+  return withOrgContext(db, { organizationId, userId: PLAN_READER_SYSTEM_USER_ID }, async (tx) => {
+    const [row] = await tx
+      .select({ id: PLAN.id, providerEntityId: PLAN.providerEntityId })
+      .from(PLAN)
+      // The explicit organization_id predicate is the second wall behind RLS (the M6 precedent), so a
+      // misconfigured GUC cannot widen this read.
+      .where(and(eq(PLAN.organizationId, organizationId), eq(PLAN.id, planId)))
+      .limit(1);
+    if (!row) return null;
+    return { planId: row.id, providerEntityId: row.providerEntityId };
+  });
 }
 
 // F-165 (#248) — the `arch:tables` fix for M31's `m16.bereavement.plan_opened` consumer, which had
@@ -85,26 +81,25 @@ export function bereavedContactFlipCandidatesForPlanForOrg(
   organizationId: string,
   planId: string,
 ): Promise<readonly BereavedContactFlipCandidate[]> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: PLAN_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const rows = await tx
-        .select({ portalAccountId: CONTACT.portalAccountId, consentRecordId: CONTACT.consentRecordId })
-        .from(CONTACT)
-        .where(
-          and(
-            eq(CONTACT.organizationId, organizationId),
-            eq(CONTACT.planId, planId),
-            eq(CONTACT.status, "active"),
-          ),
-        );
-      return rows.filter(
-        (r): r is BereavedContactFlipCandidate =>
-          r.portalAccountId !== null && r.consentRecordId !== null,
+  return withOrgContext(db, { organizationId, userId: PLAN_READER_SYSTEM_USER_ID }, async (tx) => {
+    const rows = await tx
+      .select({
+        portalAccountId: CONTACT.portalAccountId,
+        consentRecordId: CONTACT.consentRecordId,
+      })
+      .from(CONTACT)
+      .where(
+        and(
+          eq(CONTACT.organizationId, organizationId),
+          eq(CONTACT.planId, planId),
+          eq(CONTACT.status, "active"),
+        ),
       );
-    },
-  );
+    return rows.filter(
+      (r): r is BereavedContactFlipCandidate =>
+        r.portalAccountId !== null && r.consentRecordId !== null,
+    );
+  });
 }
 
 // F-167 (#248) — the `m16.bereavement.contact_active` M31 consumer's read. Single-contact sibling of
@@ -130,31 +125,27 @@ export function bereavedContactFlipCandidateForOrg(
   organizationId: string,
   contactId: string,
 ): Promise<BereavedContactFlipCandidateByContact | null> {
-  return withOrgContext(
-    db,
-    { organizationId, userId: PLAN_READER_SYSTEM_USER_ID },
-    async (tx) => {
-      const [row] = await tx
-        .select({
-          planId: CONTACT.planId,
-          portalAccountId: CONTACT.portalAccountId,
-          consentRecordId: CONTACT.consentRecordId,
-        })
-        .from(CONTACT)
-        .where(
-          and(
-            eq(CONTACT.organizationId, organizationId),
-            eq(CONTACT.id, contactId),
-            eq(CONTACT.status, "active"),
-          ),
-        )
-        .limit(1);
-      if (!row || row.portalAccountId === null || row.consentRecordId === null) return null;
-      return {
-        planId: row.planId,
-        portalAccountId: row.portalAccountId,
-        consentRecordId: row.consentRecordId,
-      };
-    },
-  );
+  return withOrgContext(db, { organizationId, userId: PLAN_READER_SYSTEM_USER_ID }, async (tx) => {
+    const [row] = await tx
+      .select({
+        planId: CONTACT.planId,
+        portalAccountId: CONTACT.portalAccountId,
+        consentRecordId: CONTACT.consentRecordId,
+      })
+      .from(CONTACT)
+      .where(
+        and(
+          eq(CONTACT.organizationId, organizationId),
+          eq(CONTACT.id, contactId),
+          eq(CONTACT.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (!row || row.portalAccountId === null || row.consentRecordId === null) return null;
+    return {
+      planId: row.planId,
+      portalAccountId: row.portalAccountId,
+      consentRecordId: row.consentRecordId,
+    };
+  });
 }

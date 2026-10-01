@@ -38,10 +38,10 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type M30ConsumerPorts,
-  type MeasureFyBoundary,
   MEASURE_FY_BOUNDARY_v2025,
   MEASURE_FY_BOUNDARY_v2026,
   MEASURE_FY_BOUNDARY_v2028,
+  type MeasureFyBoundary,
   MeasureRecomputeQueueRepository,
   resolvePeriodRule,
   resolvePeriodWindow,
@@ -84,23 +84,27 @@ export function buildM30UpstreamConsumerPorts(
 ): M30ConsumerPorts {
   return {
     async enqueueRecompute(request) {
-      await withOrgContext(db, { organizationId: request.organizationId, userId: "" }, async (tx) => {
-        const repo = new MeasureRecomputeQueueRepository(tx as DbClient);
-        const boundary = resolveFyBoundary(now());
-        for (const measureCode of request.measureCodes) {
-          const rule = resolvePeriodRule(boundary, measureCode);
-          const period = resolvePeriodWindow(rule, now());
-          await repo.enqueue({
-            measureCode,
-            providerEntityId: request.providerEntityId,
-            organizationId: request.organizationId,
-            periodStart: new Date(period.start),
-            periodEnd: new Date(period.end),
-            triggeringEventOutboxId: request.triggeringEventId,
-            triggeringEventName: request.reason,
-          });
-        }
-      });
+      await withOrgContext(
+        db,
+        { organizationId: request.organizationId, userId: "" },
+        async (tx) => {
+          const repo = new MeasureRecomputeQueueRepository(tx as DbClient);
+          const boundary = resolveFyBoundary(now());
+          for (const measureCode of request.measureCodes) {
+            const rule = resolvePeriodRule(boundary, measureCode);
+            const period = resolvePeriodWindow(rule, now());
+            await repo.enqueue({
+              measureCode,
+              providerEntityId: request.providerEntityId,
+              organizationId: request.organizationId,
+              periodStart: new Date(period.start),
+              periodEnd: new Date(period.end),
+              triggeringEventOutboxId: request.triggeringEventId,
+              triggeringEventName: request.reason,
+            });
+          }
+        },
+      );
     },
     createMortalityReviewDraft: () =>
       unboundWorkerPort(

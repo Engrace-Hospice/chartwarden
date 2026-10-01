@@ -73,10 +73,14 @@ function factsOf(payload: unknown): EncounterSignedFacts {
     throw new Error(`${M18_ENCOUNTER_SIGNED_CONSUMER.consumerName}: payload has no encounterId`);
   }
   if (typeof signedByMembershipId !== "string" || signedByMembershipId.length === 0) {
-    throw new Error(`${M18_ENCOUNTER_SIGNED_CONSUMER.consumerName}: payload has no signedByMembershipId`);
+    throw new Error(
+      `${M18_ENCOUNTER_SIGNED_CONSUMER.consumerName}: payload has no signedByMembershipId`,
+    );
   }
   if (typeof evvBracketState !== "string" || evvBracketState.length === 0) {
-    throw new Error(`${M18_ENCOUNTER_SIGNED_CONSUMER.consumerName}: payload has no evvBracketState`);
+    throw new Error(
+      `${M18_ENCOUNTER_SIGNED_CONSUMER.consumerName}: payload has no evvBracketState`,
+    );
   }
   const visitId = typeof p.visitId === "string" && p.visitId.length > 0 ? p.visitId : null;
   const evvMissingReason = typeof p.evvMissingReason === "string" ? p.evvMissingReason : null;
@@ -121,7 +125,11 @@ export function buildM18EncounterSignedConsumer(deps: EncounterSignedConsumerDep
           .select({ id: MR.id, status: MR.status, version: MR.version })
           .from(MR)
           .where(
-            and(eq(MR.organizationId, organizationId), eq(MR.visitId, visitId), eq(MR.status, "open")),
+            and(
+              eq(MR.organizationId, organizationId),
+              eq(MR.visitId, visitId),
+              eq(MR.status, "open"),
+            ),
           );
 
         if (openRows.length > 0) {

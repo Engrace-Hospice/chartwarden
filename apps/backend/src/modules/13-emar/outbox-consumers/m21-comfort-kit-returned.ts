@@ -32,8 +32,8 @@
 // WHERE conditions on `disposal_status != 'returned'`, so a redelivery after the first commit matches zero
 // rows and is a silent no-op rather than re-stamping `returned_at`.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import { applyKitReturn } from "@wardenx/emar";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { M21ComfortKitReturnedPayload } from "@wardenx/types";
 import { and, eq, ne } from "drizzle-orm";
 
@@ -50,9 +50,7 @@ export interface ComfortKitReturnedConsumerDeps {
 
 /** M13's live `m21.comfort_kit.returned` binding (§2.6) — flips `comfort_kit_deployment.disposal_status`
  *  to `'returned'` and stamps `returned_at`. */
-export function buildM13ComfortKitReturnedConsumer(
-  deps: ComfortKitReturnedConsumerDeps,
-) {
+export function buildM13ComfortKitReturnedConsumer(deps: ComfortKitReturnedConsumerDeps) {
   return {
     consumerName: M13_COMFORT_KIT_RETURNED_CONSUMER.consumerName,
     consumerModule: "m13" as const,
@@ -64,7 +62,9 @@ export function buildM13ComfortKitReturnedConsumer(
     }): Promise<void> {
       const payload = (event.payload ?? {}) as M21ComfortKitReturnedPayload;
       if (typeof payload.m13DeploymentId !== "string") {
-        throw new Error(`${M13_COMFORT_KIT_RETURNED_CONSUMER.consumerName}: payload has no m13DeploymentId`);
+        throw new Error(
+          `${M13_COMFORT_KIT_RETURNED_CONSUMER.consumerName}: payload has no m13DeploymentId`,
+        );
       }
       const organizationId = event.organizationId;
       const deploymentId = payload.m13DeploymentId;

@@ -11,7 +11,10 @@ import { sql } from "drizzle-orm";
  */
 export function buildM11CosignerCounter(
   db: DbClient,
-  holders: (organizationId: string, permissionKeys: readonly string[]) => Promise<ReadonlySet<string>>,
+  holders: (
+    organizationId: string,
+    permissionKeys: readonly string[],
+  ) => Promise<ReadonlySet<string>>,
   permissionKeys: readonly string[],
 ) {
   return async (organizationId: string, excludeUserId: string): Promise<number> => {

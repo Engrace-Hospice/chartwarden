@@ -32,13 +32,16 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { createDrizzleSchedulingSeamStore, createVisitReader } from "../src/modules/17-scheduling/index";
+import {
+  createDrizzleSchedulingSeamStore,
+  createVisitReader,
+} from "../src/modules/17-scheduling/index";
 import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
 import type { DenialTerminologyLookupPort } from "../src/modules/25-remittance/consumers/handlers";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { buildDrizzleDenialSeedStore } from "../src/modules/25-remittance/outbox-consumers/denial-seed-store-drizzle";
 import { buildM18EvvAggregatorRejectedConsumer } from "../src/modules/25-remittance/outbox-consumers/m18-evv-aggregator-rejected";
 import { buildM23ClaimRejectedConsumer } from "../src/modules/25-remittance/outbox-consumers/m23-claim-rejected";
-import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import type { WriteOutboxPort } from "../src/modules/25-remittance/routes/write-service";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -191,7 +194,12 @@ describe.skipIf(!DB_URL)("M25 denial-seed consumers — LIVE Postgres (M25L)", (
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-M25L-${org.slice(0, 4)}`, `M25L ${org.slice(0, 4)}`, `NPI-M25L-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-M25L-${org.slice(0, 4)}`,
+            `M25L ${org.slice(0, 4)}`,
+            `NPI-M25L-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       const location = (
@@ -209,10 +217,7 @@ describe.skipIf(!DB_URL)("M25 denial-seed consumers — LIVE Postgres (M25L)", (
 
     // The two real M23/M17 seams both consumer builders' default resolvers read.
     registerSeam("ClaimSubmissionReader", buildM23ClaimSubmissionReader(handle.db));
-    registerSeam(
-      "VisitReader",
-      createVisitReader(createDrizzleSchedulingSeamStore(handle.db)),
-    );
+    registerSeam("VisitReader", createVisitReader(createDrizzleSchedulingSeamStore(handle.db)));
   }, 180_000);
 
   afterAll(async () => {
@@ -246,7 +251,12 @@ describe.skipIf(!DB_URL)("M25 denial-seed consumers — LIVE Postgres (M25L)", (
     const claimId = await seedClaim(ORG_A, "CCN-REJ-1");
     await claimRejected.handle({
       organizationId: ORG_A,
-      payload: { claimId, acknowledgmentId: crypto.randomUUID(), rejectionStage: "277ca", rejectionCodes: ["50"] },
+      payload: {
+        claimId,
+        acknowledgmentId: crypto.randomUUID(),
+        rejectionStage: "277ca",
+        rejectionCodes: ["50"],
+      },
       createdAt: new Date(),
     });
     const key = `277ca:${claimId}:${new Date().toISOString().slice(0, 10)}`;
@@ -271,7 +281,12 @@ describe.skipIf(!DB_URL)("M25 denial-seed consumers — LIVE Postgres (M25L)", (
     const claimId = await seedClaim(ORG_A, "CCN-REJ-2");
     await claimRejected.handle({
       organizationId: ORG_A,
-      payload: { claimId, acknowledgmentId: crypto.randomUUID(), rejectionStage: "277ca", rejectionCodes: ["999"] },
+      payload: {
+        claimId,
+        acknowledgmentId: crypto.randomUUID(),
+        rejectionStage: "277ca",
+        rejectionCodes: ["999"],
+      },
       createdAt: new Date(),
     });
     const key = `277ca:${claimId}:${new Date().toISOString().slice(0, 10)}`;

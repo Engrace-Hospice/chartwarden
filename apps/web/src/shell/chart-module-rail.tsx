@@ -166,9 +166,7 @@ export function PatientChartBail({
   return (
     <PatientWorkspaceLayout banner={banner}>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {current && patientId ? (
-          <ChartModuleRail patientId={patientId} current={current} />
-        ) : null}
+        {current && patientId ? <ChartModuleRail patientId={patientId} current={current} /> : null}
         <div
           style={{
             flex: 1,

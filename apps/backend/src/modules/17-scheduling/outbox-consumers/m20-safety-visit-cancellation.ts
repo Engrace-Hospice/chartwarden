@@ -64,9 +64,7 @@ function factsOf(payload: unknown): { sosAlertId: string; visitId: string; reque
   const read = (key: string): string => {
     const value = p[key];
     if (typeof value !== "string" || value.length === 0) {
-      throw new Error(
-        `${M17_SOS_VISIT_CANCELLATION_CONSUMER.consumerName}: payload has no ${key}`,
-      );
+      throw new Error(`${M17_SOS_VISIT_CANCELLATION_CONSUMER.consumerName}: payload has no ${key}`);
     }
     return value;
   };
@@ -95,93 +93,89 @@ export function buildM17SosVisitCancellationConsumer(deps: SosVisitCancellationD
       const facts = factsOf(event.payload);
       const organizationId = event.organizationId;
 
-      await withOrgContext(
-        deps.db,
-        { organizationId, userId: "" },
-        async (scoped) => {
-          const tx = scoped as unknown as DbClient;
+      await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
+        const tx = scoped as unknown as DbClient;
 
-          const [visit] = await tx
-            .select({
-              id: V.id,
-              status: V.status,
-              version: V.version,
-              providerEntityId: V.providerEntityId,
-              locationId: V.locationId,
-              patientId: V.patientId,
-              assignedMembershipId: V.assignedMembershipId,
-            })
-            .from(V)
-            .where(eq(V.id, facts.visitId))
-            .limit(1);
-          if (!visit) return;
+        const [visit] = await tx
+          .select({
+            id: V.id,
+            status: V.status,
+            version: V.version,
+            providerEntityId: V.providerEntityId,
+            locationId: V.locationId,
+            patientId: V.patientId,
+            assignedMembershipId: V.assignedMembershipId,
+          })
+          .from(V)
+          .where(eq(V.id, facts.visitId))
+          .limit(1);
+        if (!visit) return;
 
-          const isCancellable =
-            visit.status === "published" ||
-            visit.status === "en_route" ||
-            visit.status === "in_visit";
-          if (!isCancellable) return; // already terminal — idempotent no-op
+        const isCancellable =
+          visit.status === "published" ||
+          visit.status === "en_route" ||
+          visit.status === "in_visit";
+        if (!isCancellable) return; // already terminal — idempotent no-op
 
-          const reason = `SOS alert ${facts.sosAlertId} resolved with outcome=visit_cancelled (§7.5)`;
-          const transition = transitionVisit(visit.status as VisitStatus, {
-            type: "cancel",
-            reason,
-            cancelledByPresent: true,
-          });
+        const reason = `SOS alert ${facts.sosAlertId} resolved with outcome=visit_cancelled (§7.5)`;
+        const transition = transitionVisit(visit.status as VisitStatus, {
+          type: "cancel",
+          reason,
+          cancelledByPresent: true,
+        });
 
-          const [updated] = await tx
-            .update(V)
-            .set({
-              status: transition.to,
-              cancelledByMembershipId: M17_SYSTEM_USER_ID,
-              cancelledAt: new Date(facts.requestedAt),
-              cancellationReason: reason,
-              cancellationReasonCode: "sos_alert_resolved",
-              version: visit.version + 1,
-              updatedAt: new Date(),
-            })
-            .where(and(eq(V.id, facts.visitId), eq(V.status, visit.status as VisitStatus)))
-            .returning({ id: V.id });
-          if (!updated) return;
+        const [updated] = await tx
+          .update(V)
+          .set({
+            status: transition.to,
+            cancelledByMembershipId: M17_SYSTEM_USER_ID,
+            cancelledAt: new Date(facts.requestedAt),
+            cancellationReason: reason,
+            cancellationReasonCode: "sos_alert_resolved",
+            version: visit.version + 1,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(V.id, facts.visitId), eq(V.status, visit.status as VisitStatus)))
+          .returning({ id: V.id });
+        if (!updated) return;
 
-          await tx.insert(VSH).values({
-            organizationId,
-            providerEntityId: visit.providerEntityId,
-            locationId: visit.locationId,
+        await tx.insert(VSH).values({
+          organizationId,
+          providerEntityId: visit.providerEntityId,
+          locationId: visit.locationId,
+          visitId: facts.visitId,
+          fromState: visit.status as VisitStatus,
+          toState: "cancelled",
+          actorMembershipId: M17_SYSTEM_USER_ID,
+          systemSource: "sos_visit_cancellation",
+          reason,
+          outboxEventId: null,
+        });
+
+        await deps.outbox.publish(tx, {
+          eventName: "m17.visit.unassigned",
+          organizationId,
+          aggregateKind: "visit",
+          aggregateId: facts.visitId,
+          payload: {
             visitId: facts.visitId,
-            fromState: visit.status as VisitStatus,
-            toState: "cancelled",
-            actorMembershipId: M17_SYSTEM_USER_ID,
-            systemSource: "sos_visit_cancellation",
+            formerAssignedMembershipId: visit.assignedMembershipId,
+            patientId: visit.patientId,
+          },
+        });
+        await deps.outbox.publish(tx, {
+          eventName: "m17.visit.cancelled",
+          organizationId,
+          aggregateKind: "visit",
+          aggregateId: facts.visitId,
+          payload: {
+            visitId: facts.visitId,
+            cancelledBy: M17_SYSTEM_USER_ID,
             reason,
-            outboxEventId: null,
-          });
-
-          await deps.outbox.publish(tx, {
-            eventName: "m17.visit.unassigned",
-            organizationId,
-            aggregateKind: "visit",
-            aggregateId: facts.visitId,
-            payload: {
-              visitId: facts.visitId,
-              formerAssignedMembershipId: visit.assignedMembershipId,
-              patientId: visit.patientId,
-            },
-          });
-          await deps.outbox.publish(tx, {
-            eventName: "m17.visit.cancelled",
-            organizationId,
-            aggregateKind: "visit",
-            aggregateId: facts.visitId,
-            payload: {
-              visitId: facts.visitId,
-              cancelledBy: M17_SYSTEM_USER_ID,
-              reason,
-              reasonCode: "sos_alert_resolved",
-            },
-          });
-        },
-      );
+            reasonCode: "sos_alert_resolved",
+          },
+        });
+      });
     },
   };
 }

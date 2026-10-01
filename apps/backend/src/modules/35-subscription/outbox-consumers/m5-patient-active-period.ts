@@ -22,8 +22,8 @@
 // header for why `wasActive` is deliberately untouched.
 import type { DbClient } from "@wardenx/db";
 import {
-  computeBillingPseudonym,
   type PseudonymKeyProvider,
+  computeBillingPseudonym,
   toBillingYearMonth,
 } from "@wardenx/subscription-billing";
 import {

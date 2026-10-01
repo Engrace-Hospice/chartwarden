@@ -45,7 +45,10 @@ async function main(): Promise<void> {
         .select()
         .from(schema.memberships)
         .where(
-          and(eq(schema.memberships.organizationId, org.id), ne(schema.memberships.status, "revoked")),
+          and(
+            eq(schema.memberships.organizationId, org.id),
+            ne(schema.memberships.status, "revoked"),
+          ),
         )
         .orderBy(asc(schema.memberships.invitedAt))
         .limit(1);

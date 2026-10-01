@@ -88,7 +88,11 @@ export interface OrganizationLifecycleWriter {
   transition(
     organizationId: string,
     event: OrganizationLifecycleEvent,
-    ctx: { readonly reason: string; readonly actorUserId: string; readonly actorMembershipId: string },
+    ctx: {
+      readonly reason: string;
+      readonly actorUserId: string;
+      readonly actorMembershipId: string;
+    },
   ): Promise<OrganizationTransitionResult>;
   getStatus(organizationId: string): Promise<OrganizationLifecycleStatus | null>;
 }
@@ -145,7 +149,12 @@ export function createDrizzleOrganizationLifecycleWriter(
 
         await outbox?.publish(tx, {
           eventName: OUTBOX_EVENT_FOR[event],
-          payload: { organizationId, reason: ctx.reason, actorMembershipId: ctx.actorMembershipId, occurredAt },
+          payload: {
+            organizationId,
+            reason: ctx.reason,
+            actorMembershipId: ctx.actorMembershipId,
+            occurredAt,
+          },
           organizationId,
           aggregateKind: "organization",
           aggregateId: organizationId,
@@ -156,15 +165,12 @@ export function createDrizzleOrganizationLifecycleWriter(
     },
 
     async getStatus(organizationId) {
-      const [row] = await withOrgContext(
-        db,
-        { organizationId, userId: "" },
-        (tx) =>
-          tx
-            .select({ status: schema.organizations.status })
-            .from(schema.organizations)
-            .where(eq(schema.organizations.id, organizationId))
-            .limit(1),
+      const [row] = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        tx
+          .select({ status: schema.organizations.status })
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, organizationId))
+          .limit(1),
       );
       return row ? (row.status as OrganizationLifecycleStatus) : null;
     },

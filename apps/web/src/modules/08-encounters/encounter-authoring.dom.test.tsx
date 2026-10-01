@@ -346,9 +346,9 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     mountCompose();
     const save = await waitFor(() => screen.getByRole("button", { name: "Save draft" }));
     expect((save as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Finalize note" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(
+      (screen.getByRole("button", { name: "Finalize note" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     expect((screen.getByRole("button", { name: "Vitals" }) as HTMLButtonElement).disabled).toBe(
       true,
     );

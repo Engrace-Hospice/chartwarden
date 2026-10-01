@@ -36,7 +36,7 @@ interface RegisteredScreen {
 }
 
 /** The `web`-app, statically-routable, post-auth screens — see the header for what and why. */
-export function staticWebScreens(): RegisteredScreen[] {
+function staticWebScreens(): RegisteredScreen[] {
   const jsonPath = join(import.meta.dirname, "..", "..", "audit", "ui-parity", "ui-parity.json");
   const data = JSON.parse(readFileSync(jsonPath, "utf8")) as { screens: RegisteredScreen[] };
   return data.screens

@@ -83,7 +83,9 @@ function parsePayload(
  * reach the handler — the target row is already `expired_unsigned` (or was resolved by a sign/discontinue
  * in the interim), which the decider / the version-guarded UPDATE both treat as a clean skip.
  */
-export function buildM12VerbalExpiredConsumer(deps: VerbalExpiredConsumerDeps): OutboxConsumerBinding {
+export function buildM12VerbalExpiredConsumer(
+  deps: VerbalExpiredConsumerDeps,
+): OutboxConsumerBinding {
   const now = deps.now ?? (() => new Date());
   return {
     consumerName: M12_VERBAL_EXPIRED_CONSUMER.consumerName,
@@ -106,58 +108,62 @@ export function buildM12VerbalExpiredConsumer(deps: VerbalExpiredConsumerDeps): 
         expiredAt: parsed.expiredAt,
       };
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const [row] = await tx
-          .select({ status: MO.status, patientId: MO.patientId, version: MO.version })
-          .from(MO)
-          .where(and(eq(MO.organizationId, organizationId), eq(MO.id, parsed.orderId)))
-          .limit(1);
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const [row] = await tx
+            .select({ status: MO.status, patientId: MO.patientId, version: MO.version })
+            .from(MO)
+            .where(and(eq(MO.organizationId, organizationId), eq(MO.id, parsed.orderId)))
+            .limit(1);
 
-        const facts: VerbalExpiredFacts = row
-          ? { status: row.status as MedicationOrderStatus, patientId: row.patientId }
-          : { status: "draft" as MedicationOrderStatus, patientId: "" };
-        const action = decideVerbalExpiry(decidePayload, facts);
-        if (action.kind !== "expire" || !row) return;
+          const facts: VerbalExpiredFacts = row
+            ? { status: row.status as MedicationOrderStatus, patientId: row.patientId }
+            : { status: "draft" as MedicationOrderStatus, patientId: "" };
+          const action = decideVerbalExpiry(decidePayload, facts);
+          if (action.kind !== "expire" || !row) return;
 
-        // Raises NOT_SYSTEM_ACTOR / VERBAL_DEADLINE_NOT_REACHED / ILLEGAL_MEDICATION_ORDER_TRANSITION
-        // before anything is written — a status this decider did not expect dead-letters rather than
-        // being silently reinterpreted.
-        transitionMedicationOrder(row.status as MedicationOrderStatus, {
-          type: "expire",
-          isSystemActor: true,
-          deadlineReached: true,
-        });
+          // Raises NOT_SYSTEM_ACTOR / VERBAL_DEADLINE_NOT_REACHED / ILLEGAL_MEDICATION_ORDER_TRANSITION
+          // before anything is written — a status this decider did not expect dead-letters rather than
+          // being silently reinterpreted.
+          transitionMedicationOrder(row.status as MedicationOrderStatus, {
+            type: "expire",
+            isSystemActor: true,
+            deadlineReached: true,
+          });
 
-        const at = now();
-        // The `status` predicate is the concurrency guard between the read and the write: a clinician
-        // signing this order in the gap moves it, the update matches nothing, and no event is emitted for
-        // a row this delivery did not actually change.
-        const updated = await tx
-          .update(MO)
-          .set({ status: "expired_unsigned", version: row.version + 1, updatedAt: at })
-          .where(
-            and(
-              eq(MO.organizationId, organizationId),
-              eq(MO.id, action.orderId),
-              eq(MO.status, row.status),
-            ),
-          )
-          .returning({ id: MO.id });
-        if (updated.length === 0) return;
+          const at = now();
+          // The `status` predicate is the concurrency guard between the read and the write: a clinician
+          // signing this order in the gap moves it, the update matches nothing, and no event is emitted for
+          // a row this delivery did not actually change.
+          const updated = await tx
+            .update(MO)
+            .set({ status: "expired_unsigned", version: row.version + 1, updatedAt: at })
+            .where(
+              and(
+                eq(MO.organizationId, organizationId),
+                eq(MO.id, action.orderId),
+                eq(MO.status, row.status),
+              ),
+            )
+            .returning({ id: MO.id });
+          if (updated.length === 0) return;
 
-        await deps.outbox.publish(tx, {
-          eventName: "m12.medication_order.list_changed",
-          organizationId,
-          aggregateKind: "medication_order",
-          aggregateId: action.orderId,
-          payload: {
-            patientId: action.patientId,
-            addedOrderIds: [],
-            removedOrderIds: [action.orderId],
-          },
-        });
-      });
+          await deps.outbox.publish(tx, {
+            eventName: "m12.medication_order.list_changed",
+            organizationId,
+            aggregateKind: "medication_order",
+            aggregateId: action.orderId,
+            payload: {
+              patientId: action.patientId,
+              addedOrderIds: [],
+              removedOrderIds: [action.orderId],
+            },
+          });
+        },
+      );
     },
   };
 }

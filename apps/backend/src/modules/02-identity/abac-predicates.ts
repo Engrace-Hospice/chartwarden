@@ -8,7 +8,11 @@
 // abac-predicates.ts): re-deriving from the single source keeps the platform's several
 // platform-only gates from drifting apart on who counts as an operator, rather than each
 // carrying its own copy of the answer.
-import { type AbacContext, PLATFORM_OPS_ROLE_KEYS, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  PLATFORM_OPS_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 
 export const M2_ABAC_PREDICATES = ["organization_lifecycle_platform_ops"] as const;
 

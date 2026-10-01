@@ -199,7 +199,12 @@ async function applyEscalation(
       alert.postedByMembershipId,
       at,
     );
-    const transition = escalateSos({ alert, reasonCode: "delivery_failed", at: atIso, emergencyContactConsent });
+    const transition = escalateSos({
+      alert,
+      reasonCode: "delivery_failed",
+      at: atIso,
+      emergencyContactConsent,
+    });
     if (transition.to === "emergency_terminus") return; // decided above; re-checked, never reached here.
 
     const stateHistory: SosStateHistoryPort = {
@@ -277,7 +282,8 @@ export function buildSosDeliveryFailureConsumer(
       const organizationId = event.organizationId as OrgId;
       const at = clock();
       const atIso = at.toISOString() as IsoInstant;
-      const alertEventType = typeof payload.alertEventType === "string" ? payload.alertEventType : null;
+      const alertEventType =
+        typeof payload.alertEventType === "string" ? payload.alertEventType : null;
       const sourceAggregateId =
         typeof payload.sourceAggregateId === "string" ? payload.sourceAggregateId : null;
       const m20Payload: M36DeliveryFailedPayload = {
@@ -295,14 +301,23 @@ export function buildSosDeliveryFailureConsumer(
       await runWithRequestContext({ organizationId, userId: CONSUMER_USER_ID }, async () => {
         let facts: SafetySosAlertFacts | null = null;
         if (m20Payload.sosAlertId !== null) {
-          await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (handle) => {
-            const [row] = await (handle as DbClient)
-              .select()
-              .from(SOS)
-              .where(and(eq(SOS.id, m20Payload.sosAlertId as string), eq(SOS.organizationId, organizationId)))
-              .limit(1);
-            facts = row ? sosFactsOf(row as never) : null;
-          });
+          await withOrgContext(
+            deps.db,
+            { organizationId, userId: CONSUMER_USER_ID },
+            async (handle) => {
+              const [row] = await (handle as DbClient)
+                .select()
+                .from(SOS)
+                .where(
+                  and(
+                    eq(SOS.id, m20Payload.sosAlertId as string),
+                    eq(SOS.organizationId, organizationId),
+                  ),
+                )
+                .limit(1);
+              facts = row ? sosFactsOf(row as never) : null;
+            },
+          );
         }
 
         const action = decideSosDeliveryFailure({ payload: m20Payload, alert: facts });
@@ -316,7 +331,13 @@ export function buildSosDeliveryFailureConsumer(
               `m20.m36-delivery-failed: SOS alert ${m20Payload.sosAlertId} is at escalation_tier_3 with a failed page — the next rung is emergency_terminus, whose dial/PSAP/page effects this consumer does not implement (see the file header); dead-lettering for a human.`,
             );
           case "escalate":
-            return applyEscalation(deps, organizationId, m20Payload.sosAlertId as SafetySosAlertId, at, atIso);
+            return applyEscalation(
+              deps,
+              organizationId,
+              m20Payload.sosAlertId as SafetySosAlertId,
+              at,
+              atIso,
+            );
         }
       });
     },

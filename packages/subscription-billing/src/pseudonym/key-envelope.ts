@@ -91,7 +91,9 @@ function parseKek(raw: string, envKey: string): PlatformPseudonymKek {
  * — the `tenant-kek.ts#loadPlatformKekRing` precedent — so a typo'd root key stops the boot rather than
  * quietly degrading `activeKey()` to an unbound stub.
  */
-export function loadPseudonymKekRing(env: NodeJS.ProcessEnv = process.env): PseudonymKekRing | null {
+export function loadPseudonymKekRing(
+  env: NodeJS.ProcessEnv = process.env,
+): PseudonymKekRing | null {
   const activeRaw = env[PSEUDONYM_KEY_ACTIVE_KEK_ENV]?.trim();
   if (!activeRaw) return null;
   const active = parseKek(activeRaw, PSEUDONYM_KEY_ACTIVE_KEK_ENV);
@@ -128,7 +130,9 @@ export function sealPseudonymKeyMaterial(
   plaintext: Buffer,
 ): { readonly ciphertextB64: string; readonly kekId: string } {
   if (plaintext.length !== KEY_LEN) {
-    throw new PseudonymKekError(`plaintext key material must be ${KEY_LEN} bytes (got ${plaintext.length})`);
+    throw new PseudonymKekError(
+      `plaintext key material must be ${KEY_LEN} bytes (got ${plaintext.length})`,
+    );
   }
   const nonce = randomBytes(NONCE_LEN);
   const cipher = createCipheriv("aes-256-gcm", ring.active.key, nonce);

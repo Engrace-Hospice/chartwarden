@@ -97,7 +97,9 @@ function factsOf(payload: unknown): ContactActiveFacts {
   const p = (payload ?? {}) as Record<string, unknown>;
   const contactId = p.contactId;
   if (typeof contactId !== "string" || contactId.length === 0) {
-    throw new Error(`${M31_BEREAVEMENT_CONTACT_ACTIVE_CONSUMER.consumerName}: payload has no contactId`);
+    throw new Error(
+      `${M31_BEREAVEMENT_CONTACT_ACTIVE_CONSUMER.consumerName}: payload has no contactId`,
+    );
   }
   return { contactId };
 }
@@ -204,71 +206,75 @@ export function buildM31BereavementContactActiveConsumer(
         });
         if (!inWindow) return;
 
-        await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-          const tx = scoped as unknown as DbClient;
+        await withOrgContext(
+          deps.db,
+          { organizationId, userId: CONSUMER_USER_ID },
+          async (scoped) => {
+            const tx = scoped as unknown as DbClient;
 
-          // §3.3 partial-unique: at most one live grant per (account, patient). Only a NON-bereaved live
-          // grant is a candidate to flip — a live `bereaved_family` grant means the flip already ran
-          // (idempotency), and no live grant at all means there is nothing to flip yet (F-164's standing
-          // finding: no production path inserts one today).
-          const [liveGrant] = await tx
-            .select()
-            .from(PAG)
-            .where(
-              and(
-                eq(PAG.organizationId, organizationId),
-                eq(PAG.portalAccountId, candidate.portalAccountId),
-                eq(PAG.patientId, resolvedPatientId),
-                isNull(PAG.revokedAt),
-                ne(PAG.grantKind, "bereaved_family"),
-              ),
-            )
-            .limit(1);
-          if (!liveGrant) return;
+            // §3.3 partial-unique: at most one live grant per (account, patient). Only a NON-bereaved live
+            // grant is a candidate to flip — a live `bereaved_family` grant means the flip already ran
+            // (idempotency), and no live grant at all means there is nothing to flip yet (F-164's standing
+            // finding: no production path inserts one today).
+            const [liveGrant] = await tx
+              .select()
+              .from(PAG)
+              .where(
+                and(
+                  eq(PAG.organizationId, organizationId),
+                  eq(PAG.portalAccountId, candidate.portalAccountId),
+                  eq(PAG.patientId, resolvedPatientId),
+                  isNull(PAG.revokedAt),
+                  ne(PAG.grantKind, "bereaved_family"),
+                ),
+              )
+              .limit(1);
+            if (!liveGrant) return;
 
-          const accountGrants: FlipCandidateGrant[] = [
-            {
-              grantId: liveGrant.id,
-              patientId: liveGrant.patientId,
-              grantKind: liveGrant.grantKind,
-              revoked: false,
-            },
-          ];
-          const plan = planBereavedFlip({
-            decedentPatientId: resolvedPatientId,
-            accountGrants,
-            bereavedInWindow: true,
-            floorVersion: PORTAL_SCOPE_FLOOR_VERSION,
-          });
-
-          const now = new Date();
-          for (const rev of plan.revoke) {
-            await tx
-              .update(PAG)
-              .set({
-                revokedAt: now,
-                revokeCascadeSource: rev.revokeCascadeSource,
-                version: sql`${PAG.version} + 1`,
-                updatedAt: now,
-              })
-              .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)));
-          }
-          for (const ins of plan.insert) {
-            await tx.insert(PAG).values({
-              organizationId,
-              providerEntityId: liveGrant.providerEntityId,
-              locationId: liveGrant.locationId,
-              portalAccountId: candidate.portalAccountId,
-              patientId: ins.patientId,
-              grantKind: ins.grantKind,
-              scopeSetJsonb: ins.scopeSet,
-              sourceConsentRecordId: resolvedConsentRecordId,
-              sourceConsentVersion: resolvedConsentVersion,
-              grantedAt: now,
-              grantedByMembershipId: null,
+            const accountGrants: FlipCandidateGrant[] = [
+              {
+                grantId: liveGrant.id,
+                patientId: liveGrant.patientId,
+                grantKind: liveGrant.grantKind,
+                revoked: false,
+              },
+            ];
+            const plan = planBereavedFlip({
+              decedentPatientId: resolvedPatientId,
+              accountGrants,
+              bereavedInWindow: true,
+              floorVersion: PORTAL_SCOPE_FLOOR_VERSION,
             });
-          }
-        });
+
+            const now = new Date();
+            for (const rev of plan.revoke) {
+              await tx
+                .update(PAG)
+                .set({
+                  revokedAt: now,
+                  revokeCascadeSource: rev.revokeCascadeSource,
+                  version: sql`${PAG.version} + 1`,
+                  updatedAt: now,
+                })
+                .where(and(eq(PAG.id, rev.grantId), isNull(PAG.revokedAt)));
+            }
+            for (const ins of plan.insert) {
+              await tx.insert(PAG).values({
+                organizationId,
+                providerEntityId: liveGrant.providerEntityId,
+                locationId: liveGrant.locationId,
+                portalAccountId: candidate.portalAccountId,
+                patientId: ins.patientId,
+                grantKind: ins.grantKind,
+                scopeSetJsonb: ins.scopeSet,
+                sourceConsentRecordId: resolvedConsentRecordId,
+                sourceConsentVersion: resolvedConsentVersion,
+                grantedAt: now,
+                grantedByMembershipId: null,
+              });
+            }
+          },
+        );
       });
     },
   };

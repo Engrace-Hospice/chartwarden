@@ -10,7 +10,11 @@ export const HeldTransmissionsQuerySchema = Type.Object({
 });
 export type HeldTransmissionsQuery = Static<typeof HeldTransmissionsQuerySchema>;
 
-const HeldStageSchema = Type.Union([Type.Literal("none"), Type.Literal("warn"), Type.Literal("critical")]);
+const HeldStageSchema = Type.Union([
+  Type.Literal("none"),
+  Type.Literal("warn"),
+  Type.Literal("critical"),
+]);
 
 export const HeldTransmissionItemSchema = Type.Object({
   orderId: Type.String({ format: "uuid" }),

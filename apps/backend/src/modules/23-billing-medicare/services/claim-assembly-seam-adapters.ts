@@ -329,8 +329,7 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
 function rateTableMissing(scope: RateLookupScope): WardenXError {
   return new WardenXError(
     "RATE_TABLE_MISSING",
-    `no hospice rate table covers service date ${scope.serviceFrom} for provider entity ${scope.providerEntityId}; ` +
-      "enter the CMS hospice per-diem rates for that fiscal year (POST /api/v1/billing/rate-tables, permission billing.rate_table.admin) and retry",
+    `no hospice rate table covers service date ${scope.serviceFrom} for provider entity ${scope.providerEntityId}; enter the CMS hospice per-diem rates for that fiscal year (POST /api/v1/billing/rate-tables, permission billing.rate_table.admin) and retry`,
     422,
   );
 }
@@ -339,8 +338,7 @@ function rateTableMissing(scope: RateLookupScope): WardenXError {
 function laborSharesMissing(rateTableId: string): WardenXError {
   return new WardenXError(
     "RATE_TABLE_LABOR_SHARE_MISSING",
-    `hospice rate table ${rateTableId} carries no labor shares (entered before they were required); the wage index adjusts only the ` +
-      "labor share of each rate. Supersede it with the CMS-published labor shares (POST /api/v1/billing/rate-tables/:id/supersede) and retry",
+    `hospice rate table ${rateTableId} carries no labor shares (entered before they were required); the wage index adjusts only the labor share of each rate. Supersede it with the CMS-published labor shares (POST /api/v1/billing/rate-tables/:id/supersede) and retry`,
     422,
   );
 }

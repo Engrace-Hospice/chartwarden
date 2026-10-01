@@ -24,7 +24,12 @@
 // exists, and M5's consumer keeps the privacy flag lifted in that case instead of re-restricting SUD.
 //
 // BACKLOG BOUND. See `M39_CRON_BOUNDS`: at most `pageSize * maxPagesPerOrg` rows per org per tick.
-import { type ConsentReminderKind, mostUrgentReminder, nextConsentStatus, shouldExpire } from "@wardenx/consent";
+import {
+  type ConsentReminderKind,
+  mostUrgentReminder,
+  nextConsentStatus,
+  shouldExpire,
+} from "@wardenx/consent";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, asc, eq, gt, isNull, lte, ne, or, sql } from "drizzle-orm";
@@ -146,11 +151,7 @@ async function expireOnePage(
           .update(CR)
           .set({ status: "expired", updatedAt: now })
           .where(
-            and(
-              eq(CR.organizationId, organizationId),
-              eq(CR.id, row.id),
-              eq(CR.status, "active"),
-            ),
+            and(eq(CR.organizationId, organizationId), eq(CR.id, row.id), eq(CR.status, "active")),
           )
           .returning({ id: CR.id });
         if (!updated) continue; // lost a race to a revoke/supersede — never re-expire
@@ -225,7 +226,8 @@ async function remindOnePage(
         gt(CR.expiresAt, now),
         lte(CR.expiresAt, horizon),
       ];
-      if (cursor) where.push(sql`(${CR.expiresAt}, ${CR.id}) > (${cursor.expiresAt}, ${cursor.id})`);
+      if (cursor)
+        where.push(sql`(${CR.expiresAt}, ${CR.id}) > (${cursor.expiresAt}, ${cursor.id})`);
       const rows = await tx
         .select({
           id: CR.id,

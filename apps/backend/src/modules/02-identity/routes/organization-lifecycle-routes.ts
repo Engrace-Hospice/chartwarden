@@ -15,7 +15,10 @@
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { OrganizationLifecycleEvent, OrganizationLifecycleWriter } from "../organization-lifecycle";
+import type {
+  OrganizationLifecycleEvent,
+  OrganizationLifecycleWriter,
+} from "../organization-lifecycle";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -64,7 +67,8 @@ export function registerOrganizationLifecycleRoutes(
     { preHandler: [TRANSITION, ABAC_TRANSITION, STEPUP_TRANSITION] },
     async (request, reply) => {
       const { organizationId } = request.params as { organizationId: string };
-      if (!organizationId) throw new WardenXError("VALIDATION_FAILED", "organizationId is required", 400);
+      if (!organizationId)
+        throw new WardenXError("VALIDATION_FAILED", "organizationId is required", 400);
       const event = readEvent(request.body);
       const reason = readReason(request.body);
       const ctx = request.context;

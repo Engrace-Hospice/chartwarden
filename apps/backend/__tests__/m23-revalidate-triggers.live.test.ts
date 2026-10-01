@@ -44,7 +44,7 @@ const USER = "33333333-3333-3333-3333-333333333333";
 describe.skipIf(!DB_URL)("F-153 — M23 revalidate-trigger producer, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
-  let providerOf: Record<string, string> = {};
+  const providerOf: Record<string, string> = {};
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -99,7 +99,11 @@ describe.skipIf(!DB_URL)("F-153 — M23 revalidate-trigger producer, LIVE Postgr
 
   async function seedClaim(
     org: string,
-    overrides: { readonly patientId?: string; readonly admissionId?: string; readonly state?: "validating" | "ready" | "draft" } = {},
+    overrides: {
+      readonly patientId?: string;
+      readonly admissionId?: string;
+      readonly state?: "validating" | "ready" | "draft";
+    } = {},
   ): Promise<string> {
     // `claim_active_by_range_uq` is unique on (providerEntityId, patientId, serviceFrom, serviceTo) for
     // non-terminal TOBs — a distinct month per seeded claim keeps siblings sharing a patientId from

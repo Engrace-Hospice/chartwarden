@@ -44,7 +44,10 @@ const HOUR = 60 * MIN;
 const NOW = new Date("2026-06-08T12:00:00.000Z");
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
 
-const failed = (reason: string | null, over: Partial<AutoRetryCandidate> = {}): AutoRetryCandidate => ({
+const failed = (
+  reason: string | null,
+  over: Partial<AutoRetryCandidate> = {},
+): AutoRetryCandidate => ({
   kind: "lab",
   status: "active",
   transmissionStatus: "failed",
@@ -72,13 +75,22 @@ describe("F-201 — classifyAutoRetry: what the sweep may re-emit, and when", ()
   });
 
   it.each([
-    ["a substance-use-disorder refusal (42 CFR Part 2 — a disclosure gate, not a data fix)", "orm_refused:sud_restricted"],
+    [
+      "a substance-use-disorder refusal (42 CFR Part 2 — a disclosure gate, not a data fix)",
+      "orm_refused:sud_restricted",
+    ],
     ["a refusal that lives in the immutable signed order", "orm_refused:no_routing_lab"],
     ["a refusal that lives in the immutable signed order", "orm_refused:lab_test_codes_missing"],
-    ["a refusal that lives in the immutable signed order", "orm_refused:multiple_test_codes_unsupported"],
+    [
+      "a refusal that lives in the immutable signed order",
+      "orm_refused:multiple_test_codes_unsupported",
+    ],
     ["an M29 terminal failure (the lab MAY have the message)", "dlq_exhausted"],
     ["an M29 terminal failure (the lab MAY have the message)", "application_reject"],
-    ["an attested re-dispatch the worker could not honour (a row owns the order)", "recovery_blocked:row_owns_order"],
+    [
+      "an attested re-dispatch the worker could not honour (a row owns the order)",
+      "recovery_blocked:row_owns_order",
+    ],
     ["no reason at all", null],
   ])("%s (%s) is NEVER retried automatically", (_why, reason) => {
     expect(classifyAutoRetry(failed(reason), NOW)).toEqual({ action: "skip", why: "not_eligible" });
@@ -92,25 +104,44 @@ describe("F-201 — classifyAutoRetry: what the sweep may re-emit, and when", ()
       { transmissionStatus: "pending" },
       { transmissionStatus: "transmitted" },
     ]) {
-      expect(classifyAutoRetry(failed(r, over), NOW)).toEqual({ action: "skip", why: "not_eligible" });
+      expect(classifyAutoRetry(failed(r, over), NOW)).toEqual({
+        action: "skip",
+        why: "not_eligible",
+      });
     }
   });
 
   it("only the BAA refusal asks for the BAA pre-check — every other cause is verified by the producer itself", () => {
-    expect(classifyAutoRetry(failed(BAA_REFUSAL_REASON), NOW)).toEqual({ action: "retry", needsBaaCheck: true });
-    expect(classifyAutoRetry(failed("dispatch_refused:no_active_feed"), NOW)).toEqual({ action: "retry", needsBaaCheck: false });
-    expect(classifyAutoRetry(failed("orm_refused:physician_npi_unconfirmed"), NOW)).toEqual({ action: "retry", needsBaaCheck: false });
+    expect(classifyAutoRetry(failed(BAA_REFUSAL_REASON), NOW)).toEqual({
+      action: "retry",
+      needsBaaCheck: true,
+    });
+    expect(classifyAutoRetry(failed("dispatch_refused:no_active_feed"), NOW)).toEqual({
+      action: "retry",
+      needsBaaCheck: false,
+    });
+    expect(classifyAutoRetry(failed("orm_refused:physician_npi_unconfirmed"), NOW)).toEqual({
+      action: "retry",
+      needsBaaCheck: false,
+    });
   });
 
   it("the bound: a re-emission is refused once MAX attempts are spent — 'exhausted', not another retry", () => {
     const r = "dispatch_refused:baa_inactive";
     expect(AUTO_RETRY_MAX_ATTEMPTS).toBe(5);
     for (let n = 0; n < AUTO_RETRY_MAX_ATTEMPTS; n++) {
-      expect(classifyAutoRetry(failed(r, { autoRetryCount: n, autoRetryAt: ago(48 * HOUR) }), NOW)).toMatchObject({
+      expect(
+        classifyAutoRetry(failed(r, { autoRetryCount: n, autoRetryAt: ago(48 * HOUR) }), NOW),
+      ).toMatchObject({
         action: "retry",
       });
     }
-    expect(classifyAutoRetry(failed(r, { autoRetryCount: AUTO_RETRY_MAX_ATTEMPTS, autoRetryAt: ago(HOUR) }), NOW)).toEqual({
+    expect(
+      classifyAutoRetry(
+        failed(r, { autoRetryCount: AUTO_RETRY_MAX_ATTEMPTS, autoRetryAt: ago(HOUR) }),
+        NOW,
+      ),
+    ).toEqual({
       action: "exhausted",
       why: "attempts",
     });
@@ -119,7 +150,9 @@ describe("F-201 — classifyAutoRetry: what the sweep may re-emit, and when", ()
   it("the window: an order that has been failed longer than 72 h is 'exhausted' — checked against the LATEST failure", () => {
     const r = "dispatch_refused:baa_inactive";
     expect(AUTO_RETRY_WINDOW_MS).toBe(72 * HOUR);
-    expect(classifyAutoRetry(failed(r, { failedAt: ago(72 * HOUR) }), NOW)).toMatchObject({ action: "retry" });
+    expect(classifyAutoRetry(failed(r, { failedAt: ago(72 * HOUR) }), NOW)).toMatchObject({
+      action: "retry",
+    });
     expect(classifyAutoRetry(failed(r, { failedAt: ago(72 * HOUR + 1) }), NOW)).toEqual({
       action: "exhausted",
       why: "window",
@@ -134,29 +167,40 @@ describe("F-201 — classifyAutoRetry: what the sweep may re-emit, and when", ()
     expect(AUTO_RETRY_BACKOFF_MS).toHaveLength(AUTO_RETRY_MAX_ATTEMPTS - 1);
     AUTO_RETRY_BACKOFF_MS.forEach((step, i) => {
       const count = i + 1;
-      expect(classifyAutoRetry(failed(r, { autoRetryCount: count, autoRetryAt: ago(step - 1) }), NOW)).toEqual({
+      expect(
+        classifyAutoRetry(failed(r, { autoRetryCount: count, autoRetryAt: ago(step - 1) }), NOW),
+      ).toEqual({
         action: "skip",
         why: "backoff",
       });
-      expect(classifyAutoRetry(failed(r, { autoRetryCount: count, autoRetryAt: ago(step) }), NOW)).toMatchObject({
+      expect(
+        classifyAutoRetry(failed(r, { autoRetryCount: count, autoRetryAt: ago(step) }), NOW),
+      ).toMatchObject({
         action: "retry",
       });
     });
     // At the bound there is no wait at all — the sweep is DONE, whatever the clock says.
     expect(
-      classifyAutoRetry(failed(r, { autoRetryCount: AUTO_RETRY_MAX_ATTEMPTS, autoRetryAt: ago(0) }), NOW),
+      classifyAutoRetry(
+        failed(r, { autoRetryCount: AUTO_RETRY_MAX_ATTEMPTS, autoRetryAt: ago(0) }),
+        NOW,
+      ),
     ).toEqual({ action: "exhausted", why: "attempts" });
     // Strictly increasing: a longer wait after every attempt.
     for (let i = 1; i < AUTO_RETRY_BACKOFF_MS.length; i++) {
       expect(AUTO_RETRY_BACKOFF_MS[i]).toBeGreaterThan(AUTO_RETRY_BACKOFF_MS[i - 1] as number);
     }
     // No backoff before the first attempt.
-    expect(classifyAutoRetry(failed(r, { autoRetryCount: 0, autoRetryAt: null }), NOW)).toMatchObject({ action: "retry" });
+    expect(
+      classifyAutoRetry(failed(r, { autoRetryCount: 0, autoRetryAt: null }), NOW),
+    ).toMatchObject({ action: "retry" });
   });
 
   it("an order the sweep already gave up on (its one alert raised) is skipped — never re-alerted", () => {
     const r = "dispatch_refused:baa_inactive";
-    expect(classifyAutoRetry(failed(r, { autoRetryCount: 9, autoRetryExhaustedAt: ago(HOUR) }), NOW)).toEqual({
+    expect(
+      classifyAutoRetry(failed(r, { autoRetryCount: 9, autoRetryExhaustedAt: ago(HOUR) }), NOW),
+    ).toEqual({
       action: "skip",
       why: "exhausted_already",
     });
@@ -168,7 +212,13 @@ describe("F-201 — held orders: which failures need a human, and how they age",
     for (const r of ["dlq_exhausted", "application_reject", "recovery_blocked:row_owns_order"]) {
       expect(isHeldReason(r)).toBe(true);
     }
-    for (const r of [null, "orm_refused:sud_restricted", "dispatch_refused:baa_inactive", "orm_refused:no_active_feed", "transmitted"]) {
+    for (const r of [
+      null,
+      "orm_refused:sud_restricted",
+      "dispatch_refused:baa_inactive",
+      "orm_refused:no_active_feed",
+      "transmitted",
+    ]) {
       expect(isHeldReason(r)).toBe(false);
     }
   });
@@ -205,15 +255,25 @@ describe("F-201 — held orders: which failures need a human, and how they age",
     const t = { warnAfterMs: HOUR, criticalAfterMs: 2 * HOUR };
     expect(heldStage(90 * MIN, t)).toBe("warn");
     expect(heldStage(2 * HOUR, t)).toBe("critical");
-    expect(() => assertHeldThresholds({ warnAfterMs: HOUR, criticalAfterMs: HOUR })).toThrow(/later than/);
-    expect(() => assertHeldThresholds({ warnAfterMs: 2 * HOUR, criticalAfterMs: HOUR })).toThrow(/later than/);
-    expect(() => assertHeldThresholds({ warnAfterMs: 0, criticalAfterMs: HOUR })).toThrow(/positive/);
-    expect(() => assertHeldThresholds({ warnAfterMs: Number.NaN, criticalAfterMs: HOUR })).toThrow(/positive/);
+    expect(() => assertHeldThresholds({ warnAfterMs: HOUR, criticalAfterMs: HOUR })).toThrow(
+      /later than/,
+    );
+    expect(() => assertHeldThresholds({ warnAfterMs: 2 * HOUR, criticalAfterMs: HOUR })).toThrow(
+      /later than/,
+    );
+    expect(() => assertHeldThresholds({ warnAfterMs: 0, criticalAfterMs: HOUR })).toThrow(
+      /positive/,
+    );
+    expect(() => assertHeldThresholds({ warnAfterMs: Number.NaN, criticalAfterMs: HOUR })).toThrow(
+      /positive/,
+    );
   });
 
   it("thresholds from the environment: defaults, an override, and a misconfiguration that THROWS (never a silently disabled escalation)", () => {
     expect(heldThresholdsFromEnv({})).toEqual(DEFAULT_HELD_THRESHOLDS);
-    expect(heldThresholdsFromEnv({ M11_HELD_WARN_AFTER_HOURS: "1", M11_HELD_CRITICAL_AFTER_HOURS: "6" })).toEqual({
+    expect(
+      heldThresholdsFromEnv({ M11_HELD_WARN_AFTER_HOURS: "1", M11_HELD_CRITICAL_AFTER_HOURS: "6" }),
+    ).toEqual({
       warnAfterMs: HOUR,
       criticalAfterMs: 6 * HOUR,
     });
@@ -221,9 +281,13 @@ describe("F-201 — held orders: which failures need a human, and how they age",
       warnAfterMs: 30 * MIN,
       criticalAfterMs: HELD_CRITICAL_AFTER_MS,
     });
-    expect(heldThresholdsFromEnv({ M11_HELD_WARN_AFTER_HOURS: "  " })).toEqual(DEFAULT_HELD_THRESHOLDS);
+    expect(heldThresholdsFromEnv({ M11_HELD_WARN_AFTER_HOURS: "  " })).toEqual(
+      DEFAULT_HELD_THRESHOLDS,
+    );
     for (const bad of ["abc", "-1", "0", "Infinity"]) {
-      expect(() => heldThresholdsFromEnv({ M11_HELD_WARN_AFTER_HOURS: bad }), bad).toThrow(/M11_HELD_WARN_AFTER_HOURS/);
+      expect(() => heldThresholdsFromEnv({ M11_HELD_WARN_AFTER_HOURS: bad }), bad).toThrow(
+        /M11_HELD_WARN_AFTER_HOURS/,
+      );
     }
     // a warn later than the default critical is caught by the ladder check, not silently accepted
     expect(() => heldThresholdsFromEnv({ M11_HELD_WARN_AFTER_HOURS: "48" })).toThrow(/later than/);
@@ -234,14 +298,27 @@ describe("F-201 — alert identity and the seeded rules", () => {
   it("a held-aging alert id is stable within (order, hold episode, stage) and NEW for the next stage, order or episode", () => {
     const a = heldAgingCorrelationId("o1", "att1", "warn");
     expect(heldAgingCorrelationId("o1", "att1", "warn")).toBe(a);
-    expect(new Set([a, heldAgingCorrelationId("o1", "att1", "critical"), heldAgingCorrelationId("o2", "att1", "warn"), heldAgingCorrelationId("o1", "att2", "warn")]).size).toBe(4);
+    expect(
+      new Set([
+        a,
+        heldAgingCorrelationId("o1", "att1", "critical"),
+        heldAgingCorrelationId("o2", "att1", "warn"),
+        heldAgingCorrelationId("o1", "att2", "warn"),
+      ]).size,
+    ).toBe(4);
     expect(heldAgingCorrelationId("o1", null, "warn")).toContain(":none:");
   });
 
   it("the exhausted alert id is stable per (order, episode) — the alert table's unique id is the de-duplication", () => {
-    expect(autoRetryExhaustedCorrelationId("o1", "att1")).toBe(autoRetryExhaustedCorrelationId("o1", "att1"));
-    expect(autoRetryExhaustedCorrelationId("o1", "att1")).not.toBe(autoRetryExhaustedCorrelationId("o1", "att2"));
-    expect(autoRetryExhaustedCorrelationId("o1", "att1")).not.toBe(autoRetryExhaustedCorrelationId("o2", "att1"));
+    expect(autoRetryExhaustedCorrelationId("o1", "att1")).toBe(
+      autoRetryExhaustedCorrelationId("o1", "att1"),
+    );
+    expect(autoRetryExhaustedCorrelationId("o1", "att1")).not.toBe(
+      autoRetryExhaustedCorrelationId("o1", "att2"),
+    );
+    expect(autoRetryExhaustedCorrelationId("o1", "att1")).not.toBe(
+      autoRetryExhaustedCorrelationId("o2", "att1"),
+    );
   });
 
   it("EVERY alert kind the sweeps emit has an enabled platform-default rule with a real audience (an unruled kind reaches nobody — F-188)", () => {
@@ -275,12 +352,24 @@ const ORG = "org_a";
 const PERMISSION_SEED = [
   {
     userId: "rn_1",
-    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.view_held"],
+    permissions: [
+      "orders.read",
+      "orders.draft",
+      "orders.sign",
+      "orders.amend",
+      "orders.transmission.view_held",
+    ],
   },
   // F-203 — `orders.amend` (and even the recovery authority) does NOT open the worklist; `view_held` is its own grant.
   {
     userId: "amend_only",
-    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
+    permissions: [
+      "orders.read",
+      "orders.draft",
+      "orders.sign",
+      "orders.amend",
+      "orders.transmission.recover",
+    ],
   },
   { userId: "viewer_1", permissions: ["orders.read"] },
 ];
@@ -301,7 +390,12 @@ function makeServer() {
   registerEffectivePermissionResolver(grantStore.store);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   // The REAL order routes are registered too: `held-transmissions` must not be swallowed by `/api/v1/orders/:id`.
-  registerOrderRoutes(app, { service: createInMemoryOrderBackend({ now: () => NOW.toISOString(), timeZone: "America/New_York" }) });
+  registerOrderRoutes(app, {
+    service: createInMemoryOrderBackend({
+      now: () => NOW.toISOString(),
+      timeZone: "America/New_York",
+    }),
+  });
   registerHeldTransmissionRoutes(app, { recovery: { listHeld } });
   return { app, listHeld };
 }
@@ -347,7 +441,11 @@ describe("F-201 — GET /api/v1/orders/held-transmissions", () => {
 
   it("the org comes from the authenticated context, NEVER a query parameter", async () => {
     const { app, listHeld } = makeServer();
-    await app.inject({ method: "GET", url: `${URL}?organizationId=org_b&orgId=org_b`, headers: RN });
+    await app.inject({
+      method: "GET",
+      url: `${URL}?organizationId=org_b&orgId=org_b`,
+      headers: RN,
+    });
     expect(listHeld).toHaveBeenLastCalledWith(ORG, expect.anything());
   });
 
@@ -356,7 +454,11 @@ describe("F-201 — GET /api/v1/orders/held-transmissions", () => {
     const res = await app.inject({ method: "GET", url: URL, headers: RN });
     expect(res.statusCode).toBe(200);
     // ...while a real id still routes to the order route (which 404s an unknown order, it does not 405/200).
-    const byId = await app.inject({ method: "GET", url: "/api/v1/orders/99999999-9999-4999-8999-999999999999", headers: RN });
+    const byId = await app.inject({
+      method: "GET",
+      url: "/api/v1/orders/99999999-9999-4999-8999-999999999999",
+      headers: RN,
+    });
     expect(byId.statusCode).toBe(404);
   });
 
@@ -376,7 +478,9 @@ describe("F-201 — GET /api/v1/orders/held-transmissions", () => {
 // ── the worker fan-out ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe("F-201 — runStuckTransmissionFanout: one tick, every active org, failures surfaced not swallowed", () => {
-  const orgs = (...ids: string[]) => ({ listActiveOrgs: async () => ids.map((organizationId) => ({ organizationId })) });
+  const orgs = (...ids: string[]) => ({
+    listActiveOrgs: async () => ids.map((organizationId) => ({ organizationId })),
+  });
 
   it("runs BOTH sweeps for every active org, in order", async () => {
     const calls: string[] = [];
@@ -423,7 +527,10 @@ describe("F-201 — runStuckTransmissionFanout: one tick, every active org, fail
     await expect(
       runStuckTransmissionFanout({
         activeOrgs: orgs(),
-        service: { sweepAutoRetries: async () => ({}) as never, sweepHeldAging: async () => ({}) as never },
+        service: {
+          sweepAutoRetries: async () => ({}) as never,
+          sweepHeldAging: async () => ({}) as never,
+        },
       }),
     ).resolves.toBeUndefined();
   });

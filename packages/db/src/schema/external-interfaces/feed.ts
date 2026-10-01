@@ -106,11 +106,7 @@ export const externalFeed = pgTable(
   },
   (t) => ({
     orgKindIdx: index("idx_external_feed_org_kind").on(t.organizationId, t.kind),
-    uniqOrgPortKind: uniqueIndex(FEED_ORG_PORT_KIND_UQ).on(
-      t.organizationId,
-      t.port,
-      t.kind,
-    ),
+    uniqOrgPortKind: uniqueIndex(FEED_ORG_PORT_KIND_UQ).on(t.organizationId, t.port, t.kind),
     statusIdx: index("idx_external_feed_status").on(t.status),
     orgDestFacilityIdx: index("idx_external_feed_org_dest_facility")
       .on(t.organizationId, t.labDestinationFacilityId)

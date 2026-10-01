@@ -18,10 +18,10 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { registerAdmissionSeams } from "../src/modules/06-admission/index";
 // Imported by exact file path, not the module barrel: the coordinator wires the barrel export
 // (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
 import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
+import { registerAdmissionSeams } from "../src/modules/06-admission/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;

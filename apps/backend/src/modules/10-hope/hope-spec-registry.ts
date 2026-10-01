@@ -47,9 +47,7 @@ export type HopeIsc = "HA" | "HUV" | "HD" | "XX";
 export function isCmsSkipBlankOption(
   options: readonly Pick<typeof schema.hopeSpecItemOptions.$inferSelect, "valueCode" | "label">[],
 ): boolean {
-  return options.some(
-    (option) => option.valueCode === "^" && /skip\s*pattern/i.test(option.label),
-  );
+  return options.some((option) => option.valueCode === "^" && /skip\s*pattern/i.test(option.label));
 }
 
 export interface HopeSpecRegistry {

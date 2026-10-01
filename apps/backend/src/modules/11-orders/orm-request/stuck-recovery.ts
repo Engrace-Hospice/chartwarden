@@ -43,7 +43,12 @@ export const AUTO_RETRY_MAX_ATTEMPTS = 5;
  * Cumulative worst case between the first and the last attempt ≈ 8.7 h. Indexed by the attempts already made
  * (`count - 1`).
  */
-export const AUTO_RETRY_BACKOFF_MS: readonly number[] = [10 * MINUTE_MS, 30 * MINUTE_MS, 2 * HOUR_MS, 6 * HOUR_MS];
+export const AUTO_RETRY_BACKOFF_MS: readonly number[] = [
+  10 * MINUTE_MS,
+  30 * MINUTE_MS,
+  2 * HOUR_MS,
+  6 * HOUR_MS,
+];
 
 /**
  * How long after the order last became `failed` the sweep keeps looking at it. It bounds the WORK a permanently broken
@@ -103,11 +108,15 @@ export function classifyAutoRetry(
   if (order.autoRetryExhaustedAt !== null) return { action: "skip", why: "exhausted_already" };
 
   if (order.autoRetryCount >= maxAttempts) return { action: "exhausted", why: "attempts" };
-  if (now.getTime() - order.failedAt.getTime() > windowMs) return { action: "exhausted", why: "window" };
+  if (now.getTime() - order.failedAt.getTime() > windowMs)
+    return { action: "exhausted", why: "window" };
 
   if (order.autoRetryCount > 0 && order.autoRetryAt !== null) {
-    const step = AUTO_RETRY_BACKOFF_MS[Math.min(order.autoRetryCount - 1, AUTO_RETRY_BACKOFF_MS.length - 1)] as number;
-    if (now.getTime() < order.autoRetryAt.getTime() + step) return { action: "skip", why: "backoff" };
+    const step = AUTO_RETRY_BACKOFF_MS[
+      Math.min(order.autoRetryCount - 1, AUTO_RETRY_BACKOFF_MS.length - 1)
+    ] as number;
+    if (now.getTime() < order.autoRetryAt.getTime() + step)
+      return { action: "skip", why: "backoff" };
   }
   return { action: "retry", needsBaaCheck: order.transmissionFailureReason === BAA_REFUSAL_REASON };
 }
@@ -162,12 +171,15 @@ export function assertHeldThresholds(t: HeldThresholds): HeldThresholds {
  * numbers of hours; either may be set alone). An invalid value THROWS — a boot-time misconfiguration must be loud, never a
  * silently disabled escalation.
  */
-export function heldThresholdsFromEnv(env: Readonly<Record<string, string | undefined>>): HeldThresholds {
+export function heldThresholdsFromEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): HeldThresholds {
   const hours = (key: string, fallbackMs: number): number => {
     const raw = env[key];
     if (raw === undefined || raw.trim() === "") return fallbackMs;
     const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) throw new Error(`${key} must be a positive number of hours (got '${raw}')`);
+    if (!Number.isFinite(n) || n <= 0)
+      throw new Error(`${key} must be a positive number of hours (got '${raw}')`);
     return n * HOUR_MS;
   };
   return assertHeldThresholds({
@@ -177,7 +189,10 @@ export function heldThresholdsFromEnv(env: Readonly<Record<string, string | unde
 }
 
 /** PURE. The stage a held order is at after waiting `ageMs`. */
-export function heldStage(ageMs: number, thresholds: HeldThresholds = DEFAULT_HELD_THRESHOLDS): HeldStage {
+export function heldStage(
+  ageMs: number,
+  thresholds: HeldThresholds = DEFAULT_HELD_THRESHOLDS,
+): HeldStage {
   if (ageMs >= thresholds.criticalAfterMs) return "critical";
   if (ageMs >= thresholds.warnAfterMs) return "warn";
   return "none";
@@ -203,7 +218,11 @@ export type M11StuckOrderAlertKind = (typeof M11_STUCK_ORDER_ALERT_KINDS)[number
  * so a genuinely new hold pages again, while every tick within the same hold is absorbed. (F-188 windowed its ids because
  * a feed-level condition recurs indefinitely; a hold on ONE order has a natural start and end, so no window.)
  */
-export function heldAgingCorrelationId(orderId: string, attemptId: string | null, stage: "warn" | "critical"): string {
+export function heldAgingCorrelationId(
+  orderId: string,
+  attemptId: string | null,
+  stage: "warn" | "critical",
+): string {
   return `m11-held-aging:${orderId}:${attemptId ?? "none"}:${stage}`;
 }
 

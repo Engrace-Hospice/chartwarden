@@ -18,8 +18,8 @@ import {
 import {
   M6_JOB_SCHEDULES,
   M6_QUEUES,
-  planDueReminder,
   planCtiSignatureReminder,
+  planDueReminder,
   planF2fWindowMissedScan,
 } from "./index";
 
@@ -65,10 +65,7 @@ function activeOrgsOf(deps: M6WorkerDeps): ActiveOrgListPort {
   return (
     deps.activeOrgs ?? {
       listActiveOrgs: () =>
-        unbound(
-          "activeOrgs.listActiveOrgs",
-          "bind the M2 active-org enumerator",
-        ),
+        unbound("activeOrgs.listActiveOrgs", "bind the M2 active-org enumerator"),
     }
   );
 }
@@ -159,9 +156,7 @@ export async function runF2fDueNotifyCron(deps: M6WorkerDeps): Promise<void> {
   }
 }
 
-export async function runCtiSignatureNotifyCron(
-  deps: M6WorkerDeps,
-): Promise<void> {
+export async function runCtiSignatureNotifyCron(deps: M6WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
 
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
@@ -312,32 +307,22 @@ export function registerM6CronWorkers(deps: M6WorkerDeps): Worker[] {
       concurrency: 1,
     }),
 
-    new Worker(
-      M6_QUEUES.ctiSignatureNotify,
-      async () => runCtiSignatureNotifyCron(deps),
-      {
-        connection: deps.connection,
-        concurrency: 1,
-      },
-    ),
+    new Worker(M6_QUEUES.ctiSignatureNotify, async () => runCtiSignatureNotifyCron(deps), {
+      connection: deps.connection,
+      concurrency: 1,
+    }),
 
-    new Worker(
-      M6_QUEUES.windowAlert,
-      async () => runF2fWindowMissedScanCron(deps),
-      {
-        connection: deps.connection,
-        concurrency: 1,
-      },
-    ),
+    new Worker(M6_QUEUES.windowAlert, async () => runF2fWindowMissedScanCron(deps), {
+      connection: deps.connection,
+      concurrency: 1,
+    }),
   ];
 }
 
 /**
  * Register the repeatable F2F due-reminder / CTI-signature / window-alert schedules.
  */
-export async function scheduleM6Jobs(
-  connection: ConnectionOptions,
-): Promise<Queue[]> {
+export async function scheduleM6Jobs(connection: ConnectionOptions): Promise<Queue[]> {
   const schedules = [
     {
       name: M6_QUEUES.f2fDueNotify,

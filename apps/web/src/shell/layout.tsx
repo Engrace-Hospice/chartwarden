@@ -12,20 +12,14 @@ import { DegradedBanner, EmptyState, Glyph, setSearchTerm } from "@wardenx/ui";
 // holding the top bar and the routed workspace — the mockups' shell.
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
-import {
-  Link,
-  Navigate,
-  Outlet,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
+import { NotificationBell } from "./notification-bell";
 import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
 import { useTheme } from "./theme";
-import { NotificationBell } from "./notification-bell";
 
 const authClient = createWardenxAuthClient();
 
@@ -47,9 +41,7 @@ function roleLine(session: Session): string | null {
   return role
     .split(/[_\s-]+/)
     .filter(Boolean)
-    .map((w) =>
-      w.length <= 3 ? w.toUpperCase() : `${w[0]!.toUpperCase()}${w.slice(1)}`,
-    )
+    .map((w) => (w.length <= 3 ? w.toUpperCase() : `${w[0]!.toUpperCase()}${w.slice(1)}`))
     .join(" ");
 }
 
@@ -85,10 +77,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
     const root = document.documentElement;
     const previous = root.style.getPropertyValue("--wx-app-header-height");
     const update = (): void =>
-      root.style.setProperty(
-        "--wx-app-header-height",
-        `${header.offsetHeight}px`,
-      );
+      root.style.setProperty("--wx-app-header-height", `${header.offsetHeight}px`);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(header);
@@ -131,13 +120,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
       >
         <Link to="/" className="wx-brand-block" aria-label="WardenX home">
           <span className="wx-brand-logo" aria-hidden>
-            <svg
-              width="22"
-              height="24"
-              viewBox="0 0 22 24"
-              fill="none"
-              aria-hidden="true"
-            >
+            <svg width="22" height="24" viewBox="0 0 22 24" fill="none" aria-hidden="true">
               <path
                 d="M11 1 2 4.6v6.2C2 16.6 5.9 21.5 11 23c5.1-1.5 9-6.4 9-12.2V4.6L11 1Z"
                 fill="currentColor"
@@ -153,16 +136,10 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             <span className="wx-brand-sub">Hospice EHR</span>
           </span>
         </Link>
-        <nav
-          id="wx-primary-nav"
-          className="wx-nav wx-no-scrollbar"
-          aria-label="Primary"
-        >
+        <nav id="wx-primary-nav" className="wx-nav wx-no-scrollbar" aria-label="Primary">
           {sections.map((section) => (
             <div key={section.label ?? "main"} className="wx-nav-section">
-              {section.label ? (
-                <div className="wx-nav-section-label">{section.label}</div>
-              ) : null}
+              {section.label ? <div className="wx-nav-section-label">{section.label}</div> : null}
               {section.entries.map((entry) => (
                 <PrimaryNavEntry
                   key={entry.key}
@@ -247,11 +224,7 @@ function PrimaryNavEntry({
             aria-label={`${open ? "Hide" : "Show"} ${entry.label} pages`}
             onClick={() => setOpen((o) => !o)}
           >
-            <Glyph
-              name={open ? "chevron-down" : "chevron-right"}
-              size={16}
-              strokeWidth={1.75}
-            />
+            <Glyph name={open ? "chevron-down" : "chevron-right"} size={16} strokeWidth={1.75} />
           </button>
         ) : null}
       </div>
@@ -261,9 +234,7 @@ function PrimaryNavEntry({
             <li key={c.id}>
               <Link
                 to={c.path}
-                className={
-                  pathname === c.path ? "wx-nav-child active" : "wx-nav-child"
-                }
+                className={pathname === c.path ? "wx-nav-child active" : "wx-nav-child"}
                 aria-current={pathname === c.path ? "page" : undefined}
               >
                 {c.title}

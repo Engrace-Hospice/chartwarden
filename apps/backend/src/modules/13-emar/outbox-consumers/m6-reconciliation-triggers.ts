@@ -70,7 +70,9 @@ function factsOf(
   const read = (key: string): string => {
     const value = p[key];
     if (typeof value !== "string" || value.length === 0) {
-      throw new Error(`${M13_RECONCILIATION_TRIGGER_CONSUMER.consumerName}: ${eventType} payload has no ${key}`);
+      throw new Error(
+        `${M13_RECONCILIATION_TRIGGER_CONSUMER.consumerName}: ${eventType} payload has no ${key}`,
+      );
     }
     return value;
   };
@@ -82,7 +84,10 @@ function factsOf(
     "m6.cti.signed": "signedAt",
   };
   const field = instantField[eventType];
-  if (!field) throw new Error(`${M13_RECONCILIATION_TRIGGER_CONSUMER.consumerName}: unknown event ${eventType}`);
+  if (!field)
+    throw new Error(
+      `${M13_RECONCILIATION_TRIGGER_CONSUMER.consumerName}: unknown event ${eventType}`,
+    );
   return { admissionId, triggeredAt: read(field) as IsoInstant };
 }
 

@@ -23,7 +23,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient, type DbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -244,13 +244,16 @@ describe.skipIf(!DB_URL)(
 
       const catalog = new Map<string, unknown>(M13_OUTBOX_EVENTS.map((e) => [e.eventName, e]));
       const outbox = {
-        async publish(tx: unknown, input: {
-          readonly eventName: string;
-          readonly payload: Record<string, unknown>;
-          readonly organizationId: string;
-          readonly aggregateKind: string;
-          readonly aggregateId: string;
-        }) {
+        async publish(
+          tx: unknown,
+          input: {
+            readonly eventName: string;
+            readonly payload: Record<string, unknown>;
+            readonly organizationId: string;
+            readonly aggregateKind: string;
+            readonly aggregateId: string;
+          },
+        ) {
           if (!catalog.has(input.eventName)) {
             throw new Error(`m13 test publisher: undeclared event ${input.eventName}`);
           }
@@ -270,8 +273,14 @@ describe.skipIf(!DB_URL)(
         orderContext: (organizationId, orderId) =>
           medicationOrderScheduleContextForOrg(handle.db, organizationId, orderId),
         resolveAdmission: async (organizationId, admissionId) => {
-          const ctx = await admissionSchedulingContextForOrg(handle.db, organizationId, admissionId);
-          return ctx ? { providerEntityId: ctx.providerEntityId, locationId: ctx.locationId } : null;
+          const ctx = await admissionSchedulingContextForOrg(
+            handle.db,
+            organizationId,
+            admissionId,
+          );
+          return ctx
+            ? { providerEntityId: ctx.providerEntityId, locationId: ctx.locationId }
+            : null;
         },
         locationTimezone: (organizationId, locationId) =>
           withOrgContext(handle.db, { organizationId, userId: "" }, (tx) =>

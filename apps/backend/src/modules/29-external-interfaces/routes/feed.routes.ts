@@ -7,6 +7,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
+import { assertHostAcceptable, assertProtocolAcceptable, resolveCertPin } from "./feed-input";
 import {
   ABAC_FEED_BAA,
   ABAC_FEED_CO_APPROVER,
@@ -25,7 +26,6 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
-import { assertHostAcceptable, assertProtocolAcceptable, resolveCertPin } from "./feed-input";
 import type { M29Store } from "./store";
 
 export interface FeedRouteDeps {
@@ -90,7 +90,10 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { channelCertPem, ...parsed } = parse(CreateFeedBody, request.body);
-      const channelCertPin = resolveCertPin({ channelCertPin: parsed.channelCertPin, channelCertPem });
+      const channelCertPin = resolveCertPin({
+        channelCertPin: parsed.channelCertPin,
+        channelCertPem,
+      });
       assertProtocolAcceptable(parsed, envOf());
       assertHostAcceptable(parsed.host, envOf());
       const body = channelCertPin === undefined ? parsed : { ...parsed, channelCertPin };
@@ -113,7 +116,10 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
       const actor = writeActorOf(request);
       const { feedId } = request.params as { feedId: string };
       const { channelCertPem, ...parsed } = parse(UpdateFeedBody, request.body);
-      const channelCertPin = resolveCertPin({ channelCertPin: parsed.channelCertPin, channelCertPem });
+      const channelCertPin = resolveCertPin({
+        channelCertPin: parsed.channelCertPin,
+        channelCertPem,
+      });
       assertHostAcceptable(parsed.host, envOf());
       const body = channelCertPin === undefined ? parsed : { ...parsed, channelCertPin };
       const feed = await store.updateFeed(actor.organizationId, actor.membershipId, feedId, body);

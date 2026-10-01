@@ -17,24 +17,11 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  ChartModuleRail,
-  PatientChartBail,
-} from "../../shell/chart-module-rail";
-import {
-  COSIGN_TONE,
-  ENCOUNTER_TONE,
-  lateEntryTone,
-  stateLabel,
-} from "./encounter-status";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 import { authFailureRedirect } from "./write-workflow";
 
-type CeremonyMode =
-  | "sign"
-  | "acknowledge"
-  | "cosign-sign"
-  | "supervisor-release"
-  | null;
+type CeremonyMode = "sign" | "acknowledge" | "cosign-sign" | "supervisor-release" | null;
 
 const REASON_MIN = 40;
 
@@ -148,9 +135,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 type FieldErrors = Record<string, string>;
 
-function validationDetails(
-  error: unknown,
-): Array<{ field?: string; message?: string }> {
+function validationDetails(error: unknown): Array<{ field?: string; message?: string }> {
   const body = error as {
     details?: unknown;
     error?: {
@@ -252,9 +237,7 @@ function hasCarePlanLink(
  * Its only purpose is to tell the UI whether a section appears to contain
  * information so the visit workflow can orient the user.
  */
-function hasAnyValue(
-  record: Record<string, unknown> | null | undefined,
-): boolean {
+function hasAnyValue(record: Record<string, unknown> | null | undefined): boolean {
   if (!record) return false;
 
   return Object.values(record).some(
@@ -285,15 +268,11 @@ export function EncounterRead(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   const [ceremony, setCeremony] = useState<CeremonyMode>(null);
-  const [utilityModal, setUtilityModal] = useState<
-    "void" | "addendum" | "assessment" | null
-  >(null);
+  const [utilityModal, setUtilityModal] = useState<"void" | "addendum" | "assessment" | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [sectionErrors, setSectionErrors] = useState<
-    Partial<Record<EncounterSection, string>>
-  >({});
+  const [sectionErrors, setSectionErrors] = useState<Partial<Record<EncounterSection, string>>>({});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -340,16 +319,13 @@ export function EncounterRead(): JSX.Element {
     setLoading(true);
     setError(null);
 
-    const { data, error: err } = await client.GET(
-      "/api/v1/encounters/{encounterId}",
-      {
-        params: {
-          path: {
-            encounterId,
-          },
+    const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
+      params: {
+        path: {
+          encounterId,
         },
       },
-    );
+    });
 
     if (err || !data?.id) {
       setError("Could not load the encounter.");
@@ -551,15 +527,12 @@ export function EncounterRead(): JSX.Element {
     });
   }, []);
 
-  const setSectionError = useCallback(
-    (section: EncounterSection, message: string) => {
-      setSectionErrors((current) => ({
-        ...current,
-        [section]: message,
-      }));
-    },
-    [],
-  );
+  const setSectionError = useCallback((section: EncounterSection, message: string) => {
+    setSectionErrors((current) => ({
+      ...current,
+      [section]: message,
+    }));
+  }, []);
 
   const clearFieldErrors = useCallback((fields: readonly string[]) => {
     if (fields.length === 0) return;
@@ -637,10 +610,7 @@ export function EncounterRead(): JSX.Element {
         ...(body ? { body } : {}),
       };
 
-      const { error: err, response } = (await client.POST(
-        path as never,
-        init as never,
-      )) as {
+      const { error: err, response } = (await client.POST(path as never, init as never)) as {
         error?: {
           message?: string;
           error?: {
@@ -656,12 +626,7 @@ export function EncounterRead(): JSX.Element {
         const errMessage = err?.error?.message ?? err?.message;
         const currentPath = `${window.location.pathname}${window.location.search}`;
 
-        const redirect = authFailureRedirect(
-          response?.status,
-          errCode,
-          currentPath,
-          errMessage,
-        );
+        const redirect = authFailureRedirect(response?.status, errCode, currentPath, errMessage);
 
         if (redirect) {
           navigate(redirect);
@@ -681,9 +646,7 @@ export function EncounterRead(): JSX.Element {
         if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
           setActionError("Your step-up expired — try again.");
         } else if (response?.status === 412) {
-          setActionError(
-            "This encounter changed since you opened it — reload to retry.",
-          );
+          setActionError("This encounter changed since you opened it — reload to retry.");
         } else if (response?.status === 403) {
           setActionError("You do not have permission for this action.");
         } else {
@@ -698,15 +661,7 @@ export function EncounterRead(): JSX.Element {
 
       void load();
     },
-    [
-      encounterId,
-      reason,
-      client,
-      navigate,
-      closeCeremony,
-      load,
-      clearFieldError,
-    ],
+    [encounterId, reason, client, navigate, closeCeremony, load, clearFieldError],
   );
 
   async function runMutation(
@@ -770,8 +725,7 @@ export function EncounterRead(): JSX.Element {
   async function saveVitals(): Promise<void> {
     if (!encounterId) return;
 
-    const n = (value: string): number | undefined =>
-      value.trim() ? Number(value) : undefined;
+    const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
 
     await runMutation(
       () =>
@@ -787,9 +741,7 @@ export function EncounterRead(): JSX.Element {
             heartRate: n(vitals.heartRate),
             respiratoryRate: n(vitals.respiratoryRate),
             temperature: vitals.temperature || undefined,
-            temperatureUnit: vitals.temperature
-              ? vitals.temperatureUnit
-              : undefined,
+            temperatureUnit: vitals.temperature ? vitals.temperatureUnit : undefined,
             spo2: n(vitals.spo2),
             painScore: n(vitals.painScore),
             painScale: vitals.painScore ? vitals.painScale : undefined,
@@ -814,8 +766,7 @@ export function EncounterRead(): JSX.Element {
   async function saveMileage(): Promise<void> {
     if (!encounterId) return;
 
-    const n = (value: string): number | undefined =>
-      value.trim() ? Number(value) : undefined;
+    const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
 
     await runMutation(
       () =>
@@ -1018,9 +969,7 @@ export function EncounterRead(): JSX.Element {
         setFieldErrors((current) => ({ ...current, ...mapped }));
         setActionError(null);
       } else {
-        setActionError(
-          errorMessage(res.error, "Assessment could not be created."),
-        );
+        setActionError(errorMessage(res.error, "Assessment could not be created."));
       }
 
       return;
@@ -1056,11 +1005,7 @@ export function EncounterRead(): JSX.Element {
 
   if (loading) {
     return (
-      <PatientChartBail
-        banner={bailBanner}
-        patientId={patientId}
-        current="encounters"
-      >
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="encounters">
         <LoadingSpinner />
       </PatientChartBail>
     );
@@ -1068,11 +1013,7 @@ export function EncounterRead(): JSX.Element {
 
   if (error || !encounter) {
     return (
-      <PatientChartBail
-        banner={bailBanner}
-        patientId={patientId}
-        current="encounters"
-      >
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="encounters">
         <EmptyState title="Unavailable" description={error ?? "Not found."} />
       </PatientChartBail>
     );
@@ -1087,14 +1028,11 @@ export function EncounterRead(): JSX.Element {
   const canSign = e.status === "finalized";
 
   const canAcknowledge =
-    cosignStatus === "pending" ||
-    cosignStatus === "routed" ||
-    cosignStatus === "escalated";
+    cosignStatus === "pending" || cosignStatus === "routed" || cosignStatus === "escalated";
 
   const canCosignSign = cosignStatus === "acknowledged";
 
-  const canSupervisorRelease =
-    cosignStatus === "escalated" || cosignStatus === "hard_cap_reached";
+  const canSupervisorRelease = cosignStatus === "escalated" || cosignStatus === "hard_cap_reached";
 
   /*
    * UX progress.
@@ -1157,13 +1095,10 @@ export function EncounterRead(): JSX.Element {
     // },
   ] as const;
 
-  const startedSections = workflowSections.filter(
-    (section) => section.started,
-  ).length;
+  const startedSections = workflowSections.filter((section) => section.started).length;
 
   const nextSuggestedSection =
-    workflowSections.find((section) => !section.started)?.label ??
-    "Review & finalize";
+    workflowSections.find((section) => !section.started)?.label ?? "Review & finalize";
 
   const banner = patient ? (
     <PatientBanner
@@ -1259,30 +1194,20 @@ export function EncounterRead(): JSX.Element {
                     </div>
 
                     <span style={workflowCount}>
-                      {startedSections}/{workflowSections.length} sections
-                      started
+                      {startedSections}/{workflowSections.length} sections started
                     </span>
                   </div>
 
-                  <div
-                    style={workflowSteps}
-                    aria-label="Visit documentation progress"
-                  >
+                  <div style={workflowSteps} aria-label="Visit documentation progress">
                     {workflowSections.map((section, index) => (
                       <div key={section.key} style={workflowStep}>
-                        <span
-                          style={
-                            section.started ? workflowDotDone : workflowDot
-                          }
-                        >
+                        <span style={section.started ? workflowDotDone : workflowDot}>
                           {section.started ? "✓" : index + 1}
                         </span>
 
                         <span
                           style={{
-                            color: section.started
-                              ? t.onSurface
-                              : t.onSurfaceVariant,
+                            color: section.started ? t.onSurface : t.onSurfaceVariant,
                             fontWeight: section.started ? 650 : 500,
                           }}
                         >
@@ -1293,9 +1218,8 @@ export function EncounterRead(): JSX.Element {
                   </div>
 
                   <p style={workflowDisclaimer}>
-                    This guide helps with navigation only. Existing backend
-                    rules remain the source of truth for finalization,
-                    signatures, cosignature and compliance.
+                    This guide helps with navigation only. Existing backend rules remain the source
+                    of truth for finalization, signatures, cosignature and compliance.
                   </p>
                 </section>
               ) : null}
@@ -1313,47 +1237,52 @@ export function EncounterRead(): JSX.Element {
                 1. DOCUMENTATION
             ──────────────────────────────────────────────────────── */}
 
-            <section style={sectionCard}>
-              <div style={sectionHeader}>
-                <SectionHeading
-                  step="1"
-                  eyebrowText="CLINICAL NOTE"
-                  title="Documentation"
-                  description="Compose the visit note from the HearthNote template."
-                  complete={documentationStarted}
-                />
+              <section style={sectionCard}>
+                <div style={sectionHeader}>
+                  <SectionHeading
+                    step="1"
+                    eyebrowText="CLINICAL NOTE"
+                    title="Documentation"
+                    description="Compose the visit note from the HearthNote template."
+                    complete={documentationStarted}
+                  />
 
-                {e.status === "draft" ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}/compose`)}
-                    disabled={busy}
-                    style={primaryBtn}
-                  >
-                    {documentationStarted ? "Edit note" : "Compose note"}
-                  </button>
-                ) : null}
-              </div>
+                  {e.status === "draft" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/patients/${e.patientId}/encounters/${e.id}/compose`)
+                      }
+                      disabled={busy}
+                      style={primaryBtn}
+                    >
+                      {documentationStarted ? "Edit note" : "Compose note"}
+                    </button>
+                  ) : null}
+                </div>
 
-              {/* #91/#114 — the note is AUTHORED in the HearthNote composer: the template's sections, the
+                {/* #91/#114 — the note is AUTHORED in the HearthNote composer: the template's sections, the
                   vocabulary each accepts, and per-section free text (sealed under the tenant DEK). A
                   single free-text box here could not satisfy the §2.6 Layer-3 gate, which asks for every
                   REQUIRED section, and stored its prose in the clear. This panel shows the assembled
                   Layer-1 note as it currently reads. */}
-              {e.status === "draft" ? (
-                <div style={readOnlyPanel}>
-                  <p style={noteBody}>
-                    {noteText || "Nothing documented yet. Use Compose note to document this visit."}
-                  </p>
-                </div>
-              ) : (
-                <div style={readOnlyPanel}>
-                  <p style={noteBody}>
-                    {e.finalDocumentation || noteText || "No assembled documentation is available."}
-                  </p>
-                </div>
-              )}
-            </section>
+                {e.status === "draft" ? (
+                  <div style={readOnlyPanel}>
+                    <p style={noteBody}>
+                      {noteText ||
+                        "Nothing documented yet. Use Compose note to document this visit."}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={readOnlyPanel}>
+                    <p style={noteBody}>
+                      {e.finalDocumentation ||
+                        noteText ||
+                        "No assembled documentation is available."}
+                    </p>
+                  </div>
+                )}
+              </section>
 
               {/* ───────────────────────────────────────────────────────
                 2. VITALS
@@ -1382,117 +1311,113 @@ export function EncounterRead(): JSX.Element {
                 </div>
 
                 {sectionErrors.vitals ? (
-                  <div
-                    role="alert"
-                    aria-live="assertive"
-                    style={pageAlertStyle}
-                  >
+                  <div role="alert" aria-live="assertive" style={pageAlertStyle}>
                     <Glyph name="alert" size={16} />
                     <span>{sectionErrors.vitals}</span>
                   </div>
                 ) : null}
 
-              <div style={vitalsGrid}>
-                <Input
-                  label="BP systolic"
-                  suffix="mmHg"
-                  value={vitals.bpSystolic}
-                  onChange={(value) => {
-                    setVitals((current) => ({
-                      ...current,
-                      bpSystolic: value,
-                    }));
-                    clearFieldError("bpSystolic");
-                  }}
-                  error={fieldErrors.bpSystolic}
-                />
+                <div style={vitalsGrid}>
+                  <Input
+                    label="BP systolic"
+                    suffix="mmHg"
+                    value={vitals.bpSystolic}
+                    onChange={(value) => {
+                      setVitals((current) => ({
+                        ...current,
+                        bpSystolic: value,
+                      }));
+                      clearFieldError("bpSystolic");
+                    }}
+                    error={fieldErrors.bpSystolic}
+                  />
 
-                <Input
-                  label="BP diastolic"
-                  suffix="mmHg"
-                  value={vitals.bpDiastolic}
-                  onChange={(value) => {
-                    setVitals((current) => ({
-                      ...current,
-                      bpDiastolic: value,
-                    }));
-                    clearFieldError("bpDiastolic");
-                  }}
-                  error={fieldErrors.bpDiastolic}
-                />
+                  <Input
+                    label="BP diastolic"
+                    suffix="mmHg"
+                    value={vitals.bpDiastolic}
+                    onChange={(value) => {
+                      setVitals((current) => ({
+                        ...current,
+                        bpDiastolic: value,
+                      }));
+                      clearFieldError("bpDiastolic");
+                    }}
+                    error={fieldErrors.bpDiastolic}
+                  />
 
-                <Input
-                  label="Heart rate"
-                  suffix="bpm"
-                  value={vitals.heartRate}
-                  onChange={(value) => {
-                    setVitals((current) => ({
-                      ...current,
-                      heartRate: value,
-                    }));
-                    clearFieldError("heartRate");
-                  }}
-                  error={fieldErrors.heartRate}
-                />
+                  <Input
+                    label="Heart rate"
+                    suffix="bpm"
+                    value={vitals.heartRate}
+                    onChange={(value) => {
+                      setVitals((current) => ({
+                        ...current,
+                        heartRate: value,
+                      }));
+                      clearFieldError("heartRate");
+                    }}
+                    error={fieldErrors.heartRate}
+                  />
 
-                <Input
-                  label="Respiratory rate"
-                  suffix="/min"
-                  value={vitals.respiratoryRate}
-                  onChange={(value) => {
-                    setVitals((current) => ({
-                      ...current,
-                      respiratoryRate: value,
-                    }));
-                    clearFieldError("respiratoryRate");
-                  }}
-                  error={fieldErrors.respiratoryRate}
-                />
+                  <Input
+                    label="Respiratory rate"
+                    suffix="/min"
+                    value={vitals.respiratoryRate}
+                    onChange={(value) => {
+                      setVitals((current) => ({
+                        ...current,
+                        respiratoryRate: value,
+                      }));
+                      clearFieldError("respiratoryRate");
+                    }}
+                    error={fieldErrors.respiratoryRate}
+                  />
 
-                <Input
-                  label="Temperature"
-                  value={vitals.temperature}
-                  onChange={(value) => {
-                    setVitals((current) => ({
-                      ...current,
-                      temperature: value,
-                    }));
-                    clearFieldError("temperature");
-                  }}
-                  error={fieldErrors.temperature}
-                />
+                  <Input
+                    label="Temperature"
+                    value={vitals.temperature}
+                    onChange={(value) => {
+                      setVitals((current) => ({
+                        ...current,
+                        temperature: value,
+                      }));
+                      clearFieldError("temperature");
+                    }}
+                    error={fieldErrors.temperature}
+                  />
 
-                <Input
-                  label="SpO₂"
-                  suffix="%"
-                  value={vitals.spo2}
-                  onChange={(value) => {
-                    setVitals((current) => ({
-                      ...current,
-                      spo2: value,
-                    }));
-                    clearFieldError("spo2");
-                  }}
-                  error={fieldErrors.spo2}
-                />
+                  <Input
+                    label="SpO₂"
+                    suffix="%"
+                    value={vitals.spo2}
+                    onChange={(value) => {
+                      setVitals((current) => ({
+                        ...current,
+                        spo2: value,
+                      }));
+                      clearFieldError("spo2");
+                    }}
+                    error={fieldErrors.spo2}
+                  />
 
-                <Input
-                  label="Pain"
-                  suffix="/10"
-                  value={vitals.painScore}
-                  onChange={(value) => {
-                    setVitals((current) => ({
-                      ...current,
-                      painScore: value,
-                    }));
-                    clearFieldError("painScore");
-                  }}
-                  error={fieldErrors.painScore}
-                />
-              </div>
-            </section>
+                  <Input
+                    label="Pain"
+                    suffix="/10"
+                    value={vitals.painScore}
+                    onChange={(value) => {
+                      setVitals((current) => ({
+                        ...current,
+                        painScore: value,
+                      }));
+                      clearFieldError("painScore");
+                    }}
+                    error={fieldErrors.painScore}
+                  />
+                </div>
+              </section>
 
-            {/* ───────────────────────────────────────────────────────
+              {/* ───────────────────────────────────────────────────────
                 3. CARE PLAN
             ──────────────────────────────────────────────────────── */}
 
@@ -1529,10 +1454,9 @@ export function EncounterRead(): JSX.Element {
                   <Glyph name="info" size={15} />
 
                   <span>
-                    These links document what part of the active Care Plan was
-                    addressed during this visit. If the patient does not have a
-                    Care Plan yet, create it from this encounter using the
-                    current patient and admission context.
+                    These links document what part of the active Care Plan was addressed during this
+                    visit. If the patient does not have a Care Plan yet, create it from this
+                    encounter using the current patient and admission context.
                   </span>
                 </div>
 
@@ -1575,20 +1499,14 @@ export function EncounterRead(): JSX.Element {
                   <div>
                     <div style={subsectionHeader}>
                       <div>
-                        <span style={subsectionTitle}>
-                          Encounter assessments
-                        </span>
+                        <span style={subsectionTitle}>Encounter assessments</span>
 
-                        <p style={subsectionHelp}>
-                          Assessments linked directly to this encounter.
-                        </p>
+                        <p style={subsectionHelp}>Assessments linked directly to this encounter.</p>
                       </div>
 
                       <button
                         type="button"
-                        onClick={() =>
-                          navigate(`/patients/${e.patientId}/assessments`)
-                        }
+                        onClick={() => navigate(`/patients/${e.patientId}/assessments`)}
                         style={textBtn}
                       >
                         View M9 timeline
@@ -1608,16 +1526,12 @@ export function EncounterRead(): JSX.Element {
                       <div>
                         <span style={subsectionTitle}>HOPE context</span>
 
-                        <p style={subsectionHelp}>
-                          Recent HOPE records visible for this patient.
-                        </p>
+                        <p style={subsectionHelp}>Recent HOPE records visible for this patient.</p>
                       </div>
 
                       <button
                         type="button"
-                        onClick={() =>
-                          navigate(`/patients/${e.patientId}/hope`)
-                        }
+                        onClick={() => navigate(`/patients/${e.patientId}/hope`)}
                         style={textBtn}
                       >
                         View HOPE timeline
@@ -1759,9 +1673,7 @@ export function EncounterRead(): JSX.Element {
                       placeholder="Explain why mileage is being entered manually..."
                       style={{
                         ...textareaStyle,
-                        ...(fieldErrors.manualOverrideReason
-                          ? fieldControlErrorStyle
-                          : null),
+                        ...(fieldErrors.manualOverrideReason ? fieldControlErrorStyle : null),
                       }}
                       aria-invalid={Boolean(fieldErrors.manualOverrideReason)}
                     />
@@ -1800,8 +1712,7 @@ export function EncounterRead(): JSX.Element {
                       </span>
 
                       <span style={quickActionHelp}>
-                        Complete the appropriate cosignature action to continue
-                        the workflow.
+                        Complete the appropriate cosignature action to continue the workflow.
                       </span>
                     </>
                   ) : e.status === "draft" ? (
@@ -1809,15 +1720,12 @@ export function EncounterRead(): JSX.Element {
                       <strong style={quickActionTitle}>Draft visit</strong>
 
                       <span style={quickActionHelp}>
-                        Complete the visit documentation, then finalize when
-                        ready.
+                        Complete the visit documentation, then finalize when ready.
                       </span>
                     </>
                   ) : e.status === "finalized" ? (
                     <>
-                      <strong style={quickActionTitle}>
-                        Ready for signature
-                      </strong>
+                      <strong style={quickActionTitle}>Ready for signature</strong>
 
                       <span style={quickActionHelp}>
                         The encounter has been finalized and can now be signed.
@@ -1825,13 +1733,9 @@ export function EncounterRead(): JSX.Element {
                     </>
                   ) : (
                     <>
-                      <strong style={quickActionTitle}>
-                        {stateLabel(e.status)}
-                      </strong>
+                      <strong style={quickActionTitle}>{stateLabel(e.status)}</strong>
 
-                      <span style={quickActionHelp}>
-                        Encounter workflow status
-                      </span>
+                      <span style={quickActionHelp}>Encounter workflow status</span>
                     </>
                   )}
                 </div>
@@ -2023,9 +1927,7 @@ export function EncounterRead(): JSX.Element {
                 <dl style={lifeGrid}>
                   <dt style={dt}>Source</dt>
 
-                  <dd style={dd}>
-                    {e.visitId ? "Scheduled visit" : "PRN / unscheduled"}
-                  </dd>
+                  <dd style={dd}>{e.visitId ? "Scheduled visit" : "PRN / unscheduled"}</dd>
 
                   <dt style={dt}>Service date</dt>
 
@@ -2040,9 +1942,7 @@ export function EncounterRead(): JSX.Element {
                       <dd style={dd}>
                         <button
                           type="button"
-                          onClick={() =>
-                            navigate(`/scheduling/visits/${e.visitId}`)
-                          }
+                          onClick={() => navigate(`/scheduling/visits/${e.visitId}`)}
                           style={linkBtn}
                         >
                           Open visit
@@ -2158,8 +2058,7 @@ export function EncounterRead(): JSX.Element {
                 color: t.onSurfaceVariant,
               }}
             >
-              Confirms you have opened this encounter for cosignature review.
-              This does not sign it.
+              Confirms you have opened this encounter for cosignature review. This does not sign it.
             </span>
 
             {actionError ? (
@@ -2280,10 +2179,7 @@ export function EncounterRead(): JSX.Element {
               id="supervisor-release-reason-count"
               style={{
                 fontSize: "0.7rem",
-                color:
-                  reason.trim().length >= REASON_MIN
-                    ? t.onSurfaceVariant
-                    : t.warning,
+                color: reason.trim().length >= REASON_MIN ? t.onSurfaceVariant : t.warning,
               }}
             >
               {reason.trim().length}/{REASON_MIN}
@@ -2311,9 +2207,7 @@ export function EncounterRead(): JSX.Element {
 
       <Modal
         open={
-          utilityModal === "void" ||
-          utilityModal === "addendum" ||
-          utilityModal === "assessment"
+          utilityModal === "void" || utilityModal === "addendum" || utilityModal === "assessment"
         }
         onClose={busy ? undefined : () => setUtilityModal(null)}
         ariaLabel="Encounter action"
@@ -2462,9 +2356,7 @@ function SectionHeading({
 }): JSX.Element {
   return (
     <div style={sectionHeading}>
-      <div style={complete ? sectionNumberComplete : sectionNumber}>
-        {complete ? "✓" : step}
-      </div>
+      <div style={complete ? sectionNumberComplete : sectionNumber}>{complete ? "✓" : step}</div>
 
       <div>
         <span style={eyebrow}>{eyebrowText}</span>
@@ -2541,17 +2433,12 @@ function CarePlanPicker({
           <strong style={carePlanEmptyTitle}>No Care Plan yet</strong>
 
           <span style={carePlanEmptyDescription}>
-            Create the patient's Care Plan before linking problems, goals, or
-            interventions to this visit.
+            Create the patient's Care Plan before linking problems, goals, or interventions to this
+            visit.
           </span>
 
           {encounter.status === "draft" ? (
-            <button
-              type="button"
-              onClick={onCreate}
-              disabled={busy}
-              style={primaryBtn}
-            >
+            <button type="button" onClick={onCreate} disabled={busy} style={primaryBtn}>
               {busy ? "Creating…" : "Create Care Plan"}
             </button>
           ) : (
@@ -2565,9 +2452,7 @@ function CarePlanPicker({
   }
 
   const totalItems =
-    carePlan.problems.length +
-    carePlan.goals.length +
-    carePlan.interventions.length;
+    carePlan.problems.length + carePlan.goals.length + carePlan.interventions.length;
 
   if (totalItems === 0) {
     const restricted = carePlan.redacted;
@@ -2604,11 +2489,7 @@ function CarePlanPicker({
         rows={carePlan.problems.map((problem) => ({
           id: problem.problemId,
           label: problem.description,
-          checked: hasCarePlanLink(
-            encounter.carePlanLinks,
-            "problem",
-            problem.problemId,
-          ),
+          checked: hasCarePlanLink(encounter.carePlanLinks, "problem", problem.problemId),
         }))}
         disabled={busy}
         onSelect={(id) => onSelect("problem", id)}
@@ -2620,11 +2501,7 @@ function CarePlanPicker({
         rows={carePlan.goals.map((goal) => ({
           id: goal.goalId,
           label: goal.text,
-          checked: hasCarePlanLink(
-            encounter.carePlanLinks,
-            "goal",
-            goal.goalId,
-          ),
+          checked: hasCarePlanLink(encounter.carePlanLinks, "goal", goal.goalId),
         }))}
         disabled={busy}
         onSelect={(id) => onSelect("goal", id)}
@@ -2687,10 +2564,7 @@ function PickerGroup({
       ) : (
         <div style={pickerRows}>
           {rows.map((row) => (
-            <label
-              key={row.id}
-              style={row.checked ? checkboxLineChecked : checkboxLine}
-            >
+            <label key={row.id} style={row.checked ? checkboxLineChecked : checkboxLine}>
               <input
                 type="checkbox"
                 checked={row.checked}
@@ -2754,9 +2628,7 @@ function LinkedRows({
             </span>
 
             {row.capturedAt ? (
-              <span style={meta}>
-                {row.capturedAt.slice(0, 16).replace("T", " ")}
-              </span>
+              <span style={meta}>{row.capturedAt.slice(0, 16).replace("T", " ")}</span>
             ) : null}
           </div>
 
@@ -3118,8 +2990,7 @@ const fieldErrorStyle: CSSProperties = {
 
 const fieldControlErrorStyle: CSSProperties = {
   borderColor: t.error,
-  boxShadow:
-    "0 0 0 1px color-mix(in srgb, var(--color-error) 25%, transparent)",
+  boxShadow: "0 0 0 1px color-mix(in srgb, var(--color-error) 25%, transparent)",
 };
 
 const inputWrapper: CSSProperties = {

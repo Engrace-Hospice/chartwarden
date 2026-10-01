@@ -28,8 +28,8 @@ import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
-  M20_OUTBOX_EVENTS,
   type M20WorkerDeps,
+  M20_OUTBOX_EVENTS,
   buildDrizzleSafetySeamStore,
   buildM20WorkerDeps,
   createSafetyPolicyProvider,
@@ -206,7 +206,12 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-F111-${org.slice(0, 4)}`, `F111 ${org.slice(0, 4)}`, `NPI-F111-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-F111-${org.slice(0, 4)}`,
+            `F111 ${org.slice(0, 4)}`,
+            `NPI-F111-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       const location = (
@@ -262,12 +267,22 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
       policyVersionId,
     });
     // cancel_window_expired_at = postedAt + 5s; the clock is already 5 minutes past that.
-    await runSosSlaWatchdogCron({ ...deps, activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] } });
+    await runSosSlaWatchdogCron({
+      ...deps,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+    });
 
-    expect(await alertRow(sosAlertId)).toMatchObject({ lifecycle_state: "acknowledging", version: 2 });
+    expect(await alertRow(sosAlertId)).toMatchObject({
+      lifecycle_state: "acknowledging",
+      version: 2,
+    });
     const history = await historyFor(sosAlertId);
     expect(history).toEqual([
-      { from_state: "cancel_window_open", to_state: "acknowledging", transitioned_by_membership_id: null },
+      {
+        from_state: "cancel_window_open",
+        to_state: "acknowledging",
+        transitioned_by_membership_id: null,
+      },
     ]);
   });
 
@@ -394,7 +409,10 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
       postedAt,
       policyVersionId,
     });
-    const singleOrgDeps = { ...deps, activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] } };
+    const singleOrgDeps = {
+      ...deps,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+    };
 
     // Both ticks race the SAME row. Postgres holds the row lock across the first UPDATE until it commits,
     // so the second's `WHERE version = ?` re-evaluates against the already-advanced version and matches
@@ -420,7 +438,10 @@ describe.skipIf(!DB_URL)("F-111 M20 SOS SLA watchdog cron — LIVE Postgres", ()
       policyVersionId,
     });
     await runSosSlaWatchdogCron(deps);
-    expect(await alertRow(sosAlertId)).toMatchObject({ lifecycle_state: "acknowledged", version: 1 });
+    expect(await alertRow(sosAlertId)).toMatchObject({
+      lifecycle_state: "acknowledged",
+      version: 1,
+    });
   });
 
   it("fans out over every active org and writes each org's alert under its own tenant scope", async () => {

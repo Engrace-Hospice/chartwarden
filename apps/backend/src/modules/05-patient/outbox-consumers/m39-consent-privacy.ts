@@ -66,13 +66,13 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
-import { type M5OutboxPort } from "../deceased-db";
+import type { M5OutboxPort } from "../deceased-db";
 import {
-  applyConsentChanged,
-  mergeConsentSignal,
   type ConsentSignal,
   type PrivacyFlag,
   type PrivacySnapshotPorts,
+  applyConsentChanged,
+  mergeConsentSignal,
 } from "../privacy/index";
 
 const P = schema.patients;
@@ -177,69 +177,70 @@ export function buildM5ConsentPrivacyConsumer(deps: {
       if (facts.typeKey !== PRIVACY_FLAG_CONSENT_TYPE) return;
 
       const organizationId = event.organizationId;
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        // No-leak: a cross-tenant/stale patientId resolves nothing under RLS and this is a silent
-        // no-op, matching `m6-admission-activated.ts`'s convention.
-        const patientRow = await tx
-          .select({ id: P.id })
-          .from(P)
-          .where(eq(P.id, facts.patientId))
-          .limit(1);
-        if (!patientRow[0]) return;
+          // No-leak: a cross-tenant/stale patientId resolves nothing under RLS and this is a silent
+          // no-op, matching `m6-admission-activated.ts`'s convention.
+          const patientRow = await tx
+            .select({ id: P.id })
+            .from(P)
+            .where(eq(P.id, facts.patientId))
+            .limit(1);
+          if (!patientRow[0]) return;
 
-        const existing = await tx
-          .select({ flags: PFS.flags, invalidatedAt: PFS.invalidatedAt })
-          .from(PFS)
-          .where(eq(PFS.patientId, facts.patientId))
-          .limit(1);
-        const currentFlags: readonly PrivacyFlag[] =
-          existing[0] && existing[0].invalidatedAt === null
-            ? (existing[0].flags as PrivacyFlag[])
-            : [];
-        const touched: ConsentSignal = { flag: PRIVACY_FLAG_FOR_TYPE, active: facts.active };
-        const signals = mergeConsentSignal(currentFlags, touched);
+          const existing = await tx
+            .select({ flags: PFS.flags, invalidatedAt: PFS.invalidatedAt })
+            .from(PFS)
+            .where(eq(PFS.patientId, facts.patientId))
+            .limit(1);
+          const currentFlags: readonly PrivacyFlag[] =
+            existing[0] && existing[0].invalidatedAt === null
+              ? (existing[0].flags as PrivacyFlag[])
+              : [];
+          const touched: ConsentSignal = { flag: PRIVACY_FLAG_FOR_TYPE, active: facts.active };
+          const signals = mergeConsentSignal(currentFlags, touched);
 
-        const ports: PrivacySnapshotPorts = {
-          async writeSnapshot(orgId, patientId, flags) {
-            await tx
-              .insert(PFS)
-              .values({
-                patientId,
-                organizationId: orgId,
-                flags: [...flags],
-                capturedAt: new Date(),
-                sourceConsentVersion: facts.sourceConsentVersion,
-                invalidatedAt: null,
-              })
-              .onConflictDoUpdate({
-                target: PFS.patientId,
-                set: {
+          const ports: PrivacySnapshotPorts = {
+            async writeSnapshot(orgId, patientId, flags) {
+              await tx
+                .insert(PFS)
+                .values({
+                  patientId,
                   organizationId: orgId,
                   flags: [...flags],
                   capturedAt: new Date(),
                   sourceConsentVersion: facts.sourceConsentVersion,
                   invalidatedAt: null,
-                },
+                })
+                .onConflictDoUpdate({
+                  target: PFS.patientId,
+                  set: {
+                    organizationId: orgId,
+                    flags: [...flags],
+                    capturedAt: new Date(),
+                    sourceConsentVersion: facts.sourceConsentVersion,
+                    invalidatedAt: null,
+                  },
+                });
+            },
+            async emitPrivacyFlagChanged(orgId, patientId, flags) {
+              await deps.outbox.publish(tx, {
+                eventName: "m5.patient.privacy_flag_changed",
+                payload: { patientId, organizationId: orgId, flags: [...flags] },
+                organizationId: orgId,
+                aggregateKind: "patient",
+                aggregateId: patientId,
               });
-          },
-          async emitPrivacyFlagChanged(orgId, patientId, flags) {
-            await deps.outbox.publish(tx, {
-              eventName: "m5.patient.privacy_flag_changed",
-              payload: { patientId, organizationId: orgId, flags: [...flags] },
-              organizationId: orgId,
-              aggregateKind: "patient",
-              aggregateId: patientId,
-            });
-          },
-        };
+            },
+          };
 
-        await applyConsentChanged(
-          { organizationId, patientId: facts.patientId, signals },
-          ports,
-        );
-      });
+          await applyConsentChanged({ organizationId, patientId: facts.patientId, signals }, ports);
+        },
+      );
     },
   };
 }

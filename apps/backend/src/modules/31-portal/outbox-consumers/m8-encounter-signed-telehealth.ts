@@ -84,37 +84,44 @@ export function buildM31EncounterSignedTelehealthConsumer(
       const organizationId = event.organizationId;
       const visitId = facts.visitId;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
 
-        const [row] = await tx
-          .select({ id: TV.id, lifecycleState: TV.lifecycleState, version: TV.version })
-          .from(TV)
-          .where(and(eq(TV.organizationId, organizationId), eq(TV.m17VisitId, visitId)))
-          .limit(1);
-        if (!row) return; // this M17 visit never had a telehealth room minted.
+          const [row] = await tx
+            .select({ id: TV.id, lifecycleState: TV.lifecycleState, version: TV.version })
+            .from(TV)
+            .where(and(eq(TV.organizationId, organizationId), eq(TV.m17VisitId, visitId)))
+            .limit(1);
+          if (!row) return; // this M17 visit never had a telehealth room minted.
 
-        const current = row.lifecycleState as TelehealthLifecycleState;
-        if (!TELEHEALTH_ENDED_STATES.has(current) || !canTransitionTelehealth(current, "reconciled")) {
-          return; // still live, or already reconciled — see header for why this is not forced through.
-        }
+          const current = row.lifecycleState as TelehealthLifecycleState;
+          if (
+            !TELEHEALTH_ENDED_STATES.has(current) ||
+            !canTransitionTelehealth(current, "reconciled")
+          ) {
+            return; // still live, or already reconciled — see header for why this is not forced through.
+          }
 
-        await tx
-          .update(TV)
-          .set({
-            lifecycleState: "reconciled",
-            linkedEncounterId: facts.encounterId,
-            version: row.version + 1,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(TV.id, row.id),
-              eq(TV.version, row.version),
-              inArray(TV.lifecycleState, ["ended_clean", "ended_aborted"]),
-            ),
-          );
-      });
+          await tx
+            .update(TV)
+            .set({
+              lifecycleState: "reconciled",
+              linkedEncounterId: facts.encounterId,
+              version: row.version + 1,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(TV.id, row.id),
+                eq(TV.version, row.version),
+                inArray(TV.lifecycleState, ["ended_clean", "ended_aborted"]),
+              ),
+            );
+        },
+      );
     },
   };
 }

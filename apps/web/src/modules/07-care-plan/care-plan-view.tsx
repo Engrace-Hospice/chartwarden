@@ -107,9 +107,7 @@ function formatDate(value: string | null | undefined): string {
   if (!value) return "Not set";
   // Date-only values are calendar dates: parse locally so they don't shift a day west of UTC.
   const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const d = ymd
-    ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]))
-    : new Date(value);
+  const d = ymd ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3])) : new Date(value);
   return Number.isNaN(d.getTime())
     ? value
     : d.toLocaleDateString(undefined, {
@@ -420,10 +418,7 @@ export function CarePlanView(): JSX.Element {
                     <Glyph name="lock" size={12} /> restricted content omitted
                   </span>
                 ) : null}
-                <Link
-                  to={`/patients/${patientId}/idg-history`}
-                  className="wx-btn-primary"
-                >
+                <Link to={`/patients/${patientId}/idg-history`} className="wx-btn-primary">
                   IDG History
                 </Link>
               </>
@@ -493,40 +488,22 @@ export function CarePlanView(): JSX.Element {
             }}
           />
 
-          <div
-            className="wx-subtabs"
-            role="tablist"
-            aria-label="Care Plan workspace views"
-          >
+          <div className="wx-subtabs" role="tablist" aria-label="Care Plan workspace views">
             <TabButton active={tab === "goals"} onClick={() => setTab("goals")}>
               Goals
               <span className="wx-seg-count wx-nums">{plan.goals.length}</span>
             </TabButton>
-            <TabButton
-              active={tab === "interventions"}
-              onClick={() => setTab("interventions")}
-            >
+            <TabButton active={tab === "interventions"} onClick={() => setTab("interventions")}>
               Interventions
             </TabButton>
-            <TabButton
-              active={tab === "problems"}
-              onClick={() => setTab("problems")}
-            >
+            <TabButton active={tab === "problems"} onClick={() => setTab("problems")}>
               Problems
             </TabButton>
-            <TabButton
-              active={tab === "revision"}
-              onClick={() => setTab("revision")}
-            >
+            <TabButton active={tab === "revision"} onClick={() => setTab("revision")}>
               Review & Sign
-              {openVersion ? (
-                <span className="wx-seg-count wx-nums">1</span>
-              ) : null}
+              {openVersion ? <span className="wx-seg-count wx-nums">1</span> : null}
             </TabButton>
-            <TabButton
-              active={tab === "history"}
-              onClick={() => setTab("history")}
-            >
+            <TabButton active={tab === "history"} onClick={() => setTab("history")}>
               Revisions
             </TabButton>
           </div>
@@ -535,9 +512,7 @@ export function CarePlanView(): JSX.Element {
             <GoalsList
               plan={plan}
               editable={editable && plan.problems.length > 0}
-              onEdit={(goal) =>
-                setModal({ kind: "goal", goal, problemId: goal.problemId })
-              }
+              onEdit={(goal) => setModal({ kind: "goal", goal, problemId: goal.problemId })}
               onAdd={addGoal}
             />
           ) : null}
@@ -763,9 +738,7 @@ function WorkflowGuide({
   } else if (!openVersion && activeVersion) {
     // An active plan can still carry readiness blockers (e.g. no active terminal problem); never
     // report "no action required" over them.
-    heading = blockers.length
-      ? "Care Plan needs attention"
-      : "Care Plan is active";
+    heading = blockers.length ? "Care Plan needs attention" : "Care Plan is active";
     description = blockers.length
       ? (blockers[0] as string)
       : review?.nextReviewDueAt
@@ -790,8 +763,7 @@ function WorkflowGuide({
   // The details list repeats every blocker; it is only redundant when the description already is the
   // single blocker.
   const listedBlockers =
-    blockers.length > 1 ||
-    (blockers.length === 1 && description !== blockers[0]);
+    blockers.length > 1 || (blockers.length === 1 && description !== blockers[0]);
 
   return (
     <section
@@ -1252,15 +1224,15 @@ function RevisionPanel({
                 {idgProposalRequired
                   ? "Record IDG proposed changes"
                   : readiness?.canFinalize
-                  ? "Ready for manager review"
-                  : "Before you can send this version"}
+                    ? "Ready for manager review"
+                    : "Before you can send this version"}
               </h3>
               <p style={muted}>
                 {idgProposalRequired
                   ? "An IDG review must contain at least one proposed Care Plan change. Record the IDG decision first, then send this version for signature."
                   : readiness?.canFinalize
-                  ? "The current draft passes readiness checks. Sending it freezes the candidate version for hospice physician review and signature."
-                  : "Resolve the remaining requirements, then review the candidate version."}
+                    ? "The current draft passes readiness checks. Sending it freezes the candidate version for hospice physician review and signature."
+                    : "Resolve the remaining requirements, then review the candidate version."}
               </p>
             </div>
 
@@ -1615,8 +1587,8 @@ function InterventionRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={rowTitle}>{intervention.scopeText}</p>
         <p style={muted}>
-          {disciplineLabel(intervention.discipline)} ·{" "}
-          {intervention.frequencyText} · {intervention.frequencyValue}
+          {disciplineLabel(intervention.discipline)} · {intervention.frequencyText} ·{" "}
+          {intervention.frequencyValue}
           {linkedGoals.length
             ? ` · linked to ${linkedGoals.map((g) => g.revisedText ?? g.originalText).join(", ")}`
             : ""}
@@ -1762,13 +1734,7 @@ function CarePlanModal({
           />
         ) : null}
         {state.kind === "sign" ? (
-          <SignForm
-            state={state}
-            plan={plan}
-            busy={busy}
-            error={error}
-            onSubmit={onSubmit}
-          />
+          <SignForm state={state} plan={plan} busy={busy} error={error} onSubmit={onSubmit} />
         ) : null}
         {state.kind === "return_to_draft" ? (
           <ConfirmPanel
@@ -1936,16 +1902,22 @@ function ProblemForm({
           error={fieldError(error, "description")}
         />
         <div style={fieldGrid2}>
-            <Select
-              label="Problem type"
-              value={kind}
-              onChange={setKind}
-              options={PROBLEM_KINDS}
-              hint="Terminal problems anchor the hospice plan of care."
-              error={fieldError(error, "kind")}
-            />
+          <Select
+            label="Problem type"
+            value={kind}
+            onChange={setKind}
+            options={PROBLEM_KINDS}
+            hint="Terminal problems anchor the hospice plan of care."
+            error={fieldError(error, "kind")}
+          />
           {!state.problem ? (
-            <Select label="Source" value={source} onChange={setSource} options={PROBLEM_SOURCES} error={fieldError(error, "source")} />
+            <Select
+              label="Source"
+              value={source}
+              onChange={setSource}
+              options={PROBLEM_SOURCES}
+              error={fieldError(error, "source")}
+            />
           ) : null}
         </div>
       </FormSection>
@@ -2139,10 +2111,7 @@ function GoalForm({
           onChange={setText}
           placeholder="e.g. Patient will report dyspnea is manageable at rest"
           required
-          error={
-            fieldError(error, "originalText") ??
-            fieldError(error, "revisedText")
-          }
+          error={fieldError(error, "originalText") ?? fieldError(error, "revisedText")}
         />
       </FormSection>
 
@@ -2500,9 +2469,7 @@ function carePlanErrorMessage(error: unknown, fallback: string): string {
 function fieldError(message: string | null, property: string): string | null {
   if (!message) return null;
   const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:body[/.]|\\b)${escaped}\\b`, "i").test(message)
-    ? message
-    : null;
+  return new RegExp(`(?:body[/.]|\\b)${escaped}\\b`, "i").test(message) ? message : null;
 }
 
 function TextField({

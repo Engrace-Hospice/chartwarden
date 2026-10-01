@@ -102,7 +102,9 @@ function factsOf(payload: unknown): TriageVisitNeededFacts {
   const p = (payload ?? {}) as Record<string, unknown>;
   const triageCallId = p.triageCallId;
   if (typeof triageCallId !== "string" || triageCallId.length === 0) {
-    throw new Error(`${M17_TRIAGE_VISIT_NEEDED_CONSUMER.consumerName}: payload has no triageCallId`);
+    throw new Error(
+      `${M17_TRIAGE_VISIT_NEEDED_CONSUMER.consumerName}: payload has no triageCallId`,
+    );
   }
   const visitKind = p.visitKind;
   if (
@@ -110,7 +112,9 @@ function factsOf(payload: unknown): TriageVisitNeededFacts {
     visitKind !== "first_light" &&
     visitKind !== "pronouncement"
   ) {
-    throw new Error(`${M17_TRIAGE_VISIT_NEEDED_CONSUMER.consumerName}: payload has no valid visitKind`);
+    throw new Error(
+      `${M17_TRIAGE_VISIT_NEEDED_CONSUMER.consumerName}: payload has no valid visitKind`,
+    );
   }
   const strOrNull = (key: string): string | null => {
     const value = p[key];
@@ -163,10 +167,7 @@ export function buildM17TriageVisitNeededConsumer(deps: TriageVisitNeededConsume
       const proposedForDate =
         facts.visitKind === "first_light" && facts.proposedForDate
           ? facts.proposedForDate
-          : localDateInTimeZone(
-              new Date(facts.requestedArrivalBy ?? Date.now()),
-              timezone,
-            );
+          : localDateInTimeZone(new Date(facts.requestedArrivalBy ?? Date.now()), timezone);
 
       await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
         const tx = scoped as unknown as DbClient;

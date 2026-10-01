@@ -16,11 +16,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import {
-  f2fEncounterLocation,
-  f2fEncounterStatus,
-  f2fPerformerRole,
-} from "../../enums";
+import { f2fEncounterLocation, f2fEncounterStatus, f2fPerformerRole } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -34,12 +30,9 @@ export const faceToFaceEncounters = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id").references(
-      () => providerEntities.id,
-      {
-        onDelete: "restrict",
-      },
-    ), // ARCH-011 (nullable)
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }), // ARCH-011 (nullable)
     locationId: uuid("location_id").references(() => locations.id, {
       onDelete: "restrict",
     }), // ARCH-011 (nullable)
@@ -66,31 +59,21 @@ export const faceToFaceEncounters = pgTable(
     encounterId: uuid("encounter_id"), // M8 visit (app-validated; no cross-module FK)
     documentId: uuid("document_id"), // M22 document (app-validated)
     status: f2fEncounterStatus("status").notNull().default("scheduled"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
     periodAttestedUnique: uniqueIndex("f2f_period_attested_idx")
       .on(t.electionPeriodId)
       .where(sql`status = 'attested'`),
-    performerDateIdx: index("f2f_performer_date_idx").on(
-      t.performedByUserId,
-      t.encounterDate,
-    ),
+    performerDateIdx: index("f2f_performer_date_idx").on(t.performedByUserId, t.encounterDate),
 
     performerScheduledDateIdx: index("f2f_performer_scheduled_date_idx").on(
       t.performedByUserId,
       t.scheduledDate,
     ),
-    orgPeriodIdx: index("f2f_org_period_idx").on(
-      t.organizationId,
-      t.electionPeriodId,
-    ),
+    orgPeriodIdx: index("f2f_org_period_idx").on(t.organizationId, t.electionPeriodId),
   }),
 );
 

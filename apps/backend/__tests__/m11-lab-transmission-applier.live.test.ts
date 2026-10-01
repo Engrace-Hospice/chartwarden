@@ -195,7 +195,9 @@ describe.skipIf(!DB_URL)("F-177 — M11's LabTransmissionApplier — LIVE Postgr
       ackCode: "AA",
       sourceM29EventId: "aaaaaaaa-3000-4000-8000-000000000001",
     });
-    expect(await outboxRows(ORG_A, "m11.order.transmission_terminal_failed", orderId)).toHaveLength(0);
+    expect(await outboxRows(ORG_A, "m11.order.transmission_terminal_failed", orderId)).toHaveLength(
+      0,
+    );
   });
 
   it("m29.lab_order.transmission_failed: flips pending -> failed and emits BOTH events (D16's own table)", async () => {
@@ -232,7 +234,11 @@ describe.skipIf(!DB_URL)("F-177 — M11's LabTransmissionApplier — LIVE Postgr
       sourceM29EventId: "aaaaaaaa-3000-4000-8000-000000000002",
     });
 
-    const terminalFailed = await outboxRows(ORG_A, "m11.order.transmission_terminal_failed", orderId);
+    const terminalFailed = await outboxRows(
+      ORG_A,
+      "m11.order.transmission_terminal_failed",
+      orderId,
+    );
     expect(terminalFailed).toHaveLength(1);
     expect(terminalFailed[0].payload).toMatchObject({
       orderId,
@@ -265,7 +271,9 @@ describe.skipIf(!DB_URL)("F-177 — M11's LabTransmissionApplier — LIVE Postgr
     const row = await orderRow(orderId);
     expect(row.transmission_status).toBe("failed");
     expect(row.transmission_failure_reason).toBe("application_reject");
-    expect(await outboxRows(ORG_A, "m11.order.transmission_terminal_failed", orderId)).toHaveLength(1);
+    expect(await outboxRows(ORG_A, "m11.order.transmission_terminal_failed", orderId)).toHaveLength(
+      1,
+    );
   });
 
   it("is idempotent on redelivery — a settled (transmitted) row never regresses or double-emits", async () => {
@@ -290,7 +298,9 @@ describe.skipIf(!DB_URL)("F-177 — M11's LabTransmissionApplier — LIVE Postgr
     await expect(consumer.handle(event)).resolves.toBeUndefined();
 
     expect((await orderRow(orderId)).transmission_status).toBe("transmitted");
-    expect(await outboxRows(ORG_A, "m11.order.transmission_status_changed", orderId)).toHaveLength(1);
+    expect(await outboxRows(ORG_A, "m11.order.transmission_status_changed", orderId)).toHaveLength(
+      1,
+    );
   });
 
   it("is idempotent on redelivery — a settled (failed) row never flips back to transmitted on a stray transmitted redelivery", async () => {
@@ -312,7 +322,9 @@ describe.skipIf(!DB_URL)("F-177 — M11's LabTransmissionApplier — LIVE Postgr
       },
     });
     expect((await orderRow(orderId)).transmission_status).toBe("failed");
-    expect(await outboxRows(ORG_A, "m11.order.transmission_status_changed", orderId)).toHaveLength(0);
+    expect(await outboxRows(ORG_A, "m11.order.transmission_status_changed", orderId)).toHaveLength(
+      0,
+    );
   });
 
   it("is a benign no-op when no matching order exists (a stale/cross-module id)", async () => {
@@ -352,9 +364,10 @@ describe.skipIf(!DB_URL)("F-177 — M11's LabTransmissionApplier — LIVE Postgr
     });
     // withOrgContext scopes the SELECT/UPDATE to org A's RLS window — org B's row is invisible, so this
     // is the same "no matching row" no-op path, proven here from the cross-tenant angle specifically.
-    const { rows } = await admin.query(`SELECT transmission_status FROM order_record WHERE id = $1`, [
-      orderId,
-    ]);
+    const { rows } = await admin.query(
+      `SELECT transmission_status FROM order_record WHERE id = $1`,
+      [orderId],
+    );
     expect(rows[0].transmission_status).toBe("pending"); // untouched by org A's delivery
   });
 });

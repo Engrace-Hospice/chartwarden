@@ -101,9 +101,7 @@ export class DosespotSyncQueueRepository {
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     `);
-    const ids = ((due as unknown as { rows?: Array<{ id: string }> }).rows ?? []).map(
-      (r) => r.id,
-    );
+    const ids = ((due as unknown as { rows?: Array<{ id: string }> }).rows ?? []).map((r) => r.id);
     if (ids.length === 0) return [];
     return this.db
       .update(Q)

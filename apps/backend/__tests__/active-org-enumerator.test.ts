@@ -88,7 +88,11 @@ describe("buildActiveOrgEnumerator", () => {
 
   it("fails LOUD (never returns []) when no platform pool is configured — the M14 packets-cron zero-org bug", async () => {
     const auditBypass = vi.fn<PlatformBypassAuditor<DbClient>>(async () => {});
-    const enumerator = buildActiveOrgEnumerator({ platformDb: undefined, auditBypass, jobId: JOB_ID });
+    const enumerator = buildActiveOrgEnumerator({
+      platformDb: undefined,
+      auditBypass,
+      jobId: JOB_ID,
+    });
     await expect(enumerator.listActiveOrgs()).rejects.toThrow(/DATABASE_PLATFORM_URL/);
     expect(auditBypass).not.toHaveBeenCalled();
   });

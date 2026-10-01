@@ -41,7 +41,10 @@ import { type DbClient, schema } from "@wardenx/db";
 import { medicaidClaimMachine } from "@wardenx/medicaid-adapters";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
-import type { DispatchableOutboxEvent, OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
+import type {
+  DispatchableOutboxEvent,
+  OutboxConsumerBinding,
+} from "../../../bootstrap/outbox-dispatcher";
 
 /** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
 const CONSUMER_USER_ID = "";
@@ -101,51 +104,58 @@ export function buildM24MedicarePrimaryAckConsumer(
       const C = schema.medicaidClaim;
       const SH = schema.medicaidClaimStateHistory;
 
-      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        const held = await tx
-          .select()
-          .from(C)
-          .where(
-            and(
-              eq(C.organizationId, organizationId),
-              eq(C.medicareClaimId, medicareClaimId),
-              inArray(C.state, MEDICARE_PRIMARY_ACK_SOURCE_STATES),
-            ),
-          );
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const held = await tx
+            .select()
+            .from(C)
+            .where(
+              and(
+                eq(C.organizationId, organizationId),
+                eq(C.medicareClaimId, medicareClaimId),
+                inArray(C.state, MEDICARE_PRIMARY_ACK_SOURCE_STATES),
+              ),
+            );
 
-        for (const claim of held) {
-          const reduced = medicaidClaimMachine.reduce(claim.state, "medicare_primary_acknowledged");
-          if (reduced.error) continue; // raced past eligibility since the SELECT — skip, never force
+          for (const claim of held) {
+            const reduced = medicaidClaimMachine.reduce(
+              claim.state,
+              "medicare_primary_acknowledged",
+            );
+            if (reduced.error) continue; // raced past eligibility since the SELECT — skip, never force
 
-          const now = new Date();
-          await tx
-            .update(C)
-            .set({ state: reduced.state, updatedAt: now })
-            .where(eq(C.id, claim.id));
-          await tx.insert(SH).values({
-            organizationId,
-            medicaidClaimId: claim.id,
-            fromState: claim.state,
-            toState: reduced.state,
-            reason: "medicare_primary_acknowledged",
-            triggerSource: "consumer",
-            actorMembershipId: null,
-          });
-          await deps.outbox.publish(tx, {
-            eventName: "m24.medicaid_claim.medicare_primary_resolved",
-            organizationId,
-            aggregateKind: "medicaid_claim",
-            aggregateId: claim.id,
-            payload: {
+            const now = new Date();
+            await tx
+              .update(C)
+              .set({ state: reduced.state, updatedAt: now })
+              .where(eq(C.id, claim.id));
+            await tx.insert(SH).values({
               organizationId,
-              claimId: claim.id,
-              medicareClaimId,
-              medicareClaimState: "ACK_ACCEPTED",
-            },
-          });
-        }
-      });
+              medicaidClaimId: claim.id,
+              fromState: claim.state,
+              toState: reduced.state,
+              reason: "medicare_primary_acknowledged",
+              triggerSource: "consumer",
+              actorMembershipId: null,
+            });
+            await deps.outbox.publish(tx, {
+              eventName: "m24.medicaid_claim.medicare_primary_resolved",
+              organizationId,
+              aggregateKind: "medicaid_claim",
+              aggregateId: claim.id,
+              payload: {
+                organizationId,
+                claimId: claim.id,
+                medicareClaimId,
+                medicareClaimState: "ACK_ACCEPTED",
+              },
+            });
+          }
+        },
+      );
     },
   };
 }

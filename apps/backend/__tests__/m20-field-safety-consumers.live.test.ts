@@ -544,7 +544,11 @@ describe.skipIf(!DB_URL)("F-043 M20 field-safety visit consumers — LIVE Postgr
       await deliver(
         "m36.notification.delivery_failed",
         ORG_A,
-        deliveryFailedPayload({ recipientKind: "on_call", alertEventType: null, sourceAggregateId: null }),
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          alertEventType: null,
+          sourceAggregateId: null,
+        }),
       );
       const { rows } = await admin.query("SELECT id FROM safety_sos_alert_state_history");
       expect(rows).toHaveLength(0);

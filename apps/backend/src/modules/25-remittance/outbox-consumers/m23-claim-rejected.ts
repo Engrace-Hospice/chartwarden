@@ -34,9 +34,9 @@ import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   DENY_DENIAL_TERMINOLOGY,
-  handleClaimRejected,
   type DenialSeedStore,
   type DenialTerminologyLookupPort,
+  handleClaimRejected,
 } from "../consumers/handlers";
 import type { WriteOutboxPort } from "../routes/write-service";
 
@@ -119,8 +119,7 @@ export function buildM23ClaimRejectedConsumer(
         // (yet, or ever, for a cross-tenant id) know about is a genuine integration defect, not a business
         // outcome — the dispatcher retries and eventually DLQs it.
         throw new Error(
-          `${M23_CLAIM_REJECTED_CONSUMER.consumerName}: no M23 claim ${claimId} in org ${organizationId} ` +
-            `(cannot resolve providerEntityId)`,
+          `${M23_CLAIM_REJECTED_CONSUMER.consumerName}: no M23 claim ${claimId} in org ${organizationId} (cannot resolve providerEntityId)`,
         );
       }
 

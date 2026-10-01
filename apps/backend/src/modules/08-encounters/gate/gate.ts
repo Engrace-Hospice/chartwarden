@@ -9,7 +9,12 @@
 // What each of the twelve §2.6 checks is today — evaluated here, enforced elsewhere in the same
 // transition, or deferred with a named blocker — is the register in ./checks. Read that first; it is
 // the honest inventory, and `gate.test.ts` pins it against what this file actually decides.
-import { type VitalField, requiredScalesFor, requiredVitalsFor, resolveTemplate } from "@wardenx/hearthnote";
+import {
+  type VitalField,
+  requiredScalesFor,
+  requiredVitalsFor,
+  resolveTemplate,
+} from "@wardenx/hearthnote";
 import type {
   CarePlanOverdueStatus,
   EncounterDiscipline,
@@ -123,7 +128,8 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
 
     // ── Check 2 — required vitals per (type × discipline) template, or clinically_not_indicated (#125) ─
     for (const field of requiredVitalsFor(template)) {
-      if (facts.vitalsCaptured.has(field) || facts.vitalsClinicallyNotIndicated.has(field)) continue;
+      if (facts.vitalsCaptured.has(field) || facts.vitalsClinicallyNotIndicated.has(field))
+        continue;
       remediation.push({
         check: "required_vitals",
         code: "MISSING_VITAL",

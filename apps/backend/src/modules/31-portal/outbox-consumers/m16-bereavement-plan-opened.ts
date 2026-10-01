@@ -118,7 +118,9 @@ function factsOf(payload: unknown): PlanOpenedFacts {
     throw new Error(`${M31_BEREAVEMENT_PLAN_OPENED_CONSUMER.consumerName}: payload has no planId`);
   }
   if (typeof patientId !== "string" || patientId.length === 0) {
-    throw new Error(`${M31_BEREAVEMENT_PLAN_OPENED_CONSUMER.consumerName}: payload has no patientId`);
+    throw new Error(
+      `${M31_BEREAVEMENT_PLAN_OPENED_CONSUMER.consumerName}: payload has no patientId`,
+    );
   }
   return { planId, patientId };
 }
@@ -189,7 +191,11 @@ export function buildM31BereavementPlanOpenedConsumer(deps: BereavementPlanOpene
             sessionContext: { sessionClass: "staff" },
             callerModule: "m31",
           });
-          if (verdict.allowed === true && verdict.consentRecordId && verdict.consentVersionAtEval !== undefined) {
+          if (
+            verdict.allowed === true &&
+            verdict.consentRecordId &&
+            verdict.consentVersionAtEval !== undefined
+          ) {
             governingConsentRecordId = verdict.consentRecordId;
             governingConsentVersion = verdict.consentVersionAtEval;
           }

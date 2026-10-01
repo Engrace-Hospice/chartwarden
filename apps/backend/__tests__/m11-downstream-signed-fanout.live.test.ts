@@ -66,7 +66,10 @@ describe.skipIf(!DB_URL)("F-120 — M11 downstream signed fan-out, LIVE Postgres
       await admin.query(sql);
     }
   }
-  async function eventPayload(aggregateId: string, eventType: string): Promise<Record<string, unknown> | null> {
+  async function eventPayload(
+    aggregateId: string,
+    eventType: string,
+  ): Promise<Record<string, unknown> | null> {
     const { rows } = await admin.query(
       "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2",
       [aggregateId, eventType],
@@ -139,7 +142,8 @@ describe.skipIf(!DB_URL)("F-120 — M11 downstream signed fan-out, LIVE Postgres
         fromLevel: "rhc",
         toLevel: "gip",
         effectiveAt: "2026-01-05T00:00:00.000Z",
-        clinicalJustification: "Uncontrolled symptom crisis requiring continuous nursing oversight.",
+        clinicalJustification:
+          "Uncontrolled symptom crisis requiring continuous nursing oversight.",
       },
       "medical_director",
     );
@@ -199,7 +203,10 @@ describe.skipIf(!DB_URL)("F-120 — M11 downstream signed fan-out, LIVE Postgres
   it("a signed lab order does NOT emit supply_fulfillment_requested, and emits no hl7_orm_requested WITHOUT the F-181 ORM ports (this suite builds the service bare — m11-orm-requested.live proves the wired path)", async () => {
     const id = await signedOrder(
       "lab",
-      { testCodes: [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }], fastingRequired: false },
+      {
+        testCodes: [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }],
+        fastingRequired: false,
+      },
       "rn_case_manager",
     );
     const events = await eventsFor(id);

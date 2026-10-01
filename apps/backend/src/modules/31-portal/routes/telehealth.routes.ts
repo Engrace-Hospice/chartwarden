@@ -69,11 +69,16 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       const nextState = foldParticipantJoin(visit.lifecycleState, who);
       if (nextState !== visit.lifecycleState) {
         const startsNow = visit.visitStartedAt === null && nextState === "in_progress";
-        await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, telehealthVisitId, {
-          lifecycleState: nextState,
-          firstParticipantJoinedAt: visit.visitStartedAt === null ? now() : undefined,
-          ...(startsNow ? { visitStartedAt: now() } : {}),
-        });
+        await store.updateTelehealthLifecycle(
+          actor.organizationId,
+          actor.userId,
+          telehealthVisitId,
+          {
+            lifecycleState: nextState,
+            firstParticipantJoinedAt: visit.visitStartedAt === null ? now() : undefined,
+            ...(startsNow ? { visitStartedAt: now() } : {}),
+          },
+        );
       }
       const token = await adapter.mintParticipantToken({
         telehealthVisitId,

@@ -78,7 +78,9 @@ export type RetryDecision =
  * it as any other terminal failure; `detail` carries the short PHI-free refusal label and `attemptCount` is
  * the true number of attempts (this one).
  */
-export function decidePermanentFailure(input: RetryDecisionInput): Extract<RetryDecision, { kind: "dlq" }> {
+export function decidePermanentFailure(
+  input: RetryDecisionInput,
+): Extract<RetryDecision, { kind: "dlq" }> {
   const { outbound } = input;
   const attemptNumber = outbound.retryCount + 1;
   return {
@@ -201,7 +203,10 @@ export const IN_FLIGHT_LEASE_MIN_SECONDS = 60;
 export const IN_FLIGHT_LEASE_MAX_SECONDS = 3600;
 
 /** The lease (ms) for a feed: its own `in_flight_lease_seconds` when set, else the injected platform default. */
-export function inFlightLeaseMsFor(feedSeconds: number | null | undefined, defaultMs: number): number {
+export function inFlightLeaseMsFor(
+  feedSeconds: number | null | undefined,
+  defaultMs: number,
+): number {
   if (typeof feedSeconds !== "number" || !Number.isFinite(feedSeconds)) return defaultMs;
   return feedSeconds * 1000;
 }

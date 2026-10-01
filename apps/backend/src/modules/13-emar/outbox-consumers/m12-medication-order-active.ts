@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/13-emar/outbox-consumers/m12-medication-order-active.ts — the §2.3 D2
 // scheduled-dose materializer, live for the first time (F-166, #248).
 //
@@ -39,7 +40,6 @@
 // own schema comment) to de-duplicate a REACTIVE pass against a future CRON pass extending the window
 // further out, which this change does not add.
 import { DEFAULT_ORDER_TIME_ZONE, materializeForOrder, orderLocalDate } from "@wardenx/emar";
-import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { SigStructuredDto } from "@wardenx/types";
 import type { EmarWriteOutboxPort } from "../emar-route-service-db";
@@ -156,11 +156,16 @@ export function buildM13MaterializeScheduleConsumer(deps: MaterializeScheduleCon
           ? (policy?.controlledGraceWindowMinutes ?? DEFAULT_CONTROLLED_GRACE_WINDOW_MINUTES)
           : (policy?.defaultGraceWindowMinutes ?? DEFAULT_GRACE_WINDOW_MINUTES);
 
-        const timeZone = (await deps.locationTimezone(organizationId, locationId)) ?? DEFAULT_ORDER_TIME_ZONE;
+        const timeZone =
+          (await deps.locationTimezone(organizationId, locationId)) ?? DEFAULT_ORDER_TIME_ZONE;
         const windowStartDate = orderLocalDate(order.activatedAt as string, timeZone);
 
         const tuples = materializeForOrder(
-          { route: order.route, sigStructured: order.sigStructured, activatedAt: order.activatedAt },
+          {
+            route: order.route,
+            sigStructured: order.sigStructured,
+            activatedAt: order.activatedAt,
+          },
           { timeZone, windowStartDate, windowDays },
         );
         if (tuples.length === 0) return; // PRN — no scheduled rows materialize (§2.3)

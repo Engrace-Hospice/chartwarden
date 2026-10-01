@@ -11,8 +11,8 @@ import type { ClaimAssemblyService } from "../services/claim-assembly";
 // HIPPS/SIA/sequestration math through it, NOT the write service's low-level persistence path).
 import type { RateTableRouteService } from "./rate-table-service";
 import type { M23ReadRouteService } from "./read-service";
-import type { WageIndexRouteService } from "./wage-index-service";
 import type { SequestrationPolicyRouteService } from "./sequestration-policy-service";
+import type { WageIndexRouteService } from "./wage-index-service";
 import type { M23WriteRouteService } from "./write-service";
 
 export {
