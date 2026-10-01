@@ -2287,12 +2287,16 @@ function AnswerControl(props: {
 
   if (isSectionIOtherConditionYesNo(props.item)) {
     return (
-      // biome-ignore lint/a11y/useSemanticElements: a div group keeps the inline-flex Yes/No layout; fieldset would change rendering.
-      <div
-        role="group"
+      <fieldset
         aria-label={`${props.item.label}: select Yes or No`}
         aria-describedby={props.describedBy}
         style={{
+          // A `<fieldset>` is the native `group` (biome a11y/useSemanticElements); its default border,
+          // padding and min-inline-size are reset so it renders exactly like the `<div>` it replaces.
+          border: 0,
+          margin: 0,
+          padding: 0,
+          minInlineSize: 0,
           display: "inline-flex",
           alignItems: "center",
           gap: ".875rem",
@@ -2333,7 +2337,7 @@ function AnswerControl(props: {
             {label}
           </label>
         ))}
-      </div>
+      </fieldset>
     );
   }
 
