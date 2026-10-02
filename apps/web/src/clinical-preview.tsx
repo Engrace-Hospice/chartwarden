@@ -1,7 +1,13 @@
 // Dev-only visual harness (mock ApiClient, no backend) for the patient Clinical tab + M14 IDG screens. Not a build entry: vite.config.ts builds index.html only. Open via `vite` at /clinical-preview.html?idg=<live|detail|minutes|packet|schedule|actions>.
 import "@fontsource-variable/inter";
 import "./index.css";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import {
+  type ApiClient,
+  ApiClientProvider,
+  FeatureFlagProvider,
+  SystemStatusProvider,
+  ToastProvider,
+} from "@wardenx/ui";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { PatientChart } from "./modules/05-patient/patient-chart";
@@ -20,6 +26,7 @@ import { DocumentExplorer } from "./modules/22-documents/document-explorer";
 import { PatientDocuments } from "./modules/22-documents/patient-documents";
 import { ArDashboard } from "./modules/23-billing-medicare/ar-dashboard";
 import { PatientClaims } from "./modules/23-billing-medicare/patient-claims";
+import { AppLayout } from "./shell/layout";
 import { RoleHome } from "./shell/role-home";
 import { SessionProvider } from "./shell/session";
 
@@ -2210,10 +2217,24 @@ if (isIdg) {
       <MemoryRouter initialEntries={[idgEntry[idgScreen]!]}>
         <ApiClientProvider client={client}>
           <div style={{ background: "var(--color-background)", minHeight: "100vh" }}>
+            {/* The real app frame (sidebar + top bar + the `.wx-main` scroll container), so the packet
+                reads — and its right rail sticks — exactly as it does in the app. */}
             <Routes>
-              {idgRoutes.map((path, i) => (
-                <Route key={path} path={path} element={idgEls[i]} />
-              ))}
+              <Route
+                element={
+                  <FeatureFlagProvider flags={{}}>
+                    <SystemStatusProvider components={[]}>
+                      <ToastProvider>
+                        <AppLayout screens={homeScreens as never} />
+                      </ToastProvider>
+                    </SystemStatusProvider>
+                  </FeatureFlagProvider>
+                }
+              >
+                {idgRoutes.map((path, i) => (
+                  <Route key={path} path={path} element={idgEls[i]} />
+                ))}
+              </Route>
             </Routes>
           </div>
         </ApiClientProvider>
