@@ -146,3 +146,25 @@ To roll back application code, run **Release and deploy** manually from the comm
 dedicated rollback workflow that passes the previous immutable image tags); never replace production
 image references with `:latest`. Note that `.env.production` holds a digest after a verified deploy,
 which is a stronger rollback target than a tag: it names one artefact and cannot drift.
+
+``` bash
+export DEPLOY_HOST="2.25.109.137"
+export DEPLOY_USER="deploy"
+export DEPLOY_PORT="22"
+
+SHA="94b4ca9dfb56e3c1d0551d08e18b78532e26728f"
+BACKEND_IMAGE="ghcr.io/engrace-hospice/wardenx:sha-${SHA}"
+WEB_IMAGE="ghcr.io/engrace-hospice/wardenx-web:sha-${SHA}"
+
+scp -P "$DEPLOY_PORT" \
+  deploy/production/deploy.sh \
+  deploy/production/smoke.sh \
+  deploy/production/compose.yml \
+  "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
+
+ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+  "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
+
+
+  git rev-parse main (to get de SHA)
+```
