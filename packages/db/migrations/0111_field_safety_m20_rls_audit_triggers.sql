@@ -17,19 +17,15 @@
 --    `is_system_locked = true OR organization_id = …` read policy would be for, and adding one would be the
 --    ADR-0010 D3 shape for no gain.
 --
---    Grants: wardenx_app gets SELECT/INSERT/UPDATE and DELETE on nothing here. (F-043/#103: migration 0238
---    later adds DELETE on `safety_check_in_schedule` alone — a `proposed` obligation is a plan the system
---    MADE, not evidence of anything that happened, and `consumers/schedule-plan.ts` shows no member of
---    `safety_check_in_state` can truthfully say "invalidated". The M4 trigger below fires on DELETE, so the
---    retirement stays on the record. Every other table keeps the posture this paragraph describes.)
---    Four tables get SELECT/INSERT ONLY — `safety_policy_version`, `safety_sos_location_stream`, `safety_sos_alert_state_history` and
+--    Grants: wardenx_app gets SELECT/INSERT/UPDATE and DELETE on NOTHING. Four tables get SELECT/INSERT
+--    ONLY — `safety_policy_version`, `safety_sos_location_stream`, `safety_sos_alert_state_history` and
 --    `safety_incident_state_history` are append-only per §8.8.1 ("INSERT only"), a policy correction is a
 --    NEW version row and a lifecycle correction is a NEW history row, and withholding UPDATE makes that a
 --    permission error rather than a code-review convention. In particular an UPDATE grant on
 --    `safety_policy_version` would let a tenant retroactively rewrite the cadence that was in force during
 --    a past incident, which is the exact thing the version table exists to make impossible. Destruction runs
---    through the admin-role eraseFn (§3.7), which is why the app role gets DELETE on no EVIDENCE table in
---    M20 — including on the location stream, whose resolve+90d physical delete is a privileged sweep.
+--    through the admin-role eraseFn (§3.7), which is why the app role never gets DELETE anywhere in M20 —
+--    including on the location stream, whose resolve+90d physical delete is a privileged sweep.
 --
 -- 2. M4 write-audit triggers (§3.6 / §8.8.1). Eleven tables stamp `compliance`; `safety_supervisor_subscription`
 --    and `safety_high_risk_area` stamp `operational`, matching `M20_AUDIT_RETENTION_CLASS` in @wardenx/types
