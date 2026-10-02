@@ -27,6 +27,7 @@ import { PatientDocuments } from "./modules/22-documents/patient-documents";
 import { ArDashboard } from "./modules/23-billing-medicare/ar-dashboard";
 import { PatientClaims } from "./modules/23-billing-medicare/patient-claims";
 import { AppLayout } from "./shell/layout";
+import { PRIMARY_NAV } from "./shell/primary-nav";
 import { RoleHome } from "./shell/role-home";
 import { SessionProvider } from "./shell/session";
 
@@ -2199,6 +2200,17 @@ const homeScreens = [
   ["documents.explorer", "/documents", "Upload Document"],
   ["reporting.catalog", "/reports", "Run Reports"],
 ].map(([id, path, title]) => ({ id, path, title, screen: () => null }));
+// One stand-in screen per curated nav entry, so the preview sidebar lists exactly what the app's does.
+const previewNavScreens = PRIMARY_NAV.flatMap((section) =>
+  section.entries
+    .filter((entry) => entry.key !== "home")
+    .map((entry) => ({
+      id: `nav.${entry.key}`,
+      path: entry.to,
+      title: entry.label,
+      screen: () => null,
+    })),
+);
 if (isIdg) {
   createRoot(document.getElementById("root")!).render(
     <SessionProvider
@@ -2225,7 +2237,7 @@ if (isIdg) {
                   <FeatureFlagProvider flags={{}}>
                     <SystemStatusProvider components={[]}>
                       <ToastProvider>
-                        <AppLayout screens={homeScreens as never} />
+                        <AppLayout screens={previewNavScreens as never} />
                       </ToastProvider>
                     </SystemStatusProvider>
                   </FeatureFlagProvider>
