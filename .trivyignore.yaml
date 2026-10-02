@@ -25,7 +25,42 @@
 #       statement: >
 #         What it is, why it cannot be fixed here yet, and what removes it. Name the upstream issue.
 #
-# The file is intentionally EMPTY of suppressions right now. If the first release scan surfaces
-# something, the honest first move is to try to fix it — bump the base image, bump the dependency — and
-# only then to write an entry here explaining why that did not work.
-vulnerabilities: []
+# These are the outstanding high findings in Debian 13 (trixie), after the image refresh. Debian has
+# not shipped fixes for that release; each row is limited to the earliest mandated re-examination date.
+vulnerabilities:
+  - id: CVE-2026-76642
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's essential util-linux 2.41.5-0+deb13u1 has no DSA or fixed package yet; Debian tracks
+      this as no-DSA and upstream fixed it in util-linux 2.42.3 (GHSA-m25x-3hj9-m26f). Remove this when
+      the Bun base image carries a patched Debian package, or re-examine by the expiry.
+  - id: CVE-2026-78408
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's essential util-linux 2.41.5-0+deb13u1 has no DSA or fixed package yet; Debian tracks
+      this as a minor no-DSA issue and upstream fixes it in util-linux 2.42.4 (GHSA-55fx-f4gg-cfhj).
+      Remove this when the Bun base image carries that fix, or re-examine by the expiry.
+  - id: CVE-2026-78409
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's essential util-linux 2.41.5-0+deb13u1 has no DSA or fixed package yet; Debian tracks
+      this as a minor no-DSA issue and upstream fixes it in util-linux 2.42.3 (GHSA-8f2p-47x3-43mv).
+      Remove this when the Bun base image carries that fix, or re-examine by the expiry.
+  - id: CVE-2026-78410
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's essential util-linux 2.41.5-0+deb13u1 has no DSA or fixed package yet; Debian tracks
+      this as a minor no-DSA issue and upstream fixes it in util-linux 2.42.3 (GHSA-rh77-686x-2f2m).
+      Remove this when the Bun base image carries that fix, or re-examine by the expiry.
+  - id: CVE-2025-69720
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's essential ncurses 6.5+20250216-2 has no DSA or fixed package yet; Debian marks this
+      infocmp issue minor, while forky contains the fix in ncurses 6.6+20260608-2. Remove this when the
+      Bun base image updates ncurses, or re-examine by the expiry.
+  - id: CVE-2026-9538
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's essential perl-base 5.40.1-6+deb13u1 has no update while Debian waits for upstream
+      regression resolution (Debian bug #1138861); Perl Archive::Tar 3.10 contains the fix. Remove this
+      when the Bun base image carries a patched Perl package, or re-examine by the expiry.
