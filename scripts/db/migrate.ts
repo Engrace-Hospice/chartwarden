@@ -179,7 +179,6 @@ export async function applyMigrations(
     `${files.length} migration file(s) in ${migrationsDir}; ${applied.size} already applied, ` +
       `${pending.length} pending.`,
   );
-  const ran: string[] = [];
   const drifted: string[] = [];
   for (const f of files) {
     const sql = readFileSync(join(migrationsDir, f), "utf8");
@@ -190,8 +189,22 @@ export async function applyMigrations(
         console.log(`  ⚠ ${f} already applied, but its contents changed since (checksum drift)`);
         drifted.push(f);
       }
-      continue; // already applied — skip
     }
+  }
+
+  // Deployment uses --strict. Detect an edited historical migration before executing any pending
+  // file: migrations commit one-by-one, so checking only after the loop can otherwise leave the
+  // schema ahead of the code image that the deploy rolls back to.
+  if (opts.strict && drifted.length > 0) {
+    throw new Error(
+      `--strict: ${drifted.length} already-applied migration(s) have checksum drift: ${drifted.join(", ")}`,
+    );
+  }
+
+  const ran: string[] = [];
+  for (const f of pending) {
+    const sql = readFileSync(join(migrationsDir, f), "utf8");
+    const checksum = createHash("sha256").update(sql).digest("hex");
     process.stdout.write(`  • ${f} … `);
     try {
       // The migration and its tracking row commit atomically: a crash never half-records a file.
@@ -215,11 +228,6 @@ export async function applyMigrations(
   }
   console.log(`Applied ${ran.length} new migration(s).`);
 
-  if (opts.strict && drifted.length > 0) {
-    throw new Error(
-      `--strict: ${drifted.length} already-applied migration(s) have checksum drift: ${drifted.join(", ")}`,
-    );
-  }
   return { ran, pending, drifted };
 }
 

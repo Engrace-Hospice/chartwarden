@@ -16,6 +16,9 @@
  * the public schema + every role the migrations create).
  */
 import { Client } from "pg";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR, applyMigrations } from "../db/migrate";
 
@@ -98,5 +101,37 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
     await expect(
       applyMigrations(db, { migrationsDir: MIGRATIONS_DIR, strict: true }),
     ).rejects.toThrow(/checksum drift/i);
+  }, 60_000);
+
+  it("--strict detects drift before applying a later pending migration", async () => {
+    const migrationsDir = await mkdtemp(join(tmpdir(), "wardenx-migrate-strict-"));
+    const first = "9001_strict_preflight_first.sql";
+    const second = "9002_strict_preflight_second.sql";
+    const firstTable = "migrate_strict_preflight_first";
+    const secondTable = "migrate_strict_preflight_second";
+
+    try {
+      await writeFile(join(migrationsDir, first), `CREATE TABLE ${firstTable} (id integer);\n`);
+      await expect(applyMigrations(db, { migrationsDir })).resolves.toMatchObject({ ran: [first] });
+
+      await db.query(
+        `UPDATE _wardenx_migration SET checksum = 'deliberately-corrupted' WHERE filename = $1`,
+        [first],
+      );
+      await writeFile(join(migrationsDir, second), `CREATE TABLE ${secondTable} (id integer);\n`);
+
+      await expect(applyMigrations(db, { migrationsDir, strict: true })).rejects.toThrow(
+        /checksum drift/i,
+      );
+      const { rows } = await db.query<{ relation: string | null }>(
+        "SELECT to_regclass($1) AS relation",
+        [`public.${secondTable}`],
+      );
+      expect(rows[0]!.relation).toBeNull();
+    } finally {
+      await db.query(`DROP TABLE IF EXISTS ${firstTable}, ${secondTable}`);
+      await db.query("DELETE FROM _wardenx_migration WHERE filename = ANY($1)", [[first, second]]);
+      await rm(migrationsDir, { force: true, recursive: true });
+    }
   }, 60_000);
 });
