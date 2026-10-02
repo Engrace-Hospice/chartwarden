@@ -138,10 +138,16 @@ ok "api /ready (db + valkey + object store)"
 # The worker publishes no port, so this runs INSIDE its container. It serves only /health and /ready
 # (index.ts, TASK-040A) on WORKER_PORT — enough to prove the process is alive and its dependencies
 # resolve, which is exactly what was unverified before.
-$compose exec -T worker sh -c \
-  'curl --fail --silent --max-time 10 "http://127.0.0.1:${WORKER_PORT:-3001}/ready" >/dev/null' \
+$compose exec -T worker bun -e '
+  const port = process.env.WORKER_PORT ?? "3001";
+  const response = await fetch(`http://127.0.0.1:${port}/ready`);
+  if (!response.ok) {
+    console.error(`worker /ready returned HTTP ${response.status}`);
+    process.exit(1);
+  }
+' \
   || fail "tier2/worker" "worker /ready did not return 2xx inside the container"
-ok "worker /ready (in-container)"
+  
 
 $CURL http://127.0.0.1:8080/ >/dev/null || fail "tier2/web" "web did not serve on 127.0.0.1:8080"
 ok "web serving on 8080"
