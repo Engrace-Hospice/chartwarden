@@ -15,11 +15,13 @@ ENV NODE_ENV=production
 # dependencies are linked from node_modules into workspace packages.
 COPY --chown=bun:bun . .
 
-# IMPORTANT:
-# Production image must not contain devDependencies such as esbuild.
+# The runtime only needs declared production dependencies. Bun otherwise auto-installs peer
+# dependencies too; Better Auth's optional Drizzle Kit peer pulls in esbuild's Go binary, which is
+# neither used nor needed by the API or worker.
 RUN bun install \
     --frozen-lockfile \
-    --production
+    --production \
+    --omit=peer
 
 USER bun
 

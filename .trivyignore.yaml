@@ -25,14 +25,7 @@
 #       statement: >
 #         What it is, why it cannot be fixed here yet, and what removes it. Name the upstream issue.
 #
-# The entries below are exceptional and time-boxed. Remove one as soon as its upstream package ships a
-# fixed runtime binary.
-vulnerabilities:
-  - id: CVE-2026-56862
-    paths: ["app/node_modules/@esbuild/linux-x64/bin/esbuild"]
-    expired_at: 2026-12-31
-    statement: >
-      The backend image contains esbuild through Better Auth's optional Drizzle Kit peer; esbuild 0.25.12
-      is compiled with Go 1.23.12. The current upstream esbuild 0.28.2 binary is still compiled with Go
-      1.26.5, below Go's fixed 1.26.6 release. Remove this entry when evanw/esbuild publishes a binary
-      built with Go 1.26.6 or newer, and re-examine it by this expiry.
+# The file is intentionally EMPTY of suppressions right now. If the first release scan surfaces
+# something, the honest first move is to try to fix it — bump the base image, bump the dependency — and
+# only then to write an entry here explaining why that did not work.
+vulnerabilities: []
