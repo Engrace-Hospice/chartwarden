@@ -46,11 +46,14 @@ import {
 import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
 import {
   DEFAULT_RATE_LIMIT_TIERS,
+  M23_LAUNCH_GATEWAY_ENABLED_ENV,
+  M34_PROVISION_GATEWAY_ENABLED_ENV,
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
   buildServer,
   createSessionAuthenticate,
   getSeam,
+  integrationEnabled,
   noteInMemoryBinding,
   registerEraser,
   registerSeam,
@@ -2374,7 +2377,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const queueConnection: ConnectionOptions | undefined = parseRedisConnection(
     process.env.REDIS_URL,
   );
-  const m23LaunchConfig = m23LaunchGatewayConfigFromEnv(process.env);
+  const m23LaunchConfig = integrationEnabled(process.env, M23_LAUNCH_GATEWAY_ENABLED_ENV)
+    ? m23LaunchGatewayConfigFromEnv(process.env)
+    : null;
   const m23LaunchGateway = m23LaunchConfig ? createM23LaunchGateway(m23LaunchConfig) : null;
   // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
   // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
@@ -2403,7 +2408,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // Worker that drains this same queue are registered further below. Absent REDIS_URL → the trigger route
   // 503s and the nightly run simply does not exist on this deployment — both honest, neither silent.
   const m29NppesSync = queueConnection ? buildNppesManualSyncTrigger(queueConnection) : null;
-  const m34ProvisionConfig = m34ProvisionGatewayConfigFromEnv(process.env);
+  const m34ProvisionConfig = integrationEnabled(process.env, M34_PROVISION_GATEWAY_ENABLED_ENV)
+    ? m34ProvisionGatewayConfigFromEnv(process.env)
+    : null;
   const m34ProvisionGateway = m34ProvisionConfig
     ? createM34ProvisionGateway(m34ProvisionConfig)
     : null;

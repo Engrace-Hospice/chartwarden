@@ -22,6 +22,29 @@ export interface EnvProblem {
 interface Requirement {
   readonly key: string;
   readonly rule?: (value: string) => string | null;
+  /** A requirement may belong to an explicitly disabled integration capability. */
+  readonly when?: (env: EnvLike) => boolean;
+}
+
+/**
+ * Production integration switches are deliberately opt-out: an existing deployment keeps its
+ * fail-closed contract until an operator explicitly writes `false`.  A bare missing gateway URL is
+ * never interpreted as consent to disable a capability.
+ */
+export const M23_LAUNCH_GATEWAY_ENABLED_ENV = "M23_LAUNCH_GATEWAY_ENABLED";
+export const M34_PROVISION_GATEWAY_ENABLED_ENV = "M34_PROVISION_GATEWAY_ENABLED";
+
+const INTEGRATION_SWITCHES = [
+  M23_LAUNCH_GATEWAY_ENABLED_ENV,
+  M34_PROVISION_GATEWAY_ENABLED_ENV,
+] as const;
+
+/** Whether an opt-out production integration capability should be bound (defaults to true). */
+export function integrationEnabled(
+  env: EnvLike,
+  key: (typeof INTEGRATION_SWITCHES)[number],
+): boolean {
+  return env[key]?.trim().toLowerCase() !== "false";
 }
 
 const REQUIREMENTS: readonly Requirement[] = [
@@ -73,30 +96,37 @@ const REQUIREMENTS: readonly Requirement[] = [
   {
     key: "M23_X12_GATEWAY_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+    when: (env) => integrationEnabled(env, M23_LAUNCH_GATEWAY_ENABLED_ENV),
   },
   {
     key: "M23_X12_GATEWAY_TOKEN",
     rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+    when: (env) => integrationEnabled(env, M23_LAUNCH_GATEWAY_ENABLED_ENV),
   },
   {
     key: "M23_MAC_GATEWAY_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+    when: (env) => integrationEnabled(env, M23_LAUNCH_GATEWAY_ENABLED_ENV),
   },
   {
     key: "M23_MAC_GATEWAY_TOKEN",
     rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+    when: (env) => integrationEnabled(env, M23_LAUNCH_GATEWAY_ENABLED_ENV),
   },
   {
     key: "M34_PROVISION_GATEWAY_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+    when: (env) => integrationEnabled(env, M34_PROVISION_GATEWAY_ENABLED_ENV),
   },
   {
     key: "M34_PROVISION_GATEWAY_TOKEN",
     rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+    when: (env) => integrationEnabled(env, M34_PROVISION_GATEWAY_ENABLED_ENV),
   },
   {
     key: "M34_INVITATION_ACCEPT_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+    when: (env) => integrationEnabled(env, M34_PROVISION_GATEWAY_ENABLED_ENV),
   },
   {
     // F-035 (#95) — the absolute URL of M28's `/fhir/oauth2/token`, which is the `aud` every SMART
@@ -302,7 +332,14 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
   for (const { key, problem } of FORBIDDEN_IN_PRODUCTION) {
     if (env[key]?.trim()) problems.push({ key, problem });
   }
-  for (const { key, rule } of REQUIREMENTS) {
+  for (const key of INTEGRATION_SWITCHES) {
+    const value = env[key]?.trim().toLowerCase();
+    if (value && value !== "true" && value !== "false") {
+      problems.push({ key, problem: "must be 'true' or 'false'" });
+    }
+  }
+  for (const { key, rule, when } of REQUIREMENTS) {
+    if (when && !when(env)) continue;
     const value = env[key]?.trim();
     if (!value) {
       problems.push({ key, problem: "is required in production" });

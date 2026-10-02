@@ -2,8 +2,19 @@
 
 `M34_PROVISION_GATEWAY_URL` addresses a service that **is not in this repository and is not
 deployed by `compose.yml`**. Nothing starts it for you. Until you supply it, tenant provisioning,
-per-tenant DEK unwrap, tenant storage provisioning, tenant shred and invitation delivery all fail
-at call time.
+tenant storage provisioning/destruction, and invitation delivery all fail at call time.
+
+## Deliberately running without this gateway
+
+Set `M34_PROVISION_GATEWAY_ENABLED=false` in production to omit this external capability. The
+deployment will then not require the gateway URL, token, or invitation URL, and the application will
+not construct the provisioning workers. Tenant provisioning, DEK rotation, storage destruction, and
+first-admin invitation delivery refuse with 503; no work is silently queued for a worker that is not
+running. The switch defaults to `true` to preserve the fail-closed production contract.
+
+This is **not** a switch for tenant encryption. `M34_TENANT_KEK` and `DATABASE_PLATFORM_URL` remain
+mandatory in production because they decrypt existing tenant data. Removing or replacing a KEK can
+make existing ciphertext permanently unreadable; use the documented rotation procedure instead.
 
 > **Name collision, read this once.** The `provision` service in `deploy/production/compose.yml`
 > is **not** this gateway. It is a one-shot container running
@@ -13,11 +24,12 @@ at call time.
 ## Why it is external
 
 [ADR-0038 §3](../../docs/adr/ADR-0038-app-layer-envelope-encryption.md) makes key management a
-port: *"KEK custody (KMS/HSM) binds behind `kekUnwrap`; unbound paths fail closed. Binding a
-production KMS is integration work, not a mechanism change."* The application process deliberately
-holds no KMS knowledge and never sees a KEK. This gateway is where your KMS, your object store's
-administrative credentials, and your transactional mail sender live — the three things the
-application is designed not to hold.
+port. The current production binding is the application-held `M34_TENANT_KEK` described in
+[ADR-0045](../../docs/adr/ADR-0045-platform-kek-custody.md): it wraps and unwraps tenant DEKs, so
+the gateway's `/dek/*` endpoints are not used when that KEK is configured. They remain the
+compatible path for a future KMS/HSM binding. This external gateway is still the boundary for
+object-storage administration and transactional invitation delivery, which the application process
+is not designed to hold.
 
 The client is `apps/backend/src/modules/34-saas-tenant-platform/provision-gateway.ts`. **It is the
 authority**; this document is derived from it. If the two disagree, the client is right and this

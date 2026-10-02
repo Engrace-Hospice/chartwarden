@@ -7,9 +7,12 @@
 import { describe, expect, it } from "vitest";
 import {
   type EnvLike,
+  M23_LAUNCH_GATEWAY_ENABLED_ENV,
+  M34_PROVISION_GATEWAY_ENABLED_ENV,
   assertProductionEnv,
   collectEnvProblems,
   hostnamesIn,
+  integrationEnabled,
   isReservedPlaceholderHost,
   reservedPlaceholderProblem,
 } from "../src/bootstrap/env";
@@ -60,6 +63,31 @@ describe("collectEnvProblems", () => {
 
   it("passes a fully-configured production env", () => {
     expect(collectEnvProblems(GOOD)).toEqual([]);
+  });
+
+  it("allows an operator to explicitly disable the external M23 and M34 gateway capabilities", () => {
+    const disabled: EnvLike = {
+      ...GOOD,
+      M23_LAUNCH_GATEWAY_ENABLED: "false",
+      M34_PROVISION_GATEWAY_ENABLED: "false",
+      M23_X12_GATEWAY_URL: "https://x12-gateway.example.invalid",
+      M23_X12_GATEWAY_TOKEN: "",
+      M23_MAC_GATEWAY_URL: "https://mac-gateway.example.invalid",
+      M23_MAC_GATEWAY_TOKEN: "",
+      M34_PROVISION_GATEWAY_URL: "https://provision-gateway.example.invalid",
+      M34_PROVISION_GATEWAY_TOKEN: "",
+      M34_INVITATION_ACCEPT_URL: "https://app.example.invalid/tenant-invitations",
+    };
+    expect(collectEnvProblems(disabled)).toEqual([]);
+    expect(integrationEnabled(disabled, M23_LAUNCH_GATEWAY_ENABLED_ENV)).toBe(false);
+    expect(integrationEnabled(disabled, M34_PROVISION_GATEWAY_ENABLED_ENV)).toBe(false);
+    expect(integrationEnabled(GOOD, M23_LAUNCH_GATEWAY_ENABLED_ENV)).toBe(true);
+  });
+
+  it("rejects an ambiguous external-gateway switch value", () => {
+    expect(collectEnvProblems({ ...GOOD, M23_LAUNCH_GATEWAY_ENABLED: "sometimes" })).toEqual([
+      { key: "M23_LAUNCH_GATEWAY_ENABLED", problem: "must be 'true' or 'false'" },
+    ]);
   });
 
   it("flags a malformed platform KEK by shape, not just by absence (#105)", () => {
