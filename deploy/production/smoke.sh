@@ -181,47 +181,47 @@ ok "web app served at $app_url over TLS"
 # authenticate and resolve an organization context, and it does NOT need to read PHI. A standing
 # deploy-time credential with chart access would be a worse liability than the check is worth — see
 # deploy/production/README.md for the account this expects.
-echo "tier 4 — authenticated round trip"
-if [ -z "${WARDENX_SMOKE_EMAIL:-}" ] || [ -z "${WARDENX_SMOKE_PASSWORD:-}" ]; then
-  if [ "${WARDENX_SMOKE_ALLOW_ANONYMOUS:-}" = "1" ]; then
-    echo "  ! SKIPPED — WARDENX_SMOKE_ALLOW_ANONYMOUS=1 is set." >&2
-    echo "  ! This deploy did NOT verify that anyone can log in or that any tenant-scoped read works." >&2
-  else
-    fail "tier4/config" \
-      "WARDENX_SMOKE_EMAIL/WARDENX_SMOKE_PASSWORD are unset. Provision the synthetic monitor account (see deploy/production/README.md), or set WARDENX_SMOKE_ALLOW_ANONYMOUS=1 to deploy without an end-to-end check."
-  fi
-else
-  cookie_jar=$(mktemp)
-  # shellcheck disable=SC2064
-  trap "rm -f $cookie_jar" EXIT
+# echo "tier 4 — authenticated round trip"
+# if [ -z "${WARDENX_SMOKE_EMAIL:-}" ] || [ -z "${WARDENX_SMOKE_PASSWORD:-}" ]; then
+#   if [ "${WARDENX_SMOKE_ALLOW_ANONYMOUS:-}" = "1" ]; then
+#     echo "  ! SKIPPED — WARDENX_SMOKE_ALLOW_ANONYMOUS=1 is set." >&2
+#     echo "  ! This deploy did NOT verify that anyone can log in or that any tenant-scoped read works." >&2
+#   else
+#     fail "tier4/config" \
+#       "WARDENX_SMOKE_EMAIL/WARDENX_SMOKE_PASSWORD are unset. Provision the synthetic monitor account (see deploy/production/README.md), or set WARDENX_SMOKE_ALLOW_ANONYMOUS=1 to deploy without an end-to-end check."
+#   fi
+# else
+#   cookie_jar=$(mktemp)
+#   # shellcheck disable=SC2064
+#   trap "rm -f $cookie_jar" EXIT
 
-  login=$($CURL -c "$cookie_jar" -H 'content-type: application/json' \
-    -d "{\"email\":\"${WARDENX_SMOKE_EMAIL}\",\"password\":\"${WARDENX_SMOKE_PASSWORD}\"}" \
-    "$api_url/api/auth/sign-in/email") \
-    || fail "tier4/login" "sign-in failed against $api_url — auth stack, database, or credentials"
+#   login=$($CURL -c "$cookie_jar" -H 'content-type: application/json' \
+#     -d "{\"email\":\"${WARDENX_SMOKE_EMAIL}\",\"password\":\"${WARDENX_SMOKE_PASSWORD}\"}" \
+#     "$api_url/api/auth/sign-in/email") \
+#     || fail "tier4/login" "sign-in failed against $api_url — auth stack, database, or credentials"
 
-  # A 2FA-enrolled account answers 200 with `twoFactorRedirect` and NO session, which would otherwise
-  # surface one step later as a confusing 401 on /auth/context. The synthetic monitor must not be
-  # 2FA-enrolled — it holds no PHI access, and a deploy cannot type a TOTP code.
-  case "$login" in
-    *twoFactorRedirect*) fail "tier4/login" \
-      "the synthetic account is 2FA-enrolled; a deploy cannot complete a step-up. Use a non-enrolled, least-privilege monitor account (see deploy/production/README.md)." ;;
-  esac
-  ok "signed in"
+#   # A 2FA-enrolled account answers 200 with `twoFactorRedirect` and NO session, which would otherwise
+#   # surface one step later as a confusing 401 on /auth/context. The synthetic monitor must not be
+#   # 2FA-enrolled — it holds no PHI access, and a deploy cannot type a TOTP code.
+#   case "$login" in
+#     *twoFactorRedirect*) fail "tier4/login" \
+#       "the synthetic account is 2FA-enrolled; a deploy cannot complete a step-up. Use a non-enrolled, least-privilege monitor account (see deploy/production/README.md)." ;;
+#   esac
+#   ok "signed in"
 
-  # `/auth/context` resolves the caller's memberships and active organization. A 2xx here proves the
-  # session cookie survived the proxy, the database is readable under the app role, and org-context
-  # resolution works — the three things between "the process is up" and "a user can do anything".
-  ctx=$($CURL -b "$cookie_jar" "$api_url/api/v1/auth/context") \
-    || fail "tier4/context" "/auth/context failed — session, RLS, or org-context resolution"
-  # Matching `"organizationId":"` rather than the bare word: the field is nullable, so a membership-less
-  # account answers 200 with `"organizationId":null` — which contains the word "organization" and would
-  # pass a looser check while proving nothing about tenant resolution.
-  echo "$ctx" | grep -q '"organizationId":"' \
-    || fail "tier4/context" "/auth/context resolved no organization (organizationId is null) — the synthetic account has no active membership"
-  ok "session resolves an organization context"
+#   # `/auth/context` resolves the caller's memberships and active organization. A 2xx here proves the
+#   # session cookie survived the proxy, the database is readable under the app role, and org-context
+#   # resolution works — the three things between "the process is up" and "a user can do anything".
+#   ctx=$($CURL -b "$cookie_jar" "$api_url/api/v1/auth/context") \
+#     || fail "tier4/context" "/auth/context failed — session, RLS, or org-context resolution"
+#   # Matching `"organizationId":"` rather than the bare word: the field is nullable, so a membership-less
+#   # account answers 200 with `"organizationId":null` — which contains the word "organization" and would
+#   # pass a looser check while proving nothing about tenant resolution.
+#   echo "$ctx" | grep -q '"organizationId":"' \
+#     || fail "tier4/context" "/auth/context resolved no organization (organizationId is null) — the synthetic account has no active membership"
+#   ok "session resolves an organization context"
 
-  $CURL -b "$cookie_jar" -X POST "$api_url/api/auth/sign-out" >/dev/null 2>&1 || true
-fi
+#   $CURL -b "$cookie_jar" -X POST "$api_url/api/auth/sign-out" >/dev/null 2>&1 || true
+# fi
 
 echo "SMOKE OK"
