@@ -32,7 +32,7 @@ jobs:
     env:
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -149,7 +149,7 @@ jobs:
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -821,7 +821,7 @@ jobs:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
       WARDENX_TEST_REDIS_URL: redis://localhost:6379
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -870,7 +870,7 @@ jobs:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -932,7 +932,7 @@ jobs:
       # 32-byte base64 test key for the 2FA at-rest encryption (ADR-0034). Decodes to 32 bytes.
       TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -989,7 +989,7 @@ jobs:
       BETTER_AUTH_URL: http://localhost:3999
       TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -1044,7 +1044,7 @@ jobs:
     env:
       WARDENX_TEST_REDIS_URL: redis://localhost:6379
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -1158,7 +1158,7 @@ jobs:
       MINIO_SECRET_KEY: wardenx-minio-ci-secret
       MINIO_REGION: us-east-1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -1244,7 +1244,7 @@ jobs:
         run: bun run test:e2e
       - name: Upload the Playwright report, traces and stack logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-artifacts
           path: |
