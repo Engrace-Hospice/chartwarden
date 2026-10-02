@@ -35,6 +35,27 @@ cd "$deploy_dir"
 # breaks), and an explicit timeout so a hung upstream fails the deploy instead of hanging it.
 CURL="curl --fail --silent --show-error --max-time 10"
 
+# Emit only the structured readiness result (the four fixed dependency names and ok/fail statuses)
+# before rolling a release back. Docker health reports merely "unhealthy", which discards the one
+# fact an operator needs to repair the dependency; `/ready` deliberately exposes no credentials,
+# object keys, or tenant data.
+print_readiness_diagnostic() {
+  svc=$1
+  $compose exec -T "$svc" bun -e '
+    const port = process.env.PROCESS_ROLE === "worker"
+      ? (process.env.WORKER_PORT ?? "3001")
+      : (process.env.PORT ?? "3000");
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/ready`);
+      console.error(`  ! ${process.env.PROCESS_ROLE ?? "api"} /ready: HTTP ${response.status}`);
+      console.error(await response.text());
+    } catch (error) {
+      console.error(`  ! ${process.env.PROCESS_ROLE ?? "api"} /ready diagnostic failed: ${String(error)}`);
+      process.exitCode = 1;
+    }
+  ' 2>&1 || true
+}
+
 # ── tier 1: the containers are up and, where they declare a healthcheck, healthy ────────────────────
 #
 # Read state from Docker's container metadata rather than Compose's display templates. The latter
@@ -76,7 +97,15 @@ until [ "$attempt" -ge 60 ]; do
   attempt=$((attempt + 1))
   sleep 2
 done
-[ -z "${unhealthy:-}" ] || fail "tier1/health" "still not healthy after 120s: $unhealthy"
+if [ -n "${unhealthy:-}" ]; then
+  echo "  ! readiness diagnostics for unhealthy services:" >&2
+  for svc in api worker; do
+    case " $unhealthy " in
+      *" $svc="*) print_readiness_diagnostic "$svc" ;;
+    esac
+  done
+  fail "tier1/health" "still not healthy after 120s: $unhealthy"
+fi
 ok "all declared healthchecks green"
 
 # ── tier 2: each tier answers on its own port ───────────────────────────────────────────────────────
