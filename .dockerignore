@@ -28,6 +28,10 @@ dist/
 .cursor/
 .DS_Store
 
+# Generated repository-analysis output. It is neither application source nor a runtime dependency;
+# excluding it keeps the large graph JSON and its cached metadata out of published images.
+graphify-out/
+
 # Docs/spec corpus and point-in-time audit reports — large, and irrelevant to a running process.
 docs/
 audit/
