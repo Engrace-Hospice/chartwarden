@@ -33,10 +33,14 @@ export class FakeDoseSpotVendor implements DoseSpotClient {
   readonly calls: Array<{ method: string; orgId: string; payload?: unknown }> = [];
   constructor(private readonly script: FakeDoseSpotVendorScript = {}) {}
 
-  async upsertPatient(orgId: string, payload: DoseSpotPatientPayload): Promise<DoseSpotPatientResponse> {
+  async upsertPatient(
+    orgId: string,
+    payload: DoseSpotPatientPayload,
+  ): Promise<DoseSpotPatientResponse> {
     this.calls.push({ method: "upsertPatient", orgId, payload });
     return {
-      dosespotPatientId: this.script.dosespotPatientId ?? `ds-${payload.wardenxPatientId.slice(0, 8)}`,
+      dosespotPatientId:
+        this.script.dosespotPatientId ?? `ds-${payload.wardenxPatientId.slice(0, 8)}`,
       upsertedAt: new Date().toISOString(),
     };
   }
@@ -82,7 +86,10 @@ export class FakeDoseSpotWebhookSender {
       "x-dosespot-timestamp": String(opts.nowMs ?? Date.now()),
     };
     if (!opts.omitSignature) {
-      headers["x-dosespot-signature"] = computeWebhookSignature(rawBody, opts.secret ?? this.secret);
+      headers["x-dosespot-signature"] = computeWebhookSignature(
+        rawBody,
+        opts.secret ?? this.secret,
+      );
     }
     return { rawBody, headers };
   }

@@ -61,7 +61,9 @@ export function buildM21PharmacyDispenseConsumer(
     async handle(event): Promise<void> {
       const p = (event.payload ?? {}) as DispensedAtPharmacyPayload;
       if (typeof p.orderId !== "string" || typeof p.dosespotPrescriptionId !== "string") {
-        throw new Error("m21.pharmacy-dispense-fact: payload has no orderId/dosespotPrescriptionId");
+        throw new Error(
+          "m21.pharmacy-dispense-fact: payload has no orderId/dosespotPrescriptionId",
+        );
       }
       const dispensedAt = typeof p.dispensedAt === "string" ? new Date(p.dispensedAt) : null;
       if (dispensedAt === null || Number.isNaN(dispensedAt.getTime())) {

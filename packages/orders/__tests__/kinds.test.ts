@@ -63,11 +63,15 @@ describe("F-232 dme.v2 / supply.v2 published contracts", () => {
     expect(validateOrderData("dme", "dme.v2", {})).not.toEqual([]);
     expect(validateOrderData("dme", "dme.v2", { skuId: SKU })).not.toEqual([]);
     expect(validateOrderData("dme", "dme.v2", { skuId: SKU, quantity: 0 })).not.toEqual([]);
-    expect(validateOrderData("dme", "dme.v2", { skuId: "not-a-uuid", quantity: 1 })).not.toEqual([]);
+    expect(validateOrderData("dme", "dme.v2", { skuId: "not-a-uuid", quantity: 1 })).not.toEqual(
+      [],
+    );
   });
 
   it("supply.v2 accepts the published shape and requires skuId + quantity", () => {
-    expect(validateOrderData("supply", "supply.v2", { skuId: SKU, quantity: 3, unit: "box" })).toEqual([]);
+    expect(
+      validateOrderData("supply", "supply.v2", { skuId: SKU, quantity: 3, unit: "box" }),
+    ).toEqual([]);
     expect(validateOrderData("supply", "supply.v2", { skuId: SKU, quantity: 3 })).toEqual([]);
     expect(validateOrderData("supply", "supply.v2", { quantity: 3 })).not.toEqual([]);
   });
@@ -85,7 +89,11 @@ describe("F-232 dme.v2 / supply.v2 published contracts", () => {
     ).not.toEqual([]);
     // dme-only fields are not part of supply.v2
     expect(
-      validateOrderData("supply", "supply.v2", { skuId: SKU, quantity: 1, rentalCadence: "monthly" }),
+      validateOrderData("supply", "supply.v2", {
+        skuId: SKU,
+        quantity: 1,
+        rentalCadence: "monthly",
+      }),
     ).not.toEqual([]);
   });
 });

@@ -37,9 +37,21 @@ describe("parseWebhookEnvelope (§4.2)", () => {
 
 describe("script_status_update payload (PROVISIONAL field names)", () => {
   it("parses the provisional shape and classifies dispense statuses", () => {
-    expect(parseScriptStatusUpdate({ dosespot_prescription_id: "rx", status: "PickedUp", fill_number: 1 }).ok).toBe(true);
+    expect(
+      parseScriptStatusUpdate({
+        dosespot_prescription_id: "rx",
+        status: "PickedUp",
+        fill_number: 1,
+      }).ok,
+    ).toBe(true);
     expect(parseScriptStatusUpdate({ status: "Dispensed" }).ok).toBe(false);
-    expect(parseScriptStatusUpdate({ dosespot_prescription_id: "rx", status: "Dispensed", fill_number: -1 }).ok).toBe(false);
+    expect(
+      parseScriptStatusUpdate({
+        dosespot_prescription_id: "rx",
+        status: "Dispensed",
+        fill_number: -1,
+      }).ok,
+    ).toBe(false);
     expect(isDispenseStatus("Dispensed")).toBe(true);
     expect(isDispenseStatus("PickedUp")).toBe(true);
     expect(isDispenseStatus("Sent")).toBe(false);

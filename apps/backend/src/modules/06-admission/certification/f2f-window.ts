@@ -48,7 +48,10 @@ export function resolveF2fWindowStart(facts: {
  * more than {@link F2F_MAX_ENCOUNTER_AGE_DAYS} before it. Window membership is a separate rule (R-F2F-02).
  */
 export function assertPlausibleEncounterDate(encounterDate: LocalDate, today: LocalDate): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(encounterDate) || Number.isNaN(Date.parse(`${encounterDate}T00:00:00Z`))) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(encounterDate) ||
+    Number.isNaN(Date.parse(`${encounterDate}T00:00:00Z`))
+  ) {
     throw new AdmissionStateError(
       "F2F_ENCOUNTER_DATE_INVALID",
       "F2F encounter date is not a valid calendar date",

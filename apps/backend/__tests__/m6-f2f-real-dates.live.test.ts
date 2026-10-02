@@ -163,7 +163,12 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
            FROM face_to_face_encounter WHERE id=$1`,
         [id],
       )
-    ).rows[0] as { status: string; d: string | null; within_window: boolean | null; window_override: boolean };
+    ).rows[0] as {
+      status: string;
+      d: string | null;
+      within_window: boolean | null;
+      window_override: boolean;
+    };
   const periodStatus = async (id: string) =>
     (await admin.query("SELECT status FROM election_period WHERE id=$1", [id])).rows[0].status;
   const adequacyOf = async (periodId: string) =>
@@ -173,7 +178,9 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
           WHERE event_type='m6.election.period_started' AND payload->>'electionPeriodId'=$1`,
         [periodId],
       )
-    ).rows.map((r) => (r.payload as { adequacy?: unknown }).adequacy).filter((x) => x !== undefined);
+    ).rows
+      .map((r) => (r.payload as { adequacy?: unknown }).adequacy)
+      .filter((x) => x !== undefined);
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -238,8 +245,8 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       const p2 = await svc.createElectionPeriod(ORG_A, a.admissionId); // pending, no scheduled end
       const p3 = await svc.createElectionPeriod(ORG_A, a.admissionId);
       expect(
-        (await admin.query("SELECT expected_start FROM election_period WHERE id=$1", [p3.id])).rows[0]
-          .expected_start,
+        (await admin.query("SELECT expected_start FROM election_period WHERE id=$1", [p3.id]))
+          .rows[0].expected_start,
       ).toBeNull();
       expect(p2.state).toBe("pending");
     });
@@ -261,7 +268,10 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
         "SELECT payload FROM outbox_event WHERE event_type='m6.f2f.completed' AND aggregate_id=$1",
         [f.id],
       );
-      expect(completedEvt.rows[0].payload).toMatchObject({ encounterDate: dayOffset(-1), withinWindow: true });
+      expect(completedEvt.rows[0].payload).toMatchObject({
+        encounterDate: dayOffset(-1),
+        withinWindow: true,
+      });
       await svc.attestF2f(ORG_A, f.id, done.version, USER);
       const signed = await svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER);
       expect(signed.state).toBe("signed");
@@ -289,7 +299,11 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
         code: "F2F_OUTSIDE_WINDOW",
         statusCode: 409,
       });
-      expect(await f2fRow(f.id)).toMatchObject({ status: "scheduled", d: null, within_window: null });
+      expect(await f2fRow(f.id)).toMatchObject({
+        status: "scheduled",
+        d: null,
+        within_window: null,
+      });
       // start-30 then start-1 (two separate rows: a completed row cannot be re-completed)
       const first = await svc.completeF2f(ORG_A, f.id, f.version, edge(-30));
       expect(first.state).toBe("completed");
@@ -366,13 +380,20 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
         code: "F2F_OUTSIDE_WINDOW",
       });
       // too-short reason is rejected by the state machine
-      await expect(svc.overrideF2fWindow(ORG_A, f.id, "too short", f.version, MD)).rejects.toMatchObject({
+      await expect(
+        svc.overrideF2fWindow(ORG_A, f.id, "too short", f.version, MD),
+      ).rejects.toMatchObject({
         code: "F2F_OVERRIDE_REASON_TOO_SHORT",
       });
       const over = await svc.overrideF2fWindow(ORG_A, f.id, OVERRIDE_REASON, f.version, MD);
       expect(over.state).toBe("scheduled");
       const done = await svc.completeF2f(ORG_A, f.id, over.version, outside);
-      expect(await f2fRow(f.id)).toMatchObject({ status: "completed", d: outside, within_window: false, window_override: true });
+      expect(await f2fRow(f.id)).toMatchObject({
+        status: "completed",
+        d: outside,
+        within_window: false,
+        window_override: true,
+      });
       await svc.attestF2f(ORG_A, f.id, done.version, USER);
       await svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER);
       expect(await periodStatus(p.periodId)).toBe("active");
@@ -404,15 +425,20 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       const done = await svc.completeF2f(ORG_A, f.id, f.version, dayOffset(-1));
       await svc.attestF2f(ORG_A, f.id, done.version, USER);
       await setStart(p.periodId, dayOffset(60)); // encounter is now 61 days before the start
-      await expect(svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER)).rejects.toMatchObject({
+      await expect(
+        svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER),
+      ).rejects.toMatchObject({
         code: "ELECTION_PERIOD_ADEQUACY_FAILED",
         statusCode: 409,
         details: [{ code: "F2F_OUTSIDE_WINDOW" }],
       });
       expect(await periodStatus(p.periodId)).toBe("pending");
       expect(
-        (await admin.query("SELECT status FROM certification_of_terminal_illness WHERE id=$1", [p.cti.id]))
-          .rows[0].status,
+        (
+          await admin.query("SELECT status FROM certification_of_terminal_illness WHERE id=$1", [
+            p.cti.id,
+          ])
+        ).rows[0].status,
       ).toBe("drafted");
     });
 
@@ -426,10 +452,13 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
         [ORG_A, p.periodId, MD],
       );
       // encounter today is 10 days before start: inside. Move the encounter out with the flag still true:
-      await admin.query("UPDATE face_to_face_encounter SET encounter_date = current_date - 90 WHERE election_period_id=$1", [
-        p.periodId,
-      ]);
-      await expect(svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER)).rejects.toMatchObject({
+      await admin.query(
+        "UPDATE face_to_face_encounter SET encounter_date = current_date - 90 WHERE election_period_id=$1",
+        [p.periodId],
+      );
+      await expect(
+        svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER),
+      ).rejects.toMatchObject({
         code: "ELECTION_PERIOD_ADEQUACY_FAILED",
         details: [{ code: "F2F_OUTSIDE_WINDOW" }],
       });
@@ -444,10 +473,16 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       await expect(svc.completeF2f(ORG_B, f.id, f.version, dayOffset(-1))).rejects.toMatchObject({
         statusCode: 404,
       });
-      await expect(svc.overrideF2fWindow(ORG_B, f.id, OVERRIDE_REASON, f.version, MD)).rejects.toMatchObject({
+      await expect(
+        svc.overrideF2fWindow(ORG_B, f.id, OVERRIDE_REASON, f.version, MD),
+      ).rejects.toMatchObject({
         statusCode: 404,
       });
-      expect(await f2fRow(f.id)).toMatchObject({ status: "scheduled", d: null, window_override: false });
+      expect(await f2fRow(f.id)).toMatchObject({
+        status: "scheduled",
+        d: null,
+        window_override: false,
+      });
     });
   });
 
@@ -456,7 +491,12 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       join(MIGRATIONS_DIR, "0299_election_period_expected_start.sql"),
       "utf8",
     );
-    const seedF2f = async (periodId: string, encounter: string | null, within: boolean | null, o: { status?: string; override?: boolean } = { status: "completed" }) =>
+    const seedF2f = async (
+      periodId: string,
+      encounter: string | null,
+      within: boolean | null,
+      o: { status?: string; override?: boolean } = { status: "completed" },
+    ) =>
       (
         await admin.query(
           `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
@@ -530,7 +570,10 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       expect(after[noStart]).toBeNull(); // fail closed
       expect(after[history]).toBe(true); // activated history untouched
       const starts = (
-        await admin.query("SELECT id, expected_start::text s FROM election_period WHERE id = ANY($1)", [[p3, p4, a.periodId]])
+        await admin.query(
+          "SELECT id, expected_start::text s FROM election_period WHERE id = ANY($1)",
+          [[p3, p4, a.periodId]],
+        )
       ).rows as { id: string; s: string | null }[];
       const startOf = (id: string) => starts.find((r) => r.id === id)?.s ?? null;
       expect(startOf(p3)).toBe("2026-04-01");

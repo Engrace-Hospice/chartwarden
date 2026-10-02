@@ -37,7 +37,12 @@ export function createWebhookBodyCipher(keys: DoseSpotWebhookKeyProvider): Webho
       const ct = Buffer.concat([c.update(plaintext, "utf8"), c.final()]);
       const tag = c.getAuthTag();
       return {
-        cipher: ["v1", nonce.toString("base64url"), tag.toString("base64url"), ct.toString("base64url")].join("."),
+        cipher: [
+          "v1",
+          nonce.toString("base64url"),
+          tag.toString("base64url"),
+          ct.toString("base64url"),
+        ].join("."),
         dekRef: version,
       };
     },

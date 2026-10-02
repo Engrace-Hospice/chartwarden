@@ -26,8 +26,8 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/events-by-m6";
 import {
-  buildM37DeathRecordedConsumer,
   M37_DEATH_RECORDED_CONSUMER,
+  buildM37DeathRecordedConsumer,
 } from "../src/modules/37-ipu/consumers/m6-discharge-death";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";

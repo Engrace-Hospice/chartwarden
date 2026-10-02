@@ -247,9 +247,10 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
       // F-226 - completion computes the window from the REAL encounter date against the period's expected
       // start. Period 3 here starts ~90 days out (period 2 was just activated), so pull its start in to 10
       // days from now (the realistic shape: the prior period is about to end) and record yesterday's visit.
-      await admin.query("UPDATE election_period SET expected_start = current_date + 10 WHERE id=$1", [
-        period3Id,
-      ]);
+      await admin.query(
+        "UPDATE election_period SET expected_start = current_date + 10 WHERE id=$1",
+        [period3Id],
+      );
       const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
       const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, yesterday);
       const attested = await svc.attestF2f(ORG_A, f2f.id, done.version, USER);

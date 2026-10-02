@@ -43,10 +43,8 @@ export function registerDoseSpotWebhookRoute(
   }
 
   void app.register(async (scope) => {
-    scope.addContentTypeParser(
-      "application/json",
-      { parseAs: "string" },
-      (_request, body, done) => done(null, body),
+    scope.addContentTypeParser("application/json", { parseAs: "string" }, (_request, body, done) =>
+      done(null, body),
     );
     scope.post(DOSESPOT_WEBHOOK_PATH, async (request, reply) => {
       if (!enabled) {

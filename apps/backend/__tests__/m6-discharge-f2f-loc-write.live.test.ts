@@ -182,12 +182,14 @@ describe.skipIf(!DB_URL)(
     async function pendingPeriodStartingSoon(): Promise<{ periodId: string; admissionId: string }> {
       const { admissionId } = await activeAdmission(randomUUID());
       const p = await svc.createElectionPeriod(ORG_A, admissionId);
-      await admin.query("UPDATE election_period SET expected_start = current_date + 10 WHERE id=$1", [
-        p.id,
-      ]);
+      await admin.query(
+        "UPDATE election_period SET expected_start = current_date + 10 WHERE id=$1",
+        [p.id],
+      );
       return { periodId: p.id, admissionId };
     }
-    const daysFromNow = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    const daysFromNow = (n: number) =>
+      new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
     it("F2F: schedule → complete (real date, in window) → attest (performer is the actor)", async () => {
       const { periodId } = await pendingPeriodStartingSoon();

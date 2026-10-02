@@ -53,8 +53,8 @@ import type { IsoInstant, OrderRecordId, PatientAddressReader } from "@wardenx/t
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import {
-  M11_SUPPLY_FULFILLMENT_REQUESTED_EVENT,
   type M11SupplyFulfillmentRequestedPayload,
+  M11_SUPPLY_FULFILLMENT_REQUESTED_EVENT,
   type SupplyFulfillmentIntakeAction,
   type SupplyFulfillmentIntakeFacts,
   type SupplyRequestDraft,
@@ -100,7 +100,11 @@ export type SupplyIntakeSettleReason =
   | "request_data_invalid";
 
 export type SupplyIntakeOutcome =
-  | { readonly kind: "settled"; readonly reason: SupplyIntakeSettleReason; readonly detail?: string }
+  | {
+      readonly kind: "settled";
+      readonly reason: SupplyIntakeSettleReason;
+      readonly detail?: string;
+    }
   | { readonly kind: "opened"; readonly supplyRequestId: string; readonly cancelled: boolean };
 
 type OrderV2Detail = {
@@ -172,7 +176,11 @@ async function intake(
         findRequestBySourceOrder(scoped as unknown as DbClient, organizationId, orderId),
       ),
   };
-  const facts = await (deps.resolveFacts ?? resolveSupplyOrderContext)(organizationId, typed, ports);
+  const facts = await (deps.resolveFacts ?? resolveSupplyOrderContext)(
+    organizationId,
+    typed,
+    ports,
+  );
   const action: SupplyFulfillmentIntakeAction = decideSupplyFulfillmentIntake(typed, facts);
   if (action.kind === "idempotent_skip") return { kind: "settled", reason: "already_applied" };
   const draft: SupplyRequestDraft = action.draft;
@@ -216,7 +224,8 @@ async function intake(
           }
         | undefined;
       if (!row || !row.isActive) return null;
-      if (row.effectiveFrom > at || (row.effectiveTo !== null && row.effectiveTo <= at)) return null;
+      if (row.effectiveFrom > at || (row.effectiveTo !== null && row.effectiveTo <= at))
+        return null;
       return { hcpcs: row.hcpcs, defaultUnit: row.defaultUnit };
     },
   );

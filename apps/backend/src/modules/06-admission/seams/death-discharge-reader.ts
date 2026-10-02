@@ -83,8 +83,11 @@ export function createDeathDischargeReader(db: DbClient): DeathDischargeReader {
               source: r.source,
               ...(r.source === "hl7_external"
                 ? {
-                    cosignStatus: r.cosignedAt !== null ? ("cosigned" as const) : ("pending" as const),
-                    ...(r.sourceProposalId !== null ? { sourceProposalId: r.sourceProposalId } : {}),
+                    cosignStatus:
+                      r.cosignedAt !== null ? ("cosigned" as const) : ("pending" as const),
+                    ...(r.sourceProposalId !== null
+                      ? { sourceProposalId: r.sourceProposalId }
+                      : {}),
                     ...(r.cosignedAt !== null ? { cosignedAt: iso(r.cosignedAt) } : {}),
                     ...(r.medicalDirectorMembershipId !== null
                       ? { medicalDirectorMembershipId: r.medicalDirectorMembershipId }

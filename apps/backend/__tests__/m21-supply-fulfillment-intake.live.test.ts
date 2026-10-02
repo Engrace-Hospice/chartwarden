@@ -257,7 +257,11 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
     registerSeam("DeathDischargeReader", createDeathDischargeReader(handle.db));
     registerSeam("PatientAddressReader", buildPatientAddressReader(handle.db));
 
-    const catalog = buildBootOutboxCatalog([M6_OUTBOX_EVENTS, M11_OUTBOX_EVENTS, M21_OUTBOX_EVENTS]);
+    const catalog = buildBootOutboxCatalog([
+      M6_OUTBOX_EVENTS,
+      M11_OUTBOX_EVENTS,
+      M21_OUTBOX_EVENTS,
+    ]);
     const publisher = buildTxOutboxPublisher(catalog);
     publisherFor = (module: string) =>
       ({
@@ -271,7 +275,10 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
       db: handle.db,
       orgs,
       consumers: [
-        buildM21SupplyFulfillmentIntakeConsumer({ db: handle.db, outbox: publisherFor("m21") as never }),
+        buildM21SupplyFulfillmentIntakeConsumer({
+          db: handle.db,
+          outbox: publisherFor("m21") as never,
+        }),
       ],
       eventCatalog: catalog,
       options: { log: () => {} },
@@ -327,7 +334,11 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
     expect(names).toContain("m21.supply_request.status_changed");
     expect(names).not.toContain("m21.supply_request.created_from_external"); // §7.1 acceptance 3
     const created = events.find((e) => e.event_type === "m21.supply_request.status_changed");
-    expect(created?.payload).toMatchObject({ fromStatus: null, toStatus: "requested", sourceOrderId: order });
+    expect(created?.payload).toMatchObject({
+      fromStatus: null,
+      toStatus: "requested",
+      sourceOrderId: order,
+    });
     // the event M21 emits does not leak the address either
     expect(JSON.stringify(events.map((e) => e.payload))).not.toContain(STREET);
     // and the source event was delivered (settled as done), not left pending
@@ -347,7 +358,12 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
     const rows = await requestsFor(order);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ kind: "supply", status: "requested" });
-    expect(rows[0]?.data).toMatchObject({ skuId: supplySku, hcpcs: "A4620", quantity: 3, unit: "box" });
+    expect(rows[0]?.data).toMatchObject({
+      skuId: supplySku,
+      hcpcs: "A4620",
+      quantity: 3,
+      unit: "box",
+    });
   });
 
   it("a supply.v2 order on a non-billable SKU (no HCPCS) opens a request with no hcpcs — supply's is optional", async () => {
@@ -368,14 +384,26 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
 
   it("is idempotent on sourceOrderId: a redelivery and two CONCURRENT deliveries write exactly one row", async () => {
     const { patientId, admissionId } = await seedPatientAdmission({});
-    const order = await signedOrder(patientId, admissionId, "dme", { skuId: hcpcsSku, quantity: 1 }, "dme.v2");
+    const order = await signedOrder(
+      patientId,
+      admissionId,
+      "dme",
+      { skuId: hcpcsSku, quantity: 1 },
+      "dme.v2",
+    );
     await dispatcher.tick();
     expect(await requestsFor(order)).toHaveLength(1);
     const again = await runDirect(order);
     expect(again).toMatchObject({ kind: "settled", reason: "already_applied" });
 
     const second = await seedPatientAdmission({});
-    const order2 = await signedOrder(second.patientId, second.admissionId, "dme", { skuId: hcpcsSku, quantity: 2 }, "dme.v2");
+    const order2 = await signedOrder(
+      second.patientId,
+      second.admissionId,
+      "dme",
+      { skuId: hcpcsSku, quantity: 2 },
+      "dme.v2",
+    );
     const results = await Promise.all([runDirect(order2), runDirect(order2)]);
     expect(results.filter((r) => r.kind === "opened")).toHaveLength(1);
     expect(results.filter((r) => r.kind === "settled")).toHaveLength(1);
@@ -398,7 +426,13 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
 
   it("SETTLES on an unknown SKU, an inactive SKU, and a dme SKU with no HCPCS", async () => {
     const { patientId, admissionId } = await seedPatientAdmission({});
-    const unknown = await signedOrder(patientId, admissionId, "dme", { skuId: randomUUID(), quantity: 1 }, "dme.v2");
+    const unknown = await signedOrder(
+      patientId,
+      admissionId,
+      "dme",
+      { skuId: randomUUID(), quantity: 1 },
+      "dme.v2",
+    );
     expect(await runDirect(unknown)).toMatchObject({ kind: "settled", reason: "sku_unresolved" });
 
     const inactiveSku = (
@@ -407,10 +441,22 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
            VALUES ('E1390','Retired concentrator','E','each', false) RETURNING id`,
       )
     ).rows[0].id as string;
-    const inactive = await signedOrder(patientId, admissionId, "dme", { skuId: inactiveSku, quantity: 1 }, "dme.v2");
+    const inactive = await signedOrder(
+      patientId,
+      admissionId,
+      "dme",
+      { skuId: inactiveSku, quantity: 1 },
+      "dme.v2",
+    );
     expect(await runDirect(inactive)).toMatchObject({ kind: "settled", reason: "sku_unresolved" });
 
-    const noHcpcs = await signedOrder(patientId, admissionId, "dme", { skuId: noHcpcsSku, quantity: 1 }, "dme.v2");
+    const noHcpcs = await signedOrder(
+      patientId,
+      admissionId,
+      "dme",
+      { skuId: noHcpcsSku, quantity: 1 },
+      "dme.v2",
+    );
     expect(await runDirect(noHcpcs)).toMatchObject({
       kind: "settled",
       reason: "sku_unresolved",
@@ -421,11 +467,23 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
 
   it("SETTLES when the patient has no primary address, or one with no 2-letter state", async () => {
     const none = await seedPatientAdmission({ address: null });
-    const o1 = await signedOrder(none.patientId, none.admissionId, "dme", { skuId: hcpcsSku, quantity: 1 }, "dme.v2");
+    const o1 = await signedOrder(
+      none.patientId,
+      none.admissionId,
+      "dme",
+      { skuId: hcpcsSku, quantity: 1 },
+      "dme.v2",
+    );
     expect(await runDirect(o1)).toMatchObject({ kind: "settled", reason: "address_unresolved" });
 
     const noState = await seedPatientAdmission({ address: { state: null } });
-    const o2 = await signedOrder(noState.patientId, noState.admissionId, "dme", { skuId: hcpcsSku, quantity: 1 }, "dme.v2");
+    const o2 = await signedOrder(
+      noState.patientId,
+      noState.admissionId,
+      "dme",
+      { skuId: hcpcsSku, quantity: 1 },
+      "dme.v2",
+    );
     expect(await runDirect(o2)).toMatchObject({ kind: "settled", reason: "address_unresolved" });
     await dispatcher.tick();
     expect(await requestsFor(o1)).toHaveLength(0);
@@ -449,7 +507,13 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
 
   it("opens AND cancels (§7.1 edge 4) when the patient was discharged between M11's emit and M21's consume", async () => {
     const { patientId, admissionId } = await seedPatientAdmission({});
-    const order = await signedOrder(patientId, admissionId, "supply", { skuId: supplySku, quantity: 1 }, "supply.v2");
+    const order = await signedOrder(
+      patientId,
+      admissionId,
+      "supply",
+      { skuId: supplySku, quantity: 1 },
+      "supply.v2",
+    );
     await admin.query(
       "UPDATE admission SET status='discharged', discharged_at=current_date WHERE id=$1",
       [admissionId],
@@ -467,8 +531,16 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
 
   it("THROWS (retry, never settles) when the admission has no serving Location — the decider's dead-letter path", async () => {
     const { patientId, admissionId } = await seedPatientAdmission({ sited: false });
-    const order = await signedOrder(patientId, admissionId, "dme", { skuId: hcpcsSku, quantity: 1 }, "dme.v2");
-    await expect(runDirect(order)).rejects.toMatchObject({ code: "M21_SERVING_LOCATION_UNRESOLVED" });
+    const order = await signedOrder(
+      patientId,
+      admissionId,
+      "dme",
+      { skuId: hcpcsSku, quantity: 1 },
+      "dme.v2",
+    );
+    await expect(runDirect(order)).rejects.toMatchObject({
+      code: "M21_SERVING_LOCATION_UNRESOLVED",
+    });
     await dispatcher.tick();
     const ev = await fulfillmentEventRow(order);
     expect(ev.status).toBe("pending"); // retried, not dispatched
@@ -486,7 +558,9 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
       data: { anything: { goes: true } },
       orderingPhysicianMdmId: PHYSICIAN_MDM,
     });
-    const { rows } = await admin.query("SELECT kind_version FROM order_record WHERE id=$1", [v1.id]);
+    const { rows } = await admin.query("SELECT kind_version FROM order_record WHERE id=$1", [
+      v1.id,
+    ]);
     expect(rows[0].kind_version).toBe("dme.v1");
     await expect(
       orderSvc.createDraft(ORG_A, memberId, {

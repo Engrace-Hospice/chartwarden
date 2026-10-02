@@ -518,7 +518,10 @@ export async function mapPacketContent(
         firedAt: h.firedAt,
       })),
     },
-    externalMedicationHistory: externalMedicationHistoryView(snap.medicationHistory ?? null, redact),
+    externalMedicationHistory: externalMedicationHistoryView(
+      snap.medicationHistory ?? null,
+      redact,
+    ),
     orderChanges: s.ordersChanged.map((o) => ({
       orderId: o.orderId,
       orderKind: o.orderKind,

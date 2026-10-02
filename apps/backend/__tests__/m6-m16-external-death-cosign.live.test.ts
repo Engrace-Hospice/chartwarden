@@ -367,9 +367,10 @@ describe.skipIf(!DB_URL)("F-227 — external death cosign M6 → M16, LIVE Postg
         },
       },
     });
-    const c = await admin.query("SELECT count(*)::int AS n FROM discharge_event WHERE admission_id=$1", [
-      admissionId,
-    ]);
+    const c = await admin.query(
+      "SELECT count(*)::int AS n FROM discharge_event WHERE admission_id=$1",
+      [admissionId],
+    );
     expect(c.rows[0].n).toBe(1);
     expect(await noticeWindows(admissionId)).toHaveLength(1);
     expect(await events("m6.discharge.death", admissionId)).toHaveLength(1);
@@ -540,7 +541,13 @@ describe.skipIf(!DB_URL)("F-227 — external death cosign M6 → M16, LIVE Postg
     expect(filed.state).toBe("pending_cosign");
     const pending = await dischargeRow(admissionId);
     expect(pending?.cosign_required).toBe(true);
-    const done = await svc.cosignDischarge(ORG_A, filed.id, COSIGNER, Number(pending?.version), DIRECTOR);
+    const done = await svc.cosignDischarge(
+      ORG_A,
+      filed.id,
+      COSIGNER,
+      Number(pending?.version),
+      DIRECTOR,
+    );
     expect(done.state).toBe("completed");
     const d = await dischargeRow(admissionId);
     expect(d?.medical_director_membership_id).toBe(DIRECTOR);
@@ -563,7 +570,9 @@ describe.skipIf(!DB_URL)("F-227 — external death cosign M6 → M16, LIVE Postg
     await drain();
     await cosign(ORG_A, a.admissionId);
     await drain();
-    expect((await plansFor(a.admissionId))[0].external_source_metadata.cosignStatus).toBe("cosigned");
+    expect((await plansFor(a.admissionId))[0].external_source_metadata.cosignStatus).toBe(
+      "cosigned",
+    );
     const pb = (await plansFor(b.admissionId))[0];
     expect(pb.organization_id).toBe(ORG_B);
     expect(pb.external_source_metadata.cosignStatus).toBe("pending");

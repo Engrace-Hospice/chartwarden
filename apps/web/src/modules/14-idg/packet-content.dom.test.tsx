@@ -187,15 +187,25 @@ describe("packet content", () => {
     unmount();
     const a = render(
       <PacketChanges
-        content={hist({ state: "not_pulled", recordCount: 0, lastPulledAt: null, message: "External medication history has not been pulled" })}
+        content={hist({
+          state: "not_pulled",
+          recordCount: 0,
+          lastPulledAt: null,
+          message: "External medication history has not been pulled",
+        })}
         who={who}
       />,
     );
-    expect(screen.getByTestId("ext-med-history-not-pulled").textContent).toMatch(/has not been pulled/);
+    expect(screen.getByTestId("ext-med-history-not-pulled").textContent).toMatch(
+      /has not been pulled/,
+    );
     expect(screen.queryByText(/No external medication history available/)).toBeNull();
     a.unmount();
     const b = render(
-      <PacketChanges content={hist({ captured: false, state: null, recordCount: null, lastPulledAt: null })} who={who} />,
+      <PacketChanges
+        content={hist({ captured: false, state: null, recordCount: null, lastPulledAt: null })}
+        who={who}
+      />,
     );
     expect(screen.getByTestId("ext-med-history-not-captured").textContent).toMatch(/not captured/);
     expect(screen.queryByText(/No external medication history available/)).toBeNull();

@@ -15,11 +15,11 @@ import {
   expectedStartFromPriorEnd,
   resolveF2fWindowStart,
 } from "../src/modules/06-admission/certification/f2f-window";
+import { addCalendarDays } from "../src/modules/06-admission/certification/window-math";
 import { electionPeriodScheduledEnd } from "../src/modules/06-admission/state-machines/election-period";
-import { AdmissionStateError } from "../src/modules/06-admission/state-machines/errors";
+import type { AdmissionStateError } from "../src/modules/06-admission/state-machines/errors";
 import { transitionFaceToFace } from "../src/modules/06-admission/state-machines/face-to-face";
 import { checkF2fWindow } from "../src/modules/06-admission/state-machines/validation";
-import { addCalendarDays } from "../src/modules/06-admission/certification/window-math";
 
 const code = (fn: () => unknown): string | undefined => {
   try {
@@ -46,9 +46,9 @@ describe("F-226 checkF2fWindow — boundaries against a real start", () => {
         withinWindow: true,
       });
     } else {
-      expect(code(() => checkF2fWindow({ periodStart: START, encounterDate, hasOverride: false }))).toBe(
-        "F2F_OUTSIDE_WINDOW",
-      );
+      expect(
+        code(() => checkF2fWindow({ periodStart: START, encounterDate, hasOverride: false })),
+      ).toBe("F2F_OUTSIDE_WINDOW");
       // with an override the completion proceeds and the HONEST verdict (false) is what is persisted
       expect(checkF2fWindow({ periodStart: START, encounterDate, hasOverride: true })).toEqual({
         withinWindow: false,
@@ -57,33 +57,91 @@ describe("F-226 checkF2fWindow — boundaries against a real start", () => {
   });
 
   it("a leap-day span: start 2028-03-01 -> window [2028-01-31, 2028-02-29]", () => {
-    expect(checkF2fWindow({ periodStart: "2028-03-01", encounterDate: "2028-02-29", hasOverride: false }).withinWindow).toBe(true);
-    expect(checkF2fWindow({ periodStart: "2028-03-01", encounterDate: "2028-01-31", hasOverride: false }).withinWindow).toBe(true);
-    expect(code(() => checkF2fWindow({ periodStart: "2028-03-01", encounterDate: "2028-01-30", hasOverride: false }))).toBe(
-      "F2F_OUTSIDE_WINDOW",
-    );
+    expect(
+      checkF2fWindow({ periodStart: "2028-03-01", encounterDate: "2028-02-29", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      checkF2fWindow({ periodStart: "2028-03-01", encounterDate: "2028-01-31", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      code(() =>
+        checkF2fWindow({
+          periodStart: "2028-03-01",
+          encounterDate: "2028-01-30",
+          hasOverride: false,
+        }),
+      ),
+    ).toBe("F2F_OUTSIDE_WINDOW");
     // non-leap year: one day earlier edge
-    expect(checkF2fWindow({ periodStart: "2027-03-01", encounterDate: "2027-01-30", hasOverride: false }).withinWindow).toBe(true);
-    expect(code(() => checkF2fWindow({ periodStart: "2027-03-01", encounterDate: "2027-01-29", hasOverride: false }))).toBe(
-      "F2F_OUTSIDE_WINDOW",
-    );
+    expect(
+      checkF2fWindow({ periodStart: "2027-03-01", encounterDate: "2027-01-30", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      code(() =>
+        checkF2fWindow({
+          periodStart: "2027-03-01",
+          encounterDate: "2027-01-29",
+          hasOverride: false,
+        }),
+      ),
+    ).toBe("F2F_OUTSIDE_WINDOW");
   });
 
   it("year boundary and DST-change weeks use calendar days (no 23/25 hour drift)", () => {
     // US DST starts 2026-03-08 and ends 2026-11-01: a window straddling either must still be exactly 30 days.
-    expect(checkF2fWindow({ periodStart: "2026-03-20", encounterDate: "2026-02-18", hasOverride: false }).withinWindow).toBe(true);
-    expect(code(() => checkF2fWindow({ periodStart: "2026-03-20", encounterDate: "2026-02-17", hasOverride: false }))).toBe("F2F_OUTSIDE_WINDOW");
-    expect(checkF2fWindow({ periodStart: "2026-11-15", encounterDate: "2026-10-16", hasOverride: false }).withinWindow).toBe(true);
-    expect(code(() => checkF2fWindow({ periodStart: "2026-11-15", encounterDate: "2026-10-15", hasOverride: false }))).toBe("F2F_OUTSIDE_WINDOW");
-    expect(checkF2fWindow({ periodStart: "2027-01-05", encounterDate: "2026-12-06", hasOverride: false }).withinWindow).toBe(true);
-    expect(code(() => checkF2fWindow({ periodStart: "2027-01-05", encounterDate: "2026-12-05", hasOverride: false }))).toBe("F2F_OUTSIDE_WINDOW");
+    expect(
+      checkF2fWindow({ periodStart: "2026-03-20", encounterDate: "2026-02-18", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      code(() =>
+        checkF2fWindow({
+          periodStart: "2026-03-20",
+          encounterDate: "2026-02-17",
+          hasOverride: false,
+        }),
+      ),
+    ).toBe("F2F_OUTSIDE_WINDOW");
+    expect(
+      checkF2fWindow({ periodStart: "2026-11-15", encounterDate: "2026-10-16", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      code(() =>
+        checkF2fWindow({
+          periodStart: "2026-11-15",
+          encounterDate: "2026-10-15",
+          hasOverride: false,
+        }),
+      ),
+    ).toBe("F2F_OUTSIDE_WINDOW");
+    expect(
+      checkF2fWindow({ periodStart: "2027-01-05", encounterDate: "2026-12-06", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      code(() =>
+        checkF2fWindow({
+          periodStart: "2027-01-05",
+          encounterDate: "2026-12-05",
+          hasOverride: false,
+        }),
+      ),
+    ).toBe("F2F_OUTSIDE_WINDOW");
   });
 
   it("an undeterminable start is unverifiable: refused, or unverified (null) under an override", () => {
-    expect(code(() => checkF2fWindow({ periodStart: null, encounterDate: "2026-06-15", hasOverride: false }))).toBe(
-      "F2F_PERIOD_START_UNKNOWN",
-    );
-    expect(checkF2fWindow({ periodStart: null, encounterDate: "2026-06-15", hasOverride: true })).toEqual({
+    expect(
+      code(() =>
+        checkF2fWindow({ periodStart: null, encounterDate: "2026-06-15", hasOverride: false }),
+      ),
+    ).toBe("F2F_PERIOD_START_UNKNOWN");
+    expect(
+      checkF2fWindow({ periodStart: null, encounterDate: "2026-06-15", hasOverride: true }),
+    ).toEqual({
       withinWindow: null,
     });
   });
@@ -104,8 +162,19 @@ describe("F-226 expected start = previous period end + 1 (90/90/60 contiguity)",
     const s4 = expectedStartFromPriorEnd(e3);
     expect(s4).toBe("2026-08-29");
     // the F2F window for period 3 is [2026-05-31, 2026-06-29]: the LAST day of period 2 is in, its first day of 3 is out
-    expect(checkF2fWindow({ periodStart: s3 as string, encounterDate: "2026-06-29", hasOverride: false }).withinWindow).toBe(true);
-    expect(code(() => checkF2fWindow({ periodStart: s3 as string, encounterDate: "2026-06-30", hasOverride: false }))).toBe("F2F_OUTSIDE_WINDOW");
+    expect(
+      checkF2fWindow({ periodStart: s3 as string, encounterDate: "2026-06-29", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
+    expect(
+      code(() =>
+        checkF2fWindow({
+          periodStart: s3 as string,
+          encounterDate: "2026-06-30",
+          hasOverride: false,
+        }),
+      ),
+    ).toBe("F2F_OUTSIDE_WINDOW");
   });
 
   it("crosses a leap day and a year end", () => {
@@ -122,23 +191,41 @@ describe("F-226 expected start = previous period end + 1 (90/90/60 contiguity)",
 describe("F-226 resolveF2fWindowStart — order of authority", () => {
   it("stored expected_start wins", () => {
     expect(
-      resolveF2fWindowStart({ expectedStart: "2026-07-01", priorScheduledEnd: "2026-06-10", effectiveAt: "2026-06-20" }),
+      resolveF2fWindowStart({
+        expectedStart: "2026-07-01",
+        priorScheduledEnd: "2026-06-10",
+        effectiveAt: "2026-06-20",
+      }),
     ).toEqual({ start: "2026-07-01", source: "expected_start" });
   });
   it("else the preceding period's end + 1 (legacy pending period)", () => {
-    expect(resolveF2fWindowStart({ expectedStart: null, priorScheduledEnd: "2026-06-10", effectiveAt: null })).toEqual({
+    expect(
+      resolveF2fWindowStart({
+        expectedStart: null,
+        priorScheduledEnd: "2026-06-10",
+        effectiveAt: null,
+      }),
+    ).toEqual({
       start: "2026-06-11",
       source: "prior_period_end",
     });
   });
   it("else the period's own effective_at (activated period)", () => {
-    expect(resolveF2fWindowStart({ expectedStart: null, priorScheduledEnd: null, effectiveAt: "2026-06-20" })).toEqual({
+    expect(
+      resolveF2fWindowStart({
+        expectedStart: null,
+        priorScheduledEnd: null,
+        effectiveAt: "2026-06-20",
+      }),
+    ).toEqual({
       start: "2026-06-20",
       source: "effective_at",
     });
   });
   it("else unknown", () => {
-    expect(resolveF2fWindowStart({ expectedStart: null, priorScheduledEnd: null, effectiveAt: null })).toBeNull();
+    expect(
+      resolveF2fWindowStart({ expectedStart: null, priorScheduledEnd: null, effectiveAt: null }),
+    ).toBeNull();
   });
 });
 
@@ -149,16 +236,26 @@ describe("F-226 assertPlausibleEncounterDate", () => {
     expect(code(() => assertPlausibleEncounterDate("2026-09-01", TODAY))).toBeUndefined();
   });
   it("tomorrow is refused", () => {
-    expect(code(() => assertPlausibleEncounterDate("2026-10-01", TODAY))).toBe("F2F_ENCOUNTER_DATE_INVALID");
+    expect(code(() => assertPlausibleEncounterDate("2026-10-01", TODAY))).toBe(
+      "F2F_ENCOUNTER_DATE_INVALID",
+    );
   });
   it("exactly 365 days back passes, 366 is refused", () => {
     expect(F2F_MAX_ENCOUNTER_AGE_DAYS).toBe(365);
-    expect(code(() => assertPlausibleEncounterDate(addCalendarDays(TODAY, -365), TODAY))).toBeUndefined();
-    expect(code(() => assertPlausibleEncounterDate(addCalendarDays(TODAY, -366), TODAY))).toBe("F2F_ENCOUNTER_DATE_INVALID");
+    expect(
+      code(() => assertPlausibleEncounterDate(addCalendarDays(TODAY, -365), TODAY)),
+    ).toBeUndefined();
+    expect(code(() => assertPlausibleEncounterDate(addCalendarDays(TODAY, -366), TODAY))).toBe(
+      "F2F_ENCOUNTER_DATE_INVALID",
+    );
   });
   it("malformed / impossible dates are refused", () => {
-    expect(code(() => assertPlausibleEncounterDate("2026-13-40", TODAY))).toBe("F2F_ENCOUNTER_DATE_INVALID");
-    expect(code(() => assertPlausibleEncounterDate("yesterday", TODAY))).toBe("F2F_ENCOUNTER_DATE_INVALID");
+    expect(code(() => assertPlausibleEncounterDate("2026-13-40", TODAY))).toBe(
+      "F2F_ENCOUNTER_DATE_INVALID",
+    );
+    expect(code(() => assertPlausibleEncounterDate("yesterday", TODAY))).toBe(
+      "F2F_ENCOUNTER_DATE_INVALID",
+    );
     expect(code(() => assertPlausibleEncounterDate("", TODAY))).toBe("F2F_ENCOUNTER_DATE_INVALID");
   });
 });
@@ -167,9 +264,12 @@ describe("F-226 F2F state machine", () => {
   const base = { type: "recordCompletion", performerRole: "hospice_md" } as const;
   it("records the honest verdict as the set_flag effect (true / false / unknown)", () => {
     const flag = (periodStart: string | null, encounterDate: string, hasOverride: boolean) =>
-      transitionFaceToFace("scheduled", { ...base, periodStart, encounterDate, hasOverride }).effects.find(
-        (e) => e.kind === "set_flag",
-      );
+      transitionFaceToFace("scheduled", {
+        ...base,
+        periodStart,
+        encounterDate,
+        hasOverride,
+      }).effects.find((e) => e.kind === "set_flag");
     expect(flag("2026-07-01", "2026-06-15", false)).toMatchObject({ field: "within_window_true" });
     expect(flag("2026-07-01", "2026-07-01", true)).toMatchObject({ field: "within_window_false" });
     expect(flag(null, "2026-06-15", true)).toMatchObject({ field: "within_window_unknown" });
@@ -189,17 +289,37 @@ describe("F-226 F2F state machine", () => {
   it("a window override is legal from `scheduled` (so it can precede an outside-window completion) and from `completed`", () => {
     const reason = "Patient hospitalised; the visit could not be done inside the window.";
     expect(
-      transitionFaceToFace("scheduled", { type: "requestWindowOverride", isMedicalDirector: true, reason }).to,
+      transitionFaceToFace("scheduled", {
+        type: "requestWindowOverride",
+        isMedicalDirector: true,
+        reason,
+      }).to,
     ).toBe("scheduled");
     expect(
-      transitionFaceToFace("completed", { type: "requestWindowOverride", isMedicalDirector: true, reason }).to,
+      transitionFaceToFace("completed", {
+        type: "requestWindowOverride",
+        isMedicalDirector: true,
+        reason,
+      }).to,
     ).toBe("completed");
-    expect(code(() => transitionFaceToFace("attested", { type: "requestWindowOverride", isMedicalDirector: true, reason }))).toBe(
-      "ILLEGAL_TRANSITION",
-    );
-    expect(code(() => transitionFaceToFace("scheduled", { type: "requestWindowOverride", isMedicalDirector: true, reason: "short" }))).toBe(
-      "F2F_OVERRIDE_REASON_TOO_SHORT",
-    );
+    expect(
+      code(() =>
+        transitionFaceToFace("attested", {
+          type: "requestWindowOverride",
+          isMedicalDirector: true,
+          reason,
+        }),
+      ),
+    ).toBe("ILLEGAL_TRANSITION");
+    expect(
+      code(() =>
+        transitionFaceToFace("scheduled", {
+          type: "requestWindowOverride",
+          isMedicalDirector: true,
+          reason: "short",
+        }),
+      ),
+    ).toBe("F2F_OVERRIDE_REASON_TOO_SHORT");
   });
 });
 
@@ -263,9 +383,12 @@ describe("F-226 adequacy — the `strict` basis (what the activation gate uses)"
     ["start-1", "2026-06-30", []],
     ["start", "2026-07-01", ["F2F_OUTSIDE_WINDOW"]],
     ["start+1", "2026-07-02", ["F2F_OUTSIDE_WINDOW"]],
-  ])("encounter at %s (persisted flag true - the F-217 bug shape)", (_l, encounterDate, expected) => {
-    expect(run({ encounterDate })).toEqual(expected);
-  });
+  ])(
+    "encounter at %s (persisted flag true - the F-217 bug shape)",
+    (_l, encounterDate, expected) => {
+      expect(run({ encounterDate })).toEqual(expected);
+    },
+  );
   it("anchors to the expected start, not the activation day (window would differ)", () => {
     // 2026-06-01 is start-30 of the expected start but only start-19 of... (activation day 06-20 -> window [05-21, 06-19]);
     // 2026-06-25 is inside the expected-start window yet AFTER the activation-day window end.
@@ -317,7 +440,12 @@ describe("F-226 adequacy — the `strict` basis (what the activation gate uses)"
   it("the `recorded` and `dates` bases keep their F-217 behaviour", () => {
     const mk = (windowBasis: "recorded" | "dates", o: Partial<AdequacyF2fFact>) =>
       evaluatePeriodAdequacy({
-        period: { electionPeriodId: PERIOD, sequenceNumber: 3, periodKind: "sixty_day", startDate: EXPECTED_START },
+        period: {
+          electionPeriodId: PERIOD,
+          sequenceNumber: 3,
+          periodKind: "sixty_day",
+          startDate: EXPECTED_START,
+        },
         admissionHospicePhysicianId: MD,
         timeZone: "America/Los_Angeles",
         windowBasis,

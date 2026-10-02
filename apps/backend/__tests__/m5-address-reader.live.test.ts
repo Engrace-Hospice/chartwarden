@@ -120,7 +120,12 @@ describe.skipIf(!DB_URL)("F-229 — M5 PatientAddressReader.primaryAddress — L
     await seedAddress(ORG_A, pid, { line1: "9 Old St", from: "2020-01-01", to: "2025-12-31" });
     await seedAddress(ORG_A, pid, { line1: "2 Now St", from: "2026-01-01" });
     // Seeded AFTER the primary row, same effective_from: a non-primary row must still never win.
-    await seedAddress(ORG_A, pid, { line1: "8 Mailing St", kind: "mailing", primary: false, from: "2026-02-01" });
+    await seedAddress(ORG_A, pid, {
+      line1: "8 Mailing St",
+      kind: "mailing",
+      primary: false,
+      from: "2026-02-01",
+    });
     const a = await buildPatientAddressReader(handle.db).primaryAddress(ORG_A, pid);
     expect(a?.line1).toBe("2 Now St");
   });
@@ -129,10 +134,12 @@ describe.skipIf(!DB_URL)("F-229 — M5 PatientAddressReader.primaryAddress — L
     const none = await seedPatient(ORG_A);
     expect(await buildPatientAddressReader(handle.db).primaryAddress(ORG_A, none)).toBeNull();
     const closedOnly = await seedPatient(ORG_A);
-    await seedAddress(ORG_A, closedOnly, { line1: "3 Closed St", from: "2020-01-01", to: "2021-01-01" });
-    expect(
-      await buildPatientAddressReader(handle.db).primaryAddress(ORG_A, closedOnly),
-    ).toBeNull();
+    await seedAddress(ORG_A, closedOnly, {
+      line1: "3 Closed St",
+      from: "2020-01-01",
+      to: "2021-01-01",
+    });
+    expect(await buildPatientAddressReader(handle.db).primaryAddress(ORG_A, closedOnly)).toBeNull();
   });
 
   it("is tenant-isolated: org B cannot read org A's patient address; org B's own still resolves", async () => {

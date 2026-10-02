@@ -28,12 +28,12 @@ import { isDegradedError } from "@wardenx/dosespot";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dosespotSyncDemographicsForOrg } from "../src/modules/05-patient/index";
 import {
+  DosespotSyncQueueRepository,
   type EnqueueInput,
   type EnqueueResult,
-  DosespotSyncQueueRepository,
 } from "../src/modules/12-dosespot/jobs/repository";
-import { dosespotSyncDemographicsForOrg } from "../src/modules/05-patient/index";
 import { M12DosespotPatientIdUnbound } from "../src/modules/12-dosespot/jobs/vendor-boundary";
 import {
   type ActiveOrgListPort,

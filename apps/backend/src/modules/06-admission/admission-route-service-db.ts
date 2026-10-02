@@ -4223,8 +4223,7 @@ export function createDbAdmissionRouteService(
           if (adequacy && adequacy.verdict === "inadequate") {
             throw new WardenXError(
               "ELECTION_PERIOD_ADEQUACY_FAILED",
-              "The election period cannot start: its certification of terminal illness and/or " +
-                `face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
+              `The election period cannot start: its certification of terminal illness and/or face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
               409,
               adequacy.reasonCodes.map((code) => ({ code, message: code })),
             );

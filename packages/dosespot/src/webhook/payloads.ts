@@ -13,7 +13,7 @@
 //   • The HMAC scheme (SHA-256 over the raw body, `X-DoseSpot-Signature` / `X-DoseSpot-Timestamp` headers,
 //     ±5 min) is M12 §7.4 / Integrations §3.7 as already implemented in `./verify.ts`; it likewise has never
 //     been checked against a real DoseSpot delivery.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
 /** `true` only once the payload field names + signature scheme have been verified against real vendor
@@ -71,7 +71,9 @@ export const DoseSpotScriptStatusUpdatePayloadSchema = Type.Object({
   fill_number: Type.Optional(Type.Integer({ minimum: 0 })),
   status_at: Type.Optional(Type.String({ minLength: 1 })),
 });
-export type DoseSpotScriptStatusUpdatePayload = Static<typeof DoseSpotScriptStatusUpdatePayloadSchema>;
+export type DoseSpotScriptStatusUpdatePayload = Static<
+  typeof DoseSpotScriptStatusUpdatePayloadSchema
+>;
 
 /** §4.4 — the two script statuses that mean "the pharmacy dispensed" (`dispensed_at_pharmacy`). */
 export const DOSESPOT_DISPENSE_STATUSES = ["Dispensed", "PickedUp"] as const;

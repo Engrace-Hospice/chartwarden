@@ -657,7 +657,8 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         },
       });
       const slot = async (pid: string) =>
-        ((await packetFor(meetingId, pid))?.built_snapshot as Record<string, unknown>)?.medicationHistory;
+        ((await packetFor(meetingId, pid))?.built_snapshot as Record<string, unknown>)
+          ?.medicationHistory;
       expect(await slot(withHistory)).toEqual({
         state: "available",
         recordCount: 3,
@@ -669,7 +670,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         lastPulledAt: "2026-09-29T12:00:00.000Z",
       });
       // never pulled is NOT "no external history" — that claim needs a pull that actually returned zero.
-      expect(await slot(neverPulled)).toEqual({ state: "not_pulled", recordCount: 0, lastPulledAt: null });
+      expect(await slot(neverPulled)).toEqual({
+        state: "not_pulled",
+        recordCount: 0,
+        lastPulledAt: null,
+      });
 
       // A second meeting built WITHOUT the port: the slot is `null` (not captured), never a fabricated state.
       const meeting2 = await seedMeeting(ORG_A, "scheduled", 13);
