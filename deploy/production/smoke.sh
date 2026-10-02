@@ -35,12 +35,24 @@ cd "$deploy_dir"
 # breaks), and an explicit timeout so a hung upstream fails the deploy instead of hanging it.
 CURL="curl --fail --silent --show-error --max-time 10"
 
-# Emit only the structured readiness result (the four fixed dependency names and ok/fail statuses)
-# before rolling a release back. Docker health reports merely "unhealthy", which discards the one
-# fact an operator needs to repair the dependency; `/ready` deliberately exposes no credentials,
-# object keys, or tenant data.
+# Emit a focused diagnostic before rolling a release back. Docker health reports merely
+# "unhealthy", which discards the one fact an operator needs to repair the dependency. A running
+# process can provide the structured `/ready` result (only fixed dependency names and ok/fail
+# statuses); a crash-looping one instead needs its last startup log and Docker exit status.
 print_readiness_diagnostic() {
   svc=$1
+  container_id=$($compose ps -q "$svc" 2>/dev/null || true)
+  [ -n "$container_id" ] || {
+    echo "  ! $svc diagnostic unavailable: container is gone" >&2
+    return
+  }
+  state=$(docker inspect --format '{{.State.Status}}' "$container_id" 2>/dev/null || true)
+  exit_code=$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)
+  if [ "$state" != "running" ]; then
+    echo "  ! $svc is $state (last exit code: ${exit_code:-unknown}); startup log:" >&2
+    docker logs --tail 80 "$container_id" 2>&1 || true
+    return
+  fi
   $compose exec -T "$svc" bun -e '
     const port = process.env.PROCESS_ROLE === "worker"
       ? (process.env.WORKER_PORT ?? "3001")
