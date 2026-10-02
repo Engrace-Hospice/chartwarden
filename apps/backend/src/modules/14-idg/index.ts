@@ -137,6 +137,12 @@ export {
   M14_DOCUMENT_BACKREF_CONSUMER,
   buildM14DocumentBackrefConsumer,
 } from "./consumers/m22-document-backref";
+// F-234 (#248) — M15's "decision applied" acknowledgement (`m15.idg_decision.applied`), recorded per decision.
+export {
+  type IdgDecisionAppliedConsumerDeps,
+  M14_M15_DECISION_APPLIED_CONSUMER,
+  buildM14DecisionAppliedConsumer,
+} from "./consumers/m15-idg-decision-applied";
 // F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9's two, M10's two, M11's
 // one, M12's one). The M6 inclusion-cache pair and the M15 trio stay unbound — a fresh investigation
 // found the evidence genuinely mixed rather than confidently misdeclared or confidently genuine; see

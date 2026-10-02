@@ -32,3 +32,20 @@ export {
   resolveVolunteerVisitCandidates,
   type VolunteerServedPatient,
 } from "./volunteer-visits";
+export {
+  DISCIPLINE_PLAN_UPDATE_KIND,
+  IDG_AUTHORING_DISCIPLINE,
+  type IdgApplyAction,
+  type IdgApplyFacts,
+  type IdgRefusalReason,
+  type ParsedDisciplineMutation,
+  type PlannedDisciplineMutation,
+  decideDisciplinePlanDecision,
+} from "./apply-idg-decision";
+export {
+  type ActiveProblemIdsResolver,
+  type DisciplinePlanIdgDecisionDeps,
+  M15_IDG_DECISION_CONSUMER,
+  buildM15IdgDecisionConsumer,
+  parseDisciplinePlanDecision,
+} from "./m14-idg-decision-recorded";

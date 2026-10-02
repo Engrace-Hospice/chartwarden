@@ -70,7 +70,8 @@ export type IdgDecisionKind =
   | "family_meeting_needed"
   | "bereavement_risk_flag"
   | "referral"
-  | "team_note";
+  | "team_note"
+  | "discipline_plan_update";
 
 /** The §2.7 decision outbox lifecycle (mirrors `idg_decision_status`). */
 export type IdgDecisionStatus = "open" | "emitted" | "superseded";
@@ -192,6 +193,11 @@ export type M14EventName = (typeof M14_EVENT_NAMES)[number];
  * a coordinated change with the consumer modules (M7/M11/M12) + an envelope schema-version bump. */
 export type IdgDecisionRecordedPayload =
   | { readonly kind: "care_plan_update"; readonly mutations: readonly CarePlanMutation[] }
+  | {
+      readonly kind: "discipline_plan_update";
+      readonly planKind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+      readonly mutations: readonly DisciplinePlanMutation[];
+    }
   | { readonly kind: "order_request"; readonly requestedOrders: readonly RequestedOrderInput[] }
   | {
       readonly kind: "medication_recommendation";
@@ -231,6 +237,38 @@ export type IdgDecisionRecordedPayload =
 
 /** Hospice level of care (shared across the packet cover + the LOC-consideration decision arm). */
 export type IdgLevelOfCare = "routine" | "continuous" | "inpatient_respite" | "general_inpatient";
+
+/** A single M15 discipline-plan element mutation inside a `discipline_plan_update` decision (F-234 / ADR-0023;
+ * M15 spec §7.7). A goal hangs off an M7 IPOC problem; a goal moves by an M15 §2.2.3 event; an intervention
+ * references the plan's own goals. Applied to a DRAFT `idg_review` version — never a signed one. */
+export type DisciplinePlanMutation =
+  | {
+      readonly op: "goal_add";
+      readonly parentProblemId: string;
+      readonly source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
+      readonly originalText: string;
+      readonly measurableOutcome: string | null;
+    }
+  | {
+      readonly op: "goal_update";
+      readonly goalId: string;
+      readonly event: "start" | "meet" | "missTarget" | "revise" | "discontinue";
+      readonly revisedText?: string;
+      readonly reason?: string;
+    }
+  | {
+      readonly op: "intervention_add";
+      readonly goalRefs: readonly string[];
+      readonly discipline: string;
+      readonly scopeText: string;
+      readonly frequencyText: string;
+      readonly frequencyValue: string;
+    }
+  | {
+      readonly op: "intervention_discontinue";
+      readonly interventionId: string;
+      readonly reason: string;
+    };
 
 /** A single care-plan element mutation inside a `care_plan_update` decision (§2.6). */
 export type CarePlanMutation =

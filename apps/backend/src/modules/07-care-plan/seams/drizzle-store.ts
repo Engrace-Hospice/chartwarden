@@ -346,6 +346,35 @@ export interface IdgPacketCarePlanContext {
 }
 
 /**
+ * The ids of the patient's ACTIVE IPOC problems, org-explicit (F-234 / #248). M15's IDG-decision consumer
+ * (`discipline_plan_update`, M15 spec §2.1/§7.7) must verify that a goal it adds names a real, active M7
+ * problem as its parent — the same check M15's goal route runs through `CarePlanReader`, whose id-keyed reads
+ * open `withOrgContextFromRequest` and so cannot run on a relay tick. Reads the patient's care plan
+ * (`care_plan` has one row per patient) and returns only ids — no problem text leaves M7. An empty array means
+ * "no plan / no active problem": the caller refuses the goal, it never waves it through.
+ */
+export function activeProblemIdsForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<readonly string[]> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [plan] = await tx
+      .select({ id: CP.id })
+      .from(CP)
+      .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
+      .orderBy(desc(CP.createdAt))
+      .limit(1);
+    if (!plan) return [];
+    const rows = await tx
+      .select({ id: PROB.id })
+      .from(PROB)
+      .where(and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active")));
+    return rows.map((r) => r.id);
+  });
+}
+
+/**
  * Resolve the §2.4 packet-cover care-plan facts for one patient, org-explicit. `null` when the patient has
  * no `care_plan` row at all (never bootstrapped — M14 reports this as a build failure, never a fabricated
  * empty summary).

@@ -152,6 +152,7 @@ export function createInMemoryIdgEraseStore(seed: InMemoryIdgEraseSeed = {}): {
 export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
   const AGENDA = schema.idgAgendaItem;
   const NOTE = schema.idgDisciplineNote;
+  const ACK = schema.idgDecisionApplicationAck;
   const DEC = schema.idgDecision;
   const ACT = schema.idgActionItem;
   const PKT = schema.idgPatientPacket;
@@ -223,6 +224,11 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
             .update(ACT)
             .set({ idgDecisionId: null })
             .where(inArray(ACT.idgDecisionId, ids(decisionRows)));
+        }
+        // F-234 — downstream "decision applied" acknowledgements (metadata) hang off the decision; remove them
+        // explicitly first rather than leaning on the FK cascade under the destruction role's RLS.
+        if (decisionRows.length > 0) {
+          await tx.delete(ACK).where(inArray(ACK.idgDecisionId, ids(decisionRows)));
         }
         const decisions =
           decisionRows.length === 0

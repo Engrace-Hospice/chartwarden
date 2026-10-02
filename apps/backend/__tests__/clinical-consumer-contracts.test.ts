@@ -8,6 +8,7 @@ import { M8_OUTBOX_EVENTS, M8_VISIT_PUBLISHED_CONSUMER } from "../src/modules/08
 import { M11_IDG_DECISION_CONSUMER } from "../src/modules/11-orders/index";
 import { M12_IDG_DECISION_CONSUMER } from "../src/modules/12-dosespot/index";
 import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_IDG_DECISION_CONSUMER } from "../src/modules/15-discipline-care-plans/index";
 import { M16_IDG_DECISION_CONSUMER } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_VISIT_PUBLISHED_CONSUMER } from "../src/modules/18-evv/index";
@@ -25,19 +26,21 @@ function binding(
 }
 
 describe("clinical outbox consumer contract reconciliation", () => {
-  it("fully binds the four M14 decision command consumers", () => {
+  // F-234 (#248) — M15 is the FIFTH: `discipline_plan_update` decisions revise a discipline plan (M15 spec §7.7).
+  it("fully binds the five M14 decision command consumers", () => {
     const entry = M14_OUTBOX_EVENTS.find(
       (candidate) => String(candidate.eventName) === "idg.decision_recorded",
     );
     if (!entry) throw new Error("missing idg.decision_recorded catalog entry");
-    expect(entry.declaredConsumers).toEqual(["m7", "m11", "m12", "m16"]);
+    expect(entry.declaredConsumers).toEqual(["m7", "m11", "m12", "m15", "m16"]);
     const plan = buildOutboxRoutingPlan(new Map([[entry.eventName, entry]]), [
       binding("m7", M7_IDG_DECISION_CONSUMER),
       binding("m11", M11_IDG_DECISION_CONSUMER),
       binding("m12", M12_IDG_DECISION_CONSUMER),
+      binding("m15", M15_IDG_DECISION_CONSUMER),
       binding("m16", M16_IDG_DECISION_CONSUMER),
     ]);
-    expect(plan.live.get(entry.eventName)).toHaveLength(4);
+    expect(plan.live.get(entry.eventName)).toHaveLength(5);
     expect(plan.deferred.has(entry.eventName)).toBe(false);
   });
 

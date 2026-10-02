@@ -64,6 +64,8 @@ export const M14_OUTBOX_SUBSCRIPTIONS = [
     eventName: "m12.medication_order.discontinued",
     consumerName: "m14.m12-medication-order-discontinued",
   },
+  // F-234 — M15's acknowledgement that it applied a `discipline_plan_update` decision (M15 spec §4.5)
+  { eventName: "m15.idg_decision.applied", consumerName: "m14.m15-idg-decision-applied" },
   // M22 PDF render back-ref (§4.4 form-rendering handshake)
   { eventName: "m22.document.rendered", consumerName: "m14.m22-document-backref" },
 ] as const;

@@ -44,6 +44,7 @@ type SeedIds = {
   agendaItem: string;
   disciplineNote: string;
   decision: string;
+  decisionAck: string;
   actionItem: string;
   minutes: string;
   minutesAmendment: string;
@@ -57,6 +58,8 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "idg_agenda_item", key: "agendaItem" },
   { table: "idg_discipline_note", key: "disciplineNote" },
   { table: "idg_decision", key: "decision" },
+  // F-234 (0305) — downstream "decision applied" acknowledgements.
+  { table: "idg_decision_application_ack", key: "decisionAck" },
   { table: "idg_action_item", key: "actionItem" },
   { table: "idg_minutes", key: "minutes" },
   { table: "idg_minutes_amendment", key: "minutesAmendment" },
@@ -181,6 +184,16 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       )
     ).rows[0].id as string;
 
+    const decisionAck = (
+      await db.query(
+        `INSERT INTO idg_decision_application_ack (organization_id, provider_entity_id, location_id,
+           idg_decision_id, idg_meeting_id, patient_id, target_module, plan_id, version_id, mutations_applied,
+           source_outbox_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'m15',gen_random_uuid(),gen_random_uuid(),1,gen_random_uuid()) RETURNING id`,
+        [org, providerEntity, location, decision, meeting, PATIENT],
+      )
+    ).rows[0].id as string;
+
     const actionItem = (
       await db.query(
         `INSERT INTO idg_action_item (organization_id, provider_entity_id, location_id, idg_meeting_id,
@@ -225,6 +238,7 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       agendaItem,
       disciplineNote,
       decision,
+      decisionAck,
       actionItem,
       minutes,
       minutesAmendment,
@@ -265,7 +279,9 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
     // different role's and is excluded — only the wardenx_app tenant policy is judged here).
     const rls =
       readFileSync(join(MIGRATIONS_DIR, "0043_idg_m14_rls_audit_triggers.sql"), "utf8") +
-      readFileSync(join(MIGRATIONS_DIR, "0282_m14_idg_discipline_note.sql"), "utf8");
+      readFileSync(join(MIGRATIONS_DIR, "0282_m14_idg_discipline_note.sql"), "utf8") +
+      // 0305 adds idg_decision_application_ack (F-234); its wardenx_destruction policy is excluded as above.
+      readFileSync(join(MIGRATIONS_DIR, "0305_m14_idg_decision_application_ack.sql"), "utf8");
     // (0283 adds columns + a CHECK + a trigger-function replacement to the same table: no new policy.)
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
       (b) => b.includes("TO wardenx_app") && COVERED.some((t) => b.includes(`"${t.table}"`)),
