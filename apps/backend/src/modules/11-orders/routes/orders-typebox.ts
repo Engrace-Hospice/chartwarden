@@ -80,6 +80,8 @@ export const CreateOrderRequest = Type.Object({
   triggeringAssessmentId: Type.Optional(Type.String({ format: "uuid" })),
   triggeringHopeAssessmentId: Type.Optional(Type.String({ format: "uuid" })),
   replacesOrderId: Type.Optional(Type.String({ format: "uuid" })),
+  /** Payload contract version to stamp (default `<kind>.v1`); e.g. `dme.v2` / `supply.v2` (F-232). */
+  kindVersion: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
 });
 
 export const UpdateOrderRequest = Type.Object({

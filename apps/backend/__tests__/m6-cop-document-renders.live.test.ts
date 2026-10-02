@@ -371,7 +371,15 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
 
   it("face-to-face: schedule → complete → attest → render → f2f_encounter.document_id", async () => {
     const patientId = randomUUID();
-    const { admissionId, periodId } = await activeAdmission(patientId);
+    const { admissionId } = await activeAdmission(patientId);
+    // F-226 - the F2F belongs to the NEXT (pending) period and its window is computed from the real
+    // encounter date: open period 2 and pull its expected start in to 10 days out (the prior period is about
+    // to end), then record yesterday's visit.
+    const next = await svc.createElectionPeriod(ORG_A, admissionId);
+    const periodId = next.id;
+    await admin.query("UPDATE election_period SET expected_start = current_date + 10 WHERE id=$1", [
+      periodId,
+    ]);
     // Every step here 500'd before F-100: completion emitted `m6.f2f.scheduled` with a payload that
     // event's own schema rejects, and attestation is only reachable from `completed`.
     const f2f = await svc.scheduleF2f(ORG_A, {
@@ -381,7 +389,12 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
       clinicianRole: "hospice_md",
       scheduledDate: new Date().toISOString().slice(0, 10) as never,
     });
-    const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version);
+    const done = await svc.completeF2f(
+      ORG_A,
+      f2f.id,
+      f2f.version,
+      new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
+    );
     const attested = await svc.attestF2f(ORG_A, f2f.id, done.version, MD);
     expect(attested.state).toBe("attested");
 

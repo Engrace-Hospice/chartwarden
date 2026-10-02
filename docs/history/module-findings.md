@@ -247,3 +247,59 @@ Only db/publisher errors propagate for dispatcher retry (proven: the period roll
 (group deleted). No `*_SUBSCRIBED_EVENT_NAMES` list exists for M6. Wired at `apps/backend/src/index.ts`
 (`buildM6RecertificationSignedConsumer`). Proof: `m6-recertification-signed.test.ts` (unit) and
 `m6-recertification-signed.live.test.ts` (`test:m6:recertification-signed:live`, CI row added).
+
+## F-226 — M6: the F2F window is computed from the REAL encounter date vs the period's EXPECTED start (closes F-217's `windowBasis: 'recorded'` caveat)
+
+**The bug (verified).** F-217's activation gate trusted the persisted `face_to_face_encounter.within_window`, but
+the production `completeF2f` ignored the route's validated `encounterDate` (the route did not even pass it),
+stamped today, and computed the window against a hard-coded `today + 7`: `within_window` was true on EVERY
+production write. A pending period has no `effective_at` until activation, so the real window
+[start-30, start-1] (R-F2F-02) had no anchor at completion time.
+
+**Product decision (delegated, recommended design).** A pending period's EXPECTED START = the preceding period's
+`scheduled_end_at` + 1 calendar day (benefit periods are contiguous, 42 CFR 418.21(a); M6 §2.3.2 `setActive`;
+the F-178b window-missed scan and the M14 recert-window seam already derive the same day). Persisted as
+`election_period.expected_start` (migration 0299) by `openNextElectionPeriodInTx` (route `createElectionPeriod`
+AND the F-223 consumer) and by `transferIn` (next pending period = inherited end + 1). NULL when the preceding
+period has no scheduled end yet (never guessed).
+
+**`completeF2f(org, id, ifVersion, encounterDate)`.** Validates the date (calendar date, not after org-local
+today, not more than 365 days back: 422 `F2F_ENCOUNTER_DATE_INVALID`), resolves the start (`expected_start`, else
+preceding end + 1, else `effective_at` for an already-activated period; `certification/f2f-window.ts`),
+runs R-F2F-02 on the real date, persists the real `encounter_date` and the honest `within_window`. Outside the
+window without an override: 409 `F2F_OUTSIDE_WINDOW`, row stays `scheduled`. Same-day (encounter == start) is
+outside (R-F2F-02 "strict prior"). Start not derivable: 409 `F2F_PERIOD_START_UNKNOWN`; with an override the row
+completes with `within_window = NULL` (unverified). `m6.f2f.completed.withinWindow` stays a required boolean
+(NULL is reported `false`). **Override reachability:** the spec's graph allowed `requestWindowOverride` only from
+`completed`, while completion refuses an outside date without one (circular: an outside-window F2F could never be
+overridden). `requestWindowOverride` is now also legal from `scheduled` (self-loop; it previously always returned
+`completed`, now returns the current state). Authority is untouched: the route permission decides who overrides.
+
+**Which start the activation gate uses.** `signCtiHospiceMd` now evaluates F2F with `windowBasis: 'strict'`:
+the window is recomputed from `encounter_date` against the EXPECTED START (`expected_start`, else preceding
+`scheduled_end_at` + 1; undeterminable = fail closed `F2F_WINDOW_UNVERIFIED`), AND the persisted flag must be
+exactly `true` (false/NULL vs an inside recompute = disagreement = `F2F_WINDOW_UNVERIFIED`; inside-vs-outside
+= `F2F_OUTSIDE_WINDOW`). A valid override still passes flagged. The CTI late/written-cert math still uses the
+activation day as before (only the F2F window moved to the expected start). **Not changed, reported:** activation
+still stamps `effective_at` = the activation day, not prior end + 1 as §2.3.2 `setActive` states (pre-existing);
+a late activation therefore shifts the billed period start relative to the window anchor. Compliance/billing to
+decide whether `effective_at` should become the expected start.
+
+**Backfill (0299, idempotent, no deletes).** (1) `expected_start` derived for `pending`/`signed` periods with
+sequence >= 2 from the preceding period's `scheduled_end_at` + 1. (2) `within_window` recomputed for F2F rows
+(`completed`/`attested`) of those not-yet-activated periods from `encounter_date` vs `expected_start`
+(1 <= days before <= 30); NULL (fail closed) where either is missing. Activated/completed periods and their F2F
+rows are NOT touched. Caveat for compliance: legacy `encounter_date` is the day `completeF2f` ran, not a
+clinician-reported date, so a recomputed `true` on a legacy row is only as good as that.
+
+**Open for compliance.** (a) Same-day F2F is refused per R-F2F-02 as written (CMS 418.22 allows a longer prior
+window plus 30 days after; the spec's [start-30, start-1] is authoritative here). (b) Override authority: D5 says
+compliance officer only, R-F2F-03 / §2.3.4 say Medical Director; still unresolved, enforced by the route ABAC.
+(c) The F2F attestation narrative is validated at attest but not persisted to `attestation_narrative` by the
+current write path. (d) M23 `f2f_attested_for_recert` and `claimAssemblyRangeContextForOrg` only assert
+"attested"; consistent with the gate (an activated period passed it) but not window-aware themselves.
+
+**Proof.** `m6-f2f-real-dates.test.ts` (pure boundaries start-31/-30/-1/0/+1, leap day, DST weeks, 90/90/60
+chain, strict basis) and `m6-f2f-real-dates.live.test.ts` (`test:m6:f2f-real-dates:live`, CI row added; real
+`wardenx_app` role + real publisher; migration repair; cross-tenant). Existing raw-INSERT fixtures that set
+`within_window = true` on rows with no real start now carry a realistic `expected_start` and encounter date.

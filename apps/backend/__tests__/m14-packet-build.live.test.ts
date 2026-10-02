@@ -54,6 +54,11 @@ import {
   registerEncounterSeams,
 } from "../src/modules/08-encounters/index";
 import { idgHopeContextForOrg } from "../src/modules/10-hope/index";
+import {
+  M12_OUTBOX_EVENTS,
+  idgMedicationHistoryForOrg,
+  ingestMedicationHistoryPull,
+} from "../src/modules/12-dosespot/index";
 import { idgMissedDosesForOrg } from "../src/modules/13-emar/index";
 import type { IdgWriteOutboxPort } from "../src/modules/14-idg/idg-route-service-db";
 import {
@@ -598,6 +603,91 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       );
       expect(renderRows).toHaveLength(1);
       expect(renderRows[0].payload.renderPayload.snapshot.meta.patientId).toBe(patientId);
+    });
+
+    it("F-230: the packet's `medicationHistory` slot carries M12's REAL ingest state — " +
+      "available / none_available / not_pulled — and is `null` (not captured) when the seam is unbound", async () => {
+      const withHistory = await seedPatient(ORG_A, "Hist", "Available");
+      const zeroEntries = await seedPatient(ORG_A, "Zero", "Entries");
+      const neverPulled = await seedPatient(ORG_A, "Never", "Pulled");
+      for (const p of [withHistory, zeroEntries, neverPulled]) {
+        const adm = await seedAdmission(ORG_A, p, "active", 40);
+        await seedLocPeriod(ORG_A, adm);
+        await seedActiveBenefitPeriod(ORG_A, adm, 10);
+        await seedSignedCarePlan(ORG_A, p, adm);
+      }
+      // Real M12 ingests (the vendor-side result is the only input; persistence + publisher are real).
+      const m12Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M12_OUTBOX_EVENTS]));
+      const m12Outbox = {
+        publish: (tx: unknown, e: Record<string, unknown>) =>
+          m12Publisher.publish(tx as never, { ...(e as object), callerModule: "m12" } as never),
+      } as never;
+      const ingest = (patientId: string, n: number) =>
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          ingestMedicationHistoryPull(tx as never, m12Outbox, {
+            organizationId: ORG_A,
+            patientId,
+            dosespotPatientId: "ds-x",
+            sourceJobId: randomUUID(),
+            result: {
+              pulledAt: "2026-09-29T12:00:00.000Z",
+              items: Array.from({ length: n }, (_, i) => ({
+                rxnormRxcui: String(i),
+                drugName: `Drug ${i}`,
+                lastFillDate: null,
+                sourcePharmacy: null,
+              })),
+            },
+          }),
+        );
+      await ingest(withHistory, 3);
+      await ingest(zeroEntries, 0);
+
+      const meetingId = await seedMeeting(ORG_A, "scheduled", 12);
+      await runPacketBuildCron({
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+        // exactly how apps/backend/src/index.ts binds it
+        medicationHistory: {
+          medicationHistoryForOrg: (organizationId, patientIds) =>
+            idgMedicationHistoryForOrg(handle.db, organizationId, patientIds),
+        },
+      });
+      const slot = async (pid: string) =>
+        ((await packetFor(meetingId, pid))?.built_snapshot as Record<string, unknown>)
+          ?.medicationHistory;
+      expect(await slot(withHistory)).toEqual({
+        state: "available",
+        recordCount: 3,
+        lastPulledAt: "2026-09-29T12:00:00.000Z",
+      });
+      expect(await slot(zeroEntries)).toEqual({
+        state: "none_available",
+        recordCount: 0,
+        lastPulledAt: "2026-09-29T12:00:00.000Z",
+      });
+      // never pulled is NOT "no external history" — that claim needs a pull that actually returned zero.
+      expect(await slot(neverPulled)).toEqual({
+        state: "not_pulled",
+        recordCount: 0,
+        lastPulledAt: null,
+      });
+
+      // A second meeting built WITHOUT the port: the slot is `null` (not captured), never a fabricated state.
+      const meeting2 = await seedMeeting(ORG_A, "scheduled", 13);
+      await runPacketBuildCron({
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+      });
+      const pkt2 = await packetFor(meeting2, withHistory);
+      expect(pkt2).not.toBeNull();
+      expect((pkt2.built_snapshot as Record<string, unknown>).medicationHistory).toBeNull();
     });
 
     it("§2.3 D9: a patient discharged within the 7-day wrap-up is included; one discharged 10 days ago is not", async () => {

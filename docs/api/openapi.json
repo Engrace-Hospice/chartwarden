@@ -103044,6 +103044,7 @@
                             "signedEncounters",
                             "assessmentChanges",
                             "hopeTimepoints",
+                            "externalMedicationHistory",
                             "orderChanges",
                             "medicationChanges",
                             "flaggedEvents",
@@ -103521,6 +103522,75 @@
                                       }
                                     }
                                   }
+                                }
+                              }
+                            },
+                            "externalMedicationHistory": {
+                              "type": "object",
+                              "required": [
+                                "captured",
+                                "state",
+                                "recordCount",
+                                "lastPulledAt",
+                                "message"
+                              ],
+                              "properties": {
+                                "captured": {
+                                  "type": "boolean"
+                                },
+                                "state": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "const": "not_pulled",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "none_available",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "available",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "recordCount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "lastPulledAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "message": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               }
                             },
@@ -130078,6 +130148,11 @@
                   "replacesOrderId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "kindVersion": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
                   }
                 }
               }
@@ -131881,6 +131956,11 @@
                   },
                   "replacesOrderId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "kindVersion": {
+                    "minLength": 1,
+                    "maxLength": 64,
                     "type": "string"
                   }
                 }
@@ -227058,6 +227138,11 @@
                       },
                       "replacesOrderId": {
                         "format": "uuid",
+                        "type": "string"
+                      },
+                      "kindVersion": {
+                        "minLength": 1,
+                        "maxLength": 64,
                         "type": "string"
                       }
                     }

@@ -80,6 +80,7 @@ const PERMISSION_SEED = [
       "cti.read",
       "f2f.read",
       "f2f.attest",
+      "f2f.complete",
       "election.read",
       "loc.change",
       "loc.read",
@@ -616,6 +617,35 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().state).toBe("attested");
+    await app.close();
+  });
+
+  it("F-226 f2f complete — the route forwards the body's encounterDate to the service (it used to be dropped)", async () => {
+    const { app, backend } = makeServer();
+    const seen: unknown[][] = [];
+    const real = backend.service.completeF2f.bind(backend.service);
+    backend.service.completeF2f = async (...args: Parameters<typeof real>) => {
+      seen.push(args);
+      return real(...args);
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/face-to-face/${F2F}/complete`,
+      headers: RN_AS_NP,
+      payload: { encounterDate: "2026-06-15", ifVersion: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.[3]).toBe("2026-06-15");
+    // a malformed date never reaches the service
+    const bad = await app.inject({
+      method: "POST",
+      url: `/api/v1/face-to-face/${F2F}/complete`,
+      headers: RN_AS_NP,
+      payload: { encounterDate: "not-a-date", ifVersion: 1 },
+    });
+    expect(bad.statusCode).toBeGreaterThanOrEqual(400);
+    expect(seen).toHaveLength(1);
     await app.close();
   });
 

@@ -455,6 +455,24 @@ export interface PacketDiscussionFlag {
   readonly detail: string;
 }
 
+/**
+ * F-230 — the packet's EXTERNAL medication-history state (M12 §2.8 / §5.5 W-MR-05: "the M14 IDG packet shows
+ * this state explicitly"). Pulled at packet-build time through M12's org-explicit seam (M14's own spec builds
+ * the packet by seam reads; the F-101 rule), counts + instants only — never a drug name, never a sig.
+ *   • `not_pulled`     — no DoseSpot MedHx pull has ever been ingested for this patient (e.g. DoseSpot not
+ *                        enabled for the tenant). MUST NOT be rendered as "no external history".
+ *   • `none_available` — a pull WAS ingested and DoseSpot returned zero usable entries: the §5.5 edge, rendered
+ *                        "No external medication history available — clinician must collect history at bedside".
+ *   • `available`      — the latest pull returned `recordCount` entries (reconciled on the M12 worksheet).
+ */
+export interface PacketMedicationHistory {
+  readonly state: "not_pulled" | "none_available" | "available";
+  /** Entries from the LATEST pull (0 unless `available`). Zeroed on the Part 2 redacted read path. */
+  readonly recordCount: number;
+  /** The latest ingested pull's instant; `null` iff `not_pulled`. */
+  readonly lastPulledAt: IsoInstant | null;
+}
+
 /** The §2.4 D1 typed packet snapshot frozen into `idg_patient_packet.built_snapshot` on adjournment. */
 export interface PacketSnapshot {
   readonly schemaVersion: "2026-01-v1";
@@ -505,6 +523,9 @@ export interface PacketSnapshot {
     }>;
     readonly openSfvCount: number;
   } | null;
+  /** F-230 — M12 external medication history. `undefined` = a snapshot frozen before this field existed;
+   *  `null` = the seam was unbound/failed at build ("not captured"); otherwise see {@link PacketMedicationHistory}. */
+  readonly medicationHistory?: PacketMedicationHistory | null;
   readonly capProjection: {
     readonly status: "green" | "yellow" | "red";
     readonly projectedUsage: number | null;

@@ -11,19 +11,9 @@
 // standing — the reciprocal of F-102's own finding, one module downstream of the fix it landed.
 //
 // THE THIRD DECIDER, `decideSupplyFulfillmentIntake` (§7.1 — `m11.order.supply_fulfillment_requested`), IS
-// STILL NOT BOUND HERE (F-166, #248 re-checked, not fixed). The "no platform seam answers the serving
-// Location" framing that used to sit here was checked again rather than trusted and found STALE —
-// `AdmissionSummary.locationId` was already on the `getAdmissionStatusReader` projection
-// `../consumers/order-context.ts` calls for `admission`, unread; `../consumers/order-context.ts` and
-// `../consumers/m11-orders.ts` now read it and the dead `resolveServingLocation` port is gone. Fixing that
-// surfaced a DEEPER blocker underneath it: M21's D1 per-kind schemas (`@wardenx/supplies`) require fields
-// — an M21 `supply_item` uuid + HCPCS code for `dme`, a full street-address snapshot for `dme`/`supply`, a
-// per-medication `contents` array + `pharmacyDispatchMode` for `comfort_kit` — that M11's own order-data
-// contract cannot supply for ANY of the three sub-kinds (`dme`/`supply` are `contract_not_published`
-// unconstrained blobs; `comfort_kit`'s canonical M11 shape is `{kitSku, deploymentSite,
-// preferredDeliveryWindow?, notes?}`, none of which are those fields), and no published M5 seam exposes a
-// full street address either. A bound consumer would `ValidationError`-refuse essentially every real
-// delivery — see `scripts/outbox-deferred-consumers.ts`'s m21 group for the full finding.
+// BOUND IN `./m11-supply-fulfillment-intake.ts` (F-232, #248) for `dme`/`supply`, now that M11 publishes
+// `dme.v2`/`supply.v2` and M5 exposes `PatientAddressReader.primaryAddress` (the two gaps F-166/F-229 named).
+// `comfort_kit` settles there, unbound — see that file's header.
 //
 // WHY NOT `cancelSupplyRequest` / `M21WriteActor`. `routes/actor.ts`'s own doc comment is explicit: "the
 // §4.5.1 inbound cascades reach M21 through the outbox consumers, not through a route, and they attribute
@@ -74,7 +64,7 @@ export interface M21OrderCascadeDeps {
 }
 
 /** The one row this binding cares about, keyed on `sourceOrderId`. Null when no live request ever named
- *  this order (the ordinary case until the §7.1 intake consumer lands — see the file header). */
+ *  this order (no row was ever opened for it: a v1/open-blob or comfort_kit order settles at intake — see ./m11-supply-fulfillment-intake.ts). */
 async function loadTargetRow(
   tx: DbClient,
   organizationId: string,

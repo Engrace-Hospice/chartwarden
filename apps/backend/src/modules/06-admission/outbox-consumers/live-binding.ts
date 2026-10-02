@@ -60,6 +60,8 @@ const CW = schema.complianceWindows;
 
 /** External-signal (D15, severity `info`) windows give human triage 48h before overdue escalation. */
 const EXTERNAL_SIGNAL_WINDOW_HOURS = 48;
+/** M6 §4.8.4 — the medical director validates + cosigns an external death notice within 7 days. */
+const EXTERNAL_DEATH_COSIGN_DAYS = 7;
 
 /** Consumer-scope actor: no acting user (audit trigger maps `""` → NULL actor). */
 const APPLIER_SYSTEM_USER_ID = "";
@@ -318,6 +320,10 @@ export function createDrizzleM6ApplierGateway(
           reason: "death",
           dischargeDate: action.dischargeDate,
           narrative: externalDeathNarrative(payload.proposalId, action.sendingFacility),
+          // F-227 — stamps `source='hl7_external'` + `source_proposal_id` + `cosign_required` in the SAME
+          // transaction as the discharge row (M6 §4.8.4 step 2), and waives the pronouncing-certifier
+          // capture the HTTP route demands (the sending facility pronounced; the cosign attests).
+          externalSource: { proposalId: payload.proposalId },
         },
         payload.decidedByMembershipId,
       );
@@ -363,6 +369,59 @@ export function createDrizzleM6ApplierGateway(
             aggregateKind: "admission",
             aggregateId: action.admissionId,
           });
+        }
+        // F-227 (W-M6-31) — the parallel `external_discharge_notice` window prompting the medical director to
+        // validate the external death notice and cosign within 7 days. One open window per (admission, kind)
+        // (`cw_adm_kind_open_idx`): an already-open notice window is left as it is.
+        const [openNotice] = await tx
+          .select({ id: CW.id })
+          .from(CW)
+          .where(
+            and(
+              eq(CW.admissionId, action.admissionId),
+              eq(CW.windowKind, "external_discharge_notice"),
+              ne(CW.status, "closed"),
+            ),
+          )
+          .limit(1);
+        if (!openNotice) {
+          const opened = now();
+          const cosignDueAt = new Date(opened.getTime() + EXTERNAL_DEATH_COSIGN_DAYS * 86_400_000);
+          const [cw] = await tx
+            .insert(CW)
+            .values({
+              organizationId,
+              admissionId: action.admissionId,
+              windowKind: "external_discharge_notice",
+              severity: "info",
+              autoAcknowledge: false,
+              payload: {
+                proposalId: payload.proposalId,
+                dischargeEventId: result.id,
+                patientId: payload.matchedPatientId,
+                reason: "external_death_notice_pending_cosign",
+                sendingFacility: action.sendingFacility,
+              },
+              startsAt: opened,
+              mustCompleteBy: cosignDueAt,
+            })
+            .returning({ id: CW.id });
+          if (cw) {
+            await outbox.publish(tx, {
+              eventName: "m6.compliance.window.opened",
+              payload: {
+                complianceWindowId: cw.id,
+                admissionId: action.admissionId,
+                windowType: "external_discharge_notice",
+                dueAt: cosignDueAt.toISOString(),
+                severity: "info",
+                source: "m29_proposal_accept",
+              },
+              organizationId,
+              aggregateKind: "compliance_window",
+              aggregateId: cw.id,
+            });
+          }
         }
         await audit(tx, auditCtx(organizationId, payload), {
           eventType: "m6.applier.processed",

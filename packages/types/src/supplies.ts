@@ -157,7 +157,7 @@ export type SupplySkuClass = "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
 
 // ── §3.1 owned tables + the D13 audit denylist / retention class (M4 trigger arguments for M21-T02) ───
 
-/** The eleven tables M21 owns per the manifest `ownedTables`. */
+/** The twelve tables M21 owns per the manifest `ownedTables`. */
 export type M21TableName =
   | "supply_item"
   | "tenant_supply_item_extension"
@@ -169,7 +169,8 @@ export type M21TableName =
   | "comfort_kit_dispatch"
   | "comfort_kit_dispatched_content"
   | "comfort_kit_return"
-  | "comfort_kit_returned_content";
+  | "comfort_kit_returned_content"
+  | "supply_request_pharmacy_dispense";
 
 export const M21_TABLE_NAMES = [
   "supply_item",
@@ -183,6 +184,7 @@ export const M21_TABLE_NAMES = [
   "comfort_kit_dispatched_content",
   "comfort_kit_return",
   "comfort_kit_returned_content",
+  "supply_request_pharmacy_dispense",
 ] as const satisfies readonly M21TableName[];
 
 /**
@@ -212,6 +214,7 @@ export const M21_AUDIT_DENYLIST: { readonly [K in M21TableName]: readonly string
   comfort_kit_dispatched_content: [],
   comfort_kit_return: ["disposal_notes", "discrepancy_notes", "unreturnable_reason"],
   comfort_kit_returned_content: [],
+  supply_request_pharmacy_dispense: [],
 } as const;
 
 /** §3.1.11 — the ADR-0004 retention class each owned table's audit rows carry. The five kit / request
@@ -231,6 +234,7 @@ export const M21_AUDIT_RETENTION_CLASS: {
   comfort_kit_dispatched_content: "compliance",
   comfort_kit_return: "compliance",
   comfort_kit_returned_content: "compliance",
+  supply_request_pharmacy_dispense: "compliance",
 } as const;
 
 // ── §4.5.2 emitted outbox events ─────────────────────────────────────────────────────────────────────

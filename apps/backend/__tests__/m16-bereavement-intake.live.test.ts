@@ -338,15 +338,14 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     expect(plans[0].location_id).toBe(locationOf[ORG_A]);
   });
 
-  it("stamps NO external-source provenance — M6 records every death as internal", async () => {
+  it("stamps NO external-source provenance on an INTERNAL (clinician-recorded) death", async () => {
     const { admissionId } = await decedent(ORG_A, "2026-04-13");
     await dispatcher.tick();
 
     const plans = await plansFor(admissionId);
     expect(plans).toHaveLength(1);
-    // D16/D18 — `discharge_event` models no source column, so `DeathDischargeReader` answers
-    // `internal_clinician_recorded` for every decedent and no plan can carry a cosign gate. That is why
-    // `decideCosignReceipt` stays registered as deferred rather than bound: there is nothing to release.
+    // D16/D18 — an internal death is `internal_clinician_recorded` and never gated. (F-227: an HL7-external
+    // death now carries real provenance + a cosign gate — see m6-m16-external-death-cosign.live.test.ts.)
     expect(plans[0].external_source_metadata).toBeNull();
   });
 

@@ -13,11 +13,12 @@
 // here. The query ALSO pins a belt-and-suspenders `organization_id = $org` predicate on top of the RLS
 // envelope (the org param is the authoritative scope; RLS is the second wall).
 //
-// §4.11 KNOWN LIMITATION: M6's frozen `discharge_event` models only the death fact — it has no source / cosign
-// columns — so this reader returns `source='internal_clinician_recorded'` with an undefined `cosignStatus` for
-// every decedent. The HVLDL calculator's external-source subset therefore stays empty and no Risk-Register flag
-// fires; HVLDL still computes correctly (the numerator/denominator are unaffected). The contract carries the
-// fields so the impl can populate them once M6 models HL7-external death intake.
+// F-227 (#248) — `discharge_event` now models the HL7-external intake (migration 0300: `source`,
+// `source_proposal_id`, `cosign_required`, `cosigned_at`, `medical_director_membership_id`), so the reader
+// projects REAL provenance: `source='hl7_external'` for an M29-accepted death, with `cosignStatus` `pending`
+// until the medical director attests (`cosigned` after). Internal deaths keep `source='internal_clinician_recorded'`
+// and an undefined `cosignStatus`. Consequence for M30: the HVLDL external-source subset is no longer always
+// empty and its pending-cosign Risk-Register flag can now fire.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeathDischargeReader, DeathDischargeRow } from "@wardenx/types";
@@ -25,9 +26,6 @@ import { and, eq, gte, lt } from "drizzle-orm";
 
 const DE = schema.dischargeEvents;
 const ADM = schema.admissions;
-
-/** The constant `source` every decedent carries (§4.11 limitation: no external-source column on `discharge_event`). */
-const INTERNAL_SOURCE = "internal_clinician_recorded" as const;
 
 /**
  * The `app.user_id` the reader's `withOrgContext` envelope carries — the empty-string system sentinel the M4
@@ -44,7 +42,7 @@ const iso = (d: Date | string): string =>
  * The production {@link DeathDischargeReader} over M6's `discharge_event` / `admission` tables. Closes over the
  * pooled `DbClient`; the read opens its OWN per-org `withOrgContext` envelope (sets `app.org_id` for RLS on this
  * connection) with a belt-and-suspenders `organization_id = $org` predicate. Maps each death row to a
- * {@link DeathDischargeRow} with the §4.11-limited constant source and an undefined cosign status.
+ * {@link DeathDischargeRow} carrying the real source + cosign provenance (F-227).
  */
 export function createDeathDischargeReader(db: DbClient): DeathDischargeReader {
   return {
@@ -58,6 +56,10 @@ export function createDeathDischargeReader(db: DbClient): DeathDischargeReader {
               patientId: ADM.patientId,
               admissionId: DE.admissionId,
               deathAt: DE.deathAt,
+              source: DE.source,
+              sourceProposalId: DE.sourceProposalId,
+              cosignedAt: DE.cosignedAt,
+              medicalDirectorMembershipId: DE.medicalDirectorMembershipId,
             })
             .from(DE)
             .innerJoin(ADM, eq(DE.admissionId, ADM.id))
@@ -78,7 +80,20 @@ export function createDeathDischargeReader(db: DbClient): DeathDischargeReader {
               patientId: r.patientId,
               admissionId: r.admissionId,
               deathAt: iso(r.deathAt),
-              source: INTERNAL_SOURCE,
+              source: r.source,
+              ...(r.source === "hl7_external"
+                ? {
+                    cosignStatus:
+                      r.cosignedAt !== null ? ("cosigned" as const) : ("pending" as const),
+                    ...(r.sourceProposalId !== null
+                      ? { sourceProposalId: r.sourceProposalId }
+                      : {}),
+                    ...(r.cosignedAt !== null ? { cosignedAt: iso(r.cosignedAt) } : {}),
+                    ...(r.medicalDirectorMembershipId !== null
+                      ? { medicalDirectorMembershipId: r.medicalDirectorMembershipId }
+                      : {}),
+                  }
+                : {}),
             });
           }
           return out;

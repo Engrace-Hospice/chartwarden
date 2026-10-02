@@ -379,6 +379,13 @@ export interface DischargeInput {
   readonly forCauseReason?: string;
   /** R-DC-01 — required when `reason === 'death'` (`checkDischargeNarrative` enforces it). */
   readonly deathCertifierId?: string;
+  /**
+   * F-227 (#248) — set ONLY by the M29 proposal applier (`recordExternalDeath`, W-M6-31): the death was
+   * reported by an external facility, so R-DC-01's pronouncing-certifier capture does not apply at intake
+   * (M6 §4.8.4's recordExternalDeath inserts directly) and the row is stamped `hl7_external` +
+   * `cosign_required` with the M29 proposal it came from. Never reachable from the HTTP route body.
+   */
+  readonly externalSource?: { readonly proposalId: string };
 }
 
 /** §4.2.7 route 37 body (TransferOutSchema) — the receiving hospice's identity + the transfer narrative. */
@@ -884,7 +891,13 @@ export interface AdmissionRouteService {
   // F2F (routes 28–32)
   scheduleF2f(organizationId: string, input: F2fScheduleInput): Promise<MutationResult>;
   getF2f(organizationId: string, id: string): Promise<SummaryRow | null>;
-  completeF2f(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
+  /** F-226 - `encounterDate` (YYYY-MM-DD) is the clinician-reported encounter date; it is validated and the R-F2F-02 window is computed from it. */
+  completeF2f(
+    organizationId: string,
+    id: string,
+    ifVersion: number,
+    encounterDate: string,
+  ): Promise<MutationResult>;
   attestF2f(
     organizationId: string,
     id: string,
@@ -2198,7 +2211,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "f2f");
       return rec ? summary(rec) : null;
     },
-    async completeF2f(organizationId, id, ifVersion) {
+    async completeF2f(organizationId, id, ifVersion, encounterDate) {
+      void encounterDate;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
       return transition(rec, "completed", ifVersion);
     },

@@ -57,6 +57,7 @@ import {
   planStandingSpawn,
   planVerbalExpiry,
   resolveCosignRequirement,
+  resolveOrderKindVersion,
   signerEligible,
   transitionOrder,
   validateOrderData,
@@ -585,6 +586,16 @@ export function createDbOrderBackend(
       throw new NotFoundError(
         `discipline '${args.drafterDiscipline}' may not author a '${args.kind}' order`,
       );
+    // F-232 — a later payload contract (`dme.v2`/`supply.v2`) is opt-in per order; absent = `<kind>.v1`.
+    const kindVersion = resolveOrderKindVersion(args.kind, args.kindVersion);
+    if (kindVersion === null)
+      throw new ValidationError("Unsupported order payload version", [
+        {
+          field: "kindVersion",
+          code: "INVALID",
+          message: `'${args.kindVersion ?? ""}' is not a supported ${args.kind} payload version.`,
+        },
+      ]);
     const isLab = args.kind === "lab";
     const row = firstOrThrow(
       await tx
@@ -594,7 +605,7 @@ export function createDbOrderBackend(
           patientId: args.patientId,
           admissionId: args.admissionId,
           kind: args.kind,
-          kindVersion: `${args.kind}.v1`,
+          kindVersion,
           data: args.data ?? {},
           priority: args.priority ?? "routine",
           status: "draft",
@@ -1263,7 +1274,11 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
-        const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
+        const findings = validateOrderData(
+          args.kind,
+          resolveOrderKindVersion(args.kind, args.kindVersion) ?? "unsupported",
+          args.data,
+        );
         if (findings.length)
           throw new ValidationError(
             "Corrected order clinical details are invalid",

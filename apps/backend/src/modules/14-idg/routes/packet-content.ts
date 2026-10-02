@@ -123,6 +123,20 @@ export interface PacketContentView {
       readonly firedAt: string;
     }>;
   };
+  /**
+   * F-230 — the M12 external (DoseSpot/Surescripts MedHx) medication-history STATE, shown explicitly (M12 §5.5).
+   * `captured: false` ⇒ the build did not capture it (seam unbound/failed, or a packet frozen before F-230) —
+   * NOT "no history". `state: "not_pulled"` ⇒ no pull was ever ingested (e.g. DoseSpot not enabled) — also not
+   * "no history". Only `none_available` (a pull ran and returned zero entries) carries the bedside-collection
+   * message. `recordCount` is withheld (null) under W-SUD-01 (it can include SUD-treatment fills).
+   */
+  readonly externalMedicationHistory: {
+    readonly captured: boolean;
+    readonly state: "not_pulled" | "none_available" | "available" | null;
+    readonly recordCount: number | null;
+    readonly lastPulledAt: string | null;
+    readonly message: string | null;
+  };
   readonly orderChanges: ReadonlyArray<{
     readonly orderId: string;
     readonly orderKind: string;
@@ -216,6 +230,35 @@ function readSnapshot(raw: unknown): PacketSnapshot | null {
     hopeContext: isObject(raw.hopeContext)
       ? (raw.hopeContext as PacketSnapshot["hopeContext"])
       : null,
+    medicationHistory: isObject(raw.medicationHistory)
+      ? (raw.medicationHistory as unknown as PacketSnapshot["medicationHistory"])
+      : null,
+  };
+}
+
+const NO_EXTERNAL_HISTORY_MESSAGE =
+  "No external medication history available — clinician must collect history at bedside";
+const EXTERNAL_HISTORY_NOT_PULLED_MESSAGE = "External medication history has not been pulled";
+
+/** F-230 — project the snapshot's `medicationHistory` slot (see the `externalMedicationHistory` doc). */
+export function externalMedicationHistoryView(
+  mh: PacketSnapshot["medicationHistory"] | null,
+  redact: boolean,
+): PacketContentView["externalMedicationHistory"] {
+  if (!mh) {
+    return { captured: false, state: null, recordCount: null, lastPulledAt: null, message: null };
+  }
+  return {
+    captured: true,
+    state: mh.state,
+    recordCount: redact ? null : mh.recordCount,
+    lastPulledAt: mh.lastPulledAt,
+    message:
+      mh.state === "none_available"
+        ? NO_EXTERNAL_HISTORY_MESSAGE
+        : mh.state === "not_pulled"
+          ? EXTERNAL_HISTORY_NOT_PULLED_MESSAGE
+          : null,
   };
 }
 
@@ -475,6 +518,10 @@ export async function mapPacketContent(
         firedAt: h.firedAt,
       })),
     },
+    externalMedicationHistory: externalMedicationHistoryView(
+      snap.medicationHistory ?? null,
+      redact,
+    ),
     orderChanges: s.ordersChanged.map((o) => ({
       orderId: o.orderId,
       orderKind: o.orderKind,

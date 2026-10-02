@@ -294,7 +294,7 @@ describe("M6-T12 §7.4 — conduct & attest F2F (W-F2F)", () => {
       clinicianRole: "np",
       scheduledDate: "2026-09-01",
     });
-    const done = await svc.completeF2f(ORG, f2f.id, f2f.version);
+    const done = await svc.completeF2f(ORG, f2f.id, f2f.version, "2026-08-30");
     expect(done.state).toBe("completed");
     const att = await svc.attestF2f(ORG, f2f.id, done.version, "np_1");
     expect(att.state).toBe("attested");

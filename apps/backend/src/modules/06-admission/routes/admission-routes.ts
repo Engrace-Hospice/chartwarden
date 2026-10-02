@@ -930,7 +930,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(F2fCompleteSchema, request.body);
-      return service.completeF2f(organizationId, idOf(request), body.ifVersion);
+      return service.completeF2f(organizationId, idOf(request), body.ifVersion, body.encounterDate);
     },
   );
 

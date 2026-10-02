@@ -230,7 +230,7 @@ describe.skipIf(!DB_URL)(
       });
     });
 
-    it("has a real payload schema for m6.discharge.death requiring deathCertifierId", () => {
+    it("has a real payload schema for m6.discharge.death carrying an OPTIONAL deathCertifierId (F-227: absent for external deaths)", () => {
       const schema = M6_OUTBOX_EVENTS.find(
         (e) => e.eventName === "m6.discharge.death",
       )?.payloadSchema;
@@ -241,7 +241,15 @@ describe.skipIf(!DB_URL)(
           admissionId: "y",
           dischargeDate: "2050-01-01",
         }),
-      ).toBe(false); // deathCertifierId missing
+      ).toBe(true); // F-227 — optional: an external (M29) death names no pronouncing physician
+      expect(
+        Value.Check(schema as never, {
+          dischargeEventId: "x",
+          admissionId: "y",
+          dischargeDate: "2050-01-01",
+          deathCertifierId: "",
+        }),
+      ).toBe(false); // but never an empty string
       expect(
         Value.Check(schema as never, {
           dischargeEventId: "x",
@@ -321,6 +329,39 @@ describe.skipIf(!DB_URL)(
         organizationId: ORG_A,
         bodyReleaseId: br[0].id,
       });
+    });
+
+    it("F-227 — an EXTERNAL death (no deathCertifierId) still moves the admission to deceased but opens NO body release", async () => {
+      const ipuId = "cccccccc-0000-4000-8000-000000000227";
+      const m6AdmissionId = "cccccccc-0000-4000-8000-000000000228";
+      const patientId = "cccccccc-0000-4000-8000-000000000229";
+      const dischargeEventId = "cccccccc-0000-4000-8000-00000000022a";
+      const bedId = await seedOccupiedBed(ORG_A, unitA, "199");
+      await seedAdmission({
+        id: ipuId,
+        organizationId: ORG_A,
+        unitId: unitA,
+        patientId,
+        admissionId: m6AdmissionId,
+        kind: "gip",
+        state: "active",
+        bedId,
+      });
+      await consumer.handle({
+        id: "bbbbbbbb-0000-4000-8000-00000000022b",
+        organizationId: ORG_A,
+        payload: {
+          dischargeEventId,
+          admissionId: m6AdmissionId,
+          dischargeDate: "2050-03-05",
+          source: "m29_proposal_accept",
+        },
+      });
+      const admission = await admissionRow(ipuId);
+      expect(admission?.state).toBe("deceased");
+      expect(admission?.death_event_id).toBe(dischargeEventId);
+      // the NOT NULL pronouncing physician is unknown — nothing is fabricated
+      expect(await bodyReleaseRows(ipuId)).toHaveLength(0);
     });
 
     it("is a silent no-op when no open ipu_admission matches the M6 admission id", async () => {

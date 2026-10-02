@@ -242,6 +242,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
         triggeringAssessmentId: body.triggeringAssessmentId,
         triggeringHopeAssessmentId: body.triggeringHopeAssessmentId,
         replacesOrderId: body.replacesOrderId,
+        kindVersion: body.kindVersion,
       },
       await detailActorOf(request),
     );
@@ -430,6 +431,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
           sourceEncounterId: body.sourceEncounterId,
           triggeringAssessmentId: body.triggeringAssessmentId,
           triggeringHopeAssessmentId: body.triggeringHopeAssessmentId,
+          kindVersion: body.kindVersion,
         },
         await detailActorOf(request),
       );

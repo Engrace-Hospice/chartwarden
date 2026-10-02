@@ -261,6 +261,9 @@ jobs:
           # (dosespot_sync_queue) draining the six m5.patient.*/m6.{admission.activated,cti.signed}
           # triggers.
           - { name: "M12 sync triggers", scripts: "test:m12:sync-triggers:live" }
+          # F-230 (#248) — OUR side of the DoseSpot vendor boundary (MedHx ingest + `POST /webhooks/dosespot`
+          # dispense path + the M14 slot's seam), against a clearly-labelled vendor TEST DOUBLE.
+          - { name: "M12 vendor boundary", scripts: "test:m12:vendor-boundary:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
@@ -558,6 +561,8 @@ jobs:
           # F-171 (#248) — the real §4.3 M5 direct patient-merge write path: POST /patients/:id/merge,
           # field resolution, satellite-table preservation, m5.patient.merged emission.
           - { name: "M5 patient merge", scripts: "test:m5:patient-merge:live" }
+          # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
+          - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
@@ -711,11 +716,16 @@ jobs:
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }
           - { name: "M6 F2F/CTI adequacy gate", scripts: "test:m6:adequacy-gate:live" }
+          # F-226 (#248) — the F2F window from the REAL encounter date vs the period's expected start.
+          - { name: "M6 F2F real dates", scripts: "test:m6:f2f-real-dates:live" }
           # F-223 (#248) — a signed recert order opens the next PENDING election period (gate stays at activation).
           - { name: "M6 recertification signed", scripts: "test:m6:recertification-signed:live" }
           # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
           # close-out), both already live-emitted by the M6/M11 discharge cascade above.
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }
+          # F-232 (#248) — the §7.1 fulfillment intake (`m11.order.supply_fulfillment_requested`, dme/supply),
+          # the third M11 decider; dme.v2/supply.v2 + the M5 address pull.
+          - { name: "M21 supply-fulfillment intake", scripts: "test:m21:supply-fulfillment-intake:live" }
           # F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
           - { name: "M21 comfort-kit cascade", scripts: "test:m21:comfort-kit-cascade:live" }
           # F-161 (#248) — §2.1 comfort-kit replenishment intake, the third of the four
@@ -731,6 +741,9 @@ jobs:
               name: "M21 caregiver-signature capture",
               scripts: "test:m21:caregiver-signature:live",
             }
+          # F-233 (#248) — M21's Option-B consumer of `m12.medication_order.dispensed_at_pharmacy`
+          # (records "dispensed at T" on the correlated comfort-kit request; creates no dispatch).
+          - { name: "M21 pharmacy dispense fact", scripts: "test:m21:pharmacy-dispense:live" }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
@@ -738,6 +751,7 @@ jobs:
           # F-171 (#248) — the real §7.1/§7.2 T-24h packet-build worker (schedule-materialise + packets-cron).
           - { name: "M14 packet build", scripts: "test:m14:packet-build:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
+          - { name: "M6/M16 external death cosign", scripts: "test:m6-m16:external-death-cosign:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
           # F-171 (#248) — the consent-type-catalog seed rows that unblock the already-built M2/M16/M31
           # m39.consent.revoked cascades end to end (portal_access, bereavement_outreach_consent).

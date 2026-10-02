@@ -1,7 +1,13 @@
 // Dev-only visual harness (mock ApiClient, no backend) for the patient Clinical tab + M14 IDG screens. Not a build entry: vite.config.ts builds index.html only. Open via `vite` at /clinical-preview.html?idg=<live|detail|minutes|packet|schedule|actions>.
 import "@fontsource-variable/inter";
 import "./index.css";
-import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import {
+  type ApiClient,
+  ApiClientProvider,
+  FeatureFlagProvider,
+  SystemStatusProvider,
+  ToastProvider,
+} from "@wardenx/ui";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { PatientChart } from "./modules/05-patient/patient-chart";
@@ -20,6 +26,8 @@ import { DocumentExplorer } from "./modules/22-documents/document-explorer";
 import { PatientDocuments } from "./modules/22-documents/patient-documents";
 import { ArDashboard } from "./modules/23-billing-medicare/ar-dashboard";
 import { PatientClaims } from "./modules/23-billing-medicare/patient-claims";
+import { AppLayout } from "./shell/layout";
+import { PRIMARY_NAV } from "./shell/primary-nav";
 import { RoleHome } from "./shell/role-home";
 import { SessionProvider } from "./shell/session";
 
@@ -1705,6 +1713,14 @@ const idgPacketBody = (pid: string) => {
             { hopeAssessmentId: idgUuid(1120), triggerKind: "pain_severe", firedAt: iso(-40) },
           ],
         },
+        // Preview fixture only — a real pull is ingested by M12's MedHx worker (F-230).
+        externalMedicationHistory: {
+          captured: true,
+          state: "available",
+          recordCount: sud ? null : 4,
+          lastPulledAt: iso(-26),
+          message: null,
+        },
         orderChanges: [
           {
             orderId: idgUuid(1130),
@@ -1801,6 +1817,13 @@ const idgPacketBody = (pid: string) => {
           upcoming: [],
           openSfvCount: null,
           symptomImpactTriggers: [],
+        },
+        externalMedicationHistory: {
+          captured: false,
+          state: null,
+          recordCount: null,
+          lastPulledAt: null,
+          message: null,
         },
         orderChanges: [],
         medicationChanges: [],
@@ -2177,6 +2200,17 @@ const homeScreens = [
   ["documents.explorer", "/documents", "Upload Document"],
   ["reporting.catalog", "/reports", "Run Reports"],
 ].map(([id, path, title]) => ({ id, path, title, screen: () => null }));
+// One stand-in screen per curated nav entry, so the preview sidebar lists exactly what the app's does.
+const previewNavScreens = PRIMARY_NAV.flatMap((section) =>
+  section.entries
+    .filter((entry) => entry.key !== "home")
+    .map((entry) => ({
+      id: `nav.${entry.key}`,
+      path: entry.to,
+      title: entry.label,
+      screen: () => null,
+    })),
+);
 if (isIdg) {
   createRoot(document.getElementById("root")!).render(
     <SessionProvider
@@ -2195,10 +2229,24 @@ if (isIdg) {
       <MemoryRouter initialEntries={[idgEntry[idgScreen]!]}>
         <ApiClientProvider client={client}>
           <div style={{ background: "var(--color-background)", minHeight: "100vh" }}>
+            {/* The real app frame (sidebar + top bar + the `.wx-main` scroll container), so the packet
+                reads — and its right rail sticks — exactly as it does in the app. */}
             <Routes>
-              {idgRoutes.map((path, i) => (
-                <Route key={path} path={path} element={idgEls[i]} />
-              ))}
+              <Route
+                element={
+                  <FeatureFlagProvider flags={{}}>
+                    <SystemStatusProvider components={[]}>
+                      <ToastProvider>
+                        <AppLayout screens={previewNavScreens as never} />
+                      </ToastProvider>
+                    </SystemStatusProvider>
+                  </FeatureFlagProvider>
+                }
+              >
+                {idgRoutes.map((path, i) => (
+                  <Route key={path} path={path} element={idgEls[i]} />
+                ))}
+              </Route>
             </Routes>
           </div>
         </ApiClientProvider>

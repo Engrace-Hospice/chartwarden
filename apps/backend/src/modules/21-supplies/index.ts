@@ -95,6 +95,15 @@ export {
   buildM21OrderDiscontinuedConsumer,
   buildM21SupplyCancellationConsumer,
 } from "./outbox-consumers/m11-order-cascade";
+// F-232 (#248) — the §7.1 fulfillment intake (`m11.order.supply_fulfillment_requested`), the third M11 decider.
+export {
+  M21_SUPPLY_FULFILLMENT_INTAKE_CONSUMER,
+  type M21SupplyFulfillmentIntakeDeps,
+  type SupplyIntakeOutcome,
+  type SupplyIntakeSettleReason,
+  buildM21SupplyFulfillmentIntakeConsumer,
+  runSupplyFulfillmentIntake,
+} from "./outbox-consumers/m11-supply-fulfillment-intake";
 // F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
 // F-172 (#248) — the §4.5.1 controlled-substance re-emit joins them.
 export {
@@ -109,3 +118,12 @@ export {
   type M21ComfortKitReplenishmentDeps,
   buildM21ComfortKitReplenishmentIntakeConsumer,
 } from "./outbox-consumers/m13-comfort-kit-replenishment";
+// F-233 (#248) — `m12.medication_order.dispensed_at_pharmacy` -> `supply_request_pharmacy_dispense` fact
+// (Option B: correlates by `contents[].medicationOrderId`; creates no dispatch).
+export {
+  M12_DISPENSED_AT_PHARMACY_EVENT,
+  M21_PHARMACY_DISPENSE_CONSUMER_NAME,
+  NO_CORRELATING_REQUEST_REASON,
+  type M21PharmacyDispenseDeps,
+  buildM21PharmacyDispenseConsumer,
+} from "./outbox-consumers/m12-pharmacy-dispense";

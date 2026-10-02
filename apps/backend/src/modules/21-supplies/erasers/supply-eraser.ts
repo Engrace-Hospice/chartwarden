@@ -113,6 +113,7 @@ export async function eraseSupplyRecord(
 /** Build the Drizzle-backed store. Every statement runs under the destruction cert's org context. */
 export function buildDrizzleSupplyEraseStore(db: DbClient): SupplyEraseStore {
   const REQUEST = schema.supplyRequest;
+  const DISPENSE_FACT = schema.supplyRequestPharmacyDispense;
   const DISPATCH = schema.comfortKitDispatch;
   const DISPATCHED = schema.comfortKitDispatchedContent;
   const RETURN = schema.comfortKitReturn;
@@ -142,6 +143,9 @@ export function buildDrizzleSupplyEraseStore(db: DbClient): SupplyEraseStore {
             cancellationReason: null,
           })
           .where(eq(REQUEST.patientId, patientId));
+        // F-233 — the pharmacy-dispense facts reference the patient's requests (and carry `patient_id`);
+        // they go with them. Unmatched (`no_correlating_request`) rows name no patient and stay.
+        await tx.delete(DISPENSE_FACT).where(eq(DISPENSE_FACT.patientId, patientId));
         const deleted = await tx
           .delete(REQUEST)
           .where(eq(REQUEST.patientId, patientId))

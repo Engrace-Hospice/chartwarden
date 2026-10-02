@@ -244,6 +244,9 @@ export const patientCaregiverReaderDenyStub: PatientCaregiverReader = {
  * here does not change that posture — it only removes the unregistered-name `SeamError` path).
  */
 export const patientAddressReaderDenyStub: PatientAddressReader = {
+  primaryAddress() {
+    throw new NotImplementedError("PatientAddressReader");
+  },
   primaryResidenceState() {
     throw new NotImplementedError("PatientAddressReader");
   },

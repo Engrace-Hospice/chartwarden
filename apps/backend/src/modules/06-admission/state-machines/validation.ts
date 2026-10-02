@@ -173,13 +173,25 @@ export function checkF2fPerformer(input: {
 /**
  * R-F2F-02: encounter date must be in [period_start-30d, period_start-1d] unless overridden. Returns
  * whether the encounter is `within_window` (the machine persists it; an out-of-window date with no
- * override raises `F2F_OUTSIDE_WINDOW`).
+ * override raises `F2F_OUTSIDE_WINDOW`). F-226: `periodStart` is the period's EXPECTED start; `null` means
+ * it cannot be derived yet - the window is then unverifiable, so without an override it is refused
+ * (`F2F_PERIOD_START_UNKNOWN`) and with one `withinWindow` is `null` (unverified; fail closed downstream).
+ * Same-day (daysBefore 0) and later are outside the window (R-F2F-02 "strict prior").
  */
 export function checkF2fWindow(input: {
-  periodStart: LocalDate;
+  periodStart: LocalDate | null;
   encounterDate: LocalDate;
   hasOverride: boolean;
-}): { withinWindow: boolean } {
+}): { withinWindow: boolean | null } {
+  if (input.periodStart === null) {
+    if (!input.hasOverride) {
+      throw new AdmissionStateError(
+        "F2F_PERIOD_START_UNKNOWN",
+        "The benefit period's start date cannot be determined yet (the preceding period has no scheduled end), so the F2F prior-to window cannot be verified",
+      );
+    }
+    return { withinWindow: null };
+  }
   const daysBefore = daysBetween(input.encounterDate, input.periodStart);
   const withinWindow =
     daysBefore >= F2F_PRIOR_WINDOW.latestDaysBefore &&

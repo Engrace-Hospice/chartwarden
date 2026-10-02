@@ -104,6 +104,16 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "HMAC over the raw body, verified against the endpoint's webhook secret before the payload is believed (M35 webhooks.routes.ts).",
   },
+  "x-dosespot-signature": {
+    classification: "verified",
+    reason:
+      "HMAC-SHA256 of the raw body, constant-time compared against the tenant's webhook secret before the payload is believed (M12 webhooks/ingest.ts -> @wardenx/dosespot verifyWebhookEnvelope). Scheme per M12 spec 7.4; NOT yet checked against a real DoseSpot delivery (F-230).",
+  },
+  "x-dosespot-timestamp": {
+    classification: "not-authorization",
+    reason:
+      "Replay-window freshness (+-5 min) only; authorization is the HMAC above plus the (org, event id) dedup key. Note the scheme does not sign the timestamp.",
+  },
   "x-witness-attestation": {
     classification: "verified",
     reason:

@@ -364,6 +364,9 @@ import {
   createDrizzleMedHxFetchEnqueuePort,
   createDrizzleMedicationOrderEraseStore,
   createDrizzlePatientSyncEnqueuePort,
+  createEnvWebhookSecretResolver,
+  createWebhookBodyCipher,
+  idgMedicationHistoryForOrg,
   medicationOrderPatientAndDrugForOrg,
   medicationOrderScheduleContextForOrg,
   mountDoseSpotRoutes,
@@ -372,6 +375,7 @@ import {
   registerDoseSpotRoutes,
   registerDoseSpotSeams,
   registerDoseSpotSyncQueueWorker,
+  registerDoseSpotWebhookRoute,
   scheduleDoseSpotSyncQueueDrain,
   wireM12Tenancy,
 } from "./modules/12-dosespot/index";
@@ -441,6 +445,7 @@ import {
   buildM16BereavementIntakeConsumer,
   buildM16ConsentRevokedConsumer,
   buildM16ConsentSignedConsumer,
+  buildM16DischargeCosignedConsumer,
   buildM16DischargeDeathSecondaryConsumer,
   buildM16IdgDecisionConsumer,
   buildM16PatientOptOutChangedConsumer,
@@ -554,7 +559,9 @@ import {
   buildM21ComfortKitReturnRequiredConsumer,
   buildM21DocumentBackrefConsumer,
   buildM21OrderDiscontinuedConsumer,
+  buildM21PharmacyDispenseConsumer,
   buildM21SupplyCancellationConsumer,
+  buildM21SupplyFulfillmentIntakeConsumer,
   decideDispatcherEligible,
   denyStubSuppliesAbacResolver,
   mountM21Routes,
@@ -3194,6 +3201,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher),
           });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
+          // F-230 (#248) — the public `POST /webhooks/dosespot` (HMAC + replay window + dedup + DEK-encrypted receipt;
+          // Dispensed/PickedUp -> `medication_order_dispense` + `m12.medication_order.dispensed_at_pharmacy`).
+          // FAIL-CLOSED: with no `DOSESPOT_WEBHOOK_SECRETS` bound (the default — no DoseSpot credentials exist)
+          // the route answers 503 to everything and logs one warning; it never verifies against a default.
+          registerDoseSpotWebhookRoute(app, {
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+            secrets: createEnvWebhookSecretResolver(),
+            cipher: createWebhookBodyCipher(getTenantKeyProvider()),
+          });
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher, {
             // M14 read enrichment — org-explicit BATCHED seams bound as locally-declared ports (M14 imports no M5/M6 code):
@@ -5187,6 +5204,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         hopeContextForOrg: (organizationId, patientIds) =>
           idgHopeContextForOrg(dbHandle.db, organizationId, patientIds),
       },
+      // F-230 `medicationHistory` — M12's org-explicit batched external-medication-history STATE (the seam-pull
+      // binding of `m14 <- m12.medication_history_pulled`; reads the ingest ledger, counts/instants only).
+      medicationHistory: {
+        medicationHistoryForOrg: (organizationId, patientIds) =>
+          idgMedicationHistoryForOrg(dbHandle.db, organizationId, patientIds),
+      },
       // The packet PDF's org/location header + named carry-forward assignees (M1 / M2 org-explicit seams; the
       // worker has no request, so both take the org id explicitly and open their own `withOrgContext`).
       siteDisplay: {
@@ -5618,6 +5641,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-159 (#248) — the §4.5 post-death-grant handler: confirms a proposed bereaved contact onto
           // the roster once M39 signs the exact bereavement-outreach consent requested for them.
           buildM16ConsentSignedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // F-227 (#248) — the D18 external-source gate release: an `m6.discharge.cosigned` that names a
+          // `sourceProposalId` flips the matching plan's `cosignStatus` to `cosigned` and unlocks the
+          // counselor's first contact. A for-cause cosign (no source proposal) is a no-op here.
+          buildM16DischargeCosignedConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
           }),
@@ -6306,10 +6336,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M21-T05 service layer" — the service layer landed, nothing ever bound them). Both events are
           // ALREADY emitted in production by the M11 discharge cascade (F-102) — every death/discharge on
           // an admission with an open supply_request has been cancelling the M11 order while leaving the
-          // DME rental or comfort-kit request standing. The THIRD decider (`decideSupplyFulfillmentIntake`)
-          // stays unbound: its own resolver says no platform seam answers "which Location serves this
-          // patient", and `supply_request.location_id` is NOT NULL — see the file header.
+          // DME rental or comfort-kit request standing.
           buildM21SupplyCancellationConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          // F-232 (#248) — the THIRD decider, `decideSupplyFulfillmentIntake` (§7.1): a signed `dme`/`supply`
+          // order (`dme.v2`/`supply.v2`) now opens a `supply_request`, pulling the delivery address through
+          // M5's `PatientAddressReader.primaryAddress` at consume time (never on the outbox). `comfort_kit`
+          // settles, unbound — see the file header.
+          buildM21SupplyFulfillmentIntakeConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           buildM21OrderDiscontinuedConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           // F-153 (#248) — M13's §2.5 deployment-ack link (resolved by patient+admission, since the
           // whole point of the ack is that the link does not exist yet) and §2.6 return-required
@@ -6323,6 +6356,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m21OutboxPublisher,
           }),
+          // F-233 (#248) — `m12.medication_order.dispensed_at_pharmacy` (Option B): records "dispensed at T"
+          // on the correlated comfort-kit request (by `contents[].medicationOrderId`); creates no dispatch.
+          buildM21PharmacyDispenseConsumer({ db: dbHandle.db }),
           // F-172 (#248) — §4.5.1 controlled-substance re-emit, the fourth and last of the
           // `consumers/m13-comfort-kit.ts` deciders. Joins M13's bedside discrepancy signal to M21's
           // dispatch/return custody chain via the `returnId` M13's payload now carries.

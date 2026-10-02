@@ -74,6 +74,13 @@ const content = (over: Partial<PacketContent> = {}): PacketContent => ({
   signedEncounters: [],
   assessmentChanges: [],
   hopeTimepoints: { captured: true, upcoming: [], openSfvCount: 2, symptomImpactTriggers: [] },
+  externalMedicationHistory: {
+    captured: true,
+    state: "none_available",
+    recordCount: 0,
+    lastPulledAt: "2026-09-29T12:00:00.000Z",
+    message: "No external medication history available — clinician must collect history at bedside",
+  },
   orderChanges: [],
   medicationChanges: [],
   flaggedEvents: [],
@@ -158,6 +165,53 @@ describe("packet content", () => {
       /not captured by this build/,
     );
     expect(screen.queryByText("No upcoming timepoints recorded.")).toBeNull();
+  });
+
+  it("F-230: the external medication-history state is explicit — only a real zero-entry pull says 'none'", () => {
+    const who = (id: string) => id;
+    const hist = (h: Partial<PacketContent["externalMedicationHistory"]>) =>
+      content({
+        externalMedicationHistory: {
+          captured: true,
+          state: "none_available",
+          recordCount: 0,
+          lastPulledAt: "2026-09-29T12:00:00.000Z",
+          message: null,
+          ...h,
+        },
+      });
+    const { unmount } = render(<PacketChanges content={content()} who={who} />);
+    expect(screen.getByTestId("ext-med-history-none").textContent).toMatch(
+      /No external medication history available/,
+    );
+    unmount();
+    const a = render(
+      <PacketChanges
+        content={hist({
+          state: "not_pulled",
+          recordCount: 0,
+          lastPulledAt: null,
+          message: "External medication history has not been pulled",
+        })}
+        who={who}
+      />,
+    );
+    expect(screen.getByTestId("ext-med-history-not-pulled").textContent).toMatch(
+      /has not been pulled/,
+    );
+    expect(screen.queryByText(/No external medication history available/)).toBeNull();
+    a.unmount();
+    const b = render(
+      <PacketChanges
+        content={hist({ captured: false, state: null, recordCount: null, lastPulledAt: null })}
+        who={who}
+      />,
+    );
+    expect(screen.getByTestId("ext-med-history-not-captured").textContent).toMatch(/not captured/);
+    expect(screen.queryByText(/No external medication history available/)).toBeNull();
+    b.unmount();
+    render(<PacketChanges content={hist({ state: "available", recordCount: null })} who={who} />);
+    expect(screen.getByText("Not available")).toBeTruthy(); // count withheld under Part 2
   });
 
   it("renders populated change tables and resolves the carry-forward assignee", () => {

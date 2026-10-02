@@ -57,6 +57,16 @@ const DRAFT = {
 const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
 const OVERRIDE_REASON = "Documented hospitalisation delayed the visit past the window.";
 
+/** UTC calendar day `offset` days from today (the suite compares dates the way the service does). */
+const dayOffset = (offset: number): string =>
+  new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+/**
+ * F-226 - a pending recert period's EXPECTED START. The gate computes the F2F window against it, so the
+ * fixtures must carry a realistic one: the period starts in 10 days, the F2F was done today (10 days prior,
+ * inside [start-30, start-1]). The old fixtures stamped `within_window = true` on a row that had no start.
+ */
+const EXPECTED_START = dayOffset(10);
+
 describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (wardenx_app role)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
@@ -122,12 +132,17 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
   }
 
   /** A pending recert period at `sequence` with a hospice-MD CTI drafted against it. */
-  async function recert(admissionId: string, sequence: number, narrative = NARRATIVE_OK) {
+  async function recert(
+    admissionId: string,
+    sequence: number,
+    narrative = NARRATIVE_OK,
+    expectedStart: string | null = EXPECTED_START,
+  ) {
     const periodId = (
       await admin.query(
-        `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind)
-         VALUES ($1,$2,$3,$4) RETURNING id`,
-        [ORG_A, admissionId, sequence, sequence <= 2 ? "ninety_day" : "sixty_day"],
+        `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind, expected_start)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+        [ORG_A, admissionId, sequence, sequence <= 2 ? "ninety_day" : "sixty_day", expectedStart],
       )
     ).rows[0].id as string;
     const cti = await svc.draftCti(
@@ -149,6 +164,8 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
     o: {
       status?: string;
       withinWindow?: boolean | null;
+      /** `encounter_date` (default today: 10 days before EXPECTED_START, inside the window). */
+      encounterDate?: string | null;
       attestedAt?: string | null;
       override?: { reason: string } | null;
     } = {},
@@ -159,7 +176,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
       `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
          performer_role, encounter_date, within_window, status, attestation_signed_at,
          window_override, window_override_reason, window_override_by)
-       VALUES ($1,$2,$3,'hospice_np', now()::date, $4, $5, ${attestedAt === null ? "NULL" : attestedAt},
+       VALUES ($1,$2,$3,'hospice_np', $9::date, $4, $5, ${attestedAt === null ? "NULL" : attestedAt},
                $6, $7, $8)`,
       [
         ORG_A,
@@ -170,6 +187,7 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
         !!o.override,
         o.override?.reason ?? null,
         o.override ? USER : null,
+        o.encounterDate === undefined ? dayOffset(0) : o.encounterDate,
       ],
     );
   }
@@ -319,8 +337,60 @@ describe.skipIf(!DB_URL)("F-217 — F2F/CTI adequacy gate — LIVE Postgres (war
     it("period 3: F2F recorded outside the window (within_window=false)", async () => {
       const a = await activate();
       const { periodId, cti } = await recert(a.admissionId, 3);
-      await f2f(periodId, { withinWindow: false });
+      await f2f(periodId, { withinWindow: false, encounterDate: dayOffset(-40) });
       await expectRefused(periodId, cti, ["F2F_OUTSIDE_WINDOW"]);
+    });
+
+    it("F-226: a persisted within_window=true is NOT trusted - the real encounter date is recomputed (the F-217 bug shape)", async () => {
+      const a = await activate();
+      const { periodId, cti } = await recert(a.admissionId, 3);
+      // What the old always-true completeF2f wrote: flag true, but the date is 50 days before the start.
+      await f2f(periodId, { withinWindow: true, encounterDate: dayOffset(-40) });
+      await expectRefused(periodId, cti, ["F2F_OUTSIDE_WINDOW"]);
+    });
+
+    it("F-226: same-day F2F (encounter == period start) is outside the window even when flagged true (R-F2F-02)", async () => {
+      const a = await activate();
+      const { periodId, cti } = await recert(a.admissionId, 3);
+      await f2f(periodId, { withinWindow: true, encounterDate: EXPECTED_START });
+      await expectRefused(periodId, cti, ["F2F_OUTSIDE_WINDOW"]);
+    });
+
+    it("F-226: recomputed in-window but persisted false disagree -> unverified, fail closed", async () => {
+      const a = await activate();
+      const { periodId, cti } = await recert(a.admissionId, 3);
+      await f2f(periodId, { withinWindow: false });
+      await expectRefused(periodId, cti, ["F2F_WINDOW_UNVERIFIED"]);
+    });
+
+    it("F-226: a missing encounter_date fails closed", async () => {
+      const a = await activate();
+      const { periodId, cti } = await recert(a.admissionId, 3);
+      await f2f(periodId, { encounterDate: null });
+      await expectRefused(periodId, cti, ["F2F_ENCOUNTER_DATE_MISSING"]);
+    });
+
+    it("F-226: an undeterminable period start (no expected_start, no preceding period end) fails closed", async () => {
+      const a = await activate();
+      // sequence 3 with no sequence 2 row and no expected_start: nothing to anchor the window to.
+      const { periodId, cti } = await recert(a.admissionId, 3, NARRATIVE_OK, null);
+      await f2f(periodId);
+      await expectRefused(periodId, cti, ["F2F_WINDOW_UNVERIFIED"]);
+    });
+
+    it("F-226: a legacy pending period with NULL expected_start derives it from the preceding period's end + 1", async () => {
+      const a = await activate();
+      // period 2 active-ish: give it a scheduled_end_at 10 days out, then a legacy (un-stamped) period 3.
+      await admin.query(
+        `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind, status,
+                                      effective_at, scheduled_end_at)
+         VALUES ($1,$2,2,'ninety_day','completed',$3,$4)`,
+        [ORG_A, a.admissionId, dayOffset(-80), dayOffset(9)],
+      );
+      const { periodId, cti } = await recert(a.admissionId, 3, NARRATIVE_OK, null);
+      await f2f(periodId); // encounter today = 10 days before derived start (today+10)
+      await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      expect(await periodStatus(periodId)).toBe("active");
     });
 
     it("period 3: F2F whose window was never verified (within_window NULL) fails closed", async () => {
