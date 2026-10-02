@@ -54,7 +54,16 @@ import {
   evaluatePeriodAdequacy,
   summarizeAdequacy,
 } from "./certification/adequacy";
-import { computeCtiSignatureDueAt, computeWrittenCertDeadline } from "./certification/window-math";
+import {
+  assertPlausibleEncounterDate,
+  expectedStartFromPriorEnd,
+  resolveF2fWindowStart,
+} from "./certification/f2f-window";
+import {
+  computeCtiSignatureDueAt,
+  computeWrittenCertDeadline,
+  localDateOfInstant,
+} from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
   type DischargeReason,
@@ -268,6 +277,16 @@ export async function openNextElectionPeriodInTx(
     .from(EP)
     .where(eq(EP.admissionId, admissionId));
   const nextSequence = Number(max?.seq ?? 0) + 1;
+  // F-226 - the pending period's EXPECTED START = the preceding period's scheduled_end_at + 1 day (benefit
+  // periods are contiguous). Persisted so the F2F prior-to window can be computed against a real date when
+  // the encounter is completed, long before activation stamps `effective_at`. NULL when the preceding
+  // period has no scheduled end yet (not derivable; the window is then unverifiable and fails closed).
+  const [prior] = await tx
+    .select({ scheduledEndAt: EP.scheduledEndAt })
+    .from(EP)
+    .where(and(eq(EP.admissionId, admissionId), eq(EP.sequenceNumber, nextSequence - 1)))
+    .limit(1);
+  const expectedStart = expectedStartFromPriorEnd(prior?.scheduledEndAt ?? null);
   const insert = tx.insert(EP).values({
     organizationId,
     admissionId,
@@ -277,6 +296,7 @@ export async function openNextElectionPeriodInTx(
     // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
     // number, and the kind is what `scheduled_end_at` is derived from.
     periodKind: electionPeriodKindForSequence(nextSequence),
+    ...(expectedStart ? { expectedStart } : {}),
     ...(sourceOrderId ? { sourceOrderId } : {}),
   });
   const returning = { id: EP.id, status: EP.status, version: EP.version };
@@ -752,11 +772,50 @@ export function createDbAdmissionRouteService(
   }
 
   /**
+   * F-226 - the start a period's F2F window is anchored to (see `resolveF2fWindowStart`): its stored
+   * `expected_start`, else the preceding period's `scheduled_end_at` + 1, else its own `effective_at`.
+   */
+  async function resolvePeriodF2fWindowStart(
+    tx: DbClient,
+    periodId: string,
+  ): Promise<{ start: string; source: string } | null> {
+    const [ep] = await tx
+      .select({
+        admissionId: EP.admissionId,
+        sequenceNumber: EP.sequenceNumber,
+        expectedStart: EP.expectedStart,
+        effectiveAt: EP.effectiveAt,
+      })
+      .from(EP)
+      .where(eq(EP.id, periodId))
+      .limit(1);
+    if (!ep) return null;
+    const [prior] = await tx
+      .select({ scheduledEndAt: EP.scheduledEndAt })
+      .from(EP)
+      .where(
+        and(
+          eq(EP.admissionId, ep.admissionId),
+          eq(EP.sequenceNumber, Number(ep.sequenceNumber) - 1),
+        ),
+      )
+      .limit(1);
+    return resolveF2fWindowStart({
+      expectedStart: ep.expectedStart,
+      priorScheduledEnd: prior?.scheduledEndAt ?? null,
+      effectiveAt: ep.effectiveAt,
+    });
+  }
+
+  /**
    * F-217 — load every fact the F2F/CTI adequacy predicate (`certification/adequacy.ts`) needs for one
    * election period, org-scoped (RLS via the caller's `withOrgContext`), and evaluate it. `startDate` is
    * the org-local start the period is ABOUT to be stamped with (the recert path activates "today").
-   * `windowBasis: 'recorded'` — `completeF2f` does not yet capture the real encounter/period dates (it
-   * stamps a placeholder), so the persisted R-F2F-02 `within_window` is the only honest window evidence.
+   * F-226 - `windowBasis: 'strict'`: the gate recomputes the R-F2F-02 window from the REAL `encounter_date`
+   * against the period's EXPECTED start (`resolvePeriodF2fWindowStart`: stored expected_start, else the
+   * preceding period's scheduled end + 1) and ALSO requires the persisted `within_window` to be `true`;
+   * a NULL/false flag, a missing date or an undeterminable start fails closed. The CTI late-signature math
+   * keeps `startDate` (the activation day) as before.
    */
   async function evaluateAdequacyForPeriod(
     tx: DbClient,
@@ -779,6 +838,7 @@ export function createDbAdmissionRouteService(
       .from(ADM)
       .where(eq(ADM.id, ep.admissionId))
       .limit(1);
+    const f2fStart = await resolvePeriodF2fWindowStart(tx, periodId);
     const ctis = await tx
       .select({
         electionPeriodId: CTI.electionPeriodId,
@@ -815,10 +875,11 @@ export function createDbAdmissionRouteService(
         sequenceNumber: Number(ep.sequenceNumber),
         periodKind: ep.periodKind,
         startDate,
+        f2fWindowStart: f2fStart?.start ?? null,
       },
       admissionHospicePhysicianId: adm?.hospicePhysicianId ?? null,
       timeZone: DEFAULT_ORG_TZ,
-      windowBasis: "recorded",
+      windowBasis: "strict",
       ctis: ctis.map((c) => ({
         ...c,
         hospiceMdSignedAt: c.hospiceMdSignedAt ? c.hospiceMdSignedAt.toISOString() : null,
@@ -4432,7 +4493,7 @@ export function createDbAdmissionRouteService(
         return { id: f2f.id, state: f2f.status, version: Number(f2f.version) };
       });
     },
-    async completeF2f(organizationId, id, ifVersion): Promise<MutationResult> {
+    async completeF2f(organizationId, id, ifVersion, encounterDate): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4447,28 +4508,36 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
-        // The completion route does not capture the encounter/period dates, so the CMS-418.22 window is
-        // computed against the completion instant (encounter today, period start +7d → 7 days prior,
-        // inside the [1,30]-day window). The real dates bind when the complete route captures them.
-        const encounterDate = new Date().toISOString().slice(0, 10);
-        const periodStart = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+        // F-226 - the REAL encounter date (validated: a calendar date, not in the future, not absurdly old)
+        // against the period's REAL expected start (prior end + 1, see `resolvePeriodF2fWindowStart`).
+        // Before this the body's `encounterDate` was dropped, "today" was stamped, and the window was
+        // computed against today + 7, so `within_window` was true on every production write. Same-day and
+        // later dates are outside [start-30, start-1] (R-F2F-02) and are refused unless a window override
+        // (R-F2F-03, `overrideF2fWindow`, legal from `scheduled`) is already on file.
+        assertPlausibleEncounterDate(
+          encounterDate,
+          localDateOfInstant(now().toISOString(), DEFAULT_ORG_TZ),
+        );
+        const windowStart = await resolvePeriodF2fWindowStart(tx as DbClient, cur.epId);
         const t = transitionFaceToFace(cur.status as FaceToFaceState, {
           type: "recordCompletion",
           performerRole: cur.role,
-          periodStart,
+          periodStart: windowStart?.start ?? null,
           encounterDate,
           hasOverride: cur.override,
         });
-        const withinWindow = t.effects.some(
-          (e) => e.kind === "set_flag" && e.field === "within_window_true",
-        );
+        const withinWindow: boolean | null = t.effects.some(
+          (e) => e.kind === "set_flag" && e.field === "within_window_unknown",
+        )
+          ? null
+          : t.effects.some((e) => e.kind === "set_flag" && e.field === "within_window_true");
         const r = firstOrThrow(
           await tx
             .update(F2F)
             .set({
               status: t.to,
               encounterDate,
-              withinWindow,
+              withinWindow, // null = unverified (override on file, start not derivable): the gate fails closed
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),
             })
@@ -4497,7 +4566,8 @@ export function createDbAdmissionRouteService(
               f2fId: id,
               electionPeriodId: cur.epId,
               encounterDate,
-              withinWindow,
+              // The catalog schema is a required boolean; "unverified" (null) is reported as not-within.
+              withinWindow: withinWindow === true,
             },
           },
         );
@@ -4996,6 +5066,10 @@ export function createDbAdmissionRouteService(
         // W-DC-03 / D9 — inherit the carried sequence as the ACTIVE period (no CTI required from us) and
         // open the next PENDING period (our CTI required). The sequence counter never restarts.
         const plan = planTransferIn(input);
+        const inheritedWindow = electionPeriodWindow(
+          new Date(`${input.priorElectionStartDate}T00:00:00.000Z`),
+          plan.inherited.sequence,
+        );
         const inheritedPeriod = firstOrThrow(
           await tx
             .insert(EP)
@@ -5011,10 +5085,7 @@ export function createDbAdmissionRouteService(
               // `TransferInInput` as "anchors the inherited active period's start" and was read by the
               // in-memory slice alone; the Drizzle path discarded it, leaving the one period a receiving
               // hospice cannot re-derive a start for with no start at all.
-              ...electionPeriodWindow(
-                new Date(`${input.priorElectionStartDate}T00:00:00.000Z`),
-                plan.inherited.sequence,
-              ),
+              ...inheritedWindow,
             })
             .returning({ id: EP.id }),
           "election period insert returned no row",
@@ -5028,6 +5099,8 @@ export function createDbAdmissionRouteService(
               sequenceNumber: plan.next.sequence,
               periodKind: electionPeriodKindForSequence(plan.next.sequence),
               status: plan.next.state,
+              // F-226 - the next (pending) period starts the day after the inherited period ends.
+              expectedStart: expectedStartFromPriorEnd(inheritedWindow.scheduledEndAt),
             })
             .returning({ id: EP.id }),
           "election period insert returned no row",
