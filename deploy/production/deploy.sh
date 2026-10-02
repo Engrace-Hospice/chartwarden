@@ -172,6 +172,18 @@ docker compose --env-file .env.production -f compose.yml pull migrate provision 
   exit 1
 }
 
+# A release can add a fail-closed production setting. Validate that contract in the NEW image before
+# touching the schema or recreating a live service: otherwise a missing secret presents only as two
+# crash-looping API/worker containers after an otherwise successful migration. This import is pure
+# environment validation — it opens no database, Redis, or storage connection — and its error names
+# variable keys and rules, never their values.
+if ! docker compose --env-file .env.production -f compose.yml run --rm --no-deps api \
+  bun -e 'import { assertProductionEnv } from "./apps/backend/src/bootstrap/env.ts"; assertProductionEnv(); console.log("production environment contract validated");'; then
+  echo "new release environment validation failed; no migrations were applied and no new release service was started" >&2
+  restore_previous_release
+  exit 1
+fi
+
 # Production migrations are forward-only. A code rollback can restore the prior image, but cannot
 # reverse a successfully applied schema migration; migrations must therefore remain compatible.
 #
