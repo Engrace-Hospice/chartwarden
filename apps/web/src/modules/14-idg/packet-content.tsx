@@ -415,7 +415,15 @@ function ExternalMedicationHistoryPanel({
   history: PacketContent["externalMedicationHistory"];
 }): JSX.Element {
   return (
-    <Panel title="External medication history" icon="pill">
+    <Panel
+      title="External medication history"
+      icon="pill"
+      action={
+        history.captured && history.state === "available" && history.recordCount !== null ? (
+          <CountBadge count={history.recordCount} tone="primary" />
+        ) : undefined
+      }
+    >
       {!history.captured ? (
         <p className="wx-row-sub" data-testid="ext-med-history-not-captured">
           External medication history is not captured by this build.
