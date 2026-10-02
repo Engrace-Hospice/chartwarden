@@ -10,6 +10,13 @@ RUN bun install --frozen-lockfile
 RUN bun run --cwd apps/web build:app
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine
+
+# The pinned Nginx image is rebuilt independently of Alpine security releases. Refresh its runtime
+# packages at build time so published web images include available fixes such as PCRE2 10.49.
+USER root
+RUN apk upgrade --no-cache
+USER nginx
+
 COPY deploy/production/web-nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist/app /usr/share/nginx/html
 
