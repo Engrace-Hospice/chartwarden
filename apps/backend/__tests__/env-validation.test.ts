@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type EnvLike,
+  FHIR_TOKEN_ENDPOINT_ENABLED_ENV,
   M23_LAUNCH_GATEWAY_ENABLED_ENV,
   M34_PROVISION_GATEWAY_ENABLED_ENV,
   assertProductionEnv,
@@ -65,7 +66,7 @@ describe("collectEnvProblems", () => {
     expect(collectEnvProblems(GOOD)).toEqual([]);
   });
 
-  it("allows an operator to explicitly disable the external M23 and M34 gateway capabilities", () => {
+  it("allows an operator to explicitly disable external M23, M34, and FHIR capabilities", () => {
     const disabled: EnvLike = {
       ...GOOD,
       M23_LAUNCH_GATEWAY_ENABLED: "false",
@@ -77,11 +78,15 @@ describe("collectEnvProblems", () => {
       M34_PROVISION_GATEWAY_URL: "https://provision-gateway.example.invalid",
       M34_PROVISION_GATEWAY_TOKEN: "",
       M34_INVITATION_ACCEPT_URL: "https://app.example.invalid/tenant-invitations",
+      FHIR_TOKEN_ENDPOINT_ENABLED: "false",
+      FHIR_TOKEN_ENDPOINT_URL: "",
     };
     expect(collectEnvProblems(disabled)).toEqual([]);
     expect(integrationEnabled(disabled, M23_LAUNCH_GATEWAY_ENABLED_ENV)).toBe(false);
     expect(integrationEnabled(disabled, M34_PROVISION_GATEWAY_ENABLED_ENV)).toBe(false);
+    expect(integrationEnabled(disabled, FHIR_TOKEN_ENDPOINT_ENABLED_ENV)).toBe(false);
     expect(integrationEnabled(GOOD, M23_LAUNCH_GATEWAY_ENABLED_ENV)).toBe(true);
+    expect(integrationEnabled(GOOD, FHIR_TOKEN_ENDPOINT_ENABLED_ENV)).toBe(true);
   });
 
   it("rejects an ambiguous external-gateway switch value", () => {

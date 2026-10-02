@@ -33,10 +33,12 @@ interface Requirement {
  */
 export const M23_LAUNCH_GATEWAY_ENABLED_ENV = "M23_LAUNCH_GATEWAY_ENABLED";
 export const M34_PROVISION_GATEWAY_ENABLED_ENV = "M34_PROVISION_GATEWAY_ENABLED";
+export const FHIR_TOKEN_ENDPOINT_ENABLED_ENV = "FHIR_TOKEN_ENDPOINT_ENABLED";
 
 const INTEGRATION_SWITCHES = [
   M23_LAUNCH_GATEWAY_ENABLED_ENV,
   M34_PROVISION_GATEWAY_ENABLED_ENV,
+  FHIR_TOKEN_ENDPOINT_ENABLED_ENV,
 ] as const;
 
 /** Whether an opt-out production integration capability should be bound (defaults to true). */
@@ -130,13 +132,11 @@ const REQUIREMENTS: readonly Requirement[] = [
   },
   {
     // F-035 (#95) — the absolute URL of M28's `/fhir/oauth2/token`, which is the `aud` every SMART
-    // Backend Services client assertion must carry. Required in production because audience binding is
-    // what stops an assertion minted for a partner's OTHER FHIR server being replayed against this one;
-    // with it unset the mint refuses the assertion path with a 503 rather than accepting an unbound
-    // audience, so an unset value does not weaken the gateway — it silently disables it, which is the
-    // failure mode this whole module just stopped having.
+    // Backend Services client assertion must carry. Required in production while the assertion flow is
+    // enabled; disabling it makes that flow fail closed with 503 rather than accepting an unbound audience.
     key: "FHIR_TOKEN_ENDPOINT_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+    when: (env) => integrationEnabled(env, FHIR_TOKEN_ENDPOINT_ENABLED_ENV),
   },
   {
     // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,

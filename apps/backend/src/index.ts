@@ -46,6 +46,7 @@ import {
 import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
 import {
   DEFAULT_RATE_LIMIT_TIERS,
+  FHIR_TOKEN_ENDPOINT_ENABLED_ENV,
   M23_LAUNCH_GATEWAY_ENABLED_ENV,
   M34_PROVISION_GATEWAY_ENABLED_ENV,
   assertNoInMemoryBindingsOnDbBoot,
@@ -3897,7 +3898,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             replay: rateLimitRedisClient
               ? createRedisFhirReplayGuard(rateLimitRedisClient)
               : createInMemoryFhirReplayGuard(),
-            tokenEndpointUrl: process.env.FHIR_TOKEN_ENDPOINT_URL,
+            tokenEndpointUrl: integrationEnabled(process.env, FHIR_TOKEN_ENDPOINT_ENABLED_ENV)
+              ? process.env.FHIR_TOKEN_ENDPOINT_URL
+              : undefined,
           });
 
           // M29 (External Interfaces) — mount the §4.1 operator + §4.2 clinician routes over the Drizzle
