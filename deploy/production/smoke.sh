@@ -37,14 +37,17 @@ CURL="curl --fail --silent --show-error --max-time 10"
 
 # ── tier 1: the containers are up and, where they declare a healthcheck, healthy ────────────────────
 #
-# `docker compose ps` reports a service's health only if it HAS a healthcheck; a service without one
-# reports "running" the instant the process starts, which is why the worker and web healthchecks were
-# added to compose.yml alongside this script. A container in `restarting` is the crash-loop case that
-# `restart: unless-stopped` would otherwise hide from a deploy that only polls an HTTP endpoint.
+# Read state from Docker's container metadata rather than Compose's display templates. The latter
+# silently render an empty health column on some Compose versions, which falsely looks like every
+# service is healthy immediately after `--force-recreate`. A container in `restarting` is the
+# crash-loop case that `restart: unless-stopped` would otherwise hide from a deploy that only polls
+# an HTTP endpoint.
 echo "tier 1 — container state"
 for svc in api worker web; do
-  state=$($compose ps --format '{{.Service}} {{.State}}' 2>/dev/null | awk -v s="$svc" '$1==s {print $2}')
-  [ -n "$state" ] || fail "tier1/$svc" "service is not present in the compose project"
+  container_id=$($compose ps -q "$svc" 2>/dev/null || true)
+  [ -n "$container_id" ] || fail "tier1/$svc" "service is not present in the compose project"
+  state=$(docker inspect --format '{{.State.Status}}' "$container_id") \
+    || fail "tier1/$svc" "could not inspect container state"
   case "$state" in
     running) ;;
     *) fail "tier1/$svc" "expected state 'running', got '$state'" ;;
@@ -56,8 +59,19 @@ done
 # just restarted all three, and `start_period` is 30s on the api.
 attempt=0
 until [ "$attempt" -ge 60 ]; do
-  unhealthy=$($compose ps --format '{{.Service}} {{.Health}}' 2>/dev/null \
-    | awk '$2=="unhealthy" || $2=="starting" {print $1}' | tr '\n' ' ')
+  unhealthy=""
+  for svc in api worker web; do
+    container_id=$($compose ps -q "$svc" 2>/dev/null || true)
+    [ -n "$container_id" ] || fail "tier1/$svc" "service disappeared while waiting for health"
+    health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$container_id") \
+      || fail "tier1/$svc" "could not inspect container health"
+    case "$health" in
+      healthy) ;;
+      starting|unhealthy) unhealthy="${unhealthy}${svc}=${health} " ;;
+      missing) fail "tier1/$svc" "service has no declared healthcheck" ;;
+      *) fail "tier1/$svc" "unexpected health status '$health'" ;;
+    esac
+  done
   [ -z "$unhealthy" ] && break
   attempt=$((attempt + 1))
   sleep 2
@@ -72,7 +86,12 @@ ok "all declared healthchecks green"
 # the "queue and object storage reachable from inside the new containers" requirement — it is checked
 # by the container that would actually use them, not by the deploy host.
 echo "tier 2 — loopback"
-$CURL http://127.0.0.1:3000/ready >/dev/null || fail "tier2/api" "api /ready did not return 2xx on 127.0.0.1:3000"
+attempt=0
+until $CURL http://127.0.0.1:3000/ready >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 15 ] || fail "tier2/api" "api /ready did not return 2xx on 127.0.0.1:3000"
+  sleep 2
+done
 ok "api /ready (db + valkey + object store)"
 
 # The worker publishes no port, so this runs INSIDE its container. It serves only /health and /ready
