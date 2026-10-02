@@ -504,7 +504,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m5.patient.draft_created_from_extraction",
     ],
   },
-  // F-232 (#248) — the `m14` group is GONE, not merely emptied. Its last pair, `m15.idg_decision.applied`, is
+  // F-234 (#248) — the `m14` group is GONE, not merely emptied. Its last pair, `m15.idg_decision.applied`, is
   // BOUND: M15 gained the intake side of the M14 IDG-decision contract (`discipline_plan_update`, ADR-0023 /
   // M15-F07; M15 spec §7.7 — `consumers/m14-idg-decision-recorded.ts` opens a draft next version on the named
   // discipline plan, applies the mutations, and emits this event), and M14 consumes the acknowledgement

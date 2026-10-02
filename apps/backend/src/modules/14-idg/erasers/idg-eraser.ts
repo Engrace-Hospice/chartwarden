@@ -225,7 +225,7 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
             .set({ idgDecisionId: null })
             .where(inArray(ACT.idgDecisionId, ids(decisionRows)));
         }
-        // F-232 — downstream "decision applied" acknowledgements (metadata) hang off the decision; remove them
+        // F-234 — downstream "decision applied" acknowledgements (metadata) hang off the decision; remove them
         // explicitly first rather than leaning on the FK cascade under the destruction role's RLS.
         if (decisionRows.length > 0) {
           await tx.delete(ACK).where(inArray(ACK.idgDecisionId, ids(decisionRows)));

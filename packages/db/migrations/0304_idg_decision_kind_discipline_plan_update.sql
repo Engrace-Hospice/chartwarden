@@ -1,4 +1,4 @@
--- M14 `idg_decision_kind` — the tenth decision kind, `discipline_plan_update` (F-232, #248).
+-- M14 `idg_decision_kind` — the tenth decision kind, `discipline_plan_update` (F-234, #248).
 --
 -- M15's spec (§1.1, §7.7, M15-F07 / ADR-0023) has always had IDG decisions revise the four discipline plans
 -- (aide_poc / msw_plan / spiritual_plan / volunteer_plan): "IDG decisions emit `idg.decision_recorded` outbox

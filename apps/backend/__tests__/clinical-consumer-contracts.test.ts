@@ -26,7 +26,7 @@ function binding(
 }
 
 describe("clinical outbox consumer contract reconciliation", () => {
-  // F-232 (#248) — M15 is the FIFTH: `discipline_plan_update` decisions revise a discipline plan (M15 spec §7.7).
+  // F-234 (#248) — M15 is the FIFTH: `discipline_plan_update` decisions revise a discipline plan (M15 spec §7.7).
   it("fully binds the five M14 decision command consumers", () => {
     const entry = M14_OUTBOX_EVENTS.find(
       (candidate) => String(candidate.eventName) === "idg.decision_recorded",

@@ -1,5 +1,5 @@
 /**
- * F-232 (#248) — the M14 ⇄ M15 IDG-decision loop, END TO END over real Postgres.
+ * F-234 (#248) — the M14 ⇄ M15 IDG-decision loop, END TO END over real Postgres.
  *
  * `m15.idg_decision.applied` (M15 spec §4.5: "IDG decision applied — consumer M14") was catalogued with no
  * producer and no consumer. M14's envelope had no arm that could NAME a discipline plan, M15 had no intake
@@ -47,7 +47,7 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const COORDINATOR = "33333333-3333-3333-3333-33333333aaaa"; // idg tables carry no membership FK
 
-describe.skipIf(!DB_URL)("F-232 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;

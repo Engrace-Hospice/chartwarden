@@ -117,7 +117,7 @@ function carePlanMutationLine(m: Rec): string | undefined {
   }
 }
 
-/** F-232 — one line per `discipline_plan_update` mutation (an M15 discipline plan, not the M7 IPOC). */
+/** F-234 — one line per `discipline_plan_update` mutation (an M15 discipline plan, not the M7 IPOC). */
 function disciplinePlanMutationLine(m: Rec): string | undefined {
   switch (asStr(m.op)) {
     case "goal_add":

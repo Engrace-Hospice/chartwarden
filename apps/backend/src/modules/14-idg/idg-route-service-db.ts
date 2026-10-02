@@ -1025,7 +1025,7 @@ export function createDbIdgBackend(
           .from(DEC)
           .where(eq(DEC.idgMeetingId, meetingId))
           .orderBy(desc(DEC.recordedAt));
-        // F-232 — downstream "applied" acknowledgements (M15 today), metadata only, one query for the list.
+        // F-234 — downstream "applied" acknowledgements (M15 today), metadata only, one query for the list.
         const acks =
           rows.length === 0
             ? []

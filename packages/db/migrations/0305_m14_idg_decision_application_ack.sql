@@ -1,4 +1,4 @@
--- M14 — `idg_decision_application_ack` (F-232, #248): the durable record that a downstream module APPLIED an
+-- M14 — `idg_decision_application_ack` (F-234, #248): the durable record that a downstream module APPLIED an
 -- emitted IDG decision. First writer: M14's `m14.m15-idg-decision-applied` consumer, which consumes
 -- `m15.idg_decision.applied` ({planId, versionId, idgDecisionId, mutationsApplied}). Until now M14's
 -- `idg_decision.status` ran `open -> emitted -> superseded` only, so "emitted" was the last thing the IDG

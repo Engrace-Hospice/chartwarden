@@ -1,4 +1,4 @@
--- M15 — `discipline_plan_idg_decision_application` (F-232, #248): the durable, idempotent record that M15's
+-- M15 — `discipline_plan_idg_decision_application` (F-234, #248): the durable, idempotent record that M15's
 -- IDG-decision consumer handled one `idg.decision_recorded` whose kind is `discipline_plan_update`
 -- (M15 spec §1.1 / §7.7 / §4.5 idempotency key `idgDecisionId`; the M7 `care_plan_idg_decision_application`
 -- and M11/M12 equivalents are the precedent). UNIQUE (org, idg_decision_id): a redelivery finds the row and

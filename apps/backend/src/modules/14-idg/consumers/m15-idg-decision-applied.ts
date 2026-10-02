@@ -1,5 +1,5 @@
 // apps/backend/src/modules/14-idg/consumers/m15-idg-decision-applied.ts — M14's live consumer of
-// `m15.idg_decision.applied` (F-232 / #248; M15 spec §4.5: "IDG decision applied … consumer M14").
+// `m15.idg_decision.applied` (F-234 / #248; M15 spec §4.5: "IDG decision applied … consumer M14").
 //
 // M15 acknowledges that it APPLIED an emitted `discipline_plan_update` decision to a draft next version of a
 // discipline plan. M14 records the acknowledgement durably — one `idg_decision_application_ack` row per

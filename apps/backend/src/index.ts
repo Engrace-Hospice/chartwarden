@@ -6251,7 +6251,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             resolveSiting: (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
-          // F-232 (#248) — M15's side of the M14 IDG-decision contract (M15 spec §7.7): a
+          // F-234 (#248) — M15's side of the M14 IDG-decision contract (M15 spec §7.7): a
           // `discipline_plan_update` decision opens a draft next version on the named discipline plan and
           // applies its mutations. The M7 parent-problem check is an org-explicit port (a relay tick is not
           // a request, so `CarePlanReader`'s id-keyed reads cannot run here).
@@ -6261,7 +6261,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             activeProblemIds: (organizationId, patientId) =>
               activeProblemIdsForOrg(dbHandle.db, organizationId, patientId),
           }),
-          // F-232 (#248) — the return leg: M14 records M15's `m15.idg_decision.applied` acknowledgement.
+          // F-234 (#248) — the return leg: M14 records M15's `m15.idg_decision.applied` acknowledgement.
           buildM14DecisionAppliedConsumer({ db: dbHandle.db }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four of

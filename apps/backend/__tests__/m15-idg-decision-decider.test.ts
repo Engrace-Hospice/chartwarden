@@ -1,5 +1,5 @@
 /**
- * F-232 (#248) — the pure M15 IDG-decision decider, the wire parser, and the M14 envelope arm. No database.
+ * F-234 (#248) — the pure M15 IDG-decision decider, the wire parser, and the M14 envelope arm. No database.
  * The live loop is `m15-idg-decision-apply.live.test.ts`; this pins every refusal rule and the contract shape.
  */
 import { Value } from "@sinclair/typebox/value";
@@ -278,7 +278,9 @@ describe("the M14 discipline_plan_update envelope arm", () => {
   });
 
   it("declares m15 on idg.decision_recorded and subscribes M14 to the acknowledgement", () => {
-    const entry = M14_OUTBOX_EVENTS.find((e) => (e.eventName as string) === "idg.decision_recorded");
+    const entry = M14_OUTBOX_EVENTS.find(
+      (e) => (e.eventName as string) === "idg.decision_recorded",
+    );
     expect(entry?.declaredConsumers).toContain("m15");
     expect(M14_OUTBOX_SUBSCRIPTIONS).toContainEqual({
       eventName: "m15.idg_decision.applied",

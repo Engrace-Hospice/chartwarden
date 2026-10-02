@@ -75,7 +75,7 @@ const carePlanMutation = Type.Union([
 ]);
 
 /**
- * F-232 (#248) — the `discipline_plan_update` arm's element mutations (ADR-0023 / M15-F07; M15 spec §7.7).
+ * F-234 (#248) — the `discipline_plan_update` arm's element mutations (ADR-0023 / M15-F07; M15 spec §7.7).
  * It targets one of the four M15 discipline plans (`planKind`), NOT the M7 IPOC: a goal hangs off an M7 IPOC
  * problem (`parentProblemId`, M15 §2.1), an intervention references that plan's own goals (`goalRefs`), and a
  * goal moves through M15's own §2.2.3 events rather than by writing a status. The op set is deliberately the

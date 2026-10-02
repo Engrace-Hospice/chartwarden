@@ -58,7 +58,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "idg_agenda_item", key: "agendaItem" },
   { table: "idg_discipline_note", key: "disciplineNote" },
   { table: "idg_decision", key: "decision" },
-  // F-232 (0305) — downstream "decision applied" acknowledgements.
+  // F-234 (0305) — downstream "decision applied" acknowledgements.
   { table: "idg_decision_application_ack", key: "decisionAck" },
   { table: "idg_action_item", key: "actionItem" },
   { table: "idg_minutes", key: "minutes" },
@@ -280,7 +280,7 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
     const rls =
       readFileSync(join(MIGRATIONS_DIR, "0043_idg_m14_rls_audit_triggers.sql"), "utf8") +
       readFileSync(join(MIGRATIONS_DIR, "0282_m14_idg_discipline_note.sql"), "utf8") +
-      // 0305 adds idg_decision_application_ack (F-232); its wardenx_destruction policy is excluded as above.
+      // 0305 adds idg_decision_application_ack (F-234); its wardenx_destruction policy is excluded as above.
       readFileSync(join(MIGRATIONS_DIR, "0305_m14_idg_decision_application_ack.sql"), "utf8");
     // (0283 adds columns + a CHECK + a trigger-function replacement to the same table: no new policy.)
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(

@@ -60,7 +60,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "volunteer_compliance_gate", key: "gate" },
   { table: "volunteer_hour_ledger", key: "ledger" },
   { table: "volunteer_hour_entry", key: "hourEntry" },
-  // F-232 (0306) — the IDG-decision application record (its policy is in 0306, judged below).
+  // F-234 (0307) — the IDG-decision application record (its policy is in 0307, judged below).
   { table: "discipline_plan_idg_decision_application", key: "idgApplication" },
 ];
 
@@ -279,10 +279,10 @@ describe.skipIf(!DB_URL)(
       );
       const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
       expect(policyBlocks.length).toBe(11);
-      // 0306 (F-232) adds one more tenant policy (the wardenx_destruction one is a different role's).
+      // 0307 (F-234) adds one more tenant policy (the wardenx_destruction one is a different role's).
       const applicationPolicy = (
         readFileSync(
-          join(MIGRATIONS_DIR, "0306_m15_discipline_plan_idg_decision_application.sql"),
+          join(MIGRATIONS_DIR, "0307_m15_discipline_plan_idg_decision_application.sql"),
           "utf8",
         ).match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []
       ).filter((b) => b.includes("TO wardenx_app"));

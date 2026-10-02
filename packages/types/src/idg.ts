@@ -238,7 +238,7 @@ export type IdgDecisionRecordedPayload =
 /** Hospice level of care (shared across the packet cover + the LOC-consideration decision arm). */
 export type IdgLevelOfCare = "routine" | "continuous" | "inpatient_respite" | "general_inpatient";
 
-/** A single M15 discipline-plan element mutation inside a `discipline_plan_update` decision (F-232 / ADR-0023;
+/** A single M15 discipline-plan element mutation inside a `discipline_plan_update` decision (F-234 / ADR-0023;
  * M15 spec §7.7). A goal hangs off an M7 IPOC problem; a goal moves by an M15 §2.2.3 event; an intervention
  * references the plan's own goals. Applied to a DRAFT `idg_review` version — never a signed one. */
 export type DisciplinePlanMutation =

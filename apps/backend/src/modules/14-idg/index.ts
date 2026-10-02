@@ -137,7 +137,7 @@ export {
   M14_DOCUMENT_BACKREF_CONSUMER,
   buildM14DocumentBackrefConsumer,
 } from "./consumers/m22-document-backref";
-// F-232 (#248) — M15's "decision applied" acknowledgement (`m15.idg_decision.applied`), recorded per decision.
+// F-234 (#248) — M15's "decision applied" acknowledgement (`m15.idg_decision.applied`), recorded per decision.
 export {
   type IdgDecisionAppliedConsumerDeps,
   M14_M15_DECISION_APPLIED_CONSUMER,

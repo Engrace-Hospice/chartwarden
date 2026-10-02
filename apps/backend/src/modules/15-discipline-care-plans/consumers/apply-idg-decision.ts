@@ -1,5 +1,5 @@
 // apps/backend/src/modules/15-discipline-care-plans/consumers/apply-idg-decision.ts — the M15 side of the
-// M14 IDG-decision contract (F-232 / #248; M15 spec §1.1, §7.7, §4.5; ADR-0023 / M15-F07). PURE DECISION CORE.
+// M14 IDG-decision contract (F-234 / #248; M15 spec §1.1, §7.7, §4.5; ADR-0023 / M15-F07). PURE DECISION CORE.
 //
 // M14 records a `discipline_plan_update` decision ("discontinue the MSW grief-counseling intervention; add a
 // chaplain weekly-presence visit") and, at adjournment, emits `idg.decision_recorded`. M15 consumes it: open a

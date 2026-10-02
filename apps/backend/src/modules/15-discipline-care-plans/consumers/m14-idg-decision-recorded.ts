@@ -1,5 +1,5 @@
 // apps/backend/src/modules/15-discipline-care-plans/consumers/m14-idg-decision-recorded.ts — M15's live
-// `idg.decision_recorded` binding (F-232 / #248; M15 spec §7.7 `idg-decision.worker`, §4.5 idempotency key
+// `idg.decision_recorded` binding (F-234 / #248; M15 spec §7.7 `idg-decision.worker`, §4.5 idempotency key
 // `idgDecisionId`). It consumes only `kind: 'discipline_plan_update'`; every other decision arm belongs to
 // M7/M11/M12/M16 and is a handled no-op (the additive arm sits inside `payloadSchemaVersion` 2026-01-v1, and
 // the other four consumers each `return` on a kind they do not own — verified, not assumed).

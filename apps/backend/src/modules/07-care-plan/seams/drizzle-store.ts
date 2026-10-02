@@ -346,7 +346,7 @@ export interface IdgPacketCarePlanContext {
 }
 
 /**
- * The ids of the patient's ACTIVE IPOC problems, org-explicit (F-232 / #248). M15's IDG-decision consumer
+ * The ids of the patient's ACTIVE IPOC problems, org-explicit (F-234 / #248). M15's IDG-decision consumer
  * (`discipline_plan_update`, M15 spec §2.1/§7.7) must verify that a goal it adds names a real, active M7
  * problem as its parent — the same check M15's goal route runs through `CarePlanReader`, whose id-keyed reads
  * open `withOrgContextFromRequest` and so cannot run on a relay tick. Reads the patient's care plan

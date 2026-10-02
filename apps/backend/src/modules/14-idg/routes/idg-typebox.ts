@@ -640,7 +640,7 @@ const DECISION_STATUS = Type.Union([
  * deliberately absent, on the `PatientIdgHistoryView` precedent, so the meeting-conduct read surface
  * never has to answer W-SUD-01.
  */
-/** F-232 — one downstream module's "decision applied" acknowledgement (metadata only). */
+/** F-234 — one downstream module's "decision applied" acknowledgement (metadata only). */
 export const DecisionApplicationViewSchema = Type.Object({
   module: Type.Literal("m15"),
   planId: Nullable(Type.String({ format: "uuid" })),
