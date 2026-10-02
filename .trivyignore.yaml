@@ -64,3 +64,15 @@ vulnerabilities:
       Debian 13's essential perl-base 5.40.1-6+deb13u1 has no update while Debian waits for upstream
       regression resolution (Debian bug #1138861); Perl Archive::Tar 3.10 contains the fix. Remove this
       when the Bun base image carries a patched Perl package, or re-examine by the expiry.
+  - id: CVE-2026-54369
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's libacl1 2.3.2-2+b1 has no DSA or fixed package yet; Debian will update it after the
+      ABI-changing acl 2.4.0 fix reaches a point release (Debian bug #1141110). Remove this when the Bun
+      base image carries the patched ACL package, or re-examine by the expiry.
+  - id: CVE-2026-16742
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's systemd 257.13-1~deb13u1 has no DSA or fixed package yet; Debian records this as a
+      minor no-DSA issue and upstream fixed systemd-homed in 261.2 (GHSA-jm29-p7hh-vjhv). Remove this
+      when the Bun base image carries the patched systemd package, or re-examine by the expiry.
