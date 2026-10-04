@@ -15,6 +15,7 @@ import type {
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates";
 import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-db";
+import type { ExtractionDiagnosisWritebackSummary } from "../extraction/writeback-commit-dx-db";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
 import { type CursorPage, paginate } from "./concurrency";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./signed-url-service";
@@ -155,6 +156,8 @@ export interface CompleteReviewResult {
   readonly reviewId: string;
   readonly status: "complete";
   readonly writeback?: ExtractionWritebackSummary;
+  /** F-238 — the diagnosis half (→ M7 proposed problems); absent where `writeback` is. */
+  readonly diagnosisWriteback?: ExtractionDiagnosisWritebackSummary;
 }
 
 export interface DocumentWriteActor {

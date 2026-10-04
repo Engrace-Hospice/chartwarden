@@ -232,6 +232,7 @@ export * from "./care-plan/care-plans";
 export * from "./care-plan/care-plan-versions";
 export * from "./care-plan/care-plan-signatures";
 export * from "./care-plan/problems";
+export * from "./care-plan/problem-proposals";
 export * from "./care-plan/goals";
 export * from "./care-plan/interventions";
 export * from "./care-plan/idg-decision-applications";

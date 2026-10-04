@@ -49,6 +49,26 @@ export {
   M22_EXTRACTION_BACKREF_CONSUMER,
   buildM22ExtractionBackrefConsumer,
 } from "./extraction-backref-consumer";
+// F-238 dx-writeback — approved diagnoses → M7 problem PROPOSALS, and the back-ref from M7's reply.
+export {
+  type DiagnosisCandidateFact,
+  type DiagnosisWritebackExclusion,
+  type DiagnosisWritebackExclusionReason,
+  type DiagnosisWritebackPlan,
+  type PlannedDiagnosisCommitField,
+  descriptionHasSudWording,
+  isDiagnosisFieldPath,
+  planDiagnosisWriteback,
+} from "./writeback-plan-dx";
+export {
+  type ExtractionDiagnosisWritebackSummary,
+  commitReviewDiagnosisWriteback,
+} from "./writeback-commit-dx-db";
+export {
+  M22_EXTRACTION_DX_BACKREF_CONSUMER,
+  buildM22ExtractionDiagnosisBackrefConsumer,
+  parseDiagnosisItemKey,
+} from "./extraction-dx-backref-consumer";
 // F-236 (ADR-0048) — DocLens stages 2–4 as a background job: Docling client, intake job, its queue.
 export {
   type DoclingClient,

@@ -1209,6 +1209,15 @@ import {
   ReturnToDraftSchema as M7ReturnToDraftSchema,
   SignVersionSchema as M7SignVersionSchema,
 } from "../../apps/backend/src/modules/07-care-plan/routes/care-plan-typebox";
+// F-238 dx-writeback — the DocLens problem-proposal accept / dismiss surface.
+import {
+  AcceptProblemProposalResponseSchema as M7AcceptProblemProposalResponseSchema,
+  AcceptProblemProposalSchema as M7AcceptProblemProposalSchema,
+  DismissProblemProposalResponseSchema as M7DismissProblemProposalResponseSchema,
+  DismissProblemProposalSchema as M7DismissProblemProposalSchema,
+  ProblemProposalListQuerySchema as M7ProblemProposalListQuerySchema,
+  ProblemProposalListResponseSchema as M7ProblemProposalListResponseSchema,
+} from "../../apps/backend/src/modules/07-care-plan/routes/problem-proposal-typebox";
 import {
   AddendumFinalizeResponseSchema as M8AddendumFinalizeResponseSchema,
   AddendumSelectionsResponseSchema as M8AddendumSelectionsResponseSchema,
@@ -3859,6 +3868,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Encounter element picker (active problems/goals/interventions by discipline)",
     query: M7RelevantElementsQuerySchema,
     response: M7RelevantElementsResponseSchema,
+  },
+  // F-238 dx-writeback — DocLens-proposed diagnoses (never charted until a clinician accepts).
+  "GET /api/v1/care-plans/:planId/problem-proposals": {
+    summary: "DocLens-proposed diagnoses on the plan (SUD-filtered per §7.6)",
+    query: M7ProblemProposalListQuerySchema,
+    response: M7ProblemProposalListResponseSchema,
+  },
+  "POST /api/v1/care-plans/:planId/problem-proposals/:proposalId/accept": {
+    summary: "Accept a proposed diagnosis: the clinician sets kind; creates the problem",
+    body: M7AcceptProblemProposalSchema,
+    response: M7AcceptProblemProposalResponseSchema,
+  },
+  "POST /api/v1/care-plans/:planId/problem-proposals/:proposalId/dismiss": {
+    summary: "Dismiss a proposed diagnosis (nothing is charted)",
+    body: M7DismissProblemProposalSchema,
+    response: M7DismissProblemProposalResponseSchema,
   },
 });
 

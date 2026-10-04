@@ -142,6 +142,8 @@ export const M7_EVENT_NAMES = [
   "m7.problem.added",
   "m7.problem.updated",
   "m7.problem.resolved",
+  // F-238 dx-writeback — the reply to `m22.extraction.diagnosis_commit_requested` (pending proposals).
+  "m7.problem.draft_created_from_extraction",
   "m7.goal.added",
   "m7.goal.updated",
   "m7.goal.met",

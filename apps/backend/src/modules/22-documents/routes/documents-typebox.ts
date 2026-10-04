@@ -524,6 +524,22 @@ export const CompleteReviewResponseSchema = Type.Object({
       ),
     }),
   ),
+  // F-238 — the diagnosis half (→ M7 proposed problems; a clinician accepts or dismisses each).
+  diagnosisWriteback: Type.Optional(
+    Type.Object({
+      targetModule: Type.Union([Type.Literal("m7"), Type.Null()]),
+      targetAggregateId: Type.Union([Type.String(), Type.Null()]),
+      committedItemKeys: Type.Array(Type.String()),
+      committedFieldPaths: Type.Array(Type.String()),
+      excluded: Type.Array(
+        Type.Object({
+          candidateId: Type.String(),
+          fieldPath: Type.String(),
+          reason: Type.String(),
+        }),
+      ),
+    }),
+  ),
 });
 
 export const FormTemplateListResponseSchema = CursorPageOf(

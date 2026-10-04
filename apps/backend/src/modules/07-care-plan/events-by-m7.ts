@@ -7,7 +7,10 @@
 // outbox-only EXCEPT `m7.care_plan.review_overdue`, which §4.4 ALSO pushes over Socket.IO to the org/PE
 // room for the live overdue banner (isOutboxOnly=false).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import {
+  M7_PROBLEM_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
+  type ModuleEventContribution,
+} from "@wardenx/types";
 
 /** A per-version lifecycle kind (mirrors `care_plan_version_kind`; §3.2). */
 const versionKind = Type.Union([
@@ -224,6 +227,40 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  // F-238 dx-writeback — M7's reply to `m22.extraction.diagnosis_commit_requested`: per diagnosis, the
+  // pending `problem_proposal` it now holds (or why it holds none). M22's `m22.extraction-diagnosis-backref`
+  // stamps `extraction_provenance` with the proposal id. NOTHING here is a charted problem: a proposal
+  // becomes a `problem` only when a clinician accepts it (→ `m7.problem.added`).
+  {
+    eventName: M7_PROBLEM_DRAFT_CREATED_FROM_EXTRACTION_EVENT,
+    moduleOwner: "m7",
+    description:
+      "DocLens diagnoses landed as PENDING problem proposals on the patient's care plan (never as `problem` rows). Per item: `proposed` / `already_proposed` with the proposal id (and an active same-code problem it duplicates, flagged not merged), or `skipped` with the reason. Ids, keys and reasons only — no diagnosis text.",
+    payloadSchema: Type.Object({
+      patientId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      extractionCommitId: Type.String({ minLength: 1 }),
+      carePlanId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      itemOutcomes: Type.Array(
+        Type.Union([
+          Type.Object({
+            itemKey: Type.String({ minLength: 1 }),
+            outcome: Type.Union([Type.Literal("proposed"), Type.Literal("already_proposed")]),
+            proposalId: Type.String({ minLength: 1 }),
+            duplicateOfProblemId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+          }),
+          Type.Object({
+            itemKey: Type.String({ minLength: 1 }),
+            outcome: Type.Literal("skipped"),
+            reason: Type.String({ minLength: 1 }),
+          }),
+        ]),
+      ),
+      appliedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   // ── goals ───────────────────────────────────────────────────────────────────────────────────────

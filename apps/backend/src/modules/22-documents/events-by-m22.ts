@@ -26,6 +26,7 @@ import { Type } from "@sinclair/typebox";
 import {
   M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
   M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
+  M22_EXTRACTION_DIAGNOSIS_COMMIT_REQUESTED_EVENT,
   M22_INTAKE_SUD_CONFIRMED_EVENT,
   M22_INTAKE_SUD_DETECTED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
@@ -113,13 +114,58 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
       "M5's writeback reply was stamped onto `extraction_provenance.target_aggregate_id` for the fields the chart now holds (W1 step 13). Terminal and informational; carries ids and per-field outcomes only, no values.",
     payloadSchema: Type.Object({
       extractionCommitId: Id,
-      targetModule: Type.Literal("m5"),
+      // F-238 — `m7` when the reply was M7's diagnosis proposals (`targetAggregateId` is then the patient).
+      targetModule: Type.Union([Type.Literal("m5"), Type.Literal("m7")]),
       targetAggregateId: Id,
       provenanceIds: Type.Array(Id),
       skippedFieldPaths: Type.Array(Id),
       completedAt: Iso,
     }),
     declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  // F-238 dx-writeback — the DIAGNOSIS half of the W1 steps 11–13 handshake. A completed review's approved
+  // `diagnoses[n].*` for the resolved patient; M7 lands each as a PROPOSED problem (its own
+  // `problem_proposal` table — never `problem`) that a clinician must accept, choosing `kind`. A separate
+  // event rather than `commit_requested` + `targetModule='m7'` so M5's consumer (fail-closed on a non-M5
+  // payload) never receives it; the payload still carries the D5 `targetModule` discriminator.
+  {
+    eventName: M22_EXTRACTION_DIAGNOSIS_COMMIT_REQUESTED_EVENT,
+    moduleOwner: "m22",
+    description:
+      "A completed DocLens review's reviewer-attested diagnoses for ONE resolved patient (W1 step 11). Each carries the description as written (or the reviewer's edit), the ICD-10-CM code as PRINTED or as typed by the reviewer (never model-suggested), the document's own role label, and the Part 2 flag. M7 creates pending problem proposals a clinician must accept and replies with `m7.problem.draft_created_from_extraction`.",
+    payloadSchema: Type.Object({
+      extractionCommitId: Id,
+      organizationId: Id,
+      intakeBatchId: Id,
+      targetModule: Type.Literal("m7"),
+      targetAggregateId: Id,
+      sourceDocumentIds: Type.Array(Id, { minItems: 1 }),
+      reviewerMembershipId: Id,
+      referralDate: Type.String({ pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }),
+      diagnoses: Type.Array(
+        Type.Object({
+          itemKey: Type.String({ minLength: 1, maxLength: 200 }),
+          description: Type.String({ minLength: 1, maxLength: 4000 }),
+          icd10Code: Type.Union([Type.String({ minLength: 3, maxLength: 8 }), Type.Null()]),
+          icd10Source: Type.Union([
+            Type.Literal("document"),
+            Type.Literal("reviewer_edit"),
+            Type.Null(),
+          ]),
+          documentRole: Type.Union([
+            Type.Literal("principal"),
+            Type.Literal("secondary"),
+            Type.Literal("history"),
+            Type.Literal("unspecified"),
+          ]),
+          sudRelated: Type.Boolean(),
+        }),
+        { minItems: 1 },
+      ),
+      requestedAt: Iso,
+    }),
+    declaredConsumers: ["m7"],
     isOutboxOnly: true,
   },
   // F-237 — §7.4 W4 / D8: DocLens SUD detection → M5's interim `sud` privacy flag, and the reviewer's

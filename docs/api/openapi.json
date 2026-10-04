@@ -52567,6 +52567,436 @@
         }
       }
     },
+    "/api/v1/care-plans/{planId}/problem-proposals": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdProblemproposals",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "DocLens-proposed diagnoses on the plan (SUD-filtered per §7.6)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "dismissed",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "proposals",
+                    "redacted"
+                  ],
+                  "properties": {
+                    "proposals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "carePlanId",
+                          "description",
+                          "icd10Code",
+                          "icd10Source",
+                          "icd10Validation",
+                          "documentRole",
+                          "sudRelated",
+                          "status",
+                          "duplicateOfProblemId",
+                          "acceptedProblemId",
+                          "sourceIntakeBatchId",
+                          "decidedAt",
+                          "createdAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "carePlanId": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "icd10Code": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "icd10Source": {
+                            "anyOf": [
+                              {
+                                "const": "document",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reviewer_edit",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "icd10Validation": {
+                            "anyOf": [
+                              {
+                                "const": "valid",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_valid_as_of",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unvalidated",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "documentRole": {
+                            "anyOf": [
+                              {
+                                "const": "principal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "secondary",
+                                "type": "string"
+                              },
+                              {
+                                "const": "history",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unspecified",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sudRelated": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dismissed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "duplicateOfProblemId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acceptedProblemId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceIntakeBatchId": {
+                            "type": "string"
+                          },
+                          "decidedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/problem-proposals/{proposalId}/accept": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdProblemproposalsByProposalIdAccept",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "Accept a proposed diagnosis: the clinician sets kind; creates the problem",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "proposalId",
+                    "problemId",
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "proposalId": {
+                      "type": "string"
+                    },
+                    "problemId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "accepted",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "kind",
+                  "acknowledgeExtracted"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "terminal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "related",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unrelated",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "icd10Code": {
+                    "anyOf": [
+                      {
+                        "minLength": 3,
+                        "maxLength": 16,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "acknowledgeExtracted": {
+                    "const": true,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/problem-proposals/{proposalId}/dismiss": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdProblemproposalsByProposalIdDismiss",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "Dismiss a proposed diagnosis (nothing is charted)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "proposalId",
+                    "status",
+                    "version"
+                  ],
+                  "properties": {
+                    "proposalId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "dismissed",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/care-plans/{planId}/problems": {
       "post": {
         "operationId": "postApiV1CareplansByPlanIdProblems",
@@ -105750,6 +106180,73 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "committedFieldPaths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "excluded": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "candidateId",
+                              "fieldPath",
+                              "reason"
+                            ],
+                            "properties": {
+                              "candidateId": {
+                                "type": "string"
+                              },
+                              "fieldPath": {
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "diagnosisWriteback": {
+                      "type": "object",
+                      "required": [
+                        "targetModule",
+                        "targetAggregateId",
+                        "committedItemKeys",
+                        "committedFieldPaths",
+                        "excluded"
+                      ],
+                      "properties": {
+                        "targetModule": {
+                          "anyOf": [
+                            {
+                              "const": "m7",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "targetAggregateId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "committedItemKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
                         },
                         "committedFieldPaths": {
                           "type": "array",

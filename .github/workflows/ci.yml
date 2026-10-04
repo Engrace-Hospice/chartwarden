@@ -690,6 +690,14 @@ jobs:
               name: "F-237 DocLens review + stage 5 + SUD",
               scripts: "test:f237:doclens-review:live",
             }
+          # F-238 dx-writeback — DocLens diagnoses → M7 PENDING problem proposals (never `problem` rows):
+          # the code as printed / reviewer-typed (never model-assigned), M38-validated or kept `unvalidated`,
+          # the document role carried as a label only; drafts invisible to the claim-diagnoses gate until a
+          # clinician accepts (choosing kind); per-patient dedupe; Part 2 exclusion + hiding; RLS as the app role.
+          - {
+              name: "F-238 DocLens diagnosis proposals",
+              scripts: "test:f238:doclens-dx-writeback:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
