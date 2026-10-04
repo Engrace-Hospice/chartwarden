@@ -674,6 +674,13 @@ jobs:
               name: "F-235 DocLens M5 writeback",
               scripts: "test:f235:doclens-m5-writeback:live",
             }
+          # F-236 (#ADR-0048) — DocLens stages 2–4 (Docling → classify → extract → ground → DEK-encrypted
+          # candidates) as wardenx_app, plus the M32 pipeline over its REAL stores: local_only routing to the
+          # local backend, ciphertext ledger payloads, the token-cap and ai.full gates.
+          - {
+              name: "F-236 DocLens intake + live M32 pipeline",
+              scripts: "test:f236:doclens-intake:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.

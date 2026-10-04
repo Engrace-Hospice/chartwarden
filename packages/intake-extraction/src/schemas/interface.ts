@@ -25,6 +25,8 @@ export interface ExtractionFieldDescriptor {
   readonly riskLevel: ExtractionCandidateRiskLevel;
   /** The chart module the approved field drafts into on writeback (D5). */
   readonly targetModule: ChartTargetModule;
+  /** F-236 — what the extractor is asked for (sent verbatim in the FIELDS section of the prompt). */
+  readonly description: string;
 }
 
 /** §3.1 — the per-document-type extraction schema descriptor. */

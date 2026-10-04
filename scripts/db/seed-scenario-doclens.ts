@@ -254,7 +254,9 @@ async function main(): Promise<void> {
   ).id;
   const keys = allPermissionMirrorRows()
     .map((r) => r.key)
-    .filter((k) => k.startsWith("intake.") || k.startsWith("documents.read"));
+    .filter(
+      (k) => k.startsWith("intake.") || k.startsWith("documents.read") || k === "documents.upload",
+    );
   for (const k of keys) {
     await db.query(
       "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",

@@ -251,6 +251,9 @@ export const SignedUrlRequest = Type.Object({
 // §4.2 — intake batch upload.
 export const IntakeUploadRequest = Type.Object({
   patientId: Type.Optional(Type.String({ format: "uuid" })),
+  /** F-236 — the verified-uploaded source document (`POST /document-uploads` …/complete) this batch
+   *  processes. Without it the batch has no file and an extraction run refuses (parse_failed). */
+  documentId: Type.Optional(Type.String({ format: "uuid" })),
   sourceChannel: lit(SOURCE_CHANNEL),
   sourceMetadata: Type.Optional(Type.String({ maxLength: 2000 })),
 });

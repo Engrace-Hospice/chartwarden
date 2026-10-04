@@ -5,7 +5,11 @@
 // rules land per-type in later M22 tasks; T01 declares the type set + the chart-writeback dividing line
 // (D5) so later tasks fill each type's field list against a stable contract.
 
-import type { ExtractionSchemaDescriptor, IntakeDocumentType } from "./interface";
+import type {
+  ExtractionFieldDescriptor,
+  ExtractionSchemaDescriptor,
+  IntakeDocumentType,
+} from "./interface";
 
 /** The 11 v1 DocLens document types (§1.1 / §3.1). */
 export const INTAKE_DOCUMENT_TYPES = [
@@ -25,19 +29,88 @@ export const INTAKE_DOCUMENT_TYPES = [
 /** §3.1 — the per-type extraction-schema registry. `fields` are populated per-type in later M22 tasks;
  * T01 fixes the writeback-target dividing line (D5): which module each type's approved candidates draft
  * into and whether the type carries high-risk fields (→ vision verifier + per-field-only review). */
+// F-236 (ADR-0048) — the v1 field sets. The RISK TIER is the registry's, never the model's: a candidate is
+// stored with the tier of the field it matched here. Writeback is a separate, narrower decision
+// (`DOCLENS_M5_WRITEBACK_FIELDS` in @wardenx/types — low-risk contacts only; A1: no medications).
+const contact = (fieldPath: string, description: string): ExtractionFieldDescriptor => ({
+  fieldPath,
+  riskLevel: "low",
+  targetModule: "m5",
+  description,
+});
+const identity = (fieldPath: string, description: string): ExtractionFieldDescriptor => ({
+  fieldPath,
+  riskLevel: "medium",
+  targetModule: "m5",
+  description,
+});
+const clinical = (fieldPath: string, description: string): ExtractionFieldDescriptor => ({
+  fieldPath,
+  riskLevel: "high",
+  targetModule: "m12",
+  description,
+});
+
+const DEMOGRAPHICS: readonly ExtractionFieldDescriptor[] = [
+  identity("patient.legalFirstName", "patient's legal first name"),
+  identity("patient.legalLastName", "patient's legal last name"),
+  identity("patient.dateOfBirth", "patient's date of birth, as written"),
+  contact("patient.preferredName", "the name the patient prefers to be called, only if stated"),
+  contact("patient.phoneHome", "patient's home phone number"),
+  contact("patient.phoneMobile", "patient's mobile or cell phone number"),
+  contact("patient.email", "patient's email address"),
+  contact("patient.address.line1", "street address (number and street)"),
+  contact("patient.address.line2", "apartment, unit or suite, only if present"),
+  contact("patient.address.city", "city of the patient's address"),
+  contact("patient.address.state", "state of the patient's address"),
+  contact("patient.address.postalCode", "ZIP code of the patient's address"),
+];
+
+const MEDICATIONS: readonly ExtractionFieldDescriptor[] = [
+  clinical("medications[].name", "one medication as written: name, strength, route and frequency"),
+  clinical(
+    "allergies[].substance",
+    "one allergy or intolerance as written, with the reaction if stated",
+  ),
+];
+
+/** §3.1 — the per-type extraction-schema registry, with the writeback-target dividing line (D5). */
 export const EXTRACTION_SCHEMA_REGISTRY: readonly ExtractionSchemaDescriptor[] = [
-  { documentType: "discharge_summary", hasHighRiskFields: true, fields: [] },
-  { documentType: "med_recon", hasHighRiskFields: true, fields: [] },
-  { documentType: "hp", hasHighRiskFields: true, fields: [] },
-  { documentType: "lab", hasHighRiskFields: false, fields: [] },
-  { documentType: "imaging", hasHighRiskFields: false, fields: [] },
-  { documentType: "consult", hasHighRiskFields: false, fields: [] },
-  { documentType: "insurance_card", hasHighRiskFields: false, fields: [] },
-  { documentType: "photo_id", hasHighRiskFields: false, fields: [] },
-  { documentType: "advance_directive", hasHighRiskFields: true, fields: [] },
-  { documentType: "dpoa", hasHighRiskFields: true, fields: [] },
-  { documentType: "transfer_record", hasHighRiskFields: false, fields: [] },
+  {
+    documentType: "discharge_summary",
+    hasHighRiskFields: true,
+    fields: [...DEMOGRAPHICS, ...MEDICATIONS],
+  },
+  { documentType: "med_recon", hasHighRiskFields: true, fields: MEDICATIONS },
+  { documentType: "hp", hasHighRiskFields: true, fields: [...DEMOGRAPHICS, ...MEDICATIONS] },
+  { documentType: "lab", hasHighRiskFields: false, fields: DEMOGRAPHICS },
+  { documentType: "imaging", hasHighRiskFields: false, fields: DEMOGRAPHICS },
+  { documentType: "consult", hasHighRiskFields: false, fields: DEMOGRAPHICS },
+  { documentType: "insurance_card", hasHighRiskFields: false, fields: DEMOGRAPHICS },
+  { documentType: "photo_id", hasHighRiskFields: false, fields: DEMOGRAPHICS },
+  // Advance directives and DPOAs carry high-risk content (code status, agents) whose v1 fields are not
+  // specified yet; until they are, only demographics are extracted from them.
+  { documentType: "advance_directive", hasHighRiskFields: true, fields: DEMOGRAPHICS },
+  { documentType: "dpoa", hasHighRiskFields: true, fields: DEMOGRAPHICS },
+  {
+    documentType: "transfer_record",
+    hasHighRiskFields: true,
+    fields: [...DEMOGRAPHICS, ...MEDICATIONS],
+  },
 ] as const;
+
+/**
+ * Resolve an extracted field path (`medications[2].name`) to its registry descriptor
+ * (`medications[].name`) for a document type, or `undefined` — a path the schema does not declare is
+ * never stored, whatever the model returned.
+ */
+export function findExtractionField(
+  documentType: IntakeDocumentType,
+  fieldPath: string,
+): ExtractionFieldDescriptor | undefined {
+  const generic = fieldPath.replace(/\[\d+\]/g, "[]");
+  return findExtractionSchema(documentType)?.fields.find((f) => f.fieldPath === generic);
+}
 
 /** Resolve a per-type extraction schema by document type (`undefined` when unknown). */
 export function findExtractionSchema(

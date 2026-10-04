@@ -16,10 +16,11 @@ import { type Static, Type } from "@sinclair/typebox";
 // M3). Org binding is server-side (`request.context`, never the body). The DocLens pipeline service is
 // injected (in-memory/fake in tests; the deny-stub-backed service in prod).
 import { requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { DegradedError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import { type DocumentFeatureFlagReader, isDocLensEnabled } from "./feature-flag";
+import type { DocLensIntakeEnqueue } from "./intake-queue";
 import { type DocLensPipelineService, extractionDisabled } from "./pipeline-service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -30,6 +31,8 @@ export interface DocLensRouteDeps {
   pipeline: DocLensPipelineService;
   /** Resolves the org's flags; absent ⇒ DocLens OFF (Phase-1 default → every call 503s). */
   flags?: DocumentFeatureFlagReader;
+  /** F-236 — the intake job queue. Absent (no queue connection) ⇒ the run route answers 503. */
+  intake?: DocLensIntakeEnqueue;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -43,9 +46,11 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
+/** F-236 — the run takes everything from the batch itself (its filed source document). The legacy
+ *  `jobId`/`pageCount` fields are accepted and ignored: the page count is Docling's, not the caller's. */
 export const RunBatchRequest = Type.Object({
-  jobId: Type.String({ format: "uuid" }),
-  pageCount: Type.Integer({ minimum: 1 }),
+  jobId: Type.Optional(Type.String({ format: "uuid" })),
+  pageCount: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 export const CommitReviewRequest = Type.Object({
   sourceDocumentId: Type.String({ format: "uuid" }),
@@ -69,7 +74,7 @@ export function registerDocLensExtractionRoutes(
   app: FastifyInstance,
   deps: DocLensRouteDeps,
 ): void {
-  const { pipeline, flags } = deps;
+  const { pipeline, flags, intake } = deps;
 
   /**
    * §7.1 W1 / depends-on-32 — the feature-flag gate. When `documents.doclens` is OFF (Phase-1 default for
@@ -92,15 +97,21 @@ export function registerDocLensExtractionRoutes(
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(BatchParams, request.params);
-      const body = parse(RunBatchRequest, request.body);
-      const result = await pipeline.runBatch({
+      parse(RunBatchRequest, request.body ?? {});
+      // F-236 — the run is a background job (Docling + per-page classification + extraction can take
+      // minutes on a local model). The route only enqueues; the worker process runs it.
+      if (!intake) {
+        throw new DegradedError("doclens-intake", "no DocLens intake job queue is configured");
+      }
+      const userId = request.context.userId;
+      if (typeof userId !== "string" || userId.length === 0) throw new UnauthorizedError();
+      await intake.enqueue({
         organizationId,
         batchId: id,
-        jobId: body.jobId,
-        pageCount: body.pageCount,
-        chartValues: [],
+        actorUserId: userId,
+        correlationId: request.id,
       });
-      return reply.code(202).send(result);
+      return reply.code(202).send({ batchId: id, status: "queued" });
     },
   );
 

@@ -391,6 +391,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       patientId: body.patientId ?? null,
       sourceChannel: body.sourceChannel,
       sourceMetadata: body.sourceMetadata,
+      ...(body.documentId ? { documentId: body.documentId } : {}),
     });
     return reply.code(201).send(res);
   });

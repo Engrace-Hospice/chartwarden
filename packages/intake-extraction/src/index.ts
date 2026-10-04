@@ -16,6 +16,7 @@ export type {
 export {
   INTAKE_DOCUMENT_TYPES,
   EXTRACTION_SCHEMA_REGISTRY,
+  findExtractionField,
   findExtractionSchema,
 } from "./schemas/registry";
 export { SUD_SUGGESTED_KINDS } from "./sud-detection/domain";

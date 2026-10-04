@@ -105975,6 +105975,10 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "sourceChannel": {
                     "anyOf": [
                       {
@@ -106381,10 +106385,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "jobId",
-                  "pageCount"
-                ],
                 "properties": {
                   "jobId": {
                     "format": "uuid",

@@ -574,6 +574,8 @@ import {
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
+  type DocLensClassifierPort,
+  type DocLensExtractorPort,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
@@ -581,18 +583,23 @@ import {
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
   createCandidateValueCipher,
+  createDocLensIntakeEnqueue,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
   createDrizzlePortalAccessLog,
+  createHttpDoclingClient,
   createRefusingObjectStore,
   createS3ObjectStore,
   createS3TenantStorageProvisioner,
   createSignedUrlService,
   createSudConsentEvaluatorPortalConsentPort,
+  createUnboundDoclingClient,
   deriveTenantBucket,
+  doclingConfigFromEnv,
   getDocumentRenderer,
   mountDocumentRoutes,
+  registerDocLensIntakeWorker,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
   registerDocumentRoutes,
@@ -3287,10 +3294,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // (F-091). F-235 (#248): review completion now PUBLISHES `m22.extraction.commit_requested` (the
           // DocLens → M5 demographics writeback), so the mount takes the m22 publisher + the tenant-DEK
           // cipher that decrypts `extraction_candidate.value_cipher` server-side at commit.
-          mountDocumentRoutes(app, dbHandle.db, featureFlagReader, {
-            outbox: m22OutboxPublisher,
-            cipher: createCandidateValueCipher(getTenantKeyProvider()),
-          });
+          mountDocumentRoutes(
+            app,
+            dbHandle.db,
+            featureFlagReader,
+            {
+              outbox: m22OutboxPublisher,
+              cipher: createCandidateValueCipher(getTenantKeyProvider()),
+            },
+            // F-236 — `POST /intake/uploads/:id/extraction/run` enqueues; the worker process runs it.
+            queueConnection ? createDocLensIntakeEnqueue(queueConnection) : undefined,
+          );
           mountTerminologyRoutes(app, dbHandle.db, featureFlagReader); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db, {
@@ -5614,6 +5628,45 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // TASK-040A — gated on `role !== "api"` for the same reason as the worker-runner section above: an
   // API replica polling the SAME outbox rows as every other replica is wasted work, not a correctness
   // bug (FOR UPDATE SKIP LOCKED makes concurrent pollers safe), but it belongs on the worker role.
+  // F-236 (ADR-0048) — the DocLens intake worker (stages 2–4: Docling → classify → extract → ground →
+  // DEK-encrypted candidates). Worker role only. Every AI call inside it goes through the governed M32
+  // seams, so with `ai.full` off (every tenant) a run classifies nothing and records `awaiting_capability`
+  // — it never fails open. No docling-worker configured ⇒ the unbound client, whose typed 503 makes the
+  // job retry rather than pretend the document had no text.
+  if (role !== "api" && dbHandle && queueConnection) {
+    const intakeS3Config = s3ObjectStoreConfigFromEnv(process.env);
+    const intakeObjects = intakeS3Config ? createS3ObjectStore(intakeS3Config) : null;
+    const doclingConfig = doclingConfigFromEnv(process.env);
+    const intakeWorker = registerDocLensIntakeWorker(
+      queueConnection,
+      {
+        db: dbHandle.db,
+        docling: doclingConfig
+          ? createHttpDoclingClient(doclingConfig)
+          : createUnboundDoclingClient(),
+        presignSource: async ({ organizationId, bucket, objectKey }) => {
+          if (!intakeObjects) {
+            throw new DegradedError(
+              "document-storage",
+              "no object store is bound (MINIO_* is not configured)",
+            );
+          }
+          const { url } = await intakeObjects.presign({
+            organizationId,
+            descriptor: { bucket, objectKey, ttlSeconds: 300, accessKind: "content_download" },
+          });
+          return url;
+        },
+        cipher: createCandidateValueCipher(getTenantKeyProvider()),
+        classifier: () => getSeam("DocLensClassifier") as DocLensClassifierPort,
+        extractor: () => getSeam("DocLensExtractor") as DocLensExtractorPort,
+      },
+      (msg, detail) => app.log.info(detail, msg),
+    );
+    app.addHook("onClose", async () => {
+      await intakeWorker.close();
+    });
+  }
   // F-236 (ADR-0048) — the M32 backend health sweep: the only writer of `ai_model_backend.last_health_status`
   // (the routing gate never routes `unknown`). Worker role only — one writer — and only when this
   // deployment configures a backend and has the platform credential (its two-column grant).

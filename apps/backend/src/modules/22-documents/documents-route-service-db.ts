@@ -609,14 +609,24 @@ export function createDbDocumentRouteService(
     // ── Intake writes ────────────────────────────────────────────────────────────────────────────────
     async uploadBatch(organizationId, actor, args) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
+        // F-236 — a batch that names its source document must name one this tenant actually filed (RLS:
+        // another org's id is simply not found → the non-leaking 404).
+        if (args.documentId) {
+          const [d] = await tx
+            .select({ id: DOC.id })
+            .from(DOC)
+            .where(eq(DOC.id, args.documentId))
+            .limit(1);
+          if (!d) throw new NotFoundError("document");
+        }
         const [b] = await tx
           .insert(BATCH)
           .values({
             organizationId,
             patientId: args.patientId,
-            // The intake batch's initial document is created by the ingest pipeline; the route mints the ref
-            // (no SQL FK — app-validated). A sentinel keeps the NOT NULL invariant honest.
-            initialDocumentId: randomUUID(),
+            // No SQL FK (app-validated above). Without a documentId the ref is a placeholder the ingest
+            // pipeline would replace; an extraction run against it refuses (parse_failed), never guesses.
+            initialDocumentId: args.documentId ?? randomUUID(),
             sourceChannel: args.sourceChannel,
             sourceMetadata: args.sourceMetadata,
             uploadedByMembershipId: actor.membershipId,

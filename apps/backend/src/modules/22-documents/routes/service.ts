@@ -238,7 +238,13 @@ export interface DocumentRouteService {
   uploadBatch(
     organizationId: OrgId,
     actor: DocumentWriteActor,
-    args: { patientId: string | null; sourceChannel: string; sourceMetadata?: string },
+    args: {
+      patientId: string | null;
+      sourceChannel: string;
+      sourceMetadata?: string;
+      /** F-236 — the filed source document (validated in-org); absent ⇒ legacy placeholder ref. */
+      documentId?: string;
+    },
   ): Promise<IntakeBatchView>;
   getBatch(organizationId: OrgId, batchId: string): Promise<IntakeBatchView>;
   listClassification(

@@ -49,3 +49,26 @@ export {
   M22_EXTRACTION_BACKREF_CONSUMER,
   buildM22ExtractionBackrefConsumer,
 } from "./extraction-backref-consumer";
+// F-236 (ADR-0048) — DocLens stages 2–4 as a background job: Docling client, intake job, its queue.
+export {
+  type DoclingClient,
+  DoclingParseError,
+  createHttpDoclingClient,
+  createUnboundDoclingClient,
+  doclingConfigFromEnv,
+  parseDoclingResponse,
+} from "./docling-client";
+export {
+  type DocLensClassifierPort,
+  type DocLensExtractorPort,
+  type DocLensIntakeDeps,
+  type DocLensIntakeJob,
+  type DocLensIntakeSummary,
+  runDocLensIntake,
+} from "./intake-job";
+export {
+  type DocLensIntakeEnqueue,
+  M22_DOCLENS_INTAKE_QUEUE,
+  createDocLensIntakeEnqueue,
+  registerDocLensIntakeWorker,
+} from "./intake-queue";

@@ -47168,6 +47168,8 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     patientId?: string;
+                    /** Format: uuid */
+                    documentId?: string;
                     sourceChannel: "fax" | "email_ingest" | "portal_upload" | "admin_upload" | "api";
                     sourceMetadata?: string;
                 };
@@ -47328,8 +47330,8 @@ export interface operations {
             content: {
                 "application/json": {
                     /** Format: uuid */
-                    jobId: string;
-                    pageCount: number;
+                    jobId?: string;
+                    pageCount?: number;
                 };
             };
         };
