@@ -215,12 +215,15 @@ export const SYSTEM_LOCKED_FLOORS = {
     "engagement.manage",
     "legalhold.manage",
   ],
-  // HIPAA Privacy Officer — §164.530(a).
+  // HIPAA Privacy Officer — §164.530(a). `privacy.admin` (M5 §4.7) is the privacy official's own
+  // control over the patient privacy-flag snapshot (the officer view + "Resync from consent", M5 §5.1);
+  // without it the §164.530(a) role could not reach the one screen the M5 spec names it the actor for.
   hipaa_privacy_officer: [
     "audit.read",
     "audit.disclosure_report",
     "consent.read",
     "legalhold.read",
+    "privacy.admin",
   ],
   // HIPAA Security Officer — §164.308(a)(2).
   hipaa_security_officer: ["audit.read", "audit.integrity", "incident.read"],
@@ -291,6 +294,10 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     systemLocked: true,
     description: "CoP 418.52 / HIPAA compliance officer; default break-glass approver.",
     floor: SYSTEM_LOCKED_FLOORS.compliance_officer,
+    // M5 §4.7 grants `privacy.admin` to "Privacy Officer, Compliance Officer" (§6: both may resync privacy
+    // flags). A DEFAULT grant, not floor: the CoP 418.52 floor is the un-strippable minimum, and a tenant
+    // whose privacy official alone should hold resync may remove it from the compliance officer.
+    grants: [...SYSTEM_LOCKED_FLOORS.compliance_officer, "privacy.admin"],
   },
   {
     key: "hipaa_privacy_officer",

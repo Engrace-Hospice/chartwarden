@@ -879,6 +879,8 @@ export function AdmissionDetail(): JSX.Element {
   const nextRequirement = readiness?.requirements.find(
     (r) => r.blocking && r.status !== "complete" && r.status !== "not_applicable",
   );
+  // F-238 — non-blocking items still owing an action (today: an unreviewed intake detection).
+  const advisories = (readiness?.requirements ?? []).filter(isAdvisory);
   const triggerAction = (action: string | undefined): void => {
     if (!action) return;
     if (action === "ACKNOWLEDGE_NOR" || action === "COMPLETE_NOTICE_OF_RIGHTS") setCeremony("nor");
@@ -993,6 +995,22 @@ export function AdmissionDetail(): JSX.Element {
                 <span>All blocking admission requirements are complete.</span>
               </div>
             ) : null}
+            {advisories.map((r) => (
+              <div key={r.code} style={nextStepStyle} data-testid={`advisory-${r.code}`}>
+                <div>
+                  <strong>{r.label}: review advised</strong>
+                  <p style={requirementMessageStyle}>{r.message}</p>
+                </div>
+                {r.action ? (
+                  <RequirementActionButton
+                    action={r.action}
+                    context={actionContext}
+                    onAction={triggerAction}
+                    style={ghostBtn}
+                  />
+                ) : null}
+              </div>
+            ))}
             {nextRequirement ? (
               <div style={nextStepStyle}>
                 <div>
@@ -2458,16 +2476,52 @@ interface SudPendingBatch {
   id: string;
   createdAt: string;
   sourceChannel: string;
+  pageCount: number | null;
+  documentCount: number | null;
+}
+
+const INTAKE_SOURCE_LABEL: Record<string, string> = {
+  fax: "fax",
+  email_ingest: "email",
+  portal_upload: "portal upload",
+  admin_upload: "upload",
+  api: "interface",
+};
+
+/**
+ * One flagged intake batch, distinguishable from its siblings: the channel, the received date AND time,
+ * and its size — e.g. "fax received Oct 4, 2026, 2:38 AM · 3 documents · 21 pages". Counts only.
+ */
+function describeIntakeBatch(b: SudPendingBatch): string {
+  const d = new Date(b.createdAt);
+  const when = Number.isNaN(d.getTime())
+    ? b.createdAt
+    : d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  return [
+    `${INTAKE_SOURCE_LABEL[b.sourceChannel] ?? "document"} received ${when}`,
+    b.documentCount !== null && b.documentCount > 1 ? plural(b.documentCount, "document") : null,
+    b.pageCount !== null ? plural(b.pageCount, "page") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**
- * REVIEW_PRIVACY — explains WHY the patient-privacy requirement blocks activation (the server's
- * category-free `reasonCode`) and links to the one workflow that can lift it. No override exists:
- * M5 reports `overrideAllowed`, but no privacy-override route is built, so none is offered.
+ * REVIEW_PRIVACY — explains the patient-privacy requirement (the server's category-free `reasonCode`)
+ * and links to the one workflow that can lift it. No override exists: M5 reports `overrideAllowed`,
+ * but no privacy-override route is built, so none is offered.
  *
- *   INTAKE_DETECTION_UNREVIEWED  the open intake batches for this patient whose DocLens detection is
- *                                still `detected` (GET /api/v1/intake/uploads — ids + dates only);
- *                                confirming/rejecting there drives the M5 flag (M22 §7.4 W4)
+ *   INTAKE_DETECTION_UNREVIEWED  ADVISORY (F-238: never blocks activation). The open, non-discarded
+ *                                intake batches for this patient whose detection is still `detected`
+ *                                (GET /api/v1/intake/uploads — ids, dates, counts); confirming/rejecting
+ *                                there drives the M5 flag (M22 §7.4 W4)
  *   CONSENT_REQUIRED             the patient's consent record (M39) — an active release lifts it
  *   anything else                who to ask, plus a re-check
  */
@@ -2498,26 +2552,30 @@ function PrivacyReviewDialog({
     let live = true;
     setBatches(null);
     setLookupFailed(false);
-    // Both views: a DISCARDED batch keeps its pending detection (discard does not resolve W4), and its
-    // review workspace still offers confirm/reject.
-    const lookup = (view: "open" | "done") =>
-      client.GET("/api/v1/intake/uploads", {
-        params: { query: { view, patientId, sudStatus: "detected" } },
-      });
-    Promise.all([lookup("open"), lookup("done")])
-      .then((results) => {
+    // Open batches only: discarding a batch withdraws its unreviewed detection (F-238), so a discarded
+    // batch is never one to resolve — and a completed one cannot still be `detected` (completion is
+    // refused while the detection is unresolved). Filtered on status too, defensively.
+    client
+      .GET("/api/v1/intake/uploads", {
+        params: { query: { view: "open", patientId, sudStatus: "detected" } },
+      })
+      .then(({ data, error }) => {
         if (!live) return;
-        const found: SudPendingBatch[] = [];
-        for (const { data, error } of results) {
-          if (error || !Array.isArray(data?.items)) {
-            setLookupFailed(true);
-            return;
-          }
-          for (const b of data.items) {
-            found.push({ id: b.id, createdAt: b.createdAt, sourceChannel: b.sourceChannel });
-          }
+        if (error || !Array.isArray(data?.items)) {
+          setLookupFailed(true);
+          return;
         }
-        setBatches(found);
+        setBatches(
+          data.items
+            .filter((b) => b.status !== "discarded")
+            .map((b) => ({
+              id: b.id,
+              createdAt: b.createdAt,
+              sourceChannel: b.sourceChannel,
+              pageCount: b.pageCount ?? null,
+              documentCount: b.documentCount ?? null,
+            })),
+        );
       })
       .catch(() => {
         if (live) setLookupFailed(true);
@@ -2533,9 +2591,10 @@ function PrivacyReviewDialog({
       <>
         <p style={admissionDetailsModalDescriptionStyle}>
           An intake document for this patient was flagged as possibly containing specially protected
-          records, which placed an interim confidentiality restriction on the patient. An intake
-          reviewer must confirm or reject that flag. Rejecting a false positive lifts the
-          restriction; confirming it means a patient consent must be recorded before admission.
+          records, which placed an interim confidentiality restriction on those records.{" "}
+          <strong>This doesn't block admission.</strong> The records stay restricted until an intake
+          reviewer confirms or rejects the flag. Rejecting a false positive lifts the restriction;
+          confirming it means a patient consent must be recorded before the records can be shared.
         </p>
         {lookupFailed ? (
           <p style={hintTextStyle} data-testid="privacy-intake-unavailable">
@@ -2554,11 +2613,11 @@ function PrivacyReviewDialog({
             {batches.map((b) =>
               can("intake.review") ? (
                 <Link key={b.id} to={`/intake/${b.id}/review`} style={patientLinkStyle}>
-                  {`Resolve the flag in intake review (received ${formatIntakeDate(b.createdAt)})`}
+                  {`Resolve the flag in intake review — ${describeIntakeBatch(b)}`}
                 </Link>
               ) : (
                 <span key={b.id} style={hintTextStyle}>
-                  {`Intake document received ${formatIntakeDate(b.createdAt)} — an intake reviewer must resolve it.`}
+                  {`Intake ${describeIntakeBatch(b)} — an intake reviewer must resolve it.`}
                 </span>
               ),
             )}
@@ -3118,9 +3177,10 @@ function ReadinessChecklist({
     status:
       r.status === "complete" || r.status === "not_applicable"
         ? "complete"
-        : r.status === "pending" || r.status === "awaiting_signature"
+        : r.status === "pending" || r.status === "awaiting_signature" || isAdvisory(r)
           ? "in-progress"
           : "blocked",
+    ...(isAdvisory(r) ? { detail: "Review advised — doesn't block activation" } : {}),
   }));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -3155,7 +3215,7 @@ function RequirementCards({
         <div key={r.code} style={requirementCardStyle}>
           <div style={requirementHeaderStyle}>
             <strong>{r.label}</strong>
-            <StatusPill label={stateLabel(r.status)} tone={requirementTone(r.status)} />
+            <RequirementPill requirement={r} />
           </div>
           <p style={requirementMessageStyle}>
             {r.message ?? (r.status === "complete" ? "Complete" : "No action required.")}
@@ -3182,12 +3242,22 @@ function RequirementLine({
   if (!requirement) return <p style={emptyTextStyle}>No readiness data available.</p>;
   return (
     <div style={requirementLineStyle}>
-      <StatusPill
-        label={stateLabel(requirement.status)}
-        tone={requirementTone(requirement.status)}
-      />
+      <RequirementPill requirement={requirement} />
       <span>{requirement.message ?? requirement.label}</span>
     </div>
+  );
+}
+
+/** A non-blocking requirement that still owes an action — shown, never counted as a blocker. */
+function isAdvisory(r: ReadinessRequirement): boolean {
+  return !r.blocking && r.status === "action_required";
+}
+
+function RequirementPill({ requirement }: { requirement: ReadinessRequirement }): JSX.Element {
+  return isAdvisory(requirement) ? (
+    <StatusPill label="Review advised" tone="warning" />
+  ) : (
+    <StatusPill label={stateLabel(requirement.status)} tone={requirementTone(requirement.status)} />
   );
 }
 

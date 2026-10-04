@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 158,
+  "totalStaticWebScreens": 159,
   "e2eReachedCount": 19,
-  "axeReachedCount": 152,
+  "axeReachedCount": 153,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -313,6 +313,14 @@
       "module": "04-audit",
       "path": "/compliance/legal-holds",
       "permission": "legalhold.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "privacy.restricted-patients",
+      "module": "05-patient",
+      "path": "/compliance/privacy",
+      "permission": "privacy.admin",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1509,6 +1517,14 @@
       "module": "04-audit",
       "path": "/compliance/legal-holds",
       "permission": "legalhold.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "privacy.restricted-patients",
+      "module": "05-patient",
+      "path": "/compliance/privacy",
+      "permission": "privacy.admin",
       "e2eReached": false,
       "axeReached": true
     },

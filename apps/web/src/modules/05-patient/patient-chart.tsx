@@ -44,6 +44,7 @@ import {
 } from "./patient-overview";
 
 import { ChartModuleRail, type ChartSection } from "../../shell/chart-module-rail";
+import { useSession } from "../../shell/session";
 
 interface PatientSummary {
   id: string;
@@ -1943,6 +1944,7 @@ function consentTone(s: string): StatusTone {
 
 function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
+  const canAdministerPrivacy = useSession()?.permissions?.includes("privacy.admin") ?? false;
   const [flags, setFlags] = useState<PrivacyFlags | null>(null);
   const [consents, setConsents] = useState<ConsentRecord[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -2155,6 +2157,14 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
           </details>
         ) : null}
       </Card>
+
+      {canAdministerPrivacy ? (
+        <p style={helperNote}>
+          <Link to={`/patients/${patientId}/privacy`}>Open the privacy officer view</Link> — where
+          each restriction came from, the WardenLens detections behind it, and re-sync from
+          consents.
+        </p>
+      ) : null}
 
       <p style={helperNote}>
         Privacy detail fails closed: when disclosure authority is absent or unknown, protected

@@ -4826,7 +4826,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DocLens-proposed diagnoses on the plan (SUD-filtered per §7.6) */
+        /** WardenLens-proposed diagnoses on the plan (SUD-filtered per §7.6) */
         get: operations["getApiV1CareplansByPlanIdProblemproposals"];
         put?: never;
         post?: never;
@@ -9625,7 +9625,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** DocLens: commit a reviewed extraction job's field decisions (flag-gated) */
+        /** WardenLens: commit a reviewed extraction job's field decisions (flag-gated) */
         post: operations["postApiV1IntakeJobsByIdExtractionCommit"];
         delete?: never;
         options?: never;
@@ -9759,7 +9759,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DocLens: the intake work queue (pipeline status, SUD state, candidate counts; no values) */
+        /** WardenLens: the intake work queue (pipeline status, SUD state, candidate counts; no values) */
         get: operations["getApiV1IntakeUploads"];
         put?: never;
         /** Upload a new intake batch */
@@ -9847,7 +9847,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** DocLens: run the extraction pipeline over a batch (flag-gated, 503 when OFF) */
+        /** WardenLens: run the extraction pipeline over a batch (flag-gated, 503 when OFF) */
         post: operations["postApiV1IntakeUploadsByIdExtractionRun"];
         delete?: never;
         options?: never;
@@ -9864,7 +9864,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** DocLens: answer a document's identity check — same patient, or another patient's (its fields are never committed); Idempotency-Key */
+        /** WardenLens: answer a document's identity check — same patient, or another patient's (its fields are never committed); Idempotency-Key */
         post: operations["postApiV1IntakeUploadsByIdIdentityreview"];
         delete?: never;
         options?: never;
@@ -9896,7 +9896,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DocLens: one source page as PNG (the review overlay's coordinate space x2) */
+        /** WardenLens: one source page as PNG (the review overlay's coordinate space x2) */
         get: operations["getApiV1IntakeUploadsByIdPagesByPageImage"];
         put?: never;
         post?: never;
@@ -9915,7 +9915,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** DocLens: move a misfiled document to another patient and/or referral before its review completes (history kept; a Part 2 privacy flag moves with it; Idempotency-Key) */
+        /** WardenLens: move a misfiled document to another patient and/or referral before its review completes (history kept; a Part 2 privacy flag moves with it; Idempotency-Key) */
         post: operations["postApiV1IntakeUploadsByIdRelink"];
         delete?: never;
         options?: never;
@@ -9949,7 +9949,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** DocLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key) */
+        /** WardenLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key) */
         post: operations["postApiV1IntakeUploadsByIdSudreview"];
         delete?: never;
         options?: never;
@@ -9964,7 +9964,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DocLens: the prospect summary of a completed review — reviewer-approved values with document/page citations and a copyable plain-text rendering (deterministic; 409 until complete) */
+        /** WardenLens: the prospect summary of a completed review — reviewer-approved values with document/page citations and a copyable plain-text rendering (deterministic; 409 until complete) */
         get: operations["getApiV1IntakeUploadsByIdSummary"];
         put?: never;
         post?: never;
@@ -9981,7 +9981,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DocLens: one batch for side-by-side review (decrypted values, boxes, stage-5 and SUD state) */
+        /** WardenLens: one batch for side-by-side review (decrypted values, boxes, stage-5 and SUD state) */
         get: operations["getApiV1IntakeUploadsByIdWorkspace"];
         put?: never;
         post?: never;
@@ -13007,7 +13007,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Patient allergy list (F-238) — every status; an UNVERIFIED (e.g. DocLens referral) allergy is returned, labelled, never hidden */
+        /** Patient allergy list (F-238) — every status; an UNVERIFIED (e.g. WardenLens referral) allergy is returned, labelled, never hidden */
         get: operations["getApiV1PatientsByIdAllergies"];
         put?: never;
         post?: never;
@@ -13154,6 +13154,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/privacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Privacy Officer view (M5 §5.1) — restrictions with origin + since, M39 Part 2 consent state, WardenLens SUD batches (ids/dates/counts), snapshot timeline, drift; privacy.admin */
+        get: operations["getApiV1PatientsByIdPrivacy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/privacy-flags": {
         parameters: {
             query?: never;
@@ -13165,6 +13182,23 @@ export interface paths {
         get: operations["getApiV1PatientsByIdPrivacyflags"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/privacy-flags/resync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resync the privacy-flag snapshot from M39 consent state (M5 §4.2; privacy.admin) — WardenLens detections are re-applied, never lifted */
+        post: operations["postApiV1PatientsByIdPrivacyflagsResync"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13419,7 +13453,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DocLens: open intake batches for this patient holding an extracted residence address not yet on the chart (undecided, or approved in a review not completed) — counts and batch ids only, never a value; newest first, at most 3 (patient.read + caseload + intake.read) */
+        /** WardenLens: open intake batches for this patient holding an extracted residence address not yet on the chart (undecided, or approved in a review not completed) — counts and batch ids only, never a value; newest first, at most 3 (patient.read + caseload + intake.read) */
         get: operations["getApiV1PatientsByPatientIdIntakependingaddress"];
         put?: never;
         post?: never;
@@ -13436,7 +13470,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DocLens: every completed intake review's prospect summary for this patient's chart, newest first (patient.read + caseload) */
+        /** WardenLens: every completed intake review's prospect summary for this patient's chart, newest first (patient.read + caseload) */
         get: operations["getApiV1PatientsByPatientIdIntakesummaries"];
         put?: never;
         post?: never;
@@ -13470,7 +13504,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Medication-history records for a patient — DoseSpot MedHx and DocLens referral lines (`source`), for reconciliation (§4.1 / §6.1; F-238) */
+        /** Medication-history records for a patient — DoseSpot MedHx and WardenLens referral lines (`source`), for reconciliation (§4.1 / §6.1; F-238) */
         get: operations["getApiV1PatientsByPatientIdMedicationsHistory"];
         put?: never;
         post?: never;
@@ -14754,6 +14788,23 @@ export interface paths {
         };
         /** Upcoming visits (M17 PortalVisitReader), lay DTO */
         get: operations["getApiV1PortalVisitsUpcoming"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/privacy/restricted-patients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Privacy Officer work queue — patients with an active restriction or a stale snapshot, filterable by origin (privacy.admin) */
+        get: operations["getApiV1PrivacyRestrictedpatients"];
         put?: never;
         post?: never;
         delete?: never;
@@ -47765,6 +47816,8 @@ export interface operations {
                                 code: string;
                                 kind: "code_names_another_referral" | "code_names_another_patient";
                             } | null;
+                            pageCount: number | null;
+                            documentCount: number | null;
                             candidates: {
                                 total: number;
                                 lowConfidence: number;
@@ -57645,6 +57698,79 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdPrivacy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patient: {
+                            id: string;
+                            displayName: string;
+                            mrn: string;
+                            status: string;
+                        };
+                        snapshot: {
+                            exists: boolean;
+                            flags: string[];
+                            capturedAt: string | null;
+                            stale: boolean;
+                            invalidatedAt: string | null;
+                            sourceConsentVersion: string | null;
+                        };
+                        restrictions: {
+                            flag: string;
+                            origin: "consent" | "intake_unconfirmed" | "intake_confirmed" | "unattributed";
+                            since: string | null;
+                            sinceFromHistory: boolean;
+                        }[];
+                        part2Consent: {
+                            state: "active" | "inactive" | "none";
+                            consentRecordId: string | null;
+                            status: string | null;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            revokedAt: string | null;
+                        };
+                        intakeDetections: {
+                            batchId: string;
+                            sudStatus: "detected" | "confirmed" | "rejected";
+                            batchStatus: string;
+                            /** Format: date-time */
+                            receivedAt: string;
+                            pageCount: number | null;
+                            resolvedAt: string | null;
+                            contributes: boolean;
+                        }[];
+                        history: {
+                            /** Format: date-time */
+                            at: string;
+                            actorUserId: string | null;
+                            action: "insert" | "update" | "delete";
+                            flagsBefore: string[];
+                            flagsAfter: string[];
+                            sudOriginAfter: string | null;
+                        }[];
+                        drift: ("snapshot_stale" | "consent_active_but_restricted" | "consent_inactive_but_unrestricted" | "intake_detection_without_flag" | "intake_confirmed_not_promoted" | "intake_flag_without_detection")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByIdPrivacyflags: {
         parameters: {
             query?: never;
@@ -57667,6 +57793,40 @@ export interface operations {
                         capturedAt: string | null;
                         sudRestricted: boolean;
                         sudDisclosable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdPrivacyflagsResync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        flagsBefore: string[];
+                        flagsAfter: string[];
+                        sudOriginAfter: string | null;
+                        sourceConsentVersion: string | null;
+                        flagsChanged: boolean;
+                        eventEmitted: boolean;
+                        /** Format: date-time */
+                        capturedAt: string;
                     };
                 };
             };
@@ -61492,6 +61652,52 @@ export interface operations {
                         items: {
                             [key: string]: unknown;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PrivacyRestrictedpatients: {
+        parameters: {
+            query?: {
+                origin?: ("consent" | "intake_unconfirmed" | "intake_confirmed" | "unattributed") | "stale";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            patientId: string;
+                            displayName: string;
+                            mrn: string;
+                            flags: string[];
+                            origin: "consent" | "intake_unconfirmed" | "intake_confirmed" | "unattributed";
+                            /** Format: date-time */
+                            capturedAt: string;
+                            stale: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        counts: {
+                            total: number;
+                            consent: number;
+                            intake_unconfirmed: number;
+                            intake_confirmed: number;
+                            unattributed: number;
+                            stale: number;
+                        };
                     };
                 };
             };

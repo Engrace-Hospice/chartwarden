@@ -72,6 +72,8 @@ export const ReviewQueueResponseSchema = Type.Object({
       patientName: Nullable(Type.String()),
       sudStatus: SudStatus,
       recordsRequestConflict: RecordsRequestConflictSchema,
+      pageCount: Type.Union([Type.Integer(), Type.Null()]),
+      documentCount: Type.Union([Type.Integer(), Type.Null()]),
       candidates: Type.Object({
         total: Type.Integer(),
         lowConfidence: Type.Integer(),

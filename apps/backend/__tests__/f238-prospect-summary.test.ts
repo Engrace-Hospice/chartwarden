@@ -348,7 +348,7 @@ describe("F-238 — prospect summary builder", () => {
     expect(s.plainText).toContain(
       "- No allergy lines were approved (this is not 'no known allergies').",
     );
-    expect(s.plainText).toContain("NOT CAPTURED BY DOCLENS");
+    expect(s.plainText).toContain("NOT CAPTURED BY WARDENLENS");
     expect(s.notCaptured.length).toBeGreaterThan(0);
   });
 

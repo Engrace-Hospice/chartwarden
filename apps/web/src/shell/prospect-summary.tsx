@@ -250,7 +250,7 @@ export function ProspectSummaryView({ summary }: { summary: ProspectSummary }): 
         </p>
       ) : null}
       <p className="wx-prospect-cite">
-        Not captured by DocLens (check the source documents): {summary.notCaptured.join("; ")}.
+        Not captured by WardenLens (check the source documents): {summary.notCaptured.join("; ")}.
       </p>
 
       <div className="wx-prospect-text">

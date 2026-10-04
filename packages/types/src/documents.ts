@@ -358,6 +358,7 @@ export const M22_EVENT_NAMES = [
   "m22.intake.sud_confirmed",
   "m22.intake.sud_rejected",
   "m22.intake.sud_relinked",
+  "m22.intake.sud_withdrawn",
   "m22.intake.completed",
   "m22.intake.rejected",
   // extraction

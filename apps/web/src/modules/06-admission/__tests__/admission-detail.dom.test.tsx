@@ -512,58 +512,113 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
     await screen.findByRole("heading", { name: "Review patient privacy" });
   }
 
-  it("links an unreviewed intake detection to the intake review that resolves it", async () => {
-    const client = withIntake(
-      clientFor(
-        privacyBlocked(
-          "INTAKE_DETECTION_UNREVIEWED",
-          "An intake document placed an interim confidentiality restriction on this patient that no reviewer has resolved yet.",
-        ),
-      ),
-      (view) =>
-        ok({
-          items:
-            view === "done"
-              ? []
-              : [
-                  {
-                    id: flaggedBatch,
-                    createdAt: "2026-10-04T08:20:00.000Z",
-                    status: "extraction_complete",
-                    sourceChannel: "fax",
-                    sudStatus: "detected",
-                  },
-                ],
-          nextCursor: null,
-        }),
+  const ADVISORY =
+    "An intake document is flagged for possibly specially protected records and hasn't been reviewed yet. This doesn't block admission; the records stay restricted until reviewed.";
+
+  /** F-238 — the server's shape for an unreviewed intake detection: non-blocking, still actionable. */
+  function privacyAdvisory(): ReadinessFixture {
+    return readiness({
+      status: "ready",
+      canActivate: true,
+      completed: 1,
+      blockingRemaining: 0,
+      requirements: [
+        { code: "patient_identity", label: "Patient identity", status: "complete", blocking: true },
+        {
+          code: "patient_privacy",
+          label: "Patient privacy",
+          status: "action_required",
+          blocking: false,
+          message: ADVISORY,
+          action: "REVIEW_PRIVACY",
+          reasonCode: "INTAKE_DETECTION_UNREVIEWED",
+        },
+      ],
+    });
+  }
+
+  const batch = (id: string, createdAt: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    createdAt,
+    status: "extraction_complete",
+    sourceChannel: "fax",
+    sudStatus: "detected",
+    pageCount: 21,
+    documentCount: 1,
+    ...extra,
+  });
+
+  it("shows an unreviewed intake detection as advisory — activation stays enabled", async () => {
+    renderWithShell(clientFor(privacyAdvisory()));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    const activate = screen.getByRole("button", { name: "Activate Admission" });
+    expect((activate as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("Admission cannot be activated")).toBeNull();
+    expect(screen.getByText("Ready for Admission")).toBeTruthy();
+    const advisory = screen.getByTestId("advisory-patient_privacy");
+    expect(advisory.textContent).toContain(ADVISORY);
+    expect(screen.getAllByText("Review advised").length).toBeGreaterThan(0);
+    expect(document.body.textContent?.toLowerCase()).not.toMatch(/\bsud\b|substance|part 2/);
+  });
+
+  it("links each flagged, non-discarded batch distinctly (channel, date AND time, size)", async () => {
+    const client = withIntake(clientFor(privacyAdvisory()), () =>
+      ok({
+        items: [
+          batch(flaggedBatch, "2026-10-04T09:38:00.000Z", { documentCount: 3 }),
+          batch("77f5013a-0aa1-4ed4-8ed9-7c787c60e1f2", "2026-10-04T11:05:00.000Z", {
+            pageCount: 1,
+            sourceChannel: "email_ingest",
+          }),
+          batch("88f5013a-0aa1-4ed4-8ed9-7c787c60e1f3", "2026-10-04T12:00:00.000Z", {
+            status: "discarded",
+          }),
+        ],
+        nextCursor: null,
+        hasMore: false,
+      }),
     );
     renderWithShell(client, {
       ...session,
       permissions: ["admission.read", "intake.read", "intake.review"],
     });
     await openPrivacy();
+    expect(screen.getByRole("dialog").textContent).toContain("This doesn't block admission.");
 
-    const link = await screen.findByRole("link", { name: /Resolve the flag in intake review/ });
-    expect(link.getAttribute("href")).toBe(`/intake/${flaggedBatch}/review`);
-    for (const view of ["open", "done"]) {
-      expect(client.GET).toHaveBeenCalledWith(
-        "/api/v1/intake/uploads",
-        expect.objectContaining({
-          params: { query: { view, patientId: "patient-1", sudStatus: "detected" } },
-        }),
-      );
-    }
+    const links = await screen.findAllByRole("link", { name: /Resolve the flag in intake review/ });
+    // The discarded batch's detection was withdrawn — it is never offered.
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      `/intake/${flaggedBatch}/review`,
+      "/intake/77f5013a-0aa1-4ed4-8ed9-7c787c60e1f2/review",
+    ]);
+    const labels = links.map((l) => l.textContent ?? "");
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels[0]).toMatch(
+      /^Resolve the flag in intake review — fax received Oct 4, 2026, \d{1,2}:38 (AM|PM) · 3 documents · 21 pages$/,
+    );
+    expect(labels[1]).toMatch(/email received Oct 4, 2026, \d{1,2}:05 (AM|PM) · 1 page$/);
+    expect(client.GET).toHaveBeenCalledWith(
+      "/api/v1/intake/uploads",
+      expect.objectContaining({
+        params: { query: { view: "open", patientId: "patient-1", sudStatus: "detected" } },
+      }),
+    );
+    expect(client.GET).not.toHaveBeenCalledWith(
+      "/api/v1/intake/uploads",
+      expect.objectContaining({
+        params: expect.objectContaining({ query: expect.objectContaining({ view: "done" }) }),
+      }),
+    );
   });
 
   it("says who to ask when the caller cannot open intake review (403)", async () => {
-    const client = withIntake(
-      clientFor(privacyBlocked("INTAKE_DETECTION_UNREVIEWED", "Interim restriction.")),
-      () => ({
-        data: undefined,
-        error: { error: { code: "FORBIDDEN" } },
-        response: new Response(null, { status: 403 }),
-      }),
-    );
+    const client = withIntake(clientFor(privacyAdvisory()), () => ({
+      data: undefined,
+      error: { error: { code: "FORBIDDEN" } },
+      response: new Response(null, { status: 403 }),
+    }));
     renderWithShell(client);
     await openPrivacy();
     expect(await screen.findByTestId("privacy-intake-unavailable")).toBeTruthy();

@@ -194,6 +194,22 @@
     },
     {
       "app": "web",
+      "module": "05-patient",
+      "moduleId": 5,
+      "id": "patient.privacy",
+      "path": "/patients/:id/privacy",
+      "permission": "privacy.admin"
+    },
+    {
+      "app": "web",
+      "module": "05-patient",
+      "moduleId": 5,
+      "id": "privacy.restricted-patients",
+      "path": "/compliance/privacy",
+      "permission": "privacy.admin"
+    },
+    {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.referrals",

@@ -657,6 +657,12 @@ import {
   PatientPrivacyFlagsResponseSchema as M5EPatientPrivacyFlagsResponseSchema,
   PatientSummarySchema as M5EPatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
+import {
+  PatientPrivacyViewSchema as M5EPatientPrivacyViewSchema,
+  PrivacyResyncResponseSchema as M5EPrivacyResyncResponseSchema,
+  RestrictedPatientsQuerySchema as M5ERestrictedPatientsQuerySchema,
+  RestrictedPatientsResponseSchema as M5ERestrictedPatientsResponseSchema,
+} from "../../apps/backend/src/modules/05-patient/routes/privacy-typebox";
 
 // M15 Discipline Care Plans — request schemas (§4.2) + response DTOs (§4.1 views, pinned by `Conforms`
 // in m15-typebox.ts). Every symbol M15-aliased. Merge into the existing top-of-file import in
@@ -3881,7 +3887,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   // F-238 dx-writeback — DocLens-proposed diagnoses (never charted until a clinician accepts).
   "GET /api/v1/care-plans/:planId/problem-proposals": {
-    summary: "DocLens-proposed diagnoses on the plan (SUD-filtered per §7.6)",
+    summary: "WardenLens-proposed diagnoses on the plan (SUD-filtered per §7.6)",
     query: M7ProblemProposalListQuerySchema,
     response: M7ProblemProposalListResponseSchema,
   },
@@ -4577,7 +4583,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/patients/:patientId/medications/history": {
     summary:
-      "Medication-history records for a patient — DoseSpot MedHx and DocLens referral lines (`source`), for reconciliation (§4.1 / §6.1; F-238)",
+      "Medication-history records for a patient — DoseSpot MedHx and WardenLens referral lines (`source`), for reconciliation (§4.1 / §6.1; F-238)",
     response: M12MedicationHistoryResponseSchema,
   },
   "POST /api/v1/patients/:patientId/medications/history/refresh": {
@@ -5501,59 +5507,60 @@ import {
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/intake/uploads": {
     summary:
-      "DocLens: the intake work queue (pipeline status, SUD state, candidate counts; no values)",
+      "WardenLens: the intake work queue (pipeline status, SUD state, candidate counts; no values)",
     query: M22ReviewQueueQuerySchema,
     response: M22ReviewQueueResponseSchema,
   },
   "GET /api/v1/intake/uploads/:id/workspace": {
     summary:
-      "DocLens: one batch for side-by-side review (decrypted values, boxes, stage-5 and SUD state)",
+      "WardenLens: one batch for side-by-side review (decrypted values, boxes, stage-5 and SUD state)",
     response: M22ReviewWorkspaceResponseSchema,
   },
   "GET /api/v1/intake/uploads/:id/pages/:page/image": {
-    summary: "DocLens: one source page as PNG (the review overlay's coordinate space x2)",
+    summary: "WardenLens: one source page as PNG (the review overlay's coordinate space x2)",
   },
   "POST /api/v1/intake/uploads/:id/sud-review": {
-    summary: "DocLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key)",
+    summary:
+      "WardenLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key)",
     body: M22SudReviewRequest,
     response: M22SudReviewResponseSchema,
   },
   // F-238 — a prospect's records: the per-document identity check and relinking a misfiled fax.
   "POST /api/v1/intake/uploads/:id/identity-review": {
     summary:
-      "DocLens: answer a document's identity check — same patient, or another patient's (its fields are never committed); Idempotency-Key",
+      "WardenLens: answer a document's identity check — same patient, or another patient's (its fields are never committed); Idempotency-Key",
     body: M22IdentityReviewRequest,
     response: M22IdentityReviewResponseSchema,
   },
   "POST /api/v1/intake/uploads/:id/relink": {
     summary:
-      "DocLens: move a misfiled document to another patient and/or referral before its review completes (history kept; a Part 2 privacy flag moves with it; Idempotency-Key)",
+      "WardenLens: move a misfiled document to another patient and/or referral before its review completes (history kept; a Part 2 privacy flag moves with it; Idempotency-Key)",
     body: M22RelinkRequest,
     response: M22RelinkResponseSchema,
   },
   "GET /api/v1/intake/uploads/:id/summary": {
     summary:
-      "DocLens: the prospect summary of a completed review — reviewer-approved values with document/page citations and a copyable plain-text rendering (deterministic; 409 until complete)",
+      "WardenLens: the prospect summary of a completed review — reviewer-approved values with document/page citations and a copyable plain-text rendering (deterministic; 409 until complete)",
     response: M22ProspectSummaryResponseSchema,
   },
   "GET /api/v1/patients/:patientId/intake-summaries": {
     summary:
-      "DocLens: every completed intake review's prospect summary for this patient's chart, newest first (patient.read + caseload)",
+      "WardenLens: every completed intake review's prospect summary for this patient's chart, newest first (patient.read + caseload)",
     response: M22PatientIntakeSummariesResponseSchema,
   },
   "GET /api/v1/patients/:patientId/intake-pending-address": {
     summary:
-      "DocLens: open intake batches for this patient holding an extracted residence address not yet on the chart (undecided, or approved in a review not completed) — counts and batch ids only, never a value; newest first, at most 3 (patient.read + caseload + intake.read)",
+      "WardenLens: open intake batches for this patient holding an extracted residence address not yet on the chart (undecided, or approved in a review not completed) — counts and batch ids only, never a value; newest first, at most 3 (patient.read + caseload + intake.read)",
     response: M22PendingAddressResponseSchema,
   },
 });
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/intake/uploads/:id/extraction/run": {
-    summary: "DocLens: run the extraction pipeline over a batch (flag-gated, 503 when OFF)",
+    summary: "WardenLens: run the extraction pipeline over a batch (flag-gated, 503 when OFF)",
     body: M22RunBatchRequest,
   },
   "POST /api/v1/intake/jobs/:id/extraction/commit": {
-    summary: "DocLens: commit a reviewed extraction job's field decisions (flag-gated)",
+    summary: "WardenLens: commit a reviewed extraction job's field decisions (flag-gated)",
     body: M22CommitReviewRequest,
   },
 });
@@ -5925,7 +5932,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/patients/:id/allergies": {
     summary:
-      "Patient allergy list (F-238) — every status; an UNVERIFIED (e.g. DocLens referral) allergy is returned, labelled, never hidden",
+      "Patient allergy list (F-238) — every status; an UNVERIFIED (e.g. WardenLens referral) allergy is returned, labelled, never hidden",
     response: M5EPatientAllergyListResponseSchema,
   },
   "POST /api/v1/patients/:id/allergies/:allergyId/verify": {
@@ -5947,6 +5954,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
     response: M5EPatientPrivacyFlagsResponseSchema,
+  },
+  "GET /api/v1/patients/:id/privacy": {
+    summary:
+      "Privacy Officer view (M5 §5.1) — restrictions with origin + since, M39 Part 2 consent state, WardenLens SUD batches (ids/dates/counts), snapshot timeline, drift; privacy.admin",
+    response: M5EPatientPrivacyViewSchema,
+  },
+  "POST /api/v1/patients/:id/privacy-flags/resync": {
+    summary:
+      "Resync the privacy-flag snapshot from M39 consent state (M5 §4.2; privacy.admin) — WardenLens detections are re-applied, never lifted",
+    response: M5EPrivacyResyncResponseSchema,
+  },
+  "GET /api/v1/privacy/restricted-patients": {
+    summary:
+      "Privacy Officer work queue — patients with an active restriction or a stale snapshot, filterable by origin (privacy.admin)",
+    query: M5ERestrictedPatientsQuerySchema,
+    response: M5ERestrictedPatientsResponseSchema,
   },
 
   // --- writes (§7.1 admit / §7.4 address cascade / §7.7 right-to-amend) -----------------------------

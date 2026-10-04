@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 158 statically-routable `web` screen(s) — 19/158 E2E-reached, 152/158 axe-reached.
+**Coverage:** 159 statically-routable `web` screen(s) — 19/159 E2E-reached, 153/159 axe-reached.
 
 ## Zero E2E coverage
 
@@ -47,6 +47,7 @@
 | `audit.exports` | 04-audit | `/compliance/audit/exports` | audit.export |
 | `audit.integrity-report` | 04-audit | `/compliance/audit/integrity` | audit.integrity |
 | `audit.legal-holds` | 04-audit | `/compliance/legal-holds` | legalhold.read |
+| `privacy.restricted-patients` | 05-patient | `/compliance/privacy` | privacy.admin |
 | `cost_report.list` | 27-cost-report | `/cost-reports` | cost_report.read |
 | `cost_report.bad_debt` | 27-cost-report | `/cost-reports/bad-debt` | cost_report.read |
 | `cost_report.rules` | 27-cost-report | `/cost-reports/rules` | cost_report.read_rules |

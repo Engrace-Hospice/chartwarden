@@ -402,19 +402,38 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       flags: ["hiv", "sud"],
       sud_flag_origin: "m22_intake_unconfirmed",
     });
-    // The M6 admission gate's M5 read (as the app role): the interim flag names intake review as the
-    // workflow that lifts it — category-free.
-    expect(
-      await buildPatientAdmissionClearanceReader(handle.db).evaluatePatientAdmissionClearance({
+    // The M6 admission gate's M5 read (as the app role) — category-free. F-238: the interim DocLens
+    // flag is advisory to M6 (`INTAKE_DETECTION_UNREVIEWED` does not block activation) only when it is
+    // the patient's sole flag; here the unrelated `hiv` flag is the binding restriction.
+    const clearance = () =>
+      buildPatientAdmissionClearanceReader(handle.db).evaluatePatientAdmissionClearance({
         organizationId: ORG,
         patientId: patient,
-      }),
-    ).toEqual({
+      });
+    expect(await clearance()).toEqual({
       allowed: false,
       reason: "PRIVACY_RESTRICTION",
-      restriction: "INTAKE_DETECTION_UNREVIEWED",
+      restriction: "RESTRICTED",
       overrideAllowed: true,
     });
+    // With the interim flag alone, the clearance names intake review as the workflow that lifts it.
+    await admin.query(
+      "UPDATE patient_privacy_flag_snapshot SET flags='{sud}' WHERE patient_id=$1",
+      [patient],
+    );
+    try {
+      expect(await clearance()).toEqual({
+        allowed: false,
+        reason: "PRIVACY_RESTRICTION",
+        restriction: "INTAKE_DETECTION_UNREVIEWED",
+        overrideAllowed: true,
+      });
+    } finally {
+      await admin.query(
+        "UPDATE patient_privacy_flag_snapshot SET flags='{hiv,sud}' WHERE patient_id=$1",
+        [patient],
+      );
+    }
   });
 
   it("serves the workspace (decrypted for the reviewer) and the queue (counts only)", async () => {

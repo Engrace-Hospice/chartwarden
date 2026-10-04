@@ -105,7 +105,7 @@ export async function runCodingChecks(
       "unreadable_code",
       c.raw,
       c.ambiguous.length
-        ? `"${c.raw}" could be ${c.ambiguous.join(" or ")} — check the page; DocLens will not choose.`
+        ? `"${c.raw}" could be ${c.ambiguous.join(" or ")} — check the page; WardenLens will not choose.`
         : `"${c.raw}" looks like a code but is not a valid ICD-10-CM code under any reading — check the page.`,
     );
   }

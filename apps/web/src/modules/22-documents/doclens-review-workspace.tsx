@@ -628,7 +628,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
             <div className="wx-list-state">
               <EmptyState
                 title="No extracted fields"
-                description="DocLens has not extracted any fields from this batch."
+                description="WardenLens has not extracted any fields from this batch."
               />
             </div>
           ) : (

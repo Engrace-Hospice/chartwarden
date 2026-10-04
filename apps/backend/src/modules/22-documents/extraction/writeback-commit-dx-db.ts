@@ -151,7 +151,7 @@ export async function commitReviewDiagnosisWriteback(
   if (!outbox) {
     throw new DegradedError(
       "extraction-writeback",
-      "no outbox publisher is bound for the DocLens writeback; the review cannot be committed",
+      "no outbox publisher is bound for the WardenLens writeback; the review cannot be committed",
     );
   }
 

@@ -158,7 +158,7 @@ export function rejectAiActor(): PreHandler {
   return async (request) => {
     const kind = request.context?.attributes?.actorKind;
     if (typeof kind === "string" && kind.startsWith("ai_")) {
-      throw new ForbiddenError("AI principals cannot commit a DocLens extraction review");
+      throw new ForbiddenError("AI principals cannot commit a WardenLens extraction review");
     }
   };
 }

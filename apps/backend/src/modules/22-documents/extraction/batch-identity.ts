@@ -25,7 +25,7 @@ import {
   type IntakeSudRelinkedPayload,
   M22_INTAKE_SUD_RELINKED_EVENT,
 } from "@wardenx/types";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, or } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import type { ExtractionOutboxPort } from "./writeback-commit-db";
@@ -69,7 +69,8 @@ const ID_FIELDS: Record<string, keyof DocumentIdentity> = {
 /**
  * Does another of this patient's batches still carry a live (pending or confirmed) Part 2 detection? M22
  * owns the batches, so M22 answers this for M5 whenever one batch's detection stops applying to the
- * patient (a move, a rejection) — the patient keeps the DocLens flag while any other detection holds it.
+ * patient (a move, a rejection, a discard) — the patient keeps the DocLens flag while any other live
+ * detection holds it. An unreviewed detection on a discarded batch is not live; a confirmed one is.
  */
 export async function otherBatchHoldsSudFlag(
   tx: DbClient,
@@ -83,7 +84,12 @@ export async function otherBatchHoldsSudFlag(
       and(
         eq(BATCH.patientId, patientId),
         ne(BATCH.id, exceptBatchId),
-        inArray(BATCH.sudStatus, ["detected", "confirmed"]),
+        or(
+          // A confirmed detection is a reviewer's finding: it holds even once its batch is discarded.
+          eq(BATCH.sudStatus, "confirmed"),
+          // An unreviewed one stops holding when its batch is discarded (m22.intake.sud_withdrawn).
+          and(eq(BATCH.sudStatus, "detected"), ne(BATCH.status, "discarded")),
+        ),
       ),
     )
     .limit(1);

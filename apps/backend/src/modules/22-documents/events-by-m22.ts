@@ -31,6 +31,7 @@ import {
   M22_INTAKE_SUD_DETECTED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
   M22_INTAKE_SUD_RELINKED_EVENT,
+  M22_INTAKE_SUD_WITHDRAWN_EVENT,
   type ModuleEventContribution,
 } from "@wardenx/types";
 import { M22_CLINICAL_WRITEBACK_EVENTS } from "./events-by-m22-clinical";
@@ -239,6 +240,21 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
       sudStatus: Type.Union([Type.Literal("detected"), Type.Literal("confirmed")]),
       fromPatientRetainsFlag: Type.Boolean(),
       movedByMembershipId: IdN,
+    }),
+    declaredConsumers: ["m5"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: M22_INTAKE_SUD_WITHDRAWN_EVENT,
+    moduleOwner: "m22",
+    description:
+      "F-238 — a batch with an UNREVIEWED DocLens SUD detection was discarded, so its detection no longer restricts the patient. M5 retires the DocLens-origin `sud` flag only if DocLens put it there and no other live detection holds it (`patientRetainsFlag`). A confirmed detection is never withdrawn. Ids only.",
+    payloadSchema: Type.Object({
+      intakeBatchId: Id,
+      organizationId: Id,
+      patientId: Id,
+      patientRetainsFlag: Type.Boolean(),
+      withdrawnByMembershipId: IdN,
     }),
     declaredConsumers: ["m5"],
     isOutboxOnly: true,

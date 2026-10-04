@@ -118,10 +118,10 @@ export function IntakeUploadDialog({
       setStage(null);
       onFiled(
         run.error
-          ? `Records filed. DocLens did not start reading them: ${errorText(run.error, "the server refused the run")}.`
+          ? `Records filed. WardenLens did not start reading them: ${errorText(run.error, "the server refused the run")}.`
           : referralId
-            ? "Records filed. DocLens is reading them; they appear here as they progress."
-            : "Uploaded. DocLens is reading it; it appears in the queue as it progresses.",
+            ? "Records filed. WardenLens is reading them; they appear here as they progress."
+            : "Uploaded. WardenLens is reading it; it appears in the queue as it progresses.",
       );
     } catch (err) {
       setStage(null);
@@ -141,8 +141,8 @@ export function IntakeUploadDialog({
         <h2 style={heading}>{referralId ? "Add records" : "Upload fax"}</h2>
         <p style={muted}>
           {referralId
-            ? "The file is filed against this referral and read by DocLens."
-            : "DocLens reads it. A records-request code on its cover sheet (or in the email subject) files it under that referral; otherwise file it with Move document during review."}{" "}
+            ? "The file is filed against this referral and read by WardenLens."
+            : "WardenLens reads it. A records-request code on its cover sheet (or in the email subject) files it under that referral; otherwise file it with Move document during review."}{" "}
           PDF, TIFF, JPEG or PNG, up to 25 MB.
         </p>
         <label style={fieldLabel}>

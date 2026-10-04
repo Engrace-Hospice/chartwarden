@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1355,
-    "coveredRoutes": 1355,
-    "directRoutesReferenced": 1299
+    "routes": 1358,
+    "coveredRoutes": 1358,
+    "directRoutesReferenced": 1302
   },
   "modules": [
     {
@@ -52,7 +52,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 19,
+      "routes": 22,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -61,9 +61,10 @@
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
+        "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 19
+      "directRoutesReferenced": 22
     },
     {
       "module": "06-admission",

@@ -441,6 +441,6 @@ describe("Referral Records tab (F-238 — intake starts with the referral)", () 
         },
       }),
     );
-    expect(await screen.findByText(/Records filed\. DocLens is reading them/)).toBeTruthy();
+    expect(await screen.findByText(/Records filed\. WardenLens is reading them/)).toBeTruthy();
   });
 });

@@ -53,8 +53,8 @@ export interface AdmissionReadinessRequirement {
   readonly satisfiedBy?: "normal" | "override";
   readonly evidence?: AdmissionRequirementEvidence;
   /**
-   * Why a blocked requirement is blocked, when the UI needs it to pick the next step. Only
-   * `patient_privacy` sets it today (see `PrivacyReasonCode`). Category-free: never a flag name.
+   * Why a requirement is blocked (or, for `INTAKE_DETECTION_UNREVIEWED`, flagged as non-blocking
+   * advisory), when the UI needs it to pick the next step. Only `patient_privacy` sets it today (see `PrivacyReasonCode`). Category-free: never a flag name.
    */
   readonly reasonCode?: PrivacyReasonCode;
 }
@@ -72,7 +72,7 @@ export type PrivacyReasonCode =
 
 const PRIVACY_MESSAGES: Record<PrivacyReasonCode, string> = {
   INTAKE_DETECTION_UNREVIEWED:
-    "An intake document placed an interim confidentiality restriction on this patient that no reviewer has resolved yet.",
+    "An intake document is flagged for possibly specially protected records and hasn't been reviewed yet. This doesn't block admission; the records stay restricted until reviewed.",
   CONSENT_REQUIRED: "A confidentiality restriction requires a patient consent on file.",
   RESTRICTED: "A patient restriction requires authorized review.",
   PATIENT_NOT_FOUND: "The patient's privacy clearance could not be found.",
@@ -213,8 +213,17 @@ export function evaluateAdmissionReadiness(
         },
   );
 
+  // F-238 (product decision): an UNREVIEWED DocLens detection — M5's interim flag being the patient's
+  // only restriction (`INTAKE_DETECTION_UNREVIEWED`) — does not block activation. It stays visible as a
+  // non-blocking `action_required` item with REVIEW_PRIVACY, so the review dialog stays one click away;
+  // the flag itself keeps restricting access and disclosure in M5. Every other restriction (a
+  // confirmed detection without consent, a consent-derived or any other flag, an unavailable or
+  // missing clearance) still blocks.
+  const privacyCode = facts.patientPrivacy.allowed
+    ? undefined
+    : privacyReasonCode(facts.patientPrivacy);
   requirements.push(
-    facts.patientPrivacy.allowed
+    privacyCode === undefined
       ? {
           code: "patient_privacy",
           label: "Patient privacy",
@@ -222,15 +231,25 @@ export function evaluateAdmissionReadiness(
           blocking: true,
           satisfiedBy: facts.patientPrivacy.satisfiedBy ?? "normal",
         }
-      : {
-          code: "patient_privacy",
-          label: "Patient privacy",
-          status: "blocked",
-          blocking: true,
-          message: PRIVACY_MESSAGES[privacyReasonCode(facts.patientPrivacy)],
-          action: "REVIEW_PRIVACY",
-          reasonCode: privacyReasonCode(facts.patientPrivacy),
-        },
+      : privacyCode === "INTAKE_DETECTION_UNREVIEWED"
+        ? {
+            code: "patient_privacy",
+            label: "Patient privacy",
+            status: "action_required",
+            blocking: false,
+            message: PRIVACY_MESSAGES[privacyCode],
+            action: "REVIEW_PRIVACY",
+            reasonCode: privacyCode,
+          }
+        : {
+            code: "patient_privacy",
+            label: "Patient privacy",
+            status: "blocked",
+            blocking: true,
+            message: PRIVACY_MESSAGES[privacyCode],
+            action: "REVIEW_PRIVACY",
+            reasonCode: privacyCode,
+          },
   );
 
   const norComplete =

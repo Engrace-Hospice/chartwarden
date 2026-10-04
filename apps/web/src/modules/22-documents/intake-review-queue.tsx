@@ -148,8 +148,8 @@ export function IntakeReviewQueue(): JSX.Element {
           </nav>
           <h1 style={{ fontSize: "1.875rem" }}>Intake review</h1>
           <p>
-            Referral documents read by DocLens. Check every extracted field against the page before
-            anything reaches the chart.
+            Referral documents read by WardenLens. Check every extracted field against the page
+            before anything reaches the chart.
           </p>
         </div>
         <button type="button" className="wx-btn-primary" onClick={() => setUploadOpen(true)}>

@@ -767,7 +767,7 @@ export function renderProspectSummaryText(s: Omit<ProspectSummary, "plainText">)
     );
   }
 
-  heading("Not captured by DocLens");
+  heading("Not captured by WardenLens");
   out.push("Absence of these above does not mean none; check the source documents:");
   for (const n of s.notCaptured) out.push(`- ${n}`);
 

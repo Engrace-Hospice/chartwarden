@@ -12,11 +12,18 @@
  * merge-not-overwrite proof `mergeConsentSignal` exists for), a cross-tenant patient id is a silent
  * no-op, and a redelivery converges idempotently.
  *
+ * Also the M5 Privacy Officer service (§4.2 resync / §5.1 "Privacy flags") over its REAL ports — M39's
+ * `consent_record` reader, M22's intake-batch reader, M4's audit query — as the NOBYPASSRLS app role:
+ * origin attribution, the DocLens batch facts (ids/dates/counts, never the evidence), a resync that
+ * re-derives from M39 and emits through the real publisher, a resync that never lifts a DocLens flag,
+ * the officer-attributed audit timeline, cross-tenant 404, and the queue's origin filter.
+ *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m5:consent-privacy:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { createDbAuditQuery } from "@wardenx/audit";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -26,6 +33,9 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import type { M5OutboxPort } from "../src/modules/05-patient/deceased-db";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 import { buildM5ConsentPrivacyConsumer } from "../src/modules/05-patient/outbox-consumers/m39-consent-privacy";
+import { createDbPrivacyOfficerService } from "../src/modules/05-patient/privacy/officer-db";
+import { buildIntakeSudBatchReader } from "../src/modules/22-documents/extraction/privacy-sud-batches";
+import { buildPart2ConsentStateReader } from "../src/modules/39-consent/part2-consent-state-reader";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -113,6 +123,22 @@ describe.skipIf(!DB_URL)(
                 ($2,'m39-consent-privacy-b','M39 Privacy B','M39 Privacy B')`,
         [ORG_A, ORG_B],
       );
+      // The Privacy Officer the resync cases act as (the M4 trigger's actor FK needs a real user row).
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'privacy-officer@m5.test')`, [
+        "33333333-3333-4333-8333-333333333333",
+      ]);
+      // M39's platform-floor catalog row the Privacy Officer cases' Part 2 consents FK to.
+      await admin.query(
+        `INSERT INTO consent_type_catalog (type_key, display_name_en, scope_discriminator,
+           default_expiration_seconds, max_term_seconds, capture_method_floor,
+           reminder_cadence_floor, revocation_cascade_kind, is_per_recipient, is_per_named_agent,
+           is_post_mortem_eligible, requires_jurisdiction_code, cfr_42_part_2_compliant,
+           hipaa_164_508_compliant, body_text_template_key, m22_template_version)
+         VALUES ('42_cfr_part_2_release','42 CFR Part 2 SUD Records Release','per_recipient',31536000,
+           31536000,ARRAY['typed_signature_in_app']::text[],ARRAY['30_days']::text[],'immediate',
+           true,false,false,false,true,false,'42_cfr_part_2_release_v1','1.0.0')
+         ON CONFLICT DO NOTHING`,
+      );
       await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     }, 120_000);
@@ -132,7 +158,9 @@ describe.skipIf(!DB_URL)(
     });
 
     afterEach(async () => {
-      await admin.query("TRUNCATE patient_privacy_flag_snapshot, patient RESTART IDENTITY CASCADE");
+      await admin.query(
+        "TRUNCATE patient_privacy_flag_snapshot, patient, classified_page, intake_upload_batch, consent_record RESTART IDENTITY CASCADE",
+      );
       await admin.query("DELETE FROM outbox_event");
     });
 
@@ -326,6 +354,201 @@ describe.skipIf(!DB_URL)(
       // what dedupes a true redelivery of the SAME event id; this consumer's own idempotency claim is
       // about the RESULTING STATE converging, not about emitting only once).
       expect(await privacyFlagChangedRows(patientId)).toHaveLength(2);
+    });
+
+    // ── M5 Privacy Officer (§4.2 resync / §5.1 "Privacy flags") ─────────────────────────────────────
+    const OFFICER = "33333333-3333-4333-8333-333333333333";
+    function officerService() {
+      const auditQuery = createDbAuditQuery(handle.db);
+      return createDbPrivacyOfficerService(handle.db, outbox, {
+        consent: buildPart2ConsentStateReader(handle.db),
+        intake: buildIntakeSudBatchReader(handle.db),
+        history: {
+          async snapshotHistory(organizationId, patientId) {
+            const page = await auditQuery.searchEvents(organizationId, {
+              resourceKind: "patient_privacy_flag_snapshot",
+              resourceId: patientId,
+              limit: 100,
+            });
+            return page.items.map((e) => ({
+              at: e.createdAt,
+              actorUserId: e.actorUserId,
+              eventType: e.eventType,
+              before: e.before,
+              after: e.after,
+            }));
+          },
+        },
+      });
+    }
+    async function seedSudBatch(
+      organizationId: string,
+      patientId: string,
+      sudStatus: "detected" | "confirmed" | "rejected",
+      opts: { discarded?: boolean; pages?: number } = {},
+    ): Promise<string> {
+      const id = (
+        await admin.query(
+          `INSERT INTO intake_upload_batch (organization_id, patient_id, initial_document_id, source_channel,
+             uploaded_by_membership_id, correlation_id, status, disposition_at, sud_status,
+             sud_evidence_cipher, sud_resolution_reason, sud_resolved_at, sud_resolved_by_membership_id)
+           VALUES ($1,$2,gen_random_uuid(),'fax',gen_random_uuid(),'officer-live',$3,$4,$5::intake_batch_sud_status,
+             'EVIDENCE-CIPHER-SECRET','REVIEWER-REASON-SECRET',
+             CASE WHEN $5::intake_batch_sud_status = 'detected' THEN NULL ELSE now() END,
+             CASE WHEN $5::intake_batch_sud_status = 'detected' THEN NULL ELSE gen_random_uuid() END) RETURNING id`,
+          [
+            organizationId,
+            patientId,
+            opts.discarded ? "discarded" : "in_review",
+            opts.discarded ? new Date() : null,
+            sudStatus,
+          ],
+        )
+      ).rows[0].id as string;
+      if (opts.pages) {
+        await admin.query(
+          `INSERT INTO classified_page (organization_id, intake_upload_batch_id, source_document_id,
+             page_range_start, page_range_end, document_type, confidence, classifier_model_version_ref,
+             document_title)
+           VALUES ($1,$2,gen_random_uuid(),1,$3,'discharge_summary',0.97,'cls@test','METHADONE CLINIC')`,
+          [organizationId, id, opts.pages],
+        );
+      }
+      return id;
+    }
+    async function seedPart2Consent(
+      organizationId: string,
+      patientId: string,
+      status: "active" | "expired",
+    ): Promise<string> {
+      return (
+        await admin.query(
+          `INSERT INTO consent_record (organization_id,patient_id,type_key,scope_descriptor,grantor_kind,
+             effective_at,status,capture_method,capture_evidence_jsonb,created_by_id,version,
+             signed_at,signed_by_id)
+           VALUES ($1,$2,'42_cfr_part_2_release','{}'::jsonb,'patient_self',now() - interval '2 days',$3,
+             'typed_signature_in_app','{}'::jsonb,$4,1,now() - interval '2 days',$4) RETURNING id`,
+          [organizationId, patientId, status, OFFICER],
+        )
+      ).rows[0].id as string;
+    }
+    async function seedDocLensSnapshot(organizationId: string, patientId: string, origin: string) {
+      await admin.query(
+        `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags, captured_at, sud_flag_origin)
+         VALUES ($1, $2, ARRAY['sud'], now(), $3)`,
+        [patientId, organizationId, origin],
+      );
+    }
+
+    it("officer view: DocLens origin, contributing batches (ids/dates/counts only), no evidence leaks", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedDocLensSnapshot(ORG_A, patientId, "m22_intake_unconfirmed");
+      const live = await seedSudBatch(ORG_A, patientId, "detected", { pages: 3 });
+      const discarded = await seedSudBatch(ORG_A, patientId, "detected", { discarded: true });
+      const rejected = await seedSudBatch(ORG_A, patientId, "rejected");
+
+      const view = await officerService().getPatientPrivacy(ORG_A, patientId);
+      expect(view?.restrictions).toEqual([
+        expect.objectContaining({ flag: "sud", origin: "intake_unconfirmed" }),
+      ]);
+      expect(view?.part2Consent.state).toBe("none");
+      const byId = new Map(view?.intakeDetections.map((b) => [b.batchId, b]));
+      expect(byId.get(live)).toMatchObject({
+        sudStatus: "detected",
+        contributes: true,
+        pageCount: 3,
+      });
+      expect(byId.get(discarded)).toMatchObject({ contributes: false });
+      expect(byId.get(rejected)).toMatchObject({ sudStatus: "rejected", contributes: false });
+      const json = JSON.stringify(view);
+      expect(json).not.toContain("EVIDENCE-CIPHER-SECRET");
+      expect(json).not.toContain("REVIEWER-REASON-SECRET");
+      expect(json).not.toContain("METHADONE");
+    });
+
+    it("resync with M39 silent never lifts a DocLens flag and emits nothing when the set is unchanged", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedDocLensSnapshot(ORG_A, patientId, "m22_intake_unconfirmed");
+      await seedSudBatch(ORG_A, patientId, "rejected");
+
+      const out = await officerService().resync(ORG_A, patientId, OFFICER);
+      expect(out).toMatchObject({ flagsAfter: ["sud"], flagsChanged: false, eventEmitted: false });
+      expect(await snapshotFlags(patientId)).toEqual(["sud"]);
+      expect(await privacyFlagChangedRows(patientId)).toEqual([]);
+    });
+
+    it("resync re-derives sud from an inactive M39 Part 2 release, emits, and the timeline names the officer", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedSnapshot(ORG_A, patientId, ["hiv"]);
+      const consentId = await seedPart2Consent(ORG_A, patientId, "expired");
+
+      const svc = officerService();
+      const out = await svc.resync(ORG_A, patientId, OFFICER);
+      expect(out).toMatchObject({
+        flagsBefore: ["hiv"],
+        flagsAfter: ["hiv", "sud"],
+        sourceConsentVersion: consentId,
+        eventEmitted: true,
+      });
+      expect(await privacyFlagChangedRows(patientId)).toEqual([
+        { patientId, organizationId: ORG_A, flags: ["hiv", "sud"] },
+      ]);
+
+      const view = await svc.getPatientPrivacy(ORG_A, patientId);
+      expect(view?.part2Consent).toMatchObject({ state: "inactive", consentRecordId: consentId });
+      const sud = view?.restrictions.find((r) => r.flag === "sud");
+      expect(sud).toMatchObject({ origin: "consent", sinceFromHistory: true });
+      expect(view?.history[0]).toMatchObject({
+        actorUserId: OFFICER,
+        action: "update",
+        flagsAfter: ["hiv", "sud"],
+      });
+      expect(view?.drift).toEqual([]);
+    });
+
+    it("resync with an active M39 Part 2 release lifts a DocLens-confirmed flag (M39 is the source of truth)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedDocLensSnapshot(ORG_A, patientId, "m22_intake_confirmed");
+      await seedSudBatch(ORG_A, patientId, "confirmed");
+      await seedPart2Consent(ORG_A, patientId, "active");
+
+      const out = await officerService().resync(ORG_A, patientId, OFFICER);
+      expect(out).toMatchObject({ flagsAfter: [], sudOriginAfter: null, eventEmitted: true });
+      expect(await snapshotFlags(patientId)).toEqual([]);
+    });
+
+    it("another tenant's patient is invisible to the officer view and to resync", async () => {
+      const patientB = await seedPatient(ORG_B);
+      await seedSnapshot(ORG_B, patientB, ["sud"]);
+      const svc = officerService();
+      expect(await svc.getPatientPrivacy(ORG_A, patientB)).toBeNull();
+      expect(await svc.resync(ORG_A, patientB, OFFICER)).toBeNull();
+      expect(await snapshotFlags(patientB)).toEqual(["sud"]);
+      expect(await privacyFlagChangedRows(patientB)).toEqual([]);
+    });
+
+    it("the restricted-patients queue filters by origin and stays in its tenant", async () => {
+      const unconfirmed = await seedPatient(ORG_A);
+      await seedDocLensSnapshot(ORG_A, unconfirmed, "m22_intake_unconfirmed");
+      const other = await seedPatient(ORG_A);
+      await seedSnapshot(ORG_A, other, ["hiv"]);
+      const clear = await seedPatient(ORG_A);
+      await seedSnapshot(ORG_A, clear, []);
+      const foreign = await seedPatient(ORG_B);
+      await seedDocLensSnapshot(ORG_B, foreign, "m22_intake_unconfirmed");
+
+      const svc = officerService();
+      const all = await svc.listRestricted(ORG_A, {});
+      expect(all.items.map((i) => i.patientId).sort()).toEqual([unconfirmed, other].sort());
+      expect(all.counts).toMatchObject({ total: 2, intake_unconfirmed: 1, unattributed: 1 });
+      const queue = await svc.listRestricted(ORG_A, { origin: "intake_unconfirmed" });
+      expect(queue.items).toEqual([
+        expect.objectContaining({
+          patientId: unconfirmed,
+          origin: "intake_unconfirmed",
+          flags: ["sud"],
+        }),
+      ]);
     });
   },
 );

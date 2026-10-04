@@ -27,6 +27,7 @@ import {
   sexLabel,
 } from "../../shell/patient-context";
 import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
+import { useSession } from "../../shell/session";
 
 // The shared identity helpers now live in the shell (chart tabs span modules); re-exported so this
 // module's own screens keep one import site.
@@ -1151,6 +1152,11 @@ export function OverviewRail({
   const windows = (data.election?.complianceWindows ?? []).filter((w) => w.status === "open");
   const flags = data.privacy?.flags ?? [];
   const alertCount = windows.length + (data.privacy?.sudRestricted ? 1 : 0);
+  // A privacy officer (`privacy.admin`, M5 §5.1) lands on the officer view; everyone else on the chart tab.
+  const session = useSession();
+  const privacyTo = session?.permissions?.includes("privacy.admin")
+    ? `/patients/${patientId}/privacy`
+    : `/patients/${patientId}?view=privacy`;
   const links: { label: string; icon: GlyphName; to: string }[] = [
     {
       label: "Election & Certification",
@@ -1229,7 +1235,7 @@ export function OverviewRail({
                   tone="danger"
                   title="42 CFR Part 2 restricted"
                   detail="Substance-use records need consent to disclose"
-                  to={`/patients/${patientId}?view=privacy`}
+                  to={privacyTo}
                 />
               </li>
             ) : null}
@@ -1239,7 +1245,7 @@ export function OverviewRail({
                   tone="neutral"
                   title={`${flags.length} privacy flag${flags.length === 1 ? "" : "s"}`}
                   detail="Sensitive categories on file"
-                  to={`/patients/${patientId}?view=privacy`}
+                  to={privacyTo}
                 />
               </li>
             ) : null}

@@ -15,6 +15,8 @@ export type IntakeBatchSudStatus = "not_detected" | "detected" | "confirmed" | "
 export const M22_INTAKE_SUD_DETECTED_EVENT = "m22.intake.sud_detected" as const;
 export const M22_INTAKE_SUD_CONFIRMED_EVENT = "m22.intake.sud_confirmed" as const;
 export const M22_INTAKE_SUD_REJECTED_EVENT = "m22.intake.sud_rejected" as const;
+/** F-238 — a batch with an UNREVIEWED detection was discarded: its detection no longer holds a flag. */
+export const M22_INTAKE_SUD_WITHDRAWN_EVENT = "m22.intake.sud_withdrawn" as const;
 
 /** The coarse §1.1 / D8 categories (`suggestedSudKind`). */
 export type DocLensSudKind = "medication" | "diagnosis" | "social_history" | "treatment_setting";
@@ -64,4 +66,17 @@ export interface IntakeSudRelinkedPayload {
   readonly fromPatientRetainsFlag: boolean;
   /** Null when the move was the referral's resolution (adoption), not a person. */
   readonly movedByMembershipId: string | null;
+}
+
+/**
+ * `m22.intake.sud_withdrawn` — F-238: a batch whose detection nobody had reviewed was discarded, so the
+ * detection no longer restricts the patient. M5 retires the DocLens-origin flag as a rejection would —
+ * only if DocLens put it there, and not while another live detection holds it (`patientRetainsFlag`,
+ * computed by M22). A CONFIRMED detection is a licensed reviewer's finding and is never withdrawn.
+ */
+export interface IntakeSudWithdrawnPayload {
+  readonly intakeBatchId: string;
+  readonly patientId: string;
+  readonly patientRetainsFlag: boolean;
+  readonly withdrawnByMembershipId: string | null;
 }

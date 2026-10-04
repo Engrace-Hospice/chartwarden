@@ -491,9 +491,9 @@ describe("M5 admission clearance — which workflow lifts the restriction", () =
     expect(restrictionOf(["sud"], "m22_intake_confirmed")).toBe("CONSENT_REQUIRED");
     // M39 consent state (no §2.31 release on file) has no DocLens origin.
     expect(restrictionOf(["sud"], null)).toBe("CONSENT_REQUIRED");
-    expect(restrictionOf(["hiv", "sud"], "m22_intake_unconfirmed")).toBe(
-      "INTAKE_DETECTION_UNREVIEWED",
-    );
+    // F-238: the interim flag is advisory to M6 only when it is the sole flag — another flag binds.
+    expect(restrictionOf(["hiv", "sud"], "m22_intake_unconfirmed")).toBe("RESTRICTED");
+    expect(restrictionOf(["hiv", "sud"], "m22_intake_confirmed")).toBe("CONSENT_REQUIRED");
     expect(restrictionOf(["hiv"], null)).toBe("RESTRICTED");
   });
 });

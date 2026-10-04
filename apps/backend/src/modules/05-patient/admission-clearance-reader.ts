@@ -11,15 +11,19 @@ import { and, eq } from "drizzle-orm";
  * is resolved by the intake reviewer's confirm/reject; any other `sud` flag (a confirmed detection, or
  * M39 consent state with no §2.31 release on file) is lifted by a Part 2 consent (M39). Every other
  * flag has no self-service path from the admission screen.
+ *
+ * F-238 — M6 treats `INTAKE_DETECTION_UNREVIEWED` as advisory (it does not block activation), so it is
+ * reported ONLY when the interim DocLens flag is the patient's sole flag. Any other flag alongside it
+ * is the binding restriction and is reported as `RESTRICTED`. The flag itself is untouched: it still
+ * restricts access and disclosure exactly as before.
  */
 export function restrictionOf(
   flags: readonly string[],
   sudFlagOrigin: string | null,
 ): PatientAdmissionRestriction {
   if (flags.includes("sud")) {
-    return sudFlagOrigin === "m22_intake_unconfirmed"
-      ? "INTAKE_DETECTION_UNREVIEWED"
-      : "CONSENT_REQUIRED";
+    if (sudFlagOrigin !== "m22_intake_unconfirmed") return "CONSENT_REQUIRED";
+    return flags.every((f) => f === "sud") ? "INTAKE_DETECTION_UNREVIEWED" : "RESTRICTED";
   }
   return "RESTRICTED";
 }

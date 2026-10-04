@@ -10,6 +10,8 @@
 //                               (as a detection or a confirmation); the previous one loses it as a
 //                               rejection would — only if DocLens put it there, and only when M22 says no
 //                               other DocLens detection on that patient still holds it
+//   m22.intake.sud_withdrawn  → F-238: a batch was discarded with its detection unreviewed — retired as a
+//                               rejection would be, under the same two conditions
 //
 // Why the origin column: the snapshot's `sud` flag has two possible authors. M39 consent state puts it there
 // when no §2.31 consent is on file (`m39-consent-privacy.ts`); a DocLens detection puts it there for a
@@ -27,6 +29,7 @@ import {
   M22_INTAKE_SUD_DETECTED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
   M22_INTAKE_SUD_RELINKED_EVENT,
+  M22_INTAKE_SUD_WITHDRAWN_EVENT,
 } from "@wardenx/types";
 import { eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
@@ -43,6 +46,7 @@ export const M5_INTAKE_SUD_PRIVACY_CONSUMER = {
     M22_INTAKE_SUD_CONFIRMED_EVENT,
     M22_INTAKE_SUD_REJECTED_EVENT,
     M22_INTAKE_SUD_RELINKED_EVENT,
+    M22_INTAKE_SUD_WITHDRAWN_EVENT,
   ],
   consumerName: "m5.m22-intake-sud-privacy",
 } as const;
@@ -153,12 +157,20 @@ export function buildM5IntakeSudPrivacyConsumer(deps: {
         if (patientId === null) return; // an unresolved batch: no patient to flag
         // Another of the patient's batches still holds a live detection: the flag stays.
         if (
-          event.eventType === M22_INTAKE_SUD_REJECTED_EVENT &&
+          (event.eventType === M22_INTAKE_SUD_REJECTED_EVENT ||
+            event.eventType === M22_INTAKE_SUD_WITHDRAWN_EVENT) &&
           (event.payload as Record<string, unknown>).patientRetainsFlag === true
         ) {
           return;
         }
-        steps.push({ patientId, decisionEvent: event.eventType });
+        // A withdrawn detection (its batch discarded unreviewed) retires the flag as a rejection does.
+        steps.push({
+          patientId,
+          decisionEvent:
+            event.eventType === M22_INTAKE_SUD_WITHDRAWN_EVENT
+              ? M22_INTAKE_SUD_REJECTED_EVENT
+              : event.eventType,
+        });
       }
       if (steps.length === 0) return;
       await withOrgContext(

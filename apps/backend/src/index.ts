@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { auditPlatformEvent } from "@wardenx/audit";
+import { auditPlatformEvent, createDbAuditQuery } from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -577,6 +577,7 @@ import {
   registerSuppliesSeams,
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
+import { buildIntakeSudBatchReader } from "./modules/22-documents/extraction/privacy-sud-batches";
 import {
   type DocLensClassifierPort,
   type DocLensExtractorPort,
@@ -1041,6 +1042,7 @@ import {
   scheduleM39Jobs,
   wireM39Tenancy,
 } from "./modules/39-consent/index";
+import { buildPart2ConsentStateReader } from "./modules/39-consent/part2-consent-state-reader";
 import {
   M40_OUTBOX_EVENTS,
   buildM29NppesPlatformConsumers,
@@ -3204,7 +3206,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // had no UPDATE anywhere in the codebase before this.
           mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
-          mountPatientRoutes(app, dbHandle.db, m5OutboxPublisher); // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248)
+          // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
+          // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
+          // the Part 2 consent state, M22 the DocLens SUD batches, M4's audit query the snapshot's trail.
+          mountPatientRoutes(app, dbHandle.db, m5OutboxPublisher, {
+            consent: buildPart2ConsentStateReader(dbHandle.db),
+            intake: buildIntakeSudBatchReader(dbHandle.db),
+            history: (() => {
+              const auditQuery = createDbAuditQuery(dbHandle.db);
+              return {
+                async snapshotHistory(organizationId: string, patientId: string) {
+                  const page = await auditQuery.searchEvents(organizationId, {
+                    resourceKind: "patient_privacy_flag_snapshot",
+                    resourceId: patientId,
+                    limit: 100,
+                  });
+                  return page.items.map((e) => ({
+                    at: e.createdAt,
+                    actorUserId: e.actorUserId,
+                    eventType: e.eventType,
+                    before: e.before,
+                    after: e.after,
+                  }));
+                },
+              };
+            })(),
+          });
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
           registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
           mountAdmissionRoutes(

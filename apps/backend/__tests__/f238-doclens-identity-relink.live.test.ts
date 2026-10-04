@@ -794,6 +794,79 @@ describe.skipIf(!DB_URL)(
       expect(await sudFlags(mae)).toEqual({ flags: [], sud_flag_origin: null });
     });
 
+    it("discarding a fax withdraws its unreviewed detection; a confirmed one still holds the flag", async () => {
+      await admin.query("DELETE FROM patient_privacy_flag_snapshot WHERE patient_id=$1", [mae]);
+      await admin.query(
+        `UPDATE intake_upload_batch SET sud_status='not_detected', sud_resolved_by_membership_id=NULL,
+           sud_resolved_at=NULL, sud_resolution_reason=NULL WHERE organization_id=$1`,
+        [ORG],
+      );
+      const withdrawnEvents = async (batch: string) =>
+        (
+          await admin.query(
+            "SELECT payload FROM outbox_event WHERE event_type='m22.intake.sud_withdrawn' AND aggregate_id=$1",
+            [batch],
+          )
+        ).rows.map((r) => r.payload);
+      const confirmed = await seedBatch({ patientId: mae, referralId: null });
+      const pendingA = await seedBatch({ patientId: mae, referralId: null });
+      const pendingB = await seedBatch({ patientId: mae, referralId: null });
+      await admin.query(
+        `UPDATE intake_upload_batch SET sud_status='confirmed', sud_resolved_by_membership_id=$2,
+           sud_resolved_at=now(), sud_resolution_reason='confirmed in review' WHERE id=$1`,
+        [confirmed.batch, membership],
+      );
+      await admin.query(
+        "UPDATE intake_upload_batch SET sud_status='detected' WHERE id = ANY($1::uuid[])",
+        [[pendingA.batch, pendingB.batch]],
+      );
+      await flagPatient(mae, "m22_intake_confirmed");
+
+      // A confirmed detection is a reviewer's finding: discarding its batch withdraws nothing.
+      await svc.discardBatch(ORG, actor, confirmed.batch);
+      expect(await withdrawnEvents(confirmed.batch)).toEqual([]);
+
+      // An unreviewed one is withdrawn — but the confirmed (discarded) batch still holds the flag.
+      await svc.discardBatch(ORG, actor, pendingA.batch);
+      expect(await withdrawnEvents(pendingA.batch)).toEqual([
+        expect.objectContaining({ patientId: mae, patientRetainsFlag: true }),
+      ]);
+      await dispatcher.tick();
+      expect(await sudFlags(mae)).toEqual({
+        flags: ["sud"],
+        sud_flag_origin: "m22_intake_confirmed",
+      });
+
+      // Without the confirmed finding, discarding the last unreviewed detection lifts the DocLens flag;
+      // the already-discarded pendingA no longer holds it. A second discard is a no-op.
+      await admin.query(
+        `UPDATE intake_upload_batch SET sud_status='not_detected', sud_resolved_by_membership_id=NULL,
+           sud_resolved_at=NULL, sud_resolution_reason=NULL WHERE id=$1`,
+        [confirmed.batch],
+      );
+      await flagPatient(mae, "m22_intake_unconfirmed");
+      await svc.discardBatch(ORG, actor, pendingB.batch);
+      await svc.discardBatch(ORG, actor, pendingB.batch);
+      expect(await withdrawnEvents(pendingB.batch)).toEqual([
+        expect.objectContaining({ patientId: mae, patientRetainsFlag: false }),
+      ]);
+      await dispatcher.tick();
+      expect(await sudFlags(mae)).toEqual({ flags: [], sud_flag_origin: null });
+
+      // A consent-derived flag is never lifted by a discard.
+      const another = await seedBatch({ patientId: mae, referralId: null });
+      await admin.query("UPDATE intake_upload_batch SET sud_status='detected' WHERE id=$1", [
+        another.batch,
+      ]);
+      await admin.query(
+        "UPDATE patient_privacy_flag_snapshot SET flags='{sud}', sud_flag_origin=NULL WHERE patient_id=$1",
+        [mae],
+      );
+      await svc.discardBatch(ORG, actor, another.batch);
+      await dispatcher.tick();
+      expect(await sudFlags(mae)).toEqual({ flags: ["sud"], sud_flag_origin: null });
+    });
+
     it("the admission hint: an extracted address waiting in review — counts + batch ids only, never a value", async () => {
       const pending = createPendingAddressService({ db: handle.db }); // as wardenx_app (RLS)
       extractAddress = true;

@@ -78,6 +78,13 @@ export interface ReviewQueueItem {
   readonly sudStatus: SudStatus;
   /** F-238 — a records-request code on the fax names another referral / patient (null = none). */
   readonly recordsRequestConflict: RecordsRequestConflictView | null;
+  /**
+   * F-238 — the batch's size, so two batches received the same day can be told apart: the last
+   * classified page, and the documents the splitter found (re-sent duplicates excluded). Null until
+   * the batch has been classified. Counts only — no content.
+   */
+  readonly pageCount: number | null;
+  readonly documentCount: number | null;
   readonly candidates: {
     readonly total: number;
     readonly lowConfidence: number;
@@ -350,6 +357,14 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
           .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
           .where(inArray(CP.intakeUploadBatchId, ids));
+        const segments = await tx
+          .select({
+            batchId: CP.intakeUploadBatchId,
+            pageRangeEnd: CP.pageRangeEnd,
+            duplicateOfPage: CP.duplicateOfPage,
+          })
+          .from(CP)
+          .where(inArray(CP.intakeUploadBatchId, ids));
         const reviews = await tx
           .select({
             id: ER.id,
@@ -374,9 +389,14 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         return batches.map((b) => {
           const mine = cands.filter((c) => c.batchId === b.id);
           const review = reviews.find((r) => r.batchId === b.id) ?? null;
+          const segs = segments.filter((p) => p.batchId === b.id);
           return {
             b,
             conflict: conflicts.get(b.id) ?? null,
+            pageCount: segs.length ? Math.max(...segs.map((p) => p.pageRangeEnd)) : null,
+            documentCount: segs.length
+              ? segs.filter((p) => p.duplicateOfPage === null).length
+              : null,
             counts: {
               total: mine.length,
               lowConfidence: mine.filter((c) => Number(c.confidence) < LOW_CONFIDENCE).length,
@@ -404,6 +424,8 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           patientName: await nameOf(organizationId, r.b.patientId),
           sudStatus: r.b.sudStatus,
           recordsRequestConflict: r.conflict,
+          pageCount: r.pageCount,
+          documentCount: r.documentCount,
           candidates: r.counts,
           review: r.review,
         });

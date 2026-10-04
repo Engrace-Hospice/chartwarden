@@ -29,9 +29,17 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { DegradedError, NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
+import {
+  DegradedError,
+  type IntakeSudWithdrawnPayload,
+  M22_INTAKE_SUD_WITHDRAWN_EVENT,
+  NotFoundError,
+  type OrgId,
+  WardenXError,
+} from "@wardenx/types";
 import { and, desc, eq, exists, inArray, isNull } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
+import { otherBatchHoldsSudFlag } from "./extraction/batch-identity";
 import { commitClinicalWriteback } from "./extraction/writeback-commit-clinical-db";
 import {
   type ExtractionWritebackDeps,
@@ -1023,11 +1031,42 @@ export function createDbDocumentRouteService(
     async discardBatch(organizationId, actor, batchId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireBatch(tx, batchId);
+        const [b] = await tx
+          .select({ status: BATCH.status, patientId: BATCH.patientId, sudStatus: BATCH.sudStatus })
+          .from(BATCH)
+          .where(eq(BATCH.id, batchId))
+          .for("update");
+        if (b?.status === "discarded") return { batchId, status: "discarded" as const };
+        // F-238: an unreviewed Part 2 detection stops restricting the patient once its batch is
+        // discarded. A confirmed one is a reviewer's finding and stays.
+        const withdraw = b?.sudStatus === "detected" && b.patientId !== null;
+        if (withdraw && !writeback.outbox) {
+          // A flag left on a patient for records that were thrown away is worse than a retry.
+          throw new DegradedError(
+            "doclens-sud",
+            "no outbox is bound for the M5 privacy-flag event",
+          );
+        }
         await tx
           .update(BATCH)
           .set({ status: "discarded", dispositionAt: new Date() })
           .where(eq(BATCH.id, batchId));
-        return { batchId, status: "discarded" };
+        if (withdraw && b?.patientId && writeback.outbox) {
+          const payload: IntakeSudWithdrawnPayload = {
+            intakeBatchId: batchId,
+            patientId: b.patientId,
+            patientRetainsFlag: await otherBatchHoldsSudFlag(tx, b.patientId, batchId),
+            withdrawnByMembershipId: actor.membershipId ?? null,
+          };
+          await writeback.outbox.publish(tx, {
+            eventName: M22_INTAKE_SUD_WITHDRAWN_EVENT,
+            payload: { ...payload, organizationId },
+            organizationId,
+            aggregateKind: "intake_upload_batch",
+            aggregateId: batchId,
+          });
+        }
+        return { batchId, status: "discarded" as const };
       });
     },
 

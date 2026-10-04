@@ -152,8 +152,8 @@ export function ReferralRecords({
           <div>
             <h2 style={heading}>Records</h2>
             <p style={muted}>
-              Faxes, emailed and scanned records for this referral. DocLens reads them; a reviewer
-              checks every field against the page before anything reaches the chart.
+              Faxes, emailed and scanned records for this referral. WardenLens reads them; a
+              reviewer checks every field against the page before anything reaches the chart.
             </p>
           </div>
           <Button onClick={() => setUploadOpen(true)}>Add records</Button>

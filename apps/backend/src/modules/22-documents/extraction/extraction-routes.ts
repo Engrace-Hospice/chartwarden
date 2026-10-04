@@ -101,7 +101,7 @@ export function registerDocLensExtractionRoutes(
       // F-236 — the run is a background job (Docling + per-page classification + extraction can take
       // minutes on a local model). The route only enqueues; the worker process runs it.
       if (!intake) {
-        throw new DegradedError("doclens-intake", "no DocLens intake job queue is configured");
+        throw new DegradedError("doclens-intake", "no WardenLens intake job queue is configured");
       }
       const userId = request.context.userId;
       if (typeof userId !== "string" || userId.length === 0) throw new UnauthorizedError();

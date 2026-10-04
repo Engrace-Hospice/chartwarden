@@ -142,7 +142,7 @@ export function IntakeBatchDetail(): JSX.Element {
         {jobs.length === 0 ? (
           <EmptyState
             title="No extraction jobs"
-            description="No extraction jobs for this batch yet. DocLens extraction runs once classification is confirmed."
+            description="No extraction jobs for this batch yet. WardenLens extraction runs once classification is confirmed."
           />
         ) : (
           <table className="tabular-nums">
