@@ -31,6 +31,12 @@ export {
   type CandidateValueKeyProvider,
   createCandidateValueCipher,
 } from "./candidate-value-cipher";
+// F-238 — the coding checks' ICD-10-CM port over M38's TerminologyProvider seam.
+export {
+  type CodingTerminologyAdapter,
+  type M38CodingReader,
+  createCodingTerminology,
+} from "./coding-terminology";
 export {
   type PlannedCommitField,
   type WritebackCandidateFact,

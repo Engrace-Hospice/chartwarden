@@ -96,6 +96,18 @@ export const ReviewWorkspaceResponseSchema = Type.Object({
       needsHumanClassification: Type.Boolean(),
     }),
   ),
+  // F-238 — the documents the fax splitter found (one per classified_page row).
+  documents: Type.Array(
+    Type.Object({
+      pageFrom: Type.Integer(),
+      pageTo: Type.Integer(),
+      documentType: Type.String(),
+      title: Nullable(Type.String()),
+      date: Nullable(Type.String()),
+      duplicateOfPage: Type.Union([Type.Integer(), Type.Null()]),
+      boundary: Nullable(Type.String()),
+    }),
+  ),
   jobs: Type.Array(
     Type.Object({
       id: Type.String(),
@@ -137,6 +149,15 @@ export const ReviewWorkspaceResponseSchema = Type.Object({
         observedValue: Nullable(Type.String()),
       }),
       sudDetected: Type.Boolean(),
+      // F-238 — the deterministic ICD-10-CM coding checks on a `diagnoses[n].icd10` candidate.
+      codingFlags: Type.Array(
+        Type.Object({
+          kind: Type.String(),
+          code: Type.String(),
+          suggest: Type.Array(Type.String()),
+          detail: Type.String(),
+        }),
+      ),
       writebackTarget: Type.Boolean(),
       decision: Type.Union([
         Type.Object({

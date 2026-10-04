@@ -78,6 +78,13 @@ def _docling_converter() -> Converter:
         options.artifacts_path = artifacts  # the models baked into the image; never a runtime download
     options.do_ocr = True  # faxes are images of text
     options.do_table_structure = True
+    # OCR engine (F-238). Tesseract is the default: on the DocLens complex-packet fixture (21 faxed pages,
+    # scripts/doclens/make-complex-packet.py) it read 42/55 key phrases exactly vs EasyOCR's 15/55, and
+    # 21/31 ICD-10 codes vs 14/31, in ~1/10th of the CPU time. EasyOCR stays selectable.
+    if os.environ.get("DOCLING_OCR_ENGINE", "tesseract").lower() == "tesseract":
+        from docling.datamodel.pipeline_options import TesseractCliOcrOptions
+
+        options.ocr_options = TesseractCliOcrOptions(lang=["eng"], force_full_page_ocr=True)
     converter = DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=options),

@@ -107021,6 +107021,7 @@
                     "batch",
                     "sud",
                     "pages",
+                    "documents",
                     "jobs",
                     "review",
                     "candidates"
@@ -107233,6 +107234,72 @@
                         }
                       }
                     },
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "pageFrom",
+                          "pageTo",
+                          "documentType",
+                          "title",
+                          "date",
+                          "duplicateOfPage",
+                          "boundary"
+                        ],
+                        "properties": {
+                          "pageFrom": {
+                            "type": "integer"
+                          },
+                          "pageTo": {
+                            "type": "integer"
+                          },
+                          "documentType": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "date": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "duplicateOfPage": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "boundary": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
                     "jobs": {
                       "type": "array",
                       "items": {
@@ -107321,6 +107388,7 @@
                           "bbox",
                           "vision",
                           "sudDetected",
+                          "codingFlags",
                           "writebackTarget",
                           "decision"
                         ],
@@ -107440,6 +107508,35 @@
                           },
                           "sudDetected": {
                             "type": "boolean"
+                          },
+                          "codingFlags": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "code",
+                                "suggest",
+                                "detail"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "code": {
+                                  "type": "string"
+                                },
+                                "suggest": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "detail": {
+                                  "type": "string"
+                                }
+                              }
+                            }
                           },
                           "writebackTarget": {
                             "type": "boolean"

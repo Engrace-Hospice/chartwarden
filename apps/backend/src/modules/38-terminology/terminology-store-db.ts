@@ -106,6 +106,8 @@ interface AnyConceptRow {
   endDate: string | null;
   // icd10cm
   isBillableLeaf?: boolean;
+  /** The row's `properties` jsonb (F-238: the loader's Tabular List flags). */
+  properties?: Record<string, unknown> | null;
   chapter?: string | null;
   parentCode?: string | null;
   // snomed
@@ -126,6 +128,12 @@ interface AnyConceptRow {
   ndcs?: string[] | null;
 }
 
+/** F-238 — the loader's Tabular List flags, only when the row carries them (older loads do not). */
+function icd10Flags(p: Record<string, unknown> | null | undefined) {
+  const flag = (k: string) => (typeof p?.[k] === "boolean" ? { [k]: p[k] as boolean } : {});
+  return { ...flag("manifestation"), ...flag("hasCodeFirstNote"), ...flag("useAdditionalCode") };
+}
+
 /** Build the union {@link ResolvedConcept} from a raw per-system row, filling its `properties`. */
 function mapConcept(system: CodeSystemId, r: AnyConceptRow): ResolvedConcept<CodeSystemId> {
   const base = {
@@ -144,6 +152,7 @@ function mapConcept(system: CodeSystemId, r: AnyConceptRow): ResolvedConcept<Cod
           isBillableLeaf: r.isBillableLeaf ?? false,
           chapter: r.chapter ?? null,
           parentCode: r.parentCode ?? null,
+          ...icd10Flags(r.properties),
         },
       };
     case "snomed":
@@ -310,7 +319,16 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
           ? (eq(schema.conceptIcd10cm.isBillableLeaf, true) as SQL)
           : undefined;
       const limit = opts.limit !== undefined ? Math.max(1, Math.floor(opts.limit)) : undefined;
-      let query = db.select().from(cols.table).where(and(match, billable)).$dynamic();
+      // One row per code: concept tables hold one row per loaded version (ICD-10-CM FY2026 + FY2027), so
+      // an undated search returned every version of every match. Search answers "as of" a date — today
+      // unless the caller says otherwise — exactly like lookup/validate do.
+      const asOfIso = (opts.asOf ?? new Date()).toISOString().slice(0, 10);
+      const current = coversAsOf(cols.effective, cols.end, asOfIso);
+      let query = db
+        .select()
+        .from(cols.table)
+        .where(and(match, billable, current))
+        .$dynamic();
       if (limit !== undefined) query = query.limit(limit);
       const rows = (await query) as unknown as AnyConceptRow[];
       return rows.map((r) => mapConcept(system, r)) as ResolvedConcept<S>[];
@@ -371,6 +389,20 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
         .where(and(coversAsOf(cols.effective, cols.end, asOfIso), sql`${cols.status} <> 'retired'`))
         .orderBy(cols.code)) as Array<{ code: string; display: string }>;
       return rows;
+    },
+
+    async listVersions(system) {
+      const V = schema.codeSystemVersions;
+      const rows = await db
+        .select({ version: V.version, effectiveFrom: V.effectiveFrom, effectiveTo: V.effectiveTo })
+        .from(V)
+        .where(and(eq(V.codeSystemId, system), inArray(V.status, ["active", "superseded"])))
+        .orderBy(V.effectiveFrom);
+      return rows.map((r) => ({
+        version: r.version,
+        effectiveFrom: String(r.effectiveFrom),
+        effectiveTo: r.effectiveTo ? String(r.effectiveTo) : null,
+      }));
     },
 
     async codeSystemMeta(system, asOfIso) {

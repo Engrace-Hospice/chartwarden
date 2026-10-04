@@ -47645,6 +47645,15 @@ export interface operations {
                             confidence: number | null;
                             needsHumanClassification: boolean;
                         }[];
+                        documents: {
+                            pageFrom: number;
+                            pageTo: number;
+                            documentType: string;
+                            title: string | null;
+                            date: string | null;
+                            duplicateOfPage: number | null;
+                            boundary: string | null;
+                        }[];
                         jobs: {
                             id: string;
                             documentType: string;
@@ -47680,6 +47689,12 @@ export interface operations {
                                 observedValue: string | null;
                             };
                             sudDetected: boolean;
+                            codingFlags: {
+                                kind: string;
+                                code: string;
+                                suggest: string[];
+                                detail: string;
+                            }[];
                             writebackTarget: boolean;
                             decision: {
                                 id: string;

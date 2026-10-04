@@ -74,18 +74,49 @@ const MEDICATIONS: readonly ExtractionFieldDescriptor[] = [
   ),
 ];
 
+// F-238 — diagnoses. The model reads the WORDING and how the document labels it; the ICD-10-CM code is
+// `page_scan` — read off the page by the code scanner (coding/icd-scanner.ts), never produced by a model.
+// Same index = same diagnosis (`diagnoses[3].description` ↔ `diagnoses[3].icd10`).
+const DIAGNOSES: readonly ExtractionFieldDescriptor[] = [
+  {
+    fieldPath: "diagnoses[].description",
+    riskLevel: "high",
+    targetModule: "m7",
+    description:
+      "one diagnosis or medical condition exactly as written, WITHOUT any code (from a diagnosis list, problem list, past medical history or assessment); never a ruled-out, negated or 'no evidence of' finding",
+  },
+  {
+    fieldPath: "diagnoses[].role",
+    riskLevel: "medium",
+    targetModule: "m7",
+    description:
+      "how this document labels that same diagnosis: principal (listed as principal/primary diagnosis), secondary, history (past, resolved or 'history of'), or unspecified",
+  },
+  {
+    fieldPath: "diagnoses[].icd10",
+    riskLevel: "high",
+    targetModule: "m7",
+    description: "the ICD-10-CM code printed next to that diagnosis",
+    source: "page_scan",
+  },
+];
+
 /** §3.1 — the per-type extraction-schema registry, with the writeback-target dividing line (D5). */
 export const EXTRACTION_SCHEMA_REGISTRY: readonly ExtractionSchemaDescriptor[] = [
   {
     documentType: "discharge_summary",
     hasHighRiskFields: true,
-    fields: [...DEMOGRAPHICS, ...MEDICATIONS],
+    fields: [...DEMOGRAPHICS, ...MEDICATIONS, ...DIAGNOSES],
   },
   { documentType: "med_recon", hasHighRiskFields: true, fields: MEDICATIONS },
-  { documentType: "hp", hasHighRiskFields: true, fields: [...DEMOGRAPHICS, ...MEDICATIONS] },
+  {
+    documentType: "hp",
+    hasHighRiskFields: true,
+    fields: [...DEMOGRAPHICS, ...MEDICATIONS, ...DIAGNOSES],
+  },
   { documentType: "lab", hasHighRiskFields: false, fields: DEMOGRAPHICS },
   { documentType: "imaging", hasHighRiskFields: false, fields: DEMOGRAPHICS },
-  { documentType: "consult", hasHighRiskFields: false, fields: DEMOGRAPHICS },
+  { documentType: "consult", hasHighRiskFields: true, fields: [...DEMOGRAPHICS, ...DIAGNOSES] },
   { documentType: "insurance_card", hasHighRiskFields: false, fields: DEMOGRAPHICS },
   { documentType: "photo_id", hasHighRiskFields: false, fields: DEMOGRAPHICS },
   // Advance directives and DPOAs carry high-risk content (code status, agents) whose v1 fields are not
@@ -95,7 +126,7 @@ export const EXTRACTION_SCHEMA_REGISTRY: readonly ExtractionSchemaDescriptor[] =
   {
     documentType: "transfer_record",
     hasHighRiskFields: true,
-    fields: [...DEMOGRAPHICS, ...MEDICATIONS],
+    fields: [...DEMOGRAPHICS, ...MEDICATIONS, ...DIAGNOSES],
   },
 ] as const;
 

@@ -586,6 +586,7 @@ import {
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
   createCandidateValueCipher,
+  createCodingTerminology,
   createDocLensIntakeEnqueue,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
@@ -5668,6 +5669,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         visionVerifier: () => getSeam("DocLensVisionVerifier") as DocLensVisionVerifierPort,
         sudDetector: () => getSeam("DocLensSudDetector") as DocLensSudDetectorPort,
         outbox: m22OutboxPublisher,
+        // F-238 — ICD-10-CM (M38) for the code scanner + coding checks; skipped, and said so, when no
+        // release is loaded (`bun run db:load:icd10cm`).
+        codingTerminology: () => createCodingTerminology(),
       },
       (msg, detail) => app.log.info(detail, msg),
     );

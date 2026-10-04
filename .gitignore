@@ -69,3 +69,6 @@ legal/
 # Stray run artifacts from audit/gate scripts
 audit_stderr.log
 scratchpad/
+
+# Downloaded reference releases (scripts/db/load-icd10cm.ts)
+.cache/

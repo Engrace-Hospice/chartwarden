@@ -30,6 +30,7 @@
     "db:seed:clinical": "bun run scripts/db/seed-clinical.ts",
     "db:seed:mdm": "bun run scripts/db/seed-mdm.ts",
     "db:seed:terminology": "bun run scripts/db/seed-terminology.ts",
+    "db:load:icd10cm": "bun run scripts/db/load-icd10cm.ts",
     "db:seed:consent-types": "bun run scripts/db/seed-consent-types.ts",
     "db:seed:org-structure": "bun run scripts/db/seed-org-structure.ts",
     "db:seed:staff": "bun run scripts/db/seed-staff-personas.ts",

@@ -63,6 +63,14 @@ export interface MembershipOptions {
 }
 
 /** Search mode + filters (§4.5). `semantic` rides the `ai.full` flag (Phase 2). */
+/** One loaded release of a code system and the dates it is in force for. */
+export interface CodeSystemVersionWindow {
+  readonly version: string;
+  readonly effectiveFrom: string;
+  /** Null for the current release. */
+  readonly effectiveTo: string | null;
+}
+
 export interface SearchOptions {
   readonly mode?: "exact" | "fuzzy" | "semantic";
   readonly asOf?: Date;
@@ -124,6 +132,13 @@ export interface TerminologyProvider {
     actorUserId: string,
   ): Promise<{ extensionId: string }>;
   removeTenantExtension(orgId: string, extensionId: string, actorUserId: string): Promise<void>;
+
+  /**
+   * F-238 — the loaded releases of a code system, oldest first (version label + effective window). Lets a
+   * caller judge a document by the release in force on its date, or know a date predates every release.
+   * Optional so slice/test providers need not implement it.
+   */
+  listVersions?(system: CodeSystemId): Promise<readonly CodeSystemVersionWindow[]>;
 
   // FHIR projection (consumed by Module 28)
   asFhirCodeSystem(system: CodeSystemId, asOf?: Date): Promise<FhirCodeSystemProjection>;

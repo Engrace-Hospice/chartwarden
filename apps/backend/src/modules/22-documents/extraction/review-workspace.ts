@@ -84,6 +84,13 @@ export interface WorkspaceCandidate {
   readonly bbox: readonly [number, number, number, number];
   readonly vision: { readonly status: VisionStatus; readonly observedValue: string | null };
   readonly sudDetected: boolean;
+  /** F-238 — the coding checks on a `diagnoses[n].icd10` candidate (decrypted); empty otherwise. */
+  readonly codingFlags: readonly {
+    readonly kind: string;
+    readonly code: string;
+    readonly suggest: readonly string[];
+    readonly detail: string;
+  }[];
   /** F-235 allowlist + low risk: what completion would write to the chart (after approval). */
   readonly writebackTarget: boolean;
   readonly decision: {
@@ -126,6 +133,16 @@ export interface ReviewWorkspace {
     readonly documentType: string | null;
     readonly confidence: number | null;
     readonly needsHumanClassification: boolean;
+  }[];
+  /** F-238 — the documents the fax splitter found, in page order. */
+  readonly documents: readonly {
+    readonly pageFrom: number;
+    readonly pageTo: number;
+    readonly documentType: string;
+    readonly title: string | null;
+    readonly date: string | null;
+    readonly duplicateOfPage: number | null;
+    readonly boundary: string | null;
   }[];
   readonly jobs: readonly {
     readonly id: string;
@@ -375,6 +392,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         const box = c.sourceBoundingBox as { x1: number; y1: number; x2: number; y2: number };
         const d = decisions.find((x) => x.extractionCandidateId === c.id);
         const disagreement = await decrypt(organizationId, c.visionDisagreement);
+        const flagsJson = await decrypt(organizationId, c.codingFlagsCipher);
         candidates.push({
           id: c.id,
           jobId: c.extractionJobId,
@@ -393,6 +411,14 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
               : null,
           },
           sudDetected: c.sudDetected,
+          codingFlags: flagsJson
+            ? (JSON.parse(flagsJson) as WorkspaceCandidate["codingFlags"]).map((f) => ({
+                kind: f.kind,
+                code: f.code,
+                suggest: [...f.suggest],
+                detail: f.detail,
+              }))
+            : [],
           writebackTarget:
             Object.hasOwn(DOCLENS_M5_WRITEBACK_FIELDS, c.fieldPath) && c.riskLevel === "low",
           decision: d
@@ -433,6 +459,15 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
             : [],
         },
         pages: pageRows,
+        documents: pages.map((p) => ({
+          pageFrom: p.pageRangeStart,
+          pageTo: p.pageRangeEnd,
+          documentType: String(p.documentType),
+          title: p.documentTitle,
+          date: p.documentDate ? String(p.documentDate) : null,
+          duplicateOfPage: p.duplicateOfPage,
+          boundary: p.segmentBoundary,
+        })),
         jobs: jobs.map((j) => {
           const cp = pageOfJob(j.id);
           return {

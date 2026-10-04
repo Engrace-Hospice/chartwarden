@@ -48,6 +48,8 @@ export const extractionCandidates = pgTable(
     visionDisagreement: text("vision_disagreement"), // DENYLISTED (§3.6)
     // SUD-content flag set by classifier/extractor; drives m22.intake.sud_detected (D8 / W4).
     sudDetected: boolean("sud_detected").notNull().default(false),
+    // F-238 (0309) — ICD-10-CM coding checks for a diagnosis candidate, DEK-encrypted; DENYLISTED (§3.6).
+    codingFlagsCipher: text("coding_flags_cipher"),
     extractedAt: timestamp("extracted_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

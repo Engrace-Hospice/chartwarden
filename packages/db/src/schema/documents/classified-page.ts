@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   decimal,
   index,
   integer,
@@ -37,6 +38,12 @@ export const classifiedPages = pgTable(
     // per-page processing-failure class, e.g. 'docling_parse_failed' (W1 AC); null on success.
     errorClass: text("error_class"),
     classifiedAt: timestamp("classified_at", { withTimezone: true }).notNull().defaultNow(),
+    // F-238 (0309) — the fax splitter's document segment. `document_title` is audit-denylisted (a header
+    // can name a Part 2 program); `document_date` is the date codes written in this document are judged by.
+    documentTitle: text("document_title"),
+    documentDate: date("document_date"),
+    duplicateOfPage: integer("duplicate_of_page"),
+    segmentBoundary: text("segment_boundary"),
   },
   (t) => ({
     byBatch: index("classified_page_batch_idx").on(t.intakeUploadBatchId, t.pageRangeStart),

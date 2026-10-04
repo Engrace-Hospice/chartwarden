@@ -34,18 +34,25 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type ClassifiedPage,
+  type CodeOnPage,
+  type CodingFlag,
   DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
+  type GroundedDiagnosis,
   type IntakeDocumentType,
   SUD_RULESET_VERSION,
   type SudIndicator,
   type SudIndicatorCategory,
+  attachCodesToDiagnoses,
   classifyPages,
   detectSudIndicators,
   dominantSudCategory,
+  findCodeTokens,
   findExtractionField,
   findExtractionSchema,
   groundQuote,
-  groupContiguousRuns,
+  resolveCodeTokens,
+  runCodingChecks,
+  splitPacket,
 } from "@wardenx/intake-extraction";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
@@ -57,6 +64,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
+import type { CodingTerminologyAdapter } from "./coding-terminology";
 import { type DoclingClient, type DoclingPage, DoclingParseError } from "./docling-client";
 import type { ExtractionOutboxPort } from "./writeback-commit-db";
 
@@ -177,6 +185,11 @@ export interface DocLensIntakeDeps {
   /** F-237 — publishes `m22.intake.sud_detected`. Required the moment a batch has an indicator. */
   readonly outbox?: ExtractionOutboxPort;
   readonly confidenceFloor?: number;
+  /**
+   * F-238 — ICD-10-CM for the code scanner + coding checks (M38). Absent, or no release loaded ⇒ codes are
+   * neither scanned nor checked, and the summary says so (`coding.status`).
+   */
+  readonly codingTerminology?: () => CodingTerminologyAdapter;
 }
 
 /** F-237 — the risk tiers stage 5 re-reads from the page (medications/allergies + name/DOB). */
@@ -256,9 +269,27 @@ export type DocLensIntakeSummary =
         readonly unverified: number;
       };
       readonly sud: { readonly indicators: number; readonly pages: readonly number[] };
+      /** F-238 — the splitter's documents and the coding checks (counts only). */
+      readonly documents: number;
+      readonly coding: {
+        readonly status: "checked" | "icd10cm_not_loaded" | "not_configured";
+        readonly codes: number;
+        readonly repaired: number;
+        readonly flags: number;
+        readonly unreadable: number;
+      };
     };
 
 const SCHEMA_KEY = "doclens_v1";
+
+/** F-238 — a document's label for a diagnosis, normalised to the four the review and writeback know. */
+function normaliseRole(v: string): string {
+  const s = v.toLowerCase();
+  if (/princip|primary/.test(s)) return "principal";
+  if (/second|other|additional/.test(s)) return "secondary";
+  if (/hist|past|resolv|prior/.test(s)) return "history";
+  return "unspecified";
+}
 const pageText = (p: DoclingPage): string => p.blocks.map((b) => b.text).join("\n");
 
 export async function runDocLensIntake(
@@ -437,44 +468,72 @@ export async function runDocLensIntake(
   let anyAwaiting = false;
   const vision = { verified: 0, disagreed: 0, unverified: 0 };
 
-  // Pages that need a human (unknown / below the floor) still get a classified_page row, so the
-  // reviewer sees them; they form no extraction job.
-  for (const page of classified.filter((c) => c.needsHumanClassification)) {
-    await inOrg((tx) =>
-      tx.insert(CP).values({
-        organizationId: org,
-        intakeUploadBatchId: job.batchId,
-        sourceDocumentId: source.documentId,
-        pageRangeStart: page.pageNumber,
-        pageRangeEnd: page.pageNumber,
-        documentType: page.documentType,
-        confidence: page.confidence.toFixed(3),
-        classifierModelVersionRef: classifierRef.get(page.pageNumber) ?? "refused",
-      }),
-    );
+  // ── 3b. split the fax into the documents inside it (F-238) ──────────────────────────────────────
+  const segments = splitPacket(pages, classified);
+  const segmentOf = (page: number) => segments.find((s) => s.pageNumbers.includes(page));
+
+  // ── 3c. read the ICD-10-CM codes off the pages and check them (F-238) — deterministic, no model ──────
+  // Codes come from the page, never from the extractor (AI Governance §2.1.1). Re-sent pages are skipped
+  // so a duplicate never reads as a second, conflicting document.
+  let scannedCodes: CodeOnPage[] = [];
+  let codingFlags: CodingFlag[] = [];
+  let codingStatus: "checked" | "icd10cm_not_loaded" | "not_configured" = "not_configured";
+  const terminology = deps.codingTerminology?.();
+  if (terminology) {
+    if (!(await terminology.isLoaded())) {
+      codingStatus = "icd10cm_not_loaded";
+    } else {
+      codingStatus = "checked";
+      const original = pages.filter((p) => segmentOf(p.page)?.duplicateOfPage == null);
+      const resolved = await resolveCodeTokens(findCodeTokens(original), terminology);
+      scannedCodes = resolved.map((c) => ({
+        ...c,
+        blockBox: (original.find((p) => p.page === c.page)?.blocks[c.blockIndex]?.bbox ?? [
+          0, 0, 0, 0,
+        ]) as readonly [number, number, number, number],
+      }));
+      codingFlags = await runCodingChecks(
+        {
+          referenceDate: new Date().toISOString().slice(0, 10),
+          pageText: new Map(original.map((p) => [p.page, pageText(p)])),
+          codes: scannedCodes.map((c) => ({
+            ...c,
+            documentDate: segmentOf(c.page)?.documentDate ?? null,
+            documentKey: segmentOf(c.page)?.pageNumbers[0] ?? c.page,
+          })),
+        },
+        terminology,
+      );
+    }
   }
 
-  for (const run of groupContiguousRuns(classified)) {
+  for (const seg of segments) {
+    const segmentRow = {
+      organizationId: org,
+      intakeUploadBatchId: job.batchId,
+      sourceDocumentId: source.documentId,
+      pageRangeStart: Math.min(...seg.pageNumbers),
+      pageRangeEnd: Math.max(...seg.pageNumbers),
+      documentType: seg.documentType,
+      confidence: seg.confidence.toFixed(3),
+      classifierModelVersionRef: classifierRef.get(seg.pageNumbers[0] as number) ?? "refused",
+      documentTitle: seg.title,
+      documentDate: seg.documentDate,
+      duplicateOfPage: seg.duplicateOfPage,
+      segmentBoundary: seg.boundary,
+    };
+    // A re-sent page, or a document that needs a human to classify it, gets its classified_page row (the
+    // reviewer sees it) but no extraction job.
+    if (seg.duplicateOfPage !== null || seg.needsHumanClassification) {
+      await inOrg((tx) => tx.insert(CP).values(segmentRow));
+      continue;
+    }
+    const run = seg;
     const runPages = pages.filter((p) => run.pageNumbers.includes(p.page));
-    const runConfidence = Math.min(
-      ...classified.filter((c) => run.pageNumbers.includes(c.pageNumber)).map((c) => c.confidence),
-    );
     const docType = run.documentType as IntakeDocumentType;
     const schemaFields = findExtractionSchema(docType)?.fields ?? [];
     const pageId = await inOrg(async (tx) => {
-      const [row] = await tx
-        .insert(CP)
-        .values({
-          organizationId: org,
-          intakeUploadBatchId: job.batchId,
-          sourceDocumentId: source.documentId,
-          pageRangeStart: Math.min(...run.pageNumbers),
-          pageRangeEnd: Math.max(...run.pageNumbers),
-          documentType: docType,
-          confidence: runConfidence.toFixed(3),
-          classifierModelVersionRef: classifierRef.get(run.pageNumbers[0] as number) ?? "refused",
-        })
-        .returning({ id: CP.id });
+      const [row] = await tx.insert(CP).values(segmentRow).returning({ id: CP.id });
       return (row as { id: string }).id;
     });
 
@@ -485,7 +544,10 @@ export async function runDocLensIntake(
       documentType: docType,
       extractedText: "",
       schemaKey: SCHEMA_KEY,
-      fieldSpecs: schemaFields.map((f) => ({ fieldPath: f.fieldPath, description: f.description })),
+      // `page_scan` fields (ICD-10-CM codes) are never asked of a model.
+      fieldSpecs: schemaFields
+        .filter((f) => f.source !== "page_scan")
+        .map((f) => ({ fieldPath: f.fieldPath, description: f.description })),
       pages: runPages.map((p) => ({ page: p.page, text: pageText(p) })),
     });
     jobs += 1;
@@ -516,11 +578,26 @@ export async function runDocLensIntake(
       confidence: number;
       page: number;
       bbox: readonly [number, number, number, number];
+      codingFlags?: readonly CodingFlag[];
     }> = [];
+    // F-238 — diagnoses are collected, then joined with the page-scanned codes below.
+    const dxWording: GroundedDiagnosis[] = [];
+    const dxRoles = new Map<number, string>();
     for (const [fieldPath, f] of Object.entries(result.fields)) {
       const spec = findExtractionField(docType, fieldPath);
       if (!spec) {
         drop("field_not_in_schema");
+        continue;
+      }
+      if (spec.source === "page_scan") {
+        drop("model_supplied_code"); // a code is only ever what the page says
+        continue;
+      }
+      const dx = /^diagnoses\[(\d+)\]\.(description|role)$/.exec(fieldPath);
+      if (dx?.[2] === "role") {
+        // The role is the document's LABEL for a diagnosis, not a quotable value; it rides on its
+        // description's grounding and is normalised to the four labels.
+        if (typeof f.value === "string") dxRoles.set(Number(dx[1]), normaliseRole(f.value));
         continue;
       }
       if (typeof f.value !== "string" || !f.sourceQuote) {
@@ -536,6 +613,17 @@ export async function runDocLensIntake(
         drop(g.reason);
         continue;
       }
+      if (dx) {
+        dxWording.push({
+          index: Number(dx[1]),
+          description: f.value,
+          role: null,
+          page: g.page,
+          bbox: g.bbox,
+          confidence: f.confidence,
+        });
+        continue;
+      }
       accepted.push({
         fieldPath,
         riskLevel: spec.riskLevel,
@@ -544,6 +632,25 @@ export async function runDocLensIntake(
         page: g.page,
         bbox: g.bbox,
       });
+    }
+    if (findExtractionField(docType, "diagnoses[0].description")) {
+      for (const d of attachCodesToDiagnoses({
+        diagnoses: dxWording.map((d) => ({ ...d, role: dxRoles.get(d.index) ?? null })),
+        codes: scannedCodes.filter((c) => c.code !== null && run.pageNumbers.includes(c.page)),
+        flags: codingFlags,
+      })) {
+        const spec = findExtractionField(docType, d.fieldPath);
+        if (!spec) continue;
+        accepted.push({
+          fieldPath: d.fieldPath,
+          riskLevel: spec.riskLevel,
+          value: d.value,
+          confidence: d.confidence,
+          page: d.page,
+          bbox: d.bbox,
+          ...(d.codingFlags ? { codingFlags: d.codingFlags } : {}),
+        });
+      }
     }
 
     // ── 5. stage 5: re-read each high/medium-risk value from a crop of its page (F-237) ─────────────
@@ -561,6 +668,11 @@ export async function runDocLensIntake(
     }
     const visionRef = checks.find((c) => "invocationId" in c && c.invocationId);
     const encrypted = await Promise.all(accepted.map((a) => deps.cipher.encrypt(org, a.value)));
+    const flagCiphers = await Promise.all(
+      accepted.map((a) =>
+        a.codingFlags?.length ? deps.cipher.encrypt(org, JSON.stringify(a.codingFlags)) : null,
+      ),
+    );
     const disagreements = await Promise.all(
       checks.map((c) =>
         c.kind === "disagreed"
@@ -603,6 +715,7 @@ export async function runDocLensIntake(
           visionVerified: checks[i]?.kind === "verified",
           visionDisagreement: disagreements[i] ?? null,
           sudDetected: sudPages.has(a.page),
+          codingFlagsCipher: flagCiphers[i] ?? null,
         });
       }
     });
@@ -675,6 +788,14 @@ export async function runDocLensIntake(
     refusals,
     vision,
     sud: { indicators: sudIndicators.length, pages: [...sudPages].sort((x, y) => x - y) },
+    documents: segments.length,
+    coding: {
+      status: codingStatus,
+      codes: scannedCodes.filter((c) => c.code !== null).length,
+      repaired: scannedCodes.filter((c) => c.repaired).length,
+      flags: codingFlags.length,
+      unreadable: codingFlags.filter((f) => f.kind === "unreadable_code").length,
+    },
   };
 
   /** Stage 5 for one value: render a padded crop of its box and ask the model to read the field. */

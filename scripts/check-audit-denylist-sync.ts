@@ -186,6 +186,7 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0049_documents_m22_rls_audit_triggers.sql",
       "packages/db/migrations/0170_document_verified_upload.sql",
       "packages/db/migrations/0308_m22_doclens_review_sud_state.sql",
+      "packages/db/migrations/0309_m22_doclens_packet_segments_coding_flags.sql",
     ],
   },
   {

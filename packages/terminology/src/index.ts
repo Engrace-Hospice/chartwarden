@@ -39,6 +39,7 @@ export type {
   ExpandOptions,
   MembershipOptions,
   SearchOptions,
+  CodeSystemVersionWindow,
 } from "./interfaces/provider";
 
 // The as-of resolution engine (M38-T04, §2.1, §7.1–7.2).

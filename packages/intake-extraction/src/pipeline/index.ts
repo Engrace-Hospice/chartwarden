@@ -38,3 +38,13 @@ export {
   groundQuote,
   normalizeForMatch,
 } from "./grounding";
+// F-238 — the fax-packet splitter: one inbound fax → the documents inside it.
+export {
+  type PacketSegment,
+  type SegmentBoundary,
+  type SplitterBlock,
+  type SplitterPage,
+  DUPLICATE_THRESHOLD,
+  headerDate,
+  splitPacket,
+} from "./splitter";
