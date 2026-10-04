@@ -62,8 +62,6 @@ export function scanRoutes(repoRoot: string = process.cwd()): ScannedRoute[] {
     for (const match of src.matchAll(ROUTE_CALL_RE)) {
       const method = group(match, 1, "route registration method") as HttpMethod;
       const path = group(match, 2, "route registration path");
-      // skip the legacy boot smoke probe duplicate of /health
-      if (path === "/healthz") continue;
       const key = `${method} ${path}`;
       if (seen.has(key)) continue; // a path registered once is enough for the contract
       seen.add(key);

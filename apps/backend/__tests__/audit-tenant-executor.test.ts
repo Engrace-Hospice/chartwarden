@@ -5,7 +5,7 @@
 // A pooled connection that earlier ran a `withOrgContext` transaction keeps `app.org_id = ''`, so
 // `audit_event_org_append` cast `''::uuid` and every elevated audit read 500'd ("invalid input syntax
 // for type uuid"). The sink must open its own org-scoped transaction from the row it writes.
-import { auditEvents } from "@wardenx/db";
+import { schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
 import { describe, expect, it } from "vitest";
 import { createTenantAuditExecutor } from "../src/modules/04-audit/index";
@@ -45,7 +45,7 @@ describe("M4 createTenantAuditExecutor", () => {
   it("writes a tenant audit row inside an org-scoped transaction (GUCs set first)", async () => {
     const { db, calls } = fakeDb();
     await createTenantAuditExecutor(db)
-      .insert(auditEvents)
+      .insert(schema.auditEvents)
       .values({ organizationId: ORG, actorUserId: USER } as never);
     expect(calls[0]).toBe("begin");
     expect(calls.indexOf("tx.execute")).toBeGreaterThan(0);
@@ -57,7 +57,7 @@ describe("M4 createTenantAuditExecutor", () => {
   it("keeps the bare client for a platform event with no organization", async () => {
     const { db, calls } = fakeDb();
     await createTenantAuditExecutor(db)
-      .insert(auditEvents)
+      .insert(schema.auditEvents)
       .values({ organizationId: null } as never);
     expect(calls).toEqual(["db.insert"]);
   });

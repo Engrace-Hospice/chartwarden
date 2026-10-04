@@ -39,7 +39,7 @@ describe("isGovernedReadRoute", () => {
 
   it("ignores reads outside every covered prefix", () => {
     expect(isGovernedReadRoute("GET", "/api/v1/orgs/:id/members", PREFIXES)).toBe(false);
-    expect(isGovernedReadRoute("GET", "/healthz", PREFIXES)).toBe(false);
+    expect(isGovernedReadRoute("GET", "/health", PREFIXES)).toBe(false);
     // a prefix must match a path segment boundary, not a string prefix of another resource
     expect(isGovernedReadRoute("GET", "/api/v1/patients-archive", PREFIXES)).toBe(false);
   });
