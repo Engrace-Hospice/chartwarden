@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 1343,
-    "enriched": 1338,
+    "routes": 1370,
+    "enriched": 1365,
     "deficit": 5,
-    "mutating": 760,
+    "mutating": 774,
     "mutatingNoBody": 1,
-    "gets": 550,
-    "getsNoResponse": 8
+    "gets": 563,
+    "getsNoResponse": 10
   },
   "modules": [
     {
@@ -41,12 +41,12 @@
     },
     {
       "module": "05-patient",
-      "routes": 16,
-      "enriched": 16,
+      "routes": 23,
+      "enriched": 23,
       "deficit": 0,
-      "mutating": 7,
+      "mutating": 11,
       "mutatingNoBody": 0,
-      "gets": 9,
+      "gets": 12,
       "getsNoResponse": 0
     },
     {
@@ -61,12 +61,12 @@
     },
     {
       "module": "07-care-plan",
-      "routes": 22,
-      "enriched": 22,
+      "routes": 25,
+      "enriched": 25,
       "deficit": 0,
-      "mutating": 13,
+      "mutating": 15,
       "mutatingNoBody": 0,
-      "gets": 9,
+      "gets": 10,
       "getsNoResponse": 0
     },
     {
@@ -211,13 +211,13 @@
     },
     {
       "module": "22-documents",
-      "routes": 40,
-      "enriched": 40,
+      "routes": 57,
+      "enriched": 57,
       "deficit": 0,
-      "mutating": 22,
+      "mutating": 30,
       "mutatingNoBody": 0,
-      "gets": 16,
-      "getsNoResponse": 0
+      "gets": 25,
+      "getsNoResponse": 2
     },
     {
       "module": "23-billing-medicare",

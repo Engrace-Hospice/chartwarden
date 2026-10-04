@@ -102,6 +102,13 @@ export {
   M12_IDG_DECISION_CONSUMER,
   buildM12IdgDecisionConsumer,
 } from "./outbox-consumers/m14-idg-decision-recorded";
+// F-238 — the DocLens medication-history writeback: reconciliation-only `medication_history_record` rows
+// (source `doclens_intake`); never a medication_order (D10/D12).
+export {
+  M12_EXTRACTION_MEDICATION_HISTORY_CONSUMER,
+  applyMedicationHistoryWriteback,
+  buildM12ExtractionMedicationHistoryConsumer,
+} from "./outbox-consumers/m22-extraction-medication-history";
 // M12-T08 — the §4.5 outbox subscriptions: M5 patient-sync triggers + M6 discharge cascade / MedHx fetch + the
 // M11 verbal-expiry backref. Pure deciders + the event → consumer binding registry; consumed event names are
 // string literals (no dependsOn edge).

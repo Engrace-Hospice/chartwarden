@@ -18,7 +18,8 @@
       "bun.lock",
       "**/tsconfig*.json",
       "**/package.json",
-      "scripts/__fixtures__"
+      "scripts/__fixtures__",
+      "services/**/.venv"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

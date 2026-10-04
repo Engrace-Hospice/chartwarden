@@ -79,3 +79,36 @@ export {
   eraseAiProvenance,
   registerAiProvenanceErasers,
 } from "./erasers/ai-provenance-eraser";
+// F-236 (ADR-0048) — the live AI pipeline: deployment-configured backends (Ollama / Anthropic), their
+// health sweep, the per-tenant payload cipher, token budgets, PHI-minimisation rules, the real actor
+// resolver, the DocLens output projector and the filesystem prompt reader.
+export {
+  type AiBackendDeploymentConfig,
+  AiBackendConfigError,
+  aiBackendConfigFromEnv,
+  buildConfiguredModelBackends,
+} from "./backends/config";
+export { runAiBackendHealthSweep, startAiBackendHealthSweep } from "./backends/health-sweep";
+export { buildLiveAiInvocationPipeline } from "./live-pipeline";
+export { createAiPayloadCipher, type AiPayloadKeyProvider } from "./invocation/payload-cipher";
+export { createOrganizationSettingsAiTokenBudgetResolver } from "./invocation/token-budget-settings";
+export { createRuleBasedAiChartContextValidator } from "./invocation/chart-context-rules";
+export { createDrizzleAiSeamActorResolver } from "./seams/actor-resolver-drizzle";
+export {
+  DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
+  DOCLENS_DOCUMENT_TYPES,
+  DOCLENS_EXTRACT_RESPONSE_SCHEMA,
+  DOCLENS_SUD_DETECT_RESPONSE_SCHEMA,
+  DOCLENS_VISION_VERIFY_RESPONSE_SCHEMA,
+  createDocLensOutputProjector,
+  projectDocLensClassify,
+  projectDocLensExtract,
+  projectDocLensSudDetect,
+  projectDocLensVisionVerify,
+} from "./seams/doclens-projector";
+export {
+  composeDocLensExtractPrompt,
+  composeDocLensPages,
+  composeDocLensVisionFieldPrompt,
+} from "./seams/published";
+export { createFilesystemAiPromptArtifactReader } from "./prompts/store";

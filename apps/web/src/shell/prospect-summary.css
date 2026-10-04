@@ -1,0 +1,127 @@
+/* F-238 — the prospect summary panel (a completed DocLens review's approved values, cited) */
+.wx-prospect {
+  margin: 0 0 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  padding: 0.75rem 1rem 1rem;
+}
+.wx-prospect-head h2 {
+  font-size: 1.125rem;
+  margin: 0 0 0.25rem;
+}
+.wx-prospect-body {
+  display: grid;
+  gap: 0.75rem;
+}
+.wx-prospect-note,
+.wx-prospect-cite {
+  font-size: 0.8125rem;
+  color: var(--color-on-surface-variant);
+  line-height: 1.35;
+  margin: 0;
+}
+.wx-prospect-cite {
+  display: block;
+}
+.wx-prospect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem 1.5rem;
+}
+.wx-prospect-grid h3 {
+  font-size: 0.9375rem;
+  margin: 0 0 0.375rem;
+}
+.wx-prospect-dl {
+  margin: 0;
+  display: grid;
+  gap: 0.375rem;
+}
+.wx-prospect-dl > div {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.5rem;
+}
+.wx-prospect-dl dt {
+  color: var(--color-on-surface-variant);
+}
+.wx-prospect-dl dd {
+  margin: 0;
+  min-width: 0;
+}
+.wx-prospect-list {
+  margin: 0;
+  padding-left: 1.125rem;
+  display: grid;
+  gap: 0.375rem;
+}
+.wx-prospect-value {
+  overflow-wrap: anywhere;
+}
+.wx-prospect-edited {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--color-on-surface-variant);
+}
+.wx-prospect-flags {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.wx-prospect-withheld {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.wx-prospect-text {
+  display: grid;
+  gap: 0.375rem;
+}
+.wx-prospect-text-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.wx-prospect-text-head label {
+  font-weight: 600;
+}
+.wx-prospect-text textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  resize: vertical;
+}
+@media (max-width: 640px) {
+  .wx-prospect-dl > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+/* the patient chart's Overview: one entry per completed intake review, newest first */
+.wx-prospect-history {
+  display: grid;
+  gap: 0.5rem;
+}
+.wx-prospect-entry {
+  border-top: 1px solid var(--color-card-border);
+  padding-top: 0.5rem;
+}
+.wx-prospect-entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.wx-prospect-entry > summary {
+  cursor: pointer;
+  padding: 0.25rem 0 0.5rem;
+}

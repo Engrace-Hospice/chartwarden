@@ -94,6 +94,13 @@ export interface Icd10cmProperties {
   readonly isBillableLeaf: boolean;
   readonly chapter: string | null;
   readonly parentCode: string | null;
+  /**
+   * F-238 — Tabular List instructional flags, when the loaded release carries them (scripts/db/
+   * load-icd10cm.ts): a manifestation code ("in diseases classified elsewhere") is never sequenced first.
+   */
+  readonly manifestation?: boolean;
+  readonly hasCodeFirstNote?: boolean;
+  readonly useAdditionalCode?: boolean;
 }
 
 /** SNOMED CT US Edition concept-specific columns (§3.4). */

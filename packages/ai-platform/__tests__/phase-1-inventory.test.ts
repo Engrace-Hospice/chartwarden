@@ -24,15 +24,15 @@ import {
 } from "../src/inventory/capabilities";
 
 describe("§2.3 backend inventory", () => {
-  it("registers the six §2.3 table rows plus the two its closing paragraph adds", () => {
-    expect(AI_PHASE_1_BACKENDS).toHaveLength(8);
-    expect(new Set(AI_PHASE_1_BACKENDS.map((b) => b.backendKey)).size).toBe(8);
+  it("registers the six §2.3 table rows, the two its closing paragraph adds, and ADR-0048's local vision route", () => {
+    expect(AI_PHASE_1_BACKENDS).toHaveLength(9);
+    expect(new Set(AI_PHASE_1_BACKENDS.map((b) => b.backendKey)).size).toBe(9);
   });
 
   it("registers `local-phi-3.5-mini` inactive for lifecycle continuity, and nothing else", () => {
     const inactive = AI_PHASE_1_BACKENDS.filter((b) => !b.isActive).map((b) => b.backendKey);
     expect(inactive).toEqual(["local-phi-3.5-mini"]);
-    expect(AI_PHASE_1_ACTIVE_BACKEND_KEYS).toHaveLength(7);
+    expect(AI_PHASE_1_ACTIVE_BACKEND_KEYS).toHaveLength(8);
     expect(AI_PHASE_1_ACTIVE_BACKEND_KEYS).not.toContain("local-phi-3.5-mini");
   });
 
@@ -57,6 +57,7 @@ describe("§2.3 backend inventory", () => {
     expect(stated["local-mistral-7b-instruct"]).toBe(32_000);
     expect(stated["local-bge-small-en"]).toBe(512);
     expect(stated["local-distilbert-classifier"]).toBe(512);
+    expect(stated["local-qwen2.5-vl-7b-instruct"]).toBe(32_768); // ADR-0048 (F-237)
     // The two rows §2.3's TABLE omits have no stated window. Guessing one would silently truncate a
     // real prompt, so they are null and declared unseedable instead.
     expect(stated["local-phi-3.5-mini"]).toBeNull();
@@ -76,8 +77,12 @@ describe("§2.3 backend inventory", () => {
   it("routes each modality to a backend that declares it", () => {
     const withModality = (m: string) =>
       AI_PHASE_1_BACKENDS.filter((b) => (b.supportedModalities as readonly string[]).includes(m));
-    // Vision verification has exactly one home Phase 1; if Opus loses `vision` the capability is dead.
-    expect(withModality("vision").map((b) => b.backendKey)).toEqual(["anthropic-claude-opus-4-7"]);
+    // Vision verification has a cloud home (Opus) and, since ADR-0048 (F-237), a local one; if both
+    // lose `vision` the capability is dead.
+    expect(withModality("vision").map((b) => b.backendKey)).toEqual([
+      "anthropic-claude-opus-4-7",
+      "local-qwen2.5-vl-7b-instruct",
+    ]);
     expect(withModality("classification").map((b) => b.backendKey)).toEqual([
       "local-distilbert-classifier",
     ]);

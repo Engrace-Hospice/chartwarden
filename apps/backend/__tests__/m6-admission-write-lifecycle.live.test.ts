@@ -278,8 +278,39 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
        VALUES ($1,$2,$3,'C34.90','Terminal', now()::date, now()::date + 90, now())`,
       [ORG_A, period.id, PHYSICIAN],
     );
+    // F-238 — the privacy gate on the real activation path (M5's clearance seam, as the app role). A
+    // CONFIRMED intake detection with no consent on file blocks activation...
+    await admin.query(
+      `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags, sud_flag_origin)
+       VALUES ($1,$2,'{sud}','m22_intake_confirmed')`,
+      [PATIENT2, ORG_A],
+    );
+    const privacyBlocked = await svc.activateAdmission(ORG_A, admissionId, norRes.version).then(
+      () => null,
+      (e: unknown) => e as { code?: string; requirements?: { code: string }[] },
+    );
+    expect(privacyBlocked).toMatchObject({ code: "ADMISSION_NOT_READY", statusCode: 412 });
+    expect(privacyBlocked?.requirements?.find((r) => r.code === "patient_privacy")).toMatchObject({
+      status: "blocked",
+      blocking: true,
+      reasonCode: "CONSENT_REQUIRED",
+    });
+    // ...while an UNREVIEWED one is advisory: the flag stays (M5 still restricts the records), the
+    // admission activates.
+    await admin.query(
+      "UPDATE patient_privacy_flag_snapshot SET sud_flag_origin='m22_intake_unconfirmed' WHERE patient_id=$1",
+      [PATIENT2],
+    );
     const active = await svc.activateAdmission(ORG_A, admissionId, norRes.version);
     expect(active.state).toBe("active");
+    expect(
+      (
+        await admin.query(
+          "SELECT flags, sud_flag_origin FROM patient_privacy_flag_snapshot WHERE patient_id=$1",
+          [PATIENT2],
+        )
+      ).rows[0],
+    ).toEqual({ flags: ["sud"], sud_flag_origin: "m22_intake_unconfirmed" });
     const at = await admin.query("SELECT activated_at FROM admission WHERE id=$1", [admissionId]);
     expect(at.rows[0].activated_at).not.toBeNull();
 

@@ -23,9 +23,10 @@ import { type DbClient, schema } from "@wardenx/db";
 // actor (the acting membership is the passed `userId`, stored where a column exists); (2) provider/location
 // siting is null (mig 0132); (3) medication_order has NO prescriber_discipline / signed_by / discontinuation_
 // reason column, so requestSignature's eligibility reads the threaded `signerDiscipline` arg and the read view
-// surfaces the stable defaults; (4) the M11 `OrderSignatureProvider` sign seam + the M22 medhx store are not
-// threaded — signing UPDATEs the order status directly (no order_signature row) and reconcileHistory returns
-// null, both mirroring the in-memory reference; (5) the refill-SLA / controlled-substance policies have no
+// surfaces the stable defaults; (4) the M11 `OrderSignatureProvider` sign seam is not threaded — signing
+// UPDATEs the order status directly (no order_signature row); the medication-history read + reconcile are
+// real since F-238 (`medication_history_record`, DoseSpot + DocLens rows) but reconcile NEVER mints an order
+// (`resultingOrderId` is always null — D12 for DocLens rows, the D10 carry-forward draft is unbuilt); (5) the refill-SLA / controlled-substance policies have no
 // table in Phase 1 — the put* routes apply their tighten-only guards and return the computed view without
 // persisting (the platform default is authoritative).
 import {
@@ -36,7 +37,7 @@ import {
 } from "@wardenx/dosespot";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeaSchedule, MedClass } from "@wardenx/types";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { getOrderSignatureProvider } from "../11-orders";
@@ -56,6 +57,7 @@ const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
 const RR = schema.refillRequests;
 const DP = schema.dosespotPrescribers;
+const MHR = schema.medicationHistoryRecords;
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 
@@ -495,9 +497,34 @@ export function createDbDoseSpotBackend(
         return { orders: rows.map(toOrderView) };
       });
     },
-    async medicationHistory(_organizationId, _patientId) {
-      // The external DoseSpot MedHx fetch is a write-side job; no local projection until the store is threaded.
-      return { records: [] };
+    async medicationHistory(organizationId, patientId) {
+      // §2.8 D10 — the reconciliation worksheet's rows: DoseSpot MedHx entries and (F-238) DocLens referral
+      // lines (`source = 'doclens_intake'`, the reviewer-attested text verbatim, with its attestation and
+      // provenance) — every source, labelled, newest first. Never joined to a medication_order.
+      return withOrg(organizationId, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(MHR)
+          .where(eq(MHR.patientId, patientId))
+          .orderBy(desc(MHR.createdAt), desc(MHR.id));
+        return {
+          records: rows.map((r) => ({
+            id: r.id,
+            drugName: r.drugName,
+            source: r.source,
+            strength: r.strength,
+            sigText: r.sigText,
+            lastFillDate: r.lastFillDate,
+            sourceDocumentId: r.sourceDocumentId,
+            sourcePage: r.sourcePage,
+            attestedByMembershipId: r.attestedByMembershipId,
+            attestedAt: r.attestedAt ? r.attestedAt.toISOString() : null,
+            reconciliationDecision: r.reconciliationDecision ?? null,
+            reconciledAt: r.reconciledAt ? r.reconciledAt.toISOString() : null,
+            createdAt: r.createdAt.toISOString(),
+          })),
+        };
+      });
     },
 
     // ── Medication-order writes (§2.2 lifecycle; the service does the transitions, no DB triggers) ───
@@ -846,10 +873,45 @@ export function createDbDoseSpotBackend(
     async refreshHistory(_organizationId, patientId) {
       return { jobId: `dosespot.fetch_medhx:${patientId}` };
     },
-    async reconcileHistory(_organizationId, _userId, _historyRecordId, _decision) {
-      // MedHx reconciliation carry-forward needs the M22 intake-extraction history store, not threaded here
-      // (§7.13). Returns null until that store lands (mirrors the read side's empty medicationHistory).
-      return { resultingOrderId: null };
+    async reconcileHistory(organizationId, userId, historyRecordId, decision) {
+      // §5.5 W-MR-05 — record the clinician's per-row decision (F-238). This path NEVER mints a
+      // medication_order, for any source: for a `doclens_intake` row that is M12 D12 / AI Governance
+      // §2.1.1 (its text came through an AI extraction, so it may not seed an order — not even as a
+      // pre-filled draft); for a DoseSpot row the D10 carry-forward draft is not built yet. A clinician who
+      // decides `carry_forward` writes the order themselves in the prescribe flow. One decision per row.
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ id: MHR.id, decision: MHR.reconciliationDecision })
+          .from(MHR)
+          .where(eq(MHR.id, historyRecordId))
+          .for("update")
+          .limit(1);
+        if (!row) throw new NotFoundError(`medication history record ${historyRecordId}`);
+        if (row.decision !== null) {
+          throw new WardenXError(
+            "HISTORY_ALREADY_RECONCILED",
+            `medication history record is already reconciled (${row.decision})`,
+            409,
+          );
+        }
+        await tx
+          .update(MHR)
+          .set({
+            reconciliationDecision: decision,
+            reconciledByMembershipId: userId, // M12's route `userId` IS the acting membership id
+            reconciledAt: new Date(),
+          })
+          .where(eq(MHR.id, historyRecordId));
+        await emit(
+          tx,
+          organizationId,
+          "m12.medication_history_reconciled",
+          "medication_history_record",
+          historyRecordId,
+          { historyRecordId, decision, resultingOrderId: null },
+        );
+        return { resultingOrderId: null };
+      });
     },
 
     // ── Refill-inbox reads + writes (§2.7 D9) ────────────────────────────────────────────────────────

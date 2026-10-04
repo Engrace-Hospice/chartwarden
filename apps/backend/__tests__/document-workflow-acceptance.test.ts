@@ -1,18 +1,3 @@
-// apps/backend/__tests__/document-workflow-acceptance.test.ts — M22-T11 the §7 workflow-acceptance suite
-// (the FINAL M22 task). One block per §7 workflow, exercised end-to-end over the REAL composed T03–T10
-// machines/services (no re-mocks): the §7.2 W2 render handshake (the DocumentRenderer seam over its
-// in-memory slice), W1 DocLens extraction (flag-OFF 503 path through the full M1 middleware chain + the
-// flag-ON pure pipeline over a fake M32 capability), W5 statement-of-disagreement, the §7.16 SUD-redaction,
-// the §7.12/§7.13/§7.15 EVV/encounter/lab render variants, the §4.12 BAA-gated external presign (the real
-// signed-URL service over a fake M40 BaaStatusProvider seam), the §2.4 patient-merge redirect, the W14
-// legal-hold-blocks-destruction + DEK-first eraser, and the §8.6/D9/D23 retention disposition.
-//
-// Deterministic: no infra, injected clock/short-id. The route-auth handshake (§4.6/§4.7) + the wire status
-// codes are proven in document-routes.test.ts; the pure deciders have their own unit suites
-// (document-lifecycle / document-consumers / document-doclens / document-render-variants / document-readers /
-// document-seams). This suite asserts the WORKFLOW outcomes (the acceptance criteria of §7) end-to-end and
-// fills the §9 eraser coverage gap (W14 had no dedicated test prior to T11). RLS layer-independence (§9.3)
-// lives in rls-isolation.live.test.ts.
 import {
   createInMemoryEffectivePermissionStore,
   registerAbacRegistry,
@@ -31,6 +16,22 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+// apps/backend/__tests__/document-workflow-acceptance.test.ts — M22-T11 the §7 workflow-acceptance suite
+// (the FINAL M22 task). One block per §7 workflow, exercised end-to-end over the REAL composed T03–T10
+// machines/services (no re-mocks): the §7.2 W2 render handshake (the DocumentRenderer seam over its
+// in-memory slice), W1 DocLens extraction (flag-OFF 503 path through the full M1 middleware chain + the
+// flag-ON pure pipeline over a fake M32 capability), W5 statement-of-disagreement, the §7.16 SUD-redaction,
+// the §7.12/§7.13/§7.15 EVV/encounter/lab render variants, the §4.12 BAA-gated external presign (the real
+// signed-URL service over a fake M40 BaaStatusProvider seam), the §2.4 patient-merge redirect, the W14
+// legal-hold-blocks-destruction + DEK-first eraser, and the §8.6/D9/D23 retention disposition.
+//
+// Deterministic: no infra, injected clock/short-id. The route-auth handshake (§4.6/§4.7) + the wire status
+// codes are proven in document-routes.test.ts; the pure deciders have their own unit suites
+// (document-lifecycle / document-consumers / document-doclens / document-render-variants / document-readers /
+// document-seams). This suite asserts the WORKFLOW outcomes (the acceptance criteria of §7) end-to-end and
+// fills the §9 eraser coverage gap (W14 had no dedicated test prior to T11). RLS layer-independence (§9.3)
+// lives in rls-isolation.live.test.ts.
+import type { DocLensIntakeEnqueue } from "../src/modules/22-documents/extraction/intake-queue";
 import {
   type AmendmentDeniedPayload,
   type DocumentFeatureFlagReader,
@@ -289,7 +290,7 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
     resetAbacRegistry();
   });
 
-  function server(flags?: DocumentFeatureFlagReader) {
+  function server(flags?: DocumentFeatureFlagReader, intake?: DocLensIntakeEnqueue) {
     const grantStore = createInMemoryEffectivePermissionStore([
       {
         orgId: ORG,
@@ -303,7 +304,7 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
     registerAbacRegistry();
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     const pipeline = createDocLensPipelineService({ capability: fakeCapability, flags });
-    registerDocLensExtractionRoutes(app, { pipeline, flags });
+    registerDocLensExtractionRoutes(app, { pipeline, flags, ...(intake ? { intake } : {}) });
     return app;
   }
 
@@ -323,12 +324,16 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
     await app.close();
   });
 
-  it("reaches the pipeline (202 ready_for_review) when the flag is injected ON", async () => {
-    const app = server({
-      async forOrg() {
-        return { "documents.doclens": true };
+  it("enqueues the intake job (202 queued) when the flag is injected ON (F-236: the run is a background job)", async () => {
+    const enqueued: unknown[] = [];
+    const app = server(
+      {
+        async forOrg() {
+          return { "documents.doclens": true };
+        },
       },
-    });
+      { enqueue: async (job) => void enqueued.push(job) },
+    );
     const res = await app.inject({
       method: "POST",
       url: RUN,
@@ -336,7 +341,8 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
       payload: { jobId: JOB, pageCount: 3 },
     });
     expect(res.statusCode).toBe(202);
-    expect(res.json().status).toBe("ready_for_review");
+    expect(res.json().status).toBe("queued");
+    expect(enqueued).toHaveLength(1);
     await app.close();
   });
 

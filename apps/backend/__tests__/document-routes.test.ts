@@ -43,6 +43,8 @@ function headerAuth(request: FastifyRequest): void {
   request.context.attributes.membershipId = user;
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
+  const actorKind = request.headers["x-test-actor-kind"];
+  if (typeof actorKind === "string") request.context.attributes.actorKind = actorKind;
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   // No `x-test-licensure` here any more. It stamped `context.attributes.licensure`, which nothing in
@@ -71,6 +73,9 @@ const VERSION = "d0000000-0000-4000-8000-000000000001";
 const BATCH = "b0000000-0000-4000-8000-0000000000aa";
 const REFERRAL = "66666666-6666-4666-8666-666666666666";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
+const CAND_HIGH = "e0000000-0000-4000-8000-0000000000e1";
+const CAND_LOW = "e0000000-0000-4000-8000-0000000000e2";
+const CAND_OTHER_BATCH = "e0000000-0000-4000-8000-0000000000e3";
 const PATIENT_OFF = "22222222-2222-4222-8222-222222222222";
 
 /** Everything an intake reviewer needs at the RBAC layer, shared by the three reviewer personas so a
@@ -126,6 +131,11 @@ const sharedBackend = createInMemoryDocumentBackend({
     { id: DOC_HOLD, organizationId: ORG, patientId: PATIENT, legalHoldActive: true },
   ],
   batches: [{ id: BATCH, organizationId: ORG, patientId: PATIENT }],
+  // F-237 — the stored risk tier the eligibility predicate loads (never the request's say-so).
+  candidates: [
+    { id: CAND_HIGH, batchId: BATCH, riskLevel: "high" },
+    { id: CAND_LOW, batchId: BATCH, riskLevel: "low" },
+  ],
 });
 // Pin DOC's first version to the well-known VERSION id used by the signed-URL test.
 const sharedObjectResolver: SignedUrlObjectResolver = {
@@ -156,6 +166,10 @@ function makeServer(
       userId: string;
       referralId: string;
     }): Promise<boolean>;
+    getReferralSubject?(input: {
+      organizationId: string;
+      referralId: string;
+    }): Promise<{ patientId: string | null } | null>;
   } = {
     async canAccessReferral(input) {
       return input.organizationId === ORG && input.referralId === REFERRAL;
@@ -397,13 +411,13 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const reviewId = review.json().id as string;
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
       // A DIFFERENT PERSON holding no credential row — and holding the SAME `intake.review` grant as
       // the RN, so this 403 can only be the licensure predicate. It used to be `rn_1` sending a
       // different `x-test-roles` header with the licensure header omitted; a licence belongs to a
       // membership, not to a request header, so that is no longer a way to be unlicensed.
       headers: { ...AIDE, "idempotency-key": "dc-1" },
-      payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
     });
     expect(res.statusCode).toBe(403);
   });
@@ -419,9 +433,9 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const reviewId = review.json().id as string;
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
       headers: { ...RN, "idempotency-key": "dc-2" },
-      payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().decisionId).toMatch(/^a0000000-/);
@@ -442,11 +456,217 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const reviewId = review.json().id as string;
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
       headers: { ...PA, "idempotency-key": "dc-3" },
-      payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
     });
     expect(res.statusCode).toBe(201);
+  });
+});
+
+describe("F-237 — the candidate's risk tier is the server's, not the request's", () => {
+  async function openReviewAs(headers: Record<string, string>, key: string) {
+    const { app } = makeServer();
+    const review = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/uploads/${BATCH}/review`,
+      headers: { ...headers, "idempotency-key": key },
+      payload: {},
+    });
+    return { app, reviewId: review.json().id as string };
+  }
+
+  it("a client-sent ?riskLevel=low does not lift the licence check on a high-risk candidate (403)", async () => {
+    const { app, reviewId } = await openReviewAs(AIDE, "f237-rv-1");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=low`,
+      headers: { ...AIDE, "idempotency-key": "f237-dc-1" },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("an unlicensed reviewer may decide a LOW-risk candidate (201)", async () => {
+    const { app, reviewId } = await openReviewAs(AIDE, "f237-rv-2");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
+      headers: { ...AIDE, "idempotency-key": "f237-dc-2" },
+      payload: { candidateId: CAND_LOW, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("a candidate that is not this review's batch's is refused even for a licensed reviewer (403)", async () => {
+    const { app, reviewId } = await openReviewAs(RN, "f237-rv-3");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
+      headers: { ...RN, "idempotency-key": "f237-dc-3" },
+      payload: { candidateId: CAND_OTHER_BATCH, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("bulk-approve is refused when the scope holds a high-risk candidate, whatever ?anyHighRisk says", async () => {
+    const { app, reviewId } = await openReviewAs(RN, "f237-rv-4");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions:bulk-approve?anyHighRisk=false`,
+      headers: { ...RN, "idempotency-key": "f237-bk-1" },
+      payload: { candidateIds: [CAND_LOW, CAND_HIGH] },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("bulk-approve of low-risk candidates only is allowed (201)", async () => {
+    const { app, reviewId } = await openReviewAs(RN, "f237-rv-5");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions:bulk-approve`,
+      headers: { ...RN, "idempotency-key": "f237-bk-2" },
+      payload: { candidateIds: [CAND_LOW] },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+});
+
+describe("F-238 — intake records filed against a referral (a prospect's older records)", () => {
+  const referralReader = {
+    async canAccessReferral(input: { organizationId: string; referralId: string }) {
+      return input.organizationId === ORG && input.referralId === REFERRAL;
+    },
+    async getReferralSubject(input: { organizationId: string; referralId: string }) {
+      return input.organizationId === ORG && input.referralId === REFERRAL
+        ? { patientId: PATIENT }
+        : null;
+    },
+  };
+  const post = (app: ReturnType<typeof makeServer>["app"], body: Record<string, unknown>) =>
+    app.inject({
+      method: "POST",
+      url: "/api/v1/intake/uploads",
+      headers: RN,
+      payload: { sourceChannel: "fax", ...body },
+    });
+
+  it("the batch takes the patient the referral resolved to", async () => {
+    const { app } = makeServer(sharedBackend.service, referralReader);
+    const res = await post(app, { referralId: REFERRAL });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ patientId: PATIENT, referralId: REFERRAL });
+  });
+
+  it("naming a different patient than the referral's is a 409, never a silent override", async () => {
+    const { app } = makeServer(sharedBackend.service, referralReader);
+    const res = await post(app, { referralId: REFERRAL, patientId: PATIENT_OFF });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("REFERRAL_PATIENT_CONFLICT");
+  });
+
+  it("a referral the caller cannot see is not found", async () => {
+    const { app } = makeServer(sharedBackend.service, referralReader);
+    const res = await post(app, { referralId: "77777777-7777-4777-8777-777777777777" });
+    expect(res.statusCode).toBe(404);
+  });
+
+  describe("GET /intake/referral-batches — the referral's Records tab", () => {
+    const OTHER_REFERRAL = "77777777-7777-4777-8777-777777777777";
+    const seeded = () =>
+      createInMemoryDocumentBackend({
+        batches: [
+          {
+            id: "b1000000-0000-4000-8000-000000000001",
+            organizationId: ORG,
+            patientId: PATIENT,
+            referralId: REFERRAL,
+            sourceChannel: "fax",
+            sudStatus: "detected",
+            identityStatus: "possible",
+            status: "extraction_complete",
+            pages: 12,
+            createdAt: "2026-10-01T10:00:00.000Z",
+          },
+          // Same patient as the referral resolved to, but never filed against it: NOT included.
+          {
+            id: "b1000000-0000-4000-8000-000000000002",
+            organizationId: ORG,
+            patientId: PATIENT,
+            referralId: null,
+          },
+          // Another referral's records.
+          {
+            id: "b1000000-0000-4000-8000-000000000003",
+            organizationId: ORG,
+            patientId: null,
+            referralId: OTHER_REFERRAL,
+          },
+          // Another tenant's batch that happens to name the same referral id.
+          {
+            id: "b1000000-0000-4000-8000-000000000004",
+            organizationId: ORG_B,
+            patientId: null,
+            referralId: REFERRAL,
+          },
+        ],
+      });
+    const list = (app: ReturnType<typeof makeServer>["app"], qs: string, headers = RN) =>
+      app.inject({ method: "GET", url: `/api/v1/intake/referral-batches${qs}`, headers });
+
+    it("returns only the batches filed against this referral, in this tenant", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      const res = await list(app, `?referralId=${REFERRAL}`);
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.items.map((i: { id: string }) => i.id)).toEqual([
+        "b1000000-0000-4000-8000-000000000001",
+      ]);
+      expect(body.items[0]).toMatchObject({
+        referralId: REFERRAL,
+        patientId: PATIENT,
+        sourceChannel: "fax",
+        sudStatus: "detected",
+        identityStatus: "possible",
+        status: "extraction_complete",
+        pages: 12,
+        review: null,
+      });
+      expect(body.hasMore).toBe(false);
+    });
+
+    it("a batch uploaded with referralId shows up on that referral's list", async () => {
+      const backend = createInMemoryDocumentBackend({});
+      const { app } = makeServer(backend.service, referralReader);
+      const created = await post(app, { referralId: REFERRAL, sourceChannel: "email_ingest" });
+      expect(created.statusCode).toBe(201);
+      const res = await list(app, `?referralId=${REFERRAL}`);
+      expect(res.json().items).toEqual([
+        expect.objectContaining({
+          id: created.json().id,
+          referralId: REFERRAL,
+          sourceChannel: "email_ingest",
+        }),
+      ]);
+    });
+
+    it("a referral the caller cannot see is not found (nothing listed)", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      const res = await list(app, `?referralId=${OTHER_REFERRAL}`);
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("referralId is required and must be a uuid", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      expect((await list(app, "")).statusCode).toBe(422);
+      expect((await list(app, "?referralId=nope")).statusCode).toBe(422);
+    });
+
+    it("requires intake.read", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      const res = await list(app, `?referralId=${REFERRAL}`, VIEWER);
+      expect(res.statusCode).toBe(403);
+    });
   });
 });
 
@@ -814,5 +1034,55 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
       headers: RN,
     });
     expect(crossTenant.statusCode).toBe(404);
+  });
+});
+
+describe("F-235 — POST /intake/reviews/:id/complete guards (the chart-writeback commit route)", () => {
+  async function openReview(app: ReturnType<typeof makeServer>["app"], key: string) {
+    const review = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/uploads/${BATCH}/review`,
+      headers: { ...RN, "idempotency-key": key },
+      payload: {},
+    });
+    return review.json().id as string;
+  }
+
+  it("refuses a completion without an Idempotency-Key (400)", async () => {
+    const { app } = makeServer();
+    const reviewId = await openReview(app, "f235-rv-1");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/complete`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error?.code ?? res.json().code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+  });
+
+  it("refuses an AI principal even with every grant (403) — §7.3.2 never auto-commits", async () => {
+    const { app } = makeServer();
+    const reviewId = await openReview(app, "f235-rv-2");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/complete`,
+      headers: { ...RN, "x-test-actor-kind": "ai_agent", "idempotency-key": "f235-cp-2" },
+      payload: { attestationConfirmed: true },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("completes for a human reviewer with the key (200)", async () => {
+    const { app } = makeServer();
+    const reviewId = await openReview(app, "f235-rv-3");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/complete`,
+      headers: { ...RN, "x-test-actor-kind": "user", "idempotency-key": "f235-cp-3" },
+      payload: { attestationConfirmed: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("complete");
   });
 });

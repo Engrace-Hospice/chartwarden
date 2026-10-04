@@ -1,7 +1,8 @@
 // apps/backend/src/modules/05-patient/jobs — M5 background jobs (M5-T10, §4.5). Pure processors over
 // injected ports + the queue catalog (pure data, no BullMQ import — the worker construction binds at
 // app boot, same pattern as M40-T08). T10 ships the geocode job (fills patient_address.geocoded_lat/
-// lng after an address change); the SLA/snapshot scans land with their consumers.
+// lng after an address change); the SLA scan lands with its consumer. The quarterly privacy-snapshot
+// rebuild is `./snapshot-rebuild.ts` (per-org body) + `./snapshot-rebuild-worker.ts` (the BullMQ shell).
 
 /** The §4.5 queue names. */
 export const M5_QUEUES = {
@@ -11,6 +12,8 @@ export const M5_QUEUES = {
   amendmentSlaScan: "m5.amendment_sla_scan",
   /** On `m39.consent.*`: recompute patient_privacy_flag_snapshot (consumer; wired when M39 lands). */
   privacyFlagRecompute: "m5.privacy_flag_recompute",
+  /** Quarterly + manual admin route: full `patient_privacy_flag_snapshot` rebuild (`./snapshot-rebuild.ts`). */
+  snapshotRebuild: "m5.snapshot_rebuild",
 } as const;
 
 export type M5QueueName = (typeof M5_QUEUES)[keyof typeof M5_QUEUES];
@@ -18,6 +21,7 @@ export type M5QueueName = (typeof M5_QUEUES)[keyof typeof M5_QUEUES];
 /** The §4.5 cron cadences (the scheduler registers the repeatables; event-triggered jobs have none). */
 export const M5_JOB_SCHEDULES = {
   amendmentSlaScan: "0 7 * * *", // daily 07:00
+  snapshotRebuild: "0 3 1 1,4,7,10 *", // quarterly: 03:00 on Jan/Apr/Jul/Oct 1 (§4.5 gives no time)
 } as const;
 
 /** A geocode result (lat/lng in decimal degrees, or null when the geocoder could not resolve). */

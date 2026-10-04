@@ -25,6 +25,14 @@ export interface ExtractionFieldDescriptor {
   readonly riskLevel: ExtractionCandidateRiskLevel;
   /** The chart module the approved field drafts into on writeback (D5). */
   readonly targetModule: ChartTargetModule;
+  /** F-236 — what the extractor is asked for (sent verbatim in the FIELDS section of the prompt). */
+  readonly description: string;
+  /**
+   * F-238 — who produces the value. `model` (default): the extractor is asked for it. `page_scan`: never
+   * asked of a model — DocLens reads it off the page deterministically (ICD-10 codes: AI Governance §2.1.1
+   * hard-blocks AI-introduced codes), so it is left out of the prompt's FIELDS section.
+   */
+  readonly source?: "model" | "page_scan";
 }
 
 /** §3.1 — the per-document-type extraction schema descriptor. */

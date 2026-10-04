@@ -33,7 +33,11 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { LAB_RECOVERY_DEFAULT_GRANTS, allPermissionMirrorRows } from "@wardenx/auth";
+import {
+  LAB_RECOVERY_DEFAULT_GRANTS,
+  SYSTEM_LOCKED_FLOORS,
+  allPermissionMirrorRows,
+} from "@wardenx/auth";
 import { Client } from "pg";
 import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
@@ -141,7 +145,37 @@ const PERSONAS: Persona[] = [
     roleKeys: ["chha"],
     roleName: "Home Health Aide",
   },
+  {
+    // M5 §5.1 "Privacy flags (`/patients/:id/privacy`)" — the §164.530(a) privacy official. Granted the
+    // role's floor (incl. `privacy.admin`) plus read-only chart/intake access (ROLE_GRANT_OVERRIDES), NOT
+    // the field-staff categories: the officer reviews restrictions, it does not chart or review intake.
+    email: "privacy@wardenx.local",
+    name: "Priya Shah",
+    roleKeys: ["hipaa_privacy_officer"],
+    roleName: "HIPAA Privacy Officer",
+  },
 ];
+
+/**
+ * Roles whose grant set is NOT the field-staff category set. The privacy officer holds its §164.530(a)
+ * floor (packages/auth/src/roles/templates.ts — incl. `privacy.admin`) plus read-only chart and intake
+ * access, so the officer screen's links (the chart, the intake batch) open.
+ */
+const ROLE_GRANT_OVERRIDES: Record<string, readonly string[]> = {
+  hipaa_privacy_officer: [
+    ...SYSTEM_LOCKED_FLOORS.hipaa_privacy_officer,
+    "patient.read",
+    "intake.read",
+  ],
+};
+
+/** M5 §4.7: `privacy.admin` belongs to the Privacy Officer and the Compliance Officer only — it is a
+ *  `compliance`-category key, so the field-staff category sweep below would otherwise hand it to every
+ *  persona role (an RN resyncing Part 2 flags). */
+const PRIVACY_ADMIN_ROLES = new Set(["hipaa_privacy_officer", "compliance_officer"]);
+
+/** The role category the seeded role row carries. */
+const ROLE_CATEGORY: Record<string, string> = { hipaa_privacy_officer: "compliance_quality" };
 
 function genPassword(): string {
   return `Wx-${randomBytes(9).toString("base64url")}-Zq9!`;
@@ -309,15 +343,27 @@ async function main(): Promise<void> {
       PERSONAS.find((p) => p.roleKeys[0] === key) ?? PERSONAS.find((p) => p.roleKeys.includes(key));
     const r = await db.query<{ id: string }>(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
-       VALUES ($1,$2,$3,'clinical_staff'::role_category,'organization', true, $4) RETURNING id`,
-      [orgId, key, owner?.roleName ?? key, `${owner?.roleName ?? key} (dev seed persona)`],
+       VALUES ($1,$2,$3,$5::role_category,'organization', true, $4) RETURNING id`,
+      [
+        orgId,
+        key,
+        owner?.roleName ?? key,
+        `${owner?.roleName ?? key} (dev seed persona)`,
+        ROLE_CATEGORY[key] ?? "clinical_staff",
+      ],
     );
     roleIdByKey.set(key, firstRow(r, `seed-staff-personas: role ${key}`).id);
     // F-204 — the lab-recovery keys are `admin`-category, so the field-staff categories above never include them; the
     // roles that hold them by default (DON, clinical supervisor, compliance officer) get them from the one shared table.
     const labRecoveryKeys: readonly string[] =
       (LAB_RECOVERY_DEFAULT_GRANTS as Record<string, readonly string[]>)[key] ?? [];
-    for (const permKey of [...clinicalKeys, ...labRecoveryKeys]) {
+    const baseKeys = (ROLE_GRANT_OVERRIDES[key] ?? clinicalKeys).filter(
+      (k) => k !== "privacy.admin" || PRIVACY_ADMIN_ROLES.has(key),
+    );
+    if (PRIVACY_ADMIN_ROLES.has(key) && !baseKeys.includes("privacy.admin")) {
+      baseKeys.push("privacy.admin");
+    }
+    for (const permKey of [...new Set([...baseKeys, ...labRecoveryKeys])]) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
         [orgId, firstRow(r, `seed-staff-personas: role ${key}`).id, permKey],

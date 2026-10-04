@@ -10,10 +10,14 @@ import type {
   DocumentStatus,
   ExtractionReviewStatus,
   IntakeBatchStatus,
+  IntakeBatchSudStatus,
   OrgId,
 } from "@wardenx/types";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates";
+import type { ClinicalWritebackSummary } from "../extraction/writeback-commit-clinical-db";
+import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-db";
+import type { ExtractionDiagnosisWritebackSummary } from "../extraction/writeback-commit-dx-db";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
 import { type CursorPage, paginate } from "./concurrency";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./signed-url-service";
@@ -110,9 +114,47 @@ export interface IntakeBatchView {
   readonly id: string;
   readonly organizationId: string;
   readonly patientId: string | null;
+  /** F-238 — the M6 referral these records are for, when filed against one. */
+  readonly referralId?: string | null;
+  /** F-238 — the outbound records request this batch answers, when linked. */
+  readonly recordsRequestId?: string | null;
   readonly status: IntakeBatchStatus;
   readonly uploadedAt: string;
   readonly pages: number;
+  readonly createdAt: string;
+}
+
+/**
+ * One intake batch (fax / email / scanned upload) FILED AGAINST a referral — the referral page's
+ * "Records" tab. Counts and statuses only; no extracted value leaves the server here.
+ */
+export interface ReferralIntakeBatchView {
+  readonly id: string;
+  readonly referralId: string;
+  readonly patientId: string | null;
+  readonly status: IntakeBatchStatus;
+  readonly sourceChannel: string;
+  /** F-238 — the worst per-document identity verdict, null until the batch has been checked. */
+  readonly identityStatus: string | null;
+  readonly sudStatus: IntakeBatchSudStatus;
+  /** F-238 — a records-request code on the fax names another referral / patient (code + kind only). */
+  readonly recordsRequestConflict: {
+    readonly code: string;
+    readonly kind: "code_names_another_referral" | "code_names_another_patient";
+  } | null;
+  /** Source pages (page geometry, else the highest classified page). */
+  readonly pages: number;
+  /** Document segments the fax splitter found (classified_page rows). */
+  readonly documents: number;
+  /** Extracted field candidates across the batch. */
+  readonly candidates: number;
+  /** The latest extraction review, with how many decisions it holds. */
+  readonly review: {
+    readonly id: string;
+    readonly status: ExtractionReviewStatus;
+    readonly decided: number;
+  } | null;
+  readonly uploadedAt: string;
   readonly createdAt: string;
 }
 
@@ -137,6 +179,29 @@ export interface ReviewView {
  * were once confused here — `openReview` wrote the raw user id into `reviewer_membership_id`.
  * This is the same shape `verified-upload.ts` already threads through the upload path.
  */
+/** §4.1 route 20 — one reviewer decision. `editedValue` is the attested value for `approve_with_edit`
+ *  (F-235: the writeback commits THIS, never the unedited extraction). */
+export interface RecordDecisionArgs {
+  readonly candidateId: string;
+  readonly decision: string;
+  readonly editedValue?: string;
+  readonly editedCode?: string;
+  readonly chartOverwriteConfirmed?: boolean;
+  readonly reason?: string;
+}
+
+/** §4.1 route 23 — the completed review plus the chart-writeback it committed (F-235). `writeback` is
+ *  absent on an idempotent re-completion and on the in-memory reference backend. */
+export interface CompleteReviewResult {
+  readonly reviewId: string;
+  readonly status: "complete";
+  readonly writeback?: ExtractionWritebackSummary;
+  /** F-238 — the diagnosis half (→ M7 proposed problems); absent where `writeback` is. */
+  readonly diagnosisWriteback?: ExtractionDiagnosisWritebackSummary;
+  /** F-238 — the medication-history (M12) / allergy (M5) half of the commit. */
+  readonly clinicalWriteback?: ClinicalWritebackSummary;
+}
+
 export interface DocumentWriteActor {
   readonly userId: string;
   readonly membershipId: string;
@@ -218,9 +283,31 @@ export interface DocumentRouteService {
   uploadBatch(
     organizationId: OrgId,
     actor: DocumentWriteActor,
-    args: { patientId: string | null; sourceChannel: string; sourceMetadata?: string },
+    args: {
+      patientId: string | null;
+      sourceChannel: string;
+      sourceMetadata?: string;
+      /** F-236 — the filed source document (validated in-org); absent ⇒ legacy placeholder ref. */
+      documentId?: string;
+      /** F-238 — the referral these records are for (the route validated it through M6). */
+      referralId?: string | null;
+      /** F-238 — the outbound records request these records answer (route-validated: org, open, referral). */
+      recordsRequestId?: string | null;
+    },
   ): Promise<IntakeBatchView>;
   getBatch(organizationId: OrgId, batchId: string): Promise<IntakeBatchView>;
+  /**
+   * The intake batches filed against ONE referral (`intake_upload_batch.referral_id`), newest first.
+   * Strictly referral-filed: a batch with no referral whose patient happens to be the referral's
+   * resolved patient is NOT included — it was never filed as this referral's records. The route
+   * checks the caller can read the referral before calling this.
+   */
+  listReferralBatches(
+    organizationId: OrgId,
+    referralId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<ReferralIntakeBatchView>>;
   listClassification(
     organizationId: OrgId,
     batchId: string,
@@ -266,7 +353,7 @@ export interface DocumentRouteService {
     organizationId: OrgId,
     actor: DocumentWriteActor,
     reviewId: string,
-    args: { candidateId: string; decision: string },
+    args: RecordDecisionArgs,
   ): Promise<{ decisionId: string }>;
   bulkApprove(
     organizationId: OrgId,
@@ -284,7 +371,7 @@ export interface DocumentRouteService {
     organizationId: OrgId,
     actor: DocumentWriteActor,
     reviewId: string,
-  ): Promise<{ reviewId: string; status: "complete" }>;
+  ): Promise<CompleteReviewResult>;
   abandonReview(
     organizationId: OrgId,
     actor: DocumentWriteActor,
@@ -366,6 +453,11 @@ interface BatchRecord {
   id: string;
   organizationId: string;
   patientId: string | null;
+  /** F-238 — the referral the batch was filed against (null ⇒ not referral-filed). */
+  referralId: string | null;
+  sourceChannel: string;
+  sudStatus: IntakeBatchSudStatus;
+  identityStatus: string | null;
   status: IntakeBatchStatus;
   pages: number;
   createdAt: string;
@@ -378,6 +470,13 @@ export interface DocumentRouteSeed {
     Partial<DocumentRecord> & { id: string; organizationId: string }
   >;
   readonly batches?: ReadonlyArray<Partial<BatchRecord> & { id: string; organizationId: string }>;
+  /** F-237 — extraction candidates' stored risk tiers (candidate id → tier), visible to every review of
+   *  the candidate's batch. The slice has no candidate rows otherwise. */
+  readonly candidates?: ReadonlyArray<{
+    id: string;
+    batchId: string;
+    riskLevel: "low" | "medium" | "high";
+  }>;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M6/M8 slice). */
@@ -457,6 +556,10 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
   for (const b of seed.batches ?? []) {
     batches.set(b.id, {
       patientId: null,
+      referralId: null,
+      sourceChannel: "fax",
+      sudStatus: "not_detected",
+      identityStatus: null,
       status: "uploaded",
       pages: 1,
       createdAt: now(),
@@ -706,6 +809,10 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         id,
         organizationId,
         patientId: args.patientId,
+        referralId: args.referralId ?? null,
+        sourceChannel: args.sourceChannel,
+        sudStatus: "not_detected",
+        identityStatus: null,
         status: "uploaded",
         pages: 1,
         createdAt: now(),
@@ -716,6 +823,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         id: rec.id,
         organizationId,
         patientId: rec.patientId,
+        referralId: args.referralId ?? null,
+        recordsRequestId: args.recordsRequestId ?? null,
         status: rec.status,
         uploadedAt: rec.createdAt,
         pages: rec.pages,
@@ -733,6 +842,33 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         pages: r.pages,
         createdAt: r.createdAt,
       };
+    },
+    async listReferralBatches(organizationId, referralId, cursor, limit) {
+      // Strictly referral-filed (see the interface): no patient-id fallback.
+      const rows: ReferralIntakeBatchView[] = [...batches.values()]
+        .filter((b) => b.organizationId === organizationId && b.referralId === referralId)
+        .map((b) => {
+          const latest = [...b.reviews.values()].sort((x, y) =>
+            y.createdAt.localeCompare(x.createdAt),
+          )[0];
+          return {
+            id: b.id,
+            referralId,
+            patientId: b.patientId,
+            status: b.status,
+            sourceChannel: b.sourceChannel,
+            identityStatus: b.identityStatus,
+            sudStatus: b.sudStatus,
+            recordsRequestConflict: null,
+            pages: b.pages,
+            documents: 0,
+            candidates: (seed.candidates ?? []).filter((c) => c.batchId === b.id).length,
+            review: latest ? { id: latest.id, status: latest.status, decided: 0 } : null,
+            uploadedAt: b.createdAt,
+            createdAt: b.createdAt,
+          };
+        });
+      return paginate(desc(rows), cursor, limit);
     },
     async listClassification(organizationId, batchId, cursor, limit) {
       loadBatch(organizationId, batchId);
@@ -841,6 +977,13 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     },
   };
 
+  const candidateRisk = (organizationId: string, reviewId: string, candidateId: string) => {
+    const batchId = reviewIndex.get(reviewId);
+    const batch = batchId ? batches.get(batchId) : undefined;
+    if (!batch || batch.organizationId !== organizationId) return undefined;
+    return (seed.candidates ?? []).find((c) => c.id === candidateId && c.batchId === batch.id)
+      ?.riskLevel;
+  };
   const abacResolver: DocumentAbacResolver = {
     async loadDocument(organizationId, documentId): Promise<DocumentAbacFacts | null> {
       const r = docs.get(documentId);
@@ -852,6 +995,17 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         legalHoldActive: r.legalHoldActive,
         patientDischargedAt: null,
       };
+    },
+    async loadReviewCandidateRisks(organizationId, reviewId, candidateIds) {
+      const out = new Map<string, "low" | "medium" | "high">();
+      for (const id of candidateIds) {
+        const risk = candidateRisk(organizationId, reviewId, id);
+        if (risk) out.set(id, risk);
+      }
+      return out;
+    },
+    async loadDiscrepancyRisk() {
+      return null; // the slice models no discrepancy rows
     },
   };
 

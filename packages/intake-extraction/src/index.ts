@@ -16,10 +16,24 @@ export type {
 export {
   INTAKE_DOCUMENT_TYPES,
   EXTRACTION_SCHEMA_REGISTRY,
+  findExtractionField,
   findExtractionSchema,
 } from "./schemas/registry";
 export { SUD_SUGGESTED_KINDS } from "./sud-detection/domain";
 export type { SudSuggestedKind } from "./sud-detection/domain";
+export {
+  SUD_RULES,
+  SUD_RULESET_VERSION,
+  detectSudIndicators,
+  dominantSudCategory,
+  lineNamesSudTreatmentMedication,
+} from "./sud-detection/flagger";
+export type {
+  SudIndicator,
+  SudIndicatorCategory,
+  SudPageInput,
+  SudTextBlock,
+} from "./sud-detection/flagger";
 
 // §7.1 W1 (M22-T08) — the DocLens extraction pipeline (classify → extract → discrepancy → review →
 // decide → provenance) as pure domain + the M32 capability port + Phase-1 deny-stub. Built-not-active:
@@ -52,4 +66,66 @@ export {
   mergeVisionVerification,
   planCommitIntents,
   runExtractionPipeline,
+  type GroundingBBox,
+  type GroundingPage,
+  type GroundingResult,
+  groundQuote,
+  normalizeForMatch,
+  type PacketSegment,
+  type SegmentBoundary,
+  type SplitterBlock,
+  type SplitterPage,
+  DUPLICATE_THRESHOLD,
+  headerDate,
+  splitPacket,
 } from "./pipeline/index";
+// F-238 — ICD-10-CM code scanner + deterministic coding checks.
+export {
+  type CodeInDocument,
+  type CodeToken,
+  type CodingCheckInput,
+  type CodingFlag,
+  type CodingFlagKind,
+  type CodingTerminology,
+  type IcdCodeFacts,
+  type IcdDeprecation,
+  type ScanBlock,
+  type ScanPage,
+  type ScannedCode,
+  UNACCEPTABLE_HOSPICE_PRINCIPAL,
+  type CodeOnPage,
+  type DiagnosisCandidate,
+  type GroundedDiagnosis,
+  attachCodesToDiagnoses,
+  flagsFor,
+  findCodeTokens,
+  resolveCodeTokens,
+  runCodingChecks,
+  titleAgreement,
+} from "./coding/index";
+// F-238 — does each document in a fax belong to the patient it is filed under (two identifiers).
+export {
+  IDENTITY_SEVERITY,
+  compareIdentity,
+  identityBlocks,
+  normaliseDob,
+  normaliseName,
+  splitFullName,
+  worstIdentity,
+  type DocumentIdentity,
+  type IdentityField,
+  type IdentityStatus,
+  type IdentityTarget,
+  type IdentityVerdict,
+} from "./identity/index";
+// F-238 — records requested for a prospect: the cover-sheet code and the inbound matcher.
+export {
+  RECORDS_REQUEST_ALPHABET,
+  RECORDS_REQUEST_PAYLOAD_LENGTH,
+  RECORDS_REQUEST_PREFIX,
+  findRecordsRequestCodes,
+  generateRecordsRequestCode,
+  isValidRecordsRequestCode,
+  normaliseRecordsRequestCode,
+  recordsRequestCheckChar,
+} from "./records-request/index";

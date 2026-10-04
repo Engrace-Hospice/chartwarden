@@ -14,6 +14,7 @@ import type {
   MutationResult as ServiceMutationResult,
   Page as ServicePage,
   PatientElectionCertificationView as ServicePatientElectionCert,
+  ReferralReadView as ServiceReferralReadView,
   SummaryRow as ServiceSummaryRow,
 } from "./service";
 
@@ -552,6 +553,15 @@ const RequirementEvidenceSchema = Type.Object({
   completedAt: Type.Optional(Type.String()),
 });
 
+/** `patient_privacy`'s blocked reason (activation-gate.ts `PrivacyReasonCode`) — category-free. */
+const RequirementReasonCodeSchema = Type.Union([
+  Type.Literal("INTAKE_DETECTION_UNREVIEWED"),
+  Type.Literal("CONSENT_REQUIRED"),
+  Type.Literal("RESTRICTED"),
+  Type.Literal("PATIENT_NOT_FOUND"),
+  Type.Literal("PRIVACY_CLEARANCE_UNAVAILABLE"),
+]);
+
 const RequirementCodeSchema = Type.Union([
   Type.Literal("patient_identity"),
   Type.Literal("admission_details"),
@@ -582,6 +592,7 @@ export const AdmissionReadinessResponseSchema = Type.Object({
       action: Type.Optional(RequirementActionSchema),
       satisfiedBy: Type.Optional(Type.Union([Type.Literal("normal"), Type.Literal("override")])),
       evidence: Type.Optional(RequirementEvidenceSchema),
+      reasonCode: Type.Optional(RequirementReasonCodeSchema),
     }),
   ),
 });
@@ -589,6 +600,25 @@ export const AdmissionReadinessResponseSchema = Type.Object({
 /** The cursor-paginated page the list routes return (`{ items, nextCursor }`). */
 export const SummaryPageResponseSchema = Type.Object({
   items: Type.Array(SummaryRowResponseSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** F-238 — `GET /api/v1/referrals`'s row: the summary plus who the referral is about, so a client can offer a
+ *  referral LOOKUP (filing a prospect's older records against it). The DB service returns the full
+ *  `ReferralReadView`; the extra fields are optional because the in-memory slice returns the summary only. */
+export const ReferralListItemResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  patientResolutionStatus: Type.Optional(Type.String()),
+  patientNameAtReceipt: Type.Optional(Type.String()),
+  patientDobAtReceipt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  referrerOrganization: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  receivedAt: Type.Optional(Type.String()),
+});
+export const ReferralListResponseSchema = Type.Object({
+  items: Type.Array(ReferralListItemResponseSchema),
   nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
 
@@ -652,6 +682,11 @@ export const PatientElectionCertificationResponseSchema = Type.Object({
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _SummaryRow = Conforms<Static<typeof SummaryRowResponseSchema>, ServiceSummaryRow>;
+// F-238 — the DB service's referral read view satisfies the published list row.
+type _ReferralListItem = Conforms<
+  ServiceReferralReadView,
+  Static<typeof ReferralListItemResponseSchema>
+>;
 type _ReferralAccept = Conforms<
   Static<typeof ReferralAcceptResponseSchema>,
   ServiceMutationResult & { admissionId: string }

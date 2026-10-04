@@ -48,7 +48,7 @@ export const AiSuggestionStatic: StoryObj = {
     <Stack>
       <AiSuggestionCard
         staticHalo
-        model="DocLens extraction"
+        model="WardenLens extraction"
         confidence="high"
         onAccept={() => {}}
         onDismiss={() => {}}

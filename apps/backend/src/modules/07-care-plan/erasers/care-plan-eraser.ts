@@ -27,6 +27,8 @@ export interface CarePlanEraseCounts {
   readonly problems: number;
   readonly goals: number;
   readonly interventions: number;
+  /** F-238 — DocLens problem proposals (pending/accepted/dismissed) on the patient's plans. */
+  readonly problemProposals: number;
 }
 
 /** The narrow data port the care-plan eraseFn composes over (Drizzle deletes in prod, under RLS). */
@@ -64,6 +66,7 @@ export function createInMemoryCarePlanEraseStore(seed: Partial<CarePlanEraseCoun
     problems: 0,
     goals: 0,
     interventions: 0,
+    problemProposals: 0,
   };
   const counts: CarePlanEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];
@@ -97,6 +100,7 @@ export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStor
   const V = schema.carePlanVersions;
   const SIG = schema.carePlanSignatures;
   const PROB = schema.problems;
+  const PP = schema.problemProposals;
   const G = schema.goals;
   const I = schema.interventions;
 
@@ -116,6 +120,7 @@ export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStor
           problems: 0,
           goals: 0,
           interventions: 0,
+          problemProposals: 0,
         };
         if (planIds.length === 0) return zero; // idempotent: a second erase finds nothing.
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
@@ -143,11 +148,15 @@ export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStor
         const interventions = await del(() =>
           tx.delete(I).where(inArray(I.carePlanId, planIds)).returning({ id: I.id }),
         );
+        // F-238 — proposals reference `problem` (accepted_problem_id / duplicate_of_problem_id, RESTRICT).
+        const problemProposals = await del(() =>
+          tx.delete(PP).where(inArray(PP.carePlanId, planIds)).returning({ id: PP.id }),
+        );
         const problems = await del(() =>
           tx.delete(PROB).where(inArray(PROB.carePlanId, planIds)).returning({ id: PROB.id }),
         );
 
-        return { versions, signatures, problems, goals, interventions };
+        return { versions, signatures, problems, goals, interventions, problemProposals };
       });
     },
 

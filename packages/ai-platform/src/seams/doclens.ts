@@ -28,6 +28,8 @@ export interface DocLensClassifier {
     /** OCR'd text from M22's stage 2. */
     readonly extractedText: string;
     readonly pageCount: number;
+    /** F-236 — set when `extractedText` is ONE page (per-page classification, fax-bundle splitting). */
+    readonly pageNumber?: number;
   }): Promise<DocLensClassifyResult>;
 }
 
@@ -42,6 +44,14 @@ export interface DocLensExtractor {
     readonly extractedText: string;
     /** Which extraction schema to apply. */
     readonly schemaKey: string;
+    /**
+     * F-236 (ADR-0048) — the fields to extract, owned by M22's schema registry. When present the model is
+     * asked for exactly these paths (`[]` marks a repeatable group: `medications[].name`).
+     */
+    readonly fieldSpecs?: readonly { readonly fieldPath: string; readonly description: string }[];
+    /** F-236 — the document page by page; when present it is sent with page markers instead of
+     *  `extractedText`, so every quote the model returns can name its page. */
+    readonly pages?: readonly { readonly page: number; readonly text: string }[];
   }): Promise<DocLensExtractResult>;
 }
 
@@ -51,11 +61,27 @@ export interface DocLensVisionVerifier {
     readonly organizationId: string;
     readonly actorUserId: string;
     readonly documentId: string;
-    readonly pageImages: readonly {
+    readonly pageImages?: readonly {
       readonly pageNumber: number;
       readonly objectStorageKey: string;
     }[];
-    readonly verificationKey: "signature_presence" | "redaction_quality" | "page_integrity";
+    /**
+     * F-237 — `field_value` is DocLens stage 5: the model READS one field from `images` (a crop around
+     * the extracted value) without being told the extracted value, and the consumer compares the two.
+     */
+    readonly verificationKey:
+      | "signature_presence"
+      | "redaction_quality"
+      | "page_integrity"
+      | "field_value";
+    /** F-237 — the image bytes for `field_value` (the consumer renders and crops them; M32 fetches nothing). */
+    readonly images?: readonly {
+      readonly pageNumber: number;
+      readonly mediaType: "image/png" | "image/jpeg";
+      readonly dataBase64: string;
+    }[];
+    /** F-237 — the field to read for `field_value`. Paths and descriptions are schema text, not PHI. */
+    readonly field?: { readonly fieldPath: string; readonly description: string };
   }): Promise<DocLensVerifyResult>;
 }
 
@@ -66,6 +92,8 @@ export interface DocLensSudDetector {
     readonly actorUserId: string;
     readonly documentId: string;
     readonly extractedText: string;
+    /** F-237 — the document page by page (sent with page markers, so each indicator names its page). */
+    readonly pages?: readonly { readonly page: number; readonly text: string }[];
   }): Promise<DocLensSudResult>;
 }
 
@@ -94,6 +122,9 @@ export type DocLensExtractResult =
             readonly value: unknown;
             readonly confidence: number;
             readonly sourceSpan?: { readonly page: number; readonly bbox: DocLensSourceBBox };
+            /** F-236 — the model's VERBATIM quote and claimed page. The consumer GROUNDS it against its
+             *  own parsed text (ADR-0048); M32 never asserts it is true. */
+            readonly sourceQuote?: { readonly page: number; readonly text: string };
           }
         >
       >;
@@ -105,8 +136,14 @@ export type DocLensVerifyResult =
   | {
       readonly available: true;
       readonly invocationId: string;
+      /** For `field_value`: `pass` = the model read the field, `uncertain` = it could not. Comparing the
+       *  reading against the extracted value is the CONSUMER's job, not the model's. */
       readonly verdict: "pass" | "fail" | "uncertain";
       readonly confidence: number;
+      /** F-237 — `field_value` only: what the model read (PHI; the consumer stores it encrypted). */
+      readonly observedValue?: string;
+      /** F-237 — every reading (a LIST field reads each visible entry; a single field has one). */
+      readonly observedValues?: readonly string[];
       readonly evidence: readonly {
         readonly pageNumber: number;
         readonly description: string;

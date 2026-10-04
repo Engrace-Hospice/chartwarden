@@ -231,6 +231,8 @@ sequenceDiagram
 
 #### 1.3.4 DocLens Intake Extraction
 
+> **Amended by [ADR-0048](../adr/ADR-0048-doclens-docling-plus-grounded-extractor.md) (2026-10-03).** The diagram below predates it: `langextract-worker` and the DocLens use of `ml-worker` are gone. Stage 3–4 are M32 `doclens_classify` / `doclens_extract` invocations (local Ollama or Claude under the BAA, per the tenant's consented routing); `docling-worker` receives a presigned GET URL and authenticates the backend with a worker-specific `DOCLING_WORKER_TOKEN`.
+
 ```mermaid
 sequenceDiagram
   participant A as Admissions Nurse
@@ -380,7 +382,7 @@ sequenceDiagram
 ### 2.1 Local Development (MacBook Pro)
 
 > **STATUS: TARGET — NOT BUILT.** There is no `infra/` directory and no compose file at the path
-> below. Local dev today is a bare `docker run` of Postgres (`pgvector/pgvector:pg16`) plus
+> below. Local dev today is a bare `docker run` of Postgres (`pgvector/pgvector:pg18`) plus
 > `bun run dev`; there is no local valkey, minio, mailpit or mlflow. `docs/DEVELOPMENT.md` is the
 > maintained runbook for it.
 
@@ -1620,7 +1622,7 @@ bun install
 # STATUS: TARGET — NOT BUILT. `infra/` does not exist and there is no compose file at that path.
 # Real local dev: a bare `docker run` of Postgres, then migrate + seed. See docs/DEVELOPMENT.md.
 docker run -d --name wardenx-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx \
-  -p 5440:5432 pgvector/pgvector:pg16
+  -p 5440:5432 pgvector/pgvector:pg18
 bun db:migrate
 bun db:seed
 

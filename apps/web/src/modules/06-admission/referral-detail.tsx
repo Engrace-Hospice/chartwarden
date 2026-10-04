@@ -9,7 +9,7 @@ import {
 } from "@wardenx/ui";
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ReferralDocumentsPanel } from "../../shell/document-workflows";
 import { PatientLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
@@ -21,6 +21,7 @@ import {
   stateLabel,
 } from "./admission-status";
 import { PatientIntakeDetails } from "./patient-intake-details";
+import { ReferralRecords } from "./referral-records";
 import {
   type ReferralActivity,
   type ReferralCandidate,
@@ -38,6 +39,10 @@ export function ReferralDetail(): JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  // "Overview" (the referral itself) | "Records" (the faxes / records filed against it, F-238). The tab
+  // lives in `?tab=` so a link can open the Records tab directly.
+  const [params, setParams] = useSearchParams();
+  const tab: "overview" | "records" = params.get("tab") === "records" ? "records" : "overview";
   const [referral, setReferral] = useState<ReferralView | null>(null);
   const [notes, setNotes] = useState<ReferralNote[]>([]);
   const [activity, setActivity] = useState<ReferralActivity[]>([]);
@@ -155,523 +160,551 @@ export function ReferralDetail(): JSX.Element {
           {error}
         </div>
       ) : null}
-      <div style={layout}>
-        <main style={main}>
-          <section style={section}>
-            <div style={sectionHead}>
-              <h2 style={heading}>Overview</h2>
-              <div style={actions}>
-                {canReview ? (
+      <div className="wx-subtabs" role="tablist" aria-label="Referral views" style={tabStrip}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "overview"}
+          onClick={() => setParams({}, { replace: true })}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "records"}
+          onClick={() => setParams({ tab: "records" }, { replace: true })}
+        >
+          Records
+        </button>
+      </div>
+      {tab === "records" ? (
+        <ReferralRecords referralId={r.id} patientId={r.patientId} />
+      ) : (
+        <div style={layout}>
+          <main style={main}>
+            <section style={section}>
+              <div style={sectionHead}>
+                <h2 style={heading}>Overview</h2>
+                <div style={actions}>
+                  {canReview ? (
+                    <Button
+                      size="sm"
+                      tone="secondary"
+                      disabled={busy === "review"}
+                      onClick={() =>
+                        void run("review", async () => {
+                          await referralCommand(client, r.id, "review", {
+                            ifVersion: r.version,
+                          });
+                        })
+                      }
+                    >
+                      Return to review
+                    </Button>
+                  ) : null}
+                  {canQualify ? (
+                    <Button
+                      size="sm"
+                      tone="primary"
+                      disabled={busy === "qualify"}
+                      onClick={() =>
+                        void run("qualify", async () => {
+                          await referralCommand(client, r.id, "qualify", {
+                            ifVersion: r.version,
+                          });
+                        })
+                      }
+                    >
+                      Ready to process
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <div style={factsGrid}>
+                <Fact label="Status" value={stateLabel(r.status)} />
+                <Fact label="Priority" value={PRIORITY_LABEL[r.priority] ?? r.priority} />
+                <Fact
+                  label="Owner"
+                  value={r.assignedToUserId ? shortId(r.assignedToUserId) : "Unassigned"}
+                />
+                <Fact
+                  label="Patient match"
+                  value={
+                    PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
+                  }
+                />
+                <Fact label="Source" value={sourceLabel(r.referrerOrganization || r.source)} />
+                <Fact label="Reason" value={r.referringDxText || "Not provided"} />
+              </div>
+              {!terminal ? (
+                <div style={inlineControls}>
+                  <label style={labelInline}>
+                    Priority
+                    <select
+                      value={r.priority}
+                      disabled={!canEditReferral || busy === "priority"}
+                      onChange={(ev) =>
+                        void run("priority", async () => {
+                          await referralCommand(client, r.id, "priority", {
+                            priority: ev.target.value,
+                            ifVersion: r.version,
+                          });
+                        })
+                      }
+                    >
+                      <option value="routine">Routine</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </label>
                   <Button
                     size="sm"
                     tone="secondary"
-                    disabled={busy === "review"}
-                    onClick={() =>
-                      void run("review", async () => {
-                        await referralCommand(client, r.id, "review", {
-                          ifVersion: r.version,
-                        });
-                      })
-                    }
-                  >
-                    Return to review
-                  </Button>
-                ) : null}
-                {canQualify ? (
-                  <Button
-                    size="sm"
-                    tone="primary"
-                    disabled={busy === "qualify"}
-                    onClick={() =>
-                      void run("qualify", async () => {
-                        await referralCommand(client, r.id, "qualify", {
-                          ifVersion: r.version,
-                        });
-                      })
-                    }
-                  >
-                    Ready to process
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-            <div style={factsGrid}>
-              <Fact label="Status" value={stateLabel(r.status)} />
-              <Fact label="Priority" value={PRIORITY_LABEL[r.priority] ?? r.priority} />
-              <Fact
-                label="Owner"
-                value={r.assignedToUserId ? shortId(r.assignedToUserId) : "Unassigned"}
-              />
-              <Fact
-                label="Patient match"
-                value={
-                  PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
-                }
-              />
-              <Fact label="Source" value={sourceLabel(r.referrerOrganization || r.source)} />
-              <Fact label="Reason" value={r.referringDxText || "Not provided"} />
-            </div>
-            {!terminal ? (
-              <div style={inlineControls}>
-                <label style={labelInline}>
-                  Priority
-                  <select
-                    value={r.priority}
-                    disabled={!canEditReferral || busy === "priority"}
-                    onChange={(ev) =>
-                      void run("priority", async () => {
-                        await referralCommand(client, r.id, "priority", {
-                          priority: ev.target.value,
-                          ifVersion: r.version,
-                        });
-                      })
-                    }
-                  >
-                    <option value="routine">Routine</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </label>
-                <Button
-                  size="sm"
-                  tone="secondary"
-                  disabled={!session?.userId || busy === "assign"}
-                  onClick={() =>
-                    void run("assign", async () => {
-                      await referralCommand(client, r.id, "assign", {
-                        assignedToUserId: session?.userId,
-                        ifVersion: r.version,
-                      });
-                    })
-                  }
-                >
-                  Assign to me
-                </Button>
-                {r.assignedToUserId ? (
-                  <Button
-                    size="sm"
-                    tone="tertiary"
+                    disabled={!session?.userId || busy === "assign"}
                     onClick={() =>
                       void run("assign", async () => {
                         await referralCommand(client, r.id, "assign", {
+                          assignedToUserId: session?.userId,
                           ifVersion: r.version,
                         });
                       })
                     }
                   >
-                    Clear owner
+                    Assign to me
                   </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </section>
-
-          <section style={section}>
-            <h2 style={heading}>Patient Resolution</h2>
-            <StatusPill
-              label={
-                PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
-              }
-              tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
-            />
-            {resolved ? (
-              <div style={resolvedBox}>
-                <strong>Patient resolved</strong>
-                <span>
-                  {r.patientId ? `M5 patient ${shortId(r.patientId)}` : "Patient link confirmed"}
-                </span>
-                {r.patientId ? (
-                  <Button
-                    size="sm"
-                    tone="secondary"
-                    onClick={() => navigate(`/patients/${r.patientId}`)}
-                  >
-                    View patient
-                  </Button>
-                ) : null}
-              </div>
-            ) : (
-              <div style={stack}>
-                <p style={muted}>No canonical patient has been linked to this referral yet.</p>
-                <div style={actions}>
-                  <Button
-                    size="sm"
-                    tone="secondary"
-                    disabled={
-                      busy === "matches" ||
-                      !["under_review", "pending_information"].includes(r.status)
-                    }
-                    onClick={() =>
-                      void run("matches", async () => {
-                        const result = await referralCommand<{
-                          candidates: ReferralCandidate[];
-                        }>(client, r.id, "patient-matches", {
-                          ifVersion: r.version,
-                        });
-                        setCandidates(result.candidates ?? []);
-                      })
-                    }
-                  >
-                    Find patient matches
-                  </Button>
-                  <Button
-                    size="sm"
-                    tone="secondary"
-                    disabled={busy === "create-patient"}
-                    onClick={() =>
-                      void run("create-patient", async () => {
-                        await referralCommand(client, r.id, "create-patient", {
-                          ifVersion: r.version,
-                        });
-                      })
-                    }
-                  >
-                    Create new patient
-                  </Button>
+                  {r.assignedToUserId ? (
+                    <Button
+                      size="sm"
+                      tone="tertiary"
+                      onClick={() =>
+                        void run("assign", async () => {
+                          await referralCommand(client, r.id, "assign", {
+                            ifVersion: r.version,
+                          });
+                        })
+                      }
+                    >
+                      Clear owner
+                    </Button>
+                  ) : null}
                 </div>
-                <PatientLookupField
-                  label="Search patients manually"
-                  value={selectedPatientId}
-                  onChange={setSelectedPatientId}
-                  clearable
-                />
-                <Button
-                  size="sm"
-                  tone="primary"
-                  disabled={!selectedPatientId || busy === "confirm-patient"}
-                  onClick={() =>
-                    void run("confirm-patient", async () => {
-                      await referralCommand(client, r.id, "confirm-patient", {
-                        patientId: selectedPatientId,
-                        ifVersion: r.version,
-                      });
-                    })
-                  }
-                >
-                  Confirm selected patient
-                </Button>
-                {candidates.length ? (
-                  <div style={candidateList}>
-                    {candidates.map((c) => {
-                      const patientId = c.patientId ?? c.id ?? "";
-                      return (
-                        <div key={candidateKey(c)} style={candidate}>
-                          <strong>
-                            {c.displayName ?? c.name ?? `Patient ${shortId(patientId)}`}
-                          </strong>
-                          <span style={muted}>
-                            {c.dob ? `DOB ${formatDate(c.dob)}` : "DOB not shown"}
-                            {c.mrn ? ` · MRN ${c.mrn}` : ""}
-                            {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
-                          </span>
-                          <span style={muted}>{c.confidence ?? c.score ?? "Potential match"}</span>
-                          <Button
-                            size="sm"
-                            tone="primary"
-                            disabled={!patientId}
-                            onClick={() =>
-                              void run("confirm-patient", async () => {
-                                await referralCommand(client, r.id, "confirm-patient", {
-                                  patientId,
-                                  ifVersion: r.version,
-                                });
-                              })
-                            }
-                          >
-                            Confirm patient
-                          </Button>
-                        </div>
-                      );
-                    })}
+              ) : null}
+            </section>
+
+            <section style={section}>
+              <h2 style={heading}>Patient Resolution</h2>
+              <StatusPill
+                label={
+                  PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
+                }
+                tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
+              />
+              {resolved ? (
+                <div style={resolvedBox}>
+                  <strong>Patient resolved</strong>
+                  <span>
+                    {r.patientId ? `M5 patient ${shortId(r.patientId)}` : "Patient link confirmed"}
+                  </span>
+                  {r.patientId ? (
+                    <Button
+                      size="sm"
+                      tone="secondary"
+                      onClick={() => navigate(`/patients/${r.patientId}`)}
+                    >
+                      View patient
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={stack}>
+                  <p style={muted}>No canonical patient has been linked to this referral yet.</p>
+                  <div style={actions}>
+                    <Button
+                      size="sm"
+                      tone="secondary"
+                      disabled={
+                        busy === "matches" ||
+                        !["under_review", "pending_information"].includes(r.status)
+                      }
+                      onClick={() =>
+                        void run("matches", async () => {
+                          const result = await referralCommand<{
+                            candidates: ReferralCandidate[];
+                          }>(client, r.id, "patient-matches", {
+                            ifVersion: r.version,
+                          });
+                          setCandidates(result.candidates ?? []);
+                        })
+                      }
+                    >
+                      Find patient matches
+                    </Button>
+                    <Button
+                      size="sm"
+                      tone="secondary"
+                      disabled={busy === "create-patient"}
+                      onClick={() =>
+                        void run("create-patient", async () => {
+                          await referralCommand(client, r.id, "create-patient", {
+                            ifVersion: r.version,
+                          });
+                        })
+                      }
+                    >
+                      Create new patient
+                    </Button>
                   </div>
-                ) : null}
-              </div>
-            )}
-          </section>
+                  <PatientLookupField
+                    label="Search patients manually"
+                    value={selectedPatientId}
+                    onChange={setSelectedPatientId}
+                    clearable
+                  />
+                  <Button
+                    size="sm"
+                    tone="primary"
+                    disabled={!selectedPatientId || busy === "confirm-patient"}
+                    onClick={() =>
+                      void run("confirm-patient", async () => {
+                        await referralCommand(client, r.id, "confirm-patient", {
+                          patientId: selectedPatientId,
+                          ifVersion: r.version,
+                        });
+                      })
+                    }
+                  >
+                    Confirm selected patient
+                  </Button>
+                  {candidates.length ? (
+                    <div style={candidateList}>
+                      {candidates.map((c) => {
+                        const patientId = c.patientId ?? c.id ?? "";
+                        return (
+                          <div key={candidateKey(c)} style={candidate}>
+                            <strong>
+                              {c.displayName ?? c.name ?? `Patient ${shortId(patientId)}`}
+                            </strong>
+                            <span style={muted}>
+                              {c.dob ? `DOB ${formatDate(c.dob)}` : "DOB not shown"}
+                              {c.mrn ? ` · MRN ${c.mrn}` : ""}
+                              {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
+                            </span>
+                            <span style={muted}>
+                              {c.confidence ?? c.score ?? "Potential match"}
+                            </span>
+                            <Button
+                              size="sm"
+                              tone="primary"
+                              disabled={!patientId}
+                              onClick={() =>
+                                void run("confirm-patient", async () => {
+                                  await referralCommand(client, r.id, "confirm-patient", {
+                                    patientId,
+                                    ifVersion: r.version,
+                                  });
+                                })
+                              }
+                            >
+                              Confirm patient
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </section>
 
-          <section style={section}>
-            <h2 style={heading}>Patient Information</h2>
+            <section style={section}>
+              <h2 style={heading}>Patient Information</h2>
 
-            {r.patientId ? (
-              <PatientIntakeDetails patientId={r.patientId} onSaved={load} />
-            ) : (
-              <div style={resolvedBox}>
-                <strong>Resolve the patient first</strong>
-                <span>
-                  Address and Coverage / Payers can be added once this referral is linked to a
-                  canonical patient.
-                </span>
-              </div>
-            )}
-          </section>
+              {r.patientId ? (
+                <PatientIntakeDetails patientId={r.patientId} onSaved={load} />
+              ) : (
+                <div style={resolvedBox}>
+                  <strong>Resolve the patient first</strong>
+                  <span>
+                    Address and Coverage / Payers can be added once this referral is linked to a
+                    canonical patient.
+                  </span>
+                </div>
+              )}
+            </section>
 
-          <section style={section}>
-            <h2 style={heading}>Referral Information</h2>
-            <div style={formGrid}>
-              <ReadOnly label="Patient name at receipt" value={r.patientNameAtReceipt} />
-              <ReadOnly
-                label="DOB at receipt"
-                value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
-              />
-              <ReadOnly label="Source channel" value={sourceLabel(r.source)} />
-              <ReadOnly
-                label="External referral ID"
-                value={r.externalReferralId || "Not provided"}
-              />
-              <label style={label}>
-                Organization
-                <input
-                  value={edit.referrerOrganization}
-                  disabled={!canEditReferral}
-                  onChange={(ev) => setEdit({ ...edit, referrerOrganization: ev.target.value })}
+            <section style={section}>
+              <h2 style={heading}>Referral Information</h2>
+              <div style={formGrid}>
+                <ReadOnly label="Patient name at receipt" value={r.patientNameAtReceipt} />
+                <ReadOnly
+                  label="DOB at receipt"
+                  value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
                 />
-              </label>
-              <label style={label}>
-                Referrer
-                <input
-                  value={edit.referrerName}
-                  disabled={!canEditReferral}
-                  onChange={(ev) => setEdit({ ...edit, referrerName: ev.target.value })}
+                <ReadOnly label="Source channel" value={sourceLabel(r.source)} />
+                <ReadOnly
+                  label="External referral ID"
+                  value={r.externalReferralId || "Not provided"}
                 />
-              </label>
-              <label style={label}>
-                Phone
-                <input
-                  value={edit.referrerPhone}
-                  disabled={!canEditReferral}
-                  onChange={(ev) => setEdit({ ...edit, referrerPhone: ev.target.value })}
-                />
-              </label>
-            </div>
-          </section>
-
-          <ReferralDocumentsPanel
-            referralId={r.id}
-            patientId={r.patientId}
-            admissionId={r.convertedAdmissionId}
-          />
-
-          <section style={section}>
-            <h2 style={heading}>Clinical Information</h2>
-            <label style={label}>
-              Referral reason or diagnosis
-              <textarea
-                value={edit.referringDxText}
-                rows={4}
-                disabled={!canEditReferral}
-                onChange={(ev) => setEdit({ ...edit, referringDxText: ev.target.value })}
-              />
-            </label>
-            <Button
-              size="sm"
-              tone="secondary"
-              disabled={!canEditReferral || busy === "save-info"}
-              onClick={() =>
-                void run("save-info", async () => {
-                  await patchReferral(client, r.id, {
-                    ...edit,
-                    ifVersion: r.version,
-                  });
-                })
-              }
-            >
-              Save referral information
-            </Button>
-          </section>
-        </main>
-
-        <aside style={side}>
-          <section style={section}>
-            <h2 style={heading}>Referral readiness</h2>
-            {r.qualificationBlockers.length === 0 ? (
-              <div style={ok}>Ready to proceed</div>
-            ) : (
-              <ul style={blockerList}>
-                {r.qualificationBlockers.map((b) => (
-                  <li key={b.code}>{b.message}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section style={section}>
-            <h2 style={heading}>Start Admission</h2>
-            {r.status === "converted" ? (
-              <Button
-                tone="primary"
-                onClick={() => navigate(`/admissions/${r.convertedAdmissionId}`)}
-                disabled={!r.convertedAdmissionId}
-              >
-                View Admission
-              </Button>
-            ) : (
-              <div style={stack}>
                 <label style={label}>
-                  Primary ICD-10
+                  Organization
                   <input
-                    value={primaryDiagnosisIcd10}
-                    onChange={(ev) => setPrimaryDiagnosisIcd10(ev.target.value)}
-                    placeholder="C34.90"
+                    value={edit.referrerOrganization}
+                    disabled={!canEditReferral}
+                    onChange={(ev) => setEdit({ ...edit, referrerOrganization: ev.target.value })}
                   />
                 </label>
-                <Button
-                  tone="primary"
-                  disabled={!canConvert || !primaryDiagnosisIcd10.trim() || busy === "convert"}
-                  onClick={() =>
-                    void run("convert", async () => {
-                      const result = await referralCommand<{
-                        admissionId: string;
-                      }>(client, r.id, "convert", {
-                        primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim(),
-                        ifVersion: r.version,
-                      });
-                      navigate(`/admissions/${result.admissionId}`);
-                    })
-                  }
-                >
-                  Start Admission
-                </Button>
-                {!canConvert ? (
-                  <p style={muted}>Resolve and qualify the referral before starting admission.</p>
-                ) : null}
+                <label style={label}>
+                  Referrer
+                  <input
+                    value={edit.referrerName}
+                    disabled={!canEditReferral}
+                    onChange={(ev) => setEdit({ ...edit, referrerName: ev.target.value })}
+                  />
+                </label>
+                <label style={label}>
+                  Phone
+                  <input
+                    value={edit.referrerPhone}
+                    disabled={!canEditReferral}
+                    onChange={(ev) => setEdit({ ...edit, referrerPhone: ev.target.value })}
+                  />
+                </label>
               </div>
-            )}
-          </section>
+            </section>
 
-          <section style={section}>
-            <h2 style={heading}>Missing Information</h2>
-            <label style={label}>
-              What is missing?
-              <textarea
-                value={pendingReason}
-                onChange={(ev) => setPendingReason(ev.target.value)}
-                rows={3}
-              />
-            </label>
-            <Button
-              size="sm"
-              tone="secondary"
-              disabled={!canPending || !pendingReason.trim() || busy === "pending"}
-              onClick={() =>
-                void run("pending", async () => {
-                  await referralCommand(client, r.id, "pending-information", {
-                    reason: pendingReason.trim(),
-                    ifVersion: r.version,
-                  });
-                  setPendingReason("");
-                })
-              }
-            >
-              Mark pending
-            </Button>
-          </section>
+            <ReferralDocumentsPanel
+              referralId={r.id}
+              patientId={r.patientId}
+              admissionId={r.convertedAdmissionId}
+            />
 
-          <section style={section}>
-            <h2 style={heading}>Notes</h2>
-            <div style={stack}>
-              {notes.map((note) => (
-                <div key={note.id} style={noteBox}>
-                  <div style={muted}>
-                    {note.authorId ? shortId(note.authorId) : "System"} ·{" "}
-                    {formatTime(note.createdAt)}
-                  </div>
-                  <div>{note.content}</div>
-                </div>
-              ))}
+            <section style={section}>
+              <h2 style={heading}>Clinical Information</h2>
               <label style={label}>
-                Add note
-                <textarea value={newNote} onChange={(ev) => setNewNote(ev.target.value)} rows={3} />
+                Referral reason or diagnosis
+                <textarea
+                  value={edit.referringDxText}
+                  rows={4}
+                  disabled={!canEditReferral}
+                  onChange={(ev) => setEdit({ ...edit, referringDxText: ev.target.value })}
+                />
               </label>
               <Button
                 size="sm"
                 tone="secondary"
-                disabled={!newNote.trim() || busy === "note"}
+                disabled={!canEditReferral || busy === "save-info"}
                 onClick={() =>
-                  void run("note", async () => {
-                    await referralCommand(client, r.id, "notes", {
-                      content: newNote.trim(),
+                  void run("save-info", async () => {
+                    await patchReferral(client, r.id, {
+                      ...edit,
+                      ifVersion: r.version,
                     });
-                    setNewNote("");
                   })
                 }
               >
-                Add note
+                Save referral information
               </Button>
-            </div>
-          </section>
+            </section>
+          </main>
 
-          {!terminal ? (
+          <aside style={side}>
             <section style={section}>
-              <h2 style={heading}>Terminal actions</h2>
+              <h2 style={heading}>Referral readiness</h2>
+              {r.qualificationBlockers.length === 0 ? (
+                <div style={ok}>Ready to proceed</div>
+              ) : (
+                <ul style={blockerList}>
+                  {r.qualificationBlockers.map((b) => (
+                    <li key={b.code}>{b.message}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section style={section}>
+              <h2 style={heading}>Start Admission</h2>
+              {r.status === "converted" ? (
+                <Button
+                  tone="primary"
+                  onClick={() => navigate(`/admissions/${r.convertedAdmissionId}`)}
+                  disabled={!r.convertedAdmissionId}
+                >
+                  View Admission
+                </Button>
+              ) : (
+                <div style={stack}>
+                  <label style={label}>
+                    Primary ICD-10
+                    <input
+                      value={primaryDiagnosisIcd10}
+                      onChange={(ev) => setPrimaryDiagnosisIcd10(ev.target.value)}
+                      placeholder="C34.90"
+                    />
+                  </label>
+                  <Button
+                    tone="primary"
+                    disabled={!canConvert || !primaryDiagnosisIcd10.trim() || busy === "convert"}
+                    onClick={() =>
+                      void run("convert", async () => {
+                        const result = await referralCommand<{
+                          admissionId: string;
+                        }>(client, r.id, "convert", {
+                          primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim(),
+                          ifVersion: r.version,
+                        });
+                        navigate(`/admissions/${result.admissionId}`);
+                      })
+                    }
+                  >
+                    Start Admission
+                  </Button>
+                  {!canConvert ? (
+                    <p style={muted}>Resolve and qualify the referral before starting admission.</p>
+                  ) : null}
+                </div>
+              )}
+            </section>
+
+            <section style={section}>
+              <h2 style={heading}>Missing Information</h2>
               <label style={label}>
-                Reason
+                What is missing?
                 <textarea
-                  value={terminalReason}
-                  onChange={(ev) => setTerminalReason(ev.target.value)}
+                  value={pendingReason}
+                  onChange={(ev) => setPendingReason(ev.target.value)}
                   rows={3}
                 />
               </label>
-              <div style={actions}>
-                <Button
-                  size="sm"
-                  tone="danger"
-                  disabled={terminalReason.trim().length < 10 || busy === "decline"}
-                  onClick={() =>
-                    void run("decline", async () => {
-                      await referralCommand(client, r.id, "decline", {
-                        reason: terminalReason.trim(),
-                        ifVersion: r.version,
-                      });
-                    })
-                  }
-                >
-                  Decline Referral
-                </Button>
+              <Button
+                size="sm"
+                tone="secondary"
+                disabled={!canPending || !pendingReason.trim() || busy === "pending"}
+                onClick={() =>
+                  void run("pending", async () => {
+                    await referralCommand(client, r.id, "pending-information", {
+                      reason: pendingReason.trim(),
+                      ifVersion: r.version,
+                    });
+                    setPendingReason("");
+                  })
+                }
+              >
+                Mark pending
+              </Button>
+            </section>
+
+            <section style={section}>
+              <h2 style={heading}>Notes</h2>
+              <div style={stack}>
+                {notes.map((note) => (
+                  <div key={note.id} style={noteBox}>
+                    <div style={muted}>
+                      {note.authorId ? shortId(note.authorId) : "System"} ·{" "}
+                      {formatTime(note.createdAt)}
+                    </div>
+                    <div>{note.content}</div>
+                  </div>
+                ))}
+                <label style={label}>
+                  Add note
+                  <textarea
+                    value={newNote}
+                    onChange={(ev) => setNewNote(ev.target.value)}
+                    rows={3}
+                  />
+                </label>
                 <Button
                   size="sm"
                   tone="secondary"
+                  disabled={!newNote.trim() || busy === "note"}
                   onClick={() =>
-                    void run("duplicate", async () => {
-                      await referralCommand(client, r.id, "duplicate", {
-                        reason: terminalReason || undefined,
-                        ifVersion: r.version,
+                    void run("note", async () => {
+                      await referralCommand(client, r.id, "notes", {
+                        content: newNote.trim(),
                       });
+                      setNewNote("");
                     })
                   }
                 >
-                  Mark Duplicate
-                </Button>
-                <Button
-                  size="sm"
-                  tone="secondary"
-                  onClick={() =>
-                    void run("withdraw", async () => {
-                      await referralCommand(client, r.id, "withdraw", {
-                        reason: terminalReason || undefined,
-                        ifVersion: r.version,
-                      });
-                    })
-                  }
-                >
-                  Withdraw
+                  Add note
                 </Button>
               </div>
             </section>
-          ) : null}
 
-          <section style={section}>
-            <h2 style={heading}>Activity</h2>
-            <div style={timeline}>
-              {activity.map((a) => (
-                <div key={a.id} style={timelineItem}>
-                  <strong>{activityLabel(a.action)}</strong>
-                  <span style={muted}>{formatTime(a.createdAt)}</span>
+            {!terminal ? (
+              <section style={section}>
+                <h2 style={heading}>Terminal actions</h2>
+                <label style={label}>
+                  Reason
+                  <textarea
+                    value={terminalReason}
+                    onChange={(ev) => setTerminalReason(ev.target.value)}
+                    rows={3}
+                  />
+                </label>
+                <div style={actions}>
+                  <Button
+                    size="sm"
+                    tone="danger"
+                    disabled={terminalReason.trim().length < 10 || busy === "decline"}
+                    onClick={() =>
+                      void run("decline", async () => {
+                        await referralCommand(client, r.id, "decline", {
+                          reason: terminalReason.trim(),
+                          ifVersion: r.version,
+                        });
+                      })
+                    }
+                  >
+                    Decline Referral
+                  </Button>
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    onClick={() =>
+                      void run("duplicate", async () => {
+                        await referralCommand(client, r.id, "duplicate", {
+                          reason: terminalReason || undefined,
+                          ifVersion: r.version,
+                        });
+                      })
+                    }
+                  >
+                    Mark Duplicate
+                  </Button>
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    onClick={() =>
+                      void run("withdraw", async () => {
+                        await referralCommand(client, r.id, "withdraw", {
+                          reason: terminalReason || undefined,
+                          ifVersion: r.version,
+                        });
+                      })
+                    }
+                  >
+                    Withdraw
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </section>
-        </aside>
-      </div>
+              </section>
+            ) : null}
+
+            <section style={section}>
+              <h2 style={heading}>Activity</h2>
+              <div style={timeline}>
+                {activity.map((a) => (
+                  <div key={a.id} style={timelineItem}>
+                    <strong>{activityLabel(a.action)}</strong>
+                    <span style={muted}>{formatTime(a.createdAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </div>
+      )}
     </DetailPageLayout>
   );
 }
@@ -778,6 +811,7 @@ const layout: CSSProperties = {
   gap: "1rem",
 };
 const main: CSSProperties = { display: "grid", gap: "1rem", minWidth: 0 };
+const tabStrip: CSSProperties = { marginBottom: "1rem" };
 const side: CSSProperties = {
   display: "grid",
   gap: "1rem",

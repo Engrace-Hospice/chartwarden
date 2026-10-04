@@ -63,6 +63,39 @@ async function loadPatients(
   };
 }
 
+/** F-238 — referrals by the name they were received with (or referrer / dx), newest first. */
+async function loadReferrals(
+  client: ApiClient,
+  input: EntityLookupLoadInput,
+  includeConverted: boolean,
+): Promise<EntityLookupLoadResult> {
+  const query: Record<string, string | number | boolean> = { limit: input.limit };
+  if (input.query) query.q = input.query;
+  if (input.cursor) query.cursor = input.cursor;
+  if (includeConverted) query.includeConverted = true;
+  const { data, error } = await client.GET("/api/v1/referrals", { params: { query } });
+  if (error) throw error;
+  return {
+    options: (data?.items ?? []).map((r) => {
+      const name = r.patientNameAtReceipt ?? `Referral ${shortId(r.id)}`;
+      const received = r.receivedAt ? r.receivedAt.slice(0, 10) : null;
+      return {
+        id: r.id,
+        label: optionLabel(name, received),
+        searchLabel: name,
+        description: [
+          r.state.replace(/_/g, " "),
+          r.patientDobAtReceipt ? `DOB ${r.patientDobAtReceipt}` : null,
+          r.referrerOrganization ?? null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    }),
+    nextCursor: data?.nextCursor ?? null,
+  };
+}
+
 async function loadMdm(
   client: ApiClient,
   kind: MdmKind,
@@ -282,6 +315,25 @@ export function PatientLookupField(props: LookupProps & { status?: string }): JS
       {...rest}
       loadOptions={loadOptions}
       placeholder={props.placeholder ?? "Search patient name or MRN..."}
+    />
+  );
+}
+
+/** F-238 — pick the referral (prospect) records belong to; converted referrals only when asked. */
+export function ReferralLookupField(
+  props: LookupProps & { includeConverted?: boolean },
+): JSX.Element {
+  const client = useApiClient();
+  const { includeConverted = false, ...rest } = props;
+  const loadOptions = useCallback(
+    (input: EntityLookupLoadInput) => loadReferrals(client, input, includeConverted),
+    [client, includeConverted],
+  );
+  return (
+    <EntityLookupField
+      {...rest}
+      loadOptions={loadOptions}
+      placeholder={props.placeholder ?? "Search referral by patient name..."}
     />
   );
 }

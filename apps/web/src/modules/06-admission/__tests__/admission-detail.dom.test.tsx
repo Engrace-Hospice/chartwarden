@@ -37,6 +37,7 @@ interface ReadinessFixture {
     blocking: boolean;
     message?: string;
     action?: string;
+    reasonCode?: string;
   }>;
 }
 
@@ -199,11 +200,11 @@ function clientFor(readinessResponse = readiness()): ApiClient {
   } as unknown as ApiClient;
 }
 
-function renderWithShell(client: ApiClient): void {
+function renderWithShell(client: ApiClient, as: Session = session): void {
   render(
     <MemoryRouter initialEntries={[`/admissions/${admissionId}`]}>
       <ApiClientProvider client={client}>
-        <SessionProvider session={session}>
+        <SessionProvider session={as}>
           <Routes>
             <Route path="/admissions/:id" element={<AdmissionDetail />} />
           </Routes>
@@ -342,5 +343,348 @@ describe("Admission intake workspace", () => {
         }),
       ),
     );
+  });
+
+  // F-238 — no residence in M5, but DocLens extracted one that is still waiting in intake review.
+  function withoutAddress(pending: (path: string) => unknown): ApiClient {
+    const base = clientFor(
+      readiness({
+        requirements: [
+          {
+            code: "admission_details",
+            label: "Admission details",
+            status: "action_required",
+            blocking: true,
+            message: "Missing admission details.",
+            action: "COMPLETE_ADMISSION_DETAILS",
+          },
+        ],
+      }),
+    );
+    const baseGet = base.GET as unknown as (path: string, init?: unknown) => Promise<unknown>;
+    return {
+      ...base,
+      GET: vi.fn(async (path: string, init?: unknown) => {
+        if (path === "/api/v1/patients/{id}/addresses") return ok({ addresses: [] });
+        if (path === "/api/v1/patients/{patientId}/intake-pending-address") return pending(path);
+        return baseGet(path, init);
+      }),
+    } as unknown as ApiClient;
+  }
+
+  async function openDetails(): Promise<void> {
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Complete admission details" })[0]!);
+    expect(screen.getByText("No patient residence address on file.")).toBeTruthy();
+  }
+
+  it("points at the intake reviews holding an extracted address, one link per batch (never the value)", async () => {
+    const client = withoutAddress(() =>
+      ok({
+        items: [
+          {
+            batchId: "66f5013a-0000-4000-8000-000000000001",
+            batchStatus: "extraction_complete",
+            uploadedAt: "2026-10-03T10:00:00.000Z",
+            reviewStatus: "not_started",
+            pendingCount: 5,
+            approvedCount: 0,
+          },
+          {
+            batchId: "825f4bb6-0000-4000-8000-000000000002",
+            batchStatus: "in_review",
+            uploadedAt: "2026-10-01T10:00:00.000Z",
+            reviewStatus: "in_progress",
+            pendingCount: 0,
+            approvedCount: 4,
+          },
+        ],
+        totalBatches: 2,
+      }),
+    );
+    renderWithShell(client);
+    await openDetails();
+
+    const hint = await screen.findByTestId("intake-pending-address");
+    expect(hint.textContent).toContain(
+      "An address was found in intake records that haven't been reviewed yet.",
+    );
+    const review = screen.getByRole("link", { name: /Review intake records/ });
+    expect(review.getAttribute("href")).toBe("/intake/66f5013a-0000-4000-8000-000000000001/review");
+    const complete = screen.getByRole("link", { name: /Complete the intake review/ });
+    expect(complete.getAttribute("href")).toBe(
+      "/intake/825f4bb6-0000-4000-8000-000000000002/review",
+    );
+    expect(client.GET).toHaveBeenCalledWith(
+      "/api/v1/patients/{patientId}/intake-pending-address",
+      expect.objectContaining({ params: { path: { patientId: "patient-1" } } }),
+    );
+  });
+
+  it("says 'complete the review' when the only address waiting was already approved", async () => {
+    const client = withoutAddress(() =>
+      ok({
+        items: [
+          {
+            batchId: "825f4bb6-0000-4000-8000-000000000002",
+            batchStatus: "in_review",
+            uploadedAt: "2026-10-01T10:00:00.000Z",
+            reviewStatus: "in_progress",
+            pendingCount: 0,
+            approvedCount: 2,
+          },
+        ],
+        totalBatches: 1,
+      }),
+    );
+    renderWithShell(client);
+    await openDetails();
+    const hint = await screen.findByTestId("intake-pending-address");
+    expect(hint.textContent).toContain(
+      "An address from intake records was approved — complete the review to add it to the patient.",
+    );
+  });
+
+  it("shows nothing extra when the caller cannot see intake (403)", async () => {
+    const client = withoutAddress(() => ({
+      data: undefined,
+      error: { error: { code: "FORBIDDEN" } },
+      response: new Response(null, { status: 403 }),
+    }));
+    renderWithShell(client);
+    await openDetails();
+    await waitFor(() =>
+      expect(client.GET).toHaveBeenCalledWith(
+        "/api/v1/patients/{patientId}/intake-pending-address",
+        expect.anything(),
+      ),
+    );
+    expect(screen.queryByTestId("intake-pending-address")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open patient addresses" })).toBeTruthy();
+  });
+});
+
+describe("Patient privacy review (REVIEW_PRIVACY)", () => {
+  const flaggedBatch = "66f5013a-0aa1-4ed4-8ed9-7c787c60e1f1";
+
+  function privacyBlocked(reasonCode: string, message: string): ReadinessFixture {
+    return readiness({
+      status: "blocked",
+      completed: 1,
+      blockingRemaining: 1,
+      requirements: [
+        { code: "patient_identity", label: "Patient identity", status: "complete", blocking: true },
+        {
+          code: "patient_privacy",
+          label: "Patient privacy",
+          status: "blocked",
+          blocking: true,
+          message,
+          action: "REVIEW_PRIVACY",
+          reasonCode,
+        },
+      ],
+    });
+  }
+
+  function withIntake(base: ApiClient, uploads: (view: string) => unknown): ApiClient {
+    const baseGet = base.GET as unknown as (path: string, init?: unknown) => Promise<unknown>;
+    return {
+      ...base,
+      GET: vi.fn(async (path: string, init?: unknown) =>
+        path === "/api/v1/intake/uploads"
+          ? uploads((init as { params: { query: { view: string } } }).params.query.view)
+          : baseGet(path, init),
+      ),
+    } as unknown as ApiClient;
+  }
+
+  async function openPrivacy(): Promise<void> {
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    const buttons = screen.getAllByRole("button", { name: "Review privacy" });
+    // Both the "Next step" banner and the Overview card offer it, and both open the dialog.
+    expect(buttons.length).toBe(2);
+    fireEvent.click(buttons[0]!);
+    await screen.findByRole("heading", { name: "Review patient privacy" });
+  }
+
+  const ADVISORY =
+    "An intake document is flagged for possibly specially protected records and hasn't been reviewed yet. This doesn't block admission; the records stay restricted until reviewed.";
+
+  /** F-238 — the server's shape for an unreviewed intake detection: non-blocking, still actionable. */
+  function privacyAdvisory(): ReadinessFixture {
+    return readiness({
+      status: "ready",
+      canActivate: true,
+      completed: 1,
+      blockingRemaining: 0,
+      requirements: [
+        { code: "patient_identity", label: "Patient identity", status: "complete", blocking: true },
+        {
+          code: "patient_privacy",
+          label: "Patient privacy",
+          status: "action_required",
+          blocking: false,
+          message: ADVISORY,
+          action: "REVIEW_PRIVACY",
+          reasonCode: "INTAKE_DETECTION_UNREVIEWED",
+        },
+      ],
+    });
+  }
+
+  const batch = (id: string, createdAt: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    createdAt,
+    status: "extraction_complete",
+    sourceChannel: "fax",
+    sudStatus: "detected",
+    pageCount: 21,
+    documentCount: 1,
+    ...extra,
+  });
+
+  it("shows an unreviewed intake detection as advisory — activation stays enabled", async () => {
+    renderWithShell(clientFor(privacyAdvisory()));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    const activate = screen.getByRole("button", { name: "Activate Admission" });
+    expect((activate as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("Admission cannot be activated")).toBeNull();
+    expect(screen.getByText("Ready for Admission")).toBeTruthy();
+    const advisory = screen.getByTestId("advisory-patient_privacy");
+    expect(advisory.textContent).toContain(ADVISORY);
+    expect(screen.getAllByText("Review advised").length).toBeGreaterThan(0);
+    expect(document.body.textContent?.toLowerCase()).not.toMatch(/\bsud\b|substance|part 2/);
+  });
+
+  it("links each flagged, non-discarded batch distinctly (channel, date AND time, size)", async () => {
+    const client = withIntake(clientFor(privacyAdvisory()), () =>
+      ok({
+        items: [
+          batch(flaggedBatch, "2026-10-04T09:38:00.000Z", { documentCount: 3 }),
+          batch("77f5013a-0aa1-4ed4-8ed9-7c787c60e1f2", "2026-10-04T11:05:00.000Z", {
+            pageCount: 1,
+            sourceChannel: "email_ingest",
+          }),
+          batch("88f5013a-0aa1-4ed4-8ed9-7c787c60e1f3", "2026-10-04T12:00:00.000Z", {
+            status: "discarded",
+          }),
+        ],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    );
+    renderWithShell(client, {
+      ...session,
+      permissions: ["admission.read", "intake.read", "intake.review"],
+    });
+    await openPrivacy();
+    expect(screen.getByRole("dialog").textContent).toContain("This doesn't block admission.");
+
+    const links = await screen.findAllByRole("link", { name: /Resolve the flag in intake review/ });
+    // The discarded batch's detection was withdrawn — it is never offered.
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      `/intake/${flaggedBatch}/review`,
+      "/intake/77f5013a-0aa1-4ed4-8ed9-7c787c60e1f2/review",
+    ]);
+    const labels = links.map((l) => l.textContent ?? "");
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels[0]).toMatch(
+      /^Resolve the flag in intake review — fax received Oct 4, 2026, \d{1,2}:38 (AM|PM) · 3 documents · 21 pages$/,
+    );
+    expect(labels[1]).toMatch(/email received Oct 4, 2026, \d{1,2}:05 (AM|PM) · 1 page$/);
+    expect(client.GET).toHaveBeenCalledWith(
+      "/api/v1/intake/uploads",
+      expect.objectContaining({
+        params: { query: { view: "open", patientId: "patient-1", sudStatus: "detected" } },
+      }),
+    );
+    expect(client.GET).not.toHaveBeenCalledWith(
+      "/api/v1/intake/uploads",
+      expect.objectContaining({
+        params: expect.objectContaining({ query: expect.objectContaining({ view: "done" }) }),
+      }),
+    );
+  });
+
+  it("says who to ask when the caller cannot open intake review (403)", async () => {
+    const client = withIntake(clientFor(privacyAdvisory()), () => ({
+      data: undefined,
+      error: { error: { code: "FORBIDDEN" } },
+      response: new Response(null, { status: 403 }),
+    }));
+    renderWithShell(client);
+    await openPrivacy();
+    expect(await screen.findByTestId("privacy-intake-unavailable")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /intake review/ })).toBeNull();
+  });
+
+  it("sends a confirmed restriction to the patient's consent capture", async () => {
+    const client = clientFor(
+      privacyBlocked(
+        "CONSENT_REQUIRED",
+        "A confidentiality restriction requires a patient consent on file.",
+      ),
+    );
+    renderWithShell(client, {
+      ...session,
+      permissions: ["admission.read", "consent.read", "consent.author"],
+    });
+    await openPrivacy();
+    expect(screen.getByRole("link", { name: "Record patient consent" }).getAttribute("href")).toBe(
+      "/patients/patient-1/consents/new",
+    );
+    expect(
+      screen.getByRole("link", { name: "View the patient's consents" }).getAttribute("href"),
+    ).toBe("/patients/patient-1/consents");
+  });
+
+  it("re-checks readiness from the dialog", async () => {
+    const client = clientFor(
+      privacyBlocked("PRIVACY_CLEARANCE_UNAVAILABLE", "Privacy clearance could not be checked."),
+    );
+    renderWithShell(client);
+    await openPrivacy();
+    const before = (client.GET as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([p]) => p === "/api/v1/admissions/{id}/readiness",
+    ).length;
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await waitFor(() =>
+      expect(
+        (client.GET as ReturnType<typeof vi.fn>).mock.calls.filter(
+          ([p]) => p === "/api/v1/admissions/{id}/readiness",
+        ).length,
+      ).toBeGreaterThan(before),
+    );
+  });
+
+  it("never renders a requirement action this screen can't perform as a live button", async () => {
+    const client = clientFor(
+      readiness({
+        requirements: [
+          {
+            code: "f2f",
+            label: "Face-to-Face",
+            status: "action_required",
+            blocking: true,
+            message: "Face-to-face encounter is required.",
+            action: "REVIEW_F2F",
+          },
+        ],
+      }),
+    );
+    renderWithShell(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    const buttons = screen.getAllByRole("button", { name: /review f2f/i });
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const b of buttons) expect((b as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -57,8 +57,13 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
   {
     eventName: "m12.medication_order.draft_created_from_extraction",
     moduleOwner: "m12",
+    // F-235 (#248) — decision A1 (F-231): medications are EXCLUDED from DocLens writeback. M12 D12 and AI
+    // Governance §2.1.1 hard-block AI-introduced medication changes, so no M22 commit ever targets M12
+    // (`DOCLENS_M5_WRITEBACK_FIELDS` in @wardenx/types is the only allowlist, M5-only) and nothing in
+    // production emits this; `m22` is dropped at the source, not deferred. Only the in-memory reference
+    // service's `fromExtraction` arm still names it.
     description:
-      "The M22 DocLens extraction-commit consumer minted a draft from an extracted medication.",
+      "Reserved: a draft medication order minted from a DocLens extraction. NOT PRODUCED — DocLens medication writeback is excluded by decision A1 (M12 D12 / AI Governance §2.1.1); extracted medications stay read-only review evidence.",
     payloadSchema: Type.Object({
       orderId: id,
       patientId: id,
@@ -66,7 +71,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       sourceExtractionJobId: id,
       targetAggregateId: id,
     }),
-    declaredConsumers: ["m22"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -511,6 +516,39 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       summary: Type.Optional(Type.String({ maxLength: 2000 })),
     }),
     declaredConsumers: ["m30"],
+    isOutboxOnly: true,
+  },
+  // F-238 — M12's reply to `m22.extraction.medication_history_requested`: the DocLens medication lines it
+  // recorded as reconciliation-only `medication_history_record` rows (source `doclens_intake`). D10/D12: no
+  // `medication_order` is created, drafted or touched on this path; a clinician reconciles each row and
+  // any order goes through the normal human prescribe flow. M22's `m22.extraction-clinical-writeback-backref`
+  // stamps `extraction_provenance` from it.
+  {
+    eventName: "m12.medication_history_record.draft_created_from_extraction",
+    moduleOwner: "m12",
+    description:
+      "M12 recorded a DocLens review's attested medication lines as reconciliation-only medication-history rows (source `doclens_intake`; never a medication_order). Carries a per-line outcome (created | already_present | duplicate | skipped) with the row id; ids and reasons only.",
+    payloadSchema: Type.Object({
+      patientId: id,
+      organizationId: id,
+      extractionCommitId: id,
+      lineOutcomes: Type.Array(
+        Type.Union([
+          Type.Object({
+            candidateId: id,
+            outcome: Type.Union([
+              Type.Literal("created"),
+              Type.Literal("already_present"),
+              Type.Literal("duplicate"),
+            ]),
+            recordId: id,
+          }),
+          Type.Object({ candidateId: id, outcome: Type.Literal("skipped"), reason: id }),
+        ]),
+      ),
+      appliedAt: isoInstant,
+    }),
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
 ];

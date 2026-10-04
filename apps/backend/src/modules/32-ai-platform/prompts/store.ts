@@ -307,3 +307,29 @@ export function createInMemoryAiPromptTemplateStore(
     },
   };
 }
+
+/**
+ * F-236 — the filesystem artifact reader §4.10 describes: resolves `templateFilesystemRef` (a repo-relative
+ * path such as `packages/prompts/doclens/extract.v1.md`) under one root (the repository checkout in dev /
+ * the image, the read-only `/srv/prompts` mount in production) and returns the body with its SHA-256.
+ * The registry compares that hash to the row's pin and refuses on a mismatch; this reader never decides.
+ * A path escaping the root, or a missing file, is `null` (unresolvable), never a throw.
+ */
+export function createFilesystemAiPromptArtifactReader(root: string): AiPromptArtifactReader {
+  return {
+    async read(templateFilesystemRef) {
+      const { createHash } = await import("node:crypto");
+      const { readFile } = await import("node:fs/promises");
+      const path = await import("node:path");
+      const base = path.resolve(root);
+      const target = path.resolve(base, templateFilesystemRef);
+      if (target !== base && !target.startsWith(`${base}${path.sep}`)) return null;
+      try {
+        const body = await readFile(target, "utf8");
+        return { body, contentHash: createHash("sha256").update(body, "utf8").digest("hex") };
+      } catch {
+        return null;
+      }
+    },
+  };
+}

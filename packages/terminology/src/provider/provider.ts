@@ -164,6 +164,10 @@ export function createTerminologyProvider(store: TerminologyStore): TerminologyP
       await store.deleteTenantExtension(orgId, extensionId, actorUserId);
     },
 
+    async listVersions(system) {
+      return store.listVersions ? store.listVersions(system) : [];
+    },
+
     async asFhirCodeSystem(system, asOf): Promise<FhirCodeSystemProjection> {
       const asOfIso = normalizeAsOf(asOf);
       const [concept, meta] = await Promise.all([

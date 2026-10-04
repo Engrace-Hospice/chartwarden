@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1332,
-    "coveredRoutes": 1332,
-    "directRoutesReferenced": 1273
+    "routes": 1359,
+    "coveredRoutes": 1359,
+    "directRoutesReferenced": 1303
   },
   "modules": [
     {
@@ -52,17 +52,19 @@
     },
     {
       "module": "05-patient",
-      "routes": 16,
+      "routes": 23,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
+        "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 16
+      "directRoutesReferenced": 23
     },
     {
       "module": "06-admission",
@@ -78,16 +80,18 @@
     },
     {
       "module": "07-care-plan",
-      "routes": 22,
+      "routes": 25,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
+        "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 21
+      "directRoutesReferenced": 24
     },
     {
       "module": "08-encounters",
@@ -136,10 +140,11 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/dosespot-routes.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
       ],
-      "directRoutesReferenced": 20
+      "directRoutesReferenced": 23
     },
     {
       "module": "13-emar",
@@ -233,15 +238,20 @@
     },
     {
       "module": "22-documents",
-      "routes": 40,
+      "routes": 57,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
         "apps/backend/__tests__/document-routes.test.ts",
         "apps/backend/__tests__/document-workflow-acceptance.test.ts",
-        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts"
+        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
+        "apps/backend/__tests__/f238-pending-address.test.ts",
+        "apps/backend/__tests__/f238-prospect-summary.test.ts",
+        "apps/backend/__tests__/f238-records-request-expiry.test.ts",
+        "apps/backend/__tests__/f238-records-request.test.ts"
       ],
-      "directRoutesReferenced": 35
+      "directRoutesReferenced": 52
     },
     {
       "module": "23-billing-medicare",

@@ -124,6 +124,44 @@ function the production provision worker calls — it skips with a printed note 
 surfaces as a 42501 and is fixed by one reviewed line in
 `scripts/db/provision-runtime-roles.ts`, never a blanket `ALL`.
 
+### DocLens locally (F-236, [ADR-0048](./adr/ADR-0048-doclens-docling-plus-grounded-extractor.md))
+
+DocLens is Docling (the `docling-worker` compose service, CPU-only) plus an M32 extractor that quotes each
+value; M22 grounds the quote against Docling's text. Every model call goes through the governed M32
+pipeline, which is only **built** when a backend is configured and only **dispatches** when every gate
+passes. To run it end to end against a local model:
+
+1. **Local models.** Run Ollama on the host and pull the models the registry keys name:
+   `ollama pull llama3.1:8b-instruct-q8_0` (classify, extract, SUD screen) and `ollama pull qwen2.5vl:7b`
+   (stage-5 vision double-check, F-237). Give the `api` and `worker` services (a local, git-excluded
+   `docker-compose.override.yml` is the place):
+   `OLLAMA_BASE_URL=http://host.docker.internal:11434`,
+   `OLLAMA_MODELS=local-llama-3.1-8b-instruct=llama3.1:8b-instruct-q8_0,local-qwen2.5-vl-7b-instruct=qwen2.5vl:7b`,
+   `OLLAMA_NUM_CTX=16384`.
+   (Claude instead: `ANTHROPIC_API_KEY`, plus `ANTHROPIC_BAA_REFERENCE` and an unexpired
+   `ANTHROPIC_ZDR_CONTRACT_REF` / `ANTHROPIC_ZDR_EXPIRES_AT` — without them every call refuses, D19.)
+2. **Register** with `DATABASE_ADMIN_URL` set: `bun run db:sync:ai-capabilities`, then
+   `bun run db:sync:ai-backends` (same `OLLAMA_*` env as above but reachable from the host, plus
+   `OLLAMA_LICENSES="local-llama-3.1-8b-instruct=Llama 3.1 Community License Agreement,local-qwen2.5-vl-7b-instruct=Apache-2.0"`). The worker's
+   health sweep marks the backend `healthy` within a minute.
+3. **Enable for the demo org only:** `bun run db:seed:scenario-doclens-ai` — flags `ai.full` +
+   `documents.doclens`, the hash-pinned prompt templates, PILOT + a pilot-enrolled `local_only` opt-in, and
+   a token budget. Undo with `DOCLENS_AI=off`. Nothing here is a production promotion.
+4. **A reviewer:** `bun run db:seed:scenario-doclens` (needs `DATABASE_PLATFORM_URL`, `M34_TENANT_KEK`,
+   `BETTER_AUTH_URL`). Upload a PDF/fax via `POST /api/v1/document-uploads` → `…/complete`, create the
+   batch with `POST /api/v1/intake/uploads {documentId, patientId}`, then
+   `POST /api/v1/intake/uploads/:id/extraction/run` (202, queued; the worker runs it).
+5. **Review** in the web app at `/intake` (F-237): the queue, then the side-by-side workspace — page image
+   with each value's box, per-field accept / edit / reject after a source-view check, the stage-5 vision
+   result, and the 42 CFR Part 2 SUD banner (confirm / reject before completing).
+6. **ICD-10-CM** (F-238, for diagnosis coding checks): `bun run db:load:icd10cm` with `DATABASE_ADMIN_URL`
+   set — downloads the CDC/NCHS FY2026 + FY2027 releases (checksum-pinned, cached in `.cache/`) into M38.
+   Without it the intake job skips the coding checks and says so (`coding.status: icd10cm_not_loaded`).
+   The docling-worker OCRs with Tesseract by default (`DOCLING_OCR_ENGINE=easyocr` to switch back).
+   A synthetic 21-page complex referral packet + answer key lives in
+   `apps/backend/__tests__/fixtures/doclens-complex-packet/` (regenerate with
+   `services/docling-worker/.venv/bin/python scripts/doclens/make-complex-packet.py <dir>`).
+
 ## How to add a module (Phase 1+)
 
 1. **Confirm the manifest.** The module's `codePaths`, `dependsOn`, and `ownedTables` are

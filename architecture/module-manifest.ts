@@ -339,6 +339,7 @@ export const MODULES: ModuleDef[] = [
       "patient_phone",
       "patient_email",
       "patient_payer",
+      "patient_allergy", // F-238 — architecture §10.6.6 "Allergies → Module 5"
       "caregiver",
       "patient_caregiver",
       "emergency_contact",
@@ -413,6 +414,7 @@ export const MODULES: ModuleDef[] = [
       "intervention",
       "care_plan_idg_decision_application",
       "care_plan_idg_proposed_change",
+      "problem_proposal", // F-238 — DocLens-extracted diagnoses awaiting clinician accept/dismiss
     ],
   }, // M07-F02
   {
@@ -777,6 +779,9 @@ export const MODULES: ModuleDef[] = [
       "form_fill",
       "form_template",
       "form_template_version",
+      "intake_batch_relink",
+      "intake_records_request",
+      "intake_records_request_fax",
       "intake_upload_batch",
       "tenant_template_overlay",
     ],

@@ -30,3 +30,21 @@ export {
   planCommitIntents,
   runExtractionPipeline,
 } from "./pipeline";
+// F-236 (ADR-0048) — quote grounding: a model's verbatim quote → the Docling block box, or a refusal.
+export {
+  type GroundingBBox,
+  type GroundingPage,
+  type GroundingResult,
+  groundQuote,
+  normalizeForMatch,
+} from "./grounding";
+// F-238 — the fax-packet splitter: one inbound fax → the documents inside it.
+export {
+  type PacketSegment,
+  type SegmentBoundary,
+  type SplitterBlock,
+  type SplitterPage,
+  DUPLICATE_THRESHOLD,
+  headerDate,
+  splitPacket,
+} from "./splitter";

@@ -67,7 +67,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   }
 
   async function applyMigrations() {
-    // The CI `rls-live` job runs pgvector/pgvector:pg16, so the REAL `CREATE EXTENSION vector`
+    // The CI `rls-live` job runs pgvector/pgvector:pg18, so the REAL `CREATE EXTENSION vector`
     // applies — M38 (Terminology) ships a pgvector `concept_embedding` table. For a local PG that
     // lacks pgvector, set WARDENX_TEST_NO_PGVECTOR=1 to strip the extension line (valid only while
     // no table uses the `vector` type; once one does, pgvector is required).

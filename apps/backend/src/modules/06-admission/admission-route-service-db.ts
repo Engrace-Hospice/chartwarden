@@ -1474,6 +1474,7 @@ export function createDbAdmissionRouteService(
       patientPrivacy: {
         allowed: clearance.allowed,
         reason: clearance.reason,
+        restriction: clearance.restriction,
         overrideAllowed: clearance.overrideAllowed,
       },
       noticeOfRights: {

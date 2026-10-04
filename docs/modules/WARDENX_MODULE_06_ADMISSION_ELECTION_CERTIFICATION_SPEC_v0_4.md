@@ -475,6 +475,8 @@ stateDiagram-v2
 
 Guards are explicit and enumerated; nothing transitions on a string match. The activation guard "no PrivacyFlag block" reads M5's `patient.privacyFlags` via the M5 repository — M6 does not import M5's schema. The "M9 not blocking" guard is implemented as a check on `compliance_window` rows of kind `initial_assessment_48h` not being `overdue`.
 
+> **"No PrivacyFlag block" as built (F-238, 2026-10-04).** The guard is M5's `PatientAdmissionClearanceReader` seam, evaluated as the `patient_privacy` readiness requirement (`intake/activation-gate.ts`), which both the readiness view and `activateAdmission`'s server-side check (`canActivate`) read. It blocks on every restriction **except** an unreviewed DocLens intake detection that is the patient's only flag (M5 `restriction = INTAKE_DETECTION_UNREVIEWED`): by product decision that is reported as non-blocking (`status: action_required`, `blocking: false`, `action: REVIEW_PRIVACY`) and the admission can activate. A confirmed detection with no consent (`CONSENT_REQUIRED`), any other flag (`RESTRICTED`), and a missing/unavailable clearance still block. The admission payload stays category-free; the flag itself keeps restricting access and disclosure in M5.
+
 > The `AdmissionEventApplier` (§4.8) drives exactly one admission-lifecycle transition: the `executeDischarge('death')` path, and only when all D14 preconditions hold. Every other external HL7 signal is captured as an informational `compliance_window` and never moves the admission state machine.
 
 #### 2.3.2 `ElectionPeriod`

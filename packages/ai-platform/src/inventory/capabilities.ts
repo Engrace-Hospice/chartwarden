@@ -58,7 +58,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
   },
   {
     capabilityKey: "doclens_classify",
-    displayName: "DocLens Document Type Classification",
+    displayName: "WardenLens Document Type Classification",
     riskTier: "medium",
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: "local-distilbert-classifier",
@@ -68,7 +68,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
   },
   {
     capabilityKey: "doclens_extract",
-    displayName: "DocLens Structured Field Extraction",
+    displayName: "WardenLens Structured Field Extraction",
     riskTier: "high",
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: "anthropic-claude-opus-4-7",
@@ -78,7 +78,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
   },
   {
     capabilityKey: "doclens_vision_verify",
-    displayName: "DocLens High-Risk Field Vision Verification",
+    displayName: "WardenLens High-Risk Field Vision Verification",
     riskTier: "high",
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: "anthropic-claude-opus-4-7",
@@ -88,7 +88,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
   },
   {
     capabilityKey: "doclens_sud_detect",
-    displayName: "DocLens SUD Indicator Detection",
+    displayName: "WardenLens SUD Indicator Detection",
     riskTier: "high",
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: "anthropic-claude-opus-4-7",

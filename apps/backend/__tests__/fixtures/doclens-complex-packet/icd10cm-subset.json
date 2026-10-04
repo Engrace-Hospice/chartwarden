@@ -1,0 +1,701 @@
+{
+  "source": "CDC/NCHS ICD-10-CM FY2026+FY2027 via scripts/db/load-icd10cm.ts; subset = every real code an OCR reading in this packet can resolve to",
+  "concepts": [
+    {
+      "code": "D63.1",
+      "display": "Anemia in chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "D63.1",
+      "display": "Anemia in chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "E11.22",
+      "display": "Type 2 diabetes mellitus with diabetic chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "E11.22",
+      "display": "Type 2 diabetes mellitus with diabetic chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "E11.9",
+      "display": "Type 2 diabetes mellitus without complications",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "E11.9",
+      "display": "Type 2 diabetes mellitus without complications",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "E44.0",
+      "display": "Moderate protein-calorie malnutrition",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "E44.0",
+      "display": "Moderate protein-calorie malnutrition",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "F02.80",
+      "display": "Dementia in other diseases classified elsewhere, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",
+      "billable": true,
+      "manifestation": true,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "F02.80",
+      "display": "Dementia in other diseases classified elsewhere, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",
+      "billable": true,
+      "manifestation": true,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "F02.B0",
+      "display": "Dementia in other diseases classified elsewhere, moderate, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",
+      "billable": true,
+      "manifestation": true,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "F02.B0",
+      "display": "Dementia in other diseases classified elsewhere, moderate, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",
+      "billable": true,
+      "manifestation": true,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "F03.90",
+      "display": "Unspecified dementia, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "F03.90",
+      "display": "Unspecified dementia, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "F10.21",
+      "display": "Alcohol dependence, in remission",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "F10.21",
+      "display": "Alcohol dependence, in remission",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "G30.1",
+      "display": "Alzheimer's disease with late onset",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "G30.1",
+      "display": "Alzheimer's disease with late onset",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "G30.9",
+      "display": "Alzheimer's disease, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "G30.9",
+      "display": "Alzheimer's disease, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I10",
+      "display": "Essential (primary) hypertension",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I10",
+      "display": "Essential (primary) hypertension",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I11.0",
+      "display": "Hypertensive heart disease with heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I11.0",
+      "display": "Hypertensive heart disease with heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I12.0",
+      "display": "Hypertensive chronic kidney disease with stage 5 chronic kidney disease or end stage renal disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I12.0",
+      "display": "Hypertensive chronic kidney disease with stage 5 chronic kidney disease or end stage renal disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I12.9",
+      "display": "Hypertensive chronic kidney disease with stage 1 through stage 4 chronic kidney disease, or unspecified chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I12.9",
+      "display": "Hypertensive chronic kidney disease with stage 1 through stage 4 chronic kidney disease, or unspecified chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I13",
+      "display": "Hypertensive heart and chronic kidney disease",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I13",
+      "display": "Hypertensive heart and chronic kidney disease",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I13.0",
+      "display": "Hypertensive heart and chronic kidney disease with heart failure and stage 1 through stage 4 chronic kidney disease, or unspecified chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I13.0",
+      "display": "Hypertensive heart and chronic kidney disease with heart failure and stage 1 through stage 4 chronic kidney disease, or unspecified chronic kidney disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I13.2",
+      "display": "Hypertensive heart and chronic kidney disease with heart failure and with stage 5 chronic kidney disease, or end stage renal disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I13.2",
+      "display": "Hypertensive heart and chronic kidney disease with heart failure and with stage 5 chronic kidney disease, or end stage renal disease",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I42.0",
+      "display": "Dilated cardiomyopathy",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I42.0",
+      "display": "Dilated cardiomyopathy",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I42.00",
+      "display": "Dilated cardiomyopathy, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I42.01",
+      "display": "Familial-genetic dilated cardiomyopathy",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I42.09",
+      "display": "Other dilated cardiomyopathy",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I48.21",
+      "display": "Permanent atrial fibrillation",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I48.21",
+      "display": "Permanent atrial fibrillation",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I50.22",
+      "display": "Chronic systolic (congestive) heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I50.22",
+      "display": "Chronic systolic (congestive) heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I50.23",
+      "display": "Acute on chronic systolic (congestive) heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I50.23",
+      "display": "Acute on chronic systolic (congestive) heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I50.84",
+      "display": "End stage heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I50.84",
+      "display": "End stage heart failure",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "I50.9",
+      "display": "Heart failure, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "I50.9",
+      "display": "Heart failure, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "J18.9",
+      "display": "Pneumonia, unspecified organism",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "J18.9",
+      "display": "Pneumonia, unspecified organism",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "J44.9",
+      "display": "Chronic obstructive pulmonary disease, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "J44.9",
+      "display": "Chronic obstructive pulmonary disease, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "J96.11",
+      "display": "Chronic respiratory failure with hypoxia",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "J96.11",
+      "display": "Chronic respiratory failure with hypoxia",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "L89.152",
+      "display": "Pressure ulcer of sacral region, stage 2",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "L89.152",
+      "display": "Pressure ulcer of sacral region, stage 2",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "N18",
+      "display": "Chronic kidney disease (CKD)",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "N18",
+      "display": "Chronic kidney disease (CKD)",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "N18.4",
+      "display": "Chronic kidney disease, stage 4 (severe)",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "N18.4",
+      "display": "Chronic kidney disease, stage 4 (severe)",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "N18.9",
+      "display": "Chronic kidney disease, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "N18.9",
+      "display": "Chronic kidney disease, unspecified",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "R53.81",
+      "display": "Other malaise",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "R53.81",
+      "display": "Other malaise",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "R62.7",
+      "display": "Adult failure to thrive",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "R62.7",
+      "display": "Adult failure to thrive",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "S03",
+      "display": "Dislocation and sprain of joints and ligaments of head",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "S03",
+      "display": "Dislocation and sprain of joints and ligaments of head",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "Z08",
+      "display": "Encounter for follow-up examination after completed treatment for malignant neoplasm",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "Z08",
+      "display": "Encounter for follow-up examination after completed treatment for malignant neoplasm",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "Z87.891",
+      "display": "Personal history of nicotine dependence",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "Z87.891",
+      "display": "Personal history of nicotine dependence",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "Z88",
+      "display": "Allergy status to drugs, medicaments and biological substances",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "Z88",
+      "display": "Allergy status to drugs, medicaments and biological substances",
+      "billable": false,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    },
+    {
+      "code": "Z99.81",
+      "display": "Dependence on supplemental oxygen",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2025-10-01",
+      "endDate": "2026-09-30",
+      "version": "FY2026"
+    },
+    {
+      "code": "Z99.81",
+      "display": "Dependence on supplemental oxygen",
+      "billable": true,
+      "manifestation": false,
+      "effectiveDate": "2026-10-01",
+      "endDate": null,
+      "version": "FY2027"
+    }
+  ],
+  "deprecations": [
+    { "code": "I42.0", "effective": "2026-10-01", "successors": ["I42.00", "I42.01", "I42.09"] }
+  ]
+}

@@ -1,0 +1,1545 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - CASE MANAGEMENT FACSIMILE TRANSMITTAL",
+          "bbox": [44.0, 70.67, 376.67, 94.0],
+          "label": "section_header"
+        },
+        { "text": "Date:", "bbox": [44.0, 113.33, 66.0, 120.67], "label": "text" },
+        { "text": "10/02/2026", "bbox": [71.0, 113.33, 118.33, 120.67], "label": "text" },
+        {
+          "text": "To: WardenX Demo Hospice - Intake Fax: (503) 555-0100",
+          "bbox": [43.67, 127.67, 301.33, 136.67],
+          "label": "text"
+        },
+        {
+          "text": "From: Dana Whitfield, RN, Case Manager Phone:",
+          "bbox": [44.0, 142.33, 264.0, 151.33],
+          "label": "text"
+        },
+        { "text": "(503) 555-0198", "bbox": [268.67, 142.33, 334.0, 151.33], "label": "text" },
+        {
+          "text": "Pages (including cover): see page count on header",
+          "bbox": [44.0, 156.67, 115.0, 165.67],
+          "label": "text"
+        },
+        {
+          "text": "Pages (including cover): see page count on header",
+          "bbox": [118.67, 156.67, 265.67, 165.67],
+          "label": "text"
+        },
+        {
+          "text": "RE: HOSPICE REFERRAL - DOCLENS, ARTHUR, DOB 03/02/1941",
+          "bbox": [44.0, 185.33, 343.0, 194.0],
+          "label": "text"
+        },
+        {
+          "text": "Enclosed: referral form, face sheet, discharge summary, H&P, cardiology consult, echocardiogram, labs, imaging, palliative care consult, SNF transfer form, wound and nutrition notes, nursing assessment, outside pulmonology and memory clinic. records, medication list and POLST.",
+          "bbox": [43.67, 214.33, 413.67, 264.67],
+          "label": "text"
+        },
+        {
+          "text": "Patient discharges today; family requests hospice admission at home tomorrow.",
+          "bbox": [44.0, 286.33, 390.33, 295.33],
+          "label": "text"
+        },
+        {
+          "text": "CONFIDENTIALITY NOTICE: This facsimile contains protected health information. Records in this transmission may include information protected by 42 CFR Part 2. If you received this in error, notify the sender and destroy all copies.",
+          "bbox": [43.33, 314.67, 443.67, 352.67],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL HOSPICE REFERRAL FORM",
+          "bbox": [44.0, 70.67, 238.67, 94.0],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M",
+          "bbox": [44.0, 99.0, 392.0, 107.67],
+          "label": "text"
+        },
+        {
+          "text": "Referral date: 10/01/2026 Requested start of care:",
+          "bbox": [44.0, 127.67, 274.0, 136.67],
+          "label": "text"
+        },
+        {
+          "text": "Referring physician: Priya Raman, MD (Hospitalist) NPI on file",
+          "bbox": [44.0, 142.33, 319.67, 151.33],
+          "label": "text"
+        },
+        {
+          "text": "Attending / PCP after discharge: Lena Okafor, MD",
+          "bbox": [43.33, 156.67, 261.33, 165.67],
+          "label": "text"
+        },
+        {
+          "text": "Address: 1220 Alder St, Salem, OR 97301 Phone: (503) 555-0161",
+          "bbox": [43.33, 171.0, 335.33, 180.0],
+          "label": "text"
+        },
+        {
+          "text": "Primary caregiver HCPOA: Ruth Doclens (daughter) (503) 555-0162",
+          "bbox": [44.0, 185.33, 348.67, 194.33],
+          "label": "text"
+        },
+        {
+          "text": "Insurance: Medicare Part A/B",
+          "bbox": [44.0, 199.67, 171.33, 207.0],
+          "label": "text"
+        },
+        {
+          "text": "10/03/2026 / (traditional)",
+          "bbox": [124.0, 127.67, 326.67, 208.67],
+          "label": "text"
+        },
+        {
+          "text": "Hospice diagnosis: End-stage heart failure",
+          "bbox": [44.0, 228.67, 228.0, 237.67],
+          "label": "text"
+        },
+        {
+          "text": "Other conditions: COPD on home oxygen; chronic kidney disease stage 4; Alzheimer's dementia; type 2 diabetes; atrial fibrillation; pressure injury sacrum.",
+          "bbox": [43.67, 243.0, 420.33, 266.33],
+          "label": "text"
+        },
+        {
+          "text": "Code status: DNR / DNI (POLST attached)",
+          "bbox": [43.33, 286.33, 231.0, 295.33],
+          "label": "text"
+        },
+        {
+          "text": "Prognosis per attending: less than 6 months if disease follows its expected course.",
+          "bbox": [44.0, 300.67, 403.33, 309.67],
+          "label": "text"
+        },
+        {
+          "text": "Equipment needs: hospital bed, oxygen concentrator:2 L/min, wheelchair.",
+          "bbox": [44.0, 315.0, 362.33, 324.0],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 3,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL INPATIENT FACE SHEET",
+          "bbox": [44.0, 69.33, 238.67, 98.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M",
+          "bbox": [44.0, 99.0, 392.0, 107.67],
+          "label": "text"
+        },
+        { "text": "Admission:", "bbox": [43.33, 127.67, 90.0, 135.0], "label": "text" },
+        { "text": "Attending:", "bbox": [43.33, 142.33, 86.33, 151.33], "label": "text" },
+        {
+          "text": "09/17/2026 21:40 Unit: 4 West Telemetry Account: 70045512",
+          "bbox": [94.33, 127.67, 372.33, 136.67],
+          "label": "text"
+        },
+        {
+          "text": "Priya Raman, MD Admitting dx (ED): Shortness of breath",
+          "bbox": [91.0, 142.33, 347.33, 151.33],
+          "label": "text"
+        },
+        { "text": "Address:", "bbox": [43.33, 156.67, 81.0, 163.67], "label": "text" },
+        {
+          "text": "1220 Alder St, Salem, OR 97301",
+          "bbox": [86.0, 156.67, 226.0, 165.33],
+          "label": "text"
+        },
+        { "text": "Home phone:", "bbox": [44.0, 171.0, 100.67, 180.0], "label": "text" },
+        { "text": "(503) 555-0161", "bbox": [105.33, 171.0, 169.67, 180.0], "label": "text" },
+        { "text": "Emergency contact:", "bbox": [44.0, 185.33, 129.33, 194.33], "label": "text" },
+        {
+          "text": "Ruth Doclens (daughter) (503) 555-0162",
+          "bbox": [134.0, 185.33, 312.67, 194.33],
+          "label": "text"
+        },
+        { "text": "Primary payer:", "bbox": [44.0, 199.67, 106.0, 208.67], "label": "text" },
+        {
+          "text": "Medicare Part A Secondary: none",
+          "bbox": [110.33, 199.67, 262.33, 208.67],
+          "label": "text"
+        },
+        {
+          "text": "Religion: Methodist Language: English Marital status: Widowed",
+          "bbox": [44.0, 214.33, 334.33, 223.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 4,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL. HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "DISCHARGE SUMMARY",
+          "bbox": [43.33, 85.67, 147.0, 91.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Admitted: 09/17/2026 Discharged: 10/01/2026 Attending: Priya Raman, MD",
+          "bbox": [43.33, 98.67, 469.0, 121.33],
+          "label": "text"
+        },
+        {
+          "text": "DISCHARGE DIAGNOSES",
+          "bbox": [44.0, 143.0, 151.67, 148.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Principal diagnosis:",
+          "bbox": [44.0, 156.67, 156.33, 164.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Acute on chronic systolic congestive heart failure (150.23)",
+          "bbox": [55.67, 171.0, 409.0, 179.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Secondary diagnoses:",
+          "bbox": [44.0, 185.33, 156.33, 193.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Dilated cardiomyopathy, EF 15% (142.0)",
+          "bbox": [55.33, 199.67, 288.0, 207.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Hypertension (110) WwW",
+          "bbox": [55.67, 214.0, 173.0, 222.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Chronic kidney disease, stage 4 (N18.4) &",
+          "bbox": [55.67, 228.67, 293.67, 236.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Chronic obstructive pulmonary disease (J44.9) oO",
+          "bbox": [55.67, 243.0, 328.33, 251.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Type 2 diabetes mellitus (E11.9) A",
+          "bbox": [55.67, 257.33, 253.33, 265.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Permanent atrial fibrillation (148.21) Alzheimer's dementia (G30.9, F02.80) ond",
+          "bbox": [55.67, 271.67, 288.0, 293.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Anemia of chronic kidney disease (D63.1)",
+          "bbox": [55.67, 300.67, 299.67, 308.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Community-acquired pneumonia, right lower lobe - resolved. (J18.9)",
+          "bbox": [55.67, 315.0, 449.33, 323.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Alcohol use disorder, in sustained remission (F10.21)",
+          "bbox": [56.0, 329.33, 380.33, 337.0],
+          "label": "list_item"
+        },
+        {
+          "text": "12.-Moderate protein-calorie malnutrition (E44.0)",
+          "bbox": [55.67, 343.67, 334.0, 351.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Pressure injury of sacrum, stage 2 (L89.152)",
+          "bbox": [55.67, 358.0, 328.33, 366.33],
+          "label": "list_item"
+        },
+        {
+          "text": "HOSPITAL COURSE",
+          "bbox": [43.67, 387.33, 129.0, 393.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Mr. Doclens is an 85-year-old man with non-ischemic dilated cardiomyopathy and chronic systolic heart failure, admitted 09/17 with acute on chronic decompensated heart failure, his fourth heart failure hospitalization in six months. He was diuresed with IV furosemide with.limited response; diuresis was complicated by acute kidney injury on CKD stage 4 (creatinine 2.4 baseline, peak 3.1)..Guideline-directed medical therapy could not be up-titrated because of symptomatic hypotension (SBP 82-90) and renal function; sacubitril/valsartan and spironolactone were stopped.",
+          "bbox": [43.33, 401.33, 555.33, 495.67],
+          "label": "text"
+        },
+        {
+          "text": "On hospital day 2 he developed fever and a right lower lobe infiltrate. CT angiogram showed no evidence of pulmonary embolism and right lower lobe consolidation. He completed a course of ceftriaxone and azithromycin; the pneumonia resolved clinically and radiographically by 09/26.",
+          "bbox": [43.67, 516.67, 555.33, 567.67],
+          "label": "text"
+        },
+        {
+          "text": "Cardiology (Dr. Hamid Sousa) saw him 09/22: stage D heart failure, NYHA class IV symptoms: at rest, not a candidate for advanced therapies (LVAD or transplant). His ICD was deactivated on 09/28 per the patient's and family's wishes.",
+          "bbox": [43.67, 588.33, 538.33, 625.33],
+          "label": "text"
+        },
+        {
+          "text": "Palliative care was consulted 09/25. In a family meeting the patient, who has moderate Alzheimer's dementia with fluctuating capacity, and his daughter (health care power of attorney) chose comfort-focused care and hospice at home. Code status changed to DNR/DNI.",
+          "bbox": [43.0, 646.0, 553.67, 683.0],
+          "label": "text"
+        },
+        {
+          "text": "PROGNOSTIC INDICATORS AT DISCHARGE",
+          "bbox": [44.0, 704.33, 238.33, 710.0],
+          "label": "section_header"
+        },
+        {
+          "text": "NYHA class IV symptoms at rest despite maximally tolerated therapy.",
+          "bbox": [55.0, 718.33, 438.67, 726.33],
+          "label": "text"
+        },
+        {
+          "text": "(continued - page 1 of 2)",
+          "bbox": [46.0, 747.0, 184.33, 755.0],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 5,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "DOCLENS, ARTHUR MRN RGH-448812 - Discharge Summary - Page 2 of 2 LVEF 15% (echo 09/19/2026). Four heart failure admissions in the last 6 months. Palliative Performance Scale 30%. Weight 61-0 kg, down from 70.0 kg in March 2026. (12.9% in 6 months). Serum albumin 2.6 g/dL.",
+          "bbox": [44.0, 70.33, 444.33, 164.67],
+          "label": "code"
+        },
+        {
+          "text": "PERTINENT. RESULTS",
+          "bbox": [44.0, 186.0, 140.0, 191.67],
+          "label": "section_header"
+        },
+        {
+          "text": "BNP 4,820 pg/mL on admission, 3,950 pg/mL on 09/30. Creatinine 3.1 mg/dL, eGFR 18 mL/min/1.73m2, sodium 129 mmol/L. Hemoglobin 9.8 g/dL. CT chest: no suspicious nodule or mass; no evidence of malignancy.",
+          "bbox": [55.0, 199.33, 432.67, 251.0],
+          "label": "code"
+        },
+        {
+          "text": "CONDITION AT DISCHARGE",
+          "bbox": [44.0, 272.33, 169.33, 278.0],
+          "label": "section_header"
+        },
+        {
+          "text": "Dyspnea with minimal exertion, oriented to person only, bed to chair with two-person assist, eating less than 50% of meals.. Sacral pressure injury stage. 2, dressing per wound care. No chest pain.",
+          "bbox": [43.67, 286.0, 526.33, 323.0],
+          "label": "text"
+        },
+        {
+          "text": "DISCHARGE MEDICATIONS",
+          "bbox": [44.0, 344.33, 163.0, 350.0],
+          "label": "section_header"
+        },
+        {
+          "text": "Furosemide 80 mg PO twice daily",
+          "bbox": [55.67, 358.33, 250.33, 366.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Metoprolol succinate 25 mg PO daily WD",
+          "bbox": [55.33, 372.67, 273.33, 393.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Apixaban 2.5 mg PO twice daily",
+          "bbox": [72.0, 387.0, 244.33, 395.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Morphine sulfate oral solution 20 mg/mL, 2.5 mg SL every 2 hours PRN dyspnea",
+          "bbox": [72.0, 401.0, 509.0, 409.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Donepezil 5 mg PO at bedtime",
+          "bbox": [72.67, 430.33, 232.67, 438.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Lorazepam 0.5 mg SL every 6 hours PRN anxiety DOK",
+          "bbox": [55.67, 401.67, 331.0, 436.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Tiotropium 18 mcg inhaled daily CNY",
+          "bbox": [55.67, 444.67, 250.33, 465.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Albuterol 2.5 mg nebulized every 4 hours PRN wheeze",
+          "bbox": [72.0, 459.0, 365.0, 467.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Senna 8.6 mg PO at bedtime",
+          "bbox": [55.67, 473.33, 221.0, 481.33],
+          "label": "list_item"
+        },
+        {
+          "text": "STOPPED: sacubitril/valsartan, spironolactone, insulin glargine (hypoglycemia).",
+          "bbox": [44.0, 487.33, 496.0, 495.67],
+          "label": "text"
+        },
+        {
+          "text": "ALLERGIES: Lisinopril (angioedema); sulfa antibiotics (rash).",
+          "bbox": [43.0, 516.67, 392.33, 524.67],
+          "label": "text"
+        },
+        { "text": "DISPOSITION:", "bbox": [44.0, 546.0, 110.33, 551.67], "label": "text" },
+        { "text": "CODE STATUS:", "bbox": [44.0, 560.33, 110.33, 566.0], "label": "text" },
+        {
+          "text": "Home with hospice. Oxygen 2 L/min continuous.",
+          "bbox": [118.33, 545.0, 375.0, 553.33],
+          "label": "text"
+        },
+        { "text": "DNR/DNI.", "bbox": [118.67, 559.33, 162.0, 566.67], "label": "text" },
+        {
+          "text": "Electronically signed: Priya Raman, MD 10/01/2026 15:12",
+          "bbox": [43.67, 588.33, 364.67, 596.67],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 6,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "HISTORY AND PHYSICAL",
+          "bbox": [43.67, 85.67, 165.33, 91.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Date of service: 09/17/2026 Author: Priya Raman, MD",
+          "bbox": [44.0, 98.67, 440.33, 121.33],
+          "label": "text"
+        },
+        {
+          "text": "CHIEF COMPLAINT: Shortness of breath and leg swelling for one week.",
+          "bbox": [44.0, 142.33, 427.0, 150.33],
+          "label": "text"
+        },
+        {
+          "text": "HISTORY OF PRESENT ILLNESS",
+          "bbox": [43.67, 171.67, 192.0, 177.33],
+          "label": "section_header"
+        },
+        {
+          "text": "85-year-old man with heart failure with reduced ejection fraction from non-ischemic dilated cardiomyopathy, presenting with worsening orthopnea, 6 kg weight gain and bilateral leg edema despite home furosemide. He sleeps upright in a recliner. He denies chest pain. Daughter reports increasing confusion over the last three days and poor oral intake for a month.",
+          "bbox": [43.67, 185.33, 543.33, 249.33],
+          "label": "text"
+        },
+        {
+          "text": "PAST MEDICAL HISTORY",
+          "bbox": [44.0, 272.33, 157.67, 278.0],
+          "label": "section_header"
+        },
+        {
+          "text": "HFrEF / dilated cardiomyopathy, EF 15-20% (echo 03/2026), ICD in place",
+          "bbox": [55.33, 285.67, 468.67, 294.33],
+          "label": "list_item"
+        },
+        { "text": "Hypertension", "bbox": [55.33, 300.67, 134.67, 308.67], "label": "list_item" },
+        {
+          "text": "Chronic kidney disease stage 4, baseline creatinine 2.4",
+          "bbox": [55.33, 315.0, 381.67, 323.0],
+          "label": "list_item"
+        },
+        {
+          "text": "COPD, on 2 L home oxygen since 2024",
+          "bbox": [55.33, 329.33, 266.33, 337.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Type 2 diabetes mellitus, last Alc 6.9%",
+          "bbox": [55.33, 343.67, 290.0, 351.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Atrial fibrillation, permanent, on apixaban",
+          "bbox": [55.33, 358.33, 313.33, 366.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Alzheimer's dementia, followed by memory clinic",
+          "bbox": [55.33, 372.67, 336.33, 380.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Alcohol dependence, in remission since 2015",
+          "bbox": [55.33, 387.0, 313.0, 395.0],
+          "label": "list_item"
+        },
+        {
+          "text": "History of prostate biopsy 2019, benign; no history of cancer",
+          "bbox": [55.33, 401.33, 417.0, 409.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Cholecystectomy 1998",
+          "bbox": [55.33, 416.0, 180.33, 423.67],
+          "label": "list_item"
+        },
+        {
+          "text": "SOCIAL HISTORY",
+          "bbox": [44.0, 445.33, 123.33, 450.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Widowed, lives with daughter. Former smoker, 60 pack-years, quit 2010. History of alcohol dependence; sober since 2015, attended AA. for several years. No illicit drugs.",
+          "bbox": [43.67, 459.0, 536.33, 481.33],
+          "label": "text"
+        },
+        {
+          "text": "FAMILY HISTORY: Father died of myocardial infarction at 70.",
+          "bbox": [44.0, 502.0, 381.0, 510.33],
+          "label": "text"
+        },
+        {
+          "text": "REVIEW OF SYSTEMS",
+          "bbox": [43.67, 531.67, 140.0, 538.0],
+          "label": "section_header"
+        },
+        {
+          "text": "Positive for dyspnea, orthopnea, edema, fatigue, anorexia. Denies chest pain, syncope, fever, hematuria. Negative for melena.",
+          "bbox": [44.0, 545.33, 536.0, 567.67],
+          "label": "text"
+        },
+        {
+          "text": "PHYSICAL EXAM",
+          "bbox": [44.0, 589.33, 117.67, 594.67],
+          "label": "section_header"
+        },
+        {
+          "text": "BP 94/58, HR 88 irregular, RR 26, SpO2 89% on 2 L, T 37.2 C, weight 64.2 kg. Frail, tachypneic, oriented to person only. JVP to the angle of the jaw. Bibasilar crackles, prolonged expiration. Irregular rhythm, $3. Abdomen soft. 3+ pitting edema to the knees. Skin: 2 cm open area over sacrum.",
+          "bbox": [43.67, 602.67, 526.33, 654.33],
+          "label": "text"
+        },
+        {
+          "text": "ASSESSMENT AND PLAN",
+          "bbox": [43.33, 675.67, 152.33, 681.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Acute on chronic systolic heart failure exacerbation - IV furosemide, strict I/0, cardiology consult.",
+          "bbox": [44.33, 689.0, 524.67, 711.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Acute kidney injury on CKD stage 4 - monitor creatinine with diuresis.",
+          "bbox": [44.0, 718.0, 461.67, 726.33],
+          "label": "list_item"
+        },
+        {
+          "text": "(continued - page 1 of 2)",
+          "bbox": [46.0, 747.0, 184.33, 755.0],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 7,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "DOCLENS, ARTHUR MRN RGH-448812 - History and Physical - Page 2 of 2",
+          "bbox": [44.0, 70.33, 457.0, 78.33],
+          "label": "text"
+        },
+        {
+          "text": "Possible right lower lobe pneumonia - blood cultures, start ceftriaxone/azithromycin.",
+          "bbox": [61.33, 98.67, 548.0, 107.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Rule out pulmonary embolism - CT angiogram chest.",
+          "bbox": [61.0, 113.33, 340.67, 121.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Acute encephalopathy superimposed. on Alzheimer's dementia - delirium precautions.",
+          "bbox": [60.33, 127.67, 525.0, 135.67],
+          "label": "list_item"
+        },
+        {
+          "text": "COPD - continue tiotropium, nebulizers PRN.",
+          "bbox": [61.0, 142.0, 306.0, 150.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Atrial fibrillation - rate. control, continue apixaban (renally dosed).",
+          "bbox": [60.33, 156.67, 461.67, 164.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Type 2 diabetes - hold insulin glargine given poor intake; sliding scale.",
+          "bbox": [61.0, 171.0, 478.67, 179.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Sacral wound - wound care consult.",
+          "bbox": [61.0, 185.67, 254.0, 191.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Goals of care - palliative care consult; patient full code on admission.",
+          "bbox": [67.0, 199.67, 478.67, 207.67],
+          "label": "list_item"
+        }
+      ]
+    },
+    {
+      "page": 8,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE HEART ASSOCIATES - INPATIENT CONSULTATION CARDIOLOGY CONSULT. NOTE",
+          "bbox": [43.0, 71.33, 355.33, 91.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Date: 09/22/2026 Consultant: Hamid Sousa, MD Requested by: Priya Raman, MD",
+          "bbox": [44.0, 98.67, 492.33, 121.33],
+          "label": "text"
+        },
+        {
+          "text": "REASON FOR CONSULT: Advanced heart failure, candidacy for further therapy.",
+          "bbox": [43.67, 142.33, 467.33, 150.33],
+          "label": "text"
+        },
+        {
+          "text": "HISTORY: Non-ischemic dilated cardiomyopathy diagnosed 2017. Progressive symptoms .over two years; four heart failure admissions since April 2026. Single-chamber ICD placed 2018 for primary prevention, one appropriate shock in 2023. Intolerant of up-titration of GDMT because of hypotension and worsening renal function.",
+          "bbox": [43.67, 171.0, 538.0, 222.33],
+          "label": "text"
+        },
+        {
+          "text": "DATA: Echo 09/19/2026 LVEF 15%, severe global hypokinesis, moderate functional mitral regurgitation, RVSP 58 mmHg. ECG: atrial fibrillation, rate 84, ORS 148 ms (LBBB).",
+          "bbox": [44.0, 242.67, 531.67, 265.33],
+          "label": "text"
+        },
+        { "text": "ASSESSMENT", "bbox": [43.0, 287.0, 100.0, 292.33], "label": "section_header" },
+        {
+          "text": "End-stage heart failure with reduced ejection fraction, chronic systolic (150.84, 150.22). ACC/AHA stage D, NYHA class IV symptoms at rest.",
+          "bbox": [44.33, 300.67, 474.67, 323.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Non-ischemic dilated cardiomyopathy (142.0).",
+          "bbox": [44.0, 329.33, 311.67, 337.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Hypertensive heart and chronic kidney disease with heart failure, CKD stage 4 (113.0, N18.4).",
+          "bbox": [44.33, 343.67, 502.67, 365.67],
+          "label": "list_item"
+        },
+        {
+          "text": "4, Permanent atrial fibrillation, rate controlled (148.21).",
+          "bbox": [44.33, 372.67, 381.0, 380.33],
+          "label": "list_item"
+        },
+        {
+          "text": "RECOMMENDATIONS",
+          "bbox": [43.67, 402.0, 128.67, 407.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Not a candidate for LVAD or heart transplantation given age, CKD 4, frailty and dementia. CRT upgrade would not change his trajectory.",
+          "bbox": [44.0, 415.67, 509.33, 438.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Recommend transition to comfort-focused care; supportive of hospice referral.",
+          "bbox": [44.0, 444.67, 496.0, 452.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Discussed ICD deactivation with patient and daughter; they wish to proceed.",
+          "bbox": [44.0, 459.0, 484.67, 467.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Continue low-dose metoprolol succinate and diuretics for symptoms.",
+          "bbox": [44.0, 473.33, 432.67, 481.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Hamid Sousa, MD - Cardiology 09/22/2026 11:05",
+          "bbox": [43.67, 501.67, 313.0, 510.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 9,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor .Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "TRANSTHORACIC ECHOCARDIOGRAM",
+          "bbox": [43.67, 85.67, 215.0, 91.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Study date: 09/19/2026 Reading: Hamid Sousa, MD",
+          "bbox": [44.0, 98.67, 440.33, 121.33],
+          "label": "text"
+        },
+        {
+          "text": "Indication: Heart failure exacerbation.",
+          "bbox": [44.33, 142.0, 265.67, 148.33],
+          "label": "text"
+        },
+        { "text": "FINDINGS", "bbox": [44.0, 171.67, 88.33, 177.33], "label": "section_header" },
+        {
+          "text": "Left ventricle: severely dilated (LVIDd 7.1 cm), severe global hypokinesis.",
+          "bbox": [44.0, 185.33, 473.0, 193.33],
+          "label": "text"
+        },
+        {
+          "text": "Left ventricular ejection fraction: 15% (biplane).",
+          "bbox": [44.0, 199.67, 329.0, 207.67],
+          "label": "text"
+        },
+        {
+          "text": "Right ventricle: moderately reduced systolic function, TAPSE 1.3 cm.",
+          "bbox": [43.67, 214.0, 432.67, 222.33],
+          "label": "text"
+        },
+        {
+          "text": "Mitral valve: moderate functional regurgitation.",
+          "bbox": [43.0, 228.67, 317.67, 236.67],
+          "label": "text"
+        },
+        {
+          "text": "Estimated RV systolic pressure: 58 mmHg:",
+          "bbox": [43.67, 241.0, 271.33, 251.0],
+          "label": "text"
+        },
+        {
+          "text": "Pericardium: no effusion.",
+          "bbox": [44.0, 257.33, 185.0, 263.67],
+          "label": "text"
+        },
+        { "text": "IMPRESSION", "bbox": [44.33, 287.0, 100.33, 292.33], "label": "section_header" },
+        {
+          "text": "Severe dilated cardiomyopathy with LVEF 15%.",
+          "bbox": [44.33, 300.67, 311.67, 308.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Moderate functional mitral regurgitation; moderate pulmonary hypertension.",
+          "bbox": [44.0, 315.0, 484.67, 323.0],
+          "label": "list_item"
+        },
+        {
+          "text": "No change compared with 03/2026 except lower LVEF (previously 20%).",
+          "bbox": [44.33, 329.0, 444.33, 337.33],
+          "label": "list_item"
+        }
+      ]
+    },
+    {
+      "page": 10,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd,. Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "LABORATORY RESULTS - CUMULATIVE",
+          "bbox": [43.67, 85.67, 232.67, 91.33],
+          "label": "section_header"
+        },
+        { "text": "Patient:", "bbox": [44.0, 99.0, 87.0, 105.33], "label": "text" },
+        {
+          "text": "DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M",
+          "bbox": [95.67, 98.67, 440.33, 106.67],
+          "label": "text"
+        },
+        { "text": "Test", "bbox": [44.0, 128.33, 65.67, 134.0], "label": "table_cell" },
+        { "text": "09/17/2026", "bbox": [188.33, 127.33, 243.67, 134.67], "label": "table_cell" },
+        { "text": "09/24/2026", "bbox": [274.67, 127.33, 330.33, 134.67], "label": "table_cell" },
+        { "text": "09/30/2026", "bbox": [361.0, 127.33, 416.67, 134.67], "label": "table_cell" },
+        { "text": "Ref range", "bbox": [441.0, 128.0, 491.67, 135.67], "label": "table_cell" },
+        { "text": "BNP (pg/mL)", "bbox": [43.67, 142.0, 103.67, 150.33], "label": "table_cell" },
+        { "text": "4,820", "bbox": [188.33, 142.67, 215.0, 149.67], "label": "table_cell" },
+        { "text": "4,410", "bbox": [274.67, 142.67, 301.33, 149.67], "label": "table_cell" },
+        { "text": "3,950", "bbox": [361.0, 142.67, 387.67, 149.67], "label": "table_cell" },
+        { "text": "<100", "bbox": [441.33, 142.67, 462.67, 148.33], "label": "table_cell" },
+        { "text": "Sodium (mmol/L)", "bbox": [44.0, 156.33, 126.67, 164.0], "label": "table_cell" },
+        { "text": "132", "bbox": [188.33, 157.0, 203.33, 162.67], "label": "table_cell" },
+        { "text": "130", "bbox": [274.67, 157.0, 290.0, 162.67], "label": "table_cell" },
+        { "text": "129", "bbox": [361.0, 157.0, 376.33, 162.67], "label": "table_cell" },
+        { "text": "135-145", "bbox": [441.67, 157.0, 480.0, 162.67], "label": "table_cell" },
+        {
+          "text": "Potassium (mmol/L)",
+          "bbox": [44.0, 170.67, 144.0, 178.33],
+          "label": "table_cell"
+        },
+        { "text": "4.9", "bbox": [188.33, 171.33, 203.33, 177.33], "label": "table_cell" },
+        { "text": "5.2", "bbox": [274.67, 171.33, 289.67, 177.33], "label": "table_cell" },
+        { "text": "4.8", "bbox": [361.0, 171.33, 376.33, 177.33], "label": "table_cell" },
+        { "text": "3.5-5.1", "bbox": [441.67, 171.33, 480.0, 177.33], "label": "table_cell" },
+        {
+          "text": "Creatinine (mg/dL)",
+          "bbox": [44.0, 185.0, 144.0, 193.33],
+          "label": "table_cell"
+        },
+        { "text": "2.4", "bbox": [188.0, 185.67, 203.0, 191.67], "label": "table_cell" },
+        { "text": "3.1", "bbox": [274.67, 185.67, 289.67, 191.67], "label": "table_cell" },
+        { "text": "2.9", "bbox": [360.67, 185.67, 376.33, 191.67], "label": "table_cell" },
+        { "text": "0.7-1.3", "bbox": [441.67, 185.67, 480.0, 191.67], "label": "table_cell" },
+        {
+          "text": "eGFR (mL/min/1.73m2)",
+          "bbox": [44.0, 199.33, 155.67, 207.0],
+          "label": "table_cell"
+        },
+        { "text": "25", "bbox": [188.0, 200.0, 197.67, 206.0], "label": "table_cell" },
+        { "text": "18", "bbox": [274.67, 200.0, 284.0, 206.0], "label": "table_cell" },
+        { "text": "19", "bbox": [361.0, 200.0, 370.33, 206.0], "label": "table_cell" },
+        { "text": ">60", "bbox": [441.33, 200.0, 457.0, 206.0], "label": "table_cell" },
+        { "text": "BUN (mg/dL)", "bbox": [43.67, 214.0, 103.67, 222.33], "label": "table_cell" },
+        { "text": "58", "bbox": [188.33, 214.67, 197.67, 220.33], "label": "table_cell" },
+        { "text": "74", "bbox": [274.67, 214.67, 283.67, 220.33], "label": "table_cell" },
+        { "text": "69", "bbox": [361.0, 214.67, 370.33, 220.33], "label": "table_cell" },
+        { "text": "8-23", "bbox": [441.67, 214.67, 462.67, 220.33], "label": "table_cell" },
+        { "text": "Albumin (g/dL)", "bbox": [43.0, 228.33, 121.0, 236.67], "label": "table_cell" },
+        { "text": "2.9", "bbox": [188.0, 229.0, 203.67, 234.67], "label": "table_cell" },
+        { "text": "2.7", "bbox": [274.33, 229.0, 290.0, 234.67], "label": "table_cell" },
+        { "text": "2.6", "bbox": [360.67, 229.0, 376.33, 234.67], "label": "table_cell" },
+        { "text": "3.5-5.0", "bbox": [441.67, 229.0, 480.0, 234.67], "label": "table_cell" },
+        {
+          "text": "Hemoglobin (g/dL)",
+          "bbox": [43.67, 242.67, 138.33, 251.0],
+          "label": "table_cell"
+        },
+        { "text": "10.4", "bbox": [188.33, 243.33, 209.0, 249.33], "label": "table_cell" },
+        { "text": "9.9", "bbox": [274.67, 243.33, 290.0, 249.33], "label": "table_cell" },
+        { "text": "9.8", "bbox": [361.0, 243.33, 376.33, 249.33], "label": "table_cell" },
+        { "text": "13.5-17.5", "bbox": [441.67, 243.33, 491.33, 249.33], "label": "table_cell" },
+        { "text": "WBC (K/uL)", "bbox": [43.67, 257.0, 98.0, 264.67], "label": "table_cell" },
+        { "text": "13.8", "bbox": [188.33, 257.67, 209.33, 263.67], "label": "table_cell" },
+        { "text": "9.1", "bbox": [274.67, 257.67, 289.67, 263.67], "label": "table_cell" },
+        { "text": "7.2", "bbox": [361.0, 257.67, 376.33, 263.67], "label": "table_cell" },
+        { "text": "4.0-11.0", "bbox": [441.67, 257.67, 485.67, 263.67], "label": "table_cell" },
+        {
+          "text": "Hemoglobin Alc (%)",
+          "bbox": [43.67, 271.67, 144.0, 279.67],
+          "label": "table_cell"
+        },
+        { "text": "6.9", "bbox": [188.33, 272.0, 203.33, 278.0], "label": "table_cell" },
+        { "text": "<5.7", "bbox": [441.33, 271.33, 462.67, 278.0], "label": "table_cell" },
+        {
+          "text": "Troponin I (ng/mL)",
+          "bbox": [44.0, 286.0, 144.0, 294.33],
+          "label": "table_cell"
+        },
+        { "text": "0.06", "bbox": [188.33, 286.67, 209.33, 292.33], "label": "table_cell" },
+        { "text": "/ 0.07 / 0.06", "bbox": [217.0, 285.67, 290.0, 293.0], "label": "table_cell" },
+        { "text": "(flat)", "bbox": [299.33, 286.67, 328.33, 293.33], "label": "table_cell" },
+        { "text": "<0.04", "bbox": [441.33, 286.67, 468.0, 292.33], "label": "table_cell" },
+        {
+          "text": "Procalcitonin (ng/mL)",
+          "bbox": [44.0, 300.33, 161.33, 308.67],
+          "label": "table_cell"
+        },
+        { "text": "1.9", "bbox": [188.33, 301.0, 203.33, 306.67], "label": "table_cell" },
+        { "text": "0.2", "bbox": [361.0, 301.0, 376.33, 306.67], "label": "table_cell" },
+        { "text": "<0.5", "bbox": [441.33, 301.0, 462.67, 306.67], "label": "table_cell" },
+        {
+          "text": "Blood cultures 09/18/2026: no growth at 5 days.",
+          "bbox": [43.67, 329.0, 311.67, 337.33],
+          "label": "text"
+        },
+        {
+          "text": "Results verified by: Riverside. General Laboratory, CLIA on file.",
+          "bbox": [43.67, 358.0, 409.67, 366.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 11,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "CT ANGIOGRAM CHEST WITH CONTRAST",
+          "bbox": [43.67, 85.67, 238.67, 91.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 Exam date: 09/18/2026 Radiologist: Grace DOB: 03/02/1941 MD Sex: M Lindqvist,",
+          "bbox": [43.67, 98.67, 440.33, 121.33],
+          "label": "text"
+        },
+        {
+          "text": "Clinical history: dyspnea, fever, evaluate for pulmonary embolism.",
+          "bbox": [44.0, 142.0, 421.33, 150.33],
+          "label": "text"
+        },
+        {
+          "text": "FINDINGS: Pulmonary arteries opacify well. effusions. paraseptal emphysema, Right lower lobe consolidation with air bronchograms. upper lobe predominant. Cardiomegaly. Moderate bilateral pleural Centrilobular and No suspicious pulmonary nodule.",
+          "bbox": [43.67, 171.0, 520.33, 207.67],
+          "label": "text"
+        },
+        { "text": "IMPRESSION", "bbox": [44.33, 229.0, 100.33, 234.67], "label": "section_header" },
+        {
+          "text": "No evidence of pulmonary. embolism.",
+          "bbox": [44.33, 243.0, 254.33, 251.0],
+          "label": "list_item"
+        },
+        {
+          "text": "consistent with pneumonia in the clinical setting. 2. Right lower lobe consolidation,",
+          "bbox": [44.0, 257.33, 530.67, 265.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Cardiomegaly with moderate bilateral pleural effusions.",
+          "bbox": [44.33, 271.67, 375.0, 279.67],
+          "label": "list_item"
+        },
+        { "text": "Emphysema.", "bbox": [44.33, 286.67, 116.0, 294.33], "label": "list_item" },
+        {
+          "text": "No suspicious pulmonary nodule or mass; no evidence of malignancy.",
+          "bbox": [44.33, 300.67, 438.67, 308.67],
+          "label": "list_item"
+        }
+      ]
+    },
+    {
+      "page": 12,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [38.33, 69.0, 400.0, 80.67],
+          "label": "text"
+        },
+        {
+          "text": "TRANSTHORACIC ECHOCARDIOGRAM",
+          "bbox": [38.33, 87.0, 210.0, 95.67],
+          "label": "section_header"
+        },
+        { "text": "Patient:", "bbox": [39.67, 103.0, 82.33, 109.33], "label": "text" },
+        { "text": "DOCLENS, ARTHUR", "bbox": [91.0, 101.67, 176.33, 109.0], "label": "text" },
+        { "text": "Study date:", "bbox": [39.67, 117.33, 100.0, 125.33], "label": "text" },
+        {
+          "text": "MRN: RGH-448812 DOB: 03/02/1941 Sex:.M 09/19/2026 Reading: Hamid Sousa, MD",
+          "bbox": [109.0, 97.67, 436.0, 124.67],
+          "label": "text"
+        },
+        { "text": "Indication:", "bbox": [40.33, 145.67, 100.33, 152.67], "label": "text" },
+        { "text": "FINDINGS", "bbox": [40.67, 170.33, 85.0, 181.33], "label": "section_header" },
+        { "text": "Left ventricle:", "bbox": [40.67, 188.67, 124.33, 196.0], "label": "text" },
+        { "text": "severely", "bbox": [133.0, 188.0, 178.0, 195.67], "label": "text" },
+        { "text": "Left ventricular", "bbox": [41.0, 203.0, 131.33, 210.33], "label": "text" },
+        { "text": "Right ventricle:", "bbox": [41.0, 217.33, 130.33, 226.0], "label": "text" },
+        { "text": "Mitral valve:", "bbox": [41.0, 232.0, 113.33, 239.0], "label": "text" },
+        {
+          "text": "dilated (LVIDd 7.1 cm), severe global hypokinesis.",
+          "bbox": [184.67, 183.0, 469.67, 193.67],
+          "label": "text"
+        },
+        {
+          "text": "ejection fraction: 15% (biplane).",
+          "bbox": [138.67, 200.0, 326.0, 210.33],
+          "label": "text"
+        },
+        {
+          "text": "moderately reduced systolic function, TAPSE 1.3 cm.",
+          "bbox": [138.67, 216.33, 195.33, 224.0],
+          "label": "text"
+        },
+        {
+          "text": "moderately reduced systolic function, TAPSE 1.3 cm.",
+          "bbox": [202.67, 212.67, 430.0, 223.0],
+          "label": "text"
+        },
+        {
+          "text": "moderate functional regurgitation.",
+          "bbox": [121.33, 228.67, 315.0, 237.67],
+          "label": "text"
+        },
+        {
+          "text": "Estimated RV systolic pressure: 58 mmHg.",
+          "bbox": [41.33, 244.33, 269.0, 254.0],
+          "label": "text"
+        },
+        { "text": "Pericardium:", "bbox": [42.0, 260.67, 108.0, 268.0], "label": "text" },
+        { "text": "no effusion.", "bbox": [116.67, 259.67, 183.0, 266.33], "label": "text" },
+        { "text": "IMPRESSION", "bbox": [42.67, 290.0, 98.67, 296.67], "label": "section_header" },
+        {
+          "text": "Severe dilated cardiomyopathy with LVEF 15%.",
+          "bbox": [42.67, 301.0, 310.33, 311.0],
+          "label": "list_item"
+        },
+        {
+          "text": "2..Moderate functional mitral regurgitation; moderate pulmonary hypertension.",
+          "bbox": [42.67, 312.33, 483.0, 325.33],
+          "label": "list_item"
+        },
+        {
+          "text": "No change compared with 03/2026 except lower LVEF (previously 20%).",
+          "bbox": [43.0, 327.33, 443.33, 340.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Heart failure: exacerbation.",
+          "bbox": [109.0, 143.33, 261.67, 151.67],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 13,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor. Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "PALLIATIVE CARE CONSULTATION",
+          "bbox": [44.0, 85.67, 214.67, 91.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Date: 09/25/2026 Consultant: Miriam Tse, MD",
+          "bbox": [44.0, 98.67, 440.33, 121.0],
+          "label": "text"
+        },
+        {
+          "text": "REASON: Goals of care in advanced heart failure.",
+          "bbox": [43.67, 142.0, 317.67, 148.67],
+          "label": "text"
+        },
+        {
+          "text": "SUMMARY: Family meeting with the patient and his daughter Ruth (HCPOA): The patient said he is \"tired of th\u00e9 hospital\" and wants to be at home. He has fluctuating capacity; his daughter confirms this is consistent with his long-held values.",
+          "bbox": [44.0, 171.0, 520.67, 207.67],
+          "label": "text"
+        },
+        {
+          "text": "SYMPTOMS: dyspnea at rest (ESAS 7/10), fatigue 8/10, anorexia 7/10, anxiety 5/10. Pain 2/10, sacral discomfort with' repositioning.",
+          "bbox": [44.0, 228.33, 507.67, 251.0],
+          "label": "text"
+        },
+        { "text": "ASSESSMENT", "bbox": [43.33, 272.0, 100.0, 278.0], "label": "section_header" },
+        {
+          "text": "End-stage heart failure is the primary terminal diagnosis. COPD with chronic hypoxemic respiratory failure and CKD stage 4 contribute to his decline and are related conditions. Alzheimer's-dementia (moderate) and malnutrition. contribute to frailty. Estimated prognosis: weeks to a few months.",
+          "bbox": [43.67, 286.0, 538.0, 337.33],
+          "label": "text"
+        },
+        {
+          "text": "RECOMMENDATIONS",
+          "bbox": [43.67, 359.0, 128.67, 364.67],
+          "label": "section_header"
+        },
+        {
+          "text": "DNR/DNI - POLST completed with daughter today.",
+          "bbox": [44.33, 372.33, 323.33, 380.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Hospice referral at discharge; home with hospital bed and oxygen.",
+          "bbox": [44.0, 387.0, 432.67, 395.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Morphine 2.5 mg SL every 2 hours PRN dyspnea; lorazepam 0.5 mg PRN anxiety.",
+          "bbox": [44.33, 401.33, 490.33, 409.33],
+          "label": "list_item"
+        },
+        {
+          "text": "ICD deactivation - patient and daughter agree; cardiology to arrange.",
+          "bbox": [44.33, 415.67, 455.67, 423.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Stop non-beneficial medications: insulin glargine, atorvastatin.",
+          "bbox": [44.33, 430.0, 427.0, 438.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Miriam Tse, MD - Palliative Medicine 09/25/2026 16:40",
+          "bbox": [43.33, 458.67, 359.0, 466.67],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 14,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "WILLOW CREEK CARE CENTER INTER-FACILITY TRANSFER / CONTINUITY OF CARE FORM",
+          "bbox": [40.0, 69.0, 389.67, 97.0],
+          "label": "section_header"
+        },
+        { "text": "Resident:", "bbox": [40.67, 101.33, 81.0, 109.0], "label": "text" },
+        {
+          "text": "Transfer DOCLENS, ARTHUR DOB: 03/02/1941 Facility ID: WC-20931",
+          "bbox": [40.67, 130.33, 77.0, 138.0],
+          "label": "text"
+        },
+        {
+          "text": "Transfer DOCLENS, ARTHUR DOB: 03/02/1941 Facility ID: WC-20931",
+          "bbox": [85.33, 98.33, 367.33, 109.33],
+          "label": "text"
+        },
+        { "text": "=", "bbox": [182.67, 97.0, 184.33, 112.67], "label": "text" },
+        {
+          "text": "date: 08/29/2026 From: Willow Creek Care Center (short-term rehab)",
+          "bbox": [80.33, 127.0, 386.0, 137.67],
+          "label": "text"
+        },
+        {
+          "text": "To: Home with home health Physician: Lena Okafor, MD",
+          "bbox": [40.67, 142.33, 291.67, 152.67],
+          "label": "text"
+        },
+        { "text": "Primary diagnosis:", "bbox": [41.33, 172.67, 120.67, 182.67], "label": "text" },
+        { "text": "Debility (R53.81)", "bbox": [125.0, 172.0, 197.67, 181.67], "label": "text" },
+        { "text": "Secondary diagnoses:", "bbox": [41.33, 187.67, 137.33, 197.0], "label": "text" },
+        {
+          "text": "Adult failure to thrive (R62.7)",
+          "bbox": [50.0, 201.33, 175.33, 210.67],
+          "label": "text"
+        },
+        {
+          "text": "Congestive heart failure (150.9)",
+          "bbox": [50.33, 215.33, 185.0, 225.67],
+          "label": "text"
+        },
+        { "text": "Dementia (F03.90)", "bbox": [50.67, 230.33, 131.33, 239.67], "label": "text" },
+        {
+          "text": "Chronic kidney disease (N18.9)",
+          "bbox": [50.67, 244.0, 187.67, 254.33],
+          "label": "text"
+        },
+        {
+          "text": "Functional status: Ambulates 15 feet with walker and one assist. Requires assistance with bathing, dressing and toileting. Incontinent of urine at night.",
+          "bbox": [42.0, 271.0, 414.67, 297.33],
+          "label": "text"
+        },
+        {
+          "text": "Diet: 2 g sodium, 1.5 L fluid restriction. Weight on discharge: 66.8 kg.",
+          "bbox": [42.67, 299.0, 346.0, 313.33],
+          "label": "text"
+        },
+        { "text": "Skin:", "bbox": [42.67, 317.33, 63.33, 325.0], "label": "text" },
+        {
+          "text": "intact. Falls this stay: 1 (no injury).",
+          "bbox": [67.67, 315.67, 219.67, 325.33],
+          "label": "text"
+        },
+        { "text": "Cognition:", "bbox": [42.67, 332.0, 86.0, 341.0], "label": "text" },
+        {
+          "text": "BIMS 6/15, severe impairment.",
+          "bbox": [90.33, 330.33, 223.67, 341.33],
+          "label": "text"
+        },
+        {
+          "text": "Advance directive: Full code at time of transfer.",
+          "bbox": [42.67, 344.33, 248.0, 354.0],
+          "label": "text"
+        },
+        {
+          "text": "Completed by: Alicia Moreno, RN 08/29/2026",
+          "bbox": [43.67, 373.33, 245.67, 385.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 15,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "WOUND / OSTOMY NURSING NOTE",
+          "bbox": [43.0, 84.33, 208.0, 92.67],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Date: 09/27/2026 Author: Paul Ferreira, RN, CWOCN",
+          "bbox": [44.0, 98.67, 440.33, 121.0],
+          "label": "text"
+        },
+        {
+          "text": "Location: sacrum, midline.",
+          "bbox": [44.0, 142.33, 190.67, 149.67],
+          "label": "text"
+        },
+        {
+          "text": "Classification: pressure injury, stage 2 (partial-thickness skin loss, pink wound bed, no slough). Present on admission (noted on 09/17 exam).",
+          "bbox": [43.67, 156.67, 536.0, 179.0],
+          "label": "text"
+        },
+        {
+          "text": "Measurements: 2.0 cm x 1.5 cm x 0.1 cm. Periwound: intact, blanchable erythema. Drainage: scant serous. Odor: none.",
+          "bbox": [43.33, 185.33, 501.67, 207.67],
+          "label": "text"
+        },
+        {
+          "text": "Plan: foam dressing, change every 3 days and PRN; low-air-loss mattress; reposition every 2 hours; heels offloaded.",
+          "bbox": [44.0, 228.67, 520.67, 251.0],
+          "label": "text"
+        },
+        {
+          "text": "Diagnosis: Pressure ulcer of sacral region, stage 2 (L89.152).",
+          "bbox": [44.0, 271.67, 398.0, 279.67],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 16,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "CLINICAL NUTRITION ASSESSMENT",
+          "bbox": [43.67, 85.67, 220.33, 91.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Date: 09/24/2026 Author: Hannah Yoon, RDN",
+          "bbox": [44.0, 98.67, 440.33, 121.0],
+          "label": "text"
+        },
+        {
+          "text": "Weight history: 70.0 kg (03/2026, cardiology clinic); 66.8 kg (08/29/2026); 61.0 kg dry weight estimate 09/24/2026. Loss of 12.9% in 6 months.",
+          "bbox": [43.67, 141.67, 520.67, 164.67],
+          "label": "text"
+        },
+        {
+          "text": "Intake: less than 50% of estimated needs. for more than 2 weeks per daughter and calorie counts.",
+          "bbox": [44.0, 171.0, 498.0, 191.67],
+          "label": "text"
+        },
+        {
+          "text": "Physical. exam: moderate temporal and clavicular muscle wasting; mild fat loss.",
+          "bbox": [44.0, 199.67, 490.33, 207.67],
+          "label": "text"
+        },
+        {
+          "text": "Nutrition diagnosis: Moderate protein-calorie malnutrition (E44.0) in the context of chronic illness, meeting ASPEN/AND criteria (weight loss, intake, muscle wasting).",
+          "bbox": [43.67, 228.67, 526.33, 251.0],
+          "label": "text"
+        },
+        {
+          "text": "Recommendations: liberalize diet for comfort; oral nutrition supplement as tolerated; no tube feeding per goals of care.",
+          "bbox": [43.67, 271.67, 530.67, 294.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 17,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "NURSING FUNCTIONAL ASSESSMENT",
+          "bbox": [43.0, 85.67, 220.33, 91.33],
+          "label": "section_header"
+        },
+        { "text": "Patient:", "bbox": [44.0, 99.0, 87.0, 105.33], "label": "text" },
+        {
+          "text": "Date: 09/30/2026 Author: Kim RN",
+          "bbox": [44.0, 113.0, 273.33, 120.33],
+          "label": "text"
+        },
+        {
+          "text": "DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Abara,",
+          "bbox": [95.67, 98.67, 440.33, 121.0],
+          "label": "text"
+        },
+        {
+          "text": "Palliative Performance Scale (PPS): 30% - mainly in bed, unable to do any work, total care, reduced intake, drowsy or confused.",
+          "bbox": [44.0, 142.33, 501.33, 164.67],
+          "label": "text"
+        },
+        {
+          "text": "FAST (Functional Assessment Staging): 6d - requires assistance with dressing and bathing, urinary incontinence;, speech limited to short phrases; ambulatory with two-person assist only.",
+          "bbox": [43.67, 171.0, 503.67, 207.67],
+          "label": "text"
+        },
+        {
+          "text": "Katz ADL: dependent in'5 of 6 (feeds self with setup).",
+          "bbox": [43.67, 214.33, 352.0, 222.33],
+          "label": "text"
+        },
+        {
+          "text": "Oxygen: 2 L/min continuous; SpO2 90-92%.",
+          "bbox": [43.67, 228.33, 271.33, 236.67],
+          "label": "text"
+        },
+        { "text": "Dyspnea:", "bbox": [44.0, 243.67, 87.0, 251.0], "label": "text" },
+        {
+          "text": "with minimal exertion and talking.",
+          "bbox": [95.33, 243.0, 238.67, 249.33],
+          "label": "text"
+        },
+        {
+          "text": "with minimal exertion and talking.",
+          "bbox": [245.67, 243.0, 288.67, 251.0],
+          "label": "text"
+        },
+        {
+          "text": "Edema: 2+ bilateral lower extremities.",
+          "bbox": [43.67, 257.33, 260.0, 263.67],
+          "label": "text"
+        },
+        {
+          "text": "Continence: urinary incontinence, bowel continent.",
+          "bbox": [44.0, 271.67, 329.0, 279.67],
+          "label": "text"
+        },
+        {
+          "text": "Fall risk: high (Morse 65).",
+          "bbox": [44.0, 286.0, 196.67, 294.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 18,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "CASCADE LUNG CLINIC - OUTPATIENT NOTE",
+          "bbox": [43.67, 71.33, 269.33, 77.0],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Visit: 08/14/2025 Provider: Owen Achebe, MD",
+          "bbox": [43.33, 84.33, 440.33, 106.67],
+          "label": "text"
+        },
+        {
+          "text": "Follow-up of COPD and chronic hypoxemia.",
+          "bbox": [44.0, 127.67, 271.33, 135.67],
+          "label": "text"
+        },
+        {
+          "text": "PFTs 07/2025: FEV1 0.78 L (28% predicted), FEVI/FVC 0.41, DLCO 34% predicted. Two exacerbations in the past year, one requiring hospitalization. Resting SpO2 86% on room air, 92% on 2 L.",
+          "bbox": [43.67, 156.33, 484.67, 193.33],
+          "label": "text"
+        },
+        { "text": "ASSESSMENT", "bbox": [43.0, 215.0, 100.0, 220.33], "label": "section_header" },
+        {
+          "text": "Chronic obstructive pulmonary disease, severe, GOLD 4, group E (J44.9).",
+          "bbox": [44.33, 228.67, 467.33, 236.67],
+          "label": "list_item"
+        },
+        {
+          "text": "Chronic respiratory failure with hypoxia (J96.11).",
+          "bbox": [44.0, 243.0, 346.33, 251.0],
+          "label": "list_item"
+        },
+        {
+          "text": "Dependence on supplemental oxygen (299.81).",
+          "bbox": [44.33, 257.67, 306.0, 265.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Former tobacco use, 60 pack-years (287.891).",
+          "bbox": [44.33, 272.0, 311.67, 279.67],
+          "label": "list_item"
+        },
+        {
+          "text": "PLAN: Continue tiotropium; add budesonide/formoterol; continuous oxygen 2 L/min; pulmonary rehab declined. Return 6 months.",
+          "bbox": [43.67, 300.33, 501.67, 323.0],
+          "label": "text"
+        },
+        {
+          "text": "Owen Achebe, MD 08/14/2025",
+          "bbox": [43.67, 343.33, 203.33, 351.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 19,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "SALEM NEUROLOGY & MEMORY CENTER",
+          "bbox": [46.0, 69.33, 235.33, 76.67],
+          "label": "section_header"
+        },
+        {
+          "text": "1 Court Plaza, Salem OR 97301 March 2025",
+          "bbox": [45.33, 83.33, 211.33, 104.0],
+          "label": "text"
+        },
+        { "text": "10,", "bbox": [81.0, 98.0, 94.67, 105.67], "label": "text" },
+        { "text": "Lena Okafor, MD", "bbox": [45.67, 126.33, 131.0, 134.0], "label": "text" },
+        {
+          "text": "Re: Arthur Doclens, DOB 03/02/1941",
+          "bbox": [45.33, 141.0, 239.33, 148.67],
+          "label": "text"
+        },
+        { "text": "Dear Dr. Okafor,", "bbox": [45.33, 170.0, 134.33, 177.33], "label": "text" },
+        {
+          "text": "I saw Mr. Doclens in follow-up with his daughter. Cognitive decline has progressed over the past year: MoCA 12/30 (from 17/30). He needs help with finances, medications and instrumental activities, and some help selecting clothing. FAST stage 5.",
+          "bbox": [45.0, 198.67, 545.0, 237.67],
+          "label": "text"
+        },
+        {
+          "text": "Diagnosis: Alzheimer's disease with late onset (G30.1), with dementia, moderate, without behavioral disturbance (F02.B0). ;",
+          "bbox": [44.33, 255.67, 502.67, 278.67],
+          "label": "text"
+        },
+        {
+          "text": "I have continued donepezil 5 mg nightly; we did not increase the dose because of bradycardia concerns. Follow-up in 6 months.",
+          "bbox": [44.0, 299.0, 504.0, 322.33],
+          "label": "text"
+        },
+        { "text": "Sincerely,", "bbox": [44.33, 342.0, 98.67, 350.33], "label": "text" },
+        {
+          "text": "Nadia Varga, MD - Cognitive Neurology RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 356.33, 256.33, 365.67],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 20,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "Nadia Varga, MD - Cognitive Neurology RIVERSIDE GENERAL HOSPITAL - 1400 Harbor Blvd, Salem OR 97301",
+          "bbox": [43.67, 70.67, 405.0, 77.67],
+          "label": "text"
+        },
+        {
+          "text": "DISCHARGE MEDICATION RECONCILIATION",
+          "bbox": [43.33, 85.67, 257.33, 91.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient: DOCLENS, ARTHUR MRN: RGH-448812 DOB: 03/02/1941 Sex: M Reconciled by: Omar Haddad, PharmD 10/01/2026 CONTINUE Furosemide 80 mg PO twice daily (dose increased from 40 mg) Metoprolol succinate 25 mg PO daily Apixaban 2.5 mg PO twice daily Donepezil 5 mg PO at bedtime Tiotropium 18 mcg inhaled daily NEW Morphine sulfate oral solution 20 mg/mL - 2.5 mg SL every 2 hours PRN dyspnea Lorazepam 0.5 mg SL every 6 hours PRN anxiety Albuterol 2.5 mg nebulized every 4 hours PRN wheeze Senna.8.6 mg PO at bedtime STOP Sacubitril/valsartan 24/26 mg - hypotension Spironolactone 25 mg - hyperkalemia, CKD Insulin glargine 10 units nightly - hypoglycemia, poor intake Atorvastatin 40 mg - not beneficial per goals of. care ALLERGIES: - Sulfa antibiotics - rash.",
+          "bbox": [43.33, 98.67, 497.67, 393.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Lisinopril angioedema.",
+          "bbox": [107.33, 387.0, 242.67, 395.0],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 21,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "OREGON PHYSICIAN ORDERS FOR LIFE-SUSTAINING TREATMENT (POLST) Patient: DOCLENS, ARTHUR DOB: 03/02/1941",
+          "bbox": [43.67, 70.67, 494.67, 96.0],
+          "label": "section_header"
+        },
+        {
+          "text": "A. CARDIOPULMONARY RESUSCITATION: [X] Do Not Attempt Resuscitation (DNR)",
+          "bbox": [43.33, 113.33, 420.67, 122.33],
+          "label": "text"
+        },
+        {
+          "text": "MEDICAL INTERVENTIONS: [X] Comfort Measures Only",
+          "bbox": [44.0, 127.67, 306.33, 136.67],
+          "label": "list_item"
+        },
+        {
+          "text": "ARTIFICIAL NUTRITION: [X] No artificial nutrition by tube",
+          "bbox": [43.67, 142.0, 309.67, 151.33],
+          "label": "list_item"
+        },
+        {
+          "text": "Discussed with: Health care representative - Ruth Doclens (daughter)",
+          "bbox": [44.0, 171.0, 346.67, 180.0],
+          "label": "text"
+        },
+        {
+          "text": "Signed: Miriam Tse, MD 09/25/2026",
+          "bbox": [43.67, 185.33, 205.67, 194.33],
+          "label": "text"
+        }
+      ]
+    }
+  ]
+}

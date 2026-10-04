@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 157,
+  "totalStaticWebScreens": 159,
   "e2eReachedCount": 19,
-  "axeReachedCount": 151,
+  "axeReachedCount": 153,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -317,6 +317,14 @@
       "axeReached": true
     },
     {
+      "id": "privacy.restricted-patients",
+      "module": "05-patient",
+      "path": "/compliance/privacy",
+      "permission": "privacy.admin",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "cost_report.list",
       "module": "27-cost-report",
       "path": "/cost-reports",
@@ -449,6 +457,14 @@
       "module": "14-idg",
       "path": "/idg/action-items",
       "permission": "idg.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "intake.review-queue",
+      "module": "22-documents",
+      "path": "/intake",
+      "permission": "intake.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1505,6 +1521,14 @@
       "axeReached": true
     },
     {
+      "id": "privacy.restricted-patients",
+      "module": "05-patient",
+      "path": "/compliance/privacy",
+      "permission": "privacy.admin",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "cost_report.list",
       "module": "27-cost-report",
       "path": "/cost-reports",
@@ -1662,6 +1686,14 @@
       "path": "/idg/schedule",
       "permission": "idg.read",
       "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "intake.review-queue",
+      "module": "22-documents",
+      "path": "/intake",
+      "permission": "intake.read",
+      "e2eReached": false,
       "axeReached": true
     },
     {

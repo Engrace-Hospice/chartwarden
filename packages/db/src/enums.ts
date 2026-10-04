@@ -1028,6 +1028,31 @@ export const problemSource = pgEnum("problem_source", [
 /** `problem_status` — the §3.2 problem lifecycle (§2.2.3). */
 export const problemStatus = pgEnum("problem_status", ["active", "resolved", "inactive"]);
 
+/** `problem_proposal_status` — F-238: a DocLens-extracted diagnosis awaiting a clinician (pending), or
+ *  the clinician's decision (accepted → a `problem` row exists; dismissed → nothing was charted). */
+export const problemProposalStatus = pgEnum("problem_proposal_status", [
+  "pending",
+  "accepted",
+  "dismissed",
+]);
+
+/** `problem_proposal_icd10_validation` — F-238: M38's verdict on the as-written code as of the referral
+ *  date; `unvalidated` = M38 could not answer (the code is kept, never dropped or replaced). */
+export const problemProposalIcd10Validation = pgEnum("problem_proposal_icd10_validation", [
+  "valid",
+  "not_valid_as_of",
+  "unvalidated",
+]);
+
+/** `problem_proposal_document_role` — F-238: how the SOURCE DOCUMENT labels the diagnosis. A suggestion
+ *  only; it never sets `problem.kind` (terminal/related/unrelated is the hospice physician's call). */
+export const problemProposalDocumentRole = pgEnum("problem_proposal_document_role", [
+  "principal",
+  "secondary",
+  "history",
+  "unspecified",
+]);
+
 /** `goal_source` — patient/family/agent-stated goals preserve `original_text` verbatim (D6; §3.2). */
 export const goalSource = pgEnum("goal_source", [
   "clinical",
@@ -1553,6 +1578,7 @@ export const medicationHistorySource = pgEnum("medication_history_source", [
   "dosespot_medhx",
   "manual_entry",
   "reconciliation_carryforward",
+  "doclens_intake", // F-238 (0311) — reviewer-attested DocLens referral line; reconciliation-only
 ]);
 
 /** `dosespot_webhook_event_type` — the §2.5 / §7.4 D7 typed inbound webhook taxonomy. */
@@ -2113,6 +2139,14 @@ export const intakeBatchStatus = pgEnum("intake_batch_status", [
   "split_into_children",
   "split_resolved_no_split",
   "parse_failed",
+]);
+
+/** F-237 — `intake_batch_sud_status` — the §7.4 W4 / D8 SUD-detection state of an intake batch. */
+export const intakeBatchSudStatus = pgEnum("intake_batch_sud_status", [
+  "not_detected",
+  "detected",
+  "confirmed",
+  "rejected",
 ]);
 
 /** §3.2 `classified_page_doc_type` — the per-page classifier output document type. */

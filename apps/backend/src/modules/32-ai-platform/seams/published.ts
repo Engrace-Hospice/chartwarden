@@ -46,6 +46,7 @@ import {
   type DocLensVisionVerifier,
   type EmbeddingsInput,
   type EmbeddingsProvider,
+  type ModelBackendImage,
   type NarrativeEnhancementInput,
   type NarrativeEnhancementProvider,
   type NarrativeEnhancementResult,
@@ -66,6 +67,12 @@ import type {
   TriageProtocolSuggestionResult,
 } from "@wardenx/types";
 import type { AiInvocationOutput, AiInvocationPipeline } from "../invocation/service";
+import {
+  DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
+  DOCLENS_EXTRACT_RESPONSE_SCHEMA,
+  DOCLENS_SUD_DETECT_RESPONSE_SCHEMA,
+  DOCLENS_VISION_VERIFY_RESPONSE_SCHEMA,
+} from "./doclens-projector";
 
 // ── the three ports ────────────────────────────────────────────────────────────────────────────────
 
@@ -110,9 +117,25 @@ export interface AiSeamOutputProjector {
   project(seam: string, output: AiInvocationOutput): unknown | null;
 }
 
+/** The slice of `AIPromptRegistry` a seam needs: the capability's active, hash-verified template. */
+export interface AiSeamPromptSource {
+  getActivePromptForCapability(capabilityKey: string): Promise<{
+    readonly promptTemplateId: string;
+    readonly version: number;
+    readonly promptBody: string;
+  } | null>;
+}
+
 /** Deps every §4.2 adapter shares. */
 export interface AiPublishedSeamDeps {
   readonly pipeline: AiInvocationPipeline;
+  /**
+   * F-236 — the §4.5 registry. BOUND ⇒ every seam call sends its capability's active, reviewed,
+   * hash-pinned template as the system prompt, and REFUSES when the capability has none (or its file no
+   * longer matches its pin). Unbound ⇒ the legacy posture (no system prompt) — which every seam reached
+   * only with `ai.full` off, i.e. never.
+   */
+  readonly prompts?: AiSeamPromptSource;
   /** Absent ⇒ {@link createDenyingAiSeamActorResolver}. */
   readonly actors?: AiSeamActorResolver;
   /** Absent ⇒ a completed invocation refuses with `output_validation_failed_after_retry`. */
@@ -132,6 +155,11 @@ interface SeamInvokeArgs {
   readonly consumerContextRef: AiConsumerContextRef;
   readonly promptText: string;
   readonly chartContext: Record<string, unknown>;
+  readonly responseSchema?: Record<string, unknown>;
+  readonly maxOutputTokens?: number;
+  readonly dispatchTimeoutMs?: number;
+  /** F-237 — vision capabilities only (see `AiInvocationRequest.images`). */
+  readonly images?: readonly ModelBackendImage[];
 }
 
 type SeamInvokeOutcome =
@@ -176,6 +204,28 @@ function createSeamRunner(deps: AiPublishedSeamDeps) {
       );
     }
 
+    let template: { promptTemplateId: string; version: number; promptBody: string } | null = null;
+    if (deps.prompts) {
+      try {
+        template = await deps.prompts.getActivePromptForCapability(args.capabilityKey);
+      } catch {
+        return refuse(
+          aiSeamRefusal(
+            "provider_unregistered",
+            `'${args.seam}': the active prompt template for '${args.capabilityKey}' could not be loaded or no longer matches its pinned hash`,
+          ),
+        );
+      }
+      if (template === null) {
+        return refuse(
+          aiSeamRefusal(
+            "provider_unregistered",
+            `'${args.seam}': capability '${args.capabilityKey}' has no active prompt template`,
+          ),
+        );
+      }
+    }
+
     const outcome = await deps.pipeline.invoke({
       capabilityKey: args.capabilityKey,
       organizationId: args.organizationId,
@@ -185,8 +235,19 @@ function createSeamRunner(deps: AiPublishedSeamDeps) {
       actorRole: actor.actorRole,
       patientId: args.patientId ?? null,
       consumerContextRef: args.consumerContextRef,
-      prompt: { text: args.promptText },
+      prompt: template
+        ? {
+            text: args.promptText,
+            systemPrompt: template.promptBody,
+            templateId: template.promptTemplateId,
+            templateVersion: String(template.version),
+          }
+        : { text: args.promptText },
       chartContext: args.chartContext,
+      ...(args.responseSchema ? { responseSchema: args.responseSchema } : {}),
+      ...(args.maxOutputTokens ? { maxOutputTokens: args.maxOutputTokens } : {}),
+      ...(args.dispatchTimeoutMs ? { dispatchTimeoutMs: args.dispatchTimeoutMs } : {}),
+      ...(args.images?.length ? { images: args.images } : {}),
       invokedAt: clock().toISOString(),
     });
 
@@ -280,6 +341,22 @@ function docLensContextRef(documentId: string): AiConsumerContextRef {
   return { module: "m22", entityKind: "document", entityId: documentId };
 }
 
+/**
+ * F-236 — the extractor's user message: the FIELDS M22 asks for, then the DOCUMENT page by page with the
+ * `=== PAGE n ===` markers the `doclens_extract` template's rules refer to. Deterministic (same input,
+ * same bytes), so the ledger's encrypted prompt is reproducible from the document.
+ */
+export function composeDocLensExtractPrompt(input: {
+  readonly extractedText: string;
+  readonly fieldSpecs?: readonly { readonly fieldPath: string; readonly description: string }[];
+  readonly pages?: readonly { readonly page: number; readonly text: string }[];
+}): string {
+  const fields = (input.fieldSpecs ?? [])
+    .map((f) => `- ${f.fieldPath}: ${f.description}`)
+    .join("\n");
+  return `FIELDS:\n${fields}\n\nDOCUMENT:\n${composeDocLensPages(input)}`;
+}
+
 /** M32's §4.2.2 classifier. `doclens_classify` sits at DESIGN_REVIEW, so even flag-on refuses. */
 export function createDocLensClassifier(deps: AiPublishedSeamDeps): DocLensClassifier {
   const run = createSeamRunner(deps);
@@ -292,7 +369,15 @@ export function createDocLensClassifier(deps: AiPublishedSeamDeps): DocLensClass
         actorUserId: input.actorUserId,
         consumerContextRef: docLensContextRef(input.documentId),
         promptText: input.extractedText,
-        chartContext: { documentId: input.documentId, pageCount: input.pageCount },
+        chartContext: {
+          documentId: input.documentId,
+          pageCount: input.pageCount,
+          ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
+        },
+        responseSchema: DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
+        maxOutputTokens: 256,
+        // Background work (the M22 intake job), not a clinician waiting on a keystroke.
+        dispatchTimeoutMs: 120_000,
       });
       if (!outcome.ok) return asRefusal(outcome);
       const projected = projectOr<{
@@ -318,12 +403,17 @@ export function createDocLensExtractor(deps: AiPublishedSeamDeps): DocLensExtrac
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
         consumerContextRef: docLensContextRef(input.documentId),
-        promptText: input.extractedText,
+        promptText: composeDocLensExtractPrompt(input),
         chartContext: {
           documentId: input.documentId,
           documentType: input.documentType,
           schemaKey: input.schemaKey,
         },
+        responseSchema: DOCLENS_EXTRACT_RESPONSE_SCHEMA,
+        // A 2-page discharge summary with a long diagnosis list answers ~5,000 tokens (47 quoted fields,
+        // F-238 E2E); 4096 cut it off and the whole document was refused. 8192 = the backends' advertised cap.
+        maxOutputTokens: 8192,
+        dispatchTimeoutMs: 600_000,
       });
       if (!outcome.ok) return asRefusal(outcome);
       const projected = projectOr<{ fields: Record<string, never>; warnings: never[] }>(
@@ -337,25 +427,72 @@ export function createDocLensExtractor(deps: AiPublishedSeamDeps): DocLensExtrac
   };
 }
 
+/**
+ * F-237 — the `field_value` user message: the field to read. The extracted value is deliberately NOT in it:
+ * a model shown the expected answer agrees with it, which would make stage 5 a rubber stamp.
+ */
+export function composeDocLensVisionFieldPrompt(field: {
+  readonly fieldPath: string;
+  readonly description: string;
+}): string {
+  return `FIELD: ${field.fieldPath}\nDESCRIPTION: ${field.description}`;
+}
+
+/** F-236/F-237 — the page-marked document text the extractor and the SUD detector both read. */
+export function composeDocLensPages(input: {
+  readonly extractedText: string;
+  readonly pages?: readonly { readonly page: number; readonly text: string }[];
+}): string {
+  return input.pages?.length
+    ? input.pages.map((p) => `=== PAGE ${p.page} ===\n${p.text}`).join("\n\n")
+    : `=== PAGE 1 ===\n${input.extractedText}`;
+}
+
 /** M32's §4.2.2 vision verifier — the one capability whose backend must carry the `vision` modality. */
 export function createDocLensVisionVerifier(deps: AiPublishedSeamDeps): DocLensVisionVerifier {
   const run = createSeamRunner(deps);
   return {
     async verify(input) {
+      const fieldRead = input.verificationKey === "field_value";
+      if (fieldRead && (!input.field || !input.images?.length)) {
+        return aiSeamRefusal(
+          "output_validation_failed_after_retry",
+          "DocLensVisionVerifier: field_value needs a field and at least one image",
+        );
+      }
       const outcome = await run({
         seam: "DocLensVisionVerifier",
         capabilityKey: AI_DOCLENS_CAPABILITY.visionVerify,
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
         consumerContextRef: docLensContextRef(input.documentId),
-        // The page IMAGES are storage keys, not bytes: the prompt names what to look at and the
-        // adapter fetches nothing. Keys are PHI-free by construction (M22 D11).
-        promptText: input.verificationKey,
-        chartContext: {
-          documentId: input.documentId,
-          verificationKey: input.verificationKey,
-          pageImages: input.pageImages,
-        },
+        ...(fieldRead && input.field && input.images
+          ? {
+              promptText: composeDocLensVisionFieldPrompt(input.field),
+              chartContext: {
+                documentId: input.documentId,
+                verificationKey: input.verificationKey,
+                pageNumber: input.images[0]?.pageNumber ?? 1,
+                fieldPath: input.field.fieldPath,
+              },
+              images: input.images.map((i) => ({
+                mediaType: i.mediaType,
+                dataBase64: i.dataBase64,
+              })),
+              responseSchema: DOCLENS_VISION_VERIFY_RESPONSE_SCHEMA,
+              maxOutputTokens: 256,
+              dispatchTimeoutMs: 180_000,
+            }
+          : {
+              // The page IMAGES are storage keys, not bytes: the prompt names what to look at and the
+              // adapter fetches nothing. Keys are PHI-free by construction (M22 D11).
+              promptText: input.verificationKey,
+              chartContext: {
+                documentId: input.documentId,
+                verificationKey: input.verificationKey,
+                pageImages: input.pageImages ?? [],
+              },
+            }),
       });
       if (!outcome.ok) return asRefusal(outcome);
       const projected = projectOr<{
@@ -363,6 +500,8 @@ export function createDocLensVisionVerifier(deps: AiPublishedSeamDeps): DocLensV
         confidence: number;
         evidence: never[];
         warnings: never[];
+        observedValue?: string;
+        observedValues?: string[];
       }>(deps, "DocLensVisionVerifier", outcome.output);
       if ("available" in projected) return projected;
       return { available: true, invocationId: outcome.invocationId, ...projected };
@@ -370,7 +509,7 @@ export function createDocLensVisionVerifier(deps: AiPublishedSeamDeps): DocLensV
   };
 }
 
-/** M32's §4.2.2 SUD detector — 42 CFR Part 2, and the one DocLens capability with no catalog entry. */
+/** M32's §4.2.2 SUD detector — 42 CFR Part 2. M22 GROUNDS every quote it returns before trusting it. */
 export function createDocLensSudDetector(deps: AiPublishedSeamDeps): DocLensSudDetector {
   const run = createSeamRunner(deps);
   return {
@@ -381,8 +520,14 @@ export function createDocLensSudDetector(deps: AiPublishedSeamDeps): DocLensSudD
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
         consumerContextRef: docLensContextRef(input.documentId),
-        promptText: input.extractedText,
-        chartContext: { documentId: input.documentId },
+        promptText: composeDocLensPages(input),
+        chartContext: {
+          documentId: input.documentId,
+          ...(input.pages?.length ? { pageCount: input.pages.length } : {}),
+        },
+        responseSchema: DOCLENS_SUD_DETECT_RESPONSE_SCHEMA,
+        maxOutputTokens: 1024,
+        dispatchTimeoutMs: 300_000,
       });
       if (!outcome.ok) return asRefusal(outcome);
       const projected = projectOr<{

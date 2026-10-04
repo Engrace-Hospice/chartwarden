@@ -64,11 +64,17 @@ function operationId(route: ScannedRoute): string {
 }
 
 /** Fastify `:param` → OpenAPI `{param}`. */
-const toOpenApiPath = (p: string): string => p.replace(/:([a-zA-Z0-9_]+)/g, "{$1}");
+// `::` is find-my-way's escaped literal colon (`decisions::bulk-approve` → `/decisions:bulk-approve`), not
+// a parameter (F-237: unescaped, that route matched `decisions<anything>-approve`).
+const toOpenApiPath = (p: string): string =>
+  p
+    .split("::")
+    .map((part) => part.replace(/:([a-zA-Z0-9_]+)/g, "{$1}"))
+    .join(":");
 
 /** OpenAPI path parameters derived from `:param` tokens. */
 function pathParameters(path: string): unknown[] {
-  const params = [...path.matchAll(/:([a-zA-Z0-9_]+)/g)].map((m) => m[1]);
+  const params = [...path.replace(/::/g, "").matchAll(/:([a-zA-Z0-9_]+)/g)].map((m) => m[1]);
   return params.map((name) => ({ name, in: "path", required: true, schema: { type: "string" } }));
 }
 

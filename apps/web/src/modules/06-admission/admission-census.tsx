@@ -577,7 +577,8 @@ function AdmissionDrawer({
   const reqs = readiness?.requirements ?? [];
   const stepDone = (codes: string[]) => {
     const own = reqs.filter((r) => codes.includes(r.code));
-    return own.length > 0 && own.every((r) => DONE.includes(r.status));
+    // F-238 — a non-blocking item (an unreviewed intake detection) does not hold the stage open.
+    return own.length > 0 && own.every((r) => DONE.includes(r.status) || !r.blocking);
   };
   const steps = STEPS.map((s) => ({ ...s, done: a.state === "active" || stepDone(s.codes) }));
   const current = steps.findIndex((s) => !s.done);
@@ -729,7 +730,7 @@ function AdmissionDrawer({
                       </span>
                       {!done ? (
                         <span className="wx-row-sub" style={{ whiteSpace: "nowrap" }}>
-                          {stateLabel(r.status)}
+                          {r.blocking ? stateLabel(r.status) : "Review advised"}
                         </span>
                       ) : null}
                     </li>

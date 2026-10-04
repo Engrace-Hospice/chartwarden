@@ -25,6 +25,11 @@ export type DocumentContext =
       admissionId?: string | null;
     };
 
+/** F-238 — an intake fax not yet filed under anyone (DocLens files it later). Upload-only. */
+export type UploadContext =
+  | DocumentContext
+  | { kind: "intake"; patientId?: null; admissionId?: null };
+
 export interface DocumentRow {
   id: string;
   patientId: string | null;
@@ -1796,7 +1801,7 @@ function TypePill({
 export async function verifiedUpload(
   client: ApiClient,
   input: {
-    context: DocumentContext;
+    context: UploadContext;
     mode: "new_document" | "new_version";
     targetDocumentId?: string;
     file: File;

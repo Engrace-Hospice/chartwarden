@@ -12,7 +12,9 @@ import {
   createDbCarePlanAbacResolver,
   createDbCarePlanRouteService,
 } from "./care-plan-route-service-db";
+import { createDbProblemProposalService } from "./problem-proposals-db";
 import { registerCarePlanRoutes as _registerM7Routes } from "./routes/care-plan-routes";
+import { registerProblemProposalRoutes } from "./routes/problem-proposal-routes";
 
 export {
   type CarePlanWriteOutboxPort,
@@ -42,6 +44,34 @@ export function mountCarePlanRoutes(
   const resolver = createDbCarePlanAbacResolver(db);
   const isConsentActive = defaultConsentActiveChecker();
   const sudInternalAccess = defaultInternalSudAccessChecker();
+  const sudDisclosureAllowed: NonNullable<
+    Parameters<typeof _registerM7Routes>[1]["sudDisclosureAllowed"]
+  > = async ({ organizationId, patientId, planId, roles, membershipId }) => {
+    const resolvedPatientId =
+      patientId || (await resolver.loadPlan(organizationId, planId))?.patientId;
+    if (!resolvedPatientId) return false;
+    return sudDisclosureAllowedForPatient(
+      {
+        organizationId,
+        userId: "",
+        roles,
+        providerEntityIds: [],
+        locationIds: [],
+        // The Part 2 decision is now PER-ACTOR, so the synthesized context has to carry the one
+        // attribute that names the actor. Passing `{}` here would have made every route-level
+        // redaction read as `actor_unidentified` against a workforce-restricted release — a
+        // fail-closed answer, but one that hides the chart from the very people it names.
+        attributes: { membershipId },
+      },
+      resolvedPatientId,
+      sudInternalAccess,
+    );
+  };
+  // F-238 dx-writeback — the clinician's accept / dismiss surface for DocLens-proposed diagnoses.
+  registerProblemProposalRoutes(app, {
+    service: createDbProblemProposalService(db, outbox),
+    sudDisclosureAllowed,
+  });
   _registerM7Routes(app, {
     service: createDbCarePlanRouteService(db, outbox),
     dpoaConsentActive: async ({ organizationId, planId }) => {
@@ -53,27 +83,7 @@ export function mountCarePlanRoutes(
         consentType: "dpoa_healthcare",
       });
     },
-    sudDisclosureAllowed: async ({ organizationId, patientId, planId, roles, membershipId }) => {
-      const resolvedPatientId =
-        patientId || (await resolver.loadPlan(organizationId, planId))?.patientId;
-      if (!resolvedPatientId) return false;
-      return sudDisclosureAllowedForPatient(
-        {
-          organizationId,
-          userId: "",
-          roles,
-          providerEntityIds: [],
-          locationIds: [],
-          // The Part 2 decision is now PER-ACTOR, so the synthesized context has to carry the one
-          // attribute that names the actor. Passing `{}` here would have made every route-level
-          // redaction read as `actor_unidentified` against a workforce-restricted release — a
-          // fail-closed answer, but one that hides the chart from the very people it names.
-          attributes: { membershipId },
-        },
-        resolvedPatientId,
-        sudInternalAccess,
-      );
-    },
+    sudDisclosureAllowed,
   });
 }
 
@@ -205,6 +215,23 @@ export {
   M7_IDG_DECISION_CONSUMER_DEFERRED,
   decideIdgDecisionRecorded,
 } from "./outbox-consumers/m14-idg-decision-recorded";
+// F-238 dx-writeback — DocLens diagnoses → pending problem PROPOSALS (never `problem` rows) + the
+// clinician's accept / dismiss service.
+export {
+  type Icd10Validator,
+  M7_EXTRACTION_DIAGNOSIS_WRITEBACK_CONSUMER,
+  applyDiagnosisWriteback,
+  buildM7ExtractionDiagnosisWritebackConsumer,
+  m38Icd10Validator,
+  parseDiagnosisCommitRequested,
+} from "./outbox-consumers/m22-diagnosis-writeback";
+export {
+  type ProblemProposalService,
+  type ProblemProposalView,
+  type ProposalActor,
+  createDbProblemProposalService,
+} from "./problem-proposals-db";
+export { registerProblemProposalRoutes } from "./routes/problem-proposal-routes";
 
 // M7-T09 — the `care_plan_record` data eraser (§3.6 / §11 D8; M4 destruction-cert workflow). Pure
 // orchestration over an injectable store; registers the REAL eraser over the Phase-0 deny-stub via the

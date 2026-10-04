@@ -143,6 +143,7 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
       const where = and(
         filter.actorUserId ? eq(A.actorUserId, filter.actorUserId) : undefined,
         filter.resourceKind ? eq(A.resourceKind, filter.resourceKind) : undefined,
+        filter.resourceId ? sql`${A.resourceId} = ${filter.resourceId}::uuid` : undefined,
         filter.eventType ? eq(A.eventType, filter.eventType) : undefined,
         filter.outcome ? eq(A.outcome, filter.outcome as typeof A.$inferSelect.outcome) : undefined,
         filter.severity ? eq(A.severity, filter.severity as typeof A.$inferSelect.severity) : undefined,

@@ -129,6 +129,24 @@ export {
   type GeocodeAddressPorts,
   type GeocodeResult,
 } from "./jobs/index";
+// M5 §4.5 `patient.snapshot_rebuild` — the quarterly (+ manual admin route) full privacy-snapshot rebuild.
+export {
+  SNAPSHOT_REBUILD_PAGE_SIZE,
+  SnapshotRebuildPartialFailure,
+  type SnapshotRebuildDeps,
+  type SnapshotRebuildSummary,
+  rebuildPrivacySnapshotsForOrg,
+} from "./jobs/snapshot-rebuild";
+export {
+  M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
+  M5_SNAPSHOT_REBUILD_QUEUE,
+  M5_SNAPSHOT_REBUILD_SCHEDULE,
+  type SnapshotRebuildRunSummary,
+  type SnapshotRebuildWorkerDeps,
+  registerSnapshotRebuildWorker,
+  runSnapshotRebuildFanout,
+  scheduleSnapshotRebuild,
+} from "./jobs/snapshot-rebuild-worker";
 export {
   type PrivacyFlag,
   type ConsentSignal,
@@ -179,6 +197,36 @@ export {
   M5_DEATH_CASCADE_CONSUMER,
   buildM5DeathCascadeConsumer,
 } from "./outbox-consumers/m6-discharge-death";
+// F-235 (#248) — M5's half of the DocLens chart-writeback handshake: `m22.extraction.commit_requested` →
+// low-risk contact demographics on the batch's resolved patient → `m5.patient.draft_created_from_extraction`.
+export {
+  type ExtractionWritebackPlan,
+  M5_EXTRACTION_WRITEBACK_CONSUMER,
+  applyExtractionWriteback,
+  buildM5ExtractionWritebackConsumer,
+  normalizePhoneE164,
+  parseCommitRequested,
+  planExtractionWriteback,
+} from "./outbox-consumers/m22-extraction-writeback";
+// F-238 — the DocLens allergy writeback: `m22.extraction.allergies_requested` → unverified `patient_allergy`
+// rows → `m5.patient_allergy.draft_created_from_extraction`; plus the allergy list / verify routes.
+export {
+  M5_EXTRACTION_ALLERGY_CONSUMER,
+  applyAllergyWriteback,
+  buildM5ExtractionAllergyConsumer,
+} from "./outbox-consumers/m22-extraction-allergies";
+export {
+  type PatientAllergyRouteDeps,
+  registerPatientAllergyRoutes,
+} from "./routes/allergy-routes";
+export {
+  M5_INTAKE_SUD_PRIVACY_CONSUMER,
+  type SudFlagDecision,
+  type SudFlagOrigin,
+  type SudSnapshotFacts,
+  buildM5IntakeSudPrivacyConsumer,
+  decideSudFlag,
+} from "./outbox-consumers/m22-intake-sud-privacy";
 
 // F-171 (#248) — the real §2.4/§4.3 direct patient-merge write path (`POST /patients/:id/merge`):
 // folds a duplicate into a survivor, applies field resolutions to the survivor, and emits the real
@@ -224,12 +272,51 @@ export {
 } from "./erasers/patient-eraser";
 export { createDbPatientRouteService } from "./patient-route-service-db";
 
+// The Privacy Officer surface (M5 §4.2 / §5.1 "Privacy flags"): the per-patient view, the §4.2 resync and
+// the restricted-patients work queue, over ports M39 (Part 2 consent state), M22 (DocLens SUD batches) and
+// M4 (the snapshot's audit trail) implement — bound at the composition root.
+export {
+  NO_PART2_CONSENT,
+  PRIVACY_FLAG_ORIGINS,
+  type IntakeSudBatchFact,
+  type IntakeSudBatchReader,
+  type Part2ConsentState,
+  type Part2ConsentStateReader,
+  type PrivacyDrift,
+  type PrivacyFlagOrigin,
+  type PrivacyOfficerPorts,
+  type PrivacySnapshotHistoryEvent,
+  type PrivacySnapshotHistoryReader,
+  batchContributes,
+  decideResync,
+  detectDrift,
+  flagSinceFromHistory,
+  snapshotNeedsWrite,
+} from "./privacy/officer";
+export {
+  type PatientPrivacyView,
+  type PrivacyOfficerService,
+  type PrivacyResyncResult,
+  type PrivacySnapshotRederivation,
+  createDbPrivacyOfficerService,
+  rederivePrivacySnapshot,
+} from "./privacy/officer-db";
+export {
+  type PatientPrivacyRouteDeps,
+  registerPatientPrivacyRoutes,
+} from "./routes/privacy-routes";
+
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import type { M5OutboxPort } from "./deceased-db";
+import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
 import { mergePatients as _mergePatients } from "./merges-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
+import type { PrivacyOfficerPorts } from "./privacy/officer";
+import { createDbPrivacyOfficerService as _dbPrivacyOfficerService } from "./privacy/officer-db";
+import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
+import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
 
 /**
  * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments, the
@@ -238,11 +325,31 @@ import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patien
  * / `mergePatients` over `patient` under RLS. Backs the Patient List/Census + the Patient Chart banner
  * with real data. `outbox` is the module-scoped `m5` outbox port (F-171, #248) `mergePatients` emits
  * `m5.patient.merged` through — required, not optional, so a caller cannot silently mount a merge
- * route with no way to ever publish the event a survivor needs.
+ * route with no way to ever publish the event a survivor needs. `privacy` binds the Privacy Officer
+ * routes' cross-module reads (M39 consent state, M22 DocLens batches, M4 snapshot trail) — required for
+ * the same reason: a resync that cannot see M39 would re-derive nothing.
  */
-export function mountPatientRoutes(app: FastifyInstance, db: DbClient, outbox: M5OutboxPort): void {
+export function mountPatientRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox: M5OutboxPort,
+  privacy: PrivacyOfficerPorts,
+): void {
   _registerPatientRoutes(app, {
     service: _dbPatientService(db),
     mergePatients: (input) => _mergePatients(db, outbox, input),
+  });
+  // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
+  _registerPatientAllergyRoutes(app, { db });
+  // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the
+  // manual trigger of the quarterly snapshot rebuild (same derivation as the resync, run as the officer).
+  _registerPatientPrivacyRoutes(app, {
+    service: _dbPrivacyOfficerService(db, outbox, privacy),
+    rebuildSnapshots: (organizationId, actorUserId) =>
+      _rebuildPrivacySnapshotsForOrg(db, organizationId, {
+        outbox,
+        ports: privacy,
+        actorUserId,
+      }),
   });
 }

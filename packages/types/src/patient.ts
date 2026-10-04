@@ -255,9 +255,26 @@ export type PatientAdmissionClearanceReason =
   | "PRIVACY_RESTRICTION"
   | "PRIVACY_CLEARANCE_UNAVAILABLE";
 
+/**
+ * WHICH kind of restriction holds a `PRIVACY_RESTRICTION` in place — the minimum an admission screen
+ * needs to send the user to the workflow that can lift it. Deliberately coarse and category-free: it
+ * names the next step, never the flag category or any record content.
+ *
+ *   INTAKE_DETECTION_UNREVIEWED  an intake document (M22 DocLens, W4) put an interim restriction on the
+ *                                patient that no reviewer has confirmed or rejected yet
+ *   CONSENT_REQUIRED             a confirmed restriction that only a patient consent (M39) lifts
+ *   RESTRICTED                   any other restriction (no self-service path from the admission screen)
+ */
+export type PatientAdmissionRestriction =
+  | "INTAKE_DETECTION_UNREVIEWED"
+  | "CONSENT_REQUIRED"
+  | "RESTRICTED";
+
 export interface PatientAdmissionClearance {
   readonly allowed: boolean;
   readonly reason?: PatientAdmissionClearanceReason;
+  /** Present only with `reason: "PRIVACY_RESTRICTION"`. */
+  readonly restriction?: PatientAdmissionRestriction;
   readonly overrideAllowed?: boolean;
 }
 

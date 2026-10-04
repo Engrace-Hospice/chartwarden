@@ -16,6 +16,7 @@ import {
   floorFor,
   floorViolations,
   isSystemLocked,
+  rolesForPermission,
   satisfiesFloor,
 } from "../src/roles";
 
@@ -84,6 +85,7 @@ describe("M3-T02 system_locked role floor (spec §3.4.1)", () => {
       "audit.disclosure_report",
       "consent.read",
       "legalhold.read",
+      "privacy.admin",
     ]);
     expect(SYSTEM_LOCKED_FLOORS.hipaa_security_officer).toEqual([
       "audit.read",
@@ -127,6 +129,12 @@ describe("M3-T02 role catalog ↔ floor consistency", () => {
 describe("M3-T02 floor enforcement helpers (§2.4)", () => {
   it("floorFor returns the floor for locked roles and [] for anything else", () => {
     expect(floorFor("compliance_officer")).toEqual(SYSTEM_LOCKED_FLOORS.compliance_officer);
+    // M5 §4.7 — `privacy.admin` is the privacy officer's floor and the compliance officer's default grant;
+    // org_admin holds it by neither (M5 §6: org_admin cannot resync privacy flags).
+    expect(rolesForPermission("privacy.admin")).toEqual([
+      "compliance_officer",
+      "hipaa_privacy_officer",
+    ]);
     expect(floorFor("registered_nurse")).toEqual([]);
     expect(isSystemLocked("registered_nurse")).toBe(false);
   });

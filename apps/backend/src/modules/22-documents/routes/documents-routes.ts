@@ -8,9 +8,18 @@
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
 import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { DegradedError, NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { DegradedError, NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
+import {
+  RECORDS_REQUEST_FILEABLE,
+  type RecordsRequestService,
+} from "../records-request/records-request-service";
+import {
+  ifMatchVersionOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "./concurrency";
 import {
   AbandonReviewRequest,
   AddTagRequest,
@@ -36,6 +45,7 @@ import {
   PublishOverlayRequest,
   PublishTemplateRequest,
   RecordDecisionRequest,
+  ReferralIntakeBatchesQuerySchema,
   ResolveDiscrepancyRequest,
   RetryRenderRequest,
   ReviewParamsSchema,
@@ -67,7 +77,14 @@ export interface DocumentRouteDeps {
       userId: string;
       referralId: string;
     }): Promise<boolean>;
+    /** F-238 — the referral's resolved patient (if any), for intake batches filed against it. */
+    getReferralSubject?(input: {
+      organizationId: string;
+      referralId: string;
+    }): Promise<{ patientId: string | null } | null>;
   };
+  /** F-238 — the records-request lookup behind a manual `recordsRequestId` on an intake upload. */
+  recordsRequests?: Pick<RecordsRequestService, "findForLink">;
 }
 
 /**
@@ -113,24 +130,35 @@ const INTAKE_READ = P("intake.read");
 const INTAKE_CONFIRM = P("intake.confirm_classification");
 const INTAKE_REVIEW = P("intake.review");
 const INTAKE_DISCARD = P("intake.discard_batch");
+const REJECT_AI = rejectAiActor() as PreHandler;
+const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 
 // §4.7 ABAC guards M22 owns (target = request.params → `id`).
 const ABAC_OWNER = requireAbac("documents.read_phi_content", "document_owner_or_caseload", {
   notFoundOnDeny: true,
 }) as PreHandler;
 const ABAC_LEGAL_HOLD = requireAbac("documents.edit_metadata", "legal_hold_aware") as PreHandler;
-// The candidate's risk level is a server-resolved fact (the candidate row in prod); the slice surfaces it on
-// the query so the eligibility predicate is exercisable end-to-end. M22 never authorizes off the request body.
-const riskTarget = (request: GuardRequest): Record<string, unknown> => {
-  const q = request.query as { riskLevel?: unknown } | undefined;
-  return { ...(request.params as Record<string, unknown>), riskLevel: q?.riskLevel };
-};
-const bulkTarget = (request: GuardRequest): Record<string, unknown> => {
-  const q = request.query as { anyHighRisk?: unknown } | undefined;
-  return { ...(request.params as Record<string, unknown>), anyHighRisk: q?.anyHighRisk === "true" };
-};
+// F-237 — the targets carry IDS ONLY. The candidate's risk tier is loaded from its row by the predicate;
+// it is never read from the request (it used to be `?riskLevel=` / `?anyHighRisk=`, which let the client
+// decide whether the licence check applied). The body ids are read here only to NAME the candidate —
+// the predicate loads it constrained to the review's own batch, and the handler re-validates the body.
+const bodyOf = (request: GuardRequest): Record<string, unknown> =>
+  request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+const riskTarget = (request: GuardRequest): Record<string, unknown> => ({
+  ...(request.params as Record<string, unknown>),
+  candidateId: bodyOf(request).candidateId,
+});
+const bulkTarget = (request: GuardRequest): Record<string, unknown> => ({
+  ...(request.params as Record<string, unknown>),
+  candidateIds: bodyOf(request).candidateIds,
+});
 const ABAC_REVIEWER = requireAbac("intake.review", "extraction_reviewer_eligible", {
   getTarget: riskTarget,
+}) as PreHandler;
+// The discrepancy resolve names its candidate through the DISCREPANCY (params only) — a body `candidateId`
+// must not be able to stand in for the discrepancy's own, possibly high-risk, candidate.
+const ABAC_DISCREPANCY_REVIEWER = requireAbac("intake.review", "extraction_reviewer_eligible", {
+  getTarget: (request) => ({ ...(request.params as Record<string, unknown>) }),
 }) as PreHandler;
 const ABAC_BULK = requireAbac("intake.review", "extraction_high_risk_field_per_field_only", {
   getTarget: bulkTarget,
@@ -380,13 +408,75 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   app.post("/api/v1/intake/uploads", { preHandler: [INTAKE_UPLOAD] }, async (request, reply) => {
     const { organizationId, actor } = actorOf(request);
     const body = parse(IntakeUploadRequest, request.body);
+    // F-238 — records for a referral: the caller must be able to see it, and the batch takes the patient
+    // the referral resolved to. A caller naming another patient is refused rather than silently overridden.
+    let patientId = body.patientId ?? null;
+    // F-238 — records answering an outbound records request, linked by hand: the request must be this
+    // org's, still fileable (not cancelled), and for the same referral as any `referralId` given; the batch
+    // is then filed under the request's referral (and goes through the same referral checks below).
+    let referralId = body.referralId ?? null;
+    if (body.recordsRequestId) {
+      const rr = await deps.recordsRequests?.findForLink(organizationId, body.recordsRequestId);
+      if (!rr) throw new NotFoundError("records_request");
+      if (!RECORDS_REQUEST_FILEABLE.has(rr.status)) {
+        throw new WardenXError(
+          "RECORDS_REQUEST_CANCELLED",
+          "this records request was cancelled; records cannot be filed against it",
+          409,
+        );
+      }
+      if (referralId && referralId !== rr.referralId) {
+        throw new WardenXError(
+          "RECORDS_REQUEST_REFERRAL_CONFLICT",
+          "this records request belongs to a different referral than the one named",
+          409,
+        );
+      }
+      referralId = rr.referralId;
+    }
+    if (referralId) {
+      await assertReferralReadAllowed(organizationId, actor.userId, "referral", referralId);
+      const subject = await deps.referralReader?.getReferralSubject?.({
+        organizationId,
+        referralId,
+      });
+      if (!subject) throw new NotFoundError("referral");
+      if (subject.patientId && patientId && subject.patientId !== patientId) {
+        throw new WardenXError(
+          "REFERRAL_PATIENT_CONFLICT",
+          "this referral is resolved to a different patient than the one named",
+          409,
+        );
+      }
+      patientId = subject.patientId ?? patientId;
+    }
     const res = await service.uploadBatch(organizationId, actor, {
-      patientId: body.patientId ?? null,
+      patientId,
+      ...(referralId ? { referralId } : {}),
+      ...(body.recordsRequestId ? { recordsRequestId: body.recordsRequestId } : {}),
       sourceChannel: body.sourceChannel,
       sourceMetadata: body.sourceMetadata,
+      ...(body.documentId ? { documentId: body.documentId } : {}),
     });
     return reply.code(201).send(res);
   });
+
+  // F-238 — the referral page's "Records" tab: the intake batches (faxes, emailed or scanned records)
+  // filed against ONE referral. The caller must be able to read the referral (M6 ReferralReader), the
+  // same gate the referral-filed upload uses. Strictly referral-filed — no patient-id fallback.
+  app.get(
+    "/api/v1/intake/referral-batches",
+    {
+      preHandler: [INTAKE_READ],
+      config: { auditRead: { resourceKind: "intake_batch", list: true } },
+    },
+    async (request) => {
+      const { organizationId, actor } = actorOf(request);
+      const q = parse(ReferralIntakeBatchesQuerySchema, request.query ?? {});
+      await assertReferralReadAllowed(organizationId, actor.userId, "referral", q.referralId);
+      return service.listReferralBatches(organizationId, q.referralId, q.cursor, q.limit);
+    },
+  );
 
   // 13 — read batch metadata + pipeline status.
   app.get(
@@ -498,6 +588,12 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       const res = await service.recordDecision(organizationId, actor, id, {
         candidateId: body.candidateId,
         decision: body.decision,
+        ...(body.editedValue !== undefined ? { editedValue: body.editedValue } : {}),
+        ...(body.editedCode !== undefined ? { editedCode: body.editedCode } : {}),
+        ...(body.chartOverwriteConfirmed !== undefined
+          ? { chartOverwriteConfirmed: body.chartOverwriteConfirmed }
+          : {}),
+        ...(body.reason !== undefined ? { reason: body.reason } : {}),
       });
       return reply.code(201).send(res);
     },
@@ -505,7 +601,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
 
   // 21 — bulk-approve low-risk (extraction_high_risk_field_per_field_only ABAC → 422 if high-risk in scope).
   app.post(
-    "/api/v1/intake/reviews/:id/decisions:bulk-approve",
+    "/api/v1/intake/reviews/:id/decisions::bulk-approve",
     { preHandler: [INTAKE_REVIEW, ABAC_BULK] },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
@@ -519,7 +615,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 22 — resolve a discrepancy.
   app.post(
     "/api/v1/intake/reviews/:id/discrepancies/:discrepancyId/resolve",
-    { preHandler: [INTAKE_REVIEW, ABAC_REVIEWER] },
+    { preHandler: [INTAKE_REVIEW, ABAC_DISCREPANCY_REVIEWER] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { id, discrepancyId } = parse(DiscrepancyParamsSchema, request.params);
@@ -528,10 +624,11 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     },
   );
 
-  // 23 — attest + trigger writeback dispatcher.
+  // 23 — attest + commit the chart writeback (F-235): provenance + `m22.extraction.commit_requested` in the
+  //      completion's own transaction. AI principals refused; Idempotency-Key required (§4.1).
   app.post(
     "/api/v1/intake/reviews/:id/complete",
-    { preHandler: [INTAKE_REVIEW] },
+    { preHandler: [REJECT_AI, INTAKE_REVIEW, IDEMPOTENT] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { id } = parse(ReviewParamsSchema, request.params);

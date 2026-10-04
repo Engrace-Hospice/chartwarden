@@ -1287,6 +1287,8 @@ Risk profile: HIGH for meds and code status; medium for other.
 - **42 CFR Part 2 detection.** If extraction identifies SUD-related content, the PrivacyFlag (SUD) workflow in Module 5 triggers automatically.
 - **PHI never leaves the perimeter for classification or extraction.** Classification and LangExtract run on local Python workers. Claude verification pass uses Anthropic API under BAA.
 
+> **Amended by [ADR-0048](../adr/ADR-0048-doclens-docling-plus-grounded-extractor.md) (2026-10-03).** There is no `langextract-worker` and no DocLens `ml-worker`: classification and extraction are M32 capabilities (`doclens_classify`, `doclens_extract`) through the governed invocation pipeline, and the extractor returns a verbatim quote per field that M22 grounds against Docling's text (the box is always Docling's). PHI leaves the perimeter for classification or extraction **only** for a tenant whose consented routing permits a cloud backend, only to a backend with a ZDR contract under the BAA, and every such call is an `ai_invocation` row; a `local_only` tenant keeps the original guarantee.
+
 ### 10.6.6 Chart Writeback Targets
 
 Approved fields commit to:

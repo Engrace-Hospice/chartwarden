@@ -487,6 +487,41 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
+  /** F-237 — `n` low-risk candidates on one classified page of the batch's own source document. */
+  async function seedCandidates(org: string, batchId: string, n: number): Promise<string[]> {
+    const page = (
+      await admin.query(
+        `INSERT INTO classified_page (organization_id, intake_upload_batch_id, source_document_id,
+           page_range_start, page_range_end, document_type, confidence, classifier_model_version_ref)
+         SELECT organization_id, id, initial_document_id, 1, 1, 'transfer_record', 0.9, 'test'
+         FROM intake_upload_batch WHERE id=$1 RETURNING id`,
+        [batchId],
+      )
+    ).rows[0].id as string;
+    const job = (
+      await admin.query(
+        `INSERT INTO extraction_job (organization_id, classified_page_id, document_type, status,
+           extractor_model_version_ref, correlation_id)
+         VALUES ($1,$2,'transfer_record','ready_for_review','test','t') RETURNING id`,
+        [org, page],
+      )
+    ).rows[0].id as string;
+    const ids: string[] = [];
+    for (let i = 0; i < n; i++) {
+      ids.push(
+        (
+          await admin.query(
+            `INSERT INTO extraction_candidate (organization_id, extraction_job_id, field_path, field_kind,
+               risk_level, confidence, source_page, source_bounding_box)
+             VALUES ($1,$2,$3,'text','low',0.9,1,'{"x1":0,"y1":0,"x2":1,"y2":1}'::jsonb) RETURNING id`,
+            [org, job, `patient.note${i}`],
+          )
+        ).rows[0].id as string,
+      );
+    }
+    return ids;
+  }
+
   it("intake batch → classify-confirm → review open/decision/bulk/complete drives the machine", async () => {
     const batch = await svc.uploadBatch(ORG_A, ACTOR, { patientId: PATIENT, sourceChannel: "fax" });
     expect(batch.status).toBe("uploaded");
@@ -500,15 +535,26 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         .status,
     ).toBe("in_review");
 
+    // F-237 — decisions name REAL candidates of this batch; a stranger id is a 404, not a stray row.
+    const [c1, c2, c3] = await seedCandidates(ORG_A, batch.id, 3);
+    await expect(
+      svc.recordDecision(ORG_A, ACTOR, review.id, {
+        candidateId: "99999999-9999-4999-8999-999999999999",
+        decision: "approve",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
     const dec = await svc.recordDecision(ORG_A, ACTOR, review.id, {
-      candidateId: "99999999-9999-4999-8999-999999999999",
+      candidateId: c1 as string,
       decision: "approve",
     });
     expect(dec.decisionId).toBeTruthy();
-    const bulk = await svc.bulkApprove(ORG_A, ACTOR, review.id, [
-      "88888888-8888-4888-8888-888888888881",
-      "88888888-8888-4888-8888-888888888882",
-    ]);
+    await expect(
+      svc.bulkApprove(ORG_A, ACTOR, review.id, [
+        c2 as string,
+        "88888888-8888-4888-8888-888888888882",
+      ]),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const bulk = await svc.bulkApprove(ORG_A, ACTOR, review.id, [c2 as string, c3 as string]);
     expect(bulk.decisionsCreated).toBe(2);
 
     const completed = await svc.completeReview(ORG_A, ACTOR, review.id);

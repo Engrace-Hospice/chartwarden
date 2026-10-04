@@ -46,7 +46,7 @@ export interface CommitPlan {
 export function extractionDisabled(): WardenXError {
   return new WardenXError(
     EXTRACTION_DISABLED_CODE,
-    "DocLens extraction is not enabled for this tenant (the 'documents.doclens' capability is OFF; Phase 1)",
+    "WardenLens extraction is not enabled for this tenant (the 'documents.doclens' capability is OFF; Phase 1)",
     503,
   );
 }

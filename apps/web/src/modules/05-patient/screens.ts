@@ -8,6 +8,12 @@ const GlobalSearchResults = lazy(() =>
 const PatientChart = lazy(() =>
   import("./patient-chart").then((m) => ({ default: m.PatientChart })),
 );
+const PatientPrivacy = lazy(() =>
+  import("./patient-privacy").then((m) => ({ default: m.PatientPrivacy })),
+);
+const PrivacyQueue = lazy(() =>
+  import("./privacy-queue").then((m) => ({ default: m.PrivacyQueue })),
+);
 const PatientListCensus = lazy(() =>
   import("./patient-list-census").then((m) => ({ default: m.PatientListCensus })),
 );
@@ -42,6 +48,26 @@ export const patientScreens: ScreenRegistryModule<ComponentType> = {
       title: "Patient Chart",
       requiredPermission: "patient.read",
       screen: PatientChart,
+    },
+    {
+      // M5 §5.1 "Privacy flags" — the Privacy Officer's per-patient view (snapshot, origin, consent
+      // state, WardenLens detections, timeline) + the §4.2 resync. Reached from the queue below and the
+      // chart's privacy surfaces; omitted from nav (param path).
+      id: "patient.privacy",
+      path: "/patients/:id/privacy",
+      title: "Privacy restrictions",
+      requiredPermission: "privacy.admin",
+      screen: PatientPrivacy,
+    },
+    {
+      // The officer's work queue (patients with a restriction or a stale snapshot, by origin). Lands
+      // under Administration (the `/compliance` claim in shell/primary-nav.ts).
+      id: "privacy.restricted-patients",
+      path: "/compliance/privacy",
+      title: "Privacy Restrictions",
+      navGroup: "Admin",
+      requiredPermission: "privacy.admin",
+      screen: PrivacyQueue,
     },
   ],
 };

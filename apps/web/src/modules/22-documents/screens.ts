@@ -31,11 +31,21 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // the POST's response and wired the cross-document `?tagKey=` query; this is the caller they were
 // missing.
 //
+// Plus the DocLens SIDE-BY-SIDE REVIEW (F-237, §5.1 INTAKE.ReviewSideBySide) and its queue. The review
+// workspace puts the source page (with every extracted value's bounding box) next to the extracted
+// fields, gates every decision on a per-field "I compared this with the source" confirmation, surfaces
+// the stage-5 vision check and the 42 CFR Part 2 SUD detection, and completes with an attestation; the
+// result lists what the SERVER wrote to the chart (low-risk contact fields only) and what it kept as
+// evidence. INTAKE.ReviewQueue lists the batches with counts only — no values leave the server there.
+//
 // WHAT IS NOT BUILT, AND WHY:
-//   • DocLens SIDE-BY-SIDE REVIEW + the FAX SPLITTER — the reviewer screen (§5.1
-//     INTAKE.ReviewSideBySide) does not exist, and the DocLens classifier/extractor are M32-flag-gated:
-//     behind `documents.doclens` the jobs queue as `awaiting_capability`. Wiring the eight review
-//     routes without the surface they belong to would be a decision surface with nothing to decide on.
+//   • The FAX SPLITTER, PAGE RECLASSIFICATION and the CHART-DISCREPANCY drawer — the review workspace
+//     read carries no discrepancy rows, and reclassification/splitting are batch actions with their own
+//     routes and permission family; the workspace labels a low-confidence page "Needs manual label"
+//     instead of trusting it silently.
+//   • An INTAKE UPLOAD control on the queue (spec empty state "Upload Intake Packet") — intake starts
+//     with the referral, so staff file records from the referral page's Records tab
+//     (06-admission/referral-records.tsx, F-238), the one staff caller of `POST /intake/uploads`.
 //   • The TEMPLATE OVERLAY editor and form-fill retry — admin surfaces on the template library, and a
 //     different permission family from the clinical document path this slice covers.
 //   • `POST /documents/:id/export-phi-bundle` — the §164.524 right-of-access bulk export. A
@@ -47,6 +57,12 @@ const DocumentExplorer = lazy(() =>
 );
 const IntakeBatchDetail = lazy(() =>
   import("./intake-batch-detail").then((m) => ({ default: m.IntakeBatchDetail })),
+);
+const IntakeReviewQueue = lazy(() =>
+  import("./intake-review-queue").then((m) => ({ default: m.IntakeReviewQueue })),
+);
+const DocLensReviewWorkspace = lazy(() =>
+  import("./doclens-review-workspace").then((m) => ({ default: m.DocLensReviewWorkspace })),
 );
 const PatientDocuments = lazy(() =>
   import("./patient-documents").then((m) => ({ default: m.PatientDocuments })),
@@ -86,6 +102,23 @@ export const documentScreens: ScreenRegistryModule<ComponentType> = {
       title: "Version History",
       requiredPermission: "documents.read_history",
       screen: VersionHistory,
+    },
+    {
+      // INTAKE.ReviewQueue — DocLens batches awaiting (or done with) extraction review; counts only.
+      id: "intake.review-queue",
+      path: "/intake",
+      title: "Intake review",
+      navGroup: "Admissions",
+      requiredPermission: "intake.read",
+      screen: IntakeReviewQueue,
+    },
+    {
+      // INTAKE.ReviewSideBySide — source page + bounding boxes beside the extracted fields (param path, no nav).
+      id: "intake.review-workspace",
+      path: "/intake/:batchId/review",
+      title: "Extraction review",
+      requiredPermission: "intake.review",
+      screen: DocLensReviewWorkspace,
     },
     {
       // INTAKE.BatchDetail — per-batch DocLens pipeline view; reached from the intake queue (param path, no nav).

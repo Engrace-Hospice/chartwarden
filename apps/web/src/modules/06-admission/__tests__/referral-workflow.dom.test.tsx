@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -303,5 +303,144 @@ describe("Referral Phase 2 workflow screens", () => {
       ),
     );
     expect(await screen.findByText("Admission opened")).toBeTruthy();
+  });
+});
+
+describe("Referral Records tab (F-238 — intake starts with the referral)", () => {
+  const batch = {
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    referralId: referral.id,
+    patientId: null,
+    status: "extraction_complete",
+    sourceChannel: "fax",
+    identityStatus: "possible",
+    sudStatus: "detected",
+    recordsRequestConflict: null,
+    pages: 14,
+    documents: 3,
+    candidates: 20,
+    review: { id: "r1", status: "in_progress", decided: 5 },
+    uploadedAt: "2026-10-01T15:30:00.000Z",
+    createdAt: "2026-10-01T15:30:00.000Z",
+  };
+
+  function recordsClient(items: unknown[], post?: ApiClient["POST"]): ApiClient {
+    const base = clientFor();
+    return {
+      ...base,
+      GET: vi.fn(async (path: string, init?: unknown) => {
+        if (path === "/api/v1/intake/referral-batches")
+          return ok({ items, nextCursor: null, hasMore: false });
+        return (base.GET as unknown as (p: string, i?: unknown) => unknown)(path, init);
+      }),
+      ...(post ? { POST: post } : {}),
+    } as unknown as ApiClient;
+  }
+
+  it("lists the batches filed against the referral, linking to their review", async () => {
+    const client = recordsClient([batch]);
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    await screen.findByRole("heading", { name: "Robert Johnson" });
+    fireEvent.click(screen.getByRole("tab", { name: "Records" }));
+
+    await screen.findByText("Ready for review");
+    expect(client.GET).toHaveBeenCalledWith(
+      "/api/v1/intake/referral-batches",
+      expect.objectContaining({ params: { query: { referralId: referral.id } } }),
+    );
+    expect(screen.getByText(/14 pages · 3 documents · 5 of 20 fields reviewed/)).toBeTruthy();
+    expect(screen.getByText("Identity: check")).toBeTruthy();
+    expect(screen.getByText("SUD flag — unresolved")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^Review Fax received/ }).getAttribute("href")).toBe(
+      `/intake/${batch.id}/review`,
+    );
+    // The Overview content is not on the Records tab.
+    expect(screen.queryByText("Packet requested.")).toBeNull();
+  });
+
+  it("flags a batch whose records-request code names another referral", async () => {
+    const client = recordsClient([
+      {
+        ...batch,
+        recordsRequestConflict: { code: "RR-ACDEFH7", kind: "code_names_another_referral" },
+      },
+    ]);
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}?tab=records`);
+    expect(
+      await screen.findByText("Request code is for another referral (RR-ACDEFH7)"),
+    ).toBeTruthy();
+  });
+
+  it("shows an empty state when nothing has been filed", async () => {
+    renderWithShell(<ReferralDetail />, recordsClient([]), `/referrals/${referral.id}?tab=records`);
+    expect(await screen.findByText("No records yet")).toBeTruthy();
+  });
+
+  it("Add records uploads the file, files it against the referral and starts DocLens", async () => {
+    const cryptoValue = { subtle: { digest: vi.fn(async () => new Uint8Array(32).buffer) } };
+    Object.defineProperty(globalThis, "crypto", { configurable: true, value: cryptoValue });
+    Object.defineProperty(window, "crypto", { configurable: true, value: cryptoValue });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: vi.fn(async () => new Response(null, { status: 200 })),
+    });
+    const post = vi.fn(async (path: string) => {
+      if (path === "/api/v1/document-uploads")
+        return ok({
+          uploadId: "66666666-6666-4666-8666-666666666666",
+          uploadUrl: "https://storage.example/upload",
+          requiredHeaders: {},
+          expiresAt: "2026-10-04T10:05:00.000Z",
+        });
+      if (path === "/api/v1/document-uploads/{id}/complete")
+        return ok({
+          documentId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          versionId: "v1",
+          versionNumber: 1,
+        });
+      if (path === "/api/v1/intake/uploads") return ok({ id: batch.id, status: "uploaded" });
+      if (path === "/api/v1/intake/uploads/{id}/extraction/run")
+        return ok({ batchId: batch.id, status: "queued" });
+      return ok({});
+    });
+    const client = recordsClient([], post as unknown as ApiClient["POST"]);
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}?tab=records`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add records" }));
+    const dialog = screen.getByRole("dialog");
+    const file = new File(["%PDF-1.7"], "hospital-records.pdf", { type: "application/pdf" });
+    fireEvent.change(within(dialog).getByLabelText("Records file"), { target: { files: [file] } });
+    fireEvent.change(within(dialog).getByLabelText("Received by"), { target: { value: "email" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Upload and file" }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        "/api/v1/intake/uploads/{id}/extraction/run",
+        expect.objectContaining({ params: { path: { id: batch.id } } }),
+      ),
+    );
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/document-uploads",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          aggregateType: "referral",
+          aggregateId: referral.id,
+          retentionClass: "intake_artifact",
+          sourceMetadata: expect.objectContaining({ sourceChannel: "email" }),
+        }),
+      }),
+    );
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/intake/uploads",
+      expect.objectContaining({
+        body: {
+          documentId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          referralId: referral.id,
+          sourceChannel: "email_ingest",
+        },
+      }),
+    );
+    expect(await screen.findByText(/Records filed\. WardenLens is reading them/)).toBeTruthy();
   });
 });

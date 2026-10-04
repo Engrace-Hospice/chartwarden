@@ -43,12 +43,33 @@ export interface DocumentAbacFacts {
   readonly patientDischargedAt: string | null;
 }
 
+/** A candidate's server-stored risk tier (§3.3 `extraction_candidate.risk_level`). */
+export type CandidateRiskLevel = "low" | "medium" | "high";
+
 /** Loads a document's org-scoped owner facts (in-memory in the slice; Drizzle in prod under RLS). */
 export interface DocumentAbacResolver {
   loadDocument(organizationId: string, documentId: string): Promise<DocumentAbacFacts | null>;
+  /**
+   * F-237 — the stored risk tier of each candidate that belongs to the review's OWN batch. An id that is
+   * absent, cross-tenant or from another batch is simply missing from the map (the predicate denies it).
+   */
+  loadReviewCandidateRisks(
+    organizationId: string,
+    reviewId: string,
+    candidateIds: readonly string[],
+  ): Promise<ReadonlyMap<string, CandidateRiskLevel>>;
+  /** F-237 — the risk tier of a discrepancy's primary candidate, when the discrepancy is the review's batch's. */
+  loadDiscrepancyRisk(
+    organizationId: string,
+    reviewId: string,
+    discrepancyId: string,
+  ): Promise<CandidateRiskLevel | null>;
 }
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidOrNull = (value: unknown): string | null =>
+  typeof value === "string" && UUID.test(value) ? value : null;
 const targetId = (target: AbacTarget, field: string): string | null => {
   const value = target[field];
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -178,17 +199,53 @@ export function buildDocumentAbacPredicates(
     },
 
     // per-candidate decision time — high-risk fields need RN-or-above licensure (subsumes the floor, §4.7).
+    //
+    // F-237 — the risk tier is the CANDIDATE ROW's, loaded here. It used to be read off `?riskLevel=` on
+    // the request, so a browser that sent `low` (or nothing) for a medication was waved through and an
+    // unlicensed reviewer could decide a high-risk field. The target now carries only ids.
     extraction_reviewer_eligible: async (context, target) => {
-      // The target carries the candidate's risk level (resolved per-route); low/medium are broadly eligible.
-      const risk = typeof target.riskLevel === "string" ? target.riskLevel : "low";
+      // The §7.4 W4 SUD confirm/reject is a high-risk act on its own (it drives a Part 2 privacy flag).
+      if (target.sudReview === true) return holdsHighRiskLicence(context);
+      const reviewId = targetId(target, "id");
+      const candidateId = uuidOrNull(target.candidateId);
+      const discrepancyId = targetId(target, "discrepancyId");
+      if (!reviewId) return false;
+      let risk: CandidateRiskLevel | null;
+      if (candidateId) {
+        risk =
+          (
+            await resolver.loadReviewCandidateRisks(context.organizationId, reviewId, [candidateId])
+          ).get(candidateId) ?? null;
+      } else if (discrepancyId) {
+        risk = await resolver.loadDiscrepancyRisk(context.organizationId, reviewId, discrepancyId);
+      } else {
+        // No candidate id at all: the handler's body validation answers 400 before any decision is
+        // written, so there is nothing for this predicate to authorize.
+        return target.candidateId === undefined;
+      }
+      if (risk === null) return false; // not this review's candidate ⇒ fail closed
       if (risk !== "high") return true; // low/medium demographic + clinical fields: route RBAC suffices
       return holdsHighRiskLicence(context);
     },
 
-    // bulk-approve: deny when any candidate in scope is high-risk (returns 422 HIGH_RISK_FIELD_BULK_DENIED).
-    extraction_high_risk_field_per_field_only: async (_context, target) => {
-      const anyHighRisk = target.anyHighRisk === true;
-      return !anyHighRisk;
+    // bulk-approve: deny when any candidate in scope is high-risk (or is not this review's candidate).
+    // F-237 — resolved from the candidate rows, not from a client-sent `?anyHighRisk=`.
+    extraction_high_risk_field_per_field_only: async (context, target) => {
+      const reviewId = targetId(target, "id");
+      const ids = target.candidateIds;
+      if (!reviewId) return false;
+      if (!Array.isArray(ids)) return true; // body validation (400) runs in the handler
+      const valid = ids.map(uuidOrNull);
+      if (valid.some((id) => id === null)) return true; // malformed ⇒ 400 in the handler, nothing written
+      const risks = await resolver.loadReviewCandidateRisks(
+        context.organizationId,
+        reviewId,
+        valid as string[],
+      );
+      return (valid as string[]).every((id) => {
+        const risk = risks.get(id);
+        return risk !== undefined && risk !== "high";
+      });
     },
 
     // publish a platform template version — must be on the platform team (tenant org_admin cannot, §4.7).

@@ -782,20 +782,23 @@ describe("the Anthropic adapter (D19 / §8.4)", () => {
     expect(transport.mock.calls[0]![1].contractRef).toBe("zdr-1");
   });
 
-  it("the vendor-adapter mandate points at this package — and nothing imports the SDK yet", () => {
+  it("the vendor-adapter mandate points at this package — and the SDK is installed ONLY here (F-236)", () => {
     expect(VENDOR_ADAPTERS["@anthropic-ai/sdk"]).toBe("packages/ai-platform");
-    // Stated so a green suite is not misread as "the SDK is wired": Phase 1 installs no Anthropic
-    // dependency, because `ai.full` is off and nothing dispatches. The confinement rule is real but
-    // currently vacuous, and this assertion is what makes that visible in the test output rather than
-    // only in a file header.
+    // F-236 (ADR-0048) bound the real transport (`backends/anthropic-sdk.ts`), so the confinement rule is
+    // no longer vacuous: the SDK is a dependency of `@wardenx/ai-platform` and of nothing else — not the
+    // root, not the backend app. dependency-cruiser enforces the import side.
     const root = JSON.parse(
       readFileSync(join(import.meta.dirname, "../../../package.json"), "utf8"),
     ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const app = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
     const pkg = JSON.parse(
       readFileSync(join(import.meta.dirname, "../../../packages/ai-platform/package.json"), "utf8"),
     ) as { dependencies?: Record<string, string> };
     expect(root.dependencies?.["@anthropic-ai/sdk"]).toBeUndefined();
     expect(root.devDependencies?.["@anthropic-ai/sdk"]).toBeUndefined();
-    expect(pkg.dependencies?.["@anthropic-ai/sdk"]).toBeUndefined();
+    expect(app.dependencies?.["@anthropic-ai/sdk"]).toBeUndefined();
+    expect(pkg.dependencies?.["@anthropic-ai/sdk"]).toBeDefined();
   });
 });

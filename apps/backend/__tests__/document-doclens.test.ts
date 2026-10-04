@@ -19,6 +19,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import type { DocLensIntakeEnqueue } from "../src/modules/22-documents/extraction/intake-queue";
 // apps/backend/__tests__/document-doclens.test.ts — M22-T08 the §7.1 W1 DocLens extraction pipeline:
 // (1) the PURE pipeline runs end-to-end when the `documents.doclens` flag is injected ON over a FAKE M32
 // capability (classify → extract → verify → discrepancy → review → decide → provenance);
@@ -297,7 +298,7 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
     resetAbacRegistry();
   });
 
-  function server(flags?: DocumentFeatureFlagReader) {
+  function server(flags?: DocumentFeatureFlagReader, intake?: DocLensIntakeEnqueue) {
     const grantStore = createInMemoryEffectivePermissionStore([
       {
         orgId: ORG,
@@ -311,7 +312,7 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
     registerAbacRegistry();
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     const pipeline = createDocLensPipelineService({ capability: fakeCapability, flags });
-    registerDocLensExtractionRoutes(app, { pipeline, flags });
+    registerDocLensExtractionRoutes(app, { pipeline, flags, ...(intake ? { intake } : {}) });
     return app;
   }
 
@@ -408,12 +409,16 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
     await app.close();
   });
 
-  it("reaches the pipeline (202) when the flag is injected ON", async () => {
-    const app = server({
-      async forOrg() {
-        return { "documents.doclens": true };
+  it("enqueues the intake job (202 queued) when the flag is injected ON — org/batch/actor from the server (F-236)", async () => {
+    const enqueued: unknown[] = [];
+    const app = server(
+      {
+        async forOrg() {
+          return { "documents.doclens": true };
+        },
       },
-    });
+      { enqueue: async (job) => void enqueued.push(job) },
+    );
     const res = await app.inject({
       method: "POST",
       url: RUN,
@@ -421,7 +426,21 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
       payload: { jobId: JOB, pageCount: 3 },
     });
     expect(res.statusCode).toBe(202);
-    expect(res.json().status).toBe("ready_for_review");
+    expect(res.json()).toMatchObject({ status: "queued" });
+    expect(enqueued).toEqual([
+      expect.objectContaining({ organizationId: ORG, actorUserId: "rn_1" }),
+    ]);
+    await app.close();
+  });
+
+  it("answers 503 when the flag is ON but no intake job queue is configured (F-236)", async () => {
+    const app = server({
+      async forOrg() {
+        return { "documents.doclens": true };
+      },
+    });
+    const res = await app.inject({ method: "POST", url: RUN, headers: authed(), payload: {} });
+    expect(res.statusCode).toBe(503);
     await app.close();
   });
 });

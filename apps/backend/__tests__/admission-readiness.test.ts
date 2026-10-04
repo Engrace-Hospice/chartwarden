@@ -140,6 +140,90 @@ describe("admission readiness evaluator", () => {
     expect(req(result, "patient_privacy")).toMatchObject({ status: "blocked", blocking: true });
   });
 
+  it("F-238: an unreviewed intake detection is advisory — it never blocks activation", () => {
+    const result = evaluateAdmissionReadiness(
+      facts({
+        patientPrivacy: {
+          allowed: false,
+          reason: "PRIVACY_RESTRICTION",
+          restriction: "INTAKE_DETECTION_UNREVIEWED",
+          overrideAllowed: true,
+        },
+      }),
+    );
+    expect(result.canActivate).toBe(true);
+    expect(result.status).toBe("ready");
+    expect(result.blockingRemaining).toBe(0);
+    expect(req(result, "patient_privacy")).toEqual({
+      code: "patient_privacy",
+      label: "Patient privacy",
+      status: "action_required",
+      blocking: false,
+      message:
+        "An intake document is flagged for possibly specially protected records and hasn't been reviewed yet. This doesn't block admission; the records stay restricted until reviewed.",
+      action: "REVIEW_PRIVACY",
+      reasonCode: "INTAKE_DETECTION_UNREVIEWED",
+    });
+  });
+
+  it("F-238: a confirmed detection without consent, any other restriction, or no clearance still blocks", () => {
+    for (const patientPrivacy of [
+      { allowed: false, reason: "PRIVACY_RESTRICTION", restriction: "CONSENT_REQUIRED" },
+      { allowed: false, reason: "PRIVACY_RESTRICTION", restriction: "RESTRICTED" },
+      { allowed: false, reason: "PRIVACY_CLEARANCE_UNAVAILABLE" },
+      { allowed: false, reason: "PATIENT_NOT_FOUND" },
+    ] as const) {
+      const result = evaluateAdmissionReadiness(facts({ patientPrivacy }));
+      expect(result.canActivate).toBe(false);
+      expect(result.status).toBe("blocked");
+      expect(req(result, "patient_privacy")).toMatchObject({ status: "blocked", blocking: true });
+    }
+  });
+
+  it("names WHY privacy blocks (category-free reasonCode) so the UI can offer the right next step", () => {
+    const privacy = (p: AdmissionReadinessFacts["patientPrivacy"]) =>
+      req(evaluateAdmissionReadiness(facts({ patientPrivacy: p })), "patient_privacy");
+    expect(
+      privacy({
+        allowed: false,
+        reason: "PRIVACY_RESTRICTION",
+        restriction: "INTAKE_DETECTION_UNREVIEWED",
+      }),
+    ).toMatchObject({
+      status: "action_required",
+      blocking: false,
+      action: "REVIEW_PRIVACY",
+      reasonCode: "INTAKE_DETECTION_UNREVIEWED",
+    });
+    expect(
+      privacy({ allowed: false, reason: "PRIVACY_RESTRICTION", restriction: "CONSENT_REQUIRED" }),
+    ).toMatchObject({ status: "blocked", blocking: true, reasonCode: "CONSENT_REQUIRED" });
+    expect(privacy({ allowed: false, reason: "PRIVACY_RESTRICTION" })).toMatchObject({
+      reasonCode: "RESTRICTED",
+      message: "A patient restriction requires authorized review.",
+    });
+    expect(privacy({ allowed: false, reason: "PRIVACY_CLEARANCE_UNAVAILABLE" })).toMatchObject({
+      reasonCode: "PRIVACY_CLEARANCE_UNAVAILABLE",
+    });
+    expect(privacy({ allowed: false, reason: "PATIENT_NOT_FOUND" })).toMatchObject({
+      reasonCode: "PATIENT_NOT_FOUND",
+    });
+    // Never a flag category in what M6 hands the admission screen.
+    const all = JSON.stringify(
+      evaluateAdmissionReadiness(
+        facts({
+          patientPrivacy: {
+            allowed: false,
+            reason: "PRIVACY_RESTRICTION",
+            restriction: "INTAKE_DETECTION_UNREVIEWED",
+          },
+        }),
+      ),
+    ).toLowerCase();
+    expect(all).not.toMatch(/\bsud\b|substance|part 2/);
+    expect(privacy({ allowed: true })?.reasonCode).toBeUndefined();
+  });
+
   it("requires a valid Notice of Rights acknowledgment", () => {
     const result = evaluateAdmissionReadiness(
       facts({

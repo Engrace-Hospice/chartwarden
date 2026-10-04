@@ -22,6 +22,8 @@ export type PageOp =
       readonly size: number;
       readonly text: string;
       readonly color: Rgb;
+      /** Extra space between characters in points (PDF `Tc`) — absent = the font's own spacing. */
+      readonly charSpacing?: number;
     }
   | {
       readonly op: "rect";

@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 302 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 306 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 255 screen(s)
+- **web**: 259 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -46,6 +46,8 @@
 | web | 05-patient | `patient.census` | `/patients` | `patient.read` | ✅ |
 | web | 05-patient | `search.global` | `/search` | `patient.read` | ✅ |
 | web | 05-patient | `patient.chart` | `/patients/:id` | `patient.read` | ✅ |
+| web | 05-patient | `patient.privacy` | `/patients/:id/privacy` | `privacy.admin` | ✅ |
+| web | 05-patient | `privacy.restricted-patients` | `/compliance/privacy` | `privacy.admin` | ✅ |
 | web | 06-admission | `admission.referrals` | `/referrals` | `referral.read` | ✅ |
 | web | 06-admission | `admission.referral-new` | `/referrals/new` | `referral.create` | ✅ |
 | web | 06-admission | `admission.census` | `/admissions` | `admission.read` | ✅ |
@@ -195,6 +197,8 @@
 | web | 22-documents | `documents.explorer` | `/documents` | `documents.read` | ✅ |
 | web | 22-documents | `documents.patient-list` | `/patients/:patientId/documents` | `documents.read` | ✅ |
 | web | 22-documents | `documents.version-history` | `/documents/:documentId/versions` | `documents.read_history` | ✅ |
+| web | 22-documents | `intake.review-queue` | `/intake` | `intake.read` | ✅ |
+| web | 22-documents | `intake.review-workspace` | `/intake/:batchId/review` | `intake.review` | ✅ |
 | web | 22-documents | `documents.intake-batch` | `/intake/:batchId` | `intake.read` | ✅ |
 | web | 22-documents | `documents.template-library` | `/admin/forms/templates` | `documents.read_templates` | ✅ |
 | web | 23-billing-medicare | `billing.ar-dashboard` | `/billing` | `billing.claim.read_ar_dashboard` | ✅ |

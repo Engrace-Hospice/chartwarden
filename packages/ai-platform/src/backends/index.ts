@@ -8,3 +8,7 @@
 // HTTP clients live in this package too.
 export * from "./model-backend";
 export * from "./anthropic";
+// F-236 (ADR-0048) — the first two REAL transports behind the port: a local Ollama adapter and the
+// `@anthropic-ai/sdk` transport for the ZDR-gated Anthropic adapter.
+export * from "./ollama";
+export * from "./anthropic-sdk";

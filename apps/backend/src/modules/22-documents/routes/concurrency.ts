@@ -11,7 +11,7 @@
 //      caller carries the row `version` it read; a missing header is 428 PRECONDITION_REQUIRED, a malformed
 //      one is 400, and a stale value surfaces (service-side) as 412 VERSION_MISMATCH. Mirrors the M7/M8
 //      routes/concurrency.ts precedent.
-import { WardenXError } from "@wardenx/types";
+import { ForbiddenError, WardenXError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 /** A @wardenx/auth GuardHandler-shaped Fastify pre-handler. */
@@ -132,4 +132,33 @@ export function ifMatchVersionOf(request: FastifyRequest): number {
   const v = (request as WithIfMatch).ifMatchVersion;
   if (typeof v !== "number") throw new IfMatchRequiredError(); // defensive — guard ordering invariant
   return v;
+}
+
+// ── chart-writeback commit guards (§4.1 route 23; F-235) ─────────────────────────────────────────────────
+
+/** §4.1 route 23 — `Idempotency-Key` header required (400 when absent/oversized). The replay itself is
+ * collapsed service-side: a re-completed review returns `complete` without committing twice. */
+export function requireIdempotencyKey(): PreHandler {
+  return async (request) => {
+    const raw = request.headers["idempotency-key"];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof value !== "string" || value.length < 1 || value.length > 128) {
+      throw new WardenXError(
+        "IDEMPOTENCY_KEY_REQUIRED",
+        "an Idempotency-Key header is required",
+        400,
+      );
+    }
+  };
+}
+
+/** AI Governance §7.3.2 "never auto-commits": an `ai_*` principal can never attest a DocLens review into the
+ * chart (the M19 F-224 / M24 `rejectAiActor` shape over the server-assembled `actorKind`). */
+export function rejectAiActor(): PreHandler {
+  return async (request) => {
+    const kind = request.context?.attributes?.actorKind;
+    if (typeof kind === "string" && kind.startsWith("ai_")) {
+      throw new ForbiddenError("AI principals cannot commit a WardenLens extraction review");
+    }
+  };
 }

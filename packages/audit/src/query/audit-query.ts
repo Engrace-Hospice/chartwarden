@@ -43,6 +43,9 @@ export interface AuditEventFilter {
   /** Matches events that TOUCH this patient — `context.patientId` or a `patient`-kind row. */
   readonly patientId?: string;
   readonly resourceKind?: string;
+  /** Exact `resource_id` (e.g. a patient id for the one-row-per-patient privacy snapshot trail). Not on
+   *  the public search route's query schema — an in-process filter for a module's own history read. */
+  readonly resourceId?: string;
   readonly eventType?: string;
   readonly outcome?: string;
   readonly severity?: string;
@@ -287,6 +290,7 @@ function toDisclosureEntry(record: AuditEventRecord, scope: AccountingScope): Di
 function matchesFilter(record: AuditEventRecord, filter: AuditEventFilter): boolean {
   if (filter.actorUserId && record.actorUserId !== filter.actorUserId) return false;
   if (filter.resourceKind && record.resourceKind !== filter.resourceKind) return false;
+  if (filter.resourceId && record.resourceId !== filter.resourceId) return false;
   if (filter.eventType && record.eventType !== filter.eventType) return false;
   if (filter.outcome && record.outcome !== filter.outcome) return false;
   if (filter.severity && record.severity !== filter.severity) return false;

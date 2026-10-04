@@ -104,6 +104,9 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173
+      # F-236 (ADR-0048) — DocLens stage 2. A worker-specific dev placeholder secret, not INTERNAL_SERVICE_TOKEN.
+      DOCLING_WORKER_URL: http://docling-worker:8000
+      DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
     ports:
       - "3000:3000"
     depends_on:
@@ -139,6 +142,8 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173
+      DOCLING_WORKER_URL: http://docling-worker:8000
+      DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
     ports:
       - "3001:3001"
     depends_on:
@@ -154,6 +159,22 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  # F-236 (ADR-0048) — DocLens stage 2: OCR + layout with page coordinates. CPU-only; the models are baked
+  # into the image (no runtime download). Only the backend calls it, with DOCLING_WORKER_TOKEN, handing it a
+  # short-lived presigned MinIO URL — it holds no object-store credentials. Not published on the host.
+  docling-worker:
+    build:
+      context: ./services/docling-worker
+    environment:
+      DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
+      LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 volumes:
   wardenx-compose-pgdata:

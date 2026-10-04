@@ -7,8 +7,8 @@ import {
 } from "@wardenx/ui";
 // apps/web/src/modules/22-documents — INTAKE.BatchDetail (M22 §5.1, Track B / ADR-0030).
 // Spec: §5.1 "INTAKE.BatchDetail" — the per-batch DocLens view: batch metadata + per-page extraction-job
-// pipeline status. The original-thumbnails strip, the DocLens side-by-side review (§5.1 INTAKE.ReviewSideBySide),
-// and the fax splitter are reviewer write surfaces that fill in as those paths harden (and the DocLens
+// pipeline status. The DocLens side-by-side review (§5.1 INTAKE.ReviewSideBySide, F-237) is its own screen,
+// linked from the header ("Review extracted fields"); the fax splitter is still unbuilt (and the DocLens
 // classifier/extractor are M32-gated — behind the `documents.doclens` flag the jobs queue with
 // `awaiting_capability`, which renders as an in-progress pill, never a hard error). Built to the Lantern look:
 // Detail Page pattern, §6.2 Lantern Card, §6.6 status pills (per-job pipeline state), §3.1 mono identifiers,
@@ -16,7 +16,7 @@ import {
 // typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Card, CardTitle, Eyebrow, Mono, StatusPill, lifecycleTone, ts } from "./lantern";
 
 interface BatchHeader {
@@ -72,7 +72,24 @@ export function IntakeBatchDetail(): JSX.Element {
 
   return (
     <DetailPageLayout
-      header={<PageHeader title="Intake batch" breadcrumb={<>Intake / Batch detail</>} />}
+      header={
+        <PageHeader
+          title="Intake batch"
+          breadcrumb={
+            <>
+              <Link to="/referrals">Referrals</Link> / <Link to="/intake">Intake review</Link> /
+              Batch detail
+            </>
+          }
+          actions={
+            batchId ? (
+              <Link to={`/intake/${batchId}/review`} className="wx-btn-primary">
+                Review extracted fields
+              </Link>
+            ) : undefined
+          }
+        />
+      }
       aside={
         batch ? (
           <aside style={{ width: "20rem", flexShrink: 0, padding: "1.5rem" }}>
@@ -125,7 +142,7 @@ export function IntakeBatchDetail(): JSX.Element {
         {jobs.length === 0 ? (
           <EmptyState
             title="No extraction jobs"
-            description="No extraction jobs for this batch yet. DocLens extraction runs once classification is confirmed."
+            description="No extraction jobs for this batch yet. WardenLens extraction runs once classification is confirmed."
           />
         ) : (
           <table className="tabular-nums">

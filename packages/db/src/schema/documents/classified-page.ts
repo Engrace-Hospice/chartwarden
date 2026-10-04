@@ -6,9 +6,11 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   decimal,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -37,6 +39,20 @@ export const classifiedPages = pgTable(
     // per-page processing-failure class, e.g. 'docling_parse_failed' (W1 AC); null on success.
     errorClass: text("error_class"),
     classifiedAt: timestamp("classified_at", { withTimezone: true }).notNull().defaultNow(),
+    // F-238 (0309) — the fax splitter's document segment. `document_title` is audit-denylisted (a header
+    // can name a Part 2 program); `document_date` is the date codes written in this document are judged by.
+    documentTitle: text("document_title"),
+    documentDate: date("document_date"),
+    duplicateOfPage: integer("duplicate_of_page"),
+    segmentBoundary: text("segment_boundary"),
+    // F-238 (0312) — does this document belong to the patient the fax is filed under (two identifiers)?
+    // `identity_disagreeing` lists FIELD names only; the resolution reason is audit-denylisted.
+    identityStatus: text("identity_status"),
+    identityDisagreeing: jsonb("identity_disagreeing").$type<string[]>(),
+    identityResolution: text("identity_resolution"),
+    identityResolvedByMembershipId: uuid("identity_resolved_by_membership_id"),
+    identityResolvedAt: timestamp("identity_resolved_at", { withTimezone: true }),
+    identityResolutionReason: text("identity_resolution_reason"),
   },
   (t) => ({
     byBatch: index("classified_page_batch_idx").on(t.intakeUploadBatchId, t.pageRangeStart),

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { auditPlatformEvent } from "@wardenx/audit";
+import { auditPlatformEvent, createDbAuditQuery } from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -175,9 +175,13 @@ import {
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
+  M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
   buildM5AdmissionSitingConsumer,
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
+  buildM5ExtractionAllergyConsumer,
+  buildM5ExtractionWritebackConsumer,
+  buildM5IntakeSudPrivacyConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
@@ -194,8 +198,11 @@ import {
   membershipUserIdForOrg,
   mountPatientRoutes,
   patientDisplayLabelsForOrg,
+  rebuildPrivacySnapshotsForOrg,
   registerPatientErasers,
   registerPatientSeams,
+  registerSnapshotRebuildWorker,
+  scheduleSnapshotRebuild,
 } from "./modules/05-patient/index";
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 // F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
@@ -239,6 +246,7 @@ import {
   activeProblemIdsForOrg,
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
+  buildM7ExtractionDiagnosisWritebackConsumer,
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
   claimDiagnosesForOrg,
@@ -352,6 +360,7 @@ import {
   buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
   buildM12DraftOrderRequestedConsumer,
+  buildM12ExtractionMedicationHistoryConsumer,
   buildM12IdgDecisionConsumer,
   buildM12PatientSyncAddressChangedConsumer,
   buildM12PatientSyncCreatedConsumer,
@@ -572,29 +581,49 @@ import {
   registerSuppliesSeams,
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
+import { buildIntakeSudBatchReader } from "./modules/22-documents/extraction/privacy-sud-batches";
 import {
+  type DocLensClassifierPort,
+  type DocLensExtractorPort,
+  type DocLensSudDetectorPort,
+  type DocLensVisionVerifierPort,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
+  M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
   buildM22DocumentRequestConsumer,
+  buildM22ExtractionBackrefConsumer,
+  buildM22ExtractionClinicalBackrefConsumer,
+  buildM22ExtractionDiagnosisBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
+  createCandidateValueCipher,
+  createCodingTerminology,
+  createDocLensIntakeEnqueue,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
   createDrizzlePortalAccessLog,
+  createHttpDoclingClient,
+  createIdentityTargetPorts,
   createRefusingObjectStore,
   createS3ObjectStore,
   createS3TenantStorageProvisioner,
   createSignedUrlService,
   createSudConsentEvaluatorPortalConsentPort,
+  createUnboundDoclingClient,
   deriveTenantBucket,
+  doclingConfigFromEnv,
+  expireRecordsRequestsForOrg,
   getDocumentRenderer,
   mountDocumentRoutes,
+  registerDocLensIntakeWorker,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
   registerDocumentRoutes,
   registerDocumentSeams,
+  registerRecordsRequestExpiryWorker,
   s3ObjectStoreConfigFromEnv,
+  scheduleRecordsRequestExpiry,
 } from "./modules/22-documents/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -853,10 +882,14 @@ import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/
 import {
   M32_OUTBOX_EVENTS,
   M32_PLATFORM_JOB_ID,
+  aiBackendConfigFromEnv,
+  buildConfiguredModelBackends,
   buildDrizzleAiPlatformAbacResolver,
   buildDrizzleM32ReadService,
+  buildLiveAiInvocationPipeline,
   createAiPromptRegistry,
   createDenyingAiOptInEvidenceResolver,
+  createDocLensOutputProjector,
   createDrizzleAiCapabilityRegistryStore,
   createDrizzleAiEvaluationRunStore,
   createDrizzleAiHallucinationReportStore,
@@ -864,14 +897,16 @@ import {
   createDrizzleAiPromptTemplateStore,
   createDrizzleAiProvenanceEraseStore,
   createDrizzleAiRoutingOverrideStore,
+  createDrizzleAiSeamActorResolver,
   createDrizzleAiTenantConsentStore,
+  createFilesystemAiPromptArtifactReader,
   createUnconfiguredAiTokenBudgetResolver,
-  createUnresolvableAiPromptArtifactReader,
   denyStubAiPlatformAbacResolver,
   mountM32Routes,
   registerAiPlatformAbacPredicates,
   registerAiPlatformSeams,
   registerAiProvenanceErasers,
+  startAiBackendHealthSweep,
   wireM32Tenancy,
 } from "./modules/32-ai-platform/index";
 import {
@@ -1011,6 +1046,7 @@ import {
   scheduleM39Jobs,
   wireM39Tenancy,
 } from "./modules/39-consent/index";
+import { buildPart2ConsentStateReader } from "./modules/39-consent/part2-consent-state-reader";
 import {
   M40_OUTBOX_EVENTS,
   buildM29NppesPlatformConsumers,
@@ -1652,6 +1688,8 @@ export function wireModuleSeams(
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
+  registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
+  registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
   wireM19Tenancy(); // F-155 (#248) — allowlist the cron job id so the on_call_roster_sync_queue drain + catch-up-seed workers may enter withPlatformContext
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
@@ -1690,18 +1728,52 @@ export function wireModuleSeams(
   // named `prompt_payload_cipher`; a deny-stub that answers `{ available: false }` costs M8 nothing,
   // because M8's Layer-1 path is what runs today either way.
   wireM32Tenancy();
+  // F-236 (ADR-0048) — the pipeline is now BUILT when this deployment configures at least one model
+  // backend (OLLAMA_* / ANTHROPIC_*, see 32-ai-platform/backends/config.ts) and has both credentials. The
+  // blocker named above — the per-tenant DEK cipher — exists (M34's key provider, resolved lazily because
+  // M34 registers it further down). Building it makes a governed call POSSIBLE, not active: `ai.full`
+  // stays OFF for every tenant, the DocLens capabilities stay at DESIGN_REVIEW, and every other gate still
+  // runs. No backend configured ⇒ exactly the previous posture (registry only, inference deny-stubs). A
+  // MALFORMED AI configuration throws here — a deployment that asked for a backend and silently got none
+  // would read as "AI is off" when it is "AI is misconfigured".
+  const m32Backends = buildConfiguredModelBackends(aiBackendConfigFromEnv(process.env));
+  const m32PromptRegistry = deps.db
+    ? createAiPromptRegistry({
+        store: createDrizzleAiPromptTemplateStore({
+          db: deps.db,
+          platformDb: deps.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M32_PLATFORM_JOB_ID,
+        }),
+        // F-236 — templates are reviewed files in the repo (packages/ai-platform/prompts), pinned by hash
+        // on their `ai_prompt_template` row; the registry refuses a body whose hash drifted.
+        artifacts: createFilesystemAiPromptArtifactReader(
+          process.env.AI_PROMPT_ROOT ?? process.cwd(),
+        ),
+      })
+    : undefined;
   registerAiPlatformSeams(
     deps.db
       ? {
-          promptRegistry: createAiPromptRegistry({
-            store: createDrizzleAiPromptTemplateStore({
-              db: deps.db,
-              platformDb: deps.db,
-              auditBypass: m34PlatformBypassAuditor,
-              jobId: M32_PLATFORM_JOB_ID,
-            }),
-            artifacts: createUnresolvableAiPromptArtifactReader(),
-          }),
+          ...(m32PromptRegistry ? { promptRegistry: m32PromptRegistry } : {}),
+          ...(deps.platformDb && m32Backends.length > 0
+            ? {
+                pipeline: buildLiveAiInvocationPipeline({
+                  db: deps.db,
+                  platformDb: deps.platformDb,
+                  auditBypass: m34PlatformBypassAuditor,
+                  keys: {
+                    dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                    dekForOrgVersion: (orgId, version) =>
+                      getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                  },
+                  flags: createDrizzleFeatureFlagReader(deps.db),
+                  backends: m32Backends,
+                }),
+                actors: createDrizzleAiSeamActorResolver(deps.db),
+                projector: createDocLensOutputProjector(),
+              }
+            : {}),
         }
       : {},
   );
@@ -1718,15 +1790,9 @@ export function wireModuleSeams(
     resolver: deps.db
       ? buildDrizzleAiPlatformAbacResolver({
           db: deps.db,
-          promptRegistry: createAiPromptRegistry({
-            store: createDrizzleAiPromptTemplateStore({
-              db: deps.db,
-              platformDb: deps.db,
-              auditBypass: m34PlatformBypassAuditor,
-              jobId: M32_PLATFORM_JOB_ID,
-            }),
-            artifacts: createUnresolvableAiPromptArtifactReader(),
-          }),
+          // F-236 — the SAME registry instance the seams publish (the comment above's own requirement;
+          // it used to build a second one).
+          promptRegistry: m32PromptRegistry as NonNullable<typeof m32PromptRegistry>,
         })
       : denyStubAiPlatformAbacResolver,
   });
@@ -3145,7 +3211,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // had no UPDATE anywhere in the codebase before this.
           mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
-          mountPatientRoutes(app, dbHandle.db, m5OutboxPublisher); // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248)
+          // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248) + the Privacy Officer surface
+          // (§4.2 resync, §5.1 /patients/:id/privacy). The officer's cross-module reads are ports: M39 answers
+          // the Part 2 consent state, M22 the DocLens SUD batches, M4's audit query the snapshot's trail.
+          mountPatientRoutes(app, dbHandle.db, m5OutboxPublisher, {
+            consent: buildPart2ConsentStateReader(dbHandle.db),
+            intake: buildIntakeSudBatchReader(dbHandle.db),
+            history: (() => {
+              const auditQuery = createDbAuditQuery(dbHandle.db);
+              return {
+                async snapshotHistory(organizationId: string, patientId: string) {
+                  const page = await auditQuery.searchEvents(organizationId, {
+                    resourceKind: "patient_privacy_flag_snapshot",
+                    resourceId: patientId,
+                    limit: 100,
+                  });
+                  return page.items.map((e) => ({
+                    at: e.createdAt,
+                    actorUserId: e.actorUserId,
+                    eventType: e.eventType,
+                    before: e.before,
+                    after: e.after,
+                  }));
+                },
+              };
+            })(),
+          });
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
           registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
           mountAdmissionRoutes(
@@ -3246,7 +3337,21 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
-          mountDocumentRoutes(app, dbHandle.db, featureFlagReader); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake); the reader is the `documents.doclens` DocLens gate (F-091)
+          // M22 — reads + the write lifecycle over Drizzle+RLS; the reader is the `documents.doclens` DocLens gate
+          // (F-091). F-235 (#248): review completion now PUBLISHES `m22.extraction.commit_requested` (the
+          // DocLens → M5 demographics writeback), so the mount takes the m22 publisher + the tenant-DEK
+          // cipher that decrypts `extraction_candidate.value_cipher` server-side at commit.
+          mountDocumentRoutes(
+            app,
+            dbHandle.db,
+            featureFlagReader,
+            {
+              outbox: m22OutboxPublisher,
+              cipher: createCandidateValueCipher(getTenantKeyProvider()),
+            },
+            // F-236 — `POST /intake/uploads/:id/extraction/run` enqueues; the worker process runs it.
+            queueConnection ? createDocLensIntakeEnqueue(queueConnection) : undefined,
+          );
           mountTerminologyRoutes(app, dbHandle.db, featureFlagReader); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db, {
@@ -3846,7 +3951,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             auditBypass: m34PlatformBypassAuditor,
             jobId: M32_PLATFORM_JOB_ID,
           });
-          const m32PromptArtifacts = createUnresolvableAiPromptArtifactReader();
+          // F-236 — R30 activation hashes the reviewed file it activates; an unresolvable reader made
+          // every activation impossible. Same root as the seam-side registry (wireModuleSeams).
+          const m32PromptArtifacts = createFilesystemAiPromptArtifactReader(
+            process.env.AI_PROMPT_ROOT ?? process.cwd(),
+          );
           const m32PromptRegistry = createAiPromptRegistry({
             store: m32PromptStore,
             artifacts: m32PromptArtifacts,
@@ -5370,6 +5479,68 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M11 stuck-transmission schedule registration failed");
     }
+    // F-238 — the hourly records-request expiry sweep: an outbound records request nobody answered by its
+    // `expires_on` day moves `requested` → `expired`. Same per-org fan-out as the M11 sweeps above; each
+    // org's write is its own org-explicit `withOrgContext` transaction (a cron tick is not a request).
+    const m22RecordsRequestExpiryWorker = registerRecordsRequestExpiryWorker({
+      connection: queueConnection,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
+        reason: "F-238 records-request expiry hourly sweep fan-out",
+      }),
+      expireForOrg: (organizationId) => expireRecordsRequestsForOrg(dbHandle.db, organizationId),
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    attachDlqAlertsToAll([m22RecordsRequestExpiryWorker], "m22");
+    app.addHook("onClose", async () => {
+      await m22RecordsRequestExpiryWorker.close();
+    });
+    try {
+      const m22RecordsRequestExpiryQueue = await scheduleRecordsRequestExpiry(queueConnection);
+      app.addHook("onClose", async () => {
+        await m22RecordsRequestExpiryQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M22 records-request expiry schedule registration failed");
+    }
+    // M5 §4.5 `patient.snapshot_rebuild` — the quarterly full privacy-snapshot rebuild (D3 "quarterly full
+    // rebuild job reconciles drift"). Same per-org fan-out as the sweeps above; per org it pages the patients
+    // and re-derives each one in its own org-explicit `withOrgContext` transaction as the system (the officer
+    // resync's own derivation: M39 Part 2 state decides `sud`, a DocLens flag is never lifted while M39 is
+    // silent), writing only drifted rows and emitting `m5.patient.privacy_flag_changed` only on a real change.
+    const m5SnapshotRebuildPorts = {
+      consent: buildPart2ConsentStateReader(dbHandle.db),
+      intake: buildIntakeSudBatchReader(dbHandle.db),
+    };
+    const m5SnapshotRebuildWorker = registerSnapshotRebuildWorker({
+      connection: queueConnection,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
+        reason: "M5 §4.5 quarterly privacy-snapshot rebuild fan-out",
+      }),
+      rebuildForOrg: (organizationId) =>
+        rebuildPrivacySnapshotsForOrg(dbHandle.db, organizationId, {
+          outbox: m5OutboxPublisher,
+          ports: m5SnapshotRebuildPorts,
+        }),
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    attachDlqAlertsToAll([m5SnapshotRebuildWorker], "m5");
+    app.addHook("onClose", async () => {
+      await m5SnapshotRebuildWorker.close();
+    });
+    try {
+      const m5SnapshotRebuildQueue = await scheduleSnapshotRebuild(queueConnection);
+      app.addHook("onClose", async () => {
+        await m5SnapshotRebuildQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M5 privacy-snapshot rebuild schedule registration failed");
+    }
     // M12 §2.6 D4 / §2.8 D10 — the `dosespot_sync_queue` drain (patient-sync + MedHx-fetch). Scheduled
     // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real
     // outbound vendor I/O, so it runs as its own scheduled worker (F-164, #248).
@@ -5566,6 +5737,69 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // TASK-040A — gated on `role !== "api"` for the same reason as the worker-runner section above: an
   // API replica polling the SAME outbox rows as every other replica is wasted work, not a correctness
   // bug (FOR UPDATE SKIP LOCKED makes concurrent pollers safe), but it belongs on the worker role.
+  // F-236 (ADR-0048) — the DocLens intake worker (stages 2–4: Docling → classify → extract → ground →
+  // DEK-encrypted candidates). Worker role only. Every AI call inside it goes through the governed M32
+  // seams, so with `ai.full` off (every tenant) a run classifies nothing and records `awaiting_capability`
+  // — it never fails open. No docling-worker configured ⇒ the unbound client, whose typed 503 makes the
+  // job retry rather than pretend the document had no text.
+  if (role !== "api" && dbHandle && queueConnection) {
+    const intakeS3Config = s3ObjectStoreConfigFromEnv(process.env);
+    const intakeObjects = intakeS3Config ? createS3ObjectStore(intakeS3Config) : null;
+    const doclingConfig = doclingConfigFromEnv(process.env);
+    const intakeWorker = registerDocLensIntakeWorker(
+      queueConnection,
+      {
+        db: dbHandle.db,
+        docling: doclingConfig
+          ? createHttpDoclingClient(doclingConfig)
+          : createUnboundDoclingClient(),
+        presignSource: async ({ organizationId, bucket, objectKey }) => {
+          if (!intakeObjects) {
+            throw new DegradedError(
+              "document-storage",
+              "no object store is bound (MINIO_* is not configured)",
+            );
+          }
+          const { url } = await intakeObjects.presign({
+            organizationId,
+            descriptor: { bucket, objectKey, ttlSeconds: 300, accessKind: "content_download" },
+          });
+          return url;
+        },
+        cipher: createCandidateValueCipher(getTenantKeyProvider()),
+        classifier: () => getSeam("DocLensClassifier") as DocLensClassifierPort,
+        extractor: () => getSeam("DocLensExtractor") as DocLensExtractorPort,
+        // F-237 — stage 5 and the model pass of SUD detection go through the same governed M32 seams
+        // (each refuses on its own gates; the job degrades to "unverified" / "rules only").
+        visionVerifier: () => getSeam("DocLensVisionVerifier") as DocLensVisionVerifierPort,
+        sudDetector: () => getSeam("DocLensSudDetector") as DocLensSudDetectorPort,
+        outbox: m22OutboxPublisher,
+        // F-238 — ICD-10-CM (M38) for the code scanner + coding checks; skipped, and said so, when no
+        // release is loaded (`bun run db:load:icd10cm`).
+        codingTerminology: () => createCodingTerminology(),
+        // F-238 — each document's name/DOB checked against the batch's patient (M5) or referral (M6).
+        identityTargets: createIdentityTargetPorts(),
+      },
+      (msg, detail) => app.log.info(detail, msg),
+    );
+    app.addHook("onClose", async () => {
+      await intakeWorker.close();
+    });
+  }
+  // F-236 (ADR-0048) — the M32 backend health sweep: the only writer of `ai_model_backend.last_health_status`
+  // (the routing gate never routes `unknown`). Worker role only — one writer — and only when this
+  // deployment configures a backend and has the platform credential (its two-column grant).
+  if (role !== "api" && dbHandle && platformDbHandle) {
+    const sweepBackends = buildConfiguredModelBackends(aiBackendConfigFromEnv(process.env));
+    if (sweepBackends.length > 0) {
+      const stopSweep = startAiBackendHealthSweep({
+        backends: sweepBackends,
+        platformDb: platformDbHandle.db,
+        log: (msg, detail) => app.log.info(detail ?? {}, msg),
+      });
+      app.addHook("onClose", async () => stopSweep());
+    }
+  }
   if (role !== "api" && dbHandle && process.env.OUTBOX_DISPATCHER_DISABLED !== "1") {
     if (platformDbHandle) {
       registerPlatformJob(M1_OUTBOX_DISPATCHER_JOB_ID);
@@ -5952,6 +6186,38 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // DeathDischargeReader seam and flips patient.status='deceased' + emits
           // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
           buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // F-235 (#248) — the DocLens chart writeback, both halves. M5 applies an approved review's
+          // low-risk contact demographics to the batch's resolved patient and replies; M22 stamps
+          // `extraction_provenance` from the reply and emits the terminal `m22.extraction.commit_completed`.
+          buildM5ExtractionWritebackConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          buildM22ExtractionBackrefConsumer({ db: dbHandle.db, outbox: m22OutboxPublisher }),
+          // F-238 dx-writeback — the DIAGNOSIS half. M7 lands an approved review's diagnoses as PENDING
+          // problem proposals on the patient's care plan (never `problem` rows — a clinician must accept)
+          // and replies; M22 stamps `extraction_provenance` with the proposal ids.
+          buildM7ExtractionDiagnosisWritebackConsumer({
+            db: dbHandle.db,
+            outbox: m7OutboxPublisher,
+          }),
+          buildM22ExtractionDiagnosisBackrefConsumer({
+            db: dbHandle.db,
+            outbox: m22OutboxPublisher,
+          }),
+          // F-238 — the DocLens clinical writeback, all three legs. M12 records approved medication lines as
+          // reconciliation-only `medication_history_record` rows (never a medication_order — D10/D12); M5
+          // records approved allergy lines as UNVERIFIED `patient_allergy` rows; M22 stamps each line's
+          // provenance with the row id and emits `m22.extraction.commit_completed`.
+          buildM12ExtractionMedicationHistoryConsumer({
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+          }),
+          buildM5ExtractionAllergyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          buildM22ExtractionClinicalBackrefConsumer({
+            db: dbHandle.db,
+            outbox: m22OutboxPublisher,
+          }),
+          // F-237 — M22 §7.4 W4: DocLens SUD detection → the patient's interim `sud` privacy flag, and the
+          // reviewer's confirm / false-positive round-trip (a rejection retires only a DocLens-set flag).
+          buildM5IntakeSudPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
           // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
           buildM5AdmissionSitingConsumer({ db: dbHandle.db }),

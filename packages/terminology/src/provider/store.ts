@@ -16,7 +16,11 @@
 // deliberately simple.
 
 import type { CodeSystemId, ExpansionMember, ResolvedConcept } from "../interfaces/kinds";
-import type { DeprecationMappingResponse, SearchOptions } from "../interfaces/provider";
+import type {
+  CodeSystemVersionWindow,
+  DeprecationMappingResponse,
+  SearchOptions,
+} from "../interfaces/provider";
 import { type ConceptCandidate, includesAsOf } from "../resolution";
 
 /** Identity for a tenant value-set extension write (the only mutating path, §2.4.3). */
@@ -96,6 +100,9 @@ export interface TerminologyStore {
 
   /** Canonical url for a value set (FHIR ValueSet metadata). */
   valueSetMeta(valueSetId: string): Promise<{ url: string }>;
+
+  /** F-238 — loaded releases of a system, oldest first. Optional (the in-memory slice has none). */
+  listVersions?(system: CodeSystemId): Promise<readonly CodeSystemVersionWindow[]>;
 }
 
 /** Seed shape for {@link createInMemoryTerminologyStore} — all fields optional. */

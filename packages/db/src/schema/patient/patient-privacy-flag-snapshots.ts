@@ -26,6 +26,10 @@ export const patientPrivacyFlagSnapshots = pgTable(
     capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
     sourceConsentVersion: uuid("source_consent_version"), // M39 ref; nullable until M39 ships
     invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    // F-237 (0308) — `m22_intake_unconfirmed` | `m22_intake_confirmed` when the `sud` flag was put here by
+    // a DocLens detection (M22 §7.4 W4); NULL when it came from M39 consent state. A false-positive
+    // rejection retires the flag only when DocLens put it there.
+    sudFlagOrigin: text("sud_flag_origin"),
   },
   (t) => ({
     orgIdx: index("patient_privacy_flag_snapshot_org_idx").on(t.organizationId),
