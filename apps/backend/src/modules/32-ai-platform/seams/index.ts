@@ -112,6 +112,9 @@ export function registerAiPlatformSeams(deps: AiPlatformSeamDeps = {}): void {
 
   const seamDeps: AiPublishedSeamDeps = {
     pipeline,
+    // F-236 — with a registry bound, every seam sends its capability's active, hash-pinned template as
+    // the system prompt and refuses without one (published.ts `AiSeamPromptSource`).
+    ...(deps.promptRegistry === undefined ? {} : { prompts: deps.promptRegistry }),
     ...(deps.actors === undefined ? {} : { actors: deps.actors }),
     ...(deps.projector === undefined ? {} : { projector: deps.projector }),
     ...(deps.now === undefined ? {} : { now: deps.now }),

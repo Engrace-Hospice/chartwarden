@@ -229,6 +229,13 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO wardenx_platform;`);
       }
+      // F-236 — the M32 backend health sweep (worker) is the only writer of these two columns. A COLUMN
+      // grant, not table UPDATE: the platform role may record a probe result, never re-pin a model, flip
+      // `zdr_status`, or reactivate a backend (those stay `wardenx_admin`, db:sync:ai-backends).
+      await run('GRANT SELECT ON "ai_model_backend" TO wardenx_platform;');
+      await run(
+        'GRANT UPDATE (last_health_status, last_health_check_at) ON "ai_model_backend" TO wardenx_platform;',
+      );
       for (const t of PLATFORM_WRITE_TABLES) {
         await run(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO wardenx_platform;`);
       }

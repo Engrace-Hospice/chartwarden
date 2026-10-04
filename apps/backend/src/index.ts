@@ -856,10 +856,14 @@ import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/
 import {
   M32_OUTBOX_EVENTS,
   M32_PLATFORM_JOB_ID,
+  aiBackendConfigFromEnv,
+  buildConfiguredModelBackends,
   buildDrizzleAiPlatformAbacResolver,
   buildDrizzleM32ReadService,
+  buildLiveAiInvocationPipeline,
   createAiPromptRegistry,
   createDenyingAiOptInEvidenceResolver,
+  createDocLensOutputProjector,
   createDrizzleAiCapabilityRegistryStore,
   createDrizzleAiEvaluationRunStore,
   createDrizzleAiHallucinationReportStore,
@@ -867,14 +871,16 @@ import {
   createDrizzleAiPromptTemplateStore,
   createDrizzleAiProvenanceEraseStore,
   createDrizzleAiRoutingOverrideStore,
+  createDrizzleAiSeamActorResolver,
   createDrizzleAiTenantConsentStore,
+  createFilesystemAiPromptArtifactReader,
   createUnconfiguredAiTokenBudgetResolver,
-  createUnresolvableAiPromptArtifactReader,
   denyStubAiPlatformAbacResolver,
   mountM32Routes,
   registerAiPlatformAbacPredicates,
   registerAiPlatformSeams,
   registerAiProvenanceErasers,
+  startAiBackendHealthSweep,
   wireM32Tenancy,
 } from "./modules/32-ai-platform/index";
 import {
@@ -1693,18 +1699,52 @@ export function wireModuleSeams(
   // named `prompt_payload_cipher`; a deny-stub that answers `{ available: false }` costs M8 nothing,
   // because M8's Layer-1 path is what runs today either way.
   wireM32Tenancy();
+  // F-236 (ADR-0048) — the pipeline is now BUILT when this deployment configures at least one model
+  // backend (OLLAMA_* / ANTHROPIC_*, see 32-ai-platform/backends/config.ts) and has both credentials. The
+  // blocker named above — the per-tenant DEK cipher — exists (M34's key provider, resolved lazily because
+  // M34 registers it further down). Building it makes a governed call POSSIBLE, not active: `ai.full`
+  // stays OFF for every tenant, the DocLens capabilities stay at DESIGN_REVIEW, and every other gate still
+  // runs. No backend configured ⇒ exactly the previous posture (registry only, inference deny-stubs). A
+  // MALFORMED AI configuration throws here — a deployment that asked for a backend and silently got none
+  // would read as "AI is off" when it is "AI is misconfigured".
+  const m32Backends = buildConfiguredModelBackends(aiBackendConfigFromEnv(process.env));
+  const m32PromptRegistry = deps.db
+    ? createAiPromptRegistry({
+        store: createDrizzleAiPromptTemplateStore({
+          db: deps.db,
+          platformDb: deps.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M32_PLATFORM_JOB_ID,
+        }),
+        // F-236 — templates are reviewed files in the repo (packages/ai-platform/prompts), pinned by hash
+        // on their `ai_prompt_template` row; the registry refuses a body whose hash drifted.
+        artifacts: createFilesystemAiPromptArtifactReader(
+          process.env.AI_PROMPT_ROOT ?? process.cwd(),
+        ),
+      })
+    : undefined;
   registerAiPlatformSeams(
     deps.db
       ? {
-          promptRegistry: createAiPromptRegistry({
-            store: createDrizzleAiPromptTemplateStore({
-              db: deps.db,
-              platformDb: deps.db,
-              auditBypass: m34PlatformBypassAuditor,
-              jobId: M32_PLATFORM_JOB_ID,
-            }),
-            artifacts: createUnresolvableAiPromptArtifactReader(),
-          }),
+          ...(m32PromptRegistry ? { promptRegistry: m32PromptRegistry } : {}),
+          ...(deps.platformDb && m32Backends.length > 0
+            ? {
+                pipeline: buildLiveAiInvocationPipeline({
+                  db: deps.db,
+                  platformDb: deps.platformDb,
+                  auditBypass: m34PlatformBypassAuditor,
+                  keys: {
+                    dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                    dekForOrgVersion: (orgId, version) =>
+                      getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                  },
+                  flags: createDrizzleFeatureFlagReader(deps.db),
+                  backends: m32Backends,
+                }),
+                actors: createDrizzleAiSeamActorResolver(deps.db),
+                projector: createDocLensOutputProjector(),
+              }
+            : {}),
         }
       : {},
   );
@@ -1721,15 +1761,9 @@ export function wireModuleSeams(
     resolver: deps.db
       ? buildDrizzleAiPlatformAbacResolver({
           db: deps.db,
-          promptRegistry: createAiPromptRegistry({
-            store: createDrizzleAiPromptTemplateStore({
-              db: deps.db,
-              platformDb: deps.db,
-              auditBypass: m34PlatformBypassAuditor,
-              jobId: M32_PLATFORM_JOB_ID,
-            }),
-            artifacts: createUnresolvableAiPromptArtifactReader(),
-          }),
+          // F-236 — the SAME registry instance the seams publish (the comment above's own requirement;
+          // it used to build a second one).
+          promptRegistry: m32PromptRegistry as NonNullable<typeof m32PromptRegistry>,
         })
       : denyStubAiPlatformAbacResolver,
   });
@@ -3856,7 +3890,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             auditBypass: m34PlatformBypassAuditor,
             jobId: M32_PLATFORM_JOB_ID,
           });
-          const m32PromptArtifacts = createUnresolvableAiPromptArtifactReader();
+          // F-236 — R30 activation hashes the reviewed file it activates; an unresolvable reader made
+          // every activation impossible. Same root as the seam-side registry (wireModuleSeams).
+          const m32PromptArtifacts = createFilesystemAiPromptArtifactReader(
+            process.env.AI_PROMPT_ROOT ?? process.cwd(),
+          );
           const m32PromptRegistry = createAiPromptRegistry({
             store: m32PromptStore,
             artifacts: m32PromptArtifacts,
@@ -5576,6 +5614,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // TASK-040A — gated on `role !== "api"` for the same reason as the worker-runner section above: an
   // API replica polling the SAME outbox rows as every other replica is wasted work, not a correctness
   // bug (FOR UPDATE SKIP LOCKED makes concurrent pollers safe), but it belongs on the worker role.
+  // F-236 (ADR-0048) — the M32 backend health sweep: the only writer of `ai_model_backend.last_health_status`
+  // (the routing gate never routes `unknown`). Worker role only — one writer — and only when this
+  // deployment configures a backend and has the platform credential (its two-column grant).
+  if (role !== "api" && dbHandle && platformDbHandle) {
+    const sweepBackends = buildConfiguredModelBackends(aiBackendConfigFromEnv(process.env));
+    if (sweepBackends.length > 0) {
+      const stopSweep = startAiBackendHealthSweep({
+        backends: sweepBackends,
+        platformDb: platformDbHandle.db,
+        log: (msg, detail) => app.log.info(detail ?? {}, msg),
+      });
+      app.addHook("onClose", async () => stopSweep());
+    }
+  }
   if (role !== "api" && dbHandle && process.env.OUTBOX_DISPATCHER_DISABLED !== "1") {
     if (platformDbHandle) {
       registerPlatformJob(M1_OUTBOX_DISPATCHER_JOB_ID);

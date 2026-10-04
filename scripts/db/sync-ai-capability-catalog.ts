@@ -1,4 +1,5 @@
 import { Client } from "pg";
+import { AI_PHASE_1_BACKENDS } from "../../packages/ai-platform/src/inventory/backends";
 /**
  * scripts/db/sync-ai-capability-catalog.ts — idempotent `ai_capability` sync from the M32 §2.4
  * in-code inventory (ARCH-019 / TASK-062).
@@ -86,10 +87,20 @@ async function main(): Promise<void> {
         cap.riskTier,
         cap.phase1LifecycleState,
         cap.defaultBackendKey,
-        // No fallback chain is configured at Phase 1 — allowed starts as just the default, and
-        // fallback_chain_keys is left [] rather than invented (the routing gate fails CLOSED on an
-        // unresolvable key, so an empty chain is the honest "no fallback configured" state, not a bug).
-        JSON.stringify([cap.defaultBackendKey]),
+        // F-236 — ALLOWED is the default plus every active §2.3 backend whose own "Capabilities served"
+        // column names this capability. It used to be the default alone, which made the inventory's
+        // local routes unreachable: a `local_only` tenant could never be served `doclens_extract` by the
+        // local backend §2.3 says serves it. Allowed is not routed — fallback_chain_keys (below) is still
+        // left [] for an operator to tune, and the routing gate filters the chain by the allowed set.
+        JSON.stringify([
+          cap.defaultBackendKey,
+          ...AI_PHASE_1_BACKENDS.filter(
+            (b) =>
+              b.isActive &&
+              b.backendKey !== cap.defaultBackendKey &&
+              b.servesCapabilityKeys.includes(cap.capabilityKey),
+          ).map((b) => b.backendKey),
+        ]),
         JSON.stringify([]),
         governance.tenantOptInRequired,
         governance.clinicalReviewRequired,

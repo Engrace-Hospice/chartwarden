@@ -64,10 +64,34 @@ function union(boxes: readonly GroundingBBox[]): GroundingBBox {
   ];
 }
 
-function findOnPage(page: GroundingPage, quote: string): GroundingBBox | null {
-  const blocks = page.blocks;
+type Block = GroundingPage["blocks"][number];
+
+/**
+ * Rebuild visual LINES from block geometry: Docling's emission order is not reading order (a form's
+ * labels can come out before their values — "Mobile phone:", "Email:", then both values). Blocks whose
+ * vertical centres fall within half a line-height of each other share a line; each line reads left to
+ * right, lines top to bottom.
+ */
+function readingOrder(blocks: readonly Block[]): Block[] {
+  const sorted = [...blocks].sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  const lines: Block[][] = [];
+  for (const block of sorted) {
+    const centre = (block.bbox[1] + block.bbox[3]) / 2;
+    const height = block.bbox[3] - block.bbox[1];
+    const line = lines.find((l) => {
+      const first = l[0] as Block;
+      const lc = (first.bbox[1] + first.bbox[3]) / 2;
+      return Math.abs(lc - centre) <= Math.max(height, first.bbox[3] - first.bbox[1]) / 2;
+    });
+    if (line) line.push(block);
+    else lines.push([block]);
+  }
+  return lines.flatMap((l) => l.sort((a, b) => a.bbox[0] - b.bbox[0]));
+}
+
+function findInSequence(blocks: readonly Block[], quote: string): GroundingBBox | null {
   // Smallest span first: a quote inside ONE block must get that block's box, never the union with the
-  // blocks before it that a first-start-wins scan would also "contain" it in.
+  // blocks around it that a first-start-wins scan would also "contain" it in.
   for (let size = 1; size <= MAX_SPAN_BLOCKS; size += 1) {
     for (let i = 0; i + size <= blocks.length; i += 1) {
       const span = blocks.slice(i, i + size);
@@ -77,6 +101,11 @@ function findOnPage(page: GroundingPage, quote: string): GroundingBBox | null {
     }
   }
   return null;
+}
+
+function findOnPage(page: GroundingPage, quote: string): GroundingBBox | null {
+  // Docling's own order first (its paragraphs are already in order), then visual reading order.
+  return findInSequence(page.blocks, quote) ?? findInSequence(readingOrder(page.blocks), quote);
 }
 
 export function groundQuote(

@@ -133,6 +133,24 @@ describe("F-236 — quote grounding against real Docling text", () => {
     if (r.grounded) expect(r.bbox).toEqual([41.33, 141, 195.67, 153.33]); // union of the two blocks
   });
 
+  it("follows visual reading order when Docling emits labels before values (real fixture: mobile, email)", () => {
+    // Docling's order on page 1 is "Mobile phone:", "Email:", "503-555-0188", "mae . doclens@example org".
+    const mobile = groundQuote(pages, {
+      page: 1,
+      quote: "Mobile phone:\n503-555-0188",
+      value: "503-555-0188",
+    });
+    expect(mobile).toMatchObject({ grounded: true, page: 1 });
+    if (mobile.grounded) expect(mobile.bbox).toEqual([41, 204.33, 232, 220.67]);
+    const email = groundQuote(pages, {
+      page: 1,
+      quote: "Email:\nmae . doclens@example org",
+      value: "mae.doclens@example.org",
+    });
+    expect(email).toMatchObject({ grounded: true, page: 1 });
+    if (email.grounded) expect(email.bbox).toEqual([42, 226, 260.33, 242]);
+  });
+
   it("uses the TRUE page when the model names the wrong one", () => {
     const r = groundQuote(pages, {
       page: 1,

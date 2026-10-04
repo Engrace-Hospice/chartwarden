@@ -82,6 +82,8 @@ export const AI_PHASE_1_BACKENDS: readonly AiPhase1BackendRegistration[] = [
     servesCapabilityKeys: [
       "hearthnote_layer2",
       "doclens_extract",
+      // ADR-0048 (F-236): DocLens page classification runs on the same LLM path as extraction.
+      "doclens_classify",
       "copilot_clinical",
       "copilot_admin",
     ],
@@ -99,6 +101,8 @@ export const AI_PHASE_1_BACKENDS: readonly AiPhase1BackendRegistration[] = [
     servesCapabilityKeys: [
       "hearthnote_layer2",
       "doclens_extract",
+      // ADR-0048 (F-236): DocLens page classification runs on the same LLM path as extraction.
+      "doclens_classify",
       "copilot_clinical",
       "copilot_admin",
     ],

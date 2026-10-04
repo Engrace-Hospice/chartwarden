@@ -166,6 +166,12 @@ export interface AiInvokeRequest {
   };
   readonly chartContext: Record<string, unknown>;
   readonly maxOutputTokens?: number;
+  /** F-236 — a JSON Schema the backend must constrain its answer to (structured outputs). The caller's
+   *  projector still validates the answer; this only narrows what the model may emit. */
+  readonly responseSchema?: Record<string, unknown>;
+  /** F-236 — overrides the pipeline's dispatch timeout for THIS call. A background capability (DocLens
+   *  extraction on a local model) needs minutes; the clinician-facing default stays what it was. */
+  readonly dispatchTimeoutMs?: number;
   /** From the caller's session clock; the partition key and the cap window both derive from it. */
   readonly invokedAt: string;
 }
@@ -388,8 +394,9 @@ export function createAiInvocationPipeline(deps: AiInvocationPipelineDeps): AiIn
             prompt: request.prompt.text,
             chartContext: request.chartContext,
             maxOutputTokens: request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+            ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}),
           }),
-          timeoutMs,
+          request.dispatchTimeoutMs ?? timeoutMs,
         );
         if (result === TIMED_OUT) {
           status = "timed_out";

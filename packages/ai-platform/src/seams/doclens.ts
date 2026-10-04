@@ -28,6 +28,8 @@ export interface DocLensClassifier {
     /** OCR'd text from M22's stage 2. */
     readonly extractedText: string;
     readonly pageCount: number;
+    /** F-236 — set when `extractedText` is ONE page (per-page classification, fax-bundle splitting). */
+    readonly pageNumber?: number;
   }): Promise<DocLensClassifyResult>;
 }
 
@@ -42,6 +44,14 @@ export interface DocLensExtractor {
     readonly extractedText: string;
     /** Which extraction schema to apply. */
     readonly schemaKey: string;
+    /**
+     * F-236 (ADR-0048) — the fields to extract, owned by M22's schema registry. When present the model is
+     * asked for exactly these paths (`[]` marks a repeatable group: `medications[].name`).
+     */
+    readonly fieldSpecs?: readonly { readonly fieldPath: string; readonly description: string }[];
+    /** F-236 — the document page by page; when present it is sent with page markers instead of
+     *  `extractedText`, so every quote the model returns can name its page. */
+    readonly pages?: readonly { readonly page: number; readonly text: string }[];
   }): Promise<DocLensExtractResult>;
 }
 
@@ -94,6 +104,9 @@ export type DocLensExtractResult =
             readonly value: unknown;
             readonly confidence: number;
             readonly sourceSpan?: { readonly page: number; readonly bbox: DocLensSourceBBox };
+            /** F-236 — the model's VERBATIM quote and claimed page. The consumer GROUNDS it against its
+             *  own parsed text (ADR-0048); M32 never asserts it is true. */
+            readonly sourceQuote?: { readonly page: number; readonly text: string };
           }
         >
       >;

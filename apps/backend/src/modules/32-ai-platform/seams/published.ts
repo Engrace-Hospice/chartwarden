@@ -66,6 +66,10 @@ import type {
   TriageProtocolSuggestionResult,
 } from "@wardenx/types";
 import type { AiInvocationOutput, AiInvocationPipeline } from "../invocation/service";
+import {
+  DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
+  DOCLENS_EXTRACT_RESPONSE_SCHEMA,
+} from "./doclens-projector";
 
 // ── the three ports ────────────────────────────────────────────────────────────────────────────────
 
@@ -110,9 +114,25 @@ export interface AiSeamOutputProjector {
   project(seam: string, output: AiInvocationOutput): unknown | null;
 }
 
+/** The slice of `AIPromptRegistry` a seam needs: the capability's active, hash-verified template. */
+export interface AiSeamPromptSource {
+  getActivePromptForCapability(capabilityKey: string): Promise<{
+    readonly promptTemplateId: string;
+    readonly version: number;
+    readonly promptBody: string;
+  } | null>;
+}
+
 /** Deps every §4.2 adapter shares. */
 export interface AiPublishedSeamDeps {
   readonly pipeline: AiInvocationPipeline;
+  /**
+   * F-236 — the §4.5 registry. BOUND ⇒ every seam call sends its capability's active, reviewed,
+   * hash-pinned template as the system prompt, and REFUSES when the capability has none (or its file no
+   * longer matches its pin). Unbound ⇒ the legacy posture (no system prompt) — which every seam reached
+   * only with `ai.full` off, i.e. never.
+   */
+  readonly prompts?: AiSeamPromptSource;
   /** Absent ⇒ {@link createDenyingAiSeamActorResolver}. */
   readonly actors?: AiSeamActorResolver;
   /** Absent ⇒ a completed invocation refuses with `output_validation_failed_after_retry`. */
@@ -132,6 +152,9 @@ interface SeamInvokeArgs {
   readonly consumerContextRef: AiConsumerContextRef;
   readonly promptText: string;
   readonly chartContext: Record<string, unknown>;
+  readonly responseSchema?: Record<string, unknown>;
+  readonly maxOutputTokens?: number;
+  readonly dispatchTimeoutMs?: number;
 }
 
 type SeamInvokeOutcome =
@@ -176,6 +199,28 @@ function createSeamRunner(deps: AiPublishedSeamDeps) {
       );
     }
 
+    let template: { promptTemplateId: string; version: number; promptBody: string } | null = null;
+    if (deps.prompts) {
+      try {
+        template = await deps.prompts.getActivePromptForCapability(args.capabilityKey);
+      } catch {
+        return refuse(
+          aiSeamRefusal(
+            "provider_unregistered",
+            `'${args.seam}': the active prompt template for '${args.capabilityKey}' could not be loaded or no longer matches its pinned hash`,
+          ),
+        );
+      }
+      if (template === null) {
+        return refuse(
+          aiSeamRefusal(
+            "provider_unregistered",
+            `'${args.seam}': capability '${args.capabilityKey}' has no active prompt template`,
+          ),
+        );
+      }
+    }
+
     const outcome = await deps.pipeline.invoke({
       capabilityKey: args.capabilityKey,
       organizationId: args.organizationId,
@@ -185,8 +230,18 @@ function createSeamRunner(deps: AiPublishedSeamDeps) {
       actorRole: actor.actorRole,
       patientId: args.patientId ?? null,
       consumerContextRef: args.consumerContextRef,
-      prompt: { text: args.promptText },
+      prompt: template
+        ? {
+            text: args.promptText,
+            systemPrompt: template.promptBody,
+            templateId: template.promptTemplateId,
+            templateVersion: String(template.version),
+          }
+        : { text: args.promptText },
       chartContext: args.chartContext,
+      ...(args.responseSchema ? { responseSchema: args.responseSchema } : {}),
+      ...(args.maxOutputTokens ? { maxOutputTokens: args.maxOutputTokens } : {}),
+      ...(args.dispatchTimeoutMs ? { dispatchTimeoutMs: args.dispatchTimeoutMs } : {}),
       invokedAt: clock().toISOString(),
     });
 
@@ -280,6 +335,25 @@ function docLensContextRef(documentId: string): AiConsumerContextRef {
   return { module: "m22", entityKind: "document", entityId: documentId };
 }
 
+/**
+ * F-236 — the extractor's user message: the FIELDS M22 asks for, then the DOCUMENT page by page with the
+ * `=== PAGE n ===` markers the `doclens_extract` template's rules refer to. Deterministic (same input,
+ * same bytes), so the ledger's encrypted prompt is reproducible from the document.
+ */
+export function composeDocLensExtractPrompt(input: {
+  readonly extractedText: string;
+  readonly fieldSpecs?: readonly { readonly fieldPath: string; readonly description: string }[];
+  readonly pages?: readonly { readonly page: number; readonly text: string }[];
+}): string {
+  const fields = (input.fieldSpecs ?? [])
+    .map((f) => `- ${f.fieldPath}: ${f.description}`)
+    .join("\n");
+  const document = input.pages?.length
+    ? input.pages.map((p) => `=== PAGE ${p.page} ===\n${p.text}`).join("\n\n")
+    : `=== PAGE 1 ===\n${input.extractedText}`;
+  return `FIELDS:\n${fields}\n\nDOCUMENT:\n${document}`;
+}
+
 /** M32's §4.2.2 classifier. `doclens_classify` sits at DESIGN_REVIEW, so even flag-on refuses. */
 export function createDocLensClassifier(deps: AiPublishedSeamDeps): DocLensClassifier {
   const run = createSeamRunner(deps);
@@ -292,7 +366,15 @@ export function createDocLensClassifier(deps: AiPublishedSeamDeps): DocLensClass
         actorUserId: input.actorUserId,
         consumerContextRef: docLensContextRef(input.documentId),
         promptText: input.extractedText,
-        chartContext: { documentId: input.documentId, pageCount: input.pageCount },
+        chartContext: {
+          documentId: input.documentId,
+          pageCount: input.pageCount,
+          ...(input.pageNumber === undefined ? {} : { pageNumber: input.pageNumber }),
+        },
+        responseSchema: DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
+        maxOutputTokens: 256,
+        // Background work (the M22 intake job), not a clinician waiting on a keystroke.
+        dispatchTimeoutMs: 120_000,
       });
       if (!outcome.ok) return asRefusal(outcome);
       const projected = projectOr<{
@@ -318,12 +400,15 @@ export function createDocLensExtractor(deps: AiPublishedSeamDeps): DocLensExtrac
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
         consumerContextRef: docLensContextRef(input.documentId),
-        promptText: input.extractedText,
+        promptText: composeDocLensExtractPrompt(input),
         chartContext: {
           documentId: input.documentId,
           documentType: input.documentType,
           schemaKey: input.schemaKey,
         },
+        responseSchema: DOCLENS_EXTRACT_RESPONSE_SCHEMA,
+        maxOutputTokens: 4096,
+        dispatchTimeoutMs: 300_000,
       });
       if (!outcome.ok) return asRefusal(outcome);
       const projected = projectOr<{ fields: Record<string, never>; warnings: never[] }>(

@@ -8,6 +8,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@wardenx/types": "workspace:*"
   }
 }

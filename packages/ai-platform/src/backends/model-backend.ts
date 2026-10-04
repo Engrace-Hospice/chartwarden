@@ -51,6 +51,12 @@ export interface ModelBackendCompletionRequest {
   /** Already §8.3-minimised by the pipeline — a backend must not be the thing that decides this. */
   readonly chartContext: Record<string, unknown>;
   readonly maxOutputTokens: number;
+  /**
+   * F-236 — when present, the backend must constrain its answer to this JSON Schema (Anthropic
+   * `output_config.format`, Ollama `format`). The caller still validates the answer: a constraint a
+   * backend claims to honour is not a parse the caller may skip.
+   */
+  readonly responseSchema?: Record<string, unknown>;
 }
 
 export interface ModelBackendCompletionResult extends ModelBackendTokenUsage {
