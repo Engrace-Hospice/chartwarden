@@ -10,6 +10,7 @@ import type {
   DocumentStatus,
   ExtractionReviewStatus,
   IntakeBatchStatus,
+  IntakeBatchSudStatus,
   OrgId,
 } from "@wardenx/types";
 import { NotFoundError, WardenXError } from "@wardenx/types";
@@ -113,9 +114,47 @@ export interface IntakeBatchView {
   readonly id: string;
   readonly organizationId: string;
   readonly patientId: string | null;
+  /** F-238 — the M6 referral these records are for, when filed against one. */
+  readonly referralId?: string | null;
+  /** F-238 — the outbound records request this batch answers, when linked. */
+  readonly recordsRequestId?: string | null;
   readonly status: IntakeBatchStatus;
   readonly uploadedAt: string;
   readonly pages: number;
+  readonly createdAt: string;
+}
+
+/**
+ * One intake batch (fax / email / scanned upload) FILED AGAINST a referral — the referral page's
+ * "Records" tab. Counts and statuses only; no extracted value leaves the server here.
+ */
+export interface ReferralIntakeBatchView {
+  readonly id: string;
+  readonly referralId: string;
+  readonly patientId: string | null;
+  readonly status: IntakeBatchStatus;
+  readonly sourceChannel: string;
+  /** F-238 — the worst per-document identity verdict, null until the batch has been checked. */
+  readonly identityStatus: string | null;
+  readonly sudStatus: IntakeBatchSudStatus;
+  /** F-238 — a records-request code on the fax names another referral / patient (code + kind only). */
+  readonly recordsRequestConflict: {
+    readonly code: string;
+    readonly kind: "code_names_another_referral" | "code_names_another_patient";
+  } | null;
+  /** Source pages (page geometry, else the highest classified page). */
+  readonly pages: number;
+  /** Document segments the fax splitter found (classified_page rows). */
+  readonly documents: number;
+  /** Extracted field candidates across the batch. */
+  readonly candidates: number;
+  /** The latest extraction review, with how many decisions it holds. */
+  readonly review: {
+    readonly id: string;
+    readonly status: ExtractionReviewStatus;
+    readonly decided: number;
+  } | null;
+  readonly uploadedAt: string;
   readonly createdAt: string;
 }
 
@@ -250,9 +289,25 @@ export interface DocumentRouteService {
       sourceMetadata?: string;
       /** F-236 — the filed source document (validated in-org); absent ⇒ legacy placeholder ref. */
       documentId?: string;
+      /** F-238 — the referral these records are for (the route validated it through M6). */
+      referralId?: string | null;
+      /** F-238 — the outbound records request these records answer (route-validated: org, open, referral). */
+      recordsRequestId?: string | null;
     },
   ): Promise<IntakeBatchView>;
   getBatch(organizationId: OrgId, batchId: string): Promise<IntakeBatchView>;
+  /**
+   * The intake batches filed against ONE referral (`intake_upload_batch.referral_id`), newest first.
+   * Strictly referral-filed: a batch with no referral whose patient happens to be the referral's
+   * resolved patient is NOT included — it was never filed as this referral's records. The route
+   * checks the caller can read the referral before calling this.
+   */
+  listReferralBatches(
+    organizationId: OrgId,
+    referralId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<ReferralIntakeBatchView>>;
   listClassification(
     organizationId: OrgId,
     batchId: string,
@@ -398,6 +453,11 @@ interface BatchRecord {
   id: string;
   organizationId: string;
   patientId: string | null;
+  /** F-238 — the referral the batch was filed against (null ⇒ not referral-filed). */
+  referralId: string | null;
+  sourceChannel: string;
+  sudStatus: IntakeBatchSudStatus;
+  identityStatus: string | null;
   status: IntakeBatchStatus;
   pages: number;
   createdAt: string;
@@ -496,6 +556,10 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
   for (const b of seed.batches ?? []) {
     batches.set(b.id, {
       patientId: null,
+      referralId: null,
+      sourceChannel: "fax",
+      sudStatus: "not_detected",
+      identityStatus: null,
       status: "uploaded",
       pages: 1,
       createdAt: now(),
@@ -745,6 +809,10 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         id,
         organizationId,
         patientId: args.patientId,
+        referralId: args.referralId ?? null,
+        sourceChannel: args.sourceChannel,
+        sudStatus: "not_detected",
+        identityStatus: null,
         status: "uploaded",
         pages: 1,
         createdAt: now(),
@@ -755,6 +823,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         id: rec.id,
         organizationId,
         patientId: rec.patientId,
+        referralId: args.referralId ?? null,
+        recordsRequestId: args.recordsRequestId ?? null,
         status: rec.status,
         uploadedAt: rec.createdAt,
         pages: rec.pages,
@@ -772,6 +842,33 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         pages: r.pages,
         createdAt: r.createdAt,
       };
+    },
+    async listReferralBatches(organizationId, referralId, cursor, limit) {
+      // Strictly referral-filed (see the interface): no patient-id fallback.
+      const rows: ReferralIntakeBatchView[] = [...batches.values()]
+        .filter((b) => b.organizationId === organizationId && b.referralId === referralId)
+        .map((b) => {
+          const latest = [...b.reviews.values()].sort((x, y) =>
+            y.createdAt.localeCompare(x.createdAt),
+          )[0];
+          return {
+            id: b.id,
+            referralId,
+            patientId: b.patientId,
+            status: b.status,
+            sourceChannel: b.sourceChannel,
+            identityStatus: b.identityStatus,
+            sudStatus: b.sudStatus,
+            recordsRequestConflict: null,
+            pages: b.pages,
+            documents: 0,
+            candidates: (seed.candidates ?? []).filter((c) => c.batchId === b.id).length,
+            review: latest ? { id: latest.id, status: latest.status, decided: 0 } : null,
+            uploadedAt: b.createdAt,
+            createdAt: b.createdAt,
+          };
+        });
+      return paginate(desc(rows), cursor, limit);
     },
     async listClassification(organizationId, batchId, cursor, limit) {
       loadBatch(organizationId, batchId);

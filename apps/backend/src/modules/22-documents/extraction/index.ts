@@ -139,3 +139,44 @@ export {
   SudReviewResponseSchema,
   registerDocLensReviewWorkspaceRoutes,
 } from "./review-workspace-routes";
+// F-238 — the prospect summary of a completed review (pure builder + DB reader + route).
+export {
+  type ProspectSummary,
+  type ProspectSummaryInput,
+  PROSPECT_SUMMARY_NOT_CAPTURED,
+  buildProspectSummary,
+  formatCitations,
+  renderProspectSummaryText,
+} from "./prospect-summary";
+export {
+  type ProspectSummaryDeps,
+  type ProspectSummaryService,
+  createProspectSummaryService,
+} from "./prospect-summary-db";
+export {
+  PatientIntakeSummariesResponseSchema,
+  ProspectSummaryResponseSchema,
+  registerDocLensProspectSummaryRoutes,
+} from "./prospect-summary-routes";
+// F-238 — "an address is waiting in intake review" (counts + batch ids only; never a value).
+export {
+  DOCLENS_ADDRESS_FIELD_PATHS,
+  PENDING_ADDRESS_BATCH_LIMIT,
+  type PendingAddressBatch,
+  type PendingAddressResult,
+  type PendingAddressService,
+  createPendingAddressService,
+} from "./pending-address-db";
+export {
+  PendingAddressResponseSchema,
+  registerDocLensPendingAddressRoutes,
+} from "./pending-address-routes";
+
+// F-238 — per-document identity check (does each document belong to the batch's patient / referral).
+export {
+  type BatchIdentityResult,
+  type BatchIdentityStatus,
+  type IdentityTargetPorts,
+  createIdentityTargetPorts,
+  refreshBatchIdentity,
+} from "./batch-identity";

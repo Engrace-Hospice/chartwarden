@@ -405,6 +405,25 @@ export interface ReferralReader {
     readonly userId: string;
     readonly referralId: ReferralId;
   }): Promise<boolean>;
+  /**
+   * F-238 — who a referral is about, for M22's intake: records filed against a referral adopt its patient
+   * once M6 resolves one, and every document in them is checked against that patient (or, before then,
+   * against the name/DOB the referral was received with). Null when the referral is not visible.
+   */
+  getReferralSubject(input: {
+    readonly organizationId: OrgId;
+    readonly referralId: ReferralId;
+  }): Promise<ReferralSubject | null>;
+}
+
+export interface ReferralSubject {
+  readonly referralId: string;
+  /** M5 patient once resolved (matched / created); null while unresolved. */
+  readonly patientId: string | null;
+  readonly patientNameAtReceipt: string;
+  /** ISO yyyy-mm-dd, or null when the referral arrived without one. */
+  readonly patientDobAtReceipt: string | null;
+  readonly status: string;
 }
 
 /** §4.7 — M30 dashboard pulls open compliance windows. */

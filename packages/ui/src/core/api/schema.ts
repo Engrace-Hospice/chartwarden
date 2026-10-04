@@ -9633,6 +9633,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/intake/referral-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Intake batches filed against one referral — the referral's Records tab (statuses + counts, no values) */
+        get: operations["getApiV1IntakeReferralbatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/intake/reviews/{id}": {
         parameters: {
             query?: never;
@@ -9838,6 +9855,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/intake/uploads/{id}/identity-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** DocLens: answer a document's identity check — same patient, or another patient's (its fields are never committed); Idempotency-Key */
+        post: operations["postApiV1IntakeUploadsByIdIdentityreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/intake/uploads/{id}/jobs": {
         parameters: {
             query?: never;
@@ -9872,6 +9906,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/intake/uploads/{id}/relink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** DocLens: move a misfiled document to another patient and/or referral before its review completes (history kept; a Part 2 privacy flag moves with it; Idempotency-Key) */
+        post: operations["postApiV1IntakeUploadsByIdRelink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/intake/uploads/{id}/review": {
         parameters: {
             query?: never;
@@ -9900,6 +9951,23 @@ export interface paths {
         put?: never;
         /** DocLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key) */
         post: operations["postApiV1IntakeUploadsByIdSudreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/intake/uploads/{id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DocLens: the prospect summary of a completed review — reviewer-approved values with document/page citations and a copyable plain-text rendering (deterministic; 409 until complete) */
+        get: operations["getApiV1IntakeUploadsByIdSummary"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -13344,6 +13412,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{patientId}/intake-pending-address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DocLens: open intake batches for this patient holding an extracted residence address not yet on the chart (undecided, or approved in a review not completed) — counts and batch ids only, never a value; newest first, at most 3 (patient.read + caseload + intake.read) */
+        get: operations["getApiV1PatientsByPatientIdIntakependingaddress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{patientId}/intake-summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DocLens: every completed intake review's prospect summary for this patient's chart, newest first (patient.read + caseload) */
+        get: operations["getApiV1PatientsByPatientIdIntakesummaries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/medications/active": {
         parameters: {
             query?: never;
@@ -15837,7 +15939,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Referral worklist (cursor-paginated) */
+        /** Referral worklist (cursor-paginated; `q` searches the name at receipt, referrer, dx) */
         get: operations["getApiV1Referrals"];
         put?: never;
         /** Receive a referral (§5.1) */
@@ -16082,6 +16184,109 @@ export interface paths {
         put?: never;
         /** Qualify a referral after patient resolution and intake readiness checks */
         post: operations["postApiV1ReferralsByIdQualify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/records-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The referral's records requests, newest first (status, code, recipient, due date) */
+        get: operations["getApiV1ReferralsByIdRecordsrequests"];
+        put?: never;
+        /** Request a referral's older records from a PCP / hospital — creates the request and its cover-sheet code (RR-…) */
+        post: operations["postApiV1ReferralsByIdRecordsrequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/records-requests/{requestId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel an open records request (its code then files nothing) */
+        post: operations["postApiV1ReferralsByIdRecordsrequestsByRequestIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/records-requests/{requestId}/cover-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cover sheet + request letter as a PDF (application/pdf, inline) carrying the request code large for OCR, the prospect's name + DOB (letter only) and what is requested */
+        get: operations["getApiV1ReferralsByIdRecordsrequestsByRequestIdCoversheet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/records-requests/{requestId}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extend a records request's expiry (an expired request re-opens as requested; same code and cover sheet) */
+        post: operations["postApiV1ReferralsByIdRecordsrequestsByRequestIdExtend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/records-requests/{requestId}/send-fax": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fax the cover sheet + letter through the outbound-fax port (idempotent per request; 409 for another number; 503 when no provider is configured) */
+        post: operations["postApiV1ReferralsByIdRecordsrequestsByRequestIdSendfax"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/records-requests/{requestId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a records request received or partially received */
+        post: operations["postApiV1ReferralsByIdRecordsrequestsByRequestIdStatus"];
         delete?: never;
         options?: never;
         head?: never;
@@ -25976,6 +26181,7 @@ export interface operations {
                                 structuredEntityId?: string;
                                 completedAt?: string;
                             };
+                            reasonCode?: "INTAKE_DETECTION_UNREVIEWED" | "CONSENT_REQUIRED" | "RESTRICTED" | "PATIENT_NOT_FOUND" | "PRIVACY_CLEARANCE_UNAVAILABLE";
                         }[];
                     };
                 };
@@ -47245,6 +47451,60 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IntakeReferralbatches: {
+        parameters: {
+            query: {
+                referralId: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            referralId: string;
+                            patientId: string | null;
+                            status: "uploaded" | "docling_complete" | "classifier_complete" | "extraction_complete" | "in_review" | "writeback_complete" | "discarded" | "split_into_children" | "split_resolved_no_split" | "parse_failed";
+                            sourceChannel: string;
+                            identityStatus: string | null;
+                            sudStatus: "not_detected" | "detected" | "confirmed" | "rejected";
+                            recordsRequestConflict: {
+                                code: string;
+                                kind: "code_names_another_referral" | "code_names_another_patient";
+                            } | null;
+                            pages: number;
+                            documents: number;
+                            candidates: number;
+                            review: {
+                                id: string;
+                                status: "in_progress" | "complete" | "abandoned";
+                                decided: number;
+                            } | null;
+                            /** Format: date-time */
+                            uploadedAt: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1IntakeReviewsById: {
         parameters: {
             query?: {
@@ -47476,6 +47736,8 @@ export interface operations {
                 view?: "open" | "done";
                 cursor?: string;
                 limit?: number;
+                patientId?: string;
+                sudStatus?: "not_detected" | "detected" | "confirmed" | "rejected";
             };
             header?: never;
             path?: never;
@@ -47499,6 +47761,10 @@ export interface operations {
                             patientId: string | null;
                             patientName: string | null;
                             sudStatus: "not_detected" | "detected" | "confirmed" | "rejected";
+                            recordsRequestConflict: {
+                                code: string;
+                                kind: "code_names_another_referral" | "code_names_another_patient";
+                            } | null;
                             candidates: {
                                 total: number;
                                 lowConfidence: number;
@@ -47533,6 +47799,10 @@ export interface operations {
                     /** Format: uuid */
                     patientId?: string;
                     /** Format: uuid */
+                    referralId?: string;
+                    /** Format: uuid */
+                    recordsRequestId?: string;
+                    /** Format: uuid */
                     documentId?: string;
                     sourceChannel: "fax" | "email_ingest" | "portal_upload" | "admin_upload" | "api";
                     sourceMetadata?: string;
@@ -47545,7 +47815,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        patientId: string | null;
+                        status: "uploaded" | "docling_complete" | "classifier_complete" | "extraction_complete" | "in_review" | "writeback_complete" | "discarded" | "split_into_children" | "split_resolved_no_split" | "parse_failed";
+                        /** Format: date-time */
+                        uploadedAt: string;
+                        pages: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -47711,6 +47993,43 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1IntakeUploadsByIdIdentityreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    pageFrom: number;
+                    resolution: "same_patient" | "other_patient";
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        batchId: string;
+                        pageFrom: number;
+                        resolution: "same_patient" | "other_patient";
+                        identityStatus: "match" | "possible" | "mismatch" | "unverified" | "no_target";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1IntakeUploadsByIdJobs: {
         parameters: {
             query?: {
@@ -47765,6 +48084,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IntakeUploadsByIdRelink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId?: string;
+                    /** Format: uuid */
+                    referralId?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        batchId: string;
+                        patientId: string | null;
+                        referralId: string | null;
+                        identityStatus: "match" | "possible" | "mismatch" | "unverified" | "no_target";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -47838,6 +48196,116 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IntakeUploadsByIdSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        batchId: string;
+                        reviewId: string;
+                        completedAt: string | null;
+                        receivedAt: string;
+                        sourceChannel: string;
+                        filedUnder: {
+                            patientId: string | null;
+                            patientName: string | null;
+                            referralId: string | null;
+                        };
+                        patient: {
+                            key: "legalName" | "preferredName" | "dateOfBirth" | "address" | "phoneHome" | "phoneMobile" | "email";
+                            label: string;
+                            values: {
+                                value: string;
+                                edited: boolean;
+                                citations: {
+                                    document: string;
+                                    documentType: string;
+                                    page: number;
+                                }[];
+                            }[];
+                        }[];
+                        diagnoses: {
+                            description: string;
+                            icd10Code: string | null;
+                            icd10Source: "document" | "reviewer_edit" | null;
+                            role: "principal" | "secondary" | "history" | "unspecified";
+                            edited: boolean;
+                            codingFlags: {
+                                kind: string;
+                                code: string;
+                                detail: string;
+                                label: string;
+                                severity: "critical" | "warning" | "info";
+                            }[];
+                            citations: {
+                                document: string;
+                                documentType: string;
+                                page: number;
+                            }[];
+                        }[];
+                        medications: {
+                            text: string;
+                            edited: boolean;
+                            citations: {
+                                document: string;
+                                documentType: string;
+                                page: number;
+                            }[];
+                        }[];
+                        allergies: {
+                            text: string;
+                            edited: boolean;
+                            citations: {
+                                document: string;
+                                documentType: string;
+                                page: number;
+                            }[];
+                        }[];
+                        advanceDirectives: {
+                            pageFrom: number;
+                            pageTo: number;
+                            documentType: string;
+                            documentTypeLabel: string;
+                            title: string | null;
+                            date: string | null;
+                            status: "included" | "other_patient" | "duplicate";
+                            duplicateOfPage: number | null;
+                        }[];
+                        documents: {
+                            pageFrom: number;
+                            pageTo: number;
+                            documentType: string;
+                            documentTypeLabel: string;
+                            title: string | null;
+                            date: string | null;
+                            status: "included" | "other_patient" | "duplicate";
+                            duplicateOfPage: number | null;
+                        }[];
+                        withheld: {
+                            part2Values: number;
+                        };
+                        notCaptured: string[];
+                        plainText: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1IntakeUploadsByIdWorkspace: {
         parameters: {
             query?: never;
@@ -47865,6 +48333,12 @@ export interface operations {
                             documentId: string;
                             patientId: string | null;
                             patientName: string | null;
+                            referralId: string | null;
+                            identityStatus: ("match" | "possible" | "mismatch" | "unverified" | "no_target") | null;
+                            recordsRequestConflict: {
+                                code: string;
+                                kind: "code_names_another_referral" | "code_names_another_patient";
+                            } | null;
                         };
                         sud: {
                             status: "not_detected" | "detected" | "confirmed" | "rejected";
@@ -47900,6 +48374,11 @@ export interface operations {
                             date: string | null;
                             duplicateOfPage: number | null;
                             boundary: string | null;
+                            identity: {
+                                status: ("match" | "possible" | "mismatch" | "unverified") | null;
+                                disagreeing: string[];
+                                resolution: "same_patient" | "other_patient" | null;
+                            };
                         }[];
                         jobs: {
                             id: string;
@@ -57997,6 +58476,153 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByPatientIdIntakependingaddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            batchId: string;
+                            batchStatus: string;
+                            uploadedAt: string;
+                            reviewStatus: "not_started" | "in_progress";
+                            pendingCount: number;
+                            approvedCount: number;
+                        }[];
+                        totalBatches: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByPatientIdIntakesummaries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            batchId: string;
+                            reviewId: string;
+                            completedAt: string | null;
+                            receivedAt: string;
+                            sourceChannel: string;
+                            filedUnder: {
+                                patientId: string | null;
+                                patientName: string | null;
+                                referralId: string | null;
+                            };
+                            patient: {
+                                key: "legalName" | "preferredName" | "dateOfBirth" | "address" | "phoneHome" | "phoneMobile" | "email";
+                                label: string;
+                                values: {
+                                    value: string;
+                                    edited: boolean;
+                                    citations: {
+                                        document: string;
+                                        documentType: string;
+                                        page: number;
+                                    }[];
+                                }[];
+                            }[];
+                            diagnoses: {
+                                description: string;
+                                icd10Code: string | null;
+                                icd10Source: "document" | "reviewer_edit" | null;
+                                role: "principal" | "secondary" | "history" | "unspecified";
+                                edited: boolean;
+                                codingFlags: {
+                                    kind: string;
+                                    code: string;
+                                    detail: string;
+                                    label: string;
+                                    severity: "critical" | "warning" | "info";
+                                }[];
+                                citations: {
+                                    document: string;
+                                    documentType: string;
+                                    page: number;
+                                }[];
+                            }[];
+                            medications: {
+                                text: string;
+                                edited: boolean;
+                                citations: {
+                                    document: string;
+                                    documentType: string;
+                                    page: number;
+                                }[];
+                            }[];
+                            allergies: {
+                                text: string;
+                                edited: boolean;
+                                citations: {
+                                    document: string;
+                                    documentType: string;
+                                    page: number;
+                                }[];
+                            }[];
+                            advanceDirectives: {
+                                pageFrom: number;
+                                pageTo: number;
+                                documentType: string;
+                                documentTypeLabel: string;
+                                title: string | null;
+                                date: string | null;
+                                status: "included" | "other_patient" | "duplicate";
+                                duplicateOfPage: number | null;
+                            }[];
+                            documents: {
+                                pageFrom: number;
+                                pageTo: number;
+                                documentType: string;
+                                documentTypeLabel: string;
+                                title: string | null;
+                                date: string | null;
+                                status: "included" | "other_patient" | "duplicate";
+                                duplicateOfPage: number | null;
+                            }[];
+                            withheld: {
+                                part2Values: number;
+                            };
+                            notCaptured: string[];
+                            plainText: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByPatientIdMedicationsActive: {
         parameters: {
             query?: never;
@@ -64148,6 +64774,11 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            patientResolutionStatus?: string;
+                            patientNameAtReceipt?: string;
+                            patientDobAtReceipt?: string | null;
+                            referrerOrganization?: string | null;
+                            receivedAt?: string;
                         }[];
                         nextCursor: string | null;
                     };
@@ -64733,6 +65364,430 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ReferralsByIdRecordsrequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            referralId: string;
+                            patientId: string | null;
+                            requestCode: string;
+                            recipientName: string;
+                            recipientOrganization: string | null;
+                            recipientFax: string | null;
+                            recipientEmail: string | null;
+                            recordsRequested: ("history_and_physical" | "discharge_summary" | "progress_notes" | "consult_notes" | "labs" | "imaging" | "medication_list" | "problem_list")[];
+                            recordsRequestedNote: string | null;
+                            dateRangeStart: string | null;
+                            dateRangeEnd: string | null;
+                            status: "requested" | "received" | "partially_received" | "cancelled" | "expired";
+                            dueDate: string | null;
+                            overdue: boolean;
+                            expiresOn: string | null;
+                            expiredAt: string | null;
+                            receivedAfterExpiry: boolean;
+                            requestedByMembershipId: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            receivedAt: string | null;
+                            cancelledAt: string | null;
+                            batches: number;
+                            fax?: {
+                                id: string;
+                                recordsRequestId: string;
+                                faxNumber: string;
+                                status: "sending" | "sent" | "failed";
+                                provider: string;
+                                providerMessageId: string | null;
+                                pageCount: number;
+                                failureReason: string | null;
+                                /** Format: date-time */
+                                attemptedAt: string;
+                                sentAt: string | null;
+                                failedAt: string | null;
+                            } | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdRecordsrequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    recipientName: string;
+                    recipientOrganization?: string;
+                    recipientFax?: string;
+                    recipientEmail?: string;
+                    recordsRequested: ("history_and_physical" | "discharge_summary" | "progress_notes" | "consult_notes" | "labs" | "imaging" | "medication_list" | "problem_list")[];
+                    recordsRequestedNote?: string;
+                    dateRangeStart?: string;
+                    dateRangeEnd?: string;
+                    dueDate?: string;
+                    expiresOn?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        referralId: string;
+                        patientId: string | null;
+                        requestCode: string;
+                        recipientName: string;
+                        recipientOrganization: string | null;
+                        recipientFax: string | null;
+                        recipientEmail: string | null;
+                        recordsRequested: ("history_and_physical" | "discharge_summary" | "progress_notes" | "consult_notes" | "labs" | "imaging" | "medication_list" | "problem_list")[];
+                        recordsRequestedNote: string | null;
+                        dateRangeStart: string | null;
+                        dateRangeEnd: string | null;
+                        status: "requested" | "received" | "partially_received" | "cancelled" | "expired";
+                        dueDate: string | null;
+                        overdue: boolean;
+                        expiresOn: string | null;
+                        expiredAt: string | null;
+                        receivedAfterExpiry: boolean;
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        receivedAt: string | null;
+                        cancelledAt: string | null;
+                        batches: number;
+                        fax?: {
+                            id: string;
+                            recordsRequestId: string;
+                            faxNumber: string;
+                            status: "sending" | "sent" | "failed";
+                            provider: string;
+                            providerMessageId: string | null;
+                            pageCount: number;
+                            failureReason: string | null;
+                            /** Format: date-time */
+                            attemptedAt: string;
+                            sentAt: string | null;
+                            failedAt: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdRecordsrequestsByRequestIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        referralId: string;
+                        patientId: string | null;
+                        requestCode: string;
+                        recipientName: string;
+                        recipientOrganization: string | null;
+                        recipientFax: string | null;
+                        recipientEmail: string | null;
+                        recordsRequested: ("history_and_physical" | "discharge_summary" | "progress_notes" | "consult_notes" | "labs" | "imaging" | "medication_list" | "problem_list")[];
+                        recordsRequestedNote: string | null;
+                        dateRangeStart: string | null;
+                        dateRangeEnd: string | null;
+                        status: "requested" | "received" | "partially_received" | "cancelled" | "expired";
+                        dueDate: string | null;
+                        overdue: boolean;
+                        expiresOn: string | null;
+                        expiredAt: string | null;
+                        receivedAfterExpiry: boolean;
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        receivedAt: string | null;
+                        cancelledAt: string | null;
+                        batches: number;
+                        fax?: {
+                            id: string;
+                            recordsRequestId: string;
+                            faxNumber: string;
+                            status: "sending" | "sent" | "failed";
+                            provider: string;
+                            providerMessageId: string | null;
+                            pageCount: number;
+                            failureReason: string | null;
+                            /** Format: date-time */
+                            attemptedAt: string;
+                            sentAt: string | null;
+                            failedAt: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ReferralsByIdRecordsrequestsByRequestIdCoversheet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdRecordsrequestsByRequestIdExtend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expiresOn: string;
+                    dueDate?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        referralId: string;
+                        patientId: string | null;
+                        requestCode: string;
+                        recipientName: string;
+                        recipientOrganization: string | null;
+                        recipientFax: string | null;
+                        recipientEmail: string | null;
+                        recordsRequested: ("history_and_physical" | "discharge_summary" | "progress_notes" | "consult_notes" | "labs" | "imaging" | "medication_list" | "problem_list")[];
+                        recordsRequestedNote: string | null;
+                        dateRangeStart: string | null;
+                        dateRangeEnd: string | null;
+                        status: "requested" | "received" | "partially_received" | "cancelled" | "expired";
+                        dueDate: string | null;
+                        overdue: boolean;
+                        expiresOn: string | null;
+                        expiredAt: string | null;
+                        receivedAfterExpiry: boolean;
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        receivedAt: string | null;
+                        cancelledAt: string | null;
+                        batches: number;
+                        fax?: {
+                            id: string;
+                            recordsRequestId: string;
+                            faxNumber: string;
+                            status: "sending" | "sent" | "failed";
+                            provider: string;
+                            providerMessageId: string | null;
+                            pageCount: number;
+                            failureReason: string | null;
+                            /** Format: date-time */
+                            attemptedAt: string;
+                            sentAt: string | null;
+                            failedAt: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdRecordsrequestsByRequestIdSendfax: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    faxNumber: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        fax: {
+                            id: string;
+                            recordsRequestId: string;
+                            faxNumber: string;
+                            status: "sending" | "sent" | "failed";
+                            provider: string;
+                            providerMessageId: string | null;
+                            pageCount: number;
+                            failureReason: string | null;
+                            /** Format: date-time */
+                            attemptedAt: string;
+                            sentAt: string | null;
+                            failedAt: string | null;
+                        };
+                        replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdRecordsrequestsByRequestIdStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "received" | "partially_received";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        referralId: string;
+                        patientId: string | null;
+                        requestCode: string;
+                        recipientName: string;
+                        recipientOrganization: string | null;
+                        recipientFax: string | null;
+                        recipientEmail: string | null;
+                        recordsRequested: ("history_and_physical" | "discharge_summary" | "progress_notes" | "consult_notes" | "labs" | "imaging" | "medication_list" | "problem_list")[];
+                        recordsRequestedNote: string | null;
+                        dateRangeStart: string | null;
+                        dateRangeEnd: string | null;
+                        status: "requested" | "received" | "partially_received" | "cancelled" | "expired";
+                        dueDate: string | null;
+                        overdue: boolean;
+                        expiresOn: string | null;
+                        expiredAt: string | null;
+                        receivedAfterExpiry: boolean;
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        receivedAt: string | null;
+                        cancelledAt: string | null;
+                        batches: number;
+                        fax?: {
+                            id: string;
+                            recordsRequestId: string;
+                            faxNumber: string;
+                            status: "sending" | "sent" | "failed";
+                            provider: string;
+                            providerMessageId: string | null;
+                            pageCount: number;
+                            failureReason: string | null;
+                            /** Format: date-time */
+                            attemptedAt: string;
+                            sentAt: string | null;
+                            failedAt: string | null;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

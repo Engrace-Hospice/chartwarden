@@ -1,3 +1,39 @@
+import { type DbClient, schema } from "@wardenx/db";
+import {
+  type ClassifiedPage,
+  type CodeOnPage,
+  type CodingFlag,
+  DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
+  type GroundedDiagnosis,
+  type IntakeDocumentType,
+  SUD_RULESET_VERSION,
+  type SudIndicator,
+  type SudIndicatorCategory,
+  attachCodesToDiagnoses,
+  classifyPages,
+  detectSudIndicators,
+  dominantSudCategory,
+  findCodeTokens,
+  findExtractionField,
+  findExtractionSchema,
+  groundQuote,
+  resolveCodeTokens,
+  runCodingChecks,
+  splitPacket,
+} from "@wardenx/intake-extraction";
+import { withOrgContext } from "@wardenx/tenancy";
+import {
+  type ClassifiedPageDocType,
+  DegradedError,
+  type IntakeSudDetectedPayload,
+  M22_INTAKE_SUD_DETECTED_EVENT,
+} from "@wardenx/types";
+import { and, eq } from "drizzle-orm";
+import { deriveTenantBucket } from "../lifecycle/storage";
+import {
+  type RecordsRequestMatchSummary,
+  matchInboundRecordsRequest,
+} from "../records-request/inbound-match";
 // apps/backend/src/modules/22-documents/extraction/intake-job.ts — the DocLens intake JOB: one uploaded
 // batch through stages 2–4 of §7.1 W1, persisted for review (F-236, ADR-0048).
 //
@@ -31,38 +67,11 @@
 // error to retry blindly: the affected job is marked `awaiting_capability` and the summary carries the
 // refusal detail. A Docling outage IS retried (thrown). An unparseable source marks the batch
 // `parse_failed`. Re-running a batch that already produced jobs is a no-op (idempotent on status).
-import { type DbClient, schema } from "@wardenx/db";
 import {
-  type ClassifiedPage,
-  type CodeOnPage,
-  type CodingFlag,
-  DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
-  type GroundedDiagnosis,
-  type IntakeDocumentType,
-  SUD_RULESET_VERSION,
-  type SudIndicator,
-  type SudIndicatorCategory,
-  attachCodesToDiagnoses,
-  classifyPages,
-  detectSudIndicators,
-  dominantSudCategory,
-  findCodeTokens,
-  findExtractionField,
-  findExtractionSchema,
-  groundQuote,
-  resolveCodeTokens,
-  runCodingChecks,
-  splitPacket,
-} from "@wardenx/intake-extraction";
-import { withOrgContext } from "@wardenx/tenancy";
-import {
-  type ClassifiedPageDocType,
-  DegradedError,
-  type IntakeSudDetectedPayload,
-  M22_INTAKE_SUD_DETECTED_EVENT,
-} from "@wardenx/types";
-import { and, eq } from "drizzle-orm";
-import { deriveTenantBucket } from "../lifecycle/storage";
+  type BatchIdentityStatus,
+  type IdentityTargetPorts,
+  refreshBatchIdentity,
+} from "./batch-identity";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import type { CodingTerminologyAdapter } from "./coding-terminology";
 import { type DoclingClient, type DoclingPage, DoclingParseError } from "./docling-client";
@@ -190,6 +199,8 @@ export interface DocLensIntakeDeps {
    * neither scanned nor checked, and the summary says so (`coding.status`).
    */
   readonly codingTerminology?: () => CodingTerminologyAdapter;
+  /** F-238 — M5 patient / M6 referral lookups for the per-document identity check (absent ⇒ not run). */
+  readonly identityTargets?: IdentityTargetPorts;
 }
 
 /** F-237 — the risk tiers stage 5 re-reads from the page (medications/allergies + name/DOB). */
@@ -269,6 +280,10 @@ export type DocLensIntakeSummary =
         readonly unverified: number;
       };
       readonly sud: { readonly indicators: number; readonly pages: readonly number[] };
+      /** F-238 — the batch's worst per-document identity verdict, or why none was computed. */
+      readonly identity: BatchIdentityStatus | "not_configured";
+      /** F-238 — the records-request code match (a `conflict` outcome is a warning for staff). */
+      readonly recordsRequest: RecordsRequestMatchSummary;
       /** F-238 — the splitter's documents and the coding checks (counts only). */
       readonly documents: number;
       readonly coding: {
@@ -382,6 +397,18 @@ export async function runDocLensIntake(
       })
       .where(eq(BATCH.id, job.batchId))
       .then(() => undefined),
+  );
+
+  // ── 2a. F-238: records returned for an outbound request? The cover sheet's code on the first pages (or
+  // the e-mail subject in source metadata) files an unfiled batch under the request's referral. Runs
+  // BEFORE the identity check (step 6), which then compares the documents against that prospect. A batch
+  // already filed elsewhere is never moved: the summary carries the warning instead.
+  const recordsRequest = await inOrg((tx) =>
+    matchInboundRecordsRequest(tx, {
+      organizationId: org,
+      batchId: job.batchId,
+      pageTexts: pages.map(pageText),
+    }),
   );
 
   // ── 2b. SUD detection over every page (§7.4 W4 step 1) — rules always, the model when it may run ──
@@ -764,9 +791,14 @@ export async function runDocLensIntake(
       }
       return;
     }
+    // The batch's patient NOW: a records-request match (step 2a) may have filed it since `source` was read.
+    const [filed] = await tx
+      .select({ patientId: BATCH.patientId })
+      .from(BATCH)
+      .where(eq(BATCH.id, job.batchId));
     const payload: IntakeSudDetectedPayload = {
       intakeBatchId: job.batchId,
-      patientId: source.patientId,
+      patientId: filed?.patientId ?? null,
       candidateCount: sudCandidates,
       suggestedSudKind: dominantSudCategory(sudIndicators),
       pages: [...sudPages].sort((x, y) => x - y),
@@ -779,6 +811,23 @@ export async function runDocLensIntake(
       aggregateId: job.batchId,
     });
   });
+  // ── 6. F-238: is every document about the patient (or referral) this fax is filed under? ───────────
+  const identity = deps.identityTargets
+    ? (
+        await inOrg((tx) =>
+          refreshBatchIdentity(
+            tx,
+            {
+              cipher: deps.cipher,
+              ports: deps.identityTargets as IdentityTargetPorts,
+              ...(deps.outbox ? { outbox: deps.outbox } : {}),
+            },
+            org,
+            job.batchId,
+          ),
+        )
+      ).status
+    : ("not_configured" as const);
   return {
     outcome: anyAwaiting && candidates === 0 ? "awaiting_capability" : "extracted",
     pages: pages.length,
@@ -788,6 +837,8 @@ export async function runDocLensIntake(
     refusals,
     vision,
     sud: { indicators: sudIndicators.length, pages: [...sudPages].sort((x, y) => x - y) },
+    identity,
+    recordsRequest,
     documents: segments.length,
     coding: {
       status: codingStatus,

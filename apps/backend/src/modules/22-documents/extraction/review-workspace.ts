@@ -13,7 +13,12 @@
 // Every query runs under `withOrgContext` (RLS); a batch of another tenant is a 404. Values are decrypted
 // here and only here, for the person reviewing them — never logged, never put on an outbox payload.
 import { type DbClient, schema } from "@wardenx/db";
-import { type IntakeDocumentType, findExtractionField } from "@wardenx/intake-extraction";
+import {
+  type IdentityStatus,
+  type IntakeDocumentType,
+  findExtractionField,
+  worstIdentity,
+} from "@wardenx/intake-extraction";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   DOCLENS_M5_WRITEBACK_FIELDS,
@@ -26,7 +31,19 @@ import {
 } from "@wardenx/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
+import {
+  type RecordsRequestConflictView,
+  markReceivedOnArrival,
+  recordsRequestConflicts,
+} from "../records-request/inbound-match";
 import { type CursorPage, paginate } from "../routes/concurrency";
+import {
+  type BatchIdentityStatus,
+  type IdentityTargetPorts,
+  otherBatchHoldsSudFlag,
+  publishSudFlagMove,
+  refreshBatchIdentity,
+} from "./batch-identity";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import type { DoclingClient } from "./docling-client";
 import { VISION_VERIFIED_RISK_LEVELS } from "./intake-job";
@@ -40,6 +57,8 @@ const EJ = schema.extractionJobs;
 const EC = schema.extractionCandidates;
 const ER = schema.extractionReviews;
 const ED = schema.extractionDecisions;
+const RELINK = schema.intakeBatchRelinks;
+const RR = schema.intakeRecordsRequests;
 
 /** The §5.1 classifier floor the screen highlights (a page below it needs a human label). */
 const LOW_CONFIDENCE = 0.75;
@@ -57,6 +76,8 @@ export interface ReviewQueueItem {
   readonly patientId: string | null;
   readonly patientName: string | null;
   readonly sudStatus: SudStatus;
+  /** F-238 — a records-request code on the fax names another referral / patient (null = none). */
+  readonly recordsRequestConflict: RecordsRequestConflictView | null;
   readonly candidates: {
     readonly total: number;
     readonly lowConfidence: number;
@@ -112,6 +133,10 @@ export interface ReviewWorkspace {
     readonly documentId: string;
     readonly patientId: string | null;
     readonly patientName: string | null;
+    readonly referralId: string | null;
+    readonly identityStatus: BatchIdentityStatus | null;
+    /** F-238 — a records-request code on the fax names another referral / patient (null = none). */
+    readonly recordsRequestConflict: RecordsRequestConflictView | null;
   };
   readonly sud: {
     readonly status: SudStatus;
@@ -143,6 +168,11 @@ export interface ReviewWorkspace {
     readonly date: string | null;
     readonly duplicateOfPage: number | null;
     readonly boundary: string | null;
+    readonly identity: {
+      readonly status: "match" | "possible" | "mismatch" | "unverified" | null;
+      readonly disagreeing: readonly string[];
+      readonly resolution: "same_patient" | "other_patient" | null;
+    };
   }[];
   readonly jobs: readonly {
     readonly id: string;
@@ -173,12 +203,30 @@ export interface ReviewWorkspaceDeps {
   }) => Promise<string>;
   /** "Last, First" for the header, via M5's PatientReader seam. Absent/failed ⇒ null. */
   readonly patientName?: (organizationId: string, patientId: string) => Promise<string | null>;
+  /** F-238 — the identity check's M5/M6 lookups + the caller's referral visibility (relink). */
+  readonly identity?: {
+    readonly ports: IdentityTargetPorts;
+    readonly canAccessReferral: (
+      organizationId: string,
+      userId: string,
+      referralId: string,
+    ) => Promise<boolean>;
+  };
 }
+
+export type IdentityResolution = "same_patient" | "other_patient";
 
 export interface ReviewWorkspaceService {
   listQueue(
     organizationId: string,
-    q: { view: "open" | "done"; cursor?: string; limit?: number },
+    q: {
+      view: "open" | "done";
+      cursor?: string;
+      limit?: number;
+      /** Narrow to one patient's batches (the admission privacy dialog's "which fax flagged this"). */
+      patientId?: string;
+      sudStatus?: SudStatus;
+    },
   ): Promise<CursorPage<ReviewQueueItem>>;
   getWorkspace(
     organizationId: string,
@@ -198,6 +246,33 @@ export interface ReviewWorkspaceService {
     outcome: "confirmed" | "rejected",
     reason: string | null,
   ): Promise<{ batchId: string; sudStatus: SudStatus }>;
+  /** F-238 — a reviewer's answer for one flagged document (`pageFrom` names it). */
+  resolveIdentity(
+    organizationId: string,
+    actor: { userId: string; membershipId: string },
+    batchId: string,
+    pageFrom: number,
+    resolution: IdentityResolution,
+    reason: string,
+  ): Promise<{
+    batchId: string;
+    pageFrom: number;
+    resolution: IdentityResolution;
+    identityStatus: BatchIdentityStatus;
+  }>;
+  /** F-238 — move a misfiled batch to another patient / referral before its review completes. */
+  relink(
+    organizationId: string,
+    actor: { userId: string; membershipId: string },
+    batchId: string,
+    to: { patientId: string | null; referralId: string | null; reason: string },
+    correlationId: string,
+  ): Promise<{
+    batchId: string;
+    patientId: string | null;
+    referralId: string | null;
+    identityStatus: BatchIdentityStatus;
+  }>;
 }
 
 const OPEN_STATUSES = [
@@ -248,13 +323,22 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
             patientId: BATCH.patientId,
             sudStatus: BATCH.sudStatus,
             uploadedAt: BATCH.uploadedAt,
+            conflictId: BATCH.recordsRequestConflictId,
+            conflictKind: BATCH.recordsRequestConflictKind,
           })
           .from(BATCH)
-          .where(inArray(BATCH.status, [...(q.view === "open" ? OPEN_STATUSES : DONE_STATUSES)]))
+          .where(
+            and(
+              inArray(BATCH.status, [...(q.view === "open" ? OPEN_STATUSES : DONE_STATUSES)]),
+              q.patientId ? eq(BATCH.patientId, q.patientId) : undefined,
+              q.sudStatus ? eq(BATCH.sudStatus, q.sudStatus) : undefined,
+            ),
+          )
           .orderBy(desc(BATCH.uploadedAt), desc(BATCH.id))
           .limit(500);
         if (batches.length === 0) return [];
         const ids = batches.map((b) => b.id);
+        const conflicts = await recordsRequestConflicts(tx, batches);
         const cands = await tx
           .select({
             batchId: CP.intakeUploadBatchId,
@@ -292,6 +376,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           const review = reviews.find((r) => r.batchId === b.id) ?? null;
           return {
             b,
+            conflict: conflicts.get(b.id) ?? null,
             counts: {
               total: mine.length,
               lowConfidence: mine.filter((c) => Number(c.confidence) < LOW_CONFIDENCE).length,
@@ -318,6 +403,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           patientId: r.b.patientId,
           patientName: await nameOf(organizationId, r.b.patientId),
           sudStatus: r.b.sudStatus,
+          recordsRequestConflict: r.conflict,
           candidates: r.counts,
           review: r.review,
         });
@@ -326,6 +412,31 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
     },
 
     async getWorkspace(organizationId, batchId, viewerMembershipId) {
+      // F-238 — records filed against a referral adopt its patient once M6 has resolved one, and are
+      // re-checked against that patient (M22 writes only its own rows here).
+      if (deps.identity && deps.cipher) {
+        const identity = deps.identity;
+        const cipher = deps.cipher;
+        await withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
+          const tx = scoped as DbClient;
+          const [b] = await tx
+            .select({ patientId: BATCH.patientId, referralId: BATCH.referralId })
+            .from(BATCH)
+            .where(eq(BATCH.id, batchId))
+            .limit(1);
+          if (b && b.patientId === null && b.referralId !== null) {
+            const subject = await identity.ports.referral?.(organizationId, b.referralId);
+            if (subject?.patientId) {
+              await refreshBatchIdentity(
+                tx,
+                { cipher, ports: identity.ports, ...(deps.outbox ? { outbox: deps.outbox } : {}) },
+                organizationId,
+                batchId,
+              );
+            }
+          }
+        });
+      }
       const loaded = await read(organizationId, async (tx) => {
         const [b] = await tx.select().from(BATCH).where(eq(BATCH.id, batchId)).limit(1);
         if (!b) throw new NotFoundError("intake batch");
@@ -351,9 +462,19 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         const decisions = review
           ? await tx.select().from(ED).where(eq(ED.extractionReviewId, review.id))
           : [];
-        return { b, pages, jobs, cands, review, decisions };
+        const conflict =
+          (
+            await recordsRequestConflicts(tx, [
+              {
+                id: b.id,
+                conflictId: b.recordsRequestConflictId,
+                conflictKind: b.recordsRequestConflictKind,
+              },
+            ])
+          ).get(b.id) ?? null;
+        return { b, pages, jobs, cands, review, decisions, conflict };
       });
-      const { b, pages, jobs, cands, review, decisions } = loaded;
+      const { b, pages, jobs, cands, review, decisions, conflict } = loaded;
 
       const geometry = (Array.isArray(b.pageGeometry) ? b.pageGeometry : []) as {
         page: number;
@@ -448,6 +569,9 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           documentId: b.initialDocumentId,
           patientId: b.patientId,
           patientName: await nameOf(organizationId, b.patientId),
+          referralId: b.referralId,
+          identityStatus: (b.identityStatus ?? null) as BatchIdentityStatus | null,
+          recordsRequestConflict: conflict,
         },
         sud: {
           status: b.sudStatus,
@@ -467,6 +591,12 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           date: p.documentDate ? String(p.documentDate) : null,
           duplicateOfPage: p.duplicateOfPage,
           boundary: p.segmentBoundary,
+          identity: {
+            status: (p.identityStatus ??
+              null) as ReviewWorkspace["documents"][number]["identity"]["status"],
+            disagreeing: p.identityDisagreeing ?? [],
+            resolution: (p.identityResolution ?? null) as IdentityResolution | null,
+          },
         })),
         jobs: jobs.map((j) => {
           const cp = pageOfJob(j.id);
@@ -570,6 +700,11 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           intakeBatchId: batchId,
           patientId: b.patientId,
           resolvedByMembershipId: actor.membershipId,
+          // A rejection retires the patient's DocLens flag only when no other batch of theirs still
+          // carries a live detection (the same rule as a move).
+          ...(outcome === "rejected" && b.patientId
+            ? { patientRetainsFlag: await otherBatchHoldsSudFlag(tx, b.patientId, batchId) }
+            : {}),
         };
         await deps.outbox.publish(tx, {
           eventName:
@@ -584,5 +719,207 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
         return { batchId, sudStatus: outcome };
       });
     },
+
+    async resolveIdentity(organizationId, actor, batchId, pageFrom, resolution, reason) {
+      return withOrgContext(deps.db, { organizationId, userId: actor.userId }, async (scoped) => {
+        const tx = scoped as DbClient;
+        const [b] = await tx
+          .select({ id: BATCH.id, status: BATCH.status })
+          .from(BATCH)
+          .where(eq(BATCH.id, batchId))
+          .for("update");
+        if (!b) throw new NotFoundError("intake batch");
+        if (b.status === "writeback_complete" || b.status === "discarded") {
+          throw new WardenXError(
+            "BATCH_CLOSED",
+            `this batch is ${b.status}; its documents can no longer be re-assigned`,
+            409,
+          );
+        }
+        const [doc] = await tx
+          .select({
+            id: CP.id,
+            status: CP.identityStatus,
+            resolution: CP.identityResolution,
+          })
+          .from(CP)
+          .where(and(eq(CP.intakeUploadBatchId, batchId), eq(CP.pageRangeStart, pageFrom)))
+          .limit(1);
+        if (!doc) throw new NotFoundError("document in this fax");
+        if (doc.status === null) {
+          throw new WardenXError(
+            "IDENTITY_NOT_CHECKED",
+            "this document has no identity check to resolve (the batch has no patient or referral yet)",
+            409,
+          );
+        }
+        if (doc.resolution !== resolution) {
+          await tx
+            .update(CP)
+            .set({
+              identityResolution: resolution,
+              identityResolvedByMembershipId: actor.membershipId,
+              identityResolvedAt: new Date(),
+              identityResolutionReason: reason,
+            })
+            .where(eq(CP.id, doc.id));
+        }
+        const identityStatus = await recomputeBatchIdentity(tx, batchId);
+        return { batchId, pageFrom, resolution, identityStatus };
+      });
+    },
+
+    async relink(organizationId, actor, batchId, to, correlationId) {
+      const identity = deps.identity;
+      if (!identity || !deps.cipher) {
+        throw new DegradedError("doclens-relink", "the patient/referral lookups are not bound");
+      }
+      if (!to.patientId && !to.referralId) {
+        throw new WardenXError(
+          "RELINK_TARGET_REQUIRED",
+          "name the patient and/or the referral this fax belongs to",
+          422,
+        );
+      }
+      // The referral must be one the caller can see; it fixes the patient once M6 has resolved it.
+      let patientId = to.patientId;
+      if (to.referralId) {
+        if (!(await identity.canAccessReferral(organizationId, actor.userId, to.referralId))) {
+          throw new NotFoundError("referral");
+        }
+        const subject = await identity.ports.referral?.(organizationId, to.referralId);
+        if (!subject) throw new NotFoundError("referral");
+        if (subject.patientId && patientId && subject.patientId !== patientId) {
+          throw new WardenXError(
+            "REFERRAL_PATIENT_CONFLICT",
+            "this referral is resolved to a different patient than the one named",
+            409,
+          );
+        }
+        patientId = patientId ?? subject.patientId;
+      }
+      if (patientId && !(await identity.ports.patient(organizationId, patientId))) {
+        throw new NotFoundError("patient");
+      }
+      const cipher = deps.cipher;
+      return withOrgContext(deps.db, { organizationId, userId: actor.userId }, async (scoped) => {
+        const tx = scoped as DbClient;
+        const [b] = await tx
+          .select({
+            id: BATCH.id,
+            status: BATCH.status,
+            patientId: BATCH.patientId,
+            referralId: BATCH.referralId,
+            documentId: BATCH.initialDocumentId,
+            sudStatus: BATCH.sudStatus,
+            recordsRequestId: BATCH.recordsRequestId,
+            conflictId: BATCH.recordsRequestConflictId,
+          })
+          .from(BATCH)
+          .where(eq(BATCH.id, batchId))
+          .for("update");
+        if (!b) throw new NotFoundError("intake batch");
+        if (b.status === "writeback_complete" || b.status === "discarded") {
+          throw new WardenXError(
+            "BATCH_CLOSED",
+            `this batch is ${b.status}; what it wrote is corrected on the chart, not by moving the fax`,
+            409,
+          );
+        }
+        const [completed] = await tx
+          .select({ id: ER.id })
+          .from(ER)
+          .where(and(eq(ER.intakeUploadBatchId, batchId), eq(ER.status, "complete")))
+          .limit(1);
+        if (completed) {
+          throw new WardenXError("BATCH_CLOSED", "this batch's review is already complete", 409);
+        }
+        const referralId = to.referralId ?? b.referralId;
+        if (patientId === b.patientId && referralId === b.referralId) {
+          const [cur] = await tx
+            .select({ s: BATCH.identityStatus })
+            .from(BATCH)
+            .where(eq(BATCH.id, batchId));
+          return {
+            batchId,
+            patientId,
+            referralId,
+            identityStatus: (cur?.s ?? "no_target") as BatchIdentityStatus,
+          };
+        }
+        await tx.update(BATCH).set({ patientId, referralId }).where(eq(BATCH.id, batchId));
+        // F-238 — the fax carried a records-request code for another referral: moving it THERE resolves
+        // the conflict — the batch now answers that request (which counts as received).
+        if (b.conflictId && !b.recordsRequestId && referralId) {
+          const [req] = await tx
+            .select({ referralId: RR.referralId, status: RR.status })
+            .from(RR)
+            .where(eq(RR.id, b.conflictId))
+            .limit(1);
+          if (req && req.referralId === referralId && req.status !== "cancelled") {
+            await tx
+              .update(BATCH)
+              .set({
+                recordsRequestId: b.conflictId,
+                recordsRequestConflictId: null,
+                recordsRequestConflictKind: null,
+              })
+              .where(eq(BATCH.id, batchId));
+            await markReceivedOnArrival(tx, b.conflictId, new Date());
+          }
+        }
+        // A Part 2 detection put a privacy flag on the previous patient (M5): it moves with the fax, in
+        // this transaction — never left on the wrong person, never missing on the right one.
+        await publishSudFlagMove(tx, deps.outbox, organizationId, {
+          batchId,
+          sudStatus: b.sudStatus,
+          fromPatientId: b.patientId,
+          toPatientId: patientId,
+          movedByMembershipId: actor.membershipId,
+        });
+        // The filed source document follows its batch (M22 owns both rows).
+        await tx.update(DOC).set({ patientId }).where(eq(DOC.id, b.documentId));
+        await tx.insert(RELINK).values({
+          organizationId,
+          patientId,
+          intakeUploadBatchId: batchId,
+          fromPatientId: b.patientId,
+          fromReferralId: b.referralId,
+          toReferralId: referralId,
+          reason: to.reason,
+          relinkedByMembershipId: actor.membershipId,
+          correlationId,
+        });
+        // Earlier resolutions confirmed a different person: forget them and check again.
+        const r = await refreshBatchIdentity(
+          tx,
+          { cipher, ports: identity.ports, ...(deps.outbox ? { outbox: deps.outbox } : {}) },
+          organizationId,
+          batchId,
+          { clearResolutions: true },
+        );
+        return { batchId, patientId, referralId, identityStatus: r.status };
+      });
+    },
   };
+}
+
+/** The batch's identity: the worst verdict among documents nobody has resolved (re-sent copies excluded). */
+async function recomputeBatchIdentity(tx: DbClient, batchId: string): Promise<BatchIdentityStatus> {
+  const docs = await tx
+    .select({
+      status: CP.identityStatus,
+      resolution: CP.identityResolution,
+      dup: CP.duplicateOfPage,
+    })
+    .from(CP)
+    .where(eq(CP.intakeUploadBatchId, batchId));
+  const open = docs
+    .filter((d) => d.dup === null && d.resolution === null && d.status !== null)
+    .map((d) => d.status as IdentityStatus);
+  const [b] = await tx.select({ s: BATCH.identityStatus }).from(BATCH).where(eq(BATCH.id, batchId));
+  const status: BatchIdentityStatus =
+    b?.s === "no_target" ? "no_target" : (worstIdentity(open) ?? "match");
+  await tx.update(BATCH).set({ identityStatus: status }).where(eq(BATCH.id, batchId));
+  return status;
 }

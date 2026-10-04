@@ -8,8 +8,12 @@
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
 import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { DegradedError, NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { DegradedError, NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import {
+  RECORDS_REQUEST_FILEABLE,
+  type RecordsRequestService,
+} from "../records-request/records-request-service";
 import {
   ifMatchVersionOf,
   rejectAiActor,
@@ -41,6 +45,7 @@ import {
   PublishOverlayRequest,
   PublishTemplateRequest,
   RecordDecisionRequest,
+  ReferralIntakeBatchesQuerySchema,
   ResolveDiscrepancyRequest,
   RetryRenderRequest,
   ReviewParamsSchema,
@@ -72,7 +77,14 @@ export interface DocumentRouteDeps {
       userId: string;
       referralId: string;
     }): Promise<boolean>;
+    /** F-238 — the referral's resolved patient (if any), for intake batches filed against it. */
+    getReferralSubject?(input: {
+      organizationId: string;
+      referralId: string;
+    }): Promise<{ patientId: string | null } | null>;
   };
+  /** F-238 — the records-request lookup behind a manual `recordsRequestId` on an intake upload. */
+  recordsRequests?: Pick<RecordsRequestService, "findForLink">;
 }
 
 /**
@@ -396,14 +408,75 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   app.post("/api/v1/intake/uploads", { preHandler: [INTAKE_UPLOAD] }, async (request, reply) => {
     const { organizationId, actor } = actorOf(request);
     const body = parse(IntakeUploadRequest, request.body);
+    // F-238 — records for a referral: the caller must be able to see it, and the batch takes the patient
+    // the referral resolved to. A caller naming another patient is refused rather than silently overridden.
+    let patientId = body.patientId ?? null;
+    // F-238 — records answering an outbound records request, linked by hand: the request must be this
+    // org's, still fileable (not cancelled), and for the same referral as any `referralId` given; the batch
+    // is then filed under the request's referral (and goes through the same referral checks below).
+    let referralId = body.referralId ?? null;
+    if (body.recordsRequestId) {
+      const rr = await deps.recordsRequests?.findForLink(organizationId, body.recordsRequestId);
+      if (!rr) throw new NotFoundError("records_request");
+      if (!RECORDS_REQUEST_FILEABLE.has(rr.status)) {
+        throw new WardenXError(
+          "RECORDS_REQUEST_CANCELLED",
+          "this records request was cancelled; records cannot be filed against it",
+          409,
+        );
+      }
+      if (referralId && referralId !== rr.referralId) {
+        throw new WardenXError(
+          "RECORDS_REQUEST_REFERRAL_CONFLICT",
+          "this records request belongs to a different referral than the one named",
+          409,
+        );
+      }
+      referralId = rr.referralId;
+    }
+    if (referralId) {
+      await assertReferralReadAllowed(organizationId, actor.userId, "referral", referralId);
+      const subject = await deps.referralReader?.getReferralSubject?.({
+        organizationId,
+        referralId,
+      });
+      if (!subject) throw new NotFoundError("referral");
+      if (subject.patientId && patientId && subject.patientId !== patientId) {
+        throw new WardenXError(
+          "REFERRAL_PATIENT_CONFLICT",
+          "this referral is resolved to a different patient than the one named",
+          409,
+        );
+      }
+      patientId = subject.patientId ?? patientId;
+    }
     const res = await service.uploadBatch(organizationId, actor, {
-      patientId: body.patientId ?? null,
+      patientId,
+      ...(referralId ? { referralId } : {}),
+      ...(body.recordsRequestId ? { recordsRequestId: body.recordsRequestId } : {}),
       sourceChannel: body.sourceChannel,
       sourceMetadata: body.sourceMetadata,
       ...(body.documentId ? { documentId: body.documentId } : {}),
     });
     return reply.code(201).send(res);
   });
+
+  // F-238 — the referral page's "Records" tab: the intake batches (faxes, emailed or scanned records)
+  // filed against ONE referral. The caller must be able to read the referral (M6 ReferralReader), the
+  // same gate the referral-filed upload uses. Strictly referral-filed — no patient-id fallback.
+  app.get(
+    "/api/v1/intake/referral-batches",
+    {
+      preHandler: [INTAKE_READ],
+      config: { auditRead: { resourceKind: "intake_batch", list: true } },
+    },
+    async (request) => {
+      const { organizationId, actor } = actorOf(request);
+      const q = parse(ReferralIntakeBatchesQuerySchema, request.query ?? {});
+      await assertReferralReadAllowed(organizationId, actor.userId, "referral", q.referralId);
+      return service.listReferralBatches(organizationId, q.referralId, q.cursor, q.limit);
+    },
+  );
 
   // 13 — read batch metadata + pipeline status.
   app.get(

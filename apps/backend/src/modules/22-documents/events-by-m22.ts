@@ -30,6 +30,7 @@ import {
   M22_INTAKE_SUD_CONFIRMED_EVENT,
   M22_INTAKE_SUD_DETECTED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
+  M22_INTAKE_SUD_RELINKED_EVENT,
   type ModuleEventContribution,
 } from "@wardenx/types";
 import { M22_CLINICAL_WRITEBACK_EVENTS } from "./events-by-m22-clinical";
@@ -213,13 +214,31 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: M22_INTAKE_SUD_REJECTED_EVENT,
     moduleOwner: "m22",
     description:
-      "A licensed reviewer rejected a DocLens SUD detection as a false positive (W4 step 6, e.g. methadone for pain). M5 retires the interim `sud` flag ONLY if DocLens put it there; a consent-derived flag is untouched.",
+      "A licensed reviewer rejected a DocLens SUD detection as a false positive (W4 step 6, e.g. methadone for pain). M5 retires the interim `sud` flag ONLY if DocLens put it there and no other live detection of the patient holds it (`patientRetainsFlag`); a consent-derived flag is untouched.",
     payloadSchema: Type.Object({
       intakeBatchId: Id,
       organizationId: Id,
       patientId: IdN,
       resolvedByMembershipId: Id,
       resolvedAt: Iso,
+      patientRetainsFlag: Type.Optional(Type.Boolean()),
+    }),
+    declaredConsumers: ["m5"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: M22_INTAKE_SUD_RELINKED_EVENT,
+    moduleOwner: "m22",
+    description:
+      "F-238 — a fax with a pending or confirmed DocLens SUD detection was moved to another patient (Move document), or adopted the patient its referral resolved to. M5 moves the DocLens-origin `sud` flag: the new patient gains it; the previous one loses it only if DocLens put it there and no other live detection of theirs holds it. Ids only.",
+    payloadSchema: Type.Object({
+      intakeBatchId: Id,
+      organizationId: Id,
+      fromPatientId: IdN,
+      toPatientId: IdN,
+      sudStatus: Type.Union([Type.Literal("detected"), Type.Literal("confirmed")]),
+      fromPatientRetainsFlag: Type.Boolean(),
+      movedByMembershipId: IdN,
     }),
     declaredConsumers: ["m5"],
     isOutboxOnly: true,

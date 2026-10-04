@@ -625,6 +625,30 @@ export function createReferralReader(db: DbClient): import("@wardenx/types").Ref
         return !!row;
       });
     },
+    async getReferralSubject({ organizationId, referralId }) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await tx
+          .select({
+            id: REF.id,
+            patientId: REF.patientId,
+            name: REF.patientNameAtReceipt,
+            dob: REF.patientDobAtReceipt,
+            status: REF.status,
+          })
+          .from(REF)
+          .where(and(eq(REF.organizationId, organizationId), eq(REF.id, referralId)))
+          .limit(1);
+        return row
+          ? {
+              referralId: row.id,
+              patientId: row.patientId,
+              patientNameAtReceipt: row.name,
+              patientDobAtReceipt: row.dob ? String(row.dob) : null,
+              status: String(row.status),
+            }
+          : null;
+      });
+    },
   };
 }
 

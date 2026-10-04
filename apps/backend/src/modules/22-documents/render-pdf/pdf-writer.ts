@@ -46,8 +46,11 @@ export function pdfDate(iso: string): string {
 
 function opToStream(op: PageOp): string {
   switch (op.op) {
-    case "text":
-      return `BT /${op.font} ${num(op.size)} Tf ${rgb(op.color)} rg ${num(op.x)} ${num(op.y)} Td ${pdfString(op.text)} Tj ET`;
+    case "text": {
+      const run = `BT /${op.font} ${num(op.size)} Tf ${rgb(op.color)} rg ${num(op.x)} ${num(op.y)} Td ${pdfString(op.text)} Tj ET`;
+      // `Tc` is graphics state that outlives ET — scope it in q/Q so later text keeps the font's spacing.
+      return op.charSpacing ? `q ${num(op.charSpacing)} Tc ${run} Q` : run;
+    }
     case "rect": {
       const path = `${num(op.x)} ${num(op.y)} ${num(op.w)} ${num(op.h)} re`;
       const fill = op.fill ? `${rgb(op.fill)} rg ` : "";

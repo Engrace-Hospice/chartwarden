@@ -21340,6 +21340,30 @@
                                 "type": "string"
                               }
                             }
+                          },
+                          "reasonCode": {
+                            "anyOf": [
+                              {
+                                "const": "INTAKE_DETECTION_UNREVIEWED",
+                                "type": "string"
+                              },
+                              {
+                                "const": "CONSENT_REQUIRED",
+                                "type": "string"
+                              },
+                              {
+                                "const": "RESTRICTED",
+                                "type": "string"
+                              },
+                              {
+                                "const": "PATIENT_NOT_FOUND",
+                                "type": "string"
+                              },
+                              {
+                                "const": "PRIVACY_CLEARANCE_UNAVAILABLE",
+                                "type": "string"
+                              }
+                            ]
                           }
                         }
                       }
@@ -105950,6 +105974,287 @@
         }
       }
     },
+    "/api/v1/intake/referral-batches": {
+      "get": {
+        "operationId": "getApiV1IntakeReferralbatches",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Intake batches filed against one referral — the referral's Records tab (statuses + counts, no values)",
+        "parameters": [
+          {
+            "name": "referralId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "referralId",
+                          "patientId",
+                          "status",
+                          "sourceChannel",
+                          "identityStatus",
+                          "sudStatus",
+                          "recordsRequestConflict",
+                          "pages",
+                          "documents",
+                          "candidates",
+                          "review",
+                          "uploadedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "referralId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "uploaded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "docling_complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "classifier_complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "extraction_complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "writeback_complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discarded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "split_into_children",
+                                "type": "string"
+                              },
+                              {
+                                "const": "split_resolved_no_split",
+                                "type": "string"
+                              },
+                              {
+                                "const": "parse_failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sourceChannel": {
+                            "type": "string"
+                          },
+                          "identityStatus": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sudStatus": {
+                            "anyOf": [
+                              {
+                                "const": "not_detected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "detected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "recordsRequestConflict": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "code",
+                                  "kind"
+                                ],
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "anyOf": [
+                                      {
+                                        "const": "code_names_another_referral",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "code_names_another_patient",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pages": {
+                            "type": "integer"
+                          },
+                          "documents": {
+                            "type": "integer"
+                          },
+                          "candidates": {
+                            "type": "integer"
+                          },
+                          "review": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "status",
+                                  "decided"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "in_progress",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "complete",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "abandoned",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "decided": {
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "uploadedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/intake/reviews/{id}": {
       "get": {
         "operationId": "getApiV1IntakeReviewsById",
@@ -106608,6 +106913,40 @@
               "maximum": 200,
               "type": "integer"
             }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "sudStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "not_detected",
+                  "type": "string"
+                },
+                {
+                  "const": "detected",
+                  "type": "string"
+                },
+                {
+                  "const": "confirmed",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -106635,6 +106974,7 @@
                           "patientId",
                           "patientName",
                           "sudStatus",
+                          "recordsRequestConflict",
                           "candidates",
                           "review"
                         ],
@@ -106689,6 +107029,37 @@
                               {
                                 "const": "rejected",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "recordsRequestConflict": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "code",
+                                  "kind"
+                                ],
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "anyOf": [
+                                      {
+                                        "const": "code_names_another_referral",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "code_names_another_patient",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
@@ -106779,7 +107150,96 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "status",
+                    "uploadedAt",
+                    "pages",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "uploaded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "docling_complete",
+                          "type": "string"
+                        },
+                        {
+                          "const": "classifier_complete",
+                          "type": "string"
+                        },
+                        {
+                          "const": "extraction_complete",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "writeback_complete",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discarded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "split_into_children",
+                          "type": "string"
+                        },
+                        {
+                          "const": "split_resolved_no_split",
+                          "type": "string"
+                        },
+                        {
+                          "const": "parse_failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "uploadedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "pages": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -106799,6 +107259,14 @@
                 ],
                 "properties": {
                   "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "referralId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "recordsRequestId": {
                     "format": "uuid",
                     "type": "string"
                   },
@@ -107228,6 +107696,132 @@
         }
       }
     },
+    "/api/v1/intake/uploads/{id}/identity-review": {
+      "post": {
+        "operationId": "postApiV1IntakeUploadsByIdIdentityreview",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: answer a document's identity check — same patient, or another patient's (its fields are never committed); Idempotency-Key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "batchId",
+                    "pageFrom",
+                    "resolution",
+                    "identityStatus"
+                  ],
+                  "properties": {
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "pageFrom": {
+                      "type": "integer"
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "const": "same_patient",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other_patient",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "identityStatus": {
+                      "anyOf": [
+                        {
+                          "const": "match",
+                          "type": "string"
+                        },
+                        {
+                          "const": "possible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mismatch",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_target",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "pageFrom",
+                  "resolution",
+                  "reason"
+                ],
+                "properties": {
+                  "pageFrom": {
+                    "minimum": 1,
+                    "maximum": 10000,
+                    "type": "integer"
+                  },
+                  "resolution": {
+                    "anyOf": [
+                      {
+                        "const": "same_patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_patient",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 5,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/intake/uploads/{id}/jobs": {
       "get": {
         "operationId": "getApiV1IntakeUploadsByIdJobs",
@@ -107361,6 +107955,126 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads/{id}/relink": {
+      "post": {
+        "operationId": "postApiV1IntakeUploadsByIdRelink",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: move a misfiled document to another patient and/or referral before its review completes (history kept; a Part 2 privacy flag moves with it; Idempotency-Key)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "batchId",
+                    "patientId",
+                    "referralId",
+                    "identityStatus"
+                  ],
+                  "properties": {
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "referralId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "identityStatus": {
+                      "anyOf": [
+                        {
+                          "const": "match",
+                          "type": "string"
+                        },
+                        {
+                          "const": "possible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mismatch",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_target",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "referralId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 5,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -107545,6 +108259,600 @@
         }
       }
     },
+    "/api/v1/intake/uploads/{id}/summary": {
+      "get": {
+        "operationId": "getApiV1IntakeUploadsByIdSummary",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: the prospect summary of a completed review — reviewer-approved values with document/page citations and a copyable plain-text rendering (deterministic; 409 until complete)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "batchId",
+                    "reviewId",
+                    "completedAt",
+                    "receivedAt",
+                    "sourceChannel",
+                    "filedUnder",
+                    "patient",
+                    "diagnoses",
+                    "medications",
+                    "allergies",
+                    "advanceDirectives",
+                    "documents",
+                    "withheld",
+                    "notCaptured",
+                    "plainText"
+                  ],
+                  "properties": {
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "reviewId": {
+                      "type": "string"
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedAt": {
+                      "type": "string"
+                    },
+                    "sourceChannel": {
+                      "type": "string"
+                    },
+                    "filedUnder": {
+                      "type": "object",
+                      "required": [
+                        "patientId",
+                        "patientName",
+                        "referralId"
+                      ],
+                      "properties": {
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "referralId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "patient": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "label",
+                          "values"
+                        ],
+                        "properties": {
+                          "key": {
+                            "anyOf": [
+                              {
+                                "const": "legalName",
+                                "type": "string"
+                              },
+                              {
+                                "const": "preferredName",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dateOfBirth",
+                                "type": "string"
+                              },
+                              {
+                                "const": "address",
+                                "type": "string"
+                              },
+                              {
+                                "const": "phoneHome",
+                                "type": "string"
+                              },
+                              {
+                                "const": "phoneMobile",
+                                "type": "string"
+                              },
+                              {
+                                "const": "email",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "value",
+                                "edited",
+                                "citations"
+                              ],
+                              "properties": {
+                                "value": {
+                                  "type": "string"
+                                },
+                                "edited": {
+                                  "type": "boolean"
+                                },
+                                "citations": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "document",
+                                      "documentType",
+                                      "page"
+                                    ],
+                                    "properties": {
+                                      "document": {
+                                        "type": "string"
+                                      },
+                                      "documentType": {
+                                        "type": "string"
+                                      },
+                                      "page": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "diagnoses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "description",
+                          "icd10Code",
+                          "icd10Source",
+                          "role",
+                          "edited",
+                          "codingFlags",
+                          "citations"
+                        ],
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "icd10Code": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "icd10Source": {
+                            "anyOf": [
+                              {
+                                "const": "document",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reviewer_edit",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "role": {
+                            "anyOf": [
+                              {
+                                "const": "principal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "secondary",
+                                "type": "string"
+                              },
+                              {
+                                "const": "history",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unspecified",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "edited": {
+                            "type": "boolean"
+                          },
+                          "codingFlags": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "code",
+                                "detail",
+                                "label",
+                                "severity"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "code": {
+                                  "type": "string"
+                                },
+                                "detail": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "severity": {
+                                  "anyOf": [
+                                    {
+                                      "const": "critical",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "warning",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "info",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "citations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "document",
+                                "documentType",
+                                "page"
+                              ],
+                              "properties": {
+                                "document": {
+                                  "type": "string"
+                                },
+                                "documentType": {
+                                  "type": "string"
+                                },
+                                "page": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "medications": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "edited",
+                          "citations"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "edited": {
+                            "type": "boolean"
+                          },
+                          "citations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "document",
+                                "documentType",
+                                "page"
+                              ],
+                              "properties": {
+                                "document": {
+                                  "type": "string"
+                                },
+                                "documentType": {
+                                  "type": "string"
+                                },
+                                "page": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "allergies": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "edited",
+                          "citations"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "edited": {
+                            "type": "boolean"
+                          },
+                          "citations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "document",
+                                "documentType",
+                                "page"
+                              ],
+                              "properties": {
+                                "document": {
+                                  "type": "string"
+                                },
+                                "documentType": {
+                                  "type": "string"
+                                },
+                                "page": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "advanceDirectives": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "pageFrom",
+                          "pageTo",
+                          "documentType",
+                          "documentTypeLabel",
+                          "title",
+                          "date",
+                          "status",
+                          "duplicateOfPage"
+                        ],
+                        "properties": {
+                          "pageFrom": {
+                            "type": "integer"
+                          },
+                          "pageTo": {
+                            "type": "integer"
+                          },
+                          "documentType": {
+                            "type": "string"
+                          },
+                          "documentTypeLabel": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "date": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "included",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other_patient",
+                                "type": "string"
+                              },
+                              {
+                                "const": "duplicate",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "duplicateOfPage": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "pageFrom",
+                          "pageTo",
+                          "documentType",
+                          "documentTypeLabel",
+                          "title",
+                          "date",
+                          "status",
+                          "duplicateOfPage"
+                        ],
+                        "properties": {
+                          "pageFrom": {
+                            "type": "integer"
+                          },
+                          "pageTo": {
+                            "type": "integer"
+                          },
+                          "documentType": {
+                            "type": "string"
+                          },
+                          "documentTypeLabel": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "date": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "included",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other_patient",
+                                "type": "string"
+                              },
+                              {
+                                "const": "duplicate",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "duplicateOfPage": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "withheld": {
+                      "type": "object",
+                      "required": [
+                        "part2Values"
+                      ],
+                      "properties": {
+                        "part2Values": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "notCaptured": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "plainText": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/intake/uploads/{id}/workspace": {
       "get": {
         "operationId": "getApiV1IntakeUploadsByIdWorkspace",
@@ -107588,7 +108896,10 @@
                         "uploadedAt",
                         "documentId",
                         "patientId",
-                        "patientName"
+                        "patientName",
+                        "referralId",
+                        "identityStatus",
+                        "recordsRequestConflict"
                       ],
                       "properties": {
                         "id": {
@@ -107621,6 +108932,78 @@
                           "anyOf": [
                             {
                               "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "referralId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "identityStatus": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "match",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "possible",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "mismatch",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unverified",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "no_target",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "recordsRequestConflict": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "code",
+                                "kind"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "code_names_another_referral",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "code_names_another_patient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
                             },
                             {
                               "type": "null"
@@ -107797,7 +109180,8 @@
                           "title",
                           "date",
                           "duplicateOfPage",
-                          "boundary"
+                          "boundary",
+                          "identity"
                         ],
                         "properties": {
                           "pageFrom": {
@@ -107848,6 +109232,64 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "identity": {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "disagreeing",
+                              "resolution"
+                            ],
+                            "properties": {
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "match",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "possible",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "mismatch",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "unverified",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "disagreeing": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "resolution": {
+                                "anyOf": [
+                                  {
+                                    "const": "same_patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other_patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
@@ -148683,6 +150125,704 @@
         }
       }
     },
+    "/api/v1/patients/{patientId}/intake-pending-address": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdIntakependingaddress",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: open intake batches for this patient holding an extracted residence address not yet on the chart (undecided, or approved in a review not completed) — counts and batch ids only, never a value; newest first, at most 3 (patient.read + caseload + intake.read)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "totalBatches"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "batchId",
+                          "batchStatus",
+                          "uploadedAt",
+                          "reviewStatus",
+                          "pendingCount",
+                          "approvedCount"
+                        ],
+                        "properties": {
+                          "batchId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "batchStatus": {
+                            "type": "string"
+                          },
+                          "uploadedAt": {
+                            "type": "string"
+                          },
+                          "reviewStatus": {
+                            "anyOf": [
+                              {
+                                "const": "not_started",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_progress",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "pendingCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "approvedCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "totalBatches": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/intake-summaries": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdIntakesummaries",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: every completed intake review's prospect summary for this patient's chart, newest first (patient.read + caseload)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "batchId",
+                          "reviewId",
+                          "completedAt",
+                          "receivedAt",
+                          "sourceChannel",
+                          "filedUnder",
+                          "patient",
+                          "diagnoses",
+                          "medications",
+                          "allergies",
+                          "advanceDirectives",
+                          "documents",
+                          "withheld",
+                          "notCaptured",
+                          "plainText"
+                        ],
+                        "properties": {
+                          "batchId": {
+                            "type": "string"
+                          },
+                          "reviewId": {
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receivedAt": {
+                            "type": "string"
+                          },
+                          "sourceChannel": {
+                            "type": "string"
+                          },
+                          "filedUnder": {
+                            "type": "object",
+                            "required": [
+                              "patientId",
+                              "patientName",
+                              "referralId"
+                            ],
+                            "properties": {
+                              "patientId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patientName": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "referralId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "patient": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "key",
+                                "label",
+                                "values"
+                              ],
+                              "properties": {
+                                "key": {
+                                  "anyOf": [
+                                    {
+                                      "const": "legalName",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "preferredName",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "dateOfBirth",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "address",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "phoneHome",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "phoneMobile",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "email",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "values": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "value",
+                                      "edited",
+                                      "citations"
+                                    ],
+                                    "properties": {
+                                      "value": {
+                                        "type": "string"
+                                      },
+                                      "edited": {
+                                        "type": "boolean"
+                                      },
+                                      "citations": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "required": [
+                                            "document",
+                                            "documentType",
+                                            "page"
+                                          ],
+                                          "properties": {
+                                            "document": {
+                                              "type": "string"
+                                            },
+                                            "documentType": {
+                                              "type": "string"
+                                            },
+                                            "page": {
+                                              "type": "integer"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "diagnoses": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "description",
+                                "icd10Code",
+                                "icd10Source",
+                                "role",
+                                "edited",
+                                "codingFlags",
+                                "citations"
+                              ],
+                              "properties": {
+                                "description": {
+                                  "type": "string"
+                                },
+                                "icd10Code": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "icd10Source": {
+                                  "anyOf": [
+                                    {
+                                      "const": "document",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "reviewer_edit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "role": {
+                                  "anyOf": [
+                                    {
+                                      "const": "principal",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "secondary",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "history",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unspecified",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "edited": {
+                                  "type": "boolean"
+                                },
+                                "codingFlags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "kind",
+                                      "code",
+                                      "detail",
+                                      "label",
+                                      "severity"
+                                    ],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string"
+                                      },
+                                      "code": {
+                                        "type": "string"
+                                      },
+                                      "detail": {
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "severity": {
+                                        "anyOf": [
+                                          {
+                                            "const": "critical",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "warning",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "info",
+                                            "type": "string"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                "citations": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "document",
+                                      "documentType",
+                                      "page"
+                                    ],
+                                    "properties": {
+                                      "document": {
+                                        "type": "string"
+                                      },
+                                      "documentType": {
+                                        "type": "string"
+                                      },
+                                      "page": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "medications": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "text",
+                                "edited",
+                                "citations"
+                              ],
+                              "properties": {
+                                "text": {
+                                  "type": "string"
+                                },
+                                "edited": {
+                                  "type": "boolean"
+                                },
+                                "citations": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "document",
+                                      "documentType",
+                                      "page"
+                                    ],
+                                    "properties": {
+                                      "document": {
+                                        "type": "string"
+                                      },
+                                      "documentType": {
+                                        "type": "string"
+                                      },
+                                      "page": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "allergies": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "text",
+                                "edited",
+                                "citations"
+                              ],
+                              "properties": {
+                                "text": {
+                                  "type": "string"
+                                },
+                                "edited": {
+                                  "type": "boolean"
+                                },
+                                "citations": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "document",
+                                      "documentType",
+                                      "page"
+                                    ],
+                                    "properties": {
+                                      "document": {
+                                        "type": "string"
+                                      },
+                                      "documentType": {
+                                        "type": "string"
+                                      },
+                                      "page": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "advanceDirectives": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "pageFrom",
+                                "pageTo",
+                                "documentType",
+                                "documentTypeLabel",
+                                "title",
+                                "date",
+                                "status",
+                                "duplicateOfPage"
+                              ],
+                              "properties": {
+                                "pageFrom": {
+                                  "type": "integer"
+                                },
+                                "pageTo": {
+                                  "type": "integer"
+                                },
+                                "documentType": {
+                                  "type": "string"
+                                },
+                                "documentTypeLabel": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "date": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "included",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "other_patient",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "duplicate",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "duplicateOfPage": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "documents": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "pageFrom",
+                                "pageTo",
+                                "documentType",
+                                "documentTypeLabel",
+                                "title",
+                                "date",
+                                "status",
+                                "duplicateOfPage"
+                              ],
+                              "properties": {
+                                "pageFrom": {
+                                  "type": "integer"
+                                },
+                                "pageTo": {
+                                  "type": "integer"
+                                },
+                                "documentType": {
+                                  "type": "string"
+                                },
+                                "documentTypeLabel": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "date": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "included",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "other_patient",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "duplicate",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "duplicateOfPage": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "withheld": {
+                            "type": "object",
+                            "required": [
+                              "part2Values"
+                            ],
+                            "properties": {
+                              "part2Values": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "notCaptured": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "plainText": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/medications/active": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdMedicationsActive",
@@ -167885,7 +170025,7 @@
         "tags": [
           "06-admission"
         ],
-        "summary": "Referral worklist (cursor-paginated)",
+        "summary": "Referral worklist (cursor-paginated; `q` searches the name at receipt, referrer, dx)",
         "parameters": [
           {
             "name": "status",
@@ -168026,6 +170166,35 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "patientResolutionStatus": {
+                            "type": "string"
+                          },
+                          "patientNameAtReceipt": {
+                            "type": "string"
+                          },
+                          "patientDobAtReceipt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "referrerOrganization": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receivedAt": {
+                            "type": "string"
                           }
                         }
                       }
@@ -169369,6 +171538,2312 @@
                   "ifVersion": {
                     "minimum": 0,
                     "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/records-requests": {
+      "get": {
+        "operationId": "getApiV1ReferralsByIdRecordsrequests",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "The referral's records requests, newest first (status, code, recipient, due date)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "referralId",
+                          "patientId",
+                          "requestCode",
+                          "recipientName",
+                          "recipientOrganization",
+                          "recipientFax",
+                          "recipientEmail",
+                          "recordsRequested",
+                          "recordsRequestedNote",
+                          "dateRangeStart",
+                          "dateRangeEnd",
+                          "status",
+                          "dueDate",
+                          "overdue",
+                          "expiresOn",
+                          "expiredAt",
+                          "receivedAfterExpiry",
+                          "requestedByMembershipId",
+                          "requestedAt",
+                          "receivedAt",
+                          "cancelledAt",
+                          "batches"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "referralId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requestCode": {
+                            "type": "string"
+                          },
+                          "recipientName": {
+                            "type": "string"
+                          },
+                          "recipientOrganization": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recipientFax": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recipientEmail": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recordsRequested": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "history_and_physical",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discharge_summary",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "progress_notes",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "consult_notes",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "labs",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "imaging",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_list",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "problem_list",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "recordsRequestedNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dateRangeStart": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dateRangeEnd": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "requested",
+                                "type": "string"
+                              },
+                              {
+                                "const": "received",
+                                "type": "string"
+                              },
+                              {
+                                "const": "partially_received",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "dueDate": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "overdue": {
+                            "type": "boolean"
+                          },
+                          "expiresOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "expiredAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receivedAfterExpiry": {
+                            "type": "boolean"
+                          },
+                          "requestedByMembershipId": {
+                            "type": "string"
+                          },
+                          "requestedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "receivedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancelledAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "batches": {
+                            "type": "integer"
+                          },
+                          "fax": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "recordsRequestId",
+                                  "faxNumber",
+                                  "status",
+                                  "provider",
+                                  "providerMessageId",
+                                  "pageCount",
+                                  "failureReason",
+                                  "attemptedAt",
+                                  "sentAt",
+                                  "failedAt"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "recordsRequestId": {
+                                    "type": "string"
+                                  },
+                                  "faxNumber": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "sending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "sent",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "failed",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "provider": {
+                                    "type": "string"
+                                  },
+                                  "providerMessageId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "pageCount": {
+                                    "type": "integer"
+                                  },
+                                  "failureReason": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "attemptedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "sentAt": {
+                                    "anyOf": [
+                                      {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "failedAt": {
+                                    "anyOf": [
+                                      {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1ReferralsByIdRecordsrequests",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Request a referral's older records from a PCP / hospital — creates the request and its cover-sheet code (RR-…)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "referralId",
+                    "patientId",
+                    "requestCode",
+                    "recipientName",
+                    "recipientOrganization",
+                    "recipientFax",
+                    "recipientEmail",
+                    "recordsRequested",
+                    "recordsRequestedNote",
+                    "dateRangeStart",
+                    "dateRangeEnd",
+                    "status",
+                    "dueDate",
+                    "overdue",
+                    "expiresOn",
+                    "expiredAt",
+                    "receivedAfterExpiry",
+                    "requestedByMembershipId",
+                    "requestedAt",
+                    "receivedAt",
+                    "cancelledAt",
+                    "batches"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "referralId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestCode": {
+                      "type": "string"
+                    },
+                    "recipientName": {
+                      "type": "string"
+                    },
+                    "recipientOrganization": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientFax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientEmail": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsRequested": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "history_and_physical",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_summary",
+                            "type": "string"
+                          },
+                          {
+                            "const": "progress_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "consult_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "labs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "imaging",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_list",
+                            "type": "string"
+                          },
+                          {
+                            "const": "problem_list",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "recordsRequestedNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeStart": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeEnd": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partially_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "overdue": {
+                      "type": "boolean"
+                    },
+                    "expiresOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedAfterExpiry": {
+                      "type": "boolean"
+                    },
+                    "requestedByMembershipId": {
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "receivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "batches": {
+                      "type": "integer"
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "recordsRequestId",
+                            "faxNumber",
+                            "status",
+                            "provider",
+                            "providerMessageId",
+                            "pageCount",
+                            "failureReason",
+                            "attemptedAt",
+                            "sentAt",
+                            "failedAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "recordsRequestId": {
+                              "type": "string"
+                            },
+                            "faxNumber": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "sending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sent",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "failed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "provider": {
+                              "type": "string"
+                            },
+                            "providerMessageId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "pageCount": {
+                              "type": "integer"
+                            },
+                            "failureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "attemptedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "sentAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "failedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "recipientName",
+                  "recordsRequested"
+                ],
+                "properties": {
+                  "recipientName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "recipientOrganization": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "recipientFax": {
+                    "minLength": 7,
+                    "maxLength": 40,
+                    "pattern": "^[0-9+()\\-. ]+$",
+                    "type": "string"
+                  },
+                  "recipientEmail": {
+                    "minLength": 3,
+                    "maxLength": 254,
+                    "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+                    "type": "string"
+                  },
+                  "recordsRequested": {
+                    "minItems": 0,
+                    "maxItems": 16,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "history_and_physical",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge_summary",
+                          "type": "string"
+                        },
+                        {
+                          "const": "progress_notes",
+                          "type": "string"
+                        },
+                        {
+                          "const": "consult_notes",
+                          "type": "string"
+                        },
+                        {
+                          "const": "labs",
+                          "type": "string"
+                        },
+                        {
+                          "const": "imaging",
+                          "type": "string"
+                        },
+                        {
+                          "const": "medication_list",
+                          "type": "string"
+                        },
+                        {
+                          "const": "problem_list",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "recordsRequestedNote": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "dateRangeStart": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "dateRangeEnd": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "dueDate": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "expiresOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/records-requests/{requestId}/cancel": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdRecordsrequestsByRequestIdCancel",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Cancel an open records request (its code then files nothing)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "referralId",
+                    "patientId",
+                    "requestCode",
+                    "recipientName",
+                    "recipientOrganization",
+                    "recipientFax",
+                    "recipientEmail",
+                    "recordsRequested",
+                    "recordsRequestedNote",
+                    "dateRangeStart",
+                    "dateRangeEnd",
+                    "status",
+                    "dueDate",
+                    "overdue",
+                    "expiresOn",
+                    "expiredAt",
+                    "receivedAfterExpiry",
+                    "requestedByMembershipId",
+                    "requestedAt",
+                    "receivedAt",
+                    "cancelledAt",
+                    "batches"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "referralId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestCode": {
+                      "type": "string"
+                    },
+                    "recipientName": {
+                      "type": "string"
+                    },
+                    "recipientOrganization": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientFax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientEmail": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsRequested": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "history_and_physical",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_summary",
+                            "type": "string"
+                          },
+                          {
+                            "const": "progress_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "consult_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "labs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "imaging",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_list",
+                            "type": "string"
+                          },
+                          {
+                            "const": "problem_list",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "recordsRequestedNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeStart": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeEnd": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partially_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "overdue": {
+                      "type": "boolean"
+                    },
+                    "expiresOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedAfterExpiry": {
+                      "type": "boolean"
+                    },
+                    "requestedByMembershipId": {
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "receivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "batches": {
+                      "type": "integer"
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "recordsRequestId",
+                            "faxNumber",
+                            "status",
+                            "provider",
+                            "providerMessageId",
+                            "pageCount",
+                            "failureReason",
+                            "attemptedAt",
+                            "sentAt",
+                            "failedAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "recordsRequestId": {
+                              "type": "string"
+                            },
+                            "faxNumber": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "sending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sent",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "failed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "provider": {
+                              "type": "string"
+                            },
+                            "providerMessageId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "pageCount": {
+                              "type": "integer"
+                            },
+                            "failureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "attemptedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "sentAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "failedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/records-requests/{requestId}/cover-sheet": {
+      "get": {
+        "operationId": "getApiV1ReferralsByIdRecordsrequestsByRequestIdCoversheet",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Cover sheet + request letter as a PDF (application/pdf, inline) carrying the request code large for OCR, the prospect's name + DOB (letter only) and what is requested",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/records-requests/{requestId}/extend": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdRecordsrequestsByRequestIdExtend",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Extend a records request's expiry (an expired request re-opens as requested; same code and cover sheet)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "referralId",
+                    "patientId",
+                    "requestCode",
+                    "recipientName",
+                    "recipientOrganization",
+                    "recipientFax",
+                    "recipientEmail",
+                    "recordsRequested",
+                    "recordsRequestedNote",
+                    "dateRangeStart",
+                    "dateRangeEnd",
+                    "status",
+                    "dueDate",
+                    "overdue",
+                    "expiresOn",
+                    "expiredAt",
+                    "receivedAfterExpiry",
+                    "requestedByMembershipId",
+                    "requestedAt",
+                    "receivedAt",
+                    "cancelledAt",
+                    "batches"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "referralId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestCode": {
+                      "type": "string"
+                    },
+                    "recipientName": {
+                      "type": "string"
+                    },
+                    "recipientOrganization": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientFax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientEmail": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsRequested": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "history_and_physical",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_summary",
+                            "type": "string"
+                          },
+                          {
+                            "const": "progress_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "consult_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "labs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "imaging",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_list",
+                            "type": "string"
+                          },
+                          {
+                            "const": "problem_list",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "recordsRequestedNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeStart": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeEnd": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partially_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "overdue": {
+                      "type": "boolean"
+                    },
+                    "expiresOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedAfterExpiry": {
+                      "type": "boolean"
+                    },
+                    "requestedByMembershipId": {
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "receivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "batches": {
+                      "type": "integer"
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "recordsRequestId",
+                            "faxNumber",
+                            "status",
+                            "provider",
+                            "providerMessageId",
+                            "pageCount",
+                            "failureReason",
+                            "attemptedAt",
+                            "sentAt",
+                            "failedAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "recordsRequestId": {
+                              "type": "string"
+                            },
+                            "faxNumber": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "sending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sent",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "failed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "provider": {
+                              "type": "string"
+                            },
+                            "providerMessageId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "pageCount": {
+                              "type": "integer"
+                            },
+                            "failureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "attemptedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "sentAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "failedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expiresOn"
+                ],
+                "properties": {
+                  "expiresOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "dueDate": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/records-requests/{requestId}/send-fax": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdRecordsrequestsByRequestIdSendfax",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Fax the cover sheet + letter through the outbound-fax port (idempotent per request; 409 for another number; 503 when no provider is configured)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "fax",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "fax": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "recordsRequestId",
+                        "faxNumber",
+                        "status",
+                        "provider",
+                        "providerMessageId",
+                        "pageCount",
+                        "failureReason",
+                        "attemptedAt",
+                        "sentAt",
+                        "failedAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "recordsRequestId": {
+                          "type": "string"
+                        },
+                        "faxNumber": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "sending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "failed",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "providerMessageId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "pageCount": {
+                          "type": "integer"
+                        },
+                        "failureReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "attemptedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "sentAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "failedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "faxNumber"
+                ],
+                "properties": {
+                  "faxNumber": {
+                    "minLength": 7,
+                    "maxLength": 40,
+                    "pattern": "^[0-9+()\\-. ]+$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/records-requests/{requestId}/status": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdRecordsrequestsByRequestIdStatus",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Mark a records request received or partially received",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "referralId",
+                    "patientId",
+                    "requestCode",
+                    "recipientName",
+                    "recipientOrganization",
+                    "recipientFax",
+                    "recipientEmail",
+                    "recordsRequested",
+                    "recordsRequestedNote",
+                    "dateRangeStart",
+                    "dateRangeEnd",
+                    "status",
+                    "dueDate",
+                    "overdue",
+                    "expiresOn",
+                    "expiredAt",
+                    "receivedAfterExpiry",
+                    "requestedByMembershipId",
+                    "requestedAt",
+                    "receivedAt",
+                    "cancelledAt",
+                    "batches"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "referralId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestCode": {
+                      "type": "string"
+                    },
+                    "recipientName": {
+                      "type": "string"
+                    },
+                    "recipientOrganization": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientFax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipientEmail": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordsRequested": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "history_and_physical",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_summary",
+                            "type": "string"
+                          },
+                          {
+                            "const": "progress_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "consult_notes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "labs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "imaging",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_list",
+                            "type": "string"
+                          },
+                          {
+                            "const": "problem_list",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "recordsRequestedNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeStart": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dateRangeEnd": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partially_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "overdue": {
+                      "type": "boolean"
+                    },
+                    "expiresOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expiredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedAfterExpiry": {
+                      "type": "boolean"
+                    },
+                    "requestedByMembershipId": {
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "receivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "batches": {
+                      "type": "integer"
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "recordsRequestId",
+                            "faxNumber",
+                            "status",
+                            "provider",
+                            "providerMessageId",
+                            "pageCount",
+                            "failureReason",
+                            "attemptedAt",
+                            "sentAt",
+                            "failedAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "recordsRequestId": {
+                              "type": "string"
+                            },
+                            "faxNumber": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "sending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sent",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "failed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "provider": {
+                              "type": "string"
+                            },
+                            "providerMessageId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "pageCount": {
+                              "type": "integer"
+                            },
+                            "failureReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "attemptedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "sentAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "failedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "received",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partially_received",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }

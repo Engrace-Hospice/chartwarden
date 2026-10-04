@@ -26,6 +26,7 @@ import {
   medicareTail,
   sexLabel,
 } from "../../shell/patient-context";
+import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
 
 // The shared identity helpers now live in the shell (chart tabs span modules); re-exported so this
 // module's own screens keep one import site.
@@ -584,6 +585,9 @@ export function OverviewTab({
       <RecentActivityPanel patientId={patient.id} data={data} className="wx-c11" />
       <UpcomingVisitsPanel patientId={patient.id} data={data} className="wx-c13" />
       <DocumentsPanel patientId={patient.id} data={data} className="wx-c11" />
+      {SHOWS_INTAKE_SUMMARIES.has(patient.status) ? (
+        <PatientIntakeSummaries patientId={patient.id} className="wx-c24" />
+      ) : null}
     </div>
   );
 }

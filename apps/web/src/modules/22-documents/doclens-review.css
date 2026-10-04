@@ -202,7 +202,7 @@
   text-transform: uppercase;
   color: var(--color-muted);
 }
-.wx-doclens-group ul {
+.wx-doclens-group > ul {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -211,10 +211,10 @@
   background: var(--color-surface-lowest);
   overflow: hidden;
 }
-.wx-doclens-group li + li {
+.wx-doclens-group > ul > li + li {
   border-top: 1px solid var(--color-outline-variant);
 }
-.wx-doclens-group li.is-selected {
+.wx-doclens-group > ul > li.is-selected {
   background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface-lowest));
   box-shadow: inset 3px 0 0 var(--color-primary);
 }
@@ -328,4 +328,97 @@
 .wx-doclens-error {
   color: var(--color-error-pill-fg);
   font-weight: 600;
+}
+
+/* F-238 — documents in the fax and the coding checks on page-printed ICD-10-CM codes */
+.wx-doclens-docs {
+  margin: 0 0 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  padding: 0.5rem 0.75rem;
+}
+.wx-doclens-docs > summary {
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+.wx-doclens-docs-table {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+.wx-doclens-docs-table tr[aria-current="true"] {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+.wx-doclens-coding {
+  list-style: none;
+  margin: -0.25rem 0 0;
+  padding: 0 1rem 0.75rem;
+  display: grid;
+  gap: 0.375rem;
+}
+.wx-doclens-coding li {
+  display: grid;
+  gap: 0.125rem;
+  justify-items: start;
+}
+.wx-doclens-coding-detail {
+  font-size: 0.8125rem;
+  color: var(--color-on-surface-variant);
+  line-height: 1.35;
+}
+@media (max-width: 640px) {
+  .wx-doclens-docs-table th:nth-child(3),
+  .wx-doclens-docs-table td:nth-child(3) {
+    display: none;
+  }
+}
+.wx-doclens-docs > summary > .wx-row-sub {
+  display: inline;
+}
+.wx-doclens-docs-table td:first-child,
+.wx-doclens-docs-table td:nth-child(4),
+.wx-doclens-docs-table td:last-child {
+  white-space: nowrap;
+}
+
+/* F-238 — does each document belong to this patient (Patient column), and the Move document dialog */
+.wx-doclens-identity {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+  min-width: 11rem;
+}
+.wx-doclens-identity-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+.wx-doclens-identity-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+}
+.wx-doclens-identity-form input {
+  min-width: 12rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+}
+.wx-doclens-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.wx-doclens-dialog .wx-field textarea {
+  width: 100%;
+}
+
+.wx-doclens-relink-sud {
+  border-left: 3px solid var(--color-warning);
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--color-warning) 7%, var(--color-surface-lowest));
+  border-radius: 4px;
 }

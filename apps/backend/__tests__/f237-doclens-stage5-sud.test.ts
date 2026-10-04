@@ -15,6 +15,7 @@ import {
   createOllamaModelBackend,
 } from "@wardenx/ai-platform";
 import { describe, expect, it } from "vitest";
+import { restrictionOf } from "../src/modules/05-patient/admission-clearance-reader";
 import { decideSudFlag } from "../src/modules/05-patient/index";
 import {
   closestReading,
@@ -481,5 +482,18 @@ describe("F-237 — the stage-5 seam through the REAL pipeline", () => {
     });
     expect(r).toMatchObject({ available: false });
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("M5 admission clearance — which workflow lifts the restriction", () => {
+  it("routes a DocLens interim flag to intake review and any other sud flag to consent", () => {
+    expect(restrictionOf(["sud"], "m22_intake_unconfirmed")).toBe("INTAKE_DETECTION_UNREVIEWED");
+    expect(restrictionOf(["sud"], "m22_intake_confirmed")).toBe("CONSENT_REQUIRED");
+    // M39 consent state (no §2.31 release on file) has no DocLens origin.
+    expect(restrictionOf(["sud"], null)).toBe("CONSENT_REQUIRED");
+    expect(restrictionOf(["hiv", "sud"], "m22_intake_unconfirmed")).toBe(
+      "INTAKE_DETECTION_UNREVIEWED",
+    );
+    expect(restrictionOf(["hiv"], null)).toBe("RESTRICTED");
   });
 });

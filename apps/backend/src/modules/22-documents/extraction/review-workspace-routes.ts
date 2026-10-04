@@ -27,12 +27,38 @@ const SudStatus = Type.Union([
   Type.Literal("confirmed"),
   Type.Literal("rejected"),
 ]);
+const IdentityDocStatus = Type.Union([
+  Type.Literal("match"),
+  Type.Literal("possible"),
+  Type.Literal("mismatch"),
+  Type.Literal("unverified"),
+]);
+const IdentityBatchStatus = Type.Union([
+  Type.Literal("match"),
+  Type.Literal("possible"),
+  Type.Literal("mismatch"),
+  Type.Literal("unverified"),
+  Type.Literal("no_target"),
+]);
 const Nullable = <T extends ReturnType<typeof Type.String>>(t: T) => Type.Union([t, Type.Null()]);
+/** F-238 — a records-request code on the fax names another referral / patient (code + kind only). */
+export const RecordsRequestConflictSchema = Type.Union([
+  Type.Object({
+    code: Type.String(),
+    kind: Type.Union([
+      Type.Literal("code_names_another_referral"),
+      Type.Literal("code_names_another_patient"),
+    ]),
+  }),
+  Type.Null(),
+]);
 
 export const ReviewQueueQuerySchema = Type.Object({
   view: Type.Optional(Type.Union([Type.Literal("open"), Type.Literal("done")])),
   cursor: Type.Optional(Type.String()),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  patientId: Type.Optional(Type.String({ format: "uuid" })),
+  sudStatus: Type.Optional(SudStatus),
 });
 
 export const ReviewQueueResponseSchema = Type.Object({
@@ -45,6 +71,7 @@ export const ReviewQueueResponseSchema = Type.Object({
       patientId: Nullable(Type.String()),
       patientName: Nullable(Type.String()),
       sudStatus: SudStatus,
+      recordsRequestConflict: RecordsRequestConflictSchema,
       candidates: Type.Object({
         total: Type.Integer(),
         lowConfidence: Type.Integer(),
@@ -70,6 +97,10 @@ export const ReviewWorkspaceResponseSchema = Type.Object({
     documentId: Type.String(),
     patientId: Nullable(Type.String()),
     patientName: Nullable(Type.String()),
+    // F-238 — the referral these records are for, and the worst unresolved per-document identity verdict.
+    referralId: Nullable(Type.String()),
+    identityStatus: Type.Union([IdentityBatchStatus, Type.Null()]),
+    recordsRequestConflict: RecordsRequestConflictSchema,
   }),
   sud: Type.Object({
     status: SudStatus,
@@ -106,6 +137,16 @@ export const ReviewWorkspaceResponseSchema = Type.Object({
       date: Nullable(Type.String()),
       duplicateOfPage: Type.Union([Type.Integer(), Type.Null()]),
       boundary: Nullable(Type.String()),
+      // F-238 — two-identifier check of this document against the patient / referral.
+      identity: Type.Object({
+        status: Type.Union([IdentityDocStatus, Type.Null()]),
+        disagreeing: Type.Array(Type.String()),
+        resolution: Type.Union([
+          Type.Literal("same_patient"),
+          Type.Literal("other_patient"),
+          Type.Null(),
+        ]),
+      }),
     }),
   ),
   jobs: Type.Array(
@@ -183,6 +224,32 @@ export const SudReviewResponseSchema = Type.Object({
   sudStatus: SudStatus,
 });
 
+// F-238 — a reviewer's answer for ONE document whose identity check is possible / mismatch.
+export const IdentityReviewRequest = Type.Object({
+  pageFrom: Type.Integer({ minimum: 1, maximum: 10_000 }),
+  resolution: Type.Union([Type.Literal("same_patient"), Type.Literal("other_patient")]),
+  reason: Type.String({ minLength: 5, maxLength: 1000 }),
+});
+export const IdentityReviewResponseSchema = Type.Object({
+  batchId: Type.String(),
+  pageFrom: Type.Integer(),
+  resolution: Type.Union([Type.Literal("same_patient"), Type.Literal("other_patient")]),
+  identityStatus: IdentityBatchStatus,
+});
+
+// F-238 — move a misfiled batch to another patient and/or referral before its review completes.
+export const RelinkRequest = Type.Object({
+  patientId: Type.Optional(Type.String({ format: "uuid" })),
+  referralId: Type.Optional(Type.String({ format: "uuid" })),
+  reason: Type.String({ minLength: 5, maxLength: 1000 }),
+});
+export const RelinkResponseSchema = Type.Object({
+  batchId: Type.String(),
+  patientId: Nullable(Type.String()),
+  referralId: Nullable(Type.String()),
+  identityStatus: IdentityBatchStatus,
+});
+
 const BatchParams = Type.Object({ id: Type.String({ format: "uuid" }) });
 const PageParams = Type.Object({
   id: Type.String({ format: "uuid" }),
@@ -241,6 +308,8 @@ export function registerDocLensReviewWorkspaceRoutes(
         view: q.view ?? "open",
         ...(q.cursor ? { cursor: q.cursor } : {}),
         ...(q.limit ? { limit: q.limit } : {}),
+        ...(q.patientId ? { patientId: q.patientId } : {}),
+        ...(q.sudStatus ? { sudStatus: q.sudStatus } : {}),
       });
     },
   );
@@ -293,6 +362,45 @@ export function registerDocLensReviewWorkspaceRoutes(
         id,
         body.outcome,
         body.reason ?? null,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/intake/uploads/:id/identity-review",
+    { preHandler: [REJECT_AI, INTAKE_REVIEW, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId, userId, membershipId } = actorOf(request);
+      const { id } = parse(BatchParams, request.params);
+      const body = parse(IdentityReviewRequest, request.body);
+      return service.resolveIdentity(
+        organizationId,
+        { userId, membershipId },
+        id,
+        body.pageFrom,
+        body.resolution,
+        body.reason,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/intake/uploads/:id/relink",
+    { preHandler: [REJECT_AI, INTAKE_REVIEW, IDEMPOTENT] },
+    async (request) => {
+      const { organizationId, userId, membershipId } = actorOf(request);
+      const { id } = parse(BatchParams, request.params);
+      const body = parse(RelinkRequest, request.body);
+      return service.relink(
+        organizationId,
+        { userId, membershipId },
+        id,
+        {
+          patientId: body.patientId ?? null,
+          referralId: body.referralId ?? null,
+          reason: body.reason,
+        },
+        request.id,
       );
     },
   );

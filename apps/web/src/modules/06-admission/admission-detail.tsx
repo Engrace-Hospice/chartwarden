@@ -42,6 +42,7 @@ import {
   verifiedUpload,
 } from "../../shell/document-workflows";
 import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
+import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { PatientIntakeDetails } from "./patient-intake-details";
 import { authFailureRedirect } from "./write-workflow";
@@ -114,6 +115,8 @@ interface ReadinessRequirement {
   message?: string;
   action?: string;
   satisfiedBy?: "normal" | "override";
+  /** `patient_privacy` only: why it is blocked (category-free; picks the privacy dialog's next step). */
+  reasonCode?: string;
   evidence?: {
     sourceType: "structured" | "uploaded";
     documentId?: string;
@@ -224,6 +227,7 @@ export function AdmissionDetail(): JSX.Element {
     | "cti-create"
     | "cti-upload"
     | "sign-cti-hospice-md"
+    | "privacy"
     | null
   >(null);
   const [busy, setBusy] = useState(false);
@@ -894,7 +898,9 @@ export function AdmissionDetail(): JSX.Element {
       }
     } else if (action === "COMPLETE_CTI") setCeremony("cti");
     else if (action === "COMPLETE_CTI_SIGNATURE") setCeremony("sign-cti-hospice-md");
+    else if (action === "REVIEW_PRIVACY") setCeremony("privacy");
   };
+  const actionContext = { electionStatement, cti };
 
   if (pendingWorkspace) {
     return (
@@ -996,16 +1002,12 @@ export function AdmissionDetail(): JSX.Element {
                   </p>
                 </div>
                 {nextRequirement.action ? (
-                  <button
-                    type="button"
-                    onClick={() => triggerAction(nextRequirement.action)}
+                  <RequirementActionButton
+                    action={nextRequirement.action}
+                    context={actionContext}
+                    onAction={triggerAction}
                     style={primaryBtn}
-                  >
-                    {actionLabel(nextRequirement.action, {
-                      electionStatement,
-                      cti,
-                    })}
-                  </button>
+                  />
                 ) : null}
               </div>
             ) : null}
@@ -1283,8 +1285,20 @@ export function AdmissionDetail(): JSX.Element {
   );
 
   function renderCeremonies(): JSX.Element {
+    const privacy = readiness?.requirements.find((r) => r.code === "patient_privacy");
     return (
       <>
+        <PrivacyReviewDialog
+          open={ceremony === "privacy"}
+          onClose={closeCeremony}
+          onRecheck={() => {
+            closeCeremony();
+            void load();
+          }}
+          reasonCode={privacy?.reasonCode}
+          message={privacy?.message}
+          patientId={admission?.patientId ?? null}
+        />
         <Modal
           open={ceremony === "admission-details"}
           onClose={busy ? undefined : closeCeremony}
@@ -2101,6 +2115,8 @@ function ServiceLocationBlock({
             later.
           </div>
 
+          {patientId ? <IntakePendingAddressHint patientId={patientId} /> : null}
+
           {patientId ? (
             <Link to={`/patients/${patientId}?view=addresses`} style={patientLinkStyle}>
               Open patient addresses
@@ -2110,6 +2126,63 @@ function ServiceLocationBlock({
       )}
     </div>
   );
+}
+
+type PendingAddressBatch = {
+  batchId: string;
+  uploadedAt: string;
+  pendingCount: number;
+  approvedCount: number;
+};
+
+/**
+ * F-238 — "an address is waiting in intake review". DocLens often extracted a residence address from the
+ * referral packet before the patient has one in M5; it only reaches the chart once a reviewer approves it
+ * AND completes the review. The M22 read answers counts + batch ids only (never the value); a caller who
+ * cannot see intake (403) or any failure renders nothing.
+ */
+function IntakePendingAddressHint({ patientId }: { patientId: string }): JSX.Element | null {
+  const client = useApiClient();
+  const [batches, setBatches] = useState<PendingAddressBatch[]>([]);
+  useEffect(() => {
+    let live = true;
+    setBatches([]);
+    client
+      .GET("/api/v1/patients/{patientId}/intake-pending-address", {
+        params: { path: { patientId } },
+      })
+      .then(({ data, error }) => {
+        if (live && !error && Array.isArray(data?.items)) setBatches(data.items);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [client, patientId]);
+  if (batches.length === 0) return null;
+  const anyUnreviewed = batches.some((b) => b.pendingCount > 0);
+  return (
+    <div data-testid="intake-pending-address" style={hintTextStyle}>
+      {anyUnreviewed
+        ? "An address was found in intake records that haven't been reviewed yet. Review it — once approved it's added to the patient."
+        : "An address from intake records was approved — complete the review to add it to the patient."}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", marginTop: "0.3rem" }}>
+        {batches.map((b) => (
+          <Link key={b.batchId} to={`/intake/${b.batchId}/review`} style={patientLinkStyle}>
+            {b.pendingCount > 0 ? "Review intake records" : "Complete the intake review"}
+            {` (received ${formatIntakeDate(b.uploadedAt)})`}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatIntakeDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 async function postUntyped(
@@ -2322,6 +2395,237 @@ function AdmissionDocuments({
   );
 }
 
+/**
+ * The actions `triggerAction` opens something for. A requirement action outside this set (one the
+ * server added before this screen learned it, or one completed elsewhere) renders as a DISABLED button
+ * with a tooltip — never as a button that silently does nothing.
+ */
+function isActionHandled(
+  action: string,
+  context: { electionStatement: ElectionStatementView | null; cti: CtiView | null },
+): boolean {
+  switch (action) {
+    case "ACKNOWLEDGE_NOR":
+    case "COMPLETE_NOTICE_OF_RIGHTS":
+    case "COMPLETE_ADMISSION_DETAILS":
+    case "COMPLETE_ELECTION":
+    case "COMPLETE_ELECTION_STATEMENT":
+    case "COMPLETE_ELECTION_SIGNATURE":
+    case "COMPLETE_CTI":
+    case "COMPLETE_CTI_SIGNATURE":
+    case "REVIEW_PRIVACY":
+      return true;
+    case "REVIEW_CTI":
+      return !context.cti || !context.cti.hospiceMdSigned;
+    default:
+      return false;
+  }
+}
+
+function RequirementActionButton({
+  action,
+  context,
+  onAction,
+  style,
+}: {
+  action: string;
+  context: { electionStatement: ElectionStatementView | null; cti: CtiView | null };
+  onAction: (action: string) => void;
+  style: CSSProperties;
+}): JSX.Element {
+  const label = actionLabel(action, context);
+  if (!isActionHandled(action, context)) {
+    return (
+      <button
+        type="button"
+        disabled
+        aria-disabled="true"
+        title="This step can't be completed from this screen yet."
+        style={{ ...style, opacity: 0.5, cursor: "not-allowed" }}
+      >
+        {label}
+      </button>
+    );
+  }
+  return (
+    <button type="button" style={style} onClick={() => onAction(action)}>
+      {label}
+    </button>
+  );
+}
+
+interface SudPendingBatch {
+  id: string;
+  createdAt: string;
+  sourceChannel: string;
+}
+
+/**
+ * REVIEW_PRIVACY — explains WHY the patient-privacy requirement blocks activation (the server's
+ * category-free `reasonCode`) and links to the one workflow that can lift it. No override exists:
+ * M5 reports `overrideAllowed`, but no privacy-override route is built, so none is offered.
+ *
+ *   INTAKE_DETECTION_UNREVIEWED  the open intake batches for this patient whose DocLens detection is
+ *                                still `detected` (GET /api/v1/intake/uploads — ids + dates only);
+ *                                confirming/rejecting there drives the M5 flag (M22 §7.4 W4)
+ *   CONSENT_REQUIRED             the patient's consent record (M39) — an active release lifts it
+ *   anything else                who to ask, plus a re-check
+ */
+function PrivacyReviewDialog({
+  open,
+  onClose,
+  onRecheck,
+  reasonCode,
+  message,
+  patientId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onRecheck: () => void;
+  reasonCode: string | undefined;
+  message: string | undefined;
+  patientId: string | null;
+}): JSX.Element {
+  const client = useApiClient();
+  const session = useSession();
+  const can = (key: string): boolean => session?.permissions?.includes(key) ?? false;
+  const [batches, setBatches] = useState<SudPendingBatch[] | null>(null);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const wantsBatches = open && reasonCode === "INTAKE_DETECTION_UNREVIEWED" && !!patientId;
+
+  useEffect(() => {
+    if (!wantsBatches || !patientId) return;
+    let live = true;
+    setBatches(null);
+    setLookupFailed(false);
+    // Both views: a DISCARDED batch keeps its pending detection (discard does not resolve W4), and its
+    // review workspace still offers confirm/reject.
+    const lookup = (view: "open" | "done") =>
+      client.GET("/api/v1/intake/uploads", {
+        params: { query: { view, patientId, sudStatus: "detected" } },
+      });
+    Promise.all([lookup("open"), lookup("done")])
+      .then((results) => {
+        if (!live) return;
+        const found: SudPendingBatch[] = [];
+        for (const { data, error } of results) {
+          if (error || !Array.isArray(data?.items)) {
+            setLookupFailed(true);
+            return;
+          }
+          for (const b of data.items) {
+            found.push({ id: b.id, createdAt: b.createdAt, sourceChannel: b.sourceChannel });
+          }
+        }
+        setBatches(found);
+      })
+      .catch(() => {
+        if (live) setLookupFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [client, wantsBatches, patientId]);
+
+  let body: ReactNode;
+  if (reasonCode === "INTAKE_DETECTION_UNREVIEWED") {
+    body = (
+      <>
+        <p style={admissionDetailsModalDescriptionStyle}>
+          An intake document for this patient was flagged as possibly containing specially protected
+          records, which placed an interim confidentiality restriction on the patient. An intake
+          reviewer must confirm or reject that flag. Rejecting a false positive lifts the
+          restriction; confirming it means a patient consent must be recorded before admission.
+        </p>
+        {lookupFailed ? (
+          <p style={hintTextStyle} data-testid="privacy-intake-unavailable">
+            You can't open intake review. Ask an intake reviewer to resolve the flagged document.
+          </p>
+        ) : batches === null ? (
+          <p style={hintTextStyle}>Looking for the flagged intake documents…</p>
+        ) : batches.length === 0 ? (
+          <p style={hintTextStyle} data-testid="privacy-intake-none">
+            No intake document for this patient is waiting on this review, so it can't be resolved
+            from intake review. This restriction can't be cleared in WardenX yet — escalate to your
+            privacy officer.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            {batches.map((b) =>
+              can("intake.review") ? (
+                <Link key={b.id} to={`/intake/${b.id}/review`} style={patientLinkStyle}>
+                  {`Resolve the flag in intake review (received ${formatIntakeDate(b.createdAt)})`}
+                </Link>
+              ) : (
+                <span key={b.id} style={hintTextStyle}>
+                  {`Intake document received ${formatIntakeDate(b.createdAt)} — an intake reviewer must resolve it.`}
+                </span>
+              ),
+            )}
+          </div>
+        )}
+      </>
+    );
+  } else if (reasonCode === "CONSENT_REQUIRED") {
+    body = (
+      <>
+        <p style={admissionDetailsModalDescriptionStyle}>
+          This patient has a confirmed confidentiality restriction. It is lifted when the patient's
+          consent for these records is recorded.
+        </p>
+        {patientId && (can("consent.author") || can("consent.read")) ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            {can("consent.author") ? (
+              <Link to={`/patients/${patientId}/consents/new`} style={patientLinkStyle}>
+                Record patient consent
+              </Link>
+            ) : null}
+            {can("consent.read") ? (
+              <Link to={`/patients/${patientId}/consents`} style={patientLinkStyle}>
+                View the patient's consents
+              </Link>
+            ) : null}
+          </div>
+        ) : (
+          <p style={hintTextStyle}>Ask a team member who records consents to capture it.</p>
+        )}
+      </>
+    );
+  } else if (reasonCode === "PRIVACY_CLEARANCE_UNAVAILABLE") {
+    body = (
+      <p style={admissionDetailsModalDescriptionStyle}>
+        The privacy check could not be completed right now. Check again in a moment.
+      </p>
+    );
+  } else {
+    body = (
+      <p style={admissionDetailsModalDescriptionStyle}>
+        {message ?? "A patient restriction requires authorized review."} This kind of restriction
+        can't be reviewed or cleared in WardenX yet — escalate to your privacy officer.
+      </p>
+    );
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} ariaLabel="Review patient privacy" width="34rem">
+      <div style={admissionDetailsModalStyle}>
+        <div style={admissionDetailsModalHeaderStyle}>
+          <h2 style={admissionDetailsModalTitleStyle}>Review patient privacy</h2>
+        </div>
+        {body}
+        <div style={admissionDetailsModalActionsStyle}>
+          <button type="button" style={ghostBtn} onClick={onClose}>
+            Close
+          </button>
+          <button type="button" style={primaryBtn} onClick={onRecheck}>
+            Check again
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function actionLabel(
   action: string,
   context: {
@@ -2344,6 +2648,7 @@ function actionLabel(
   if (action === "COMPLETE_ELECTION_SIGNATURE") return "Complete Election signature";
   if (action === "COMPLETE_CTI") return "Complete CTI";
   if (action === "COMPLETE_CTI_SIGNATURE") return "Complete CTI signature";
+  if (action === "REVIEW_PRIVACY") return "Review privacy";
 
   if (action === "REVIEW_CTI") {
     if (!context.cti) {
@@ -2856,9 +3161,12 @@ function RequirementCards({
             {r.message ?? (r.status === "complete" ? "Complete" : "No action required.")}
           </p>
           {r.action ? (
-            <button type="button" style={ghostBtn} onClick={() => onAction(r.action!)}>
-              {actionLabel(r.action, { electionStatement, cti })}
-            </button>
+            <RequirementActionButton
+              action={r.action}
+              context={{ electionStatement, cti }}
+              onAction={onAction}
+              style={ghostBtn}
+            />
           ) : null}
         </div>
       ))}

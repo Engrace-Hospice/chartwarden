@@ -43,8 +43,9 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //     read carries no discrepancy rows, and reclassification/splitting are batch actions with their own
 //     routes and permission family; the workspace labels a low-confidence page "Needs manual label"
 //     instead of trusting it silently.
-//   • An INTAKE UPLOAD control (spec empty state "Upload Intake Packet") — intake batches arrive by fax
-//     or API today; `POST /intake/uploads` has no staff caller.
+//   • An INTAKE UPLOAD control on the queue (spec empty state "Upload Intake Packet") — intake starts
+//     with the referral, so staff file records from the referral page's Records tab
+//     (06-admission/referral-records.tsx, F-238), the one staff caller of `POST /intake/uploads`.
 //   • The TEMPLATE OVERLAY editor and form-fill retry — admin surfaces on the template library, and a
 //     different permission family from the clinical document path this slice covers.
 //   • `POST /documents/:id/export-phi-bundle` — the §164.524 right-of-access bulk export. A
@@ -107,7 +108,7 @@ export const documentScreens: ScreenRegistryModule<ComponentType> = {
       id: "intake.review-queue",
       path: "/intake",
       title: "Intake review",
-      navGroup: "Clinical",
+      navGroup: "Admissions",
       requiredPermission: "intake.read",
       screen: IntakeReviewQueue,
     },

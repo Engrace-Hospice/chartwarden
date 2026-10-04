@@ -42,6 +42,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
+import { PatientLookupField, ReferralLookupField } from "../../shell/entity-lookups";
 import {
   type Candidate,
   type CompleteResult,
@@ -52,31 +53,45 @@ import {
   decide,
   pageImageUrl,
   releaseReview,
+  relinkBatch,
+  resolveIdentity,
   resolveSud,
   startReview,
 } from "./doclens-api";
 import {
+  IDENTITY_LABEL,
   MIN_REASON,
   batchStatusLabel,
   bboxPercent,
   bulkEligible,
   clinicalTargetOf,
+  codingFlagInfo,
   confidenceBand,
   decisionLabel,
   docTypeLabel,
   exclusionLabel,
   fieldLabel,
   fieldSection,
+  identityDetail,
+  identityNeedsAnswer,
   needsManualLabel,
   pct,
+  sortedCodingFlags,
   sourceLabel,
   updatesChart,
   updatesChartClinical,
 } from "./doclens-model";
 import { lifecycleTone } from "./lantern";
 import "./doclens-review.css";
+import { ProspectSummaryPanel } from "./prospect-summary";
 
 type Mode = { id: string; kind: "edit" | "reject" } | null;
+
+const CODING_TONE: Record<"critical" | "warning" | "info", StatusTone> = {
+  critical: "error",
+  warning: "warning",
+  info: "neutral",
+};
 
 const CONFIDENCE_TONE: Record<"high" | "medium" | "low", StatusTone> = {
   high: "success",
@@ -121,6 +136,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
   const actionErrorRef = useRef<HTMLDivElement | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
+  const [relinkOpen, setRelinkOpen] = useState(false);
 
   const boxRefs = useRef(new Map<string, HTMLButtonElement>());
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -155,6 +171,8 @@ export function DocLensReviewWorkspace(): JSX.Element {
   const lockedByOther = Boolean(inProgress && review && !review.isMine);
   const isComplete = review?.status === "complete" || ws?.batch.status === "writeback_complete";
   const sudStatus = ws?.sud.status ?? "not_detected";
+  const identityStatus = ws?.batch.identityStatus ?? null;
+  const identityBlocking = identityStatus === "possible" || identityStatus === "mismatch";
 
   const pages = useMemo(
     () => new Map<number, WorkspacePage>((ws?.pages ?? []).map((p) => [p.page, p])),
@@ -363,7 +381,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
       <header className="wx-page-head">
         <div>
           <nav aria-label="Breadcrumb" className="wx-row-sub">
-            <Link to="/intake">Intake review</Link> /{" "}
+            <Link to="/referrals">Referrals</Link> / <Link to="/intake">Intake review</Link> /{" "}
             <Link to={`/intake/${ws.batch.id}`}>Batch details</Link>
           </nav>
           <h1 style={{ fontSize: "1.875rem" }}>
@@ -387,6 +405,17 @@ export function DocLensReviewWorkspace(): JSX.Element {
           className="wx-page-actions"
           style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
         >
+          {!isComplete && !lockedByOther ? (
+            <button
+              type="button"
+              className="wx-btn-secondary"
+              disabled={busy}
+              onClick={() => setRelinkOpen(true)}
+              title="Filed under the wrong patient? Move this document to the right patient or referral"
+            >
+              <Glyph name="arrow-right" size={16} /> Move document
+            </button>
+          ) : null}
           {!inProgress && !isComplete ? (
             <button
               type="button"
@@ -419,7 +448,12 @@ export function DocLensReviewWorkspace(): JSX.Element {
               <button
                 type="button"
                 className="wx-btn-primary"
-                disabled={busy || sudStatus === "detected"}
+                disabled={busy || sudStatus === "detected" || identityBlocking}
+                title={
+                  identityBlocking
+                    ? "Answer every flagged document (same patient / another patient's) first"
+                    : undefined
+                }
                 onClick={() => setCompleteOpen(true)}
               >
                 <Glyph name="file-check" size={16} /> Complete review
@@ -455,6 +489,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
           body="This batch has been reviewed. Decisions are read-only."
         />
       ) : null}
+      {isComplete ? <ProspectSummaryPanel batchId={ws.batch.id} /> : null}
       {unavailable.map((j) => (
         <Alert
           key={j.id}
@@ -469,6 +504,38 @@ export function DocLensReviewWorkspace(): JSX.Element {
         />
       ))}
 
+      {identityBlocking ? (
+        <Alert
+          tone="error"
+          title={`${(ws.documents ?? []).filter(identityNeedsAnswer).length} document${
+            (ws.documents ?? []).filter(identityNeedsAnswer).length === 1 ? "" : "s"
+          } in this fax may belong to another patient`}
+          body="Compare the name and date of birth on each flagged document (listed below) with this patient. Mark it as this patient's, or as another patient's — its fields are then never written to this chart. If the whole upload is someone else's, use Move document."
+        />
+      ) : null}
+      {ws.batch.recordsRequestConflict ? (
+        <Alert
+          tone="error"
+          title={`This fax carries records-request code ${ws.batch.recordsRequestConflict.code}, which was issued for ${
+            ws.batch.recordsRequestConflict.kind === "code_names_another_patient"
+              ? "a different patient"
+              : "a different referral"
+          }`}
+          body={
+            isComplete
+              ? "The fax was filed here and not moved. Check that these records belong to this patient."
+              : "It was not moved. Check the name and date of birth on the pages: if these records answer that request, use Move document to file them under its referral (the request then counts as received); if they belong here, review them as usual."
+          }
+        />
+      ) : null}
+      {identityStatus === "no_target" ? (
+        <Alert
+          tone="warning"
+          title="This document is not linked to a patient or referral"
+          body="Nothing can reach a chart until it is. Use Move document to file it under the right patient or referral; every document is then checked against them."
+        />
+      ) : null}
+
       <SudPanel
         status={sudStatus}
         indicatorCount={ws.sud.indicators.length}
@@ -479,6 +546,23 @@ export function DocLensReviewWorkspace(): JSX.Element {
           return ok !== null;
         }}
       />
+
+      {ws.documents.length > 1 ? (
+        <DocumentList
+          documents={ws.documents}
+          candidates={ws.candidates}
+          currentPage={viewerPage}
+          onOpen={(page) => setViewerPage(page)}
+          canAnswer={!isComplete && !lockedByOther && !busy}
+          onAnswer={async (pageFrom, resolution, reason) => {
+            const ok = await run(() =>
+              resolveIdentity(client, ws.batch.id, pageFrom, resolution, reason),
+            );
+            if (ok !== null) await refresh();
+            return ok !== null;
+          }}
+        />
+      ) : null}
 
       <div className="wx-doclens-split">
         {/* ── source page ── */}
@@ -571,6 +655,7 @@ export function DocLensReviewWorkspace(): JSX.Element {
                         >
                           <FieldSummary c={c} sud={sudStatus} />
                         </button>
+                        <CodingChecks c={c} />
                         {isSel ? (
                           <FieldActions
                             c={c}
@@ -661,6 +746,21 @@ export function DocLensReviewWorkspace(): JSX.Element {
         }}
       />
 
+      {relinkOpen ? (
+        <RelinkDialog
+          current={ws.batch.patientName}
+          sudLive={ws.sud.status === "detected" || ws.sud.status === "confirmed"}
+          onClose={() => setRelinkOpen(false)}
+          onMove={async (to, reason) => {
+            const r = await relinkBatch(client, ws.batch.id, to, reason);
+            if (r.ok) {
+              setRelinkOpen(false);
+              await refresh();
+            }
+            return r.ok ? null : r.message;
+          }}
+        />
+      ) : null}
       {completeOpen && review ? (
         <CompleteDialog
           ws={ws}
@@ -799,6 +899,334 @@ function PageStage({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** F-238 — the documents the fax splitter found, with each one's coding issues. Click opens its first page. */
+function DocumentList(props: {
+  documents: Workspace["documents"];
+  candidates: readonly Candidate[];
+  currentPage: number | null;
+  onOpen: (page: number) => void;
+  canAnswer: boolean;
+  onAnswer: (
+    pageFrom: number,
+    resolution: "same_patient" | "other_patient",
+    reason: string,
+  ) => Promise<boolean>;
+}): JSX.Element {
+  const issuesOn = (from: number, to: number) => {
+    const flags = props.candidates
+      .filter((c) => c.page >= from && c.page <= to)
+      .flatMap((c) => c.codingFlags.map((f) => codingFlagInfo(f.kind).severity));
+    return {
+      critical: flags.filter((f) => f === "critical").length,
+      warning: flags.filter((f) => f === "warning").length,
+    };
+  };
+  const total = props.candidates.reduce((n, c) => n + c.codingFlags.length, 0);
+  return (
+    <details className="wx-doclens-docs" open>
+      <summary>
+        <strong>{props.documents.length} documents in this fax</strong>
+        {total > 0 ? (
+          <span className="wx-row-sub">
+            {" "}
+            · {total} coding check{total === 1 ? "" : "s"} on page-printed ICD-10-CM codes
+          </span>
+        ) : null}
+      </summary>
+      <table className="wx-table wx-doclens-docs-table">
+        <thead>
+          <tr>
+            <th scope="col">Pages</th>
+            <th scope="col">Document</th>
+            <th scope="col">Type</th>
+            <th scope="col">Dated</th>
+            <th scope="col">Coding</th>
+            <th scope="col">Patient</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.documents.map((d) => {
+            const here =
+              props.currentPage !== null &&
+              props.currentPage >= d.pageFrom &&
+              props.currentPage <= d.pageTo;
+            const issues = issuesOn(d.pageFrom, d.pageTo);
+            return (
+              <tr key={d.pageFrom} aria-current={here ? "true" : undefined}>
+                <td className="wx-nums">
+                  <button
+                    type="button"
+                    className="wx-link-button"
+                    onClick={() => props.onOpen(d.pageFrom)}
+                  >
+                    {d.pageFrom === d.pageTo ? `p. ${d.pageFrom}` : `pp. ${d.pageFrom}–${d.pageTo}`}
+                  </button>
+                </td>
+                <td>
+                  {d.title ?? <span className="wx-row-sub">Untitled</span>}
+                  {d.duplicateOfPage !== null ? (
+                    <>
+                      {" "}
+                      <StatusPill
+                        label={`Re-sent copy of p. ${d.duplicateOfPage} — not extracted`}
+                        tone="neutral"
+                      />
+                    </>
+                  ) : null}
+                </td>
+                <td>{docTypeLabel(d.documentType)}</td>
+                <td className="wx-nums">{d.date ?? <span className="wx-row-sub">—</span>}</td>
+                <td>
+                  {issues.critical > 0 ? (
+                    <StatusPill label={`${issues.critical} must fix`} tone="error" />
+                  ) : null}{" "}
+                  {issues.warning > 0 ? (
+                    <StatusPill label={`${issues.warning} to check`} tone="warning" />
+                  ) : null}
+                  {issues.critical + issues.warning === 0 ? (
+                    <span className="wx-row-sub">—</span>
+                  ) : null}
+                </td>
+                <td>
+                  <IdentityCell doc={d} canAnswer={props.canAnswer} onAnswer={props.onAnswer} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
+/** F-238 — does this document belong to this patient? Flagged ones are answered here, with a reason. */
+function IdentityCell({
+  doc,
+  canAnswer,
+  onAnswer,
+}: {
+  doc: Workspace["documents"][number];
+  canAnswer: boolean;
+  onAnswer: (
+    pageFrom: number,
+    resolution: "same_patient" | "other_patient",
+    reason: string,
+  ) => Promise<boolean>;
+}): JSX.Element {
+  const [answering, setAnswering] = useState<"same_patient" | "other_patient" | null>(null);
+  const [reason, setReason] = useState("");
+  if (doc.duplicateOfPage !== null) return <span className="wx-row-sub">—</span>;
+  if (doc.identity.resolution === "other_patient")
+    return <StatusPill label="Another patient's — not written back" tone="error" />;
+  if (doc.identity.resolution === "same_patient")
+    return <StatusPill label="Same patient (confirmed)" tone="success" />;
+  const info = doc.identity.status ? IDENTITY_LABEL[doc.identity.status] : null;
+  if (!info) return <span className="wx-row-sub">Not checked</span>;
+  const detail = identityDetail(doc.identity.disagreeing);
+  return (
+    <div className="wx-doclens-identity">
+      <StatusPill label={info.label} tone={info.tone} />
+      {detail ? <span className="wx-row-sub">{detail}</span> : null}
+      {identityNeedsAnswer(doc) && canAnswer ? (
+        answering === null ? (
+          <span className="wx-doclens-identity-actions">
+            <button
+              type="button"
+              className="wx-link-button"
+              onClick={() => setAnswering("same_patient")}
+            >
+              Same patient
+            </button>
+            <button
+              type="button"
+              className="wx-link-button"
+              onClick={() => setAnswering("other_patient")}
+            >
+              Another patient's
+            </button>
+          </span>
+        ) : (
+          <form
+            className="wx-doclens-identity-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (await onAnswer(doc.pageFrom, answering, reason.trim())) {
+                setAnswering(null);
+                setReason("");
+              }
+            }}
+          >
+            <label>
+              <span className="wx-sr-only">Reason</span>
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={
+                  answering === "same_patient" ? "Why (e.g. married name)" : "Whose it is / why"
+                }
+                minLength={5}
+                maxLength={1000}
+                required
+              />
+            </label>
+            <button type="submit" className="wx-btn-primary" disabled={reason.trim().length < 5}>
+              {answering === "same_patient" ? "Confirm same patient" : "Mark as another patient's"}
+            </button>
+            <button type="button" className="wx-link-button" onClick={() => setAnswering(null)}>
+              Cancel
+            </button>
+          </form>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/** F-238 — file a misfiled fax under the right patient or referral; every document is then re-checked. */
+function RelinkDialog({
+  current,
+  sudLive,
+  onClose,
+  onMove,
+}: {
+  current: string | null;
+  sudLive: boolean;
+  onClose: () => void;
+  onMove: (
+    to: { patientId?: string; referralId?: string },
+    reason: string,
+  ) => Promise<string | null>;
+}): JSX.Element {
+  const [kind, setKind] = useState<"patient" | "referral">("patient");
+  const [target, setTarget] = useState("");
+  const [reason, setReason] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = target !== "" && reason.trim().length >= 5 && !pending;
+  return (
+    <Modal
+      open
+      onClose={pending ? undefined : onClose}
+      ariaLabel="Move document"
+      width="34rem"
+      accent={t.primary}
+    >
+      <form
+        className="wx-doclens-dialog"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setPending(true);
+          setError(null);
+          const err = await onMove(
+            kind === "patient" ? { patientId: target } : { referralId: target },
+            reason.trim(),
+          );
+          setPending(false);
+          if (err) setError(err);
+        }}
+      >
+        <h2>Move this document</h2>
+        <p>
+          Currently filed under <strong>{current ?? "no patient"}</strong>. Moving it re-checks
+          every document against the new patient and clears earlier "same patient" answers. The move
+          is kept in the batch's history.
+        </p>
+        {sudLive ? (
+          <p className="wx-doclens-relink-sud">
+            This document has a substance-use (42 CFR Part 2) detection. Its privacy flag moves with
+            it: the new patient's chart is restricted, and the flag is lifted from{" "}
+            {current ?? "the current patient"} unless another of their documents still holds it.
+          </p>
+        ) : null}
+        <fieldset className="wx-seg wx-seg-compact">
+          <legend className="wx-sr-only">Move to</legend>
+          {(["patient", "referral"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={kind === k}
+              className={kind === k ? "is-selected" : undefined}
+              onClick={() => {
+                setKind(k);
+                setTarget("");
+              }}
+            >
+              {k === "patient" ? "Patient" : "Referral (prospect)"}
+            </button>
+          ))}
+        </fieldset>
+        {kind === "patient" ? (
+          <PatientLookupField
+            label="Patient"
+            value={target}
+            onChange={(v) => setTarget(v)}
+            required
+          />
+        ) : (
+          <ReferralLookupField
+            label="Referral"
+            value={target}
+            onChange={(v) => setTarget(v)}
+            hint="Records follow the referral's patient once it is resolved."
+            required
+          />
+        )}
+        <label className="wx-field">
+          <span>Reason</span>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            minLength={5}
+            maxLength={1000}
+            placeholder="e.g. PCP records for this prospect were filed under another patient"
+            required
+          />
+        </label>
+        {error ? (
+          <p role="alert" className="wx-doclens-error">
+            {error}
+          </p>
+        ) : null}
+        <div className="wx-doclens-dialog-actions">
+          <button type="button" className="wx-btn-secondary" onClick={onClose} disabled={pending}>
+            Cancel
+          </button>
+          <button type="submit" className="wx-btn-primary" disabled={!ready}>
+            {pending ? "Moving…" : "Move document"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** F-238 — the coding checks on one page-scanned code, most severe first. Outside the field's button. */
+function CodingChecks({ c }: { c: Candidate }): JSX.Element | null {
+  if (c.codingFlags.length === 0) return null;
+  return (
+    <ul className="wx-doclens-coding" aria-label="Coding checks">
+      {sortedCodingFlags(c.codingFlags).map((f) => {
+        const info = codingFlagInfo(f.kind);
+        return (
+          <li key={`${f.kind}:${f.code}`} data-severity={info.severity}>
+            <StatusPill label={info.label} tone={CODING_TONE[info.severity]} />
+            <span className="wx-doclens-coding-detail">
+              {f.detail}
+              {f.suggest.length > 0 ? (
+                <>
+                  {" "}
+                  Consider: <span className="wx-nums">{f.suggest.join(", ")}</span>.
+                </>
+              ) : null}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

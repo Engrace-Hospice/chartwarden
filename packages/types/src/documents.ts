@@ -261,6 +261,9 @@ export type M22TableName =
   | "tenant_template_overlay"
   | "form_fill"
   | "intake_upload_batch"
+  | "intake_batch_relink"
+  | "intake_records_request"
+  | "intake_records_request_fax"
   | "classified_page"
   | "extraction_job"
   | "extraction_candidate"
@@ -291,7 +294,21 @@ export const M22_AUDIT_DENYLIST: { readonly [K in M22TableName]: readonly string
   tenant_template_overlay: ["branding", "state_addendum"],
   form_fill: ["render_payload"],
   intake_upload_batch: ["source_metadata", "sud_evidence_cipher", "sud_resolution_reason"],
-  classified_page: ["document_title"],
+  // F-238 — append-only relink history; the reviewer's reason may name people.
+  intake_batch_relink: ["reason"],
+  // F-238 — an outbound request for a prospect's older records: who holds them (recipient) and the
+  // free-text note / cancel reason may name people; the code, kinds, dates and status are structural.
+  intake_records_request: [
+    "recipient_name",
+    "recipient_organization",
+    "recipient_fax",
+    "recipient_email",
+    "records_requested_note",
+    "cancel_reason",
+  ],
+  // F-238 — a fax send of a records request: the destination number and the provider's failure text.
+  intake_records_request_fax: ["fax_number", "failure_reason"],
+  classified_page: ["document_title", "identity_resolution_reason"],
   extraction_job: [],
   extraction_candidate: [
     "coding_flags_cipher",
@@ -340,6 +357,7 @@ export const M22_EVENT_NAMES = [
   "m22.intake.sud_detected",
   "m22.intake.sud_confirmed",
   "m22.intake.sud_rejected",
+  "m22.intake.sud_relinked",
   "m22.intake.completed",
   "m22.intake.rejected",
   // extraction

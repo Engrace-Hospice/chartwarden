@@ -166,6 +166,10 @@ function makeServer(
       userId: string;
       referralId: string;
     }): Promise<boolean>;
+    getReferralSubject?(input: {
+      organizationId: string;
+      referralId: string;
+    }): Promise<{ patientId: string | null } | null>;
   } = {
     async canAccessReferral(input) {
       return input.organizationId === ORG && input.referralId === REFERRAL;
@@ -525,6 +529,144 @@ describe("F-237 — the candidate's risk tier is the server's, not the request's
       payload: { candidateIds: [CAND_LOW] },
     });
     expect(res.statusCode).toBe(201);
+  });
+});
+
+describe("F-238 — intake records filed against a referral (a prospect's older records)", () => {
+  const referralReader = {
+    async canAccessReferral(input: { organizationId: string; referralId: string }) {
+      return input.organizationId === ORG && input.referralId === REFERRAL;
+    },
+    async getReferralSubject(input: { organizationId: string; referralId: string }) {
+      return input.organizationId === ORG && input.referralId === REFERRAL
+        ? { patientId: PATIENT }
+        : null;
+    },
+  };
+  const post = (app: ReturnType<typeof makeServer>["app"], body: Record<string, unknown>) =>
+    app.inject({
+      method: "POST",
+      url: "/api/v1/intake/uploads",
+      headers: RN,
+      payload: { sourceChannel: "fax", ...body },
+    });
+
+  it("the batch takes the patient the referral resolved to", async () => {
+    const { app } = makeServer(sharedBackend.service, referralReader);
+    const res = await post(app, { referralId: REFERRAL });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ patientId: PATIENT, referralId: REFERRAL });
+  });
+
+  it("naming a different patient than the referral's is a 409, never a silent override", async () => {
+    const { app } = makeServer(sharedBackend.service, referralReader);
+    const res = await post(app, { referralId: REFERRAL, patientId: PATIENT_OFF });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("REFERRAL_PATIENT_CONFLICT");
+  });
+
+  it("a referral the caller cannot see is not found", async () => {
+    const { app } = makeServer(sharedBackend.service, referralReader);
+    const res = await post(app, { referralId: "77777777-7777-4777-8777-777777777777" });
+    expect(res.statusCode).toBe(404);
+  });
+
+  describe("GET /intake/referral-batches — the referral's Records tab", () => {
+    const OTHER_REFERRAL = "77777777-7777-4777-8777-777777777777";
+    const seeded = () =>
+      createInMemoryDocumentBackend({
+        batches: [
+          {
+            id: "b1000000-0000-4000-8000-000000000001",
+            organizationId: ORG,
+            patientId: PATIENT,
+            referralId: REFERRAL,
+            sourceChannel: "fax",
+            sudStatus: "detected",
+            identityStatus: "possible",
+            status: "extraction_complete",
+            pages: 12,
+            createdAt: "2026-10-01T10:00:00.000Z",
+          },
+          // Same patient as the referral resolved to, but never filed against it: NOT included.
+          {
+            id: "b1000000-0000-4000-8000-000000000002",
+            organizationId: ORG,
+            patientId: PATIENT,
+            referralId: null,
+          },
+          // Another referral's records.
+          {
+            id: "b1000000-0000-4000-8000-000000000003",
+            organizationId: ORG,
+            patientId: null,
+            referralId: OTHER_REFERRAL,
+          },
+          // Another tenant's batch that happens to name the same referral id.
+          {
+            id: "b1000000-0000-4000-8000-000000000004",
+            organizationId: ORG_B,
+            patientId: null,
+            referralId: REFERRAL,
+          },
+        ],
+      });
+    const list = (app: ReturnType<typeof makeServer>["app"], qs: string, headers = RN) =>
+      app.inject({ method: "GET", url: `/api/v1/intake/referral-batches${qs}`, headers });
+
+    it("returns only the batches filed against this referral, in this tenant", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      const res = await list(app, `?referralId=${REFERRAL}`);
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.items.map((i: { id: string }) => i.id)).toEqual([
+        "b1000000-0000-4000-8000-000000000001",
+      ]);
+      expect(body.items[0]).toMatchObject({
+        referralId: REFERRAL,
+        patientId: PATIENT,
+        sourceChannel: "fax",
+        sudStatus: "detected",
+        identityStatus: "possible",
+        status: "extraction_complete",
+        pages: 12,
+        review: null,
+      });
+      expect(body.hasMore).toBe(false);
+    });
+
+    it("a batch uploaded with referralId shows up on that referral's list", async () => {
+      const backend = createInMemoryDocumentBackend({});
+      const { app } = makeServer(backend.service, referralReader);
+      const created = await post(app, { referralId: REFERRAL, sourceChannel: "email_ingest" });
+      expect(created.statusCode).toBe(201);
+      const res = await list(app, `?referralId=${REFERRAL}`);
+      expect(res.json().items).toEqual([
+        expect.objectContaining({
+          id: created.json().id,
+          referralId: REFERRAL,
+          sourceChannel: "email_ingest",
+        }),
+      ]);
+    });
+
+    it("a referral the caller cannot see is not found (nothing listed)", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      const res = await list(app, `?referralId=${OTHER_REFERRAL}`);
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("referralId is required and must be a uuid", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      expect((await list(app, "")).statusCode).toBe(422);
+      expect((await list(app, "?referralId=nope")).statusCode).toBe(422);
+    });
+
+    it("requires intake.read", async () => {
+      const { app } = makeServer(seeded().service, referralReader);
+      const res = await list(app, `?referralId=${REFERRAL}`, VIEWER);
+      expect(res.statusCode).toBe(403);
+    });
   });
 });
 

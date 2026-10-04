@@ -154,6 +154,51 @@ export async function resolveSud(
   return { ok: true, value: data.sudStatus };
 }
 
+export type WorkspaceDocument = Workspace["documents"][number];
+export type IdentityResolution = "same_patient" | "other_patient";
+
+/** F-238 — a reviewer's answer for one document whose identity check flagged it. */
+export async function resolveIdentity(
+  client: ApiClient,
+  batchId: string,
+  pageFrom: number,
+  resolution: IdentityResolution,
+  reason: string,
+): Promise<ReviewResult<string>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/intake/uploads/{id}/identity-review",
+    {
+      params: { path: { id: batchId } },
+      body: { pageFrom, resolution, reason },
+      headers: idemKey(),
+    },
+  );
+  if (error || !data)
+    return failure(
+      response?.status,
+      error,
+      "Resolving a document's patient needs intake review access.",
+    );
+  return { ok: true, value: data.identityStatus };
+}
+
+/** F-238 — move a misfiled fax to the right patient (and/or referral) before its review completes. */
+export async function relinkBatch(
+  client: ApiClient,
+  batchId: string,
+  to: { patientId?: string; referralId?: string },
+  reason: string,
+): Promise<ReviewResult<string>> {
+  const { data, error, response } = await client.POST("/api/v1/intake/uploads/{id}/relink", {
+    params: { path: { id: batchId } },
+    body: { ...to, reason },
+    headers: idemKey(),
+  });
+  if (error || !data)
+    return failure(response?.status, error, "Moving a fax needs intake review access.");
+  return { ok: true, value: data.identityStatus };
+}
+
 export async function completeReview(
   client: ApiClient,
   reviewId: string,

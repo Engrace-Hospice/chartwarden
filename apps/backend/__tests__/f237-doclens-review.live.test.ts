@@ -25,6 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { buildPatientAdmissionClearanceReader } from "../src/modules/05-patient/admission-clearance-reader";
 import { M5_OUTBOX_EVENTS, buildM5IntakeSudPrivacyConsumer } from "../src/modules/05-patient/index";
 import {
   type DocLensClassifierPort,
@@ -401,6 +402,19 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       flags: ["hiv", "sud"],
       sud_flag_origin: "m22_intake_unconfirmed",
     });
+    // The M6 admission gate's M5 read (as the app role): the interim flag names intake review as the
+    // workflow that lifts it — category-free.
+    expect(
+      await buildPatientAdmissionClearanceReader(handle.db).evaluatePatientAdmissionClearance({
+        organizationId: ORG,
+        patientId: patient,
+      }),
+    ).toEqual({
+      allowed: false,
+      reason: "PRIVACY_RESTRICTION",
+      restriction: "INTAKE_DETECTION_UNREVIEWED",
+      overrideAllowed: true,
+    });
   });
 
   it("serves the workspace (decrypted for the reviewer) and the queue (counts only)", async () => {
@@ -439,6 +453,22 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
       candidates: { total: 5, highRisk: 2, visionDisagreed: 1 },
     });
     expect(JSON.stringify(queue)).not.toContain("555-0142");
+
+    // The admission privacy dialog's lookup: this patient's batches whose detection is still pending.
+    const pending = await workspace.listQueue(ORG, {
+      view: "open",
+      patientId: patient,
+      sudStatus: "detected",
+    });
+    expect(pending.items.map((i) => i.id)).toEqual([batchId]);
+    const otherPatient = await workspace.listQueue(ORG, {
+      view: "open",
+      patientId: "00000000-0000-4000-8000-0000000000ff",
+      sudStatus: "detected",
+    });
+    expect(otherPatient.items).toEqual([]);
+    const resolved = await workspace.listQueue(ORG, { view: "open", sudStatus: "rejected" });
+    expect(resolved.items.map((i) => i.id)).not.toContain(batchId);
   });
 
   it("enforces the review rules, resolves SUD as a false positive, and then commits the SUD-page contact", async () => {
@@ -489,6 +519,14 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
 
     await dispatcher.tick();
     expect(await snapshot()).toEqual({ flags: ["hiv"], sud_flag_origin: null });
+    expect(
+      (
+        await buildPatientAdmissionClearanceReader(handle.db).evaluatePatientAdmissionClearance({
+          organizationId: ORG,
+          patientId: patient,
+        })
+      ).restriction,
+    ).toBe("RESTRICTED");
 
     const done = await svc.completeReview(ORG, actor, review.id);
     expect([...(done.writeback?.committedFieldPaths ?? [])].sort()).toEqual([

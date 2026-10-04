@@ -87,3 +87,36 @@ def test_render_route_needs_the_token_and_a_real_page(client):
         "/render", headers={"Authorization": f"Bearer {TOKEN}"}, json={**body, "page": 5}
     )
     assert res.status_code == 422
+
+
+def test_concurrent_renders_never_overlap_inside_pdfium(monkeypatch):
+    # The review screen and stage-5 crops hit /render in parallel on FastAPI's threadpool; unserialised
+    # pdfium calls failed ("Failed to load page") and segfaulted the worker (F-238 E2E). The race itself is
+    # intermittent, so this asserts the invariant instead: at most one thread is ever inside pdfium.
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    real = pdfium.PdfDocument
+    state = {"inside": 0, "peak": 0}
+    guard = threading.Lock()
+
+    class Tracked(real):  # type: ignore[misc, valid-type]
+        def __init__(self, *a, **k):
+            with guard:
+                state["inside"] += 1
+                state["peak"] = max(state["peak"], state["inside"])
+            time.sleep(0.01)  # widen the window an unserialised render would overlap in
+            super().__init__(*a, **k)
+
+        def close(self):
+            super().close()
+            with guard:
+                state["inside"] -= 1
+
+    monkeypatch.setattr(pdfium, "PdfDocument", Tracked)
+    data = letter_pdf(4)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outs = list(pool.map(lambda i: render_page(data, page=i % 4 + 1, scale=1), range(32)))
+    assert {png_size(o.png) for o in outs} == {(612, 792)}
+    assert state["peak"] == 1

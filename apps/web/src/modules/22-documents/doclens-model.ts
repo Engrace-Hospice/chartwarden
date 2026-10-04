@@ -247,3 +247,83 @@ export const decisionLabel = (d: string): string =>
       : d === "reject"
         ? "Rejected"
         : capital(words(d));
+
+// ── F-238: coding checks on page-scanned ICD-10-CM codes ─────────────────────────────────────────────
+/** `critical` = the code cannot stand as written; `warning` = the reviewer should look; `info` = context. */
+export type CodingSeverity = "critical" | "warning" | "info";
+const CODING_FLAG: Record<string, { label: string; severity: CodingSeverity }> = {
+  code_not_valid_on_date: {
+    label: "Not a valid code on the document's date",
+    severity: "critical",
+  },
+  code_retired_since_written: {
+    label: "Code retired since — needs a current code",
+    severity: "critical",
+  },
+  unknown_code: { label: "Not an ICD-10-CM code", severity: "critical" },
+  unacceptable_hospice_principal: {
+    label: "Not acceptable as hospice principal",
+    severity: "critical",
+  },
+  manifestation_code: { label: "Manifestation code — cannot be principal", severity: "critical" },
+  symptom_code_as_principal: { label: "Symptom code as principal", severity: "warning" },
+  combination_code_expected: { label: "Combination code expected", severity: "warning" },
+  more_specific_code_supported: {
+    label: "Documentation supports a more specific code",
+    severity: "warning",
+  },
+  conflicting_codes: { label: "Coded differently elsewhere in the packet", severity: "warning" },
+  resolved_condition: { label: "Documented as resolved", severity: "warning" },
+  unspecified_code: { label: "Unspecified code", severity: "info" },
+  ocr_repaired: { label: "Code read through OCR repair — check the page", severity: "info" },
+  unreadable_code: { label: "Code on the page could not be read", severity: "warning" },
+  part2_sud: { label: "42 CFR Part 2 — substance use disorder code", severity: "critical" },
+};
+export const codingFlagInfo = (kind: string): { label: string; severity: CodingSeverity } =>
+  CODING_FLAG[kind] ?? { label: capital(words(kind)), severity: "warning" };
+const SEVERITY_RANK: Record<CodingSeverity, number> = { critical: 0, warning: 1, info: 2 };
+/** Most severe first, so the chip row leads with what blocks the code. */
+export const sortedCodingFlags = <F extends { kind: string }>(flags: readonly F[]): F[] =>
+  [...flags].sort(
+    (a, b) =>
+      SEVERITY_RANK[codingFlagInfo(a.kind).severity] -
+      SEVERITY_RANK[codingFlagInfo(b.kind).severity],
+  );
+
+// ── F-238: does each document belong to this patient? (two identifiers: DOB + name) ───────────────────
+export const IDENTITY_LABEL: Record<
+  string,
+  { label: string; tone: "success" | "warning" | "error" | "neutral" }
+> = {
+  match: { label: "Same patient", tone: "success" },
+  possible: { label: "Check patient", tone: "warning" },
+  mismatch: { label: "Different patient?", tone: "error" },
+  unverified: { label: "No identifiers", tone: "neutral" },
+};
+const FIELD_WORD: Record<string, string> = {
+  dateOfBirth: "date of birth",
+  lastName: "last name",
+  firstName: "first name",
+};
+/** "date of birth and last name differ" — field names only; the values are on the page. */
+export const identityDetail = (disagreeing: readonly string[]): string =>
+  disagreeing.length === 0
+    ? ""
+    : `${disagreeing.map((d) => FIELD_WORD[d] ?? d).join(" and ")} ${disagreeing.length === 1 ? "differs" : "differ"}`;
+export const identityNeedsAnswer = (d: {
+  identity: { status: string | null; resolution: string | null };
+  duplicateOfPage: number | null;
+}): boolean =>
+  d.duplicateOfPage === null &&
+  d.identity.resolution === null &&
+  (d.identity.status === "possible" || d.identity.status === "mismatch");
+
+/** F-238 — a records-request code on the fax names another referral / patient than the batch's. */
+export type RecordsRequestConflictKind =
+  | "code_names_another_referral"
+  | "code_names_another_patient";
+export const RECORDS_REQUEST_CONFLICT_LABEL: Readonly<Record<RecordsRequestConflictKind, string>> =
+  {
+    code_names_another_referral: "Request code is for another referral",
+    code_names_another_patient: "Request code is for another patient",
+  };

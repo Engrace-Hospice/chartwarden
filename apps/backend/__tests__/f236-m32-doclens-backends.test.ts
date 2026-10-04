@@ -129,6 +129,37 @@ describe("F-236 — Ollama adapter", () => {
     );
   });
 
+  it("lifts Bun's hidden 300 s fetch timeout but still bounds the request (F-238 E2E)", async () => {
+    let init: (RequestInit & { timeout?: boolean }) | undefined;
+    const backend = createOllamaModelBackend({
+      backendKey: "local-llama-3.1-8b-instruct",
+      baseUrl: "http://ollama:11434",
+      model: "llama3.1:8b",
+      numCtx: 8192,
+      capabilities: OLLAMA_CAPS,
+      fetchImpl: (async (_url: string | URL | Request, i?: RequestInit) => {
+        init = i;
+        return new Response(
+          JSON.stringify({
+            message: { content: "{}" },
+            prompt_eval_count: 1,
+            eval_count: 1,
+            done_reason: "stop",
+          }),
+        );
+      }) as typeof fetch,
+    });
+    await backend.complete?.({
+      organizationId: "o",
+      systemPrompt: null,
+      prompt: "p",
+      chartContext: {},
+      maxOutputTokens: 16,
+    } as never);
+    expect(init?.timeout).toBe(false);
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("is healthy only when the configured tag is pulled", async () => {
     const ok = createOllamaModelBackend({
       ...base,
@@ -270,6 +301,102 @@ describe("F-236 — DocLens projector and PHI-minimisation rules", () => {
       ),
     ).toBeNull();
     expect(createDocLensOutputProjector().project("CopilotProvider", out("{}"))).toBeNull();
+  });
+
+  it("extract (F-238 E2E): a 'not present' entry with placeholder page 0 is omitted, not a refusal", () => {
+    // What llama3.1:8b actually answered for 4 of 18 packet documents: absent fields as {value:"", page:0}.
+    const p = projectDocLensExtract(
+      out(
+        JSON.stringify({
+          fields: [
+            {
+              fieldPath: "patient.dateOfBirth",
+              value: "03/02/1941",
+              quote: "DOB: 03/02/1941",
+              page: 2,
+              confidence: 1,
+            },
+            { fieldPath: "patient.email", value: "", quote: "", page: 0, confidence: 0 },
+            { fieldPath: "allergies[0].substance", value: " ", quote: "", page: 0, confidence: 0 },
+          ],
+        }),
+      ),
+    );
+    expect(Object.keys(p?.fields ?? {})).toEqual(["patient.dateOfBirth"]);
+    // A real value on page 0 is still malformed.
+    expect(
+      projectDocLensExtract(
+        out(
+          JSON.stringify({
+            fields: [{ fieldPath: "a", value: "x", quote: "x", page: 0, confidence: 1 }],
+          }),
+        ),
+      ),
+    ).toBeNull();
+  });
+
+  it("extract (F-238 E2E): unnumbered `[]` entries are numbered by order when every subfield agrees", () => {
+    // llama3.1:8b's real answer for the wound note (page numbers kept): the template path, unnumbered.
+    const e = (fieldPath: string, value: string) => ({
+      fieldPath,
+      value,
+      quote: value,
+      page: 1,
+      confidence: 0.9,
+    });
+    const p = projectDocLensExtract(
+      out(
+        JSON.stringify({
+          fields: [
+            e("patient.dateOfBirth", "03/02/1941"),
+            e("medications[].name", "foam dressing"),
+            e("medications[].name", "low-air-loss mattress"),
+            e("diagnoses[].description", "Pressure ulcer of sacral region, stage 2"),
+            e("diagnoses[].role", "principal"),
+          ],
+        }),
+      ),
+    );
+    expect(Object.keys(p?.fields ?? {}).sort()).toEqual([
+      "diagnoses[0].description",
+      "diagnoses[0].role",
+      "medications[0].name",
+      "medications[1].name",
+      "patient.dateOfBirth",
+    ]);
+    expect(p?.fields["medications[1].name"]?.value).toBe("low-air-loss mattress");
+    expect(p?.warnings).toEqual([]);
+    // Numbered entries keep their index; unnumbered ones continue after them.
+    const q = projectDocLensExtract(
+      out(
+        JSON.stringify({ fields: [e("medications[0].name", "a"), e("medications[].name", "b")] }),
+      ),
+    );
+    expect(q?.fields["medications[1].name"]?.value).toBe("b");
+  });
+
+  it("extract (F-238 E2E): a lopsided unnumbered group is dropped with a warning, the rest of the reply kept", () => {
+    const e = (fieldPath: string, value: string) => ({
+      fieldPath,
+      value,
+      quote: value,
+      page: 1,
+      confidence: 0.9,
+    });
+    const p = projectDocLensExtract(
+      out(
+        JSON.stringify({
+          fields: [
+            e("patient.dateOfBirth", "03/02/1941"),
+            e("diagnoses[].description", "COPD"),
+            e("diagnoses[].description", "CKD"),
+            e("diagnoses[].role", "principal"),
+          ],
+        }),
+      ),
+    );
+    expect(Object.keys(p?.fields ?? {})).toEqual(["patient.dateOfBirth"]);
+    expect(p?.warnings).toEqual(["unnumbered_diagnoses_dropped"]);
   });
 
   it("chart context: DocLens allowlists ids/counts only; every other capability still refuses", async () => {

@@ -101,6 +101,7 @@ import {
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
   PatientAdmissionsResponseSchema as M6PatientAdmissionsResponseSchema,
+  ReferralListResponseSchema as M6ReferralListResponseSchema,
   SummaryItemsResponseSchema as M6SummaryItemsResponseSchema,
   SummaryPageResponseSchema as M6SummaryPageResponseSchema,
   SummaryRowResponseSchema as M6SummaryRowResponseSchema,
@@ -316,6 +317,8 @@ import {
   IntakeBatchViewSchema as M22IntakeBatchViewSchema,
   IntakeJobListResponseSchema as M22IntakeJobListResponseSchema,
   OpenReviewResponseSchema as M22OpenReviewResponseSchema,
+  ReferralIntakeBatchListResponseSchema as M22ReferralIntakeBatchListResponseSchema,
+  ReferralIntakeBatchesQuerySchema as M22ReferralIntakeBatchesQuerySchema,
   TemplateListQuerySchema as M22TemplateListQuerySchema,
   VersionListQuerySchema as M22VersionListQuerySchema,
   VersionListResponseSchema as M22VersionListResponseSchema,
@@ -3491,9 +3494,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // Referral (routes 1–7)
   "POST /api/v1/referrals": { summary: "Receive a referral (§5.1)", body: ReferralCreateSchema },
   "GET /api/v1/referrals": {
-    summary: "Referral worklist (cursor-paginated)",
+    summary: "Referral worklist (cursor-paginated; `q` searches the name at receipt, referrer, dx)",
     query: ReferralListQuerySchema,
-    response: M6SummaryPageResponseSchema,
+    response: M6ReferralListResponseSchema,
   },
   "GET /api/v1/referrals/:id": {
     summary: "One referral's summary + state",
@@ -5369,6 +5372,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/intake/uploads": {
     summary: "Upload a new intake batch",
     body: M22IntakeUploadRequest,
+    response: M22IntakeBatchViewSchema,
+  },
+  "GET /api/v1/intake/referral-batches": {
+    summary:
+      "Intake batches filed against one referral — the referral's Records tab (statuses + counts, no values)",
+    query: M22ReferralIntakeBatchesQuerySchema,
+    response: M22ReferralIntakeBatchListResponseSchema,
   },
   "GET /api/v1/intake/uploads/:id": {
     summary: "Read batch metadata + pipeline status",
@@ -5471,7 +5481,16 @@ import {
   CommitReviewRequest as M22CommitReviewRequest,
   RunBatchRequest as M22RunBatchRequest,
 } from "../../apps/backend/src/modules/22-documents/extraction/extraction-routes";
+import { PendingAddressResponseSchema as M22PendingAddressResponseSchema } from "../../apps/backend/src/modules/22-documents/extraction/pending-address-routes";
 import {
+  PatientIntakeSummariesResponseSchema as M22PatientIntakeSummariesResponseSchema,
+  ProspectSummaryResponseSchema as M22ProspectSummaryResponseSchema,
+} from "../../apps/backend/src/modules/22-documents/extraction/prospect-summary-routes";
+import {
+  IdentityReviewRequest as M22IdentityReviewRequest,
+  IdentityReviewResponseSchema as M22IdentityReviewResponseSchema,
+  RelinkRequest as M22RelinkRequest,
+  RelinkResponseSchema as M22RelinkResponseSchema,
   ReviewQueueQuerySchema as M22ReviewQueueQuerySchema,
   ReviewQueueResponseSchema as M22ReviewQueueResponseSchema,
   ReviewWorkspaceResponseSchema as M22ReviewWorkspaceResponseSchema,
@@ -5499,6 +5518,34 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M22SudReviewRequest,
     response: M22SudReviewResponseSchema,
   },
+  // F-238 — a prospect's records: the per-document identity check and relinking a misfiled fax.
+  "POST /api/v1/intake/uploads/:id/identity-review": {
+    summary:
+      "DocLens: answer a document's identity check — same patient, or another patient's (its fields are never committed); Idempotency-Key",
+    body: M22IdentityReviewRequest,
+    response: M22IdentityReviewResponseSchema,
+  },
+  "POST /api/v1/intake/uploads/:id/relink": {
+    summary:
+      "DocLens: move a misfiled document to another patient and/or referral before its review completes (history kept; a Part 2 privacy flag moves with it; Idempotency-Key)",
+    body: M22RelinkRequest,
+    response: M22RelinkResponseSchema,
+  },
+  "GET /api/v1/intake/uploads/:id/summary": {
+    summary:
+      "DocLens: the prospect summary of a completed review — reviewer-approved values with document/page citations and a copyable plain-text rendering (deterministic; 409 until complete)",
+    response: M22ProspectSummaryResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/intake-summaries": {
+    summary:
+      "DocLens: every completed intake review's prospect summary for this patient's chart, newest first (patient.read + caseload)",
+    response: M22PatientIntakeSummariesResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/intake-pending-address": {
+    summary:
+      "DocLens: open intake batches for this patient holding an extracted residence address not yet on the chart (undecided, or approved in a review not completed) — counts and batch ids only, never a value; newest first, at most 3 (patient.read + caseload + intake.read)",
+    response: M22PendingAddressResponseSchema,
+  },
 });
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/intake/uploads/:id/extraction/run": {
@@ -5508,6 +5555,57 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/intake/jobs/:id/extraction/commit": {
     summary: "DocLens: commit a reviewed extraction job's field decisions (flag-gated)",
     body: M22CommitReviewRequest,
+  },
+});
+
+import {
+  CancelRecordsRequestRequest as M22CancelRecordsRequestRequest,
+  CreateRecordsRequestRequest as M22CreateRecordsRequestRequest,
+  ExtendRecordsRequestRequest as M22ExtendRecordsRequestRequest,
+  MarkRecordsRequestRequest as M22MarkRecordsRequestRequest,
+  RecordsRequestListResponseSchema as M22RecordsRequestListResponseSchema,
+  RecordsRequestViewSchema as M22RecordsRequestViewSchema,
+  SendRecordsRequestFaxRequest as M22SendRecordsRequestFaxRequest,
+  SendRecordsRequestFaxResponseSchema as M22SendRecordsRequestFaxResponseSchema,
+} from "../../apps/backend/src/modules/22-documents/records-request/records-request-typebox";
+// F-238 step 4 — requesting a prospect's older records (cover sheet + code the intake job recognises).
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/referrals/:id/records-requests": {
+    summary:
+      "Request a referral's older records from a PCP / hospital — creates the request and its cover-sheet code (RR-…)",
+    body: M22CreateRecordsRequestRequest,
+    response: M22RecordsRequestViewSchema,
+    status: 201,
+  },
+  "GET /api/v1/referrals/:id/records-requests": {
+    summary: "The referral's records requests, newest first (status, code, recipient, due date)",
+    response: M22RecordsRequestListResponseSchema,
+  },
+  "POST /api/v1/referrals/:id/records-requests/:requestId/cancel": {
+    summary: "Cancel an open records request (its code then files nothing)",
+    body: M22CancelRecordsRequestRequest,
+    response: M22RecordsRequestViewSchema,
+  },
+  "POST /api/v1/referrals/:id/records-requests/:requestId/status": {
+    summary: "Mark a records request received or partially received",
+    body: M22MarkRecordsRequestRequest,
+    response: M22RecordsRequestViewSchema,
+  },
+  "POST /api/v1/referrals/:id/records-requests/:requestId/extend": {
+    summary:
+      "Extend a records request's expiry (an expired request re-opens as requested; same code and cover sheet)",
+    body: M22ExtendRecordsRequestRequest,
+    response: M22RecordsRequestViewSchema,
+  },
+  "GET /api/v1/referrals/:id/records-requests/:requestId/cover-sheet": {
+    summary:
+      "Cover sheet + request letter as a PDF (application/pdf, inline) carrying the request code large for OCR, the prospect's name + DOB (letter only) and what is requested",
+  },
+  "POST /api/v1/referrals/:id/records-requests/:requestId/send-fax": {
+    summary:
+      "Fax the cover sheet + letter through the outbound-fax port (idempotent per request; 409 for another number; 503 when no provider is configured)",
+    body: M22SendRecordsRequestFaxRequest,
+    response: M22SendRecordsRequestFaxResponseSchema,
   },
 });
 

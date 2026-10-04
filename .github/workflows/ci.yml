@@ -160,13 +160,13 @@ jobs:
       # command arguments, and these suites replay all 117 migrations — including ~47 partitioned
       # parents — inside one transaction, which blows past the default max_locks_per_transaction=64
       # with `out of shared memory`. That GUC needs a RESTART, so ALTER SYSTEM + pg_reload_conf()
-      # cannot fix it from a step. Verified locally: pg16 at the default fails the baseline, M25,
+      # cannot fix it from a step. Verified locally: Postgres at the default fails the baseline, M25,
       # M26 and M30 suites; at 4096 all fifteen pass.
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
           docker run -d --name wardenx-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
-            -p 5432:5432 pgvector/pgvector:pg16 \
+            -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec wardenx-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
@@ -707,6 +707,21 @@ jobs:
               name: "F-238 DocLens medication history + allergies",
               scripts: "test:f238:doclens-clinical-writeback:live",
             }
+          # F-238 — a prospect's records: a fax filed against an M6 referral is checked document by document
+          # (DOB + name) against the referral, then the resolved patient it adopts; completion blocks while a
+          # page may be another patient's, whose fields are never committed; relink moves a misfiled fax with
+          # history (closed / Part 2-flagged batches refuse); real M5/M6 readers; RLS as the app role.
+          - {
+              name: "F-238 DocLens prospect identity + relink",
+              scripts: "test:f238:doclens-identity-relink:live",
+            }
+          # F-238 step 4 — records requested for a prospect: the cover-sheet code found on a returned fax /
+          # in an e-mail subject files the batch under the request's referral (before the identity check);
+          # a batch filed elsewhere is never moved (warning); FORCEd RLS + audit denylist as the app role.
+          - {
+              name: "F-238 records request (outbound code, inbound matching)",
+              scripts: "test:f238:records-request:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
@@ -875,7 +890,7 @@ jobs:
         run: |
           docker run -d --name wardenx-ci-pg-lifecycle \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
-            -p 5432:5432 pgvector/pgvector:pg16 \
+            -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec wardenx-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
@@ -925,7 +940,7 @@ jobs:
         run: |
           docker run -d --name wardenx-ci-pg-migrate \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_migration_gate \
-            -p 5432:5432 pgvector/pgvector:pg16 \
+            -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec wardenx-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d wardenx_migration_gate && exit 0
@@ -986,7 +1001,7 @@ jobs:
         run: |
           docker run -d --name wardenx-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
-            -p 5432:5432 pgvector/pgvector:pg16 \
+            -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec wardenx-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
@@ -1042,7 +1057,7 @@ jobs:
         run: |
           docker run -d --name wardenx-ci-pg-boot \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
-            -p 5432:5432 pgvector/pgvector:pg16 \
+            -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec wardenx-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d wardenx_boot && exit 0
@@ -1212,7 +1227,7 @@ jobs:
         run: |
           docker run -d --name wardenx-ci-pg-e2e \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_e2e \
-            -p 5432:5432 pgvector/pgvector:pg16 \
+            -p 5432:5432 pgvector/pgvector:pg18 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec wardenx-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d wardenx_e2e && exit 0

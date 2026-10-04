@@ -4,7 +4,12 @@
 //   m22.intake.sud_detected   → add an INTERIM `sud` flag to the patient's privacy snapshot
 //                               (`sud_flag_origin = 'm22_intake_unconfirmed'`, W4 step 4)
 //   m22.intake.sud_confirmed  → mark that interim flag confirmed (W4 step 6)
-//   m22.intake.sud_rejected   → retire the flag — ONLY when DocLens put it there (W4 step 6)
+//   m22.intake.sud_rejected   → retire the flag — ONLY when DocLens put it there (W4 step 6), and
+//                               not while another of the patient's detections holds it (F-238)
+//   m22.intake.sud_relinked   → F-238: the fax moved to another patient. The new patient gains the flag
+//                               (as a detection or a confirmation); the previous one loses it as a
+//                               rejection would — only if DocLens put it there, and only when M22 says no
+//                               other DocLens detection on that patient still holds it
 //
 // Why the origin column: the snapshot's `sud` flag has two possible authors. M39 consent state puts it there
 // when no §2.31 consent is on file (`m39-consent-privacy.ts`); a DocLens detection puts it there for a
@@ -21,6 +26,7 @@ import {
   M22_INTAKE_SUD_CONFIRMED_EVENT,
   M22_INTAKE_SUD_DETECTED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
+  M22_INTAKE_SUD_RELINKED_EVENT,
 } from "@wardenx/types";
 import { eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
@@ -36,6 +42,7 @@ export const M5_INTAKE_SUD_PRIVACY_CONSUMER = {
     M22_INTAKE_SUD_DETECTED_EVENT,
     M22_INTAKE_SUD_CONFIRMED_EVENT,
     M22_INTAKE_SUD_REJECTED_EVENT,
+    M22_INTAKE_SUD_RELINKED_EVENT,
   ],
   consumerName: "m5.m22-intake-sud-privacy",
 } as const;
@@ -110,74 +117,148 @@ export function buildM5IntakeSudPrivacyConsumer(deps: {
     consumerModule: "m5",
     eventTypes: M5_INTAKE_SUD_PRIVACY_CONSUMER.eventNames,
     async handle(event): Promise<void> {
-      const patientId = patientIdOf(event.payload);
-      if (patientId === undefined) {
-        throw new Error(
-          `${M5_INTAKE_SUD_PRIVACY_CONSUMER.consumerName}: '${event.eventType}' payload has no patientId`,
-        );
-      }
-      if (patientId === null) return; // an unresolved batch: no patient to flag
       const organizationId = event.organizationId;
+      // Each patient touched: the W4 decision to apply to them (a move touches two).
+      const steps: { patientId: string; decisionEvent: string }[] = [];
+      if (event.eventType === M22_INTAKE_SUD_RELINKED_EVENT) {
+        const move = relinkOf(event.payload);
+        if (!move) {
+          throw new Error(
+            `${M5_INTAKE_SUD_PRIVACY_CONSUMER.consumerName}: '${event.eventType}' payload is malformed`,
+          );
+        }
+        if (move.fromPatientId === move.toPatientId) return;
+        if (move.fromPatientId && !move.fromPatientRetainsFlag) {
+          steps.push({
+            patientId: move.fromPatientId,
+            decisionEvent: M22_INTAKE_SUD_REJECTED_EVENT,
+          });
+        }
+        if (move.toPatientId) {
+          steps.push({
+            patientId: move.toPatientId,
+            decisionEvent:
+              move.sudStatus === "confirmed"
+                ? M22_INTAKE_SUD_CONFIRMED_EVENT
+                : M22_INTAKE_SUD_DETECTED_EVENT,
+          });
+        }
+      } else {
+        const patientId = patientIdOf(event.payload);
+        if (patientId === undefined) {
+          throw new Error(
+            `${M5_INTAKE_SUD_PRIVACY_CONSUMER.consumerName}: '${event.eventType}' payload has no patientId`,
+          );
+        }
+        if (patientId === null) return; // an unresolved batch: no patient to flag
+        // Another of the patient's batches still holds a live detection: the flag stays.
+        if (
+          event.eventType === M22_INTAKE_SUD_REJECTED_EVENT &&
+          (event.payload as Record<string, unknown>).patientRetainsFlag === true
+        ) {
+          return;
+        }
+        steps.push({ patientId, decisionEvent: event.eventType });
+      }
+      if (steps.length === 0) return;
       await withOrgContext(
         deps.db,
         { organizationId, userId: CONSUMER_USER_ID },
         async (scoped) => {
           const tx = scoped as unknown as DbClient;
-          const [patient] = await tx
-            .select({ id: P.id })
-            .from(P)
-            .where(eq(P.id, patientId))
-            .limit(1);
-          if (!patient) return;
-          const [row] = await tx
-            .select({
-              flags: PFS.flags,
-              invalidatedAt: PFS.invalidatedAt,
-              origin: PFS.sudFlagOrigin,
-              sourceConsentVersion: PFS.sourceConsentVersion,
-            })
-            .from(PFS)
-            .where(eq(PFS.patientId, patientId))
-            .limit(1);
-          const current: SudSnapshotFacts | null =
-            row && row.invalidatedAt === null
-              ? {
-                  flags: row.flags as PrivacyFlag[],
-                  origin: (row.origin as SudFlagOrigin | null) ?? null,
-                  consentGoverned: row.sourceConsentVersion !== null,
-                }
-              : null;
-          const decision = decideSudFlag(event.eventType, current);
-          if (!decision.change) return;
-          const now = new Date();
-          await tx
-            .insert(PFS)
-            .values({
-              patientId,
+          for (const step of steps) {
+            await applySudDecision(
+              tx,
+              deps.outbox,
               organizationId,
-              flags: [...decision.flags],
-              capturedAt: now,
-              sudFlagOrigin: decision.origin,
-              invalidatedAt: null,
-            })
-            .onConflictDoUpdate({
-              target: PFS.patientId,
-              set: {
-                flags: [...decision.flags],
-                capturedAt: now,
-                sudFlagOrigin: decision.origin,
-                invalidatedAt: null,
-              },
-            });
-          await deps.outbox.publish(tx, {
-            eventName: "m5.patient.privacy_flag_changed",
-            payload: { patientId, organizationId, flags: [...decision.flags] },
-            organizationId,
-            aggregateKind: "patient",
-            aggregateId: patientId,
-          });
+              step.patientId,
+              step.decisionEvent,
+            );
+          }
         },
       );
     },
   };
+}
+
+function relinkOf(payload: unknown): {
+  fromPatientId: string | null;
+  toPatientId: string | null;
+  sudStatus: "detected" | "confirmed";
+  fromPatientRetainsFlag: boolean;
+} | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const p = payload as Record<string, unknown>;
+  const id = (v: unknown): string | null | undefined =>
+    v === null ? null : typeof v === "string" && v.length > 0 ? v : undefined;
+  const fromPatientId = id(p.fromPatientId);
+  const toPatientId = id(p.toPatientId);
+  if (fromPatientId === undefined || toPatientId === undefined) return null;
+  if (p.sudStatus !== "detected" && p.sudStatus !== "confirmed") return null;
+  if (typeof p.fromPatientRetainsFlag !== "boolean") return null;
+  return {
+    fromPatientId,
+    toPatientId,
+    sudStatus: p.sudStatus,
+    fromPatientRetainsFlag: p.fromPatientRetainsFlag,
+  };
+}
+
+/** Read one patient's snapshot, decide, UPSERT and announce — inside the delivery's transaction. */
+async function applySudDecision(
+  tx: DbClient,
+  outbox: M5OutboxPort,
+  organizationId: string,
+  patientId: string,
+  decisionEvent: string,
+): Promise<void> {
+  const [patient] = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
+  if (!patient) return;
+  const [row] = await tx
+    .select({
+      flags: PFS.flags,
+      invalidatedAt: PFS.invalidatedAt,
+      origin: PFS.sudFlagOrigin,
+      sourceConsentVersion: PFS.sourceConsentVersion,
+    })
+    .from(PFS)
+    .where(eq(PFS.patientId, patientId))
+    .limit(1);
+  const current: SudSnapshotFacts | null =
+    row && row.invalidatedAt === null
+      ? {
+          flags: row.flags as PrivacyFlag[],
+          origin: (row.origin as SudFlagOrigin | null) ?? null,
+          consentGoverned: row.sourceConsentVersion !== null,
+        }
+      : null;
+  const decision = decideSudFlag(decisionEvent, current);
+  if (!decision.change) return;
+  const now = new Date();
+  await tx
+    .insert(PFS)
+    .values({
+      patientId,
+      organizationId,
+      flags: [...decision.flags],
+      capturedAt: now,
+      sudFlagOrigin: decision.origin,
+      invalidatedAt: null,
+    })
+    .onConflictDoUpdate({
+      target: PFS.patientId,
+      set: {
+        flags: [...decision.flags],
+        capturedAt: now,
+        sudFlagOrigin: decision.origin,
+        invalidatedAt: null,
+      },
+    });
+  await outbox.publish(tx, {
+    eventName: "m5.patient.privacy_flag_changed",
+    payload: { patientId, organizationId, flags: [...decision.flags] },
+    organizationId,
+    aggregateKind: "patient",
+    aggregateId: patientId,
+  });
 }

@@ -13,6 +13,7 @@ import type { CursorPage as ServiceCursorPage } from "./concurrency";
 import type {
   DocumentView as ServiceDocumentView,
   IntakeBatchView as ServiceIntakeBatchView,
+  ReferralIntakeBatchView as ServiceReferralIntakeBatchView,
   TagView as ServiceTagView,
   VersionView as ServiceVersionView,
 } from "./service";
@@ -251,6 +252,13 @@ export const SignedUrlRequest = Type.Object({
 // §4.2 — intake batch upload.
 export const IntakeUploadRequest = Type.Object({
   patientId: Type.Optional(Type.String({ format: "uuid" })),
+  /** F-238 — the M6 referral these records are for (e.g. older PCP / hospital records requested for a
+   *  prospect). The batch adopts the referral's patient; naming a different `patientId` is a 409. */
+  referralId: Type.Optional(Type.String({ format: "uuid" })),
+  /** F-238 — the outbound records request these records answer (linked by hand; the intake job also finds
+   *  the request code on the pages). Must be this org's, not cancelled, and for the same referral as any
+   *  `referralId` given (409 otherwise); the batch is filed under the request's referral. */
+  recordsRequestId: Type.Optional(Type.String({ format: "uuid" })),
   /** F-236 — the verified-uploaded source document (`POST /document-uploads` …/complete) this batch
    *  processes. Without it the batch has no file and an extraction run refuses (parse_failed). */
   documentId: Type.Optional(Type.String({ format: "uuid" })),
@@ -354,6 +362,11 @@ export const DocumentListQuerySchema = Type.Object({
 });
 
 export const VersionListQuerySchema = Type.Object(PageQuery);
+/** The referral page's "Records" tab — the intake batches filed against ONE referral (required). */
+export const ReferralIntakeBatchesQuerySchema = Type.Object({
+  referralId: Type.String({ format: "uuid" }),
+  ...PageQuery,
+});
 export const TagListQuerySchema = Type.Object(PageQuery);
 export const ClassificationQuerySchema = Type.Object(PageQuery);
 export const JobsListQuerySchema = Type.Object(PageQuery);
@@ -459,6 +472,40 @@ export const IntakeBatchViewSchema = Type.Object({
   pages: Type.Integer(),
   createdAt: Type.String({ format: "date-time" }),
 });
+
+const INTAKE_BATCH_SUD_STATUS = ["not_detected", "detected", "confirmed", "rejected"] as const;
+/** F-238 — one batch filed against a referral (counts + statuses only; no extracted values). */
+export const ReferralIntakeBatchViewSchema = Type.Object({
+  id: Type.String(),
+  referralId: Type.String(),
+  patientId: Type.Union([Type.String(), Type.Null()]),
+  status: lit(INTAKE_BATCH_STATUS),
+  sourceChannel: Type.String(),
+  identityStatus: Type.Union([Type.String(), Type.Null()]),
+  sudStatus: lit(INTAKE_BATCH_SUD_STATUS),
+  /** F-238 — a records-request code on the fax names another referral / patient (code + kind only). */
+  recordsRequestConflict: Type.Union([
+    Type.Object({
+      code: Type.String(),
+      kind: lit(["code_names_another_referral", "code_names_another_patient"] as const),
+    }),
+    Type.Null(),
+  ]),
+  pages: Type.Integer(),
+  documents: Type.Integer(),
+  candidates: Type.Integer(),
+  review: Type.Union([
+    Type.Object({
+      id: Type.String(),
+      status: lit(EXTRACTION_REVIEW_STATUS),
+      decided: Type.Integer(),
+    }),
+    Type.Null(),
+  ]),
+  uploadedAt: Type.String({ format: "date-time" }),
+  createdAt: Type.String({ format: "date-time" }),
+});
+export const ReferralIntakeBatchListResponseSchema = CursorPageOf(ReferralIntakeBatchViewSchema);
 
 /** Route 14 — classifier output page (`docType` is a free string on the read row). */
 export const ClassificationListResponseSchema = CursorPageOf(
@@ -612,6 +659,10 @@ type _VersionList = Conforms<
   ServiceCursorPage<ServiceVersionView>
 >;
 type _IntakeBatchView = Conforms<Static<typeof IntakeBatchViewSchema>, ServiceIntakeBatchView>;
+type _ReferralIntakeBatchList = Conforms<
+  Static<typeof ReferralIntakeBatchListResponseSchema>,
+  ServiceCursorPage<ServiceReferralIntakeBatchView>
+>;
 type _ClassificationList = Conforms<
   Static<typeof ClassificationListResponseSchema>,
   ServiceCursorPage<{ readonly id: string; readonly createdAt: string; readonly docType: string }>

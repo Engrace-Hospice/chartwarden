@@ -143,8 +143,12 @@ export function projectDocLensExtract(output: AiInvocationOutput) {
     string,
     { value: string; confidence: number; sourceQuote: { page: number; text: string } }
   > = {};
-  for (const raw of o.fields as unknown[]) {
+  const warnings: string[] = [];
+  for (const raw of numberRepeatableEntries(o.fields as unknown[], warnings)) {
     const f = raw as Record<string, unknown> | null;
+    // "Not present", said the way the prompt allows: an empty value. Local models fill the rest of such an
+    // entry with placeholders (`quote: ""`, `page: 0`), so it is skipped before the entry is judged.
+    if (f && typeof f.value === "string" && f.value.trim() === "") continue;
     // One malformed entry invalidates the reply: a partial projection would present a model that
     // answered badly as a model that found fewer fields.
     if (
@@ -160,7 +164,6 @@ export function projectDocLensExtract(output: AiInvocationOutput) {
     ) {
       return null;
     }
-    if (f.value.trim() === "") continue; // "not present" said with an empty string — omit, as asked
     const prior = fields[f.fieldPath];
     if (prior && prior.confidence >= f.confidence) continue;
     fields[f.fieldPath] = {
@@ -169,7 +172,61 @@ export function projectDocLensExtract(output: AiInvocationOutput) {
       sourceQuote: { page: f.page, text: f.quote },
     };
   }
-  return { fields, warnings: [] };
+  return { fields, warnings };
+}
+
+/**
+ * F-238 E2E — a small local model sometimes answers a repeatable group with the template path itself
+ * (`medications[].name`, never numbered). Showing numbered paths in the prompt instead made llama3.1:8b
+ * loop to `diagnoses[108]`, so the reply is read as given: within a group, the n-th unnumbered entry of
+ * each subfield is occurrence n (after any numbered ones). That is only unambiguous when every subfield
+ * of the group has the same count — `diagnoses[].description` ×3 with `diagnoses[].role` ×2 cannot say
+ * which diagnosis lost its role — so a lopsided group's unnumbered entries are dropped with a warning.
+ * Each entry still carries its own quote and page; nothing is invented.
+ */
+function numberRepeatableEntries(entries: readonly unknown[], warnings: string[]): unknown[] {
+  const UNNUMBERED = /^([A-Za-z][A-Za-z0-9]*)\[\]\.(.+)$/;
+  const NUMBERED = /^([A-Za-z][A-Za-z0-9]*)\[(\d+)\]\./;
+  const nextIndex = new Map<string, number>();
+  const counts = new Map<string, Map<string, number>>();
+  for (const e of entries) {
+    const path = (e as { fieldPath?: unknown } | null)?.fieldPath;
+    if (typeof path !== "string") continue;
+    const n = NUMBERED.exec(path);
+    if (n)
+      nextIndex.set(n[1] as string, Math.max(nextIndex.get(n[1] as string) ?? 0, Number(n[2]) + 1));
+    const u = UNNUMBERED.exec(path);
+    if (u && String((e as { value?: unknown }).value ?? "").trim() !== "") {
+      const g = counts.get(u[1] as string) ?? new Map<string, number>();
+      g.set(u[2] as string, (g.get(u[2] as string) ?? 0) + 1);
+      counts.set(u[1] as string, g);
+    }
+  }
+  const seen = new Map<string, number>();
+  const out: unknown[] = [];
+  for (const e of entries) {
+    const path = (e as { fieldPath?: unknown } | null)?.fieldPath;
+    const u = typeof path === "string" ? UNNUMBERED.exec(path) : null;
+    if (!u) {
+      out.push(e);
+      continue;
+    }
+    if (String((e as { value?: unknown }).value ?? "").trim() === "") continue; // "not present"
+    const [group, sub] = [u[1] as string, u[2] as string];
+    const sizes = new Set(counts.get(group)?.values() ?? []);
+    if (sizes.size !== 1) {
+      if (!warnings.includes(`unnumbered_${group}_dropped`))
+        warnings.push(`unnumbered_${group}_dropped`);
+      continue;
+    }
+    const k = seen.get(`${group}.${sub}`) ?? 0;
+    seen.set(`${group}.${sub}`, k + 1);
+    out.push({
+      ...(e as object),
+      fieldPath: `${group}[${(nextIndex.get(group) ?? 0) + k}].${sub}`,
+    });
+  }
+  return out;
 }
 
 /**

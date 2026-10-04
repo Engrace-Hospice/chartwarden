@@ -10,6 +10,7 @@ import {
   decimal,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -44,6 +45,14 @@ export const classifiedPages = pgTable(
     documentDate: date("document_date"),
     duplicateOfPage: integer("duplicate_of_page"),
     segmentBoundary: text("segment_boundary"),
+    // F-238 (0312) — does this document belong to the patient the fax is filed under (two identifiers)?
+    // `identity_disagreeing` lists FIELD names only; the resolution reason is audit-denylisted.
+    identityStatus: text("identity_status"),
+    identityDisagreeing: jsonb("identity_disagreeing").$type<string[]>(),
+    identityResolution: text("identity_resolution"),
+    identityResolvedByMembershipId: uuid("identity_resolved_by_membership_id"),
+    identityResolvedAt: timestamp("identity_resolved_at", { withTimezone: true }),
+    identityResolutionReason: text("identity_resolution_reason"),
   },
   (t) => ({
     byBatch: index("classified_page_batch_idx").on(t.intakeUploadBatchId, t.pageRangeStart),

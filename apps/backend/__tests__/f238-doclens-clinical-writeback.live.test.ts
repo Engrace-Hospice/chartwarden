@@ -59,6 +59,7 @@ import {
   buildM22ExtractionClinicalBackrefConsumer,
   createCandidateValueCipher,
   createDbDocumentBackend,
+  createProspectSummaryService,
 } from "../src/modules/22-documents/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -771,6 +772,66 @@ describe.skipIf(!DB_URL)(
         }),
       ).rejects.toThrow(/org/);
       expect(await count("SELECT count(*)::int AS n FROM medication_order")).toBe(0);
+    });
+
+    // F-238 prospect summary — the DB reader on the app-role connection: 409 until complete, then only the
+    // completed review's approved / edited values (rejected omitted, MAT line withheld), cited; org B 404.
+    it("prospect summary: 409 before completion; approved values only once complete; RLS hides it from org B", async () => {
+      const summaries = createProspectSummaryService({ db: handle.db as DbClient, cipher });
+      const p = await seedPatient(ORG_A, "MRN-F238-SUM");
+      const doc = await seedSourceDocument(ORG_A, p);
+      const { batchId, candidateIds } = await seedBatch({
+        org: ORG_A,
+        patientId: p,
+        sourceDocumentId: doc,
+        candidates: [
+          { fieldPath: "medications[0].name", value: "Metoprolol 25 mg PO BID" }, // 0 approve
+          { fieldPath: "medications[1].name", value: "Lasix 20 mg daily" }, // 1 edit
+          { fieldPath: "medications[2].name", value: "Senna 8.6 mg HS" }, // 2 reject
+          { fieldPath: "medications[3].name", value: "Methadone 10 mg daily" }, // 3 approve (MAT)
+          { fieldPath: "allergies[0].substance", value: "Sulfa - rash" }, // 4 approve
+        ],
+      });
+      const review = await svc.openReview(ORG_A, actor, batchId);
+      const decide = (i: number, decision: string, editedValue?: string) =>
+        svc.recordDecision(ORG_A, actor, review.id, {
+          candidateId: candidateIds[i] as string,
+          decision,
+          ...(editedValue !== undefined ? { editedValue } : {}),
+        });
+      for (const i of [0, 3, 4]) await decide(i, "approve");
+      await decide(1, "approve_with_edit", "Furosemide 40 mg PO daily");
+      await decide(2, "reject");
+
+      await expect(summaries.getSummary(ORG_A, batchId)).rejects.toMatchObject({
+        code: "REVIEW_NOT_COMPLETE",
+        statusCode: 409,
+      });
+      await svc.completeReview(ORG_A, actor, review.id);
+
+      const s = await summaries.getSummary(ORG_A, batchId);
+      expect(s.reviewId).toBe(review.id);
+      expect(s.completedAt).not.toBeNull();
+      expect(s.medications.map((m) => [m.text, m.edited])).toEqual([
+        ["Metoprolol 25 mg PO BID", false],
+        ["Furosemide 40 mg PO daily", true],
+      ]);
+      expect(s.medications[0]?.citations).toEqual([
+        { document: "Medication reconciliation", documentType: "med_recon", page: 2 },
+      ]);
+      expect(s.allergies.map((a) => a.text)).toEqual(["Sulfa - rash"]);
+      expect(s.withheld.part2Values).toBe(1);
+      expect(s.plainText).toContain(
+        "- Furosemide 40 mg PO daily [corrected by reviewer] (Medication reconciliation p.2)",
+      );
+      expect(s.plainText).not.toMatch(/Lasix|Senna|Methadone/);
+
+      await expect(summaries.getSummary(ORG_B, batchId)).rejects.toMatchObject({ statusCode: 404 });
+      // The patient chart read: the same summary, newest first; nothing for org B (RLS).
+      const forPatient = await summaries.listForPatient(ORG_A, p);
+      expect(forPatient.items.map((i) => i.batchId)).toEqual([batchId]);
+      expect(forPatient.items[0]?.plainText).toBe(s.plainText);
+      expect((await summaries.listForPatient(ORG_B, p)).items).toEqual([]);
     });
   },
 );

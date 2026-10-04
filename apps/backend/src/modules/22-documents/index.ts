@@ -22,8 +22,10 @@ import type { DbClient } from "@wardenx/db";
 import { DegradedError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
+import { siteDisplayForOrg } from "../../bootstrap/site-display-for-org";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
 import { createDbDocumentBackend } from "./documents-route-service-db";
+import { createIdentityTargetPorts } from "./extraction/batch-identity";
 import { createHttpDoclingClient, doclingConfigFromEnv } from "./extraction/docling-client";
 import {
   type DocumentFeatureFlagReader as _DocumentFeatureFlagReader,
@@ -32,9 +34,17 @@ import {
   resolveDocLensCapability as _resolveDocLensCapability,
 } from "./extraction/index";
 import type { DocLensIntakeEnqueue } from "./extraction/intake-queue";
+import { createPendingAddressService } from "./extraction/pending-address-db";
+import { registerDocLensPendingAddressRoutes } from "./extraction/pending-address-routes";
+import { createProspectSummaryService } from "./extraction/prospect-summary-db";
+import { registerDocLensProspectSummaryRoutes } from "./extraction/prospect-summary-routes";
 import { createReviewWorkspaceService } from "./extraction/review-workspace";
 import { registerDocLensReviewWorkspaceRoutes } from "./extraction/review-workspace-routes";
 import type { ExtractionWritebackDeps } from "./extraction/writeback-commit-db";
+import { selectOutboundFaxTransport } from "./fax/outbound-fax";
+import { createDbRecordsRequestService } from "./records-request/records-request-db";
+import { createDbRecordsRequestFaxStore } from "./records-request/records-request-fax-db";
+import { registerRecordsRequestRoutes } from "./records-request/records-request-routes";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
 import { createVerifiedUploadService } from "./routes/verified-upload";
@@ -63,6 +73,8 @@ export function mountDocumentRoutes(
   intake?: DocLensIntakeEnqueue,
 ): void {
   const backend = createDbDocumentBackend(db, writeback);
+  // F-238 — requesting a prospect's older records (cover sheet + code); the upload route links by hand.
+  const recordsRequests = createDbRecordsRequestService(db);
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
   _registerM22Abac({ resolver: backend.abacResolver });
@@ -85,6 +97,43 @@ export function mountDocumentRoutes(
       canAccessReferral(input) {
         return getSeam("ReferralReader").canAccessReferral(input);
       },
+      getReferralSubject(input) {
+        return getSeam("ReferralReader").getReferralSubject(input);
+      },
+    },
+    recordsRequests,
+  });
+  registerRecordsRequestRoutes(app, {
+    service: recordsRequests,
+    referralReader: {
+      canAccessReferral: (input) =>
+        getSeam("ReferralReader").canAccessReferral({
+          ...input,
+          referralId: input.referralId as never,
+        }),
+      getReferralSubject: (input) =>
+        getSeam("ReferralReader").getReferralSubject({
+          ...input,
+          referralId: input.referralId as never,
+        }),
+    },
+    patientReader: async (organizationId, patientId) => {
+      const p = await getSeam("PatientReader").findById({ organizationId, id: patientId });
+      return p
+        ? { lastName: p.lastName, firstName: p.firstName, dateOfBirth: p.dateOfBirth }
+        : null;
+    },
+    // The cover sheet's "From" line: the org's display name only (M1 minimum-necessary site read).
+    organizationName: async (organizationId) =>
+      (await siteDisplayForOrg(db, organizationId, [])).organizationName,
+    // F-238 outbound fax: `FAX_PROVIDER` selects the adapter (dev default: the logging stub; production
+    // without a contracted vendor: unconfigured → 503, nothing leaves). See ./fax/outbound-fax.ts.
+    fax: {
+      transport: selectOutboundFaxTransport({
+        isProduction: process.env.NODE_ENV === "production",
+        env: process.env,
+      }),
+      store: createDbRecordsRequestFaxStore(db),
     },
   });
   registerVerifiedUploadRoutes(
@@ -167,8 +216,32 @@ export function mountDocumentRoutes(
         const p = await getSeam("PatientReader").findById({ organizationId, id: patientId });
         return p ? `${p.lastName}, ${p.firstName}` : null;
       },
+      // F-238 — per-document identity check + relink (M5 patient, M6 referral, via their seams).
+      identity: {
+        ports: createIdentityTargetPorts(),
+        canAccessReferral: (organizationId, userId, referralId) =>
+          getSeam("ReferralReader").canAccessReferral({
+            organizationId,
+            userId,
+            referralId: referralId as never,
+          }),
+      },
     }),
   );
+  // F-238 — the prospect summary of a COMPLETED review (reviewer-approved values only; deterministic).
+  registerDocLensProspectSummaryRoutes(
+    app,
+    createProspectSummaryService({
+      db,
+      ...(writeback.cipher ? { cipher: writeback.cipher } : {}),
+      patientName: async (organizationId, patientId) => {
+        const p = await getSeam("PatientReader").findById({ organizationId, id: patientId });
+        return p ? `${p.lastName}, ${p.firstName}` : null;
+      },
+    }),
+  );
+  // F-238 — the admission screen's "an address is waiting in intake review" hint (counts only, no values).
+  registerDocLensPendingAddressRoutes(app, createPendingAddressService({ db }));
 }
 
 export {
@@ -182,6 +255,7 @@ export * from "./lifecycle/index";
 export * from "./seams/index";
 export * from "./outbox-consumers/index";
 export * from "./extraction/index";
+export * from "./records-request/index";
 // M22-T09 — §7.5 Statement-of-Disagreement attachment + §7.12/§7.13/§7.15 EVV/encounter/lab render variants
 // + §7.16 SUD-redacted placeholder render + the §7.15 lab back-ref deny-stub (M29, Wave H). Pure planning;
 // the live render + dispatcher binding are deferred (T06 precedent); M22 deps stay [1, 5].

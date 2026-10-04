@@ -264,3 +264,51 @@ completion → both consumers → back-ref, `medication_order` empty throughout,
 fax flagged `duplicate`, reconcile 409 on a second decision, allergy verify / EIE with attribution and shape
 CHECKs, and org-B denial on every surface. F-235's live suite now counts the medication's M12 provenance row
 separately; F-235/F-236/F-237 and the M12 vendor-boundary live suites pass.
+
+## F-238 (prospect records) — referral link, per-document identity check, relink (2026-10-04)
+
+A referral rarely arrives complete: older PCP and hospital records are requested later and come back by fax
+(occasionally email). They must land on the same prospect, and a fax carrying another patient's page must
+never reach a chart. Before this, a batch carried only an optional `patient_id`: nothing tied it to the M6
+referral, nothing compared the names on the pages with the patient, and a misfiled batch could not be moved.
+
+- **Referral link** (0312 `intake_upload_batch.referral_id`): `POST /intake/uploads` accepts `referralId`,
+  checked through M6's `ReferralReader` (new `getReferralSubject`); the batch takes the referral's resolved
+  patient, a conflicting `patientId` is 409 `REFERRAL_PATIENT_CONFLICT`. A batch filed before M6 resolved
+  the patient adopts it on the next workspace load (M22 writes only its own row).
+- **Identity check** (`@wardenx/intake-extraction` `compareIdentity`, `extraction/batch-identity.ts`): every
+  split document's grounded name + DOB vs the patient — or, before one exists, the referral's name/DOB at
+  receipt. Two identifiers: `match` (DOB + last name within one OCR character — the packet's wound note really
+  reads "DICLENS"), `possible` (same DOB, different surname/first name; or a DOB one OCR slip / day-month swap
+  away), `mismatch`, `unverified` (no usable identifier; a DOB or a name alone never confirms). Stored per
+  document as status + disagreeing FIELD names (never values) on `classified_page`; the batch keeps the worst
+  unresolved verdict, or `no_target`.
+- **Review rules**: completion is 409 `IDENTITY_UNRESOLVED` while a document is `possible`/`mismatch` and
+  unanswered; `POST /intake/uploads/:id/identity-review` answers one document (`same_patient` /
+  `other_patient`, reason required, audit-denylisted). An `other_patient` document's fields cannot be approved
+  (409 `DOCUMENT_IS_OTHER_PATIENT`) and are excluded by all three commit paths even if approved earlier.
+- **Relink**: `POST /intake/uploads/:id/relink` moves a batch to another patient and/or referral before its
+  review completes — append-only `intake_batch_relink` history (FORCEd RLS, reason denylisted), the source
+  document follows, earlier answers are cleared and the check re-runs. Refused for a closed batch. A batch
+  with a live Part 2 detection (`detected` / `confirmed`) moves too: the relink publishes
+  `m22.intake.sud_relinked` (ids only) in the same transaction and M5 moves the DocLens-origin `sud` flag —
+  the new patient gains it, the previous one loses it only if DocLens set it and none of their other batches
+  still holds a live detection (`fromPatientRetainsFlag`, computed by M22). A referral-filed batch that
+  adopts its referral's patient publishes the same event (`fromPatientId: null`). The first cut refused these
+  moves (`RELINK_BLOCKED_BY_SUD_FLAG`); browser testing showed that is exactly the misfiled fax that most
+  needs moving.
+- **Web**: a Patient column in "documents in this fax" (verdict, which identifiers differ, inline answer),
+  a banner while unresolved (Complete disabled), Move document dialog with patient or referral lookup
+  (`ReferralLookupField`; `GET /referrals` now publishes name/DOB/received/referrer for it).
+
+Also in this round, from testing the packet in the browser: the projector skips "not present" entries
+(`value: ""`, `page: 0`) instead of refusing the whole reply, and numbers unnumbered `medications[].name`
+entries when unambiguous (showing numbered paths in the prompt made llama3.1:8b loop to `diagnoses[108]`);
+the extractor's output cap is 8192 (a discharge summary needs ~5,000) and Bun's hidden 300 s `fetch` timeout
+is lifted in the Ollama adapter; pdfium renders are serialised (concurrent renders segfaulted the
+docling-worker); a failed DocLens job is removed before re-enqueue (BullMQ silently ignored the re-run);
+coding flags and the document list render on the review screen. End to end on the Docker stack: 19/19
+documents, 31/31 codes on the right page, 15/15 planted flags, 18/18 extractions.
+
+`test:f238:doclens-identity-relink:live` (6, disposable PG 18, app role, real M5/M6 readers); CI live suites
+now run `pgvector/pgvector:pg18` like dev and prod.

@@ -52,6 +52,44 @@ export interface AdmissionReadinessRequirement {
   readonly action?: RequirementAction;
   readonly satisfiedBy?: "normal" | "override";
   readonly evidence?: AdmissionRequirementEvidence;
+  /**
+   * Why a blocked requirement is blocked, when the UI needs it to pick the next step. Only
+   * `patient_privacy` sets it today (see `PrivacyReasonCode`). Category-free: never a flag name.
+   */
+  readonly reasonCode?: PrivacyReasonCode;
+}
+
+/**
+ * `patient_privacy`'s reason: M5's coarse restriction kind when a restriction holds, else M5's
+ * clearance reason (`PATIENT_NOT_FOUND`, `PRIVACY_CLEARANCE_UNAVAILABLE`).
+ */
+export type PrivacyReasonCode =
+  | "INTAKE_DETECTION_UNREVIEWED"
+  | "CONSENT_REQUIRED"
+  | "RESTRICTED"
+  | "PATIENT_NOT_FOUND"
+  | "PRIVACY_CLEARANCE_UNAVAILABLE";
+
+const PRIVACY_MESSAGES: Record<PrivacyReasonCode, string> = {
+  INTAKE_DETECTION_UNREVIEWED:
+    "An intake document placed an interim confidentiality restriction on this patient that no reviewer has resolved yet.",
+  CONSENT_REQUIRED: "A confidentiality restriction requires a patient consent on file.",
+  RESTRICTED: "A patient restriction requires authorized review.",
+  PATIENT_NOT_FOUND: "The patient's privacy clearance could not be found.",
+  PRIVACY_CLEARANCE_UNAVAILABLE: "Privacy clearance could not be checked. Try again shortly.",
+};
+
+function privacyReasonCode(p: {
+  readonly reason?: string;
+  readonly restriction?: string;
+}): PrivacyReasonCode {
+  if (p.reason === "PATIENT_NOT_FOUND" || p.reason === "PRIVACY_CLEARANCE_UNAVAILABLE") {
+    return p.reason;
+  }
+  if (p.restriction === "INTAKE_DETECTION_UNREVIEWED" || p.restriction === "CONSENT_REQUIRED") {
+    return p.restriction;
+  }
+  return "RESTRICTED";
 }
 
 export interface AdmissionReadinessResult {
@@ -80,6 +118,8 @@ export interface AdmissionReadinessFacts {
   readonly patientPrivacy: {
     readonly allowed: boolean;
     readonly reason?: string;
+    /** M5's `PatientAdmissionRestriction` when `reason` is `PRIVACY_RESTRICTION`. */
+    readonly restriction?: string;
     readonly overrideAllowed?: boolean;
     readonly satisfiedBy?: "normal" | "override";
   };
@@ -187,8 +227,9 @@ export function evaluateAdmissionReadiness(
           label: "Patient privacy",
           status: "blocked",
           blocking: true,
-          message: "A patient restriction requires authorized review.",
+          message: PRIVACY_MESSAGES[privacyReasonCode(facts.patientPrivacy)],
           action: "REVIEW_PRIVACY",
+          reasonCode: privacyReasonCode(facts.patientPrivacy),
         },
   );
 

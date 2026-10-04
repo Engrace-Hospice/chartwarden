@@ -31,7 +31,7 @@
  *   - Raise `max_locks_per_transaction` (512 is ample). `DROP SCHEMA public CASCADE` takes one lock per
  *     relation, and the chain's partitioned tables put the default 64 well out of reach.
  *
- * Verified green against a throwaway `pgvector/pgvector:pg16 -c max_locks_per_transaction=512`: 18/18.
+ * Verified green against a throwaway `pgvector/pgvector:pg18 -c max_locks_per_transaction=512`: 18/18.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";

@@ -187,6 +187,11 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0170_document_verified_upload.sql",
       "packages/db/migrations/0308_m22_doclens_review_sud_state.sql",
       "packages/db/migrations/0309_m22_doclens_packet_segments_coding_flags.sql",
+      "packages/db/migrations/0312_m22_doclens_referral_link_identity_relink.sql",
+      // F-238 — `intake_records_request` (recipient + free text denylisted).
+      "packages/db/migrations/0313_m22_intake_records_request.sql",
+      // F-238 — `intake_records_request_fax` (destination number + failure text denylisted).
+      "packages/db/migrations/0315_m22_intake_records_request_fax.sql",
     ],
   },
   {

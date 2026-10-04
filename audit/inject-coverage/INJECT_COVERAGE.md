@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1342/1342 route defs sit behind a covered module · 1286/1342 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1355/1355 route defs sit behind a covered module · 1299/1355 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -28,7 +28,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 19-oncall | 40 | ✅ | 39/40 | apps/backend/__tests__/oncall-inject.test.ts |
 | 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts |
 | 21-supplies | 38 | ✅ | 38/38 | apps/backend/__tests__/supplies-inject.test.ts |
-| 22-documents | 44 | ✅ | 39/44 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts, apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts |
+| 22-documents | 57 | ✅ | 52/57 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts, apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts, apps/backend/__tests__/f238-pending-address.test.ts, apps/backend/__tests__/f238-prospect-summary.test.ts, apps/backend/__tests__/f238-records-request-expiry.test.ts, apps/backend/__tests__/f238-records-request.test.ts |
 | 23-billing-medicare | 56 | ✅ | 55/56 | apps/backend/__tests__/billing-medicare-inject.test.ts, apps/backend/__tests__/m23-rate-table-routes.test.ts, apps/backend/__tests__/m23-sequestration-policy-routes.test.ts, apps/backend/__tests__/m23-wage-index-routes.test.ts |
 | 24-billing-medicaid | 39 | ✅ | 39/39 | apps/backend/__tests__/billing-medicaid-inject.test.ts |
 | 25-remittance | 32 | ✅ | 31/32 | apps/backend/__tests__/remittance-inject.test.ts |

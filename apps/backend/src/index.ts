@@ -584,6 +584,7 @@ import {
   type DocLensVisionVerifierPort,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
+  M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
   buildM22ExtractionClinicalBackrefConsumer,
@@ -598,6 +599,7 @@ import {
   createDrizzleDocumentSeamStore,
   createDrizzlePortalAccessLog,
   createHttpDoclingClient,
+  createIdentityTargetPorts,
   createRefusingObjectStore,
   createS3ObjectStore,
   createS3TenantStorageProvisioner,
@@ -606,6 +608,7 @@ import {
   createUnboundDoclingClient,
   deriveTenantBucket,
   doclingConfigFromEnv,
+  expireRecordsRequestsForOrg,
   getDocumentRenderer,
   mountDocumentRoutes,
   registerDocLensIntakeWorker,
@@ -613,7 +616,9 @@ import {
   registerDocumentErasers,
   registerDocumentRoutes,
   registerDocumentSeams,
+  registerRecordsRequestExpiryWorker,
   s3ObjectStoreConfigFromEnv,
+  scheduleRecordsRequestExpiry,
 } from "./modules/22-documents/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -1677,6 +1682,7 @@ export function wireModuleSeams(
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
+  registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
   wireM19Tenancy(); // F-155 (#248) — allowlist the cron job id so the on_call_roster_sync_queue drain + catch-up-seed workers may enter withPlatformContext
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
@@ -5441,6 +5447,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M11 stuck-transmission schedule registration failed");
     }
+    // F-238 — the hourly records-request expiry sweep: an outbound records request nobody answered by its
+    // `expires_on` day moves `requested` → `expired`. Same per-org fan-out as the M11 sweeps above; each
+    // org's write is its own org-explicit `withOrgContext` transaction (a cron tick is not a request).
+    const m22RecordsRequestExpiryWorker = registerRecordsRequestExpiryWorker({
+      connection: queueConnection,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
+        reason: "F-238 records-request expiry hourly sweep fan-out",
+      }),
+      expireForOrg: (organizationId) => expireRecordsRequestsForOrg(dbHandle.db, organizationId),
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    attachDlqAlertsToAll([m22RecordsRequestExpiryWorker], "m22");
+    app.addHook("onClose", async () => {
+      await m22RecordsRequestExpiryWorker.close();
+    });
+    try {
+      const m22RecordsRequestExpiryQueue = await scheduleRecordsRequestExpiry(queueConnection);
+      app.addHook("onClose", async () => {
+        await m22RecordsRequestExpiryQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M22 records-request expiry schedule registration failed");
+    }
     // M12 §2.6 D4 / §2.8 D10 — the `dosespot_sync_queue` drain (patient-sync + MedHx-fetch). Scheduled
     // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real
     // outbound vendor I/O, so it runs as its own scheduled worker (F-164, #248).
@@ -5677,6 +5709,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         // F-238 — ICD-10-CM (M38) for the code scanner + coding checks; skipped, and said so, when no
         // release is loaded (`bun run db:load:icd10cm`).
         codingTerminology: () => createCodingTerminology(),
+        // F-238 — each document's name/DOB checked against the batch's patient (M5) or referral (M6).
+        identityTargets: createIdentityTargetPorts(),
       },
       (msg, detail) => app.log.info(detail, msg),
     );

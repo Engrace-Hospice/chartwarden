@@ -23,7 +23,7 @@ import {
   M22_EXTRACTION_MEDICATION_HISTORY_REQUESTED_EVENT,
   WardenXError,
 } from "@wardenx/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { ExtractionWritebackDeps } from "./writeback-commit-db";
 import {
   type ClinicalCandidateFact,
@@ -84,7 +84,12 @@ export async function commitClinicalWriteback(
     .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
     .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
     .where(
-      and(eq(ED.extractionReviewId, input.reviewId), eq(CP.intakeUploadBatchId, input.batchId)),
+      and(
+        eq(ED.extractionReviewId, input.reviewId),
+        eq(CP.intakeUploadBatchId, input.batchId),
+        // F-238 — a document a reviewer marked as ANOTHER patient's never reaches this patient's chart.
+        or(isNull(CP.identityResolution), ne(CP.identityResolution, "other_patient")),
+      ),
     );
 
   // Decrypt only an APPROVED (not edited) medication/allergy candidate — nothing else on this path.

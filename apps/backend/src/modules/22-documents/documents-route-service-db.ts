@@ -39,12 +39,14 @@ import {
 } from "./extraction/writeback-commit-db";
 import { commitReviewDiagnosisWriteback } from "./extraction/writeback-commit-dx-db";
 import { isDiagnosisFieldPath } from "./extraction/writeback-plan-dx";
+import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
 import { type CursorPage, paginate } from "./routes/concurrency";
 import type {
   DocumentRouteService,
   DocumentView,
   DocumentWriteActor,
   IntakeBatchView,
+  ReferralIntakeBatchView,
   TagView,
   VersionView,
 } from "./routes/service";
@@ -344,6 +346,93 @@ export function createDbDocumentRouteService(
     },
 
     // ── Intake reads ───────────────────────────────────────────────────────────────────────────────
+    async listReferralBatches(organizationId, referralId, cursor, limit) {
+      // Strictly referral-filed (`referral_id = :referralId`, served by intake_batch_org_referral_idx).
+      // A batch with no referral whose patient is the referral's resolved patient is deliberately NOT
+      // included: it was never filed as this referral's records, and the route's access check is the
+      // referral's, not the patient's.
+      return withOrg(db, organizationId, async (tx) => {
+        const batches = await tx
+          .select({
+            id: BATCH.id,
+            patientId: BATCH.patientId,
+            status: BATCH.status,
+            sourceChannel: BATCH.sourceChannel,
+            identityStatus: BATCH.identityStatus,
+            sudStatus: BATCH.sudStatus,
+            pageGeometry: BATCH.pageGeometry,
+            uploadedAt: BATCH.uploadedAt,
+            conflictId: BATCH.recordsRequestConflictId,
+            conflictKind: BATCH.recordsRequestConflictKind,
+          })
+          .from(BATCH)
+          .where(eq(BATCH.referralId, referralId))
+          .orderBy(desc(BATCH.uploadedAt), desc(BATCH.id))
+          .limit(READ_WINDOW);
+        if (batches.length === 0) return paginate([], cursor, limit);
+        const ids = batches.map((b) => b.id);
+        const conflicts = await recordsRequestConflicts(tx, batches);
+        const segments = await tx
+          .select({ batchId: CP.intakeUploadBatchId, pageTo: CP.pageRangeEnd })
+          .from(CP)
+          .where(inArray(CP.intakeUploadBatchId, ids));
+        const cands = await tx
+          .select({ batchId: CP.intakeUploadBatchId })
+          .from(EC)
+          .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
+          .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
+          .where(inArray(CP.intakeUploadBatchId, ids));
+        const reviews = await tx
+          .select({
+            id: ER.id,
+            batchId: ER.intakeUploadBatchId,
+            status: ER.status,
+            openedAt: ER.openedAt,
+          })
+          .from(ER)
+          .where(inArray(ER.intakeUploadBatchId, ids))
+          .orderBy(desc(ER.openedAt));
+        const decisions = reviews.length
+          ? await tx
+              .select({ reviewId: ED.extractionReviewId })
+              .from(ED)
+              .where(
+                inArray(
+                  ED.extractionReviewId,
+                  reviews.map((r) => r.id),
+                ),
+              )
+          : [];
+        const items: ReferralIntakeBatchView[] = batches.map((b) => {
+          const segs = segments.filter((c) => c.batchId === b.id);
+          const geometry = Array.isArray(b.pageGeometry) ? b.pageGeometry.length : 0;
+          const review = reviews.find((r) => r.batchId === b.id) ?? null;
+          return {
+            id: b.id,
+            referralId,
+            patientId: b.patientId,
+            status: b.status,
+            sourceChannel: b.sourceChannel,
+            identityStatus: b.identityStatus,
+            sudStatus: b.sudStatus,
+            recordsRequestConflict: conflicts.get(b.id) ?? null,
+            pages: geometry || segs.reduce((n, c) => Math.max(n, Number(c.pageTo)), 0),
+            documents: segs.length,
+            candidates: cands.filter((c) => c.batchId === b.id).length,
+            review: review
+              ? {
+                  id: review.id,
+                  status: review.status,
+                  decided: decisions.filter((d) => d.reviewId === review.id).length,
+                }
+              : null,
+            uploadedAt: iso(b.uploadedAt),
+            createdAt: iso(b.uploadedAt),
+          };
+        });
+        return paginate(items, cursor, limit);
+      });
+    },
     async getBatch(organizationId, batchId): Promise<IntakeBatchView> {
       return withOrg(db, organizationId, async (tx) => {
         const [b] = await tx
@@ -643,6 +732,8 @@ export function createDbDocumentRouteService(
           .values({
             organizationId,
             patientId: args.patientId,
+            referralId: args.referralId ?? null,
+            recordsRequestId: args.recordsRequestId ?? null,
             // No SQL FK (app-validated above). Without a documentId the ref is a placeholder the ingest
             // pipeline would replace; an extraction run against it refuses (parse_failed), never guesses.
             initialDocumentId: args.documentId ?? randomUUID(),
@@ -653,10 +744,15 @@ export function createDbDocumentRouteService(
           })
           .returning({ id: BATCH.id, status: BATCH.status, uploadedAt: BATCH.uploadedAt });
         if (!b) throw new Error("intake_upload_batch insert returned no row");
+        // F-238 — records arrived for an outbound request: it moves to `received` with the batch.
+        if (args.recordsRequestId)
+          await markReceivedOnArrival(tx, args.recordsRequestId, new Date());
         return {
           id: b.id,
           organizationId,
           patientId: args.patientId,
+          referralId: args.referralId ?? null,
+          recordsRequestId: args.recordsRequestId ?? null,
           status: b.status,
           uploadedAt: iso(b.uploadedAt),
           pages: 0,
@@ -694,13 +790,26 @@ export function createDbDocumentRouteService(
         const review = await requireOpenReview(tx, reviewId);
         // F-237 — the candidate must be this review's batch's (the ABAC guard already denied any other).
         const [cand] = await tx
-          .select({ id: EC.id, visionDisagreement: EC.visionDisagreement })
+          .select({
+            id: EC.id,
+            visionDisagreement: EC.visionDisagreement,
+            identityResolution: CP.identityResolution,
+          })
           .from(EC)
           .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
           .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
           .where(and(eq(EC.id, args.candidateId), eq(CP.intakeUploadBatchId, review.batchId)))
           .limit(1);
         if (!cand) throw new NotFoundError("extraction candidate");
+        // F-238 — a field from a document the reviewer marked as another patient's cannot be approved for
+        // this one (the commit excludes it regardless). Relinking the batch clears that resolution.
+        if (args.decision !== "reject" && cand.identityResolution === "other_patient") {
+          throw new WardenXError(
+            "DOCUMENT_IS_OTHER_PATIENT",
+            "this field comes from a document marked as another patient's; it cannot be approved here",
+            409,
+          );
+        }
         // F-237 — stage 5 read the page differently. Approving the extraction as-is over that
         // disagreement is allowed, but only with the reviewer's stated reason (an edit is a correction).
         if (args.decision === "approve" && cand.visionDisagreement !== null && !args.reason) {
@@ -822,7 +931,11 @@ export function createDbDocumentRouteService(
           );
         }
         const [batch] = await tx
-          .select({ patientId: BATCH.patientId, sudStatus: BATCH.sudStatus })
+          .select({
+            patientId: BATCH.patientId,
+            sudStatus: BATCH.sudStatus,
+            identityStatus: BATCH.identityStatus,
+          })
           .from(BATCH)
           .where(eq(BATCH.id, r.batchId))
           .limit(1);
@@ -832,6 +945,15 @@ export function createDbDocumentRouteService(
           throw new WardenXError(
             "SUD_DETECTION_UNRESOLVED",
             "possible substance-use content was detected; confirm or reject it before completing the review",
+            409,
+          );
+        }
+        // F-238 — a document that may be another patient's must be resolved (same patient / other patient)
+        // before anything from this fax reaches a chart.
+        if (batch.identityStatus === "possible" || batch.identityStatus === "mismatch") {
+          throw new WardenXError(
+            "IDENTITY_UNRESOLVED",
+            "a document in this fax may belong to another patient; resolve it before completing the review",
             409,
           );
         }

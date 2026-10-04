@@ -23,7 +23,7 @@ import {
   M22_EXTRACTION_DIAGNOSIS_COMMIT_REQUESTED_EVENT,
   WardenXError,
 } from "@wardenx/types";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, isNull, like, ne, or } from "drizzle-orm";
 import type { ExtractionOutboxPort, ExtractionWritebackDeps } from "./writeback-commit-db";
 import {
   type DiagnosisCandidateFact,
@@ -88,6 +88,8 @@ export async function commitReviewDiagnosisWriteback(
         eq(ED.extractionReviewId, input.reviewId),
         eq(CP.intakeUploadBatchId, input.batchId),
         like(EC.fieldPath, "diagnoses[%"),
+        // F-238 — a document a reviewer marked as ANOTHER patient's never reaches this patient's chart.
+        or(isNull(CP.identityResolution), ne(CP.identityResolution, "other_patient")),
       ),
     );
   if (rows.length === 0) {

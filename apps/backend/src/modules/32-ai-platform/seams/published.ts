@@ -410,8 +410,10 @@ export function createDocLensExtractor(deps: AiPublishedSeamDeps): DocLensExtrac
           schemaKey: input.schemaKey,
         },
         responseSchema: DOCLENS_EXTRACT_RESPONSE_SCHEMA,
-        maxOutputTokens: 4096,
-        dispatchTimeoutMs: 300_000,
+        // A 2-page discharge summary with a long diagnosis list answers ~5,000 tokens (47 quoted fields,
+        // F-238 E2E); 4096 cut it off and the whole document was refused. 8192 = the backends' advertised cap.
+        maxOutputTokens: 8192,
+        dispatchTimeoutMs: 600_000,
       });
       if (!outcome.ok) return asRefusal(outcome);
       const projected = projectOr<{ fields: Record<string, never>; warnings: never[] }>(

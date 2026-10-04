@@ -643,6 +643,9 @@ export const referralReaderDenyStub: ReferralReader = {
   canAccessReferral() {
     throw new NotImplementedError("ReferralReader");
   },
+  getReferralSubject() {
+    throw new NotImplementedError("ReferralReader");
+  },
 };
 
 /** M6 — death-discharge census for a period (M30 HVLDL denominator, §4.11). Denies until M6 registers it. */

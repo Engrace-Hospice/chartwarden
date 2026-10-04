@@ -151,7 +151,7 @@ The master list. Every external connection appears here exactly once. New integr
 |27|DME vendors|Outbound + confirmation|portal/email/fax (Phase 1); EDI X12 (Phase 2)|Yes (name, address, items)|**Yes**|per-tenant per-vendor|21|not built — M21 deny-stub port (`packages/vendor-edi` never created)|Tier 3|
 |28|Partner pharmacy (comfort-kit fulfillment)|Bidirectional|vendor API / portal|Yes|**Yes**|per-tenant|21|not built (`packages/pharmacy-client` never created)|Tier 3|
 |29|Print/mail vendor (statements, letters)|Outbound|REST / SFTP|Yes (name, address, doc content)|**Yes**|platform or per-tenant|22|not built (`packages/print-mail-client` never created)|Tier 4|
-|30|Fax/email document ingest|Inbound|fax-to-API / secure email|Yes|**Yes** (vendor)|per-tenant|22|`packages/intake-extraction`|Tier 3|
+|30|Fax/email document ingest (+ outbound records-request fax, F-238)|Inbound + outbound fax|fax-to-API / secure email|Yes|**Yes** (vendor)|per-tenant|22|`packages/intake-extraction`; outbound: provider-agnostic port `apps/backend/src/modules/22-documents/fax/outbound-fax.ts` (`FAX_PROVIDER`; dev stub only — no vendor adapter until the BAA is executed, production answers 503)|Tier 3|
 |31|External triage vendor (after-hours)|Bidirectional|vendor API / portal|Yes (clinical; SUD ⇒ **QSOA**)|**Yes** (+ QSOA for Part 2)|per-tenant|19|`packages/triage-vendors`|Tier 2|
 |32|HaveIBeenPwned (HIBP) breach check|Outbound query|REST (k-anonymity, SHA-1 prefix)|**No**|**No** (no PHI)|platform|2|`packages/auth` (hibp adapter)|Tier 4|
 |33|Outbound HL7 ORM (lab orders)|Outbound|HL7 v2 over MLLP / SFTP|Yes|**Yes** (with lab)|per-tenant / per-feed|11, 29|`apps/backend/src/modules/29-external-interfaces` (see row 18; `packages/hl7-worker` deferred)|Tier 3|
@@ -283,7 +283,7 @@ The compliance-facing summary. Surveyors and customer security reviewers receive
 |DME vendor|Yes (name/addr/items)|BAA|Tenant-selected DME vendor(s)|**Required — EXECUTED before prod (INT-014)**|Phase-5 add; per-tenant per-vendor|
 |Partner pharmacy|Yes|BAA|Tenant-selected pharmacy|**Required — EXECUTED before prod**|Phase-5 add; comfort-kit fulfillment|
 |Print/mail vendor|Yes (name/addr/doc)|BAA|Tenant/platform print-mail vendor|**Required — EXECUTED before prod**|Phase-5 add (M22)|
-|Fax/email ingest|Yes (inbound)|BAA|Fax/secure-email vendor|**Required — EXECUTED before prod**|Phase-5 add (M22)|
+|Fax/email ingest (+ outbound records-request fax)|Yes (inbound + outbound)|BAA|Fax/secure-email vendor|**Required — EXECUTED before prod**|Phase-5 add (M22); outbound fax F-238|
 |External triage vendor|Yes (clinical; SUD)|BAA **+ QSOA** for 42 CFR Part 2|Tenant-selected triage vendor|**Required — BAA EXECUTED + QSOA before any SUD re-disclosure**|Phase-5 add (M19); Part 2 re-disclosure gate (ADR-0014)|
 |HaveIBeenPwned (HIBP)|**No**|None (no PHI — SHA-1 prefix k-anonymity)|HIBP|n/a|Phase-5 add (M02); SEC-029 control|
 |Outbound HL7 ORM (labs)|Yes|BAA / trading-partner|Reference lab|**Required — EXECUTED before prod**|Phase-5 add (M11/M29); pairs with inbound lab feed|

@@ -77,7 +77,8 @@ export function IntakeBatchDetail(): JSX.Element {
           title="Intake batch"
           breadcrumb={
             <>
-              <Link to="/intake">Intake review</Link> / Batch detail
+              <Link to="/referrals">Referrals</Link> / <Link to="/intake">Intake review</Link> /
+              Batch detail
             </>
           }
           actions={

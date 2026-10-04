@@ -39,6 +39,14 @@ describe("buildPrimaryNav", () => {
     expect(keys).toEqual(["home", "patients"]);
   });
 
+  it("files Intake review under Referrals (intake starts with the referral), not Documents", () => {
+    const nav = buildPrimaryNav([screen("/referrals"), screen("/documents"), screen("/intake")]);
+    const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
+    expect(byKey.get("referrals")?.children.map((c) => c.path)).toContain("/intake");
+    expect(byKey.get("documents")?.children.map((c) => c.path) ?? []).not.toContain("/intake");
+    expect(activeEntryKey(nav, "/intake/abc/review")).toBe("referrals");
+  });
+
   it("marks the owning entry current for nested patient routes", () => {
     const nav = buildPrimaryNav([screen("/patients"), screen("/hope")]);
     expect(activeEntryKey(nav, "/patients/abc/care-plan")).toBe("patients");

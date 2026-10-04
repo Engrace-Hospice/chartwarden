@@ -33,6 +33,9 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
       documentId: "eeeeeeee-5555-4555-8555-eeeeeeeeeeee",
       patientId: null,
       patientName: "Ada Vance",
+      referralId: null,
+      identityStatus: null,
+      recordsRequestConflict: null,
     },
     sud: {
       status: sud,
@@ -301,6 +304,180 @@ describe("DocLens review workspace", () => {
     const post = calls.find((c) => c.path.endsWith("/sud-review"));
     expect(post?.body).toEqual({ outcome: "confirmed" });
     expect(post?.idem).toBeTruthy();
+  });
+});
+
+describe("F-238 — documents in the fax and coding checks", () => {
+  it("lists the split documents and shows each code's flags, most severe first, with the suggestion", async () => {
+    const ws = fixture("not_detected");
+    workspace = {
+      ...ws,
+      documents: [
+        {
+          pageFrom: 1,
+          pageTo: 1,
+          documentType: "transfer_record",
+          title: "INTER-FACILITY TRANSFER",
+          date: "2026-08-29",
+          duplicateOfPage: null,
+          boundary: "first_page",
+          identity: { status: null, disagreeing: [], resolution: null },
+        },
+        {
+          pageFrom: 2,
+          pageTo: 2,
+          documentType: "imaging",
+          title: "ECHO",
+          date: "2026-09-19",
+          duplicateOfPage: 1,
+          boundary: "duplicate",
+          identity: { status: null, disagreeing: [], resolution: null },
+        },
+      ],
+      candidates: [
+        ...ws.candidates,
+        {
+          ...(ws.candidates[0] as Workspace["candidates"][number]),
+          id: "ffffffff-6666-4666-8666-ffffffffffff",
+          fieldPath: "diagnoses[0].icd10",
+          description: "the ICD-10-CM code printed next to that diagnosis",
+          riskLevel: "high",
+          value: "R53.81",
+          writebackTarget: false,
+          codingFlags: [
+            {
+              kind: "unspecified_code",
+              code: "R53.81",
+              suggest: [],
+              detail: "An unspecified code.",
+            },
+            {
+              kind: "unacceptable_hospice_principal",
+              code: "R53.81",
+              suggest: ["I50.22"],
+              detail: "Debility cannot be the hospice principal diagnosis.",
+            },
+          ],
+        },
+      ],
+    };
+    mount();
+    const docs = await screen.findByText("2 documents in this fax");
+    const table = within(docs.closest("details") as HTMLElement);
+    expect(table.getByText("INTER-FACILITY TRANSFER")).toBeTruthy();
+    expect(table.getByText("Re-sent copy of p. 1 — not extracted")).toBeTruthy();
+    expect(table.getByText("1 must fix")).toBeTruthy();
+
+    const list = within(fieldList()).getByRole("list", { name: "Coding checks" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items[0]?.textContent).toContain("Not acceptable as hospice principal");
+    expect(items[0]?.textContent).toContain("Consider: I50.22.");
+    expect(items[1]?.textContent).toContain("Unspecified code");
+  });
+});
+
+describe("F-238 — does each document belong to this patient", () => {
+  const doc = (
+    pageFrom: number,
+    title: string,
+    identity: Workspace["documents"][number]["identity"],
+  ): Workspace["documents"][number] => ({
+    pageFrom,
+    pageTo: pageFrom,
+    documentType: "hp",
+    title,
+    date: null,
+    duplicateOfPage: null,
+    boundary: "new_header",
+    identity,
+  });
+  const flagged = (): Workspace => {
+    const ws = fixture("not_detected");
+    return {
+      ...ws,
+      batch: { ...ws.batch, identityStatus: "mismatch" },
+      documents: [
+        doc(1, "TRANSFER RECORD", { status: "match", disagreeing: [], resolution: null }),
+        doc(2, "HISTORY AND PHYSICAL", {
+          status: "mismatch",
+          disagreeing: ["dateOfBirth", "lastName"],
+          resolution: null,
+        }),
+      ],
+    };
+  };
+
+  it("warns, says which identifiers differ (never values), and keeps Complete disabled", async () => {
+    workspace = flagged();
+    mount();
+    expect(
+      await screen.findByText("1 document in this fax may belong to another patient"),
+    ).toBeTruthy();
+    expect(screen.getByText("Different patient?")).toBeTruthy();
+    expect(screen.getByText("date of birth and last name differ")).toBeTruthy();
+    expect(isDisabled(screen.getByRole("button", { name: /Complete review/ }))).toBe(true);
+  });
+
+  it("marks a document as another patient's with a reason, on the identity-review path", async () => {
+    workspace = flagged();
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Another patient's" }));
+    const submit = screen.getByRole("button", { name: "Mark as another patient's" });
+    expect(isDisabled(submit)).toBe(true); // a reason is required
+    fireEvent.change(screen.getByPlaceholderText("Whose it is / why"), {
+      target: { value: "Ada Vance's H&P, misfiled" },
+    });
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(calls.find((c) => c.path.endsWith("/identity-review"))?.body).toEqual({
+        pageFrom: 2,
+        resolution: "other_patient",
+        reason: "Ada Vance's H&P, misfiled",
+      }),
+    );
+    expect(calls.find((c) => c.path.endsWith("/identity-review"))?.idem).toBeTruthy();
+  });
+
+  it("explains an unlinked document", async () => {
+    const ws = fixture("not_detected");
+    workspace = { ...ws, batch: { ...ws.batch, identityStatus: "no_target" } };
+    mount();
+    expect(
+      await screen.findByText("This document is not linked to a patient or referral"),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Move document/ })).toBeTruthy();
+  });
+
+  it("warns when the fax's records-request code was issued for another referral", async () => {
+    const ws = fixture("not_detected");
+    workspace = {
+      ...ws,
+      batch: {
+        ...ws.batch,
+        recordsRequestConflict: { code: "RR-ACDEFH7", kind: "code_names_another_referral" },
+      },
+    };
+    mount();
+    expect(
+      await screen.findByText(
+        "This fax carries records-request code RR-ACDEFH7, which was issued for a different referral",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/use Move document to file them under its referral/)).toBeTruthy();
+  });
+
+  it("shows no records-request warning when there is no conflict", async () => {
+    workspace = fixture("not_detected");
+    mount();
+    await screen.findByRole("button", { name: /Move document/ });
+    expect(screen.queryByText(/carries records-request code/)).toBeNull();
+  });
+
+  it("says a Part 2 privacy flag moves with the document", async () => {
+    workspace = fixture("detected");
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /Move document/ }));
+    expect(await screen.findByText(/Its privacy flag moves\s+with it/)).toBeTruthy();
   });
 });
 

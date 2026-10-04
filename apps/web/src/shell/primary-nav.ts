@@ -87,7 +87,7 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Documents",
         icon: "file-text",
         to: "/documents",
-        claims: ["/documents", "/admin/forms", "/intake"],
+        claims: ["/documents", "/admin/forms"],
       },
       {
         key: "billing",
@@ -149,7 +149,9 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Referrals",
         icon: "send",
         to: "/referrals",
-        claims: ["/referrals"],
+        // Intake review (DocLens faxes) starts with the referral, so it lives under Referrals while
+        // keeping its own /intake URL.
+        claims: ["/referrals", "/intake"],
       },
     ],
   },

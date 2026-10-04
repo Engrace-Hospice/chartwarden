@@ -14,7 +14,9 @@ import type { GlyphName } from "@wardenx/ui";
 // Completed toggle (`?view=`), and one row per batch with its pipeline status, SUD state, field counts
 // and review progress. Reads GET /api/v1/intake/uploads, which carries COUNTS only — no extracted values
 // leave the server until the workspace is opened for one batch. "Review" opens the side-by-side
-// workspace (`/intake/:batchId/review`). The server owns every scope (ADR-0030).
+// workspace (`/intake/:batchId/review`). "Upload fax" queues a fax that names no referral (F-238): a
+// records-request code on its cover sheet files it, otherwise the reviewer does with Move document. The
+// server owns every scope (ADR-0030).
 //
 // Two spec KPIs are not shown because the queue route does not carry them: "Discrepancies" (chart
 // conflicts — the discrepancy drawer is not built) and "Awaiting write-back". "Vision disagreements"
@@ -22,9 +24,11 @@ import type { GlyphName } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { IntakeUploadDialog } from "../../shell/intake-upload-dialog";
 import type { QueueItem } from "./doclens-api";
 import {
   PROCESSING_STATUSES,
+  RECORDS_REQUEST_CONFLICT_LABEL,
   REVIEWABLE_STATUSES,
   batchStatusLabel,
   sourceLabel,
@@ -61,6 +65,8 @@ export function IntakeReviewQueue(): JSX.Element {
   const [error, setError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: retryKey re-runs the load on "Retry".
   useEffect(() => {
@@ -137,13 +143,34 @@ export function IntakeReviewQueue(): JSX.Element {
     <div className="wx-reports">
       <header className="wx-page-head">
         <div>
+          <nav aria-label="Breadcrumb" className="wx-row-sub">
+            <Link to="/referrals">Referrals</Link> / Intake review
+          </nav>
           <h1 style={{ fontSize: "1.875rem" }}>Intake review</h1>
           <p>
             Referral documents read by DocLens. Check every extracted field against the page before
             anything reaches the chart.
           </p>
         </div>
+        <button type="button" className="wx-btn-primary" onClick={() => setUploadOpen(true)}>
+          <Glyph name="upload" size={16} /> Upload fax
+        </button>
       </header>
+      {notice ? (
+        <output className="wx-doclens-notice" style={{ display: "block" }}>
+          {notice}
+        </output>
+      ) : null}
+      <IntakeUploadDialog
+        open={uploadOpen}
+        client={client}
+        onClose={() => setUploadOpen(false)}
+        onFiled={(message) => {
+          setUploadOpen(false);
+          setNotice(message);
+          setRetryKey((k) => k + 1);
+        }}
+      />
 
       {items !== null && !error ? (
         <section className="wx-doclens-kpis" aria-label="Intake summary">
@@ -274,6 +301,12 @@ export function IntakeReviewQueue(): JSX.Element {
                         />
                         {sud ? (
                           <StatusPill label={sud.label} tone={sud.tone} glyph="shield" />
+                        ) : null}
+                        {i.recordsRequestConflict ? (
+                          <StatusPill
+                            label={`${RECORDS_REQUEST_CONFLICT_LABEL[i.recordsRequestConflict.kind]} (${i.recordsRequestConflict.code})`}
+                            tone="critical"
+                          />
                         ) : null}
                       </div>
                     </td>

@@ -37,4 +37,31 @@ export interface IntakeSudResolvedPayload {
   readonly intakeBatchId: string;
   readonly patientId: string | null;
   readonly resolvedByMembershipId: string;
+  /**
+   * `m22.intake.sud_rejected` only: another batch of this patient still carries a live (pending or
+   * confirmed) detection, so M5 must keep the DocLens flag. Absent on older events (treated as false).
+   */
+  readonly patientRetainsFlag?: boolean;
+}
+
+/**
+ * `m22.intake.sud_relinked` — F-238: a fax carrying a pending or confirmed Part 2 detection was moved to
+ * another patient (Move document), or a referral-filed fax adopted the patient its referral resolved to.
+ * M5 moves the DocLens-origin flag with it: the new patient gains it (as `detected` / `confirmed`), and the
+ * previous patient loses it ONLY when no other DocLens detection still holds it (`fromPatientRetainsFlag`,
+ * computed by M22, which owns the batches) and only when DocLens — not M39 consent state — put it there.
+ */
+export const M22_INTAKE_SUD_RELINKED_EVENT = "m22.intake.sud_relinked" as const;
+
+export interface IntakeSudRelinkedPayload {
+  readonly intakeBatchId: string;
+  /** Who the fax was filed under. `null` ⇒ no patient held the flag (a referral not yet resolved). */
+  readonly fromPatientId: string | null;
+  /** Who it is filed under now. `null` ⇒ moved to a referral with no patient yet: nobody gains the flag. */
+  readonly toPatientId: string | null;
+  readonly sudStatus: "detected" | "confirmed";
+  /** Another unresolved/confirmed DocLens detection on `fromPatientId` still needs the flag. */
+  readonly fromPatientRetainsFlag: boolean;
+  /** Null when the move was the referral's resolution (adoption), not a person. */
+  readonly movedByMembershipId: string | null;
 }

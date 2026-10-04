@@ -103,3 +103,29 @@ export {
   runCodingChecks,
   titleAgreement,
 } from "./coding/index";
+// F-238 — does each document in a fax belong to the patient it is filed under (two identifiers).
+export {
+  IDENTITY_SEVERITY,
+  compareIdentity,
+  identityBlocks,
+  normaliseDob,
+  normaliseName,
+  splitFullName,
+  worstIdentity,
+  type DocumentIdentity,
+  type IdentityField,
+  type IdentityStatus,
+  type IdentityTarget,
+  type IdentityVerdict,
+} from "./identity/index";
+// F-238 — records requested for a prospect: the cover-sheet code and the inbound matcher.
+export {
+  RECORDS_REQUEST_ALPHABET,
+  RECORDS_REQUEST_PAYLOAD_LENGTH,
+  RECORDS_REQUEST_PREFIX,
+  findRecordsRequestCodes,
+  generateRecordsRequestCode,
+  isValidRecordsRequestCode,
+  normaliseRecordsRequestCode,
+  recordsRequestCheckChar,
+} from "./records-request/index";

@@ -13,6 +13,10 @@
 //     `prompt_eval_count` reached the window is treated as truncated and thrown.
 //   · THINKING. Reasoning models emit a separate `thinking` stream; `think: false` is sent unless the
 //     backend is configured otherwise, and only `message.content` is ever returned.
+//   · BUN'S HIDDEN FETCH TIMEOUT. Bun aborts any fetch at 300 s with a `TimeoutError` unless told otherwise;
+//     a long local extraction (a 2-page discharge summary is ~5,000 output tokens) outlived it and was
+//     refused (F-238 E2E). The pipeline's per-call dispatch timeout is the deadline that governs; this
+//     adapter only bounds the socket at `requestTimeoutMs` (default 15 min) so it can never hang forever.
 //   · TOKEN COUNTS. `prompt_eval_count` / `eval_count` are the runtime's own counts (model-backend.ts:
 //     vendor counts, never estimates). A response without them is rejected rather than ledgered as zero.
 //
@@ -40,6 +44,8 @@ export interface OllamaModelBackendOptions {
   readonly think?: boolean;
   readonly fetchImpl?: typeof fetch;
   readonly healthTimeoutMs?: number;
+  /** Upper bound on one /api/chat request (default 900 000 ms); the pipeline's timeout normally fires first. */
+  readonly requestTimeoutMs?: number;
 }
 
 /** The Ollama server answered, but not with a usable completion. */
@@ -103,6 +109,9 @@ export function createOllamaModelBackend(options: OllamaModelBackendOptions): Mo
       ];
       const res = await doFetch(`${base}/api/chat`, {
         method: "POST",
+        signal: AbortSignal.timeout(options.requestTimeoutMs ?? 900_000),
+        // Bun-only: lift its default 300 s fetch timeout (ignored by other runtimes).
+        ...({ timeout: false } as RequestInit),
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: options.model,

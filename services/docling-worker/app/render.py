@@ -11,8 +11,10 @@ vision check sends the model only the crop around one field, never the whole pag
 from __future__ import annotations
 
 import io
+import threading
 from dataclasses import dataclass
 
+_LOCAL_PDFIUM_LOCK = threading.Lock()
 MAX_SCALE = 4.0
 MAX_OUTPUT_PIXELS = 40_000_000  # ~ a letter page at 4x; refuses absurd requests rather than OOM
 
@@ -54,6 +56,14 @@ def _encode(image, crop_px) -> bytes:  # noqa: ANN001 — a PIL image
     return buf.getvalue()
 
 
+def _pdfium_lock():
+    try:
+        from docling.utils.locks import pypdfium2_lock
+    except ImportError:  # docling absent (unit tests of this module alone)
+        return _LOCAL_PDFIUM_LOCK
+    return pypdfium2_lock
+
+
 def render_page(
     data: bytes,
     page: int,
@@ -69,18 +79,22 @@ def render_page(
     if data.startswith(b"%PDF"):
         import pypdfium2 as pdfium
 
-        pdf = pdfium.PdfDocument(data)
-        try:
-            if page > len(pdf):
-                raise RenderError("no such page")
-            p = pdf[page - 1]
-            width, height = p.get_size()
-            box = _clamp_crop(crop, width, height)
-            # Render the whole page at `scale` and crop in pixel space: pdfium's own crop arg trims in
-            # points from each edge, and the arithmetic is easier to keep right in one place.
-            image = p.render(scale=scale).to_pil()
-        finally:
-            pdf.close()
+        # pdfium is not thread-safe, and FastAPI runs this sync endpoint on a threadpool: the review screen
+        # and stage-5 crops request several pages at once, and concurrent renders segfaulted the worker
+        # (exit 139, F-238 E2E). Docling's own lock, so a render also never races a /parse.
+        with _pdfium_lock():
+            pdf = pdfium.PdfDocument(data)
+            try:
+                if page > len(pdf):
+                    raise RenderError("no such page")
+                p = pdf[page - 1]
+                width, height = p.get_size()
+                box = _clamp_crop(crop, width, height)
+                # Render the whole page at `scale` and crop in pixel space: pdfium's own crop arg trims in
+                # points from each edge, and the arithmetic is easier to keep right in one place.
+                image = p.render(scale=scale).to_pil()
+            finally:
+                pdf.close()
     else:
         from PIL import Image, ImageSequence
 
