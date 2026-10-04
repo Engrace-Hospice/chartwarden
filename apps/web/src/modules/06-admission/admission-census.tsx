@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ADMISSION_TONE, stateLabel as enumLabel } from "./admission-status";
+import { AdmissionsTabs, Avatar, Filter, Stat } from "./admissions-chrome";
 
 // Short labels for the pills; the long lifecycle names crowd the table.
 const SHORT_STATE: Record<string, string> = { notice_of_rights_acknowledged: "NOR Acknowledged" };
@@ -79,26 +80,6 @@ const STEPS: { label: string; codes: string[] }[] = [
   { label: "Election", codes: ["election_statement"] },
   { label: "Certification", codes: ["cti", "f2f"] },
 ];
-
-const AVATAR_TINTS = [
-  "var(--color-viz-blue)",
-  "var(--color-viz-green)",
-  "var(--color-viz-violet)",
-  "var(--color-viz-amber)",
-  "var(--color-viz-teal)",
-  "var(--color-viz-pink)",
-];
-function tintFor(key: string): string {
-  let h = 0;
-  for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return AVATAR_TINTS[h % AVATAR_TINTS.length]!;
-}
-function initials(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
-}
 
 function patientDisplayName(patient: PatientSummary | null, patientId?: string | null): string {
   const name = [patient?.firstName, patient?.lastName].filter(Boolean).join(" ").trim();
@@ -279,13 +260,7 @@ export function AdmissionCensus(): JSX.Element {
           </Link>
         </header>
 
-        <nav className="wx-subtabs" aria-label="Admissions views">
-          <Link to="/admissions" aria-current="page" className="is-current">
-            All Admissions
-          </Link>
-          <Link to="/referrals">Pending Referrals</Link>
-          <Link to="/compliance/admissions">Compliance Windows</Link>
-        </nav>
+        <AdmissionsTabs current="/admissions" />
 
         <div className="wx-stat-grid" aria-label="Admissions summary">
           <Stat
@@ -741,80 +716,5 @@ function AdmissionDrawer({
         </section>
       </div>
     </aside>
-  );
-}
-
-function Stat({
-  icon,
-  value,
-  label,
-  hint,
-  color = t.primary,
-}: {
-  icon: GlyphName;
-  value: number;
-  label: string;
-  hint: string;
-  color?: string;
-}): JSX.Element {
-  return (
-    <div className="wx-stat-card">
-      <span
-        aria-hidden
-        className="wx-stat-icon"
-        style={{ color, background: `color-mix(in srgb, ${color} 12%, ${t.surfaceLowest})` }}
-      >
-        <Glyph name={icon} size={22} strokeWidth={1.6} />
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <div className="wx-stat-label">{label}</div>
-        <strong className="wx-stat-value wx-nums">{value}</strong>
-        <div className="wx-stat-label">{hint}</div>
-      </div>
-    </div>
-  );
-}
-
-function Filter({
-  label,
-  value,
-  onChange,
-  ariaLabel,
-  children,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  ariaLabel?: string;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <label className="wx-filter-field">
-      <span>{label}</span>
-      <select
-        className="wx-select"
-        aria-label={ariaLabel ?? label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {children}
-      </select>
-    </label>
-  );
-}
-
-function Avatar({ name, size }: { name: string; size?: "lg" }): JSX.Element {
-  const c = tintFor(name);
-  return (
-    <span
-      className={`wx-home-avatar${size === "lg" ? " wx-avatar-lg" : ""}`}
-      aria-hidden
-      style={{
-        color: `color-mix(in srgb, ${c} 60%, ${t.onSurface})`,
-        background: `color-mix(in srgb, ${c} 14%, ${t.surfaceLowest})`,
-      }}
-    >
-      {initials(name)}
-    </span>
   );
 }

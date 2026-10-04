@@ -1221,6 +1221,22 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;
   }
+  .wx-stat-card-button {
+    width: 100%;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .wx-stat-card-button:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-card-border));
+  }
+  .wx-stat-card-button.is-selected {
+    border-color: var(--color-primary);
+    box-shadow: inset 0 0 0 1px var(--color-primary);
+  }
+  .wx-stat-grid-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
   .wx-stat-card {
     display: flex;
     align-items: center;
@@ -1241,10 +1257,12 @@
     flex-shrink: 0;
   }
   .wx-stat-label {
+    display: block;
     color: var(--color-muted);
     font-size: 0.8125rem;
   }
   .wx-stat-value {
+    display: block;
     font-size: 1.625rem;
     font-weight: 700;
     line-height: 1.2;
@@ -2896,6 +2914,15 @@
   }
   .wx-filter-field .wx-select {
     width: 100%;
+  }
+  .wx-filter-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.5rem;
+    color: var(--color-on-surface);
+    font-size: 0.8125rem;
+    white-space: nowrap;
   }
   .wx-select {
     min-height: 2.5rem;
