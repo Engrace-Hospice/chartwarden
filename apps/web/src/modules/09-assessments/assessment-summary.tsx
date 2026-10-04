@@ -116,8 +116,6 @@ const card = {
 } as const;
 const h3 = {
   fontSize: "0.8rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
   color: "var(--color-on-surface-variant)",
   margin: "0 0 0.25rem",
 } as const;

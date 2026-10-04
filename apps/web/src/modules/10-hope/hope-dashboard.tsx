@@ -108,7 +108,7 @@ export function HopeDashboard(): JSX.Element {
 
   const rfaOptions = useMemo(
     () => [
-      { value: "", label: "Any RFA" },
+      { value: "", label: "All" },
       ...Array.from(new Set(items.map((r) => r.rfaKind)))
         .sort()
         .map((value) => ({ value, label: rfaLabel(value) })),
@@ -232,8 +232,9 @@ export function HopeDashboard(): JSX.Element {
                 <span>{error}</span>
               </div>
             ) : null}
-            <div style={filterRowStyle}>
-              <div style={{ position: "relative", minWidth: "17rem" }}>
+            <div className="wx-filter-panel">
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search schedule, patient, admission..."
@@ -243,14 +244,10 @@ export function HopeDashboard(): JSX.Element {
                     setPage(1);
                   }}
                   aria-label="Search HOPE schedules"
-                  style={searchInputStyle}
                 />
-                <div style={searchIconStyle}>
-                  <Glyph name="eye" size={14} />
-                </div>
-              </div>
-              <label style={filterLabelStyle}>
-                <span style={mutedStyle}>State</span>
+              </label>
+              <label className="wx-filter-field">
+                <span>State</span>
                 <select
                   aria-label="Filter by state"
                   value={filter}
@@ -258,17 +255,17 @@ export function HopeDashboard(): JSX.Element {
                     setFilter(e.target.value as Bucket);
                     setPage(1);
                   }}
-                  style={selectStyle}
+                  className="wx-select"
                 >
-                  <option value="">Any state</option>
+                  <option value="">All</option>
                   <option value="open">Open</option>
                   <option value="closing">Closing 48h</option>
                   <option value="late">Late</option>
                   <option value="expired">Expired</option>
                 </select>
               </label>
-              <label style={filterLabelStyle}>
-                <span style={mutedStyle}>RFA</span>
+              <label className="wx-filter-field">
+                <span>RFA</span>
                 <select
                   aria-label="Filter by RFA"
                   value={rfaFilter}
@@ -276,7 +273,7 @@ export function HopeDashboard(): JSX.Element {
                     setRfaFilter(e.target.value);
                     setPage(1);
                   }}
-                  style={selectStyle}
+                  className="wx-select"
                 >
                   {rfaOptions.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -286,11 +283,11 @@ export function HopeDashboard(): JSX.Element {
                 </select>
               </label>
               {hasActiveFilters ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
+                <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+                  <Glyph name="filter" size={15} /> Clear
+                </button>
               ) : null}
-              <span style={mutedStyle}>
+              <span style={{ ...mutedStyle, lineHeight: "2.5rem", marginLeft: "auto" }}>
                 {rows.length} of {items.length} schedules
               </span>
             </div>
@@ -329,9 +326,12 @@ export function HopeDashboard(): JSX.Element {
                 aria-label="HOPE records"
                 // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
                 tabIndex={0}
-                style={tableViewportStyle}
+                className="wx-list-table-wrap"
               >
-                <table style={tableStyle}>
+                <table
+                  className="wx-list-table"
+                  style={{ minWidth: "66rem", tableLayout: "fixed" }}
+                >
                   <colgroup>
                     <col style={{ width: "22%" }} />
                     <col style={{ width: "16%" }} />
@@ -455,55 +455,12 @@ export function HopeDashboard(): JSX.Element {
   );
 }
 
-const filterPanelStyle: CSSProperties = {
-  padding: "0 1.5rem 0.75rem",
-};
-
-const filterRowStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "end",
-  gap: "0.75rem",
-};
-
-const filterLabelStyle: CSSProperties = {
-  display: "grid",
-  gap: "0.25rem",
-};
+// The dashboard layout's content region supplies the page gutter.
+const filterPanelStyle: CSSProperties = {};
 
 const mutedStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.8125rem",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  minHeight: "2.35rem",
-  padding: "0.45rem 0.75rem 0.45rem 2rem",
-  borderRadius: "0.5rem",
-  border: "1px solid var(--color-surface-container)",
-  background: "var(--color-surface)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-
-const searchIconStyle: CSSProperties = {
-  position: "absolute",
-  left: "0.65rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none",
-};
-
-const selectStyle: CSSProperties = {
-  minHeight: "2.35rem",
-  padding: "0.45rem 0.65rem",
-  borderRadius: "0.5rem",
-  border: "1px solid var(--color-surface-container)",
-  background: "var(--color-surface)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
 };
 
 const errorBannerStyle: CSSProperties = {
@@ -516,21 +473,6 @@ const errorBannerStyle: CSSProperties = {
   border: "1px solid var(--color-error)",
   color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
   background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
-  fontSize: "0.875rem",
-};
-
-const tableViewportStyle: CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  overflowX: "auto",
-  padding: "0 1.5rem 1.5rem",
-};
-
-const tableStyle: CSSProperties = {
-  width: "100%",
-  minWidth: "66rem",
-  borderCollapse: "collapse",
-  tableLayout: "fixed",
   fontSize: "0.875rem",
 };
 

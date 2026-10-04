@@ -16,8 +16,6 @@ export const cellStyle: CSSProperties = {
 export const headStyle: CSSProperties = {
   ...cellStyle,
   fontSize: "0.72rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
   fontWeight: 600,
 };

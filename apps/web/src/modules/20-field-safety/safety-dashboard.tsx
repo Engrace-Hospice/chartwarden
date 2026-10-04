@@ -5,6 +5,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -204,48 +205,58 @@ export function SafetyDashboardScreen(): JSX.Element {
               </strong>
             </div>
             <div style={controlGroupStyle}>
-              <input
-                type="search"
-                placeholder="Search clinician, visit, patient..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(1);
-                }}
-                aria-label="Search safety board"
-                style={searchInputStyle}
-              />
-              <select
-                aria-label="Safety flag"
-                value={flagFilter}
-                onChange={(e) => {
-                  setFlagFilter(e.target.value as FlagFilter);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">Flag: All</option>
-                <option value="active_sos">Active SOS</option>
-                <option value="high_risk">High-risk area</option>
-                <option value="gps_spoof">GPS spoof</option>
-                <option value="stale">Position &gt; 1h old</option>
-                <option value="no_position">No position</option>
-              </select>
-              <select
-                aria-label="Overdue state"
-                value={overdueFilter}
-                onChange={(e) => {
-                  setOverdueFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Overdue: All</option>
-                <option value="on_time">On time</option>
-                <option value="reminder">Reminder</option>
-                <option value="overdue">Overdue</option>
-                <option value="escalated">Escalated</option>
-              </select>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
+                <input
+                  type="search"
+                  placeholder="Search clinician, visit, patient..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Search safety board"
+                />
+              </label>
+              <label className="wx-filter-field">
+                <span>Flag</span>
+                <select
+                  className="wx-select"
+                  aria-label="Safety flag"
+                  value={flagFilter}
+                  onChange={(e) => {
+                    setFlagFilter(e.target.value as FlagFilter);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="all">All</option>
+                  <option value="active_sos">Active SOS</option>
+                  <option value="high_risk">High-risk area</option>
+                  <option value="gps_spoof">GPS spoof</option>
+                  <option value="stale">Position &gt; 1h old</option>
+                  <option value="no_position">No position</option>
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Overdue</span>
+                <select
+                  className="wx-select"
+                  aria-label="Overdue state"
+                  value={overdueFilter}
+                  onChange={(e) => {
+                    setOverdueFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">All</option>
+                  <option value="on_time">On time</option>
+                  <option value="reminder">Reminder</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="escalated">Escalated</option>
+                </select>
+              </label>
               {activeFilters > 0 ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -461,8 +472,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -508,8 +517,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",

@@ -254,31 +254,32 @@ export function MedicaidValidationWorklist(): JSX.Element {
                 </option>
               ))}
             </select>
-            <div style={{ position: "relative", minWidth: "14rem" }}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 aria-label="Filter by rule key"
                 value={ruleFilter}
                 onChange={(event) => setRuleFilter(event.target.value)}
                 placeholder="Search rule key..."
-                style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
               />
-              <span style={inputIconStyle}>
-                <Glyph name="search" size={14} />
-              </span>
-            </div>
-            <select
-              aria-label="Filter by outcome"
-              value={outcomeFilter}
-              onChange={(event) => setOutcomeFilter(event.target.value)}
-              style={selectStyle}
-            >
-              <option value="">Outcome: All</option>
-              <option value="fail">Fail</option>
-              <option value="warn">Warn</option>
-              <option value="info">Info</option>
-              <option value="pass">Pass</option>
-              <option value="skip_not_applicable">Skip not applicable</option>
-            </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Outcome</span>
+              <select
+                className="wx-select"
+                aria-label="Filter by outcome"
+                value={outcomeFilter}
+                onChange={(event) => setOutcomeFilter(event.target.value)}
+                style={selectStyle}
+              >
+                <option value="">All</option>
+                <option value="fail">Fail</option>
+                <option value="warn">Warn</option>
+                <option value="info">Info</option>
+                <option value="pass">Pass</option>
+                <option value="skip_not_applicable">Skip not applicable</option>
+              </select>
+            </label>
             {active ? (
               <StatusPill
                 label={
@@ -605,14 +606,6 @@ const enhancedRowLine = {
   ...rowLine,
   borderTop: "none",
   borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
 };
 const linkButtonStyle = {
   display: "inline-flex",

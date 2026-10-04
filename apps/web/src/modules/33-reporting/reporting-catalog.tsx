@@ -2,6 +2,7 @@ import {
   EmptyState,
   Glyph,
   type GlyphName,
+  KpiCard,
   LoadingSpinner,
   StatusPill,
   t,
@@ -516,6 +517,7 @@ export function ReportingCatalog(): JSX.Element {
   );
 }
 
+// The shared stat card (label · value · detail), like every other summary row in the app.
 function Kpi({
   icon,
   label,
@@ -529,20 +531,7 @@ function Kpi({
   hint: string;
   color?: string;
 }): JSX.Element {
-  const c = color ?? t.primary;
   return (
-    <div className="wx-stat-card">
-      <span
-        className="wx-stat-icon"
-        style={{ color: c, background: `color-mix(in srgb, ${c} 12%, ${t.surfaceLowest})` }}
-      >
-        <Glyph name={icon} size={20} />
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <div className="wx-stat-label">{label}</div>
-        <strong className="wx-stat-value wx-nums">{value ?? "…"}</strong>
-        <div className="wx-stat-label">{hint}</div>
-      </div>
-    </div>
+    <KpiCard icon={icon} accentColor={color} label={label} value={value ?? "…"} detail={hint} />
   );
 }

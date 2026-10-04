@@ -2922,8 +2922,6 @@ const fieldLabelStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const fieldValueStyle: CSSProperties = {
@@ -2970,8 +2968,6 @@ const thStyle: CSSProperties = {
   textAlign: "left",
   color: "var(--color-on-surface-variant)",
   fontSize: "0.72rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const rowStyle: CSSProperties = {

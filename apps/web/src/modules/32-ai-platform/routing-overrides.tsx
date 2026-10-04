@@ -392,8 +392,6 @@ const headerCellStyle: CSSProperties = {
   ...cellStyle,
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const rowStyle: CSSProperties = {

@@ -2,6 +2,7 @@ import {
   EmptyState,
   Glyph,
   type GlyphName,
+  KpiCard,
   LoadingSpinner,
   Panel,
   StatusPill,
@@ -22,6 +23,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { claimStateTone, dollars, statusLabel } from "./billing-status";
 
@@ -284,15 +286,7 @@ export function ArDashboard(): JSX.Element {
           </div>
         </header>
 
-        <nav className="wx-subtabs" aria-label="Billing views">
-          <Link to="/billing" aria-current="page" className="is-current">
-            Claims
-          </Link>
-          <Link to="/remittance">Remittances</Link>
-          <Link to="/remittance/denials">Denials</Link>
-          <Link to="/billing/noe">NOE / NOTR</Link>
-          <Link to="/billing/eligibility">Eligibility</Link>
-        </nav>
+        <BillingTabs />
 
         <div className="wx-stat-grid" aria-label="Billing summary">
           <Kpi
@@ -367,7 +361,7 @@ export function ArDashboard(): JSX.Element {
                 setPage(1);
               }}
             >
-              <option value="">All statuses</option>
+              <option value="">All</option>
               {[...PIPELINE, "replaced", "voided"].map((s) => (
                 <option key={s} value={s}>
                   {statusLabel(s)}
@@ -566,6 +560,7 @@ export function ArDashboard(): JSX.Element {
   );
 }
 
+// The shared stat card (label · value · detail), like every other summary row in the app.
 function Kpi({
   icon,
   label,
@@ -579,23 +574,8 @@ function Kpi({
   hint: string;
   color?: string;
 }): JSX.Element {
-  const c = color ?? t.primary;
   return (
-    <div className="wx-stat-card">
-      <span
-        className="wx-stat-icon"
-        style={{ color: c, background: `color-mix(in srgb, ${c} 12%, ${t.surfaceLowest})` }}
-      >
-        <Glyph name={icon} size={20} />
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <div className="wx-stat-label">{label}</div>
-        <strong className="wx-stat-value wx-nums" style={color ? { color } : undefined}>
-          {value ?? "…"}
-        </strong>
-        <div className="wx-stat-label">{hint}</div>
-      </div>
-    </div>
+    <KpiCard icon={icon} accentColor={color} label={label} value={value ?? "…"} detail={hint} />
   );
 }
 

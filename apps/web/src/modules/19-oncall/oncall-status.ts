@@ -444,7 +444,7 @@ export const STATE_FILTERS: readonly QueueFilterOption<TriageCallState>[] = [
 
 /** The §5.1 source picker: the "All" sentinel followed by every `triage_call_source`. */
 export const SOURCE_FILTERS: readonly QueueFilterOption<TriageCallSource>[] = [
-  { key: "__any_source", value: "", label: "Source: All" },
+  { key: "__any_source", value: "", label: "All" },
   { key: "manual", value: "manual", label: "Manual" },
   { key: "no_show", value: "no_show", label: "No-show" },
   { key: "late_checkout", value: "late_checkout", label: "Late checkout" },

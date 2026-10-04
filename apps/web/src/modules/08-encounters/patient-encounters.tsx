@@ -297,20 +297,23 @@ export function PatientEncounters(): JSX.Element {
                 flexWrap: "wrap",
               }}
             >
-              <select
-                aria-label="Encounter status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                style={selectStyle}
-              >
-                <option value="">Any status</option>
-                <option value="draft">Draft</option>
-                <option value="finalized">Finalized</option>
-                <option value="signed">Signed</option>
-                <option value="cosign_pending">Cosign Pending</option>
-                <option value="cosigned">Cosigned</option>
-                <option value="voided">Voided</option>
-              </select>
+              <label className="wx-filter-field">
+                <span>Status</span>
+                <select
+                  className="wx-select"
+                  aria-label="Encounter status"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  <option value="">All</option>
+                  <option value="draft">Draft</option>
+                  <option value="finalized">Finalized</option>
+                  <option value="signed">Signed</option>
+                  <option value="cosign_pending">Cosign Pending</option>
+                  <option value="cosigned">Cosigned</option>
+                  <option value="voided">Voided</option>
+                </select>
+              </label>
 
               {status ? (
                 <Button size="sm" tone="tertiary" onClick={() => setStatus("")}>

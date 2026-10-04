@@ -167,7 +167,8 @@ export function CapEvents(): JSX.Element {
             </div>
           ) : null}
           <div style={filterRowStyle}>
-            <div style={{ position: "relative", minWidth: "16rem" }}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search scope, patient, band..."
@@ -177,12 +178,8 @@ export function CapEvents(): JSX.Element {
                   setPage(1);
                 }}
                 aria-label="Search threshold events"
-                style={searchInputStyle}
               />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
+            </label>
             <label style={filterLabelStyle}>
               <span style={mutedStyle}>Scope</span>
               <select
@@ -351,8 +348,6 @@ const tdDateStyle = { ...cellStyle, fontVariantNumeric: "tabular-nums" as const 
 const headStyle = {
   ...cellStyle,
   fontSize: "0.72rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
   fontWeight: 600,
 };
@@ -376,20 +371,6 @@ const filterRowStyle = {
   alignItems: "flex-end",
 };
 const filterLabelStyle = { display: "flex", flexDirection: "column" as const, gap: "0.25rem" };
-const searchInputStyle = {
-  width: "100%",
-  paddingLeft: "2rem",
-  height: "2.25rem",
-  fontSize: "0.85rem",
-};
-const searchIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
-};
 const selectStyle = {
   height: "2.25rem",
   fontSize: "0.85rem",

@@ -5,6 +5,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -253,46 +254,56 @@ export function ActiveSosScreen(): JSX.Element {
                 <strong>{filteredAlerts.length} matching SOS alerts</strong>
               </div>
               <div style={controlGroupStyle}>
-                <input
-                  type="search"
-                  placeholder="Search clinician or alert..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search active SOS alerts"
-                  style={searchInputStyle}
-                />
-                <select
-                  aria-label="SOS state"
-                  value={stateFilter}
-                  onChange={(e) => {
-                    setStateFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">State: All</option>
-                  {stateOptions.map((state) => (
-                    <option key={state} value={state}>
-                      {humanize(state)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Acknowledgment status"
-                  value={ackFilter}
-                  onChange={(e) => {
-                    setAckFilter(e.target.value as AckFilter);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="all">Ack: All</option>
-                  <option value="unacknowledged">Unacknowledged</option>
-                  <option value="acknowledged">Acknowledged</option>
-                </select>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
+                  <input
+                    type="search"
+                    placeholder="Search clinician or alert..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search active SOS alerts"
+                  />
+                </label>
+                <label className="wx-filter-field">
+                  <span>State</span>
+                  <select
+                    className="wx-select"
+                    aria-label="SOS state"
+                    value={stateFilter}
+                    onChange={(e) => {
+                      setStateFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    {stateOptions.map((state) => (
+                      <option key={state} value={state}>
+                        {humanize(state)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Ack</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Acknowledgment status"
+                    value={ackFilter}
+                    onChange={(e) => {
+                      setAckFilter(e.target.value as AckFilter);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="all">All</option>
+                    <option value="unacknowledged">Unacknowledged</option>
+                    <option value="acknowledged">Acknowledged</option>
+                  </select>
+                </label>
                 {activeFilters > 0 ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -494,8 +505,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -529,8 +538,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",

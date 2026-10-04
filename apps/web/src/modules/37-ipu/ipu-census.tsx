@@ -131,8 +131,8 @@ export function IpuCensus(): JSX.Element {
                 style={dateInputStyle}
               />
             </label>
-            <div style={searchBoxStyle}>
-              <Glyph name="eye" size={14} />
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search unit or arranged rows..."
@@ -142,22 +142,24 @@ export function IpuCensus(): JSX.Element {
                   setPage(1);
                 }}
                 aria-label="Search IPU census rows"
-                style={searchInputStyle}
               />
-            </div>
-            <select
-              value={activityFilter}
-              onChange={(event) => {
-                setActivityFilter(event.target.value as ActivityFilter);
-                setPage(1);
-              }}
-              aria-label="Filter census rows by activity"
-              style={selectStyle}
-            >
-              <option value="all">Activity: All</option>
-              <option value="occupied">Occupied only ({occupiedRows})</option>
-              <option value="incidents">Turnover/restraint ({incidentRows})</option>
-            </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Activity</span>
+              <select
+                className="wx-select"
+                value={activityFilter}
+                onChange={(event) => {
+                  setActivityFilter(event.target.value as ActivityFilter);
+                  setPage(1);
+                }}
+                aria-label="Filter census rows by activity"
+              >
+                <option value="all">All</option>
+                <option value="occupied">Occupied only ({occupiedRows})</option>
+                <option value="incidents">Turnover/restraint ({incidentRows})</option>
+              </select>
+            </label>
             {hasActiveFilters ? (
               <Button size="sm" tone="tertiary" onClick={clearFilters}>
                 Clear
@@ -282,27 +284,6 @@ const dateInputStyle: CSSProperties = {
   fontSize: "0.85rem",
 };
 
-const searchBoxStyle: CSSProperties = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  minWidth: "min(100%, 18rem)",
-  color: "var(--color-on-surface-variant)",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  height: "2.25rem",
-  paddingLeft: "2rem",
-  fontSize: "0.85rem",
-};
-
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
@@ -328,7 +309,6 @@ const thStyle: CSSProperties = {
   padding: "0.75rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {

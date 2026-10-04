@@ -712,10 +712,8 @@ const sectionHeaderStyle: CSSProperties = {
 
 const eyebrowStyle: CSSProperties = {
   margin: "0 0 0.2rem",
-  fontSize: "0.65rem",
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.07em",
+  fontSize: "0.8125rem",
+  fontWeight: 500,
   color: "var(--color-on-surface-variant)",
 };
 
@@ -922,8 +920,6 @@ const tableHeaderStyle: CSSProperties = {
   textAlign: "left",
   fontSize: "0.66rem",
   fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.045em",
   color: "var(--color-on-surface-variant)",
   background: "var(--color-surface-container-low)",
   borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",

@@ -148,7 +148,7 @@ export function SupplyItemCatalog(): JSX.Element {
     draft.name.trim() !== "" && draft.localSkuCode.trim() !== "" && draft.defaultUnit.trim() !== "";
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Supply catalog</span>}
         breadcrumb="Supplies — platform SKUs and the tenant overlay"

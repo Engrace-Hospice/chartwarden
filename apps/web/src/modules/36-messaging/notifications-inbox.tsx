@@ -223,7 +223,11 @@ export function NotificationsInbox(): JSX.Element {
             </div>
           ) : null}
           <div style={toolbarStyle}>
-            <div style={tabWrapStyle} role="tablist" aria-label="Notification scope">
+            <div
+              className="wx-subtabs wx-subtabs-inline"
+              role="tablist"
+              aria-label="Notification scope"
+            >
               <TabButton
                 label={
                   unreadTotal > 0
@@ -247,8 +251,8 @@ export function NotificationsInbox(): JSX.Element {
 
             {tab === "notifications" ? (
               <div style={controlGroupStyle}>
-                <div style={searchBoxStyle}>
-                  <Glyph name="eye" size={14} />
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search summary, source, event..."
@@ -258,52 +262,60 @@ export function NotificationsInbox(): JSX.Element {
                       setPage(1);
                     }}
                     aria-label="Search notifications"
-                    style={searchInputStyle}
                   />
-                </div>
-                <select
-                  value={severityFilter}
-                  onChange={(e) => {
-                    setSeverityFilter(e.target.value as typeof severityFilter);
-                    setPage(1);
-                  }}
-                  aria-label="Filter notifications by severity"
-                  style={selectStyle}
-                >
-                  <option value="all">Severity: All</option>
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="warn">Warning</option>
-                  <option value="info">Info</option>
-                </select>
-                <select
-                  value={deliveryFilter}
-                  onChange={(e) => {
-                    setDeliveryFilter(e.target.value as typeof deliveryFilter);
-                    setPage(1);
-                  }}
-                  aria-label="Filter notifications by delivery status"
-                  style={selectStyle}
-                >
-                  <option value="all">Delivery: All</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="partial">Partial</option>
-                  <option value="failed">Failed</option>
-                  <option value="pending">Pending</option>
-                </select>
-                <select
-                  value={readFilter}
-                  onChange={(e) => {
-                    setReadFilter(e.target.value as typeof readFilter);
-                    setPage(1);
-                  }}
-                  aria-label="Filter notifications by read status"
-                  style={selectStyle}
-                >
-                  <option value="all">Status: All</option>
-                  <option value="unread">Unread</option>
-                  <option value="read">Read</option>
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Severity</span>
+                  <select
+                    className="wx-select"
+                    value={severityFilter}
+                    onChange={(e) => {
+                      setSeverityFilter(e.target.value as typeof severityFilter);
+                      setPage(1);
+                    }}
+                    aria-label="Filter notifications by severity"
+                  >
+                    <option value="all">All</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="warn">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Delivery</span>
+                  <select
+                    className="wx-select"
+                    value={deliveryFilter}
+                    onChange={(e) => {
+                      setDeliveryFilter(e.target.value as typeof deliveryFilter);
+                      setPage(1);
+                    }}
+                    aria-label="Filter notifications by delivery status"
+                  >
+                    <option value="all">All</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="partial">Partial</option>
+                    <option value="failed">Failed</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Status</span>
+                  <select
+                    className="wx-select"
+                    value={readFilter}
+                    onChange={(e) => {
+                      setReadFilter(e.target.value as typeof readFilter);
+                      setPage(1);
+                    }}
+                    aria-label="Filter notifications by read status"
+                  >
+                    <option value="all">All</option>
+                    <option value="unread">Unread</option>
+                    <option value="read">Read</option>
+                  </select>
+                </label>
                 {hasActiveFilters ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -464,13 +476,7 @@ function TabButton({
   onClick: () => void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      style={tabButtonStyle(active)}
-    >
+    <button type="button" role="tab" aria-selected={active} onClick={onClick}>
       {label}
     </button>
   );
@@ -511,54 +517,11 @@ const toolbarStyle: CSSProperties = {
   justifyContent: "space-between",
   gap: "1rem",
 };
-const tabWrapStyle: CSSProperties = {
-  display: "flex",
-  gap: "0.25rem",
-  background: "var(--color-surface-container)",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-};
-const tabButtonStyle = (active: boolean): CSSProperties => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "pointer",
-});
 const controlGroupStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap",
-};
-const searchBoxStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.45rem",
-  minWidth: "15rem",
-  height: "2.25rem",
-  padding: "0 0.65rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container)",
-  color: "var(--color-on-surface-variant)",
-};
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  border: "none",
-  background: "transparent",
-  outline: "none",
-  color: "var(--color-on-surface)",
-  fontSize: "0.85rem",
-};
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
 };
 const errorBannerStyle: CSSProperties = {
   display: "flex",
@@ -595,8 +558,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const tdStyle: CSSProperties = {
   padding: "0.75rem 1rem",

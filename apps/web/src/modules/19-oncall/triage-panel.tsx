@@ -385,7 +385,7 @@ export function TriageCallPanel(): JSX.Element {
     protocolChoice !== staff?.suggestedProtocolId;
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Triage call {shortId(call.id)}</span>}
         breadcrumb="On-call triage · panel"

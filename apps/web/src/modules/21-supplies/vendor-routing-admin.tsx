@@ -183,7 +183,7 @@ export function VendorRoutingAdmin(): JSX.Element {
   })).filter((g) => g.rows.length > 0 || scopeFilter === "" || scopeFilter === g.scope);
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Vendor routing</span>}
         breadcrumb="Supplies — the D4 precedence ladder"

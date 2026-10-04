@@ -125,7 +125,7 @@ export function IdgRevisionReview(): JSX.Element {
     .slice(0, 10);
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>{kindLabel(kind)} — IDG revision review</span>}
         breadcrumb="Clinical — post-IDG finalization"

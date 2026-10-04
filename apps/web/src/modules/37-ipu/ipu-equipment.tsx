@@ -192,8 +192,8 @@ export function IpuEquipment(): JSX.Element {
             </div>
           ) : null}
           <div style={toolbarStyle}>
-            <div style={searchBoxStyle}>
-              <Glyph name="eye" size={14} />
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search serial, type, status, ID..."
@@ -203,56 +203,64 @@ export function IpuEquipment(): JSX.Element {
                   setPage(1);
                 }}
                 aria-label="Search IPU equipment"
-                style={searchInputStyle}
               />
-            </div>
-            <select
-              value={typeFilter}
-              onChange={(event) => {
-                setTypeFilter(event.target.value);
-                setPage(1);
-              }}
-              aria-label="Filter equipment by type"
-              style={selectStyle}
-            >
-              <option value="all">Type: All</option>
-              {typeOptions.map((type) => (
-                <option key={type} value={type}>
-                  {titleCase(type)}
-                </option>
-              ))}
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value);
-                setPage(1);
-              }}
-              aria-label="Filter equipment by status"
-              style={selectStyle}
-            >
-              <option value="all">Status: All</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {titleCase(status)}
-                </option>
-              ))}
-            </select>
-            <select
-              value={inspectionFilter}
-              onChange={(event) => {
-                setInspectionFilter(event.target.value as InspectionFilter);
-                setPage(1);
-              }}
-              aria-label="Filter equipment by inspection status"
-              style={selectStyle}
-            >
-              <option value="all">Inspection: All</option>
-              <option value="overdue">Overdue</option>
-              <option value="due_soon">Due soon</option>
-              <option value="clear">Clear</option>
-              <option value="unscheduled">Unscheduled</option>
-            </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Type</span>
+              <select
+                className="wx-select"
+                value={typeFilter}
+                onChange={(event) => {
+                  setTypeFilter(event.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filter equipment by type"
+              >
+                <option value="all">All</option>
+                {typeOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {titleCase(type)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Status</span>
+              <select
+                className="wx-select"
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filter equipment by status"
+              >
+                <option value="all">All</option>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {titleCase(status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Inspection</span>
+              <select
+                className="wx-select"
+                value={inspectionFilter}
+                onChange={(event) => {
+                  setInspectionFilter(event.target.value as InspectionFilter);
+                  setPage(1);
+                }}
+                aria-label="Filter equipment by inspection status"
+              >
+                <option value="all">All</option>
+                <option value="overdue">Overdue</option>
+                <option value="due_soon">Due soon</option>
+                <option value="clear">Clear</option>
+                <option value="unscheduled">Unscheduled</option>
+              </select>
+            </label>
             {hasActiveFilters ? (
               <Button size="sm" tone="tertiary" onClick={clearFilters}>
                 Clear
@@ -375,27 +383,6 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const searchBoxStyle: CSSProperties = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  minWidth: "min(100%, 18rem)",
-  color: "var(--color-on-surface-variant)",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  height: "2.25rem",
-  paddingLeft: "2rem",
-  fontSize: "0.85rem",
-};
-
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
@@ -421,7 +408,6 @@ const thStyle: CSSProperties = {
   padding: "0.75rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {

@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -121,7 +122,8 @@ export function ResultsReviewQueue(): JSX.Element {
                 <strong>{rows.length} matching results</strong>
               </div>
               <div style={controlGroupStyle}>
-                <div style={searchWrapStyle}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search order or patient..."
@@ -131,40 +133,47 @@ export function ResultsReviewQueue(): JSX.Element {
                       setPage(1);
                     }}
                     aria-label="Search results pending review"
-                    style={searchInputStyle}
                   />
-                </div>
-                <select
-                  aria-label="Results status"
-                  value={resultsStatus}
-                  onChange={(e) => {
-                    setResultsStatus(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Results: All</option>
-                  <option value="results_received">Results received</option>
-                  <option value="partial_results_received">Partial results</option>
-                  <option value="awaiting_results">Awaiting results</option>
-                  <option value="results_overdue">Results overdue</option>
-                </select>
-                <select
-                  aria-label="Transmission status"
-                  value={transmissionStatus}
-                  onChange={(e) => {
-                    setTransmissionStatus(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Transmission: All</option>
-                  <option value="transmitted">Transmitted</option>
-                  <option value="pending">Pending</option>
-                  <option value="pending_retry">Pending retry</option>
-                  <option value="failed">Failed</option>
-                  <option value="not_required">Not required</option>
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Results</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Results status"
+                    value={resultsStatus}
+                    onChange={(e) => {
+                      setResultsStatus(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    <option value="results_received">Results received</option>
+                    <option value="partial_results_received">Partial results</option>
+                    <option value="awaiting_results">Awaiting results</option>
+                    <option value="results_overdue">Results overdue</option>
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Transmission</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Transmission status"
+                    value={transmissionStatus}
+                    onChange={(e) => {
+                      setTransmissionStatus(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    <option value="transmitted">Transmitted</option>
+                    <option value="pending">Pending</option>
+                    <option value="pending_retry">Pending retry</option>
+                    <option value="failed">Failed</option>
+                    <option value="not_required">Not required</option>
+                  </select>
+                </label>
                 {activeFilters > 0 ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -358,8 +367,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const controlGroupStyle = {
@@ -367,16 +374,6 @@ const controlGroupStyle = {
   alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap" as const,
-};
-
-const searchWrapStyle = {
-  minWidth: "15rem",
-};
-
-const searchInputStyle = {
-  width: "100%",
-  height: "2.25rem",
-  fontSize: "0.85rem",
 };
 
 const selectStyle = {
@@ -435,8 +432,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

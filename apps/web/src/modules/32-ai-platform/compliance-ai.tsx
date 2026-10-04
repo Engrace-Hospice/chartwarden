@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -200,7 +201,8 @@ export function ComplianceAiView(): JSX.Element {
               </strong>
             </div>
             <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search capability, backend, report..."
@@ -212,42 +214,49 @@ export function ComplianceAiView(): JSX.Element {
                     setReportPage(1);
                   }}
                   aria-label="Search AI compliance"
-                  style={searchInputStyle}
                 />
-              </div>
-              <select
-                aria-label="Invocation status"
-                value={invocationStatus}
-                onChange={(e) => {
-                  setInvocationStatus(e.target.value);
-                  setInvocationPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Invocation: All</option>
-                <option value="completed">Completed</option>
-                <option value="failed">Failed</option>
-                <option value="timed_out">Timed out</option>
-                <option value="killed">Killed</option>
-                <option value="capability_unavailable">Capability unavailable</option>
-              </select>
-              <select
-                aria-label="Report triage status"
-                value={reportStatus}
-                onChange={(e) => {
-                  setReportStatus(e.target.value);
-                  setReportPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Report: All</option>
-                <option value="open">Open</option>
-                <option value="investigating">Investigating</option>
-                <option value="root_cause_identified">Root cause identified</option>
-                <option value="mitigated">Mitigated</option>
-                <option value="closed">Closed</option>
-                <option value="escalated_to_clinical_safety">Escalated</option>
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Invocation</span>
+                <select
+                  className="wx-select"
+                  aria-label="Invocation status"
+                  value={invocationStatus}
+                  onChange={(e) => {
+                    setInvocationStatus(e.target.value);
+                    setInvocationPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">All</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="timed_out">Timed out</option>
+                  <option value="killed">Killed</option>
+                  <option value="capability_unavailable">Capability unavailable</option>
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Report</span>
+                <select
+                  className="wx-select"
+                  aria-label="Report triage status"
+                  value={reportStatus}
+                  onChange={(e) => {
+                    setReportStatus(e.target.value);
+                    setReportPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">All</option>
+                  <option value="open">Open</option>
+                  <option value="investigating">Investigating</option>
+                  <option value="root_cause_identified">Root cause identified</option>
+                  <option value="mitigated">Mitigated</option>
+                  <option value="closed">Closed</option>
+                  <option value="escalated_to_clinical_safety">Escalated</option>
+                </select>
+              </label>
               {activeFilters > 0 ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -582,8 +591,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -636,8 +643,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",

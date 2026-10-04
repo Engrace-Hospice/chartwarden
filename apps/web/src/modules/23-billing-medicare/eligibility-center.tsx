@@ -22,6 +22,7 @@ import {
 // emits no billing schemas, so reads are cast and the query/mutation inits go through `as never`.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { BillingTabs } from "../../shell/billing-tabs";
 import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import {
   eligibilityOutcomeTone,
@@ -99,17 +100,13 @@ export function EligibilityCenter(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader
-          title="Eligibility Center"
-          breadcrumb="Billing / Medicare / HETS 270/271"
-          actions={
-            <a href="/billing" style={linkButtonStyle}>
-              AR dashboard
-            </a>
-          }
-        >
+        <PageHeader title="Billing / Eligibility">
           <div style={{ color: t.onSurfaceVariant, fontSize: "0.875rem" }}>
-            Load a patient's HETS history, review coverage outcome, and watch eligibility freshness.
+            Load a patient's HETS history (Medicare HETS 270/271), review coverage outcome, and
+            watch eligibility freshness.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <BillingTabs />
           </div>
         </PageHeader>
       }
@@ -146,7 +143,7 @@ export function EligibilityCenter(): JSX.Element {
               e.preventDefault();
               void load(patientId);
             }}
-            style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
+            style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}
           >
             <div style={{ minWidth: "18rem" }}>
               <PatientLookupField
@@ -156,24 +153,27 @@ export function EligibilityCenter(): JSX.Element {
                 clearable
               />
             </div>
-            <Button type="submit" size="sm">
+            <button type="submit" className="wx-btn-primary">
               Load history
-            </Button>
+            </button>
           </form>
           {checks.length > 0 ? (
-            <select
-              value={outcomeFilter}
-              onChange={(e) => setOutcomeFilter(e.target.value)}
-              aria-label="Filter by outcome"
-              style={selectStyle}
-            >
-              <option value="all">Outcome: All</option>
-              {outcomeOptions.map((outcome) => (
-                <option key={outcome} value={outcome}>
-                  Outcome: {statusLabel(outcome)}
-                </option>
-              ))}
-            </select>
+            <label className="wx-filter-field">
+              <span>Outcome</span>
+              <select
+                className="wx-select"
+                value={outcomeFilter}
+                onChange={(e) => setOutcomeFilter(e.target.value)}
+                aria-label="Filter by outcome"
+              >
+                <option value="all">All</option>
+                {outcomeOptions.map((outcome) => (
+                  <option key={outcome} value={outcome}>
+                    Outcome: {statusLabel(outcome)}
+                  </option>
+                ))}
+              </select>
+            </label>
           ) : null}
         </FilterBar>
 
@@ -378,14 +378,6 @@ const inputStyle = {
   fontSize: "0.85rem",
 };
 const selectStyle = { ...inputStyle, height: "2.25rem", cursor: "pointer" };
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: t.onSurfaceVariant,
-  pointerEvents: "none" as const,
-};
 const linkButtonStyle = {
   display: "inline-flex",
   alignItems: "center",
@@ -402,7 +394,5 @@ const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = { padding: "0.5rem 0.75rem", color: t.onSurface };

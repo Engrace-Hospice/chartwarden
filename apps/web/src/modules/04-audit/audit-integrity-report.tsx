@@ -323,8 +323,6 @@ const factStyle = {
 
 const factLabelStyle = {
   fontSize: "0.72rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
 };
 

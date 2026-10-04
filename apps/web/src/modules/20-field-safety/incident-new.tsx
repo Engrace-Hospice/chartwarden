@@ -711,8 +711,6 @@ const toolbarTitleStyle: CSSProperties = {
 const toolbarEyebrowStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const sectionTitleStyle: CSSProperties = {
   margin: 0,

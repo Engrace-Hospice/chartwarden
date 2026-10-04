@@ -247,29 +247,29 @@ export function OverrideAudit(): JSX.Element {
               : undefined
           }
         >
-          <div style={{ position: "relative", minWidth: "14rem" }}>
+          <label className="wx-search-field">
+            <Glyph name="search" size={16} />
             <input
               aria-label="Filter by rule key"
               placeholder="Search rule key..."
               value={ruleFilter}
               onChange={(e) => setRuleFilter(e.target.value)}
-              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
             />
-            <span style={inputIconStyle}>
-              <Glyph name="search" size={14} />
-            </span>
-          </div>
-          <select
-            aria-label="Filter by severity"
-            value={severityFilter}
-            onChange={(e) => setSeverityFilter(e.target.value)}
-            style={selectStyle}
-          >
-            <option value="">All severities</option>
-            <option value="error">Error</option>
-            <option value="warn">Warn</option>
-            <option value="info">Info</option>
-          </select>
+          </label>
+          <label className="wx-filter-field">
+            <span>Severity</span>
+            <select
+              className="wx-select"
+              aria-label="Filter by severity"
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value)}
+            >
+              <option value="">All</option>
+              <option value="error">Error</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+            </select>
+          </label>
           {degraded ? (
             <output
               style={{
@@ -442,8 +442,6 @@ const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)" };
 const selectStyle = {
@@ -455,14 +453,6 @@ const selectStyle = {
   fontSize: "0.85rem",
 };
 const inputStyle = { ...selectStyle, minWidth: "12rem" };
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
-};
 const linkButtonStyle = {
   display: "inline-flex",
   alignItems: "center",

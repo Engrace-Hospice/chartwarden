@@ -341,7 +341,7 @@ export function EncounterCompose(): JSX.Element {
             <div style={summaryMain}>
               <div style={summaryTitleRow}>
                 <div>
-                  <div style={eyebrow}>DOCUMENTATION PROGRESS</div>
+                  <div style={eyebrow}>Documentation progress</div>
                   <div style={summaryTitle}>
                     {completion.completed} of {completion.total} sections documented
                   </div>
@@ -436,7 +436,7 @@ export function EncounterCompose(): JSX.Element {
             <aside style={sectionRail} aria-label="Visit note sections">
               <div style={railHeader}>
                 <div>
-                  <div style={eyebrow}>NOTE SECTIONS</div>
+                  <div style={eyebrow}>Note sections</div>
                   <strong style={railTitle}>Document the visit</strong>
                 </div>
                 <span style={railCount}>{template.sections.length}</span>
@@ -507,7 +507,7 @@ export function EncounterCompose(): JSX.Element {
                 <div style={editorCard}>
                   <header style={editorHeader}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={eyebrow}>CURRENT SECTION</div>
+                      <div style={eyebrow}>Current section</div>
                       <div style={editorTitleRow}>
                         <h2 style={editorTitle}>{active.heading}</h2>
                         {active.required ? (
@@ -740,7 +740,7 @@ function VitalsPanel({
     <section style={vitalsPanel}>
       <header style={vitalsHeader}>
         <div>
-          <div style={eyebrow}>QUICK CAPTURE</div>
+          <div style={eyebrow}>Quick capture</div>
           <h2 style={vitalsTitle}>Visit vitals</h2>
           <p style={vitalsDescription}>
             Record the measurements available for this visit. Leave unavailable fields blank.
@@ -827,10 +827,9 @@ const summaryTitleRow: CSSProperties = {
 
 const eyebrow: CSSProperties = {
   marginBottom: "0.2rem",
-  fontSize: "0.68rem",
+  fontSize: "0.8125rem",
   lineHeight: 1.2,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
+  fontWeight: 500,
   color: "var(--color-on-surface-variant)",
 };
 

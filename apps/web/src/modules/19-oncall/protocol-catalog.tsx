@@ -219,41 +219,46 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
               </div>
             ) : null}
             <div style={toolbarStyle}>
-              <select
-                value={discipline}
-                onChange={(event) => setDiscipline(event.target.value)}
-                aria-label="Filter protocols by required discipline"
-                style={selectControlStyle}
-              >
-                {DISCIPLINE_FILTERS.map((option) => (
-                  <option key={option.value || "all-disciplines"} value={option.value}>
-                    Discipline: {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={scope}
-                onChange={(event) => setScope(event.target.value)}
-                aria-label="Filter protocols by effective status"
-                style={selectControlStyle}
-              >
-                {EFFECTIVE_FILTERS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    Show: {option.label}
-                  </option>
-                ))}
-              </select>
-              <div style={searchBoxStyle}>
-                <Glyph name="eye" size={14} />
+              <label className="wx-filter-field">
+                <span>Discipline</span>
+                <select
+                  className="wx-select"
+                  value={discipline}
+                  onChange={(event) => setDiscipline(event.target.value)}
+                  aria-label="Filter protocols by required discipline"
+                >
+                  {DISCIPLINE_FILTERS.map((option) => (
+                    <option key={option.value || "all-disciplines"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Show</span>
+                <select
+                  className="wx-select"
+                  value={scope}
+                  onChange={(event) => setScope(event.target.value)}
+                  aria-label="Filter protocols by effective status"
+                >
+                  {EFFECTIVE_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search protocol, key, or complaint..."
                   aria-label="Search triage protocols"
-                  style={searchInputStyle}
                 />
-              </div>
+              </label>
             </div>
           </div>
         }
@@ -427,29 +432,6 @@ const selectControlStyle: CSSProperties = {
   cursor: "pointer",
   fontSize: "0.85rem",
   padding: "0.35rem 0.65rem",
-};
-
-const searchBoxStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  minHeight: "2.25rem",
-  minWidth: "min(22rem, 100%)",
-  padding: "0 0.65rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
-  background: "var(--color-surface-low)",
-  color: "var(--color-on-surface-variant)",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  border: "none",
-  outline: "none",
-  background: "transparent",
-  color: "var(--color-on-surface)",
-  fontSize: "0.85rem",
 };
 
 const tableShellStyle: CSSProperties = {

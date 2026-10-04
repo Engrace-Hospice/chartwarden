@@ -93,10 +93,11 @@ export function ScalePolicyEditor(): JSX.Element {
           ) : null}
 
           <div style={toolbarStyle}>
-            <div style={tabShellStyle}>
+            <div className="wx-subtabs wx-subtabs-inline" role="tablist">
               <button
                 type="button"
-                style={tabButtonStyle(stateFilter === "enabled")}
+                role="tab"
+                aria-selected={stateFilter === "enabled"}
                 onClick={() => {
                   setStateFilter("enabled");
                   setPage(1);
@@ -106,7 +107,8 @@ export function ScalePolicyEditor(): JSX.Element {
               </button>
               <button
                 type="button"
-                style={tabButtonStyle(stateFilter === "disabled")}
+                role="tab"
+                aria-selected={stateFilter === "disabled"}
                 onClick={() => {
                   setStateFilter("disabled");
                   setPage(1);
@@ -116,7 +118,8 @@ export function ScalePolicyEditor(): JSX.Element {
               </button>
               <button
                 type="button"
-                style={tabButtonStyle(stateFilter === "all")}
+                role="tab"
+                aria-selected={stateFilter === "all"}
                 onClick={() => {
                   setStateFilter("all");
                   setPage(1);
@@ -127,7 +130,8 @@ export function ScalePolicyEditor(): JSX.Element {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   aria-label="Search policies"
@@ -137,17 +141,8 @@ export function ScalePolicyEditor(): JSX.Element {
                     setQuery(e.target.value);
                     setPage(1);
                   }}
-                  style={{
-                    width: "100%",
-                    paddingLeft: "2rem",
-                    height: "2.25rem",
-                    fontSize: "0.85rem",
-                  }}
                 />
-                <div style={searchIconStyle}>
-                  <Glyph name="search" size={14} />
-                </div>
-              </div>
+              </label>
               {hasActiveFilters ? (
                 <Button
                   size="sm"
@@ -272,27 +267,6 @@ const toolbarStyle = {
   gap: "1rem",
 };
 
-const tabShellStyle = {
-  display: "flex",
-  gap: "0.25rem",
-  background: "var(--color-surface-container)",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-};
-
-const tabButtonStyle = (active: boolean) => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-});
-
 const errorBannerStyle = {
   padding: "0.625rem 1rem",
   borderRadius: "var(--radius-md)",
@@ -311,15 +285,6 @@ const dismissButtonStyle = {
   color: "inherit",
   cursor: "pointer",
   fontWeight: 600,
-};
-
-const searchIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
 };
 
 const tableStyle = {
@@ -344,8 +309,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

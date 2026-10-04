@@ -136,7 +136,6 @@ export function CarePlanSummary(): JSX.Element {
 
 const h3 = {
   fontSize: "0.8rem",
-  textTransform: "uppercase",
   color: "var(--color-on-surface-variant)",
   margin: "1rem 0 0.5rem",
 } as const;

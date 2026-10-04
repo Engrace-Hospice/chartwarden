@@ -393,8 +393,6 @@ const thStyle = {
   textAlign: "left",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
 } as const;
 

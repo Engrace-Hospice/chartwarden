@@ -455,10 +455,8 @@ const heroTop = {
 const eyebrow = {
   margin: "0 0 .4rem",
   fontSize: ".75rem",
-  fontWeight: 700,
+  fontWeight: 500,
   color: "var(--color-on-surface-variant)",
-  textTransform: "uppercase" as const,
-  letterSpacing: ".04em",
 };
 const drugTitle = {
   margin: 0,

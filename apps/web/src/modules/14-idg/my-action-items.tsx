@@ -268,7 +268,7 @@ export function MyActionItems(): JSX.Element {
               setPage(1);
             }}
           >
-            <option value="">All statuses</option>
+            <option value="">All</option>
             <option value="open">Open</option>
             <option value="in_progress">In progress</option>
             <option value="completed">Completed</option>
@@ -284,7 +284,7 @@ export function MyActionItems(): JSX.Element {
               setPage(1);
             }}
           >
-            <option value="">All artifacts</option>
+            <option value="">All</option>
             {artifactOptions.map((option) => (
               <option key={option} value={option}>
                 {stateLabel(option)}

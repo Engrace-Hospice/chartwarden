@@ -37,12 +37,12 @@ import { CallStatePill, TierPill } from "./oncall-ui";
 const INBOX_PAGE = 100;
 const RESOLUTION_MIN_CHARS = 30;
 
-const TIER_FILTERS = [{ value: "", label: "Tier: All" }].concat(
+const TIER_FILTERS = [{ value: "", label: "All" }].concat(
   ESCALATION_TIERS.map((tier) => ({ value: tier, label: tierLabel(tier) })),
 );
 const OPEN_FILTERS = [
-  { value: "open", label: "Show: Outstanding" },
-  { value: "all", label: "Show: Including resolved" },
+  { value: "open", label: "Outstanding" },
+  { value: "all", label: "Including resolved" },
 ];
 type AttentionFilter = "all" | "mandatory" | "open" | "over_hour" | "external";
 
@@ -214,56 +214,64 @@ export function EscalationInboxScreen(): JSX.Element {
               </div>
             ) : null}
             <div style={toolbarStyle}>
-              <div style={searchBoxStyle}>
-                <Glyph name="eye" size={14} />
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search page, call, patient, tier..."
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   aria-label="Search escalations"
-                  style={searchInputStyle}
                 />
-              </div>
-              <select
-                value={tier}
-                onChange={(event) => {
-                  setTier(event.target.value);
-                  setAttention("all");
-                }}
-                aria-label="Filter escalations by tier"
-                style={selectStyle}
-              >
-                {TIER_FILTERS.map((option) => (
-                  <option key={option.value || "all"} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={scope}
-                onChange={(event) => setScope(event.target.value)}
-                aria-label="Filter escalations by scope"
-                style={selectStyle}
-              >
-                {OPEN_FILTERS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={attention}
-                onChange={(event) => setAttention(event.target.value as AttentionFilter)}
-                aria-label="Filter escalations by attention"
-                style={selectStyle}
-              >
-                <option value="all">Attention: All</option>
-                <option value="mandatory">Mandatory</option>
-                <option value="open">Unacknowledged</option>
-                <option value="over_hour">Over 1h</option>
-                <option value="external">External</option>
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Tier</span>
+                <select
+                  className="wx-select"
+                  value={tier}
+                  onChange={(event) => {
+                    setTier(event.target.value);
+                    setAttention("all");
+                  }}
+                  aria-label="Filter escalations by tier"
+                >
+                  {TIER_FILTERS.map((option) => (
+                    <option key={option.value || "all"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Show</span>
+                <select
+                  className="wx-select"
+                  value={scope}
+                  onChange={(event) => setScope(event.target.value)}
+                  aria-label="Filter escalations by scope"
+                >
+                  {OPEN_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Attention</span>
+                <select
+                  className="wx-select"
+                  value={attention}
+                  onChange={(event) => setAttention(event.target.value as AttentionFilter)}
+                  aria-label="Filter escalations by attention"
+                >
+                  <option value="all">All</option>
+                  <option value="mandatory">Mandatory</option>
+                  <option value="open">Unacknowledged</option>
+                  <option value="over_hour">Over 1h</option>
+                  <option value="external">External</option>
+                </select>
+              </label>
               {hasActiveFilters ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -487,21 +495,6 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const searchBoxStyle: CSSProperties = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  minWidth: "min(100%, 19rem)",
-  color: "var(--color-on-surface-variant)",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  height: "2.25rem",
-  paddingLeft: "2rem",
-  fontSize: "0.85rem",
-};
-
 const selectStyle: CSSProperties = {
   height: "2.25rem",
   fontSize: "0.85rem",
@@ -533,7 +526,6 @@ const thStyle: CSSProperties = {
   padding: "0.75rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {
@@ -657,7 +649,6 @@ const labelStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
   fontWeight: 650,
-  textTransform: "uppercase",
 };
 
 const textareaStyle: CSSProperties = {

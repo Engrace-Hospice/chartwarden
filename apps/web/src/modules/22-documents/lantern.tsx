@@ -72,8 +72,6 @@ export function Eyebrow({ children }: { children: ReactNode }): JSX.Element {
       style={{
         fontSize: "0.6875rem",
         fontWeight: 600,
-        letterSpacing: "0.05em",
-        textTransform: "uppercase",
         color: "var(--color-on-surface-variant)",
       }}
     >

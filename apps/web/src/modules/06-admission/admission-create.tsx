@@ -367,7 +367,8 @@ const contextHeadingStyle = {
 
 function contextCardStyle(accentColor: string) {
   return {
-    borderLeft: `4px solid ${accentColor}`,
+    // The redesign drops the side rail; the accent colours the card's hairline edge instead.
+    border: `1px solid color-mix(in srgb, ${accentColor} 35%, ${t.cardBorder})`,
     display: "flex",
     flexDirection: "column" as const,
     gap: t.space3,

@@ -1177,7 +1177,7 @@ export function EncounterRead(): JSX.Element {
                 <section style={workflowCard}>
                   <div style={workflowCardTop}>
                     <div>
-                      <span style={eyebrow}>VISIT WORKFLOW</span>
+                      <span style={eyebrow}>Visit workflow</span>
 
                       <h2 style={workflowTitle}>Complete the visit note</h2>
 
@@ -2215,7 +2215,7 @@ export function EncounterRead(): JSX.Element {
       >
         <div style={modalBody}>
           <div>
-            <span style={eyebrow}>ENCOUNTER ACTION</span>
+            <span style={eyebrow}>Encounter action</span>
 
             <h2 style={modalTitle}>
               {utilityModal === "void"
@@ -2901,9 +2901,8 @@ const sectionNumberComplete: CSSProperties = {
 const eyebrow: CSSProperties = {
   display: "block",
   marginBottom: "0.22rem",
-  fontSize: "0.65rem",
-  fontWeight: 700,
-  letterSpacing: "0.08em",
+  fontSize: "0.8125rem",
+  fontWeight: 500,
   color: t.muted,
 };
 

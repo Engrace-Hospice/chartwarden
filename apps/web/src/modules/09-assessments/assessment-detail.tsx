@@ -218,8 +218,6 @@ const eyebrowStyle: CSSProperties = {
   color: t.onSurfaceVariant,
   fontSize: "0.75rem",
   fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
 };
 const scoreStyle: CSSProperties = { marginTop: t.space1, fontSize: "2rem", fontWeight: 700 };
 const interpretationStyle: CSSProperties = { margin: `${t.space1} 0 0`, color: t.onSurfaceVariant };

@@ -469,8 +469,6 @@ const railTitle: CSSProperties = {
 const sectionTitle: CSSProperties = {
   fontSize: "0.6875rem",
   fontWeight: 600,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
   color: t.muted,
   margin: "0 0 0.5rem",
 };

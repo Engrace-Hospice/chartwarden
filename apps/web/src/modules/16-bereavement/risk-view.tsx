@@ -126,7 +126,7 @@ export function BereavementRiskView(): JSX.Element {
   const anyRedacted = scores.some((s) => s.redactedCategories.length > 0);
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Bereavement risk</span>}
         breadcrumb={`Bereavement — plan ${shortId(planId)}`}

@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -148,7 +149,8 @@ export function EvvEvents(): JSX.Element {
               <strong>{sortedEvents.length} matching events</strong>
             </div>
             <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search event, visit, patient, clinician..."
@@ -158,41 +160,48 @@ export function EvvEvents(): JSX.Element {
                     setPage(1);
                   }}
                   aria-label="Search EVV events"
-                  style={searchInputStyle}
                 />
-              </div>
-              <select
-                aria-label="Event kind"
-                value={kindFilter}
-                onChange={(e) => {
-                  setKindFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">Kind: All</option>
-                {kindOptions.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {stateLabel(kind)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="GPS quality"
-                value={qualityFilter}
-                onChange={(e) => {
-                  setQualityFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">GPS: All</option>
-                {qualityOptions.map((quality) => (
-                  <option key={quality} value={quality}>
-                    {stateLabel(quality)}
-                  </option>
-                ))}
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Kind</span>
+                <select
+                  className="wx-select"
+                  aria-label="Event kind"
+                  value={kindFilter}
+                  onChange={(e) => {
+                    setKindFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="all">All</option>
+                  {kindOptions.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {stateLabel(kind)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>GPS</span>
+                <select
+                  className="wx-select"
+                  aria-label="GPS quality"
+                  value={qualityFilter}
+                  onChange={(e) => {
+                    setQualityFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="all">All</option>
+                  {qualityOptions.map((quality) => (
+                    <option key={quality} value={quality}>
+                      {stateLabel(quality)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {activeFilters > 0 ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -364,8 +373,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -430,8 +437,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",

@@ -714,8 +714,6 @@ const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600 as const,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)" };
 const numTd = { ...tdStyle, textAlign: "right" as const, fontVariantNumeric: "tabular-nums" };

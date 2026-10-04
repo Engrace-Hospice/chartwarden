@@ -922,8 +922,6 @@ const factsGrid: CSSProperties = {
 const factLabel: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: 0,
 };
 const inlineControls: CSSProperties = {
   display: "flex",

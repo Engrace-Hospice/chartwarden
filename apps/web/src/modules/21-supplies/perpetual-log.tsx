@@ -100,7 +100,7 @@ export function ComfortKitPerpetualLog(): JSX.Element {
     );
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Perpetual log — kit {log.kitSerialNumber}</span>}
         breadcrumb="Supplies — DEA 21 CFR §1304 controlled-substance record"

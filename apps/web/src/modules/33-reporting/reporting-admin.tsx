@@ -165,8 +165,6 @@ const thStyle: CSSProperties = {
   textAlign: "left",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
 };
 
@@ -229,8 +227,6 @@ const gaugeShellStyle: CSSProperties = {
 const gaugeLabelStyle: CSSProperties = {
   fontSize: "0.6875rem",
   fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
   color: "var(--color-on-surface-variant)",
 };
 

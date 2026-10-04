@@ -252,7 +252,8 @@ export function MedicaidMetricsSurface(): JSX.Element {
             </output>
           ) : null}
           <FilterRow>
-            <div style={{ position: "relative", minWidth: "16rem" }}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search channel state or status..."
@@ -262,17 +263,8 @@ export function MedicaidMetricsSurface(): JSX.Element {
                   setChannelPage(1);
                 }}
                 aria-label="Search channel availability"
-                style={{
-                  width: "100%",
-                  paddingLeft: "2rem",
-                  height: "2.25rem",
-                  fontSize: "0.85rem",
-                }}
               />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
+            </label>
             <SelectFilter
               label="Channel state"
               value={channelStateFilter}
@@ -478,15 +470,6 @@ const headerRowStyle = {
   color: "var(--color-on-surface-variant)",
   borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
-};
-
-const searchIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
 };
 
 const errorBannerStyle = {

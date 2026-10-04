@@ -4561,9 +4561,7 @@ const title: CSSProperties = {
 const eyebrow: CSSProperties = {
   color: t.muted,
   fontSize: "0.75rem",
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: 0,
+  fontWeight: 500,
 };
 const metaLine: CSSProperties = {
   display: "flex",
@@ -5049,10 +5047,8 @@ const sfvModalHeaderText: CSSProperties = {
 const sfvModalEyebrow: CSSProperties = {
   marginBottom: "0.2rem",
   color: t.primary,
-  fontSize: "0.72rem",
-  fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
+  fontSize: "0.8125rem",
+  fontWeight: 500,
 };
 
 const sfvModalTitle: CSSProperties = {

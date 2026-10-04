@@ -71,7 +71,7 @@ export function TriageTranscriptScreen(): JSX.Element {
   if (!client) return <EmptyState title="Unavailable" description="No API client is configured." />;
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Transcript {shortId(triageCallId)}</span>}
         breadcrumb="On-call triage · protected read"

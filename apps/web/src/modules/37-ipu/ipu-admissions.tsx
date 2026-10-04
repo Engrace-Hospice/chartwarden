@@ -190,8 +190,8 @@ export function IpuAdmissions(): JSX.Element {
               </div>
             ) : null}
             <div style={toolbarStyle}>
-              <div style={searchBoxStyle}>
-                <Glyph name="eye" size={14} />
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search level, state, location, ID..."
@@ -201,55 +201,63 @@ export function IpuAdmissions(): JSX.Element {
                     setPage(1);
                   }}
                   aria-label="Search IPU admissions"
-                  style={searchInputStyle}
                 />
-              </div>
-              <select
-                value={kindFilter}
-                onChange={(e) => {
-                  setKindFilter(e.target.value);
-                  setPage(1);
-                }}
-                aria-label="Filter admissions by level of care"
-                style={selectStyle}
-              >
-                <option value="all">Level: All</option>
-                {kindOptions.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={stateFilter}
-                onChange={(e) => {
-                  setStateFilter(e.target.value);
-                  setPage(1);
-                }}
-                aria-label="Filter admissions by state"
-                style={selectStyle}
-              >
-                <option value="all">State: All</option>
-                {stateOptions.map((state) => (
-                  <option key={state} value={state}>
-                    {titleCase(state)}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={locationFilter}
-                onChange={(e) => {
-                  setLocationFilter(e.target.value as LocationFilter);
-                  setPage(1);
-                }}
-                aria-label="Filter admissions by location"
-                style={selectStyle}
-              >
-                <option value="all">Location: All</option>
-                <option value="own">Own unit</option>
-                <option value="arranged">Arranged</option>
-                <option value="unplaced">Unplaced</option>
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Level</span>
+                <select
+                  className="wx-select"
+                  value={kindFilter}
+                  onChange={(e) => {
+                    setKindFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Filter admissions by level of care"
+                >
+                  <option value="all">All</option>
+                  {kindOptions.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {kind.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>State</span>
+                <select
+                  className="wx-select"
+                  value={stateFilter}
+                  onChange={(e) => {
+                    setStateFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Filter admissions by state"
+                >
+                  <option value="all">All</option>
+                  {stateOptions.map((state) => (
+                    <option key={state} value={state}>
+                      {titleCase(state)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Location</span>
+                <select
+                  className="wx-select"
+                  value={locationFilter}
+                  onChange={(e) => {
+                    setLocationFilter(e.target.value as LocationFilter);
+                    setPage(1);
+                  }}
+                  aria-label="Filter admissions by location"
+                >
+                  <option value="all">All</option>
+                  <option value="own">Own unit</option>
+                  <option value="arranged">Arranged</option>
+                  <option value="unplaced">Unplaced</option>
+                </select>
+              </label>
               {hasActiveFilters ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -448,27 +456,6 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const searchBoxStyle: CSSProperties = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  minWidth: "min(100%, 18rem)",
-  color: "var(--color-on-surface-variant)",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  height: "2.25rem",
-  paddingLeft: "2rem",
-  fontSize: "0.85rem",
-};
-
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
@@ -494,7 +481,6 @@ const thStyle: CSSProperties = {
   padding: "0.75rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {

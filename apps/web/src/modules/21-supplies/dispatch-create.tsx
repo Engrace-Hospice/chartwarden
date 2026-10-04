@@ -223,7 +223,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
   };
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Dispatch a comfort kit</span>}
         breadcrumb="Supplies — comfort kits"

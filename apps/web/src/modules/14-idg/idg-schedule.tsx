@@ -317,7 +317,7 @@ export function IdgSchedule(): JSX.Element {
               setPage(1);
             }}
           >
-            <option value="">All statuses</option>
+            <option value="">All</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {stateLabel(s)}

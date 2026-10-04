@@ -15,8 +15,6 @@ export const th = {
   textAlign: "left" as const,
   fontSize: "0.7rem",
   fontWeight: 600 as const,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
 };
 export const thNum = { ...th, textAlign: "right" as const };
@@ -191,11 +189,7 @@ export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element 
 
 /** A horizontal filter row — the §5.1 queue filter bar. */
 export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
-      {children}
-    </div>
-  );
+  return <div className="wx-filter-panel">{children}</div>;
 }
 
 /** A labelled <select> for the filter row. */
@@ -212,12 +206,14 @@ export function SelectFilter({
 }): JSX.Element {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</span>
+      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
+        {label}
+      </span>
       <select
         aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={selectStyle}
+        className="wx-select"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>

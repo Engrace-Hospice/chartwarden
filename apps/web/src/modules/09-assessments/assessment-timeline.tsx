@@ -786,8 +786,6 @@ const listHead: CSSProperties = {
   display: "block",
   fontSize: "0.6875rem",
   fontWeight: 700,
-  letterSpacing: "0.07em",
-  textTransform: "uppercase",
   color: t.muted,
 };
 
@@ -918,11 +916,9 @@ const titleWithBadgeStyle: CSSProperties = {
 
 const eyebrowStyle: CSSProperties = {
   margin: "0 0 0.3rem",
-  fontSize: "0.68rem",
+  fontSize: "0.8125rem",
   lineHeight: 1.2,
-  fontWeight: 700,
-  letterSpacing: "0.07em",
-  textTransform: "uppercase",
+  fontWeight: 500,
   color: t.muted,
 };
 
@@ -991,8 +987,6 @@ const latestScoreCardStyle: CSSProperties = {
 const scoreCardLabelStyle: CSSProperties = {
   fontSize: "0.68rem",
   fontWeight: 700,
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
   color: t.muted,
 };
 
@@ -1262,8 +1256,6 @@ const interpretationBoxStyle: CSSProperties = {
 const interpretationLabelStyle: CSSProperties = {
   fontSize: "0.64rem",
   fontWeight: 700,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
   color: t.primary,
 };
 

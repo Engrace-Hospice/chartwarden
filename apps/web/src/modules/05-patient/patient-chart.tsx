@@ -2199,8 +2199,6 @@ const sectionEyebrow = {
   color: "var(--color-primary)",
   fontSize: "0.72rem",
   fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
 } as const;
 
 const sectionTitle = {
@@ -2287,8 +2285,6 @@ const infoFieldLabel = {
   color: "var(--color-muted)",
   fontSize: "0.7rem",
   fontWeight: 650,
-  letterSpacing: "0.02em",
-  textTransform: "uppercase",
 } as const;
 
 const infoFieldValue = {

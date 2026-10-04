@@ -1,4 +1,4 @@
-import { Glyph, type GlyphName, Panel, StatusPill, t } from "@wardenx/ui";
+import { Glyph, type GlyphName, KpiCard, Panel, StatusPill, t } from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — the redesigned Care Plans tab pieces (2026-09-25, mockup
 // "Plan of Care"): page header with the plan-version card, KPI cards, goal cards, the intervention
 // list, and the right rail (Active Diagnoses, Goals Overview donut, Quick Links). Presentational only:
@@ -121,6 +121,7 @@ export function PlanHeader({
 
 // ---------- KPI cards ----------
 
+// The shared stat card (label · value · detail), like every other summary row in the app.
 function Kpi({
   icon,
   color,
@@ -134,22 +135,7 @@ function Kpi({
   label: string;
   hint: string;
 }): JSX.Element {
-  return (
-    <div className="wx-stat-card">
-      <span
-        aria-hidden
-        className="wx-stat-icon"
-        style={{ color, background: `color-mix(in srgb, ${color} 12%, ${t.surfaceLowest})` }}
-      >
-        <Glyph name={icon} size={24} strokeWidth={1.6} />
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <strong className="wx-stat-value wx-nums">{value}</strong>
-        <div style={{ color: t.onSurface, fontSize: "0.875rem" }}>{label}</div>
-        <div className="wx-stat-label">{hint}</div>
-      </div>
-    </div>
-  );
+  return <KpiCard icon={icon} accentColor={color} label={label} value={value} detail={hint} />;
 }
 
 export function PlanStats({

@@ -85,7 +85,7 @@ export function MetricsSurface(): JSX.Element {
           title="Billing Metrics"
           breadcrumb="Billing / Medicare / Claim-state aggregates"
           actions={
-            <a href="/billing" style={linkButtonStyle}>
+            <a href="/billing" className="wx-btn-secondary">
               AR dashboard
             </a>
           }
@@ -155,9 +155,13 @@ export function MetricsSurface(): JSX.Element {
               onChange={setProviderEntityId}
             />
           </div>
-          <Button size="sm" onClick={() => setApplied(providerEntityId.trim())}>
+          <button
+            type="button"
+            className="wx-btn-primary"
+            onClick={() => setApplied(providerEntityId.trim())}
+          >
             Apply
-          </Button>
+          </button>
           {applied ? (
             <output
               style={{
@@ -296,8 +300,6 @@ const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)" };
 const tableWrapStyle = {
@@ -313,14 +315,6 @@ const inputStyle = {
   color: "var(--color-on-surface)",
   fontSize: "0.85rem",
   minWidth: "14rem",
-};
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
 };
 const linkButtonStyle = {
   display: "inline-flex",

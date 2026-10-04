@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -122,7 +123,8 @@ export function CosignQueue(): JSX.Element {
                 <strong>{rows.length} matching orders</strong>
               </div>
               <div style={controlGroupStyle}>
-                <div style={searchWrapStyle}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search order or patient..."
@@ -132,40 +134,47 @@ export function CosignQueue(): JSX.Element {
                       setPage(1);
                     }}
                     aria-label="Search cosign pending orders"
-                    style={searchInputStyle}
                   />
-                </div>
-                <select
-                  aria-label="Drafting discipline"
-                  value={discipline}
-                  onChange={(e) => {
-                    setDiscipline(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Discipline: All</option>
-                  {disciplineOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {stateLabel(option)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Order status"
-                  value={status}
-                  onChange={(e) => {
-                    setStatus(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Status: All</option>
-                  <option value="pending_signature">Pending signature</option>
-                  <option value="verbal_pending">Verbal pending</option>
-                  <option value="draft">Draft</option>
-                  <option value="active">Active</option>
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Discipline</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Drafting discipline"
+                    value={discipline}
+                    onChange={(e) => {
+                      setDiscipline(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    {disciplineOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {stateLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Status</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Order status"
+                    value={status}
+                    onChange={(e) => {
+                      setStatus(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    <option value="pending_signature">Pending signature</option>
+                    <option value="verbal_pending">Verbal pending</option>
+                    <option value="draft">Draft</option>
+                    <option value="active">Active</option>
+                  </select>
+                </label>
                 {activeFilters > 0 ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -349,8 +358,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const controlGroupStyle = {
@@ -358,16 +365,6 @@ const controlGroupStyle = {
   alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap" as const,
-};
-
-const searchWrapStyle = {
-  minWidth: "15rem",
-};
-
-const searchInputStyle = {
-  width: "100%",
-  height: "2.25rem",
-  fontSize: "0.85rem",
 };
 
 const selectStyle = {
@@ -426,8 +423,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

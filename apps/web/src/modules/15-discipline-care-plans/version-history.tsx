@@ -125,7 +125,7 @@ export function DisciplineVersionHistory(): JSX.Element {
     selected && compare ? diffSnapshots(compare.stateSnapshot, selected.stateSnapshot) : [];
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>{kindLabel(kind)} — version history</span>}
         breadcrumb="Clinical — sealed version chain"

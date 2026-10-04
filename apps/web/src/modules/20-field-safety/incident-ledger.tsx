@@ -5,6 +5,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -184,33 +185,38 @@ export function IncidentLedgerScreen(): JSX.Element {
               <strong>{shown.length} matching loaded rows</strong>
             </div>
             <div style={controlGroupStyle}>
-              <input
-                type="search"
-                placeholder="Search incident, clinician, category..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(1);
-                }}
-                aria-label="Search safety incidents"
-                style={searchInputStyle}
-              />
-              <select
-                aria-label="Lifecycle state"
-                value={lifecycleState}
-                onChange={(e) => {
-                  setLifecycleState(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value={ANY}>State: Any</option>
-                {INCIDENT_STATES.map((value) => (
-                  <option key={value} value={value}>
-                    {humanize(value)}
-                  </option>
-                ))}
-              </select>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
+                <input
+                  type="search"
+                  placeholder="Search incident, clinician, category..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Search safety incidents"
+                />
+              </label>
+              <label className="wx-filter-field">
+                <span>State</span>
+                <select
+                  className="wx-select"
+                  aria-label="Lifecycle state"
+                  value={lifecycleState}
+                  onChange={(e) => {
+                    setLifecycleState(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value={ANY}>All</option>
+                  {INCIDENT_STATES.map((value) => (
+                    <option key={value} value={value}>
+                      {humanize(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <select
                 aria-label="OSHA reportable"
                 value={oshaOnly}
@@ -224,38 +230,44 @@ export function IncidentLedgerScreen(): JSX.Element {
                 <option value="yes">Reportable only</option>
                 <option value="no">Not reportable</option>
               </select>
-              <select
-                aria-label="Incident category"
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value={ANY}>Category: Any</option>
-                {INCIDENT_CATEGORIES.map((value) => (
-                  <option key={value} value={value}>
-                    {incidentCategoryLabel(value)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Incident severity"
-                value={severity}
-                onChange={(e) => {
-                  setSeverity(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value={ANY}>Severity: Any</option>
-                {INCIDENT_SEVERITIES.map((value) => (
-                  <option key={value} value={value}>
-                    {humanize(value)}
-                  </option>
-                ))}
-              </select>
+              <label className="wx-filter-field">
+                <span>Category</span>
+                <select
+                  className="wx-select"
+                  aria-label="Incident category"
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value={ANY}>All</option>
+                  {INCIDENT_CATEGORIES.map((value) => (
+                    <option key={value} value={value}>
+                      {incidentCategoryLabel(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Severity</span>
+                <select
+                  className="wx-select"
+                  aria-label="Incident severity"
+                  value={severity}
+                  onChange={(e) => {
+                    setSeverity(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value={ANY}>All</option>
+                  {INCIDENT_SEVERITIES.map((value) => (
+                    <option key={value} value={value}>
+                      {humanize(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <input
                 type="date"
                 value={occurredFrom}
@@ -446,8 +458,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -482,8 +492,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",
