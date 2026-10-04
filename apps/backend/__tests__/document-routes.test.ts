@@ -43,6 +43,8 @@ function headerAuth(request: FastifyRequest): void {
   request.context.attributes.membershipId = user;
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
+  const actorKind = request.headers["x-test-actor-kind"];
+  if (typeof actorKind === "string") request.context.attributes.actorKind = actorKind;
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   // No `x-test-licensure` here any more. It stamped `context.attributes.licensure`, which nothing in
@@ -814,5 +816,55 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
       headers: RN,
     });
     expect(crossTenant.statusCode).toBe(404);
+  });
+});
+
+describe("F-235 — POST /intake/reviews/:id/complete guards (the chart-writeback commit route)", () => {
+  async function openReview(app: ReturnType<typeof makeServer>["app"], key: string) {
+    const review = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/uploads/${BATCH}/review`,
+      headers: { ...RN, "idempotency-key": key },
+      payload: {},
+    });
+    return review.json().id as string;
+  }
+
+  it("refuses a completion without an Idempotency-Key (400)", async () => {
+    const { app } = makeServer();
+    const reviewId = await openReview(app, "f235-rv-1");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/complete`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error?.code ?? res.json().code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+  });
+
+  it("refuses an AI principal even with every grant (403) — §7.3.2 never auto-commits", async () => {
+    const { app } = makeServer();
+    const reviewId = await openReview(app, "f235-rv-2");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/complete`,
+      headers: { ...RN, "x-test-actor-kind": "ai_agent", "idempotency-key": "f235-cp-2" },
+      payload: { attestationConfirmed: true },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("completes for a human reviewer with the key (200)", async () => {
+    const { app } = makeServer();
+    const reviewId = await openReview(app, "f235-rv-3");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/complete`,
+      headers: { ...RN, "x-test-actor-kind": "user", "idempotency-key": "f235-cp-3" },
+      payload: { attestationConfirmed: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("complete");
   });
 });

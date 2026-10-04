@@ -10,7 +10,12 @@
 import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
 import { DegradedError, NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
+import {
+  ifMatchVersionOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "./concurrency";
 import {
   AbandonReviewRequest,
   AddTagRequest,
@@ -113,6 +118,8 @@ const INTAKE_READ = P("intake.read");
 const INTAKE_CONFIRM = P("intake.confirm_classification");
 const INTAKE_REVIEW = P("intake.review");
 const INTAKE_DISCARD = P("intake.discard_batch");
+const REJECT_AI = rejectAiActor() as PreHandler;
+const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 
 // §4.7 ABAC guards M22 owns (target = request.params → `id`).
 const ABAC_OWNER = requireAbac("documents.read_phi_content", "document_owner_or_caseload", {
@@ -498,6 +505,12 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       const res = await service.recordDecision(organizationId, actor, id, {
         candidateId: body.candidateId,
         decision: body.decision,
+        ...(body.editedValue !== undefined ? { editedValue: body.editedValue } : {}),
+        ...(body.editedCode !== undefined ? { editedCode: body.editedCode } : {}),
+        ...(body.chartOverwriteConfirmed !== undefined
+          ? { chartOverwriteConfirmed: body.chartOverwriteConfirmed }
+          : {}),
+        ...(body.reason !== undefined ? { reason: body.reason } : {}),
       });
       return reply.code(201).send(res);
     },
@@ -528,10 +541,11 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     },
   );
 
-  // 23 — attest + trigger writeback dispatcher.
+  // 23 — attest + commit the chart writeback (F-235): provenance + `m22.extraction.commit_requested` in the
+  //      completion's own transaction. AI principals refused; Idempotency-Key required (§4.1).
   app.post(
     "/api/v1/intake/reviews/:id/complete",
-    { preHandler: [INTAKE_REVIEW] },
+    { preHandler: [REJECT_AI, INTAKE_REVIEW, IDEMPOTENT] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { id } = parse(ReviewParamsSchema, request.params);

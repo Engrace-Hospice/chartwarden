@@ -23,13 +23,17 @@
 // — a permanent backlog that reads as an outage. Each belongs here on the commit that binds its handler;
 // M33 joined on GAP-051's.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import {
+  M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
+  M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
+  type ModuleEventContribution,
+} from "@wardenx/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdN = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);
 const Iso = Type.String({ minLength: 1 });
 
-/** The one `m22.*` event M22 produces (§7.2 W2, downstream half). */
+/** The §7.2 W2 render-handshake event (downstream half). */
 export const M22_DOCUMENT_RENDERED_EVENT = "m22.document.rendered" as const;
 
 export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
@@ -71,6 +75,48 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     // / F-180 shape): a real relationship the outbox does not carry.
     declaredConsumers: ["m6", "m11", "m12", "m13", "m14", "m21", "m27", "m33"],
     seamConsumers: ["m31"],
+    isOutboxOnly: true,
+  },
+  // F-235 (#248) — the §7.1 W1 steps 11–13 chart-writeback handshake, narrowed by F-231's A1 + B
+  // (`@wardenx/types` doclens-writeback.ts): medications never write back; M5 is the only target, as a
+  // low-risk contact-field update on the batch's already-resolved patient. Emitted by
+  // `POST /api/v1/intake/reviews/:id/complete` in the same transaction as the provenance rows.
+  {
+    eventName: M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
+    moduleOwner: "m22",
+    description:
+      "A completed DocLens review's approved, allowlisted demographics for ONE resolved patient (W1 step 11, grouped per target aggregate). Values are the server-side attested ones — the reviewer's stored edit, else the DEK-decrypted extraction — never client-supplied at commit. M5 applies them and replies with `m5.patient.draft_created_from_extraction`.",
+    payloadSchema: Type.Object({
+      extractionCommitId: Id,
+      organizationId: Id,
+      intakeBatchId: Id,
+      targetModule: Type.Literal("m5"),
+      targetAggregateId: Id,
+      sourceDocumentIds: Type.Array(Id, { minItems: 1 }),
+      reviewerMembershipId: Id,
+      fields: Type.Array(
+        Type.Object({ fieldPath: Id, value: Type.String({ minLength: 1, maxLength: 4000 }) }),
+        { minItems: 1 },
+      ),
+      requestedAt: Iso,
+    }),
+    declaredConsumers: ["m5"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
+    moduleOwner: "m22",
+    description:
+      "M5's writeback reply was stamped onto `extraction_provenance.target_aggregate_id` for the fields the chart now holds (W1 step 13). Terminal and informational; carries ids and per-field outcomes only, no values.",
+    payloadSchema: Type.Object({
+      extractionCommitId: Id,
+      targetModule: Type.Literal("m5"),
+      targetAggregateId: Id,
+      provenanceIds: Type.Array(Id),
+      skippedFieldPaths: Type.Array(Id),
+      completedAt: Iso,
+    }),
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
 ];

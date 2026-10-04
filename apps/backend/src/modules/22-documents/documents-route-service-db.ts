@@ -10,8 +10,10 @@
 // intake batch upload + classify-confirm + the extraction review machine
 // (open / record-decision / bulk-approve / resolve-discrepancy / complete / abandon / discard), tenant overlay
 // publish (§2.5 optimistic concurrency, 412), and render retry. Binary upload/version creation returns a typed
-// 503 until object bytes + verified size/hash can commit safely. M22 route writes emit NO producer outbox event
-// (M22's outbox is the CONSUMER-side render-request handshake, elsewhere) — so this backend takes no publisher.
+// 503 until object bytes + verified size/hash can commit safely. One route write emits a producer outbox
+// event: review completion publishes `m22.extraction.commit_requested` (F-235, ./extraction/
+// writeback-commit-db.ts), so this backend takes an OPTIONAL publisher + candidate-value cipher; without them a
+// review whose approved fields would write back refuses (503) instead of completing with nothing written.
 //
 // Documented compromises: `form_template*` is platform reference (SELECT only for wardenx_app), so
 // `publishTemplateVersion` is a platform-admin op with no tenant-layer persistence (returns the current active
@@ -30,6 +32,10 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { DegradedError, NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
 import { and, desc, eq, exists, isNull } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
+import {
+  type ExtractionWritebackDeps,
+  commitReviewWriteback,
+} from "./extraction/writeback-commit-db";
 import { type CursorPage, paginate } from "./routes/concurrency";
 import type {
   DocumentRouteService,
@@ -95,7 +101,10 @@ const withOrgAs = <T>(
  * upload/version creation fails closed with 503 until object storage is bound.
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
-export function createDbDocumentRouteService(db: DbClient): DocumentRouteService {
+export function createDbDocumentRouteService(
+  db: DbClient,
+  writeback: ExtractionWritebackDeps = {},
+): DocumentRouteService {
   async function loadDocRow(
     tx: DbClient,
     organizationId: OrgId,
@@ -661,6 +670,12 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             extractionCandidateId: args.candidateId,
             extractionReviewId: reviewId,
             decision: args.decision as never,
+            // F-235 — the edited value IS the attestation for `approve_with_edit`; the writeback commit
+            // reads it from here. It used to be parsed off the request and dropped.
+            editedValue: args.editedValue ?? null,
+            editedCode: args.editedCode ?? null,
+            chartOverwriteConfirmed: args.chartOverwriteConfirmed ?? null,
+            reason: args.reason ?? null,
             sourceViewConfirmed: true,
           })
           .returning({ id: ED.id });
@@ -704,7 +719,38 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
     },
     async completeReview(organizationId, actor, reviewId) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        const r = await requireReview(tx, reviewId);
+        await requireReview(tx, reviewId);
+        // Serialize concurrent completions of one review: the second waits, then sees `complete`.
+        const [r] = await tx
+          .select({ id: ER.id, batchId: ER.intakeUploadBatchId, status: ER.status })
+          .from(ER)
+          .where(eq(ER.id, reviewId))
+          .for("update");
+        if (!r) throw new NotFoundError("review");
+        // Idempotent re-completion (a retried request with the same Idempotency-Key, or a double click):
+        // the writeback was committed by the first one — never emit it twice.
+        if (r.status === "complete") return { reviewId, status: "complete" as const };
+        if (r.status !== "in_progress") {
+          throw new WardenXError(
+            "REVIEW_NOT_IN_PROGRESS",
+            `review is ${r.status}; only an in-progress review can be completed`,
+            409,
+          );
+        }
+        const [batch] = await tx
+          .select({ patientId: BATCH.patientId })
+          .from(BATCH)
+          .where(eq(BATCH.id, r.batchId))
+          .limit(1);
+        if (!batch) throw new NotFoundError("intake batch");
+        // §7.1 W1 steps 11–12 (F-235) — provenance + `m22.extraction.commit_requested`, in THIS transaction.
+        const summary = await commitReviewWriteback(tx, writeback, {
+          organizationId,
+          reviewId,
+          batchId: r.batchId,
+          batchPatientId: batch.patientId,
+          reviewerMembershipId: actor.membershipId,
+        });
         await tx
           .update(ER)
           .set({ status: "complete", closedAt: new Date() })
@@ -715,7 +761,7 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
           .update(BATCH)
           .set({ status: "writeback_complete", dispositionAt: new Date() })
           .where(eq(BATCH.id, r.batchId));
-        return { reviewId, status: "complete" };
+        return { reviewId, status: "complete" as const, writeback: summary };
       });
     },
     async abandonReview(organizationId, actor, reviewId) {
@@ -884,13 +930,16 @@ export function createDbSignedUrlObjectResolver(db: DbClient): SignedUrlObjectRe
  * `createInMemoryDocumentBackend` exposes, so the barrel wires them identically. The presigner is bound
  * by the caller (the throwing DegradedError stub — M22's storage adapter is unwired).
  */
-export function createDbDocumentBackend(db: DbClient): {
+export function createDbDocumentBackend(
+  db: DbClient,
+  writeback: ExtractionWritebackDeps = {},
+): {
   service: DocumentRouteService;
   abacResolver: DocumentAbacResolver;
   objectResolver: SignedUrlObjectResolver;
 } {
   return {
-    service: createDbDocumentRouteService(db),
+    service: createDbDocumentRouteService(db, writeback),
     abacResolver: createDbDocumentAbacResolver(db),
     objectResolver: createDbSignedUrlObjectResolver(db),
   };

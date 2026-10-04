@@ -222,8 +222,28 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m5.patient.draft_created_from_extraction",
     moduleOwner: "m5",
-    description: "A draft patient was created from an M22 DocLens extraction commit.",
-    payloadSchema: Type.Object({ ...corePatient }),
+    // F-235 (#248) — the name is the spec's (§4.6); what it reports is decision B: M5 APPLIED an M22
+    // DocLens demographics writeback (low-risk contact fields only) to the batch's already-resolved patient
+    // — never a headless create. Emitted by `outbox-consumers/m22-extraction-writeback.ts` in the same
+    // transaction as the chart rows; M22 stamps `extraction_provenance` from it.
+    description:
+      "M5 applied an M22 DocLens extraction commit (`m22.extraction.commit_requested`) to an existing patient's contact demographics; carries a per-field outcome (applied | already_present | skipped+reason), no values. M22 stamps `extraction_provenance.target_aggregate_id` for the fields the chart now holds.",
+    payloadSchema: Type.Object({
+      ...corePatient,
+      extractionCommitId: Type.String({ minLength: 1 }),
+      fieldOutcomes: Type.Array(
+        Type.Object({
+          fieldPath: Type.String({ minLength: 1 }),
+          outcome: Type.Union([
+            Type.Literal("applied"),
+            Type.Literal("already_present"),
+            Type.Literal("skipped"),
+          ]),
+          reason: Type.Optional(Type.String({ minLength: 1 })),
+        }),
+      ),
+      appliedAt: Type.String({ minLength: 1 }),
+    }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },

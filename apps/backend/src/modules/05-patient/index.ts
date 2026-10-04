@@ -179,6 +179,17 @@ export {
   M5_DEATH_CASCADE_CONSUMER,
   buildM5DeathCascadeConsumer,
 } from "./outbox-consumers/m6-discharge-death";
+// F-235 (#248) — M5's half of the DocLens chart-writeback handshake: `m22.extraction.commit_requested` →
+// low-risk contact demographics on the batch's resolved patient → `m5.patient.draft_created_from_extraction`.
+export {
+  type ExtractionWritebackPlan,
+  M5_EXTRACTION_WRITEBACK_CONSUMER,
+  applyExtractionWriteback,
+  buildM5ExtractionWritebackConsumer,
+  normalizePhoneE164,
+  parseCommitRequested,
+  planExtractionWriteback,
+} from "./outbox-consumers/m22-extraction-writeback";
 
 // F-171 (#248) — the real §2.4/§4.3 direct patient-merge write path (`POST /patients/:id/merge`):
 // folds a duplicate into a survivor, applies field resolutions to the survivor, and emits the real

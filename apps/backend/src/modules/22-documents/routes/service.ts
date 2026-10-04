@@ -14,6 +14,7 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates";
+import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-db";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
 import { type CursorPage, paginate } from "./concurrency";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./signed-url-service";
@@ -137,6 +138,25 @@ export interface ReviewView {
  * were once confused here — `openReview` wrote the raw user id into `reviewer_membership_id`.
  * This is the same shape `verified-upload.ts` already threads through the upload path.
  */
+/** §4.1 route 20 — one reviewer decision. `editedValue` is the attested value for `approve_with_edit`
+ *  (F-235: the writeback commits THIS, never the unedited extraction). */
+export interface RecordDecisionArgs {
+  readonly candidateId: string;
+  readonly decision: string;
+  readonly editedValue?: string;
+  readonly editedCode?: string;
+  readonly chartOverwriteConfirmed?: boolean;
+  readonly reason?: string;
+}
+
+/** §4.1 route 23 — the completed review plus the chart-writeback it committed (F-235). `writeback` is
+ *  absent on an idempotent re-completion and on the in-memory reference backend. */
+export interface CompleteReviewResult {
+  readonly reviewId: string;
+  readonly status: "complete";
+  readonly writeback?: ExtractionWritebackSummary;
+}
+
 export interface DocumentWriteActor {
   readonly userId: string;
   readonly membershipId: string;
@@ -266,7 +286,7 @@ export interface DocumentRouteService {
     organizationId: OrgId,
     actor: DocumentWriteActor,
     reviewId: string,
-    args: { candidateId: string; decision: string },
+    args: RecordDecisionArgs,
   ): Promise<{ decisionId: string }>;
   bulkApprove(
     organizationId: OrgId,
@@ -284,7 +304,7 @@ export interface DocumentRouteService {
     organizationId: OrgId,
     actor: DocumentWriteActor,
     reviewId: string,
-  ): Promise<{ reviewId: string; status: "complete" }>;
+  ): Promise<CompleteReviewResult>;
   abandonReview(
     organizationId: OrgId,
     actor: DocumentWriteActor,

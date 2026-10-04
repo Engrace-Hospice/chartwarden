@@ -57,8 +57,13 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
   {
     eventName: "m12.medication_order.draft_created_from_extraction",
     moduleOwner: "m12",
+    // F-235 (#248) — decision A1 (F-231): medications are EXCLUDED from DocLens writeback. M12 D12 and AI
+    // Governance §2.1.1 hard-block AI-introduced medication changes, so no M22 commit ever targets M12
+    // (`DOCLENS_M5_WRITEBACK_FIELDS` in @wardenx/types is the only allowlist, M5-only) and nothing in
+    // production emits this; `m22` is dropped at the source, not deferred. Only the in-memory reference
+    // service's `fromExtraction` arm still names it.
     description:
-      "The M22 DocLens extraction-commit consumer minted a draft from an extracted medication.",
+      "Reserved: a draft medication order minted from a DocLens extraction. NOT PRODUCED — DocLens medication writeback is excluded by decision A1 (M12 D12 / AI Governance §2.1.1); extracted medications stay read-only review evidence.",
     payloadSchema: Type.Object({
       orderId: id,
       patientId: id,
@@ -66,7 +71,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       sourceExtractionJobId: id,
       targetAggregateId: id,
     }),
-    declaredConsumers: ["m22"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

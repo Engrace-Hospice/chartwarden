@@ -30,6 +30,7 @@ import {
   registerDocLensExtractionRoutes as _registerDocLensExtractionRoutes,
   resolveDocLensCapability as _resolveDocLensCapability,
 } from "./extraction/index";
+import type { ExtractionWritebackDeps } from "./extraction/writeback-commit-db";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
 import { createVerifiedUploadService } from "./routes/verified-upload";
@@ -54,8 +55,9 @@ export function mountDocumentRoutes(
   app: FastifyInstance,
   db: DbClient,
   flags?: _DocumentFeatureFlagReader,
+  writeback: ExtractionWritebackDeps = {},
 ): void {
-  const backend = createDbDocumentBackend(db);
+  const backend = createDbDocumentBackend(db, writeback);
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
   _registerM22Abac({ resolver: backend.abacResolver });

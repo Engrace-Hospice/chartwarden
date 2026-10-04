@@ -25,3 +25,27 @@ export {
   type DocLensRunBatchBody,
   registerDocLensExtractionRoutes,
 } from "./extraction-routes";
+// F-235 (#248) — the §7.1 W1 steps 11–13 chart writeback (DocLens → M5 demographics; A1 + B).
+export {
+  type CandidateValueCipher,
+  type CandidateValueKeyProvider,
+  createCandidateValueCipher,
+} from "./candidate-value-cipher";
+export {
+  type PlannedCommitField,
+  type WritebackCandidateFact,
+  type WritebackExclusion,
+  type WritebackExclusionReason,
+  type WritebackPlan,
+  planDocLensWriteback,
+} from "./writeback-plan";
+export {
+  type ExtractionOutboxPort,
+  type ExtractionWritebackDeps,
+  type ExtractionWritebackSummary,
+  commitReviewWriteback,
+} from "./writeback-commit-db";
+export {
+  M22_EXTRACTION_BACKREF_CONSUMER,
+  buildM22ExtractionBackrefConsumer,
+} from "./extraction-backref-consumer";

@@ -869,7 +869,7 @@ async function main(): Promise<void> {
     .map(([kind, n]) => `${kind} ${n}`)
     .join(", ");
   console.log(
-    `Declared-but-unbound: ${unbound.length} (module, event) pair(s) across ${DEFERRED_CONSUMERS.length} consumer module(s) — ${kindSummary}`,
+    `Declared-but-unbound: ${unbound.length} (module, event) pair(s) across ${DEFERRED_CONSUMERS.length} consumer module(s)${kindSummary ? ` — ${kindSummary}` : ""}`,
   );
   // The `deviceAttestationValid` rule, as check-context-attributes.ts applies it: a declared absence
   // with no established reason is the STANDING FINDING, printed every run, not a passing state.

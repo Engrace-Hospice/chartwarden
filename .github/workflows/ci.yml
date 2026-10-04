@@ -666,6 +666,14 @@ jobs:
               name: "F-225 M22 portal access log",
               scripts: "test:f225:m22-portal-access-log:live",
             }
+          # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
+          # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the
+          # real dispatcher delivers to M5 (contact rows + reply) and back to M22 (provenance stamp +
+          # `commit_completed`). Medications / SUD / identity fields never leave review; redelivery is a no-op.
+          - {
+              name: "F-235 DocLens M5 writeback",
+              scripts: "test:f235:doclens-m5-writeback:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.

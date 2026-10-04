@@ -178,6 +178,7 @@ import {
   buildM5AdmissionSitingConsumer,
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
+  buildM5ExtractionWritebackConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
@@ -576,8 +577,10 @@ import {
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
+  buildM22ExtractionBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
+  createCandidateValueCipher,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
@@ -3246,7 +3249,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
-          mountDocumentRoutes(app, dbHandle.db, featureFlagReader); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake); the reader is the `documents.doclens` DocLens gate (F-091)
+          // M22 — reads + the write lifecycle over Drizzle+RLS; the reader is the `documents.doclens` DocLens gate
+          // (F-091). F-235 (#248): review completion now PUBLISHES `m22.extraction.commit_requested` (the
+          // DocLens → M5 demographics writeback), so the mount takes the m22 publisher + the tenant-DEK
+          // cipher that decrypts `extraction_candidate.value_cipher` server-side at commit.
+          mountDocumentRoutes(app, dbHandle.db, featureFlagReader, {
+            outbox: m22OutboxPublisher,
+            cipher: createCandidateValueCipher(getTenantKeyProvider()),
+          });
           mountTerminologyRoutes(app, dbHandle.db, featureFlagReader); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db, {
@@ -5952,6 +5962,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // DeathDischargeReader seam and flips patient.status='deceased' + emits
           // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
           buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // F-235 (#248) — the DocLens chart writeback, both halves. M5 applies an approved review's
+          // low-risk contact demographics to the batch's resolved patient and replies; M22 stamps
+          // `extraction_provenance` from the reply and emits the terminal `m22.extraction.commit_completed`.
+          buildM5ExtractionWritebackConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          buildM22ExtractionBackrefConsumer({ db: dbHandle.db, outbox: m22OutboxPublisher }),
           // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
           // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
           buildM5AdmissionSitingConsumer({ db: dbHandle.db }),
