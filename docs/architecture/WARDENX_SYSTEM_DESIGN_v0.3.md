@@ -231,6 +231,8 @@ sequenceDiagram
 
 #### 1.3.4 DocLens Intake Extraction
 
+> **Amended by [ADR-0048](../adr/ADR-0048-doclens-docling-plus-grounded-extractor.md) (2026-10-03).** The diagram below predates it: `langextract-worker` and the DocLens use of `ml-worker` are gone. Stage 3–4 are M32 `doclens_classify` / `doclens_extract` invocations (local Ollama or Claude under the BAA, per the tenant's consented routing); `docling-worker` receives a presigned GET URL and authenticates the backend with a worker-specific `DOCLING_WORKER_TOKEN`.
+
 ```mermaid
 sequenceDiagram
   participant A as Admissions Nurse

@@ -30,3 +30,11 @@ export {
   planCommitIntents,
   runExtractionPipeline,
 } from "./pipeline";
+// F-236 (ADR-0048) — quote grounding: a model's verbatim quote → the Docling block box, or a refusal.
+export {
+  type GroundingBBox,
+  type GroundingPage,
+  type GroundingResult,
+  groundQuote,
+  normalizeForMatch,
+} from "./grounding";

@@ -1,0 +1,126 @@
+{
+  "job_id": "fixture",
+  "docling_version": "2.133.0",
+  "page_count": 2,
+  "pages": [
+    {
+      "page": 1,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "ST . MARY MEDICAL CENTER HOSPICE REFERRAL 1 FACE SHEET",
+          "bbox": [42.33, 55.33, 455.0, 67.33],
+          "label": "section_header"
+        },
+        {
+          "text": "Patient Name :",
+          "bbox": [42.0, 97.33, 135.67, 110.0],
+          "label": "text"
+        },
+        {
+          "text": "Mae Doclens Preferred name : Mae",
+          "bbox": [143.0, 99.0, 224.33, 109.67],
+          "label": "text"
+        },
+        {
+          "text": "Mae Doclens Preferred name : Mae",
+          "bbox": [294.0, 98.67, 433.0, 110.67],
+          "label": "text"
+        },
+        {
+          "text": "Date of Birth:",
+          "bbox": [41.67, 119.33, 144.0, 132.67],
+          "label": "text"
+        },
+        {
+          "text": "04/12/1938",
+          "bbox": [150.0, 119.33, 224.67, 132.0],
+          "label": "text"
+        },
+        {
+          "text": "Sex:",
+          "bbox": [293.33, 119.33, 324.33, 133.33],
+          "label": "text"
+        },
+        {
+          "text": "F",
+          "bbox": [330.33, 120.33, 340.33, 131.67],
+          "label": "text"
+        },
+        {
+          "text": "Address:",
+          "bbox": [41.33, 141.0, 101.0, 153.0],
+          "label": "text"
+        },
+        {
+          "text": "48 Willow Ln",
+          "bbox": [107.33, 141.33, 195.67, 153.33],
+          "label": "text"
+        },
+        {
+          "text": "City/State/Zip:",
+          "bbox": [41.33, 161.33, 151.67, 177.67],
+          "label": "text"
+        },
+        {
+          "text": "Salem, OR 97302",
+          "bbox": [156.67, 162.33, 267.0, 176.67],
+          "label": "text"
+        },
+        {
+          "text": "Home   phone:",
+          "bbox": [41.67, 183.0, 123.33, 199.33],
+          "label": "text"
+        },
+        {
+          "text": "(503) 555-0142",
+          "bbox": [130.67, 184.33, 232.0, 197.33],
+          "label": "text"
+        },
+        {
+          "text": "Mobile phone:",
+          "bbox": [41.0, 204.33, 137.67, 220.67],
+          "label": "text"
+        },
+        {
+          "text": "Email:",
+          "bbox": [42.0, 227.33, 86.67, 240.0],
+          "label": "text"
+        },
+        {
+          "text": "503-555-0188",
+          "bbox": [143.33, 206.0, 232.0, 218.67],
+          "label": "text"
+        },
+        {
+          "text": "mae . doclens@example org",
+          "bbox": [92.33, 226.0, 260.33, 242.0],
+          "label": "text"
+        },
+        {
+          "text": "Primary diagnosis:",
+          "bbox": [41.0, 269.33, 173.67, 285.67],
+          "label": "text"
+        },
+        {
+          "text": "Congestive heart failure, end stage",
+          "bbox": [178.33, 270.33, 434.33, 285.33],
+          "label": "text"
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "width": 612.0,
+      "height": 792.0,
+      "blocks": [
+        {
+          "text": "DISCHARGE MEDICATIONS Furosemide 40 mg PO daily 2 Morphine sulfate 5 mg PO PRN  dyspnea 3 _ Lorazepam 0 .5 mg SL PRN anxiety Allergies: Penicillin (rash) q6h",
+          "bbox": [41.33, 54.67, 354.0, 198.33],
+          "label": "text"
+        }
+      ]
+    }
+  ]
+}

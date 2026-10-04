@@ -52,4 +52,9 @@ export {
   mergeVisionVerification,
   planCommitIntents,
   runExtractionPipeline,
+  type GroundingBBox,
+  type GroundingPage,
+  type GroundingResult,
+  groundQuote,
+  normalizeForMatch,
 } from "./pipeline/index";

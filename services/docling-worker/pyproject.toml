@@ -1,0 +1,19 @@
+[project]
+name = "wardenx-docling-worker"
+version = "0.1.0"
+description = "WardenX DocLens stage 2: Docling layout + OCR parse with page coordinates"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "httpx>=0.28",
+  "pydantic>=2.9",
+]
+
+[project.optional-dependencies]
+# Docling (and torch) only in the image; the unit tests never import it.
+docling = ["docling>=2.133,<3"]
+test = ["pytest>=8", "httpx>=0.28"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
