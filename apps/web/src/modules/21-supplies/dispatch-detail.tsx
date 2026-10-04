@@ -136,7 +136,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
   ].filter((e): e is { label: string; at: string; by: string } => e !== null);
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Comfort kit {dispatch.kitSerialNumber}</span>}
         breadcrumb="Supplies — comfort-kit dispatch"

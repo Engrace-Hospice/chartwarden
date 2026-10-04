@@ -178,30 +178,30 @@ export function SequestrationPolicy(): JSX.Element {
           </form>
           {policies.length > 0 ? (
             <>
-              <div style={{ position: "relative", minWidth: "14rem" }}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search reason or policy..."
                   aria-label="Search policies"
-                  style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
                 />
-                <span style={inputIconStyle}>
-                  <Glyph name="search" size={14} />
-                </span>
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                aria-label="Filter by status"
-                style={selectStyle}
-              >
-                <option value="all">Status: All</option>
-                <option value="active">Active</option>
-                <option value="scheduled">Scheduled</option>
-                <option value="past">Past</option>
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Status</span>
+                <select
+                  className="wx-select"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  aria-label="Filter by status"
+                >
+                  <option value="all">All</option>
+                  <option value="active">Active</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="past">Past</option>
+                </select>
+              </label>
             </>
           ) : null}
         </FilterBar>
@@ -442,14 +442,6 @@ const inputStyle = {
   fontSize: "0.85rem",
 };
 const selectStyle = { ...inputStyle, height: "2.25rem", cursor: "pointer" };
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: t.onSurfaceVariant,
-  pointerEvents: "none" as const,
-};
 const linkButtonStyle = {
   display: "inline-flex",
   alignItems: "center",
@@ -466,8 +458,6 @@ const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = { padding: "0.5rem 0.75rem", color: t.onSurface };
 

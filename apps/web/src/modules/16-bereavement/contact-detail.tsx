@@ -120,7 +120,7 @@ export function BereavedContactDetail(): JSX.Element {
   };
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>{contact.displayName}</span>}
         breadcrumb={`Bereavement — plan ${shortId(planId)} · bereaved contact`}

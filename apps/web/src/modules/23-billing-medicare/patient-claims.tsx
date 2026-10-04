@@ -2,6 +2,7 @@ import {
   EmptyState,
   Glyph,
   type GlyphName,
+  KpiCard,
   LoadingSpinner,
   OffsetPagination,
   Panel,
@@ -495,13 +496,13 @@ export function PatientClaims(): JSX.Element {
   );
 }
 
+// The shared stat card (label · value · detail), like every other summary row in the app.
 function Kpi({
   icon,
   color,
   label,
   value,
   hint,
-  accent,
 }: {
   icon: GlyphName;
   color: string;
@@ -510,28 +511,7 @@ function Kpi({
   hint: string;
   accent?: boolean;
 }): JSX.Element {
-  return (
-    <div className="wx-stat-card">
-      <span
-        aria-hidden
-        className="wx-stat-icon"
-        style={{
-          color,
-          background: `color-mix(in srgb, ${color} 12%, ${t.surfaceLowest})`,
-          borderRadius: "9999px",
-        }}
-      >
-        <Glyph name={icon} size={24} strokeWidth={1.6} />
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: t.onSurface, fontSize: "0.875rem" }}>{label}</div>
-        <strong className="wx-stat-value wx-nums" style={accent ? { color } : undefined}>
-          {value}
-        </strong>
-        <div className="wx-stat-label">{hint}</div>
-      </div>
-    </div>
-  );
+  return <KpiCard icon={icon} accentColor={color} label={label} value={value} detail={hint} />;
 }
 
 function NoticesPanel({ notices }: { notices: Load<Notice[]> }): JSX.Element {

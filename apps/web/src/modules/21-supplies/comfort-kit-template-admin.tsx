@@ -232,7 +232,7 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
     meds.every((m) => m.drugName.trim() !== "" && m.rxnorm.trim() !== "");
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Comfort-kit templates</span>}
         breadcrumb="Supplies — the D3 platform floor and its tenant overlays"

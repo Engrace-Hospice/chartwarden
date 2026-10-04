@@ -285,8 +285,6 @@ const sectionEyebrowStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
   fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
 };
 
 const planTitleStyle: CSSProperties = {
@@ -364,8 +362,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const tdStyle: CSSProperties = {

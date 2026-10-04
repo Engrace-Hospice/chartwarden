@@ -85,8 +85,9 @@ export {
   scheduleAuditJobs,
 } from "./jobs/audit-jobs";
 
-import { createDbAuditQuery } from "@wardenx/audit";
+import { type AuditExecutor, type NewAuditEvent, createDbAuditQuery } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { FastifyInstance } from "fastify";
 import { registerAuditExportsRoutes as _registerAuditExportsRoutes } from "./routes/audit-exports";
 import { registerAuditIntegrityRoutes as _registerAuditIntegrityRoutes } from "./routes/audit-integrity";
@@ -112,17 +113,44 @@ export interface MountAuditRoutesOptions {
  * this when a DB client is present. Every registrar shares the same `{ query, audit }` (or `{ db }`)
  * deps shape, so mounting them together here means a future route can't be exported-but-never-
  * called again the way the accounting route was (GAP-002's actual bug). The `audit.elevated_access`
- * meta-event sink is the DURABLE Drizzle path (`audit: db` — `AuditExecutor` is structurally
+ * meta-event sink is the DURABLE Drizzle path (`createTenantAuditExecutor(db)` — `AuditExecutor` is structurally
  * `insert(table).values(row)`, the M2 precedent; migration 0119 makes the `wardenx_app` INSERT
  * legal under RLS), so an auditor's elevated-access meta-event survives the process instead of
  * dying in a Map.
  */
+/**
+ * The meta-event sink must write inside the tenant's context. A bare pooled `db` insert runs with
+ * whatever `app.org_id` the connection last held: unset on a fresh connection, but `''` on one that
+ * earlier ran a `withOrgContext` transaction (Postgres keeps a custom GUC as an empty string once a
+ * SET LOCAL ends). `audit_event_org_append` then casts `''::uuid` and the INSERT fails, so the audit
+ * read 500s ("invalid input syntax for type uuid"). Same fix as M3's `createTenantAuditExecutor` and
+ * M2's #205: set the org from the immutable row before writing. A platform event with no org keeps
+ * the bare client (the `audit_writer_insert` policy).
+ */
+export function createTenantAuditExecutor(db: DbClient): AuditExecutor {
+  return {
+    insert(table) {
+      return {
+        values(row: NewAuditEvent) {
+          const organizationId = row.organizationId;
+          if (typeof organizationId !== "string") return db.insert(table).values(row);
+          return withOrgContext(
+            db,
+            { organizationId, userId: typeof row.actorUserId === "string" ? row.actorUserId : "" },
+            (tx) => tx.insert(table).values(row),
+          );
+        },
+      };
+    },
+  };
+}
+
 export function mountAuditRoutes(
   app: FastifyInstance,
   db: DbClient,
   options: MountAuditRoutesOptions = {},
 ): void {
-  const deps = { query: createDbAuditQuery(db), audit: db };
+  const deps = { query: createDbAuditQuery(db), audit: createTenantAuditExecutor(db) };
   _registerAuditRoutes(app, deps);
   _registerPatientAccountingRoute(app, deps);
   _registerLegalHoldsRoutes(app, { db, query: deps.query, outbox: options.outbox });

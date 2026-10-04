@@ -983,8 +983,6 @@ function StaffDrawerContent({
           style={{
             margin: 0,
             fontSize: "0.8rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
             color: "var(--color-on-surface-variant)",
           }}
         >
@@ -1008,8 +1006,6 @@ function StaffDrawerContent({
           style={{
             margin: 0,
             fontSize: "0.8rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
             color: "var(--color-on-surface-variant)",
           }}
         >
@@ -1069,8 +1065,6 @@ function StaffDrawerContent({
           style={{
             margin: 0,
             fontSize: "0.8rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
             color: "var(--color-on-surface-variant)",
           }}
         >
@@ -1093,8 +1087,6 @@ function StaffDrawerContent({
           style={{
             margin: 0,
             fontSize: "0.8rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
             color: "var(--color-on-surface-variant)",
           }}
         >
@@ -1278,8 +1270,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

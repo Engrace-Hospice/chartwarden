@@ -33,6 +33,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { BillingTabs } from "../../shell/billing-tabs";
 import {
   dollars,
   noeNotrStateTone,
@@ -238,22 +239,22 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
     <WorkQueueLayout
       header={
         <PageHeader
-          title={`${config.acronym} Queue`}
-          breadcrumb={`Billing / ${config.longName}`}
+          title={`Billing / ${config.acronym} Queue`}
           actions={
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <Link to="/billing" style={ghostButtonStyle}>
-                AR dashboard
-              </Link>
-              <Link to="/billing/claims" style={ghostButtonStyle}>
-                Claims
-              </Link>
-            </div>
+            <Link
+              to={config.acronym === "NOE" ? "/billing/notr" : "/billing/noe"}
+              className="wx-btn-secondary"
+            >
+              {config.acronym === "NOE" ? "NOTR queue" : "NOE queue"}
+            </Link>
           }
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track filing-window status, submit ready records, and cancel active notices with a
             reason.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <BillingTabs />
           </div>
         </PageHeader>
       }
@@ -270,32 +271,32 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
             </span>
           }
         >
-          <div style={{ position: "relative", minWidth: "15rem" }}>
+          <label className="wx-search-field">
+            <Glyph name="search" size={16} />
             <input
               type="search"
               aria-label={`Search ${config.acronym} records`}
               placeholder={`Search ${config.acronym} records...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ ...selectStyle, width: "100%", height: "2.25rem", paddingLeft: "2rem" }}
             />
-            <div style={inputIconStyle}>
-              <Glyph name="search" size={14} />
-            </div>
-          </div>
-          <select
-            aria-label={`${config.acronym} state`}
-            value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value)}
-            style={{ ...selectStyle, height: "2.25rem" }}
-          >
-            <option value="">State: All</option>
-            {states.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </select>
+          </label>
+          <label className="wx-filter-field">
+            <span>State</span>
+            <select
+              className="wx-select"
+              aria-label={`${config.acronym} state`}
+              value={stateFilter}
+              onChange={(e) => setStateFilter(e.target.value)}
+            >
+              <option value="">All</option>
+              {states.map((s) => (
+                <option key={s} value={s}>
+                  {statusLabel(s)}
+                </option>
+              ))}
+            </select>
+          </label>
           <VisuallyHiddenLive tone={liveTone} message={liveMessage} />
         </FilterBar>
       }
@@ -420,8 +421,6 @@ function NoticeTable({
                 padding: "0.6rem 0.75rem 0.3rem",
                 fontSize: "0.7rem",
                 fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
                 color: "var(--color-on-surface-variant)",
               }}
             >
@@ -838,8 +837,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const tdStyle: CSSProperties = {
   padding: "0.65rem 0.75rem",
@@ -853,14 +850,6 @@ const selectStyle = {
   background: "var(--color-surface-low)",
   color: "var(--color-on-surface)",
   fontSize: "0.85rem",
-};
-const inputIconStyle: CSSProperties = {
-  position: "absolute",
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none",
 };
 const textareaStyle = {
   ...selectStyle,

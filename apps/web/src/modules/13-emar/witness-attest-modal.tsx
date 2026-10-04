@@ -186,8 +186,6 @@ const tokenBox: CSSProperties = {
 const legend: CSSProperties = {
   fontSize: "0.6875rem",
   fontWeight: 600,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
   color: t.muted,
 };
 const tokenText: CSSProperties = {

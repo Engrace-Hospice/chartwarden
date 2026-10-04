@@ -134,18 +134,15 @@ export function TaxonomyOverlay(): JSX.Element {
             </div>
           ) : null}
           <div style={filterRowStyle}>
-            <div style={{ position: "relative", minWidth: "18rem", flex: "1 1 18rem" }}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 aria-label="CARC code"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 placeholder="Enter a CARC code, e.g. 16, 50, 197"
-                style={searchInputStyle}
               />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
+            </label>
             <Button type="submit" tone="primary" size="sm" disabled={!code.trim() || loading}>
               {loading ? "Looking up..." : "Look up"}
             </Button>
@@ -242,20 +239,6 @@ const filterRowStyle = {
   flexWrap: "wrap" as const,
   gap: "0.75rem",
   alignItems: "flex-end",
-};
-const searchInputStyle = {
-  width: "100%",
-  paddingLeft: "2rem",
-  height: "2.25rem",
-  fontSize: "0.85rem",
-};
-const searchIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
 };
 const errorBannerStyle = {
   padding: "0.625rem 1rem",

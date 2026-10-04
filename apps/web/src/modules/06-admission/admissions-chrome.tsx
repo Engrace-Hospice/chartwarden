@@ -1,7 +1,7 @@
 // apps/web/src/modules/06-admission — the Admissions area chrome shared by its tabbed list pages
 // (All Admissions, Pending Referrals): the sub-tab bar, KPI stat cards, labeled filter selects and
 // the initials avatar, so every tab of the area lays out the same way.
-import { Glyph, type GlyphName, t } from "@wardenx/ui";
+import { type GlyphName, KpiCard, t } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -49,12 +49,13 @@ function initials(name: string): string {
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
 
+// The shared stat card; `onSelect` makes it a filter toggle (e.g. "show only overdue").
 export function Stat({
   icon,
   value,
   label,
   hint,
-  color = t.primary,
+  color,
   onSelect,
   selected = false,
 }: {
@@ -63,37 +64,18 @@ export function Stat({
   label: string;
   hint: string;
   color?: string;
-  /** Makes the card a filter toggle (e.g. "show only overdue"). */
   onSelect?: () => void;
   selected?: boolean;
 }): JSX.Element {
-  const body = (
-    <>
-      <span
-        aria-hidden
-        className="wx-stat-icon"
-        style={{ color, background: `color-mix(in srgb, ${color} 12%, ${t.surfaceLowest})` }}
-      >
-        <Glyph name={icon} size={22} strokeWidth={1.6} />
-      </span>
-      <span style={{ minWidth: 0 }}>
-        <span className="wx-stat-label">{label}</span>
-        <strong className="wx-stat-value wx-nums">{value}</strong>
-        <span className="wx-stat-label">{hint}</span>
-      </span>
-    </>
-  );
-  return onSelect ? (
-    <button
-      type="button"
-      className={`wx-stat-card wx-stat-card-button${selected ? " is-selected" : ""}`}
-      aria-pressed={selected}
-      onClick={onSelect}
-    >
-      {body}
-    </button>
-  ) : (
-    <div className="wx-stat-card">{body}</div>
+  return (
+    <KpiCard
+      icon={icon}
+      accentColor={color}
+      label={label}
+      value={value}
+      detail={hint}
+      {...(onSelect ? { onSelect, selected } : {})}
+    />
   );
 }
 

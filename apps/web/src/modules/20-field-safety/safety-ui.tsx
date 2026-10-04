@@ -40,8 +40,6 @@ export const th: CSSProperties = {
   textAlign: "left",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
   color: t.onSurfaceVariant,
 };
 export const thNum: CSSProperties = { ...th, textAlign: "right" };
@@ -77,22 +75,25 @@ export const cardStyle: CSSProperties = {
   flexDirection: "column",
   gap: t.space2,
   background: t.surfaceLowest,
-  borderRadius: t.radiusXl,
-  boxShadow: t.shadowSoft,
+  border: `1px solid ${t.cardBorder}`,
+  borderRadius: t.radiusLg,
   padding: `${t.space4} ${t.space5}`,
 };
 export const cardTitleStyle: CSSProperties = {
   margin: 0,
-  fontFamily: t.fontDisplay,
-  fontSize: "0.95rem",
-  fontWeight: 500,
+  fontFamily: t.fontSans,
+  fontSize: "1rem",
+  fontWeight: 600,
   color: t.onSurface,
 };
 export const pageTitleStyle: CSSProperties = {
+  // Matches PageHeader's own title (the redesign's bold sans heading).
   margin: 0,
-  fontFamily: t.fontDisplay,
-  fontSize: "1.375rem",
-  fontWeight: 500,
+  fontFamily: t.fontSans,
+  fontSize: "1.875rem",
+  fontWeight: 700,
+  letterSpacing: "-0.01em",
+  lineHeight: 1.2,
   color: t.onSurface,
 };
 export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
@@ -112,20 +113,21 @@ export const columnStyle: CSSProperties = {
 
 // ── controls ───────────────────────────────────────────────────────────────────────────────────────────
 export const selectStyle: CSSProperties = {
-  padding: "0.35rem 0.5rem",
+  minHeight: "2.5rem",
+  padding: "0 0.75rem",
   borderRadius: t.radiusMd,
-  border: "none",
-  background: t.surfaceLow,
+  border: `1px solid ${t.cardBorder}`,
+  background: t.surfaceLowest,
   color: t.onSurface,
-  fontSize: "0.85rem",
+  fontSize: "0.8125rem",
 };
 export const inputStyle: CSSProperties = { ...selectStyle, minWidth: "9rem" };
 export const textareaStyle: CSSProperties = {
   width: "100%",
   padding: "0.5rem 0.6rem",
   borderRadius: t.radiusMd,
-  border: "none",
-  background: t.surfaceLow,
+  border: `1px solid ${t.cardBorder}`,
+  background: t.surfaceLowest,
   color: t.onSurface,
   fontSize: "0.85rem",
   fontFamily: "inherit",
@@ -140,18 +142,18 @@ export const primaryButtonStyle: CSSProperties = {
   cursor: "pointer",
   background: t.primary,
   color: t.onPrimary,
-  fontSize: "0.82rem",
+  fontSize: "0.875rem",
   fontWeight: 600,
   minHeight: "2.75rem",
 };
 export const ghostButtonStyle: CSSProperties = {
   padding: "0.7rem 1.1rem",
   borderRadius: t.radiusMd,
-  border: "none",
+  border: `1px solid ${t.cardBorder}`,
   cursor: "pointer",
-  background: t.surfaceContainer,
+  background: t.surfaceLowest,
   color: t.onSurface,
-  fontSize: "0.82rem",
+  fontSize: "0.875rem",
   fontWeight: 600,
   textDecoration: "none",
   minHeight: "2.75rem",
@@ -245,11 +247,7 @@ export function SummaryGrid({ children }: { children: ReactNode }): JSX.Element 
 
 /** A horizontal filter row — the §5 ledger filter bar. */
 export function FilterRow({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: t.space3, alignItems: "flex-end" }}>
-      {children}
-    </div>
-  );
+  return <div className="wx-filter-panel">{children}</div>;
 }
 
 /** A labelled <select> for the filter row / a modal field. */
@@ -266,12 +264,14 @@ export function SelectField({
 }): JSX.Element {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
+      <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--color-on-surface)" }}>
+        {label}
+      </span>
       <select
         aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={selectStyle}
+        className="wx-select"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -602,16 +602,17 @@ export function CountGrid({
             display: "flex",
             flexDirection: "column",
             gap: "0.15rem",
-            padding: `${t.space2} ${t.space3}`,
-            borderRadius: t.radiusMd,
-            background: t.surfaceLow,
+            padding: `${t.space3} ${t.space4}`,
+            border: `1px solid ${t.cardBorder}`,
+            borderRadius: t.radiusLg,
+            background: t.surfaceLowest,
           }}
         >
-          <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{e.label}</span>
+          <span style={{ fontSize: "0.8125rem", color: t.muted }}>{e.label}</span>
           <span
             style={{
-              fontSize: "1.15rem",
-              fontWeight: 600,
+              fontSize: "1.375rem",
+              fontWeight: 700,
               fontVariantNumeric: "tabular-nums",
               color: e.tone === "critical" ? t.alert : e.tone === "error" ? t.error : t.onSurface,
             }}

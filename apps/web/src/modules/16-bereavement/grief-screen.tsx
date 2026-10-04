@@ -124,7 +124,7 @@ export function BereavementGriefScreen(): JSX.Element {
   const met = total >= PG13_THRESHOLD;
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Complicated grief screen</span>}
         breadcrumb={`Bereavement — ${contact.displayName}`}

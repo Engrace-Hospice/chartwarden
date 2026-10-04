@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -189,7 +190,8 @@ export function EvvAggregatorSubmissions(): JSX.Element {
                 ) : null}
               </div>
               <div style={controlGroupStyle}>
-                <div style={searchWrapStyle}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search submission, visit, state, vendor..."
@@ -199,57 +201,68 @@ export function EvvAggregatorSubmissions(): JSX.Element {
                       setPage(1);
                     }}
                     aria-label="Search aggregator submissions"
-                    style={searchInputStyle}
                   />
-                </div>
-                <select
-                  aria-label="Submission status"
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="all">Status: All</option>
-                  {statusOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {stateLabel(option)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="State code"
-                  value={stateFilter}
-                  onChange={(e) => {
-                    setStateFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="all">State: All</option>
-                  {stateOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Aggregator vendor"
-                  value={vendorFilter}
-                  onChange={(e) => {
-                    setVendorFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="all">Vendor: All</option>
-                  {vendorOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {stateLabel(option)}
-                    </option>
-                  ))}
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Status</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Submission status"
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="all">All</option>
+                    {statusOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {stateLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>State</span>
+                  <select
+                    className="wx-select"
+                    aria-label="State code"
+                    value={stateFilter}
+                    onChange={(e) => {
+                      setStateFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="all">All</option>
+                    {stateOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Vendor</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Aggregator vendor"
+                    value={vendorFilter}
+                    onChange={(e) => {
+                      setVendorFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="all">All</option>
+                    {vendorOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {stateLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {activeFilters > 0 ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -397,8 +410,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -461,8 +472,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",

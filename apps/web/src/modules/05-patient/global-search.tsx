@@ -264,21 +264,20 @@ export function GlobalSearchResults(): JSX.Element {
             </output>
           ) : null}
           <div style={toolbarStyle}>
-            <form onSubmit={submit} style={searchFormStyle}>
-              <Glyph name="eye" size={14} />
+            <form onSubmit={submit} className="wx-search-field" style={{ maxWidth: "none" }}>
+              <Glyph name="search" size={16} />
               <input
                 aria-label="Search patients and staff"
                 placeholder="Search patients, MRNs, staff..."
                 value={term}
                 onChange={(e) => setTerm(e.target.value)}
-                style={searchInputStyle}
               />
               <Button type="submit" tone="primary">
                 Search
               </Button>
             </form>
 
-            <div style={tabWrapStyle} role="tablist" aria-label="Result scope">
+            <div className="wx-subtabs wx-subtabs-inline" role="tablist" aria-label="Result scope">
               {(["all", "patient", "staff"] as Facet[]).map((f) => (
                 <button
                   key={f}
@@ -286,7 +285,6 @@ export function GlobalSearchResults(): JSX.Element {
                   role="tab"
                   aria-selected={facet === f}
                   onClick={() => chooseFacet(f)}
-                  style={tabButtonStyle(facet === f)}
                 >
                   {f === "all"
                     ? `All (${patientCount + staffCount})`
@@ -451,45 +449,6 @@ const toolbarStyle: CSSProperties = {
   justifyContent: "space-between",
   gap: "1rem",
 };
-const searchFormStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  flex: "1 1 28rem",
-  minWidth: "18rem",
-  minHeight: "2.5rem",
-  padding: "0 0 0 0.65rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container)",
-  color: "var(--color-on-surface-variant)",
-};
-const searchInputStyle: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  border: "none",
-  background: "transparent",
-  outline: "none",
-  color: "var(--color-on-surface)",
-  fontSize: "0.9rem",
-};
-const tabWrapStyle: CSSProperties = {
-  display: "flex",
-  gap: "0.25rem",
-  background: "var(--color-surface-container)",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-};
-const tabButtonStyle = (active: boolean): CSSProperties => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "pointer",
-});
 const noticeStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -525,8 +484,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const tdStyle: CSSProperties = {
   padding: "0.75rem 1rem",
@@ -575,8 +532,6 @@ const sectionHeadStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const chipRowStyle: CSSProperties = {
   display: "flex",

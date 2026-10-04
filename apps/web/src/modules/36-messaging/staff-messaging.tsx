@@ -152,54 +152,57 @@ export function StaffMessaging(): JSX.Element {
             <span>{error}</span>
           </div>
         ) : null}
-        <div style={toolbarStyle}>
-          <div style={searchBoxStyle}>
-            <Glyph name="eye" size={14} />
+        <div className="wx-filter-panel">
+          <label className="wx-search-field">
+            <Glyph name="search" size={16} />
             <input
               type="search"
-              placeholder="Search channel, scope, patient..."
+              placeholder="Search channel, scope, patient…"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setPage(1);
               }}
               aria-label="Search message channels"
-              style={searchInputStyle}
             />
-          </div>
-          <div style={controlGroupStyle}>
+          </label>
+          <label className="wx-filter-field">
+            <span>Scope</span>
             <select
+              className="wx-select"
               value={scopeFilter}
               onChange={(e) => {
                 setScopeFilter(e.target.value as typeof scopeFilter);
                 setPage(1);
               }}
               aria-label="Filter channels by scope"
-              style={selectStyle}
             >
-              <option value="all">Scope: All</option>
+              <option value="all">All</option>
               <option value="patient">Patient-scoped</option>
               <option value="general">General</option>
             </select>
+          </label>
+          <label className="wx-filter-field">
+            <span>Status</span>
             <select
+              className="wx-select"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value as typeof statusFilter);
                 setPage(1);
               }}
               aria-label="Filter channels by status"
-              style={selectStyle}
             >
-              <option value="all">Status: All</option>
+              <option value="all">All</option>
               <option value="unread">Unread</option>
               <option value="archived">Archived</option>
             </select>
-            {hasActiveFilters ? (
-              <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                Clear
-              </Button>
-            ) : null}
-          </div>
+          </label>
+          {hasActiveFilters ? (
+            <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+              <Glyph name="filter" size={15} /> Clear
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -456,46 +459,7 @@ const filterShellStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "0.75rem",
-  padding: "0 1.5rem 0.75rem",
-};
-const toolbarStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-};
-const searchBoxStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.45rem",
-  flex: "1 1 22rem",
-  minWidth: "16rem",
-  height: "2.25rem",
-  padding: "0 0.65rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container)",
-  color: "var(--color-on-surface-variant)",
-};
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  border: "none",
-  background: "transparent",
-  outline: "none",
-  color: "var(--color-on-surface)",
-  fontSize: "0.85rem",
-};
-const controlGroupStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  flexWrap: "wrap",
-};
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
+  padding: "0 1.5rem 1rem",
 };
 const errorBannerStyle: CSSProperties = {
   display: "flex",

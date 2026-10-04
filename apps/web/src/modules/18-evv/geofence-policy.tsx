@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -174,7 +175,8 @@ export function EvvGeofencePolicy(): JSX.Element {
                 <strong>{sortedOverrides.length} matching overrides</strong>
               </div>
               <div style={controlGroupStyle}>
-                <div style={searchWrapStyle}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search address policy or threshold..."
@@ -184,22 +186,25 @@ export function EvvGeofencePolicy(): JSX.Element {
                       setPage(1);
                     }}
                     aria-label="Search geofence overrides"
-                    style={searchInputStyle}
                   />
-                </div>
-                <select
-                  aria-label="Override tightness"
-                  value={radiusFilter}
-                  onChange={(e) => {
-                    setRadiusFilter(e.target.value as typeof radiusFilter);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="all">Overrides: All</option>
-                  <option value="tighter">Tighter than tenant</option>
-                  <option value="default">Tenant-equivalent</option>
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Overrides</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Override tightness"
+                    value={radiusFilter}
+                    onChange={(e) => {
+                      setRadiusFilter(e.target.value as typeof radiusFilter);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="all">All</option>
+                    <option value="tighter">Tighter than tenant</option>
+                    <option value="default">Tenant-equivalent</option>
+                  </select>
+                </label>
                 {activeFilters > 0 ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -354,8 +359,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -426,8 +429,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",

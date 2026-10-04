@@ -201,56 +201,64 @@ export function TriageQueueScreen(): JSX.Element {
             </div>
           ) : null}
           <div style={toolbarStyle}>
-            <div style={searchBoxStyle}>
-              <Glyph name="eye" size={14} />
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search call, patient, protocol, provider..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 aria-label="Search triage calls"
-                style={searchInputStyle}
               />
-            </div>
-            <select
-              value={state}
-              onChange={(event) => {
-                setState(event.target.value);
-                clearLocalFilters();
-              }}
-              aria-label="Filter triage calls by state"
-              style={selectStyle}
-            >
-              {STATE_FILTERS.map((option) => (
-                <option key={option.key} value={option.value}>
-                  State: {option.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={source}
-              onChange={(event) => setSource(event.target.value as "" | TriageCallSource)}
-              aria-label="Filter triage calls by source"
-              style={selectStyle}
-            >
-              {SOURCE_FILTERS.map((option) => (
-                <option key={option.key} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={attention}
-              onChange={(event) => setAttention(event.target.value as AttentionFilter)}
-              aria-label="Filter triage calls by attention"
-              style={selectStyle}
-            >
-              <option value="all">Attention: All</option>
-              <option value="escalated">Escalated</option>
-              <option value="red_flag">Red flags</option>
-              <option value="callback">Awaiting callback</option>
-              <option value="pending_note">Pending note</option>
-            </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>State</span>
+              <select
+                className="wx-select"
+                value={state}
+                onChange={(event) => {
+                  setState(event.target.value);
+                  clearLocalFilters();
+                }}
+                aria-label="Filter triage calls by state"
+              >
+                {STATE_FILTERS.map((option) => (
+                  <option key={option.key} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Source</span>
+              <select
+                className="wx-select"
+                value={source}
+                onChange={(event) => setSource(event.target.value as "" | TriageCallSource)}
+                aria-label="Filter triage calls by source"
+              >
+                {SOURCE_FILTERS.map((option) => (
+                  <option key={option.key} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Attention</span>
+              <select
+                className="wx-select"
+                value={attention}
+                onChange={(event) => setAttention(event.target.value as AttentionFilter)}
+                aria-label="Filter triage calls by attention"
+              >
+                <option value="all">All</option>
+                <option value="escalated">Escalated</option>
+                <option value="red_flag">Red flags</option>
+                <option value="callback">Awaiting callback</option>
+                <option value="pending_note">Pending note</option>
+              </select>
+            </label>
             {hasActiveFilters ? (
               <Button size="sm" tone="tertiary" onClick={clearAllFilters}>
                 Clear
@@ -402,19 +410,6 @@ const searchBoxStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
 };
 
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  height: "2.25rem",
-  paddingLeft: "2rem",
-  fontSize: "0.85rem",
-};
-
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
@@ -440,7 +435,6 @@ const thStyle: CSSProperties = {
   padding: "0.75rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {

@@ -305,7 +305,7 @@ export function DocumentExplorer(): JSX.Element {
           />
         </label>
         <Filter label="Type" value={typeFilter} onChange={filterChange(setTypeFilter)}>
-          <option value="">All types</option>
+          <option value="">All</option>
           {options.types.map((v) => (
             <option key={v} value={v}>
               {typeLabel(v)}
@@ -317,7 +317,7 @@ export function DocumentExplorer(): JSX.Element {
           value={retentionFilter}
           onChange={filterChange(setRetentionFilter)}
         >
-          <option value="">All classes</option>
+          <option value="">All</option>
           {options.retention.map((v) => (
             <option key={v} value={v}>
               {RETENTION_LABEL[v] ?? labelize(v)}
@@ -325,7 +325,7 @@ export function DocumentExplorer(): JSX.Element {
           ))}
         </Filter>
         <Filter label="Source" value={sourceFilter} onChange={filterChange(setSourceFilter)}>
-          <option value="">All sources</option>
+          <option value="">All</option>
           {options.source.map((v) => (
             <option key={v} value={v}>
               {SOURCE_LABEL[v] ?? labelize(v)}
@@ -333,7 +333,7 @@ export function DocumentExplorer(): JSX.Element {
           ))}
         </Filter>
         <Filter label="Status" value={statusFilter} onChange={filterChange(setStatusFilter)}>
-          <option value="">All statuses</option>
+          <option value="">All</option>
           {options.status.map((v) => (
             <option key={v} value={v}>
               {labelize(v)}

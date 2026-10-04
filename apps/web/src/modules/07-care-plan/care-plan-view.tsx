@@ -760,35 +760,28 @@ function WorkflowGuide({
     );
   }
 
+  const stateColor =
+    state === "attention" ? t.warning : state === "success" ? t.success : t.primary;
   // The details list repeats every blocker; it is only redundant when the description already is the
   // single blocker.
   const listedBlockers =
     blockers.length > 1 || (blockers.length === 1 && description !== blockers[0]);
 
   return (
-    <section
-      style={{
-        ...workflowCard,
-        ...(state === "attention"
-          ? workflowCardAttention
-          : state === "success"
-            ? workflowCardSuccess
-            : {}),
-      }}
-      aria-label="Care Plan next step"
-    >
+    <section style={workflowCard} aria-label="Care Plan next step">
       <div style={workflowTop}>
         <div style={workflowLead}>
-          <span style={workflowIcon} aria-hidden="true">
+          <span style={workflowIcon(stateColor)} aria-hidden="true">
             <Glyph
               name={
                 state === "success" ? "check-circle" : state === "attention" ? "clock" : "activity"
               }
-              size={18}
+              size={22}
+              strokeWidth={1.6}
             />
           </span>
           <div style={{ minWidth: 0 }}>
-            <div style={eyebrow}>NEXT ACTION</div>
+            <div style={eyebrow}>Next action</div>
             <h2 style={workflowTitle}>{heading}</h2>
             <p style={workflowDescription}>{description}</p>
           </div>
@@ -894,7 +887,7 @@ function ClinicalContent({
     <section style={clinicalPanel}>
       <div style={clinicalHeader}>
         <div>
-          <div style={eyebrow}>CLINICAL PLAN</div>
+          <div style={eyebrow}>Clinical plan</div>
           <h2 style={clinicalTitle}>{heading}</h2>
           <p style={clinicalIntro}>
             Problems define what is being treated. Goals define the intended outcome, and
@@ -1197,7 +1190,7 @@ function RevisionPanel({
     <section style={panel}>
       <div style={revisionHeader}>
         <div>
-          <div style={eyebrow}>{version.kind === "idg_review" ? "IDG REVIEW" : "REVISION"}</div>
+          <div style={eyebrow}>{version.kind === "idg_review" ? "IDG review" : "Revision"}</div>
           <h2 style={sectionTitle}>Version v{version.sequence}</h2>
           <p style={muted}>
             {cap(version.status)} ·{" "}
@@ -2726,8 +2719,6 @@ const miniTitle: CSSProperties = {
   margin: 0,
   fontSize: "0.73rem",
   fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: "0.035em",
   color: t.onSurfaceVariant,
 };
 const muted: CSSProperties = {
@@ -2847,21 +2838,15 @@ const subPanel: CSSProperties = {
   gap: t.space3,
   background: t.surfaceLow,
 };
+// Same card language as the stat cards: even hairline border, the state carried by the tinted icon.
 const workflowCard: CSSProperties = {
   border: `1px solid ${t.cardBorder}`,
-  borderLeft: `3px solid ${t.primary}`,
   borderRadius: t.radiusLg,
   background: t.surfaceLowest,
-  padding: "0.9rem 1rem",
+  padding: "1rem 1.125rem",
   display: "flex",
   flexDirection: "column",
   gap: t.space3,
-};
-const workflowCardAttention: CSSProperties = {
-  borderLeftColor: t.warning,
-};
-const workflowCardSuccess: CSSProperties = {
-  borderLeftColor: t.success,
 };
 const workflowLead: CSSProperties = {
   display: "flex",
@@ -2869,17 +2854,17 @@ const workflowLead: CSSProperties = {
   gap: t.space3,
   minWidth: 0,
 };
-const workflowIcon: CSSProperties = {
-  width: "2rem",
-  height: "2rem",
-  borderRadius: "999px",
+const workflowIcon = (color: string): CSSProperties => ({
+  width: "2.75rem",
+  height: "2.75rem",
+  borderRadius: t.radiusMd,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  background: t.surfaceContainer,
-  color: t.primary,
+  background: `color-mix(in srgb, ${color} 12%, ${t.surfaceLowest})`,
+  color,
   flexShrink: 0,
-};
+});
 const workflowTop: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -2888,11 +2873,9 @@ const workflowTop: CSSProperties = {
   flexWrap: "wrap",
 };
 const eyebrow: CSSProperties = {
-  color: t.onSurfaceVariant,
-  fontSize: "0.68rem",
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  marginBottom: "0.35rem",
+  color: t.muted,
+  fontSize: "0.8125rem",
+  marginBottom: "0.2rem",
 };
 const workflowTitle: CSSProperties = {
   ...sectionTitle,
@@ -2958,7 +2941,9 @@ const stepLine: CSSProperties = {
   margin: "0 0.55rem",
   minWidth: "0.5rem",
 };
+// Indented to the text column (icon 2.75rem + gap), so the details line up under the description.
 const workflowDetails: CSSProperties = {
+  paddingLeft: `calc(2.75rem + ${t.space3})`,
   display: "flex",
   alignItems: "center",
   gap: t.space3,

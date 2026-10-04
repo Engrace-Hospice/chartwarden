@@ -119,19 +119,23 @@ export function ReportingSchedules(): JSX.Element {
                 Affecting Me
               </TabButton>
             </div>
-            <select
-              aria-label="Schedule status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="">Status: All</option>
-              {["active", "paused", "cancelled"].map((s) => (
-                <option key={s} value={s}>
-                  Status: {statusLabel(s)}
-                </option>
-              ))}
-            </select>
+            <label className="wx-filter-field">
+              <span>Status</span>
+              <select
+                className="wx-select"
+                aria-label="Schedule status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">All</option>
+                {["active", "paused", "cancelled"].map((s) => (
+                  <option key={s} value={s}>
+                    Status: {statusLabel(s)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button type="button" onClick={() => void load()} style={buttonStyle}>
               Refresh
             </button>
@@ -412,8 +416,6 @@ const thStyle: CSSProperties = {
   textAlign: "left",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
 };
 
@@ -439,7 +441,5 @@ const sectionTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: "0.6875rem",
   fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
   color: "var(--color-on-surface-variant)",
 };

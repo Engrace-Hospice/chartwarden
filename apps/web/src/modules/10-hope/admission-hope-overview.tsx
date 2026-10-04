@@ -674,8 +674,6 @@ const smallLabel: CSSProperties = {
   color: t.muted,
   fontSize: "0.68rem",
   fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const fieldValue: CSSProperties = {
   margin: 0,

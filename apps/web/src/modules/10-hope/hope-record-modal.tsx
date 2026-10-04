@@ -569,8 +569,6 @@ const sectionTitle: CSSProperties = {
   fontSize: "0.85rem",
   fontWeight: 600,
   color: "var(--color-on-surface-variant)",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const meta: CSSProperties = {
   margin: 0,

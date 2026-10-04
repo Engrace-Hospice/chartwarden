@@ -213,7 +213,7 @@ export function AssessmentEditor(): JSX.Element {
   const signed = assessment?.status === "signed" || assessment?.status === "amended";
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={
           <span style={pageTitleStyle}>

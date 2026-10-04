@@ -73,13 +73,13 @@ export function Invoices(): JSX.Element {
       }
       filters={
         <div style={filtersStyle}>
-          <div style={tabShellStyle}>
+          <div className="wx-subtabs wx-subtabs-inline" role="tablist">
             {STATUSES.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => setStatusFilter(s)}
-                style={tabButtonStyle(statusFilter === s)}
+                aria-selected={statusFilter === s}
               >
                 {cap(s)}
               </button>
@@ -192,26 +192,6 @@ const filtersStyle: CSSProperties = {
   padding: "0 1.5rem 1rem",
 };
 
-const tabShellStyle: CSSProperties = {
-  display: "flex",
-  gap: "0.25rem",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-container)",
-};
-
-const tabButtonStyle = (active: boolean): CSSProperties => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "pointer",
-});
-
 const filterHintStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.8rem",
@@ -245,8 +225,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const tdStyle: CSSProperties = {

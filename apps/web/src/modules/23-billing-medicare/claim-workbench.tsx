@@ -183,19 +183,23 @@ export function ClaimWorkbench(): JSX.Element {
             </span>
           }
         >
-          <select
-            aria-label="Claim state"
-            value={filters.state}
-            onChange={(e) => setFilters((f) => ({ ...f, state: e.target.value }))}
-            style={selectStyle}
-          >
-            <option value="">State: All</option>
-            {CLAIM_STATES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </select>
+          <label className="wx-filter-field">
+            <span>State</span>
+            <select
+              className="wx-select"
+              aria-label="Claim state"
+              value={filters.state}
+              onChange={(e) => setFilters((f) => ({ ...f, state: e.target.value }))}
+              style={selectStyle}
+            >
+              <option value="">All</option>
+              {CLAIM_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {statusLabel(s)}
+                </option>
+              ))}
+            </select>
+          </label>
           <div style={{ minWidth: "15rem" }}>
             <ProviderEntityLookupField
               label="Provider entity"
@@ -496,8 +500,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const tdStyle: CSSProperties = {
   padding: "0.65rem 0.75rem",
@@ -513,14 +515,6 @@ const selectStyle = {
   fontSize: "0.85rem",
 };
 const inputStyle = { ...selectStyle, minWidth: "10rem", height: "2.25rem" };
-const inputIconStyle: CSSProperties = {
-  position: "absolute",
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none",
-};
 const primaryButtonStyle = {
   padding: "0.4rem 0.85rem",
   borderRadius: "var(--radius-md)",

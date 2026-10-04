@@ -119,8 +119,8 @@ export function IpuUnits(): JSX.Element {
             </div>
           ) : null}
           <div style={toolbarStyle}>
-            <div style={searchBoxStyle}>
-              <Glyph name="eye" size={14} />
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search unit name or ID..."
@@ -130,35 +130,40 @@ export function IpuUnits(): JSX.Element {
                   setPage(1);
                 }}
                 aria-label="Search inpatient units"
-                style={searchInputStyle}
               />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as StatusFilter);
-                setPage(1);
-              }}
-              aria-label="Filter units by status"
-              style={selectStyle}
-            >
-              <option value="all">Status: All</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            <select
-              value={coverageFilter}
-              onChange={(e) => {
-                setCoverageFilter(e.target.value as CoverageFilter);
-                setPage(1);
-              }}
-              aria-label="Filter units by RN coverage"
-              style={selectStyle}
-            >
-              <option value="all">RN coverage: All</option>
-              <option value="covered">24h+ covered</option>
-              <option value="short">Under 24h</option>
-            </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Status</span>
+              <select
+                className="wx-select"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as StatusFilter);
+                  setPage(1);
+                }}
+                aria-label="Filter units by status"
+              >
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>RN coverage</span>
+              <select
+                className="wx-select"
+                value={coverageFilter}
+                onChange={(e) => {
+                  setCoverageFilter(e.target.value as CoverageFilter);
+                  setPage(1);
+                }}
+                aria-label="Filter units by RN coverage"
+              >
+                <option value="all">All</option>
+                <option value="covered">24h+ covered</option>
+                <option value="short">Under 24h</option>
+              </select>
+            </label>
             {hasActiveFilters ? (
               <Button size="sm" tone="tertiary" onClick={clearFilters}>
                 Clear
@@ -282,27 +287,6 @@ const toolbarStyle: CSSProperties = {
   gap: "0.5rem",
 };
 
-const searchBoxStyle: CSSProperties = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  minWidth: "min(100%, 17rem)",
-  color: "var(--color-on-surface-variant)",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  height: "2.25rem",
-  paddingLeft: "2rem",
-  fontSize: "0.85rem",
-};
-
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
@@ -328,7 +312,6 @@ const thStyle: CSSProperties = {
   padding: "0.75rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {

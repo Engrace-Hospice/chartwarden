@@ -150,39 +150,19 @@ export function AuditLogViewer(): JSX.Element {
               gap: "1rem",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                gap: "0.25rem",
-                background: "var(--color-surface-container)",
-                padding: "0.2rem",
-                borderRadius: "var(--radius-md)",
-              }}
-            >
-              <button type="button" style={tabButtonStyle(true)}>
-                Event ledger ({items.length})
-              </button>
-            </div>
+            <span className="wx-toolbar-count">Event ledger · {items.length}</span>
 
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   aria-label="Action / event type"
                   placeholder="Search action..."
                   value={filters.eventType}
                   onChange={(e) => setFilters((f) => ({ ...f, eventType: e.target.value }))}
-                  style={{
-                    width: "100%",
-                    paddingLeft: "2rem",
-                    height: "2.25rem",
-                    fontSize: "0.85rem",
-                  }}
                 />
-                <div style={searchIconStyle}>
-                  <Glyph name="eye" size={14} />
-                </div>
-              </div>
+              </label>
 
               <input
                 aria-label="Entity type"
@@ -191,28 +171,36 @@ export function AuditLogViewer(): JSX.Element {
                 onChange={(e) => setFilters((f) => ({ ...f, resourceKind: e.target.value }))}
                 style={{ minWidth: "9rem", height: "2.25rem", fontSize: "0.85rem" }}
               />
-              <select
-                aria-label="Outcome"
-                value={filters.outcome}
-                onChange={(e) => setFilters((f) => ({ ...f, outcome: e.target.value }))}
-                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-              >
-                <option value="">Outcome: All</option>
-                <option value="success">Success</option>
-                <option value="failure">Failure</option>
-                <option value="denied">Denied</option>
-              </select>
-              <select
-                aria-label="Severity"
-                value={filters.severity}
-                onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}
-                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-              >
-                <option value="">Severity: All</option>
-                <option value="info">Info</option>
-                <option value="warn">Warn</option>
-                <option value="critical">Critical</option>
-              </select>
+              <label className="wx-filter-field">
+                <span>Outcome</span>
+                <select
+                  className="wx-select"
+                  aria-label="Outcome"
+                  value={filters.outcome}
+                  onChange={(e) => setFilters((f) => ({ ...f, outcome: e.target.value }))}
+                  style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                >
+                  <option value="">All</option>
+                  <option value="success">Success</option>
+                  <option value="failure">Failure</option>
+                  <option value="denied">Denied</option>
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Severity</span>
+                <select
+                  className="wx-select"
+                  aria-label="Severity"
+                  value={filters.severity}
+                  onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}
+                  style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                >
+                  <option value="">All</option>
+                  <option value="info">Info</option>
+                  <option value="warn">Warn</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
               <select
                 aria-label="Events per page"
                 value={pageSize}
@@ -513,27 +501,12 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {
   padding: "0.75rem 1rem",
   verticalAlign: "middle" as const,
 };
-
-const tabButtonStyle = (active: boolean) => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "default",
-  transition: "all 0.15s ease",
-});
 
 const errorBannerStyle = {
   padding: "0.625rem 1rem",
@@ -553,15 +526,6 @@ const dismissButtonStyle = {
   color: "inherit",
   cursor: "pointer",
   fontWeight: 600,
-};
-
-const searchIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
 };
 
 const mutedCodeStyle = {

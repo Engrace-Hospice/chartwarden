@@ -137,24 +137,27 @@ export function LegalHolds(): JSX.Element {
                 gap: "1rem",
               }}
             >
-              <div style={tabShellStyle}>
+              <div className="wx-subtabs wx-subtabs-inline" role="tablist">
                 <button
                   type="button"
-                  style={tabButtonStyle(status === "active")}
+                  role="tab"
+                  aria-selected={status === "active"}
                   onClick={() => setStatus("active")}
                 >
                   Active
                 </button>
                 <button
                   type="button"
-                  style={tabButtonStyle(status === "released")}
+                  role="tab"
+                  aria-selected={status === "released"}
                   onClick={() => setStatus("released")}
                 >
                   Released
                 </button>
                 <button
                   type="button"
-                  style={tabButtonStyle(status === "")}
+                  role="tab"
+                  aria-selected={status === ""}
                   onClick={() => setStatus("")}
                 >
                   All
@@ -647,8 +650,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {
@@ -662,27 +663,6 @@ const tableHeaderRowStyle = {
   borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
 };
-
-const tabShellStyle = {
-  display: "flex",
-  gap: "0.25rem",
-  background: "var(--color-surface-container)",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-};
-
-const tabButtonStyle = (active: boolean) => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-});
 
 const errorBannerStyle = {
   padding: "0.625rem 1rem",
@@ -771,8 +751,6 @@ const releaseSectionStyle = {
 const sectionHeadingStyle = {
   margin: 0,
   fontSize: "0.8rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
 };
 

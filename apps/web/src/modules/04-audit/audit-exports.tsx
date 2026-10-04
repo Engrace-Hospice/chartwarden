@@ -132,11 +132,7 @@ export function AuditExports(): JSX.Element {
                 gap: "1rem",
               }}
             >
-              <div style={tabShellStyle}>
-                <button type="button" style={tabButtonStyle(true)}>
-                  Tracked exports ({ids.length})
-                </button>
-              </div>
+              <span className="wx-toolbar-count">Tracked exports · {ids.length}</span>
               <Button
                 type="button"
                 tone="secondary"
@@ -385,8 +381,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {
@@ -404,27 +398,6 @@ const tableHeaderRowStyle = {
 const tableRowStyle = {
   borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
-
-const tabShellStyle = {
-  display: "flex",
-  gap: "0.25rem",
-  background: "var(--color-surface-container)",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-};
-
-const tabButtonStyle = (active: boolean) => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "default",
-  transition: "all 0.15s ease",
-});
 
 const exportIconStyle = {
   width: "2.25rem",

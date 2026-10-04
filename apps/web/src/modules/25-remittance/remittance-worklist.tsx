@@ -17,6 +17,7 @@ import {
 // WorkQueueLayout + KpiStrip + No-Line table + §6.6 StatusPill via remittance-status.ts; CSS-var tokens only.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { BillingTabs } from "../../shell/billing-tabs";
 import { MATCH_STATE_TONE, PARSE_STATUS_TONE, humanize, money, toneOf } from "./remittance-status";
 
 interface AdviceRow {
@@ -134,9 +135,12 @@ export function RemittanceWorklist(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Remittance" breadcrumb="Revenue Cycle — 835 / ERA">
+        <PageHeader title="Billing / Remittances">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor received ERA envelopes, parse health, posted dollars, and manual-match backlog.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <BillingTabs />
           </div>
         </PageHeader>
       }
@@ -195,7 +199,8 @@ export function RemittanceWorklist(): JSX.Element {
             </div>
           ) : null}
           <div style={filterRowStyle}>
-            <div style={{ position: "relative", minWidth: "16rem" }}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search payer, method, claim, amount..."
@@ -206,12 +211,8 @@ export function RemittanceWorklist(): JSX.Element {
                   setBacklogPage(1);
                 }}
                 aria-label="Search remittance"
-                style={searchInputStyle}
               />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
+            </label>
             <label style={filterLabelStyle}>
               <span style={mutedStyle}>Parse</span>
               <select
@@ -431,8 +432,6 @@ const tdNumStyle = {
 const headStyle = {
   ...cellStyle,
   fontSize: "0.72rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
   fontWeight: 600,
 };
@@ -464,20 +463,6 @@ const filterRowStyle = {
   alignItems: "flex-end",
 };
 const filterLabelStyle = { display: "flex", flexDirection: "column" as const, gap: "0.25rem" };
-const searchInputStyle = {
-  width: "100%",
-  paddingLeft: "2rem",
-  height: "2.25rem",
-  fontSize: "0.85rem",
-};
-const searchIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
-};
 const selectStyle = {
   height: "2.25rem",
   fontSize: "0.85rem",

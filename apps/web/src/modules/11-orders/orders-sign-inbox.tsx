@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -118,7 +119,8 @@ export function OrdersSignInbox(): JSX.Element {
                 <strong>{rows.length} matching orders</strong>
               </div>
               <div style={controlGroupStyle}>
-                <div style={searchWrapStyle}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search order or patient..."
@@ -128,42 +130,49 @@ export function OrdersSignInbox(): JSX.Element {
                       setPage(1);
                     }}
                     aria-label="Search orders awaiting signature"
-                    style={searchInputStyle}
                   />
-                </div>
-                <select
-                  aria-label="Order kind"
-                  value={kind}
-                  onChange={(e) => {
-                    setKind(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Kind: All</option>
-                  <option value="lab">Lab</option>
-                  <option value="dme">DME</option>
-                  <option value="level_of_care_change">Level of care</option>
-                  <option value="recertification">Recertification</option>
-                  <option value="comfort_kit">Comfort kit</option>
-                  <option value="supply">Supply</option>
-                  <option value="ancillary_service">Ancillary service</option>
-                  <option value="idg_requested">IDG requested</option>
-                </select>
-                <select
-                  aria-label="Priority"
-                  value={priority}
-                  onChange={(e) => {
-                    setPriority(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Priority: All</option>
-                  <option value="stat">STAT</option>
-                  <option value="asap">ASAP</option>
-                  <option value="routine">Routine</option>
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Kind</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Order kind"
+                    value={kind}
+                    onChange={(e) => {
+                      setKind(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    <option value="lab">Lab</option>
+                    <option value="dme">DME</option>
+                    <option value="level_of_care_change">Level of care</option>
+                    <option value="recertification">Recertification</option>
+                    <option value="comfort_kit">Comfort kit</option>
+                    <option value="supply">Supply</option>
+                    <option value="ancillary_service">Ancillary service</option>
+                    <option value="idg_requested">IDG requested</option>
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Priority</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Priority"
+                    value={priority}
+                    onChange={(e) => {
+                      setPriority(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    <option value="stat">STAT</option>
+                    <option value="asap">ASAP</option>
+                    <option value="routine">Routine</option>
+                  </select>
+                </label>
                 {activeFilters > 0 ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -360,8 +369,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const controlGroupStyle = {
@@ -369,17 +376,6 @@ const controlGroupStyle = {
   alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap" as const,
-};
-
-const searchWrapStyle = {
-  position: "relative" as const,
-  minWidth: "15rem",
-};
-
-const searchInputStyle = {
-  width: "100%",
-  height: "2.25rem",
-  fontSize: "0.85rem",
 };
 
 const selectStyle = {
@@ -438,8 +434,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

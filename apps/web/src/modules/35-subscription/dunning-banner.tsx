@@ -37,9 +37,9 @@ export function DunningBanner({
         gap: "1rem",
         padding: "1rem 1.25rem",
         borderRadius: "var(--radius-lg, 0.75rem)",
-        background: critical ? "var(--color-surface-container)" : "var(--color-surface-lowest)",
-        boxShadow: "var(--shadow-soft)",
-        borderLeft: `4px solid ${critical ? "var(--color-error)" : "var(--color-warning)"}`,
+        // Tinted notice (same treatment as the app's other alerts) instead of a side rail.
+        background: `color-mix(in srgb, ${critical ? "var(--color-error)" : "var(--color-warning)"} 8%, var(--color-surface-lowest))`,
+        border: `1px solid color-mix(in srgb, ${critical ? "var(--color-error)" : "var(--color-warning)"} 35%, transparent)`,
       }}
     >
       <StatusPill label={cap(stage)} tone={dunningTone(stage)} />

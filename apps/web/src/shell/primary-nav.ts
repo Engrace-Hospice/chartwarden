@@ -100,6 +100,8 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Billing",
         icon: "receipt",
         to: "/billing",
+        // Eligibility (Medicare HETS and Medicaid) is a Billing tab, so it stays under Billing — no
+        // separate sidebar entry for the highlight to jump to.
         claims: [
           "/billing",
           "/medicaid",
@@ -135,13 +137,6 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         icon: "stethoscope",
         to: "/me/visits",
         claims: ["/me/visits", "/evv", "/me/evv", "/safety", "/me/safety", "/triage", "/me/oncall"],
-      },
-      {
-        key: "eligibility",
-        label: "Eligibility",
-        icon: "shield-check",
-        to: "/billing/eligibility",
-        claims: ["/billing/eligibility", "/medicaid/billing/eligibility"],
       },
       {
         key: "communications",

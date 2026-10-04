@@ -43,7 +43,7 @@ import {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHIFT_PAGE = 200;
 
-const DISCIPLINE_FILTERS = [{ value: "", label: "Discipline: All" }].concat(
+const DISCIPLINE_FILTERS = [{ value: "", label: "All" }].concat(
   SHIFT_DISCIPLINES.map((discipline) => ({
     value: discipline,
     label: disciplineLabel(discipline),
@@ -291,52 +291,60 @@ export function OnCallShiftsScreen(): JSX.Element {
               })}
             </div>
             <div style={toolbarStyle}>
-              <div style={searchBoxStyle}>
-                <Glyph name="eye" size={14} />
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search shift, provider, actor, discipline..."
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   aria-label="Search on-call shifts"
-                  style={searchInputStyle}
                 />
-              </div>
-              <select
-                value={discipline}
-                onChange={(event) => setDiscipline(event.target.value)}
-                aria-label="Filter shifts by discipline"
-                style={selectStyle}
-              >
-                {DISCIPLINE_FILTERS.map((option) => (
-                  <option key={option.value || "all"} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value as StatusFilter)}
-                aria-label="Filter shifts by status"
-                style={selectStyle}
-              >
-                <option value="all">Status: All</option>
-                <option value="scheduled">Scheduled</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              <select
-                value={coverage}
-                onChange={(event) => setCoverage(event.target.value as CoverageFilter)}
-                aria-label="Filter shifts by coverage source"
-                style={selectStyle}
-              >
-                <option value="all">Source: All</option>
-                <option value="internal">Internal</option>
-                <option value="external">External</option>
-                <option value="m17">M17 synced</option>
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Discipline</span>
+                <select
+                  className="wx-select"
+                  value={discipline}
+                  onChange={(event) => setDiscipline(event.target.value)}
+                  aria-label="Filter shifts by discipline"
+                >
+                  {DISCIPLINE_FILTERS.map((option) => (
+                    <option key={option.value || "all"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Status</span>
+                <select
+                  className="wx-select"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value as StatusFilter)}
+                  aria-label="Filter shifts by status"
+                >
+                  <option value="all">All</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Source</span>
+                <select
+                  className="wx-select"
+                  value={coverage}
+                  onChange={(event) => setCoverage(event.target.value as CoverageFilter)}
+                  aria-label="Filter shifts by coverage source"
+                >
+                  <option value="all">All</option>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
+                  <option value="m17">M17 synced</option>
+                </select>
+              </label>
               {hasActiveFilters ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -672,21 +680,6 @@ const coverageRowStyle: CSSProperties = {
   background: "var(--color-surface-low)",
 };
 
-const searchBoxStyle: CSSProperties = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
-  minWidth: "min(100%, 20rem)",
-  color: "var(--color-on-surface-variant)",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  height: "2.25rem",
-  paddingLeft: "2rem",
-  fontSize: "0.85rem",
-};
-
 const selectStyle: CSSProperties = {
   height: "2.25rem",
   fontSize: "0.85rem",
@@ -718,7 +711,6 @@ const thStyle: CSSProperties = {
   padding: "0.75rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {
@@ -836,7 +828,6 @@ const labelStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
   fontWeight: 650,
-  textTransform: "uppercase",
 };
 
 const inputStyle: CSSProperties = {

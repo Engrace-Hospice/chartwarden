@@ -186,9 +186,7 @@ function Metric({
   tone: "neutral" | "info" | "success" | "warning";
 }): JSX.Element {
   return (
-    <div style={{ borderLeft: `3px solid ${accent}`, borderRadius: "var(--radius-xl)" }}>
-      <KpiCard label={metricLabel} value={value} detail={detail} tone={tone} />
-    </div>
+    <KpiCard label={metricLabel} value={value} detail={detail} tone={tone} accentColor={accent} />
   );
 }
 
@@ -747,8 +745,6 @@ const eyebrow = {
   color: "var(--color-primary)",
   fontSize: "0.7rem",
   fontWeight: 700,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
 } as const;
 const matrixTitle = {
   margin: 0,
@@ -835,6 +831,4 @@ const sectionTitle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.7rem",
   fontWeight: 700,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
 } as const;

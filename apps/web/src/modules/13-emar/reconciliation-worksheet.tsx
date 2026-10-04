@@ -435,8 +435,6 @@ const panel: CSSProperties = {
 const sectionTitle: CSSProperties = {
   fontSize: "0.6875rem",
   fontWeight: 600,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
   color: "var(--color-muted)",
   margin: 0,
 };

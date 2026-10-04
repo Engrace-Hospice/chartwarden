@@ -62,8 +62,6 @@ const cell: CSSProperties = {
 const head: CSSProperties = {
   ...cell,
   fontSize: "0.72rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
   color: t.onSurfaceVariant,
   fontWeight: 600,
 };

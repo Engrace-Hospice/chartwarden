@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -161,7 +162,8 @@ export function EvvDeviceRoster({
                 ) : null}
               </div>
               <div style={controlGroupStyle}>
-                <div style={searchWrapStyle}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search device, clinician, model..."
@@ -171,41 +173,48 @@ export function EvvDeviceRoster({
                       setPage(1);
                     }}
                     aria-label="Search EVV devices"
-                    style={searchInputStyle}
                   />
-                </div>
-                <select
-                  aria-label="Device status"
-                  value={status}
-                  onChange={(e) => {
-                    setStatus(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Status: All</option>
-                  <option value="pending_approval">Pending approval</option>
-                  <option value="approved">Approved</option>
-                  <option value="suspended">Suspended</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="retired">Retired</option>
-                </select>
-                <select
-                  aria-label="Device platform"
-                  value={platform}
-                  onChange={(e) => {
-                    setPlatform(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">Platform: All</option>
-                  {platformOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {stateLabel(option)}
-                    </option>
-                  ))}
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Status</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Device status"
+                    value={status}
+                    onChange={(e) => {
+                      setStatus(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    <option value="pending_approval">Pending approval</option>
+                    <option value="approved">Approved</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="retired">Retired</option>
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Platform</span>
+                  <select
+                    className="wx-select"
+                    aria-label="Device platform"
+                    value={platform}
+                    onChange={(e) => {
+                      setPlatform(e.target.value);
+                      setPage(1);
+                    }}
+                    style={selectStyle}
+                  >
+                    <option value="">All</option>
+                    {platformOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {stateLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {activeFilters > 0 ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -396,8 +405,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const controlGroupStyle = {
@@ -405,16 +412,6 @@ const controlGroupStyle = {
   alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap" as const,
-};
-
-const searchWrapStyle = {
-  minWidth: "15rem",
-};
-
-const searchInputStyle = {
-  width: "100%",
-  height: "2.25rem",
-  fontSize: "0.85rem",
 };
 
 const selectStyle = {
@@ -471,8 +468,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

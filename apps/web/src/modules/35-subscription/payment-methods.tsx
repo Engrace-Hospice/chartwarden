@@ -321,8 +321,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const tdStyle: CSSProperties = {

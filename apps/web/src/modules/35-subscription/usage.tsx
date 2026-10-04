@@ -219,8 +219,6 @@ const sectionTitle = {
   margin: 0,
   fontSize: "0.6875rem",
   fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
   color: "var(--color-on-surface-variant)",
 } as const;
 const hCell = { padding: "0.5rem 0.75rem" } as const;

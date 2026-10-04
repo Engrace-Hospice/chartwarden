@@ -26,11 +26,25 @@ describe("buildPrimaryNav", () => {
     }
   });
 
-  it("uses the longest matching claim, so Eligibility wins over Billing", () => {
-    const nav = buildPrimaryNav([screen("/billing"), screen("/billing/eligibility")]);
+  it("uses the longest matching claim, so Integrations wins over Billing", () => {
+    const nav = buildPrimaryNav([screen("/billing"), screen("/billing/mac-credentials")]);
     const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
-    expect(byKey.get("eligibility")?.href).toBe("/billing/eligibility");
+    expect(byKey.get("integrations")?.href).toBe("/billing/mac-credentials");
     expect(byKey.get("billing")?.href).toBe("/billing");
+  });
+
+  it("keeps Eligibility under Billing (it is a Billing tab), Medicare and Medicaid alike", () => {
+    const nav = buildPrimaryNav([
+      screen("/billing"),
+      screen("/billing/eligibility"),
+      screen("/medicaid/billing/eligibility"),
+    ]);
+    const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
+    expect(byKey.has("eligibility")).toBe(false);
+    expect(byKey.get("billing")?.children.map((c) => c.path)).toEqual(
+      expect.arrayContaining(["/billing/eligibility", "/medicaid/billing/eligibility"]),
+    );
+    expect(activeEntryKey(nav, "/billing/eligibility")).toBe("billing");
   });
 
   it("drops entries the actor cannot reach but always keeps Home", () => {

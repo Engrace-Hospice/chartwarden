@@ -334,13 +334,23 @@ export interface ConversationViewProps {
 export function ConversationView({ list, children, detail }: ConversationViewProps): JSX.Element {
   return (
     <div className="wx-conversation" style={fillColumn}>
-      <div style={splitRow}>
+      {/* One bordered card (list | thread), inset by the page gutter like the redesigned list tables. */}
+      <div
+        style={{
+          ...splitRow,
+          margin: `0 ${t.space5} ${t.space5}`,
+          border: `1px solid ${t.cardBorder}`,
+          borderRadius: t.radiusLg,
+          background: t.surfaceLowest,
+          overflow: "hidden",
+        }}
+      >
         <div
           className="wx-conversation-list"
           style={{
             width: "18rem",
             flexShrink: 0,
-            borderRight: ghostBorder,
+            borderRight: `1px solid ${t.cardBorder}`,
             overflow: "auto",
           }}
         >

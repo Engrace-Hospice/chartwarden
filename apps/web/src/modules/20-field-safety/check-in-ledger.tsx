@@ -5,6 +5,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -174,46 +175,54 @@ export function CheckInLedgerScreen(): JSX.Element {
               </strong>
             </div>
             <div style={controlGroupStyle}>
-              <input
-                type="search"
-                placeholder="Search clinician..."
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setPage(1);
-                }}
-                aria-label="Search clinician"
-                style={searchInputStyle}
-              />
-              <select
-                aria-label="Last check-in status"
-                value={status}
-                onChange={(event) => {
-                  setStatus(event.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value={ANY}>Status: Any</option>
-                <option value="ok">I'm OK</option>
-                <option value="concerned_continue">Concerned - continuing</option>
-                <option value="concerned_stop">Not OK - stopping</option>
-              </select>
-              <select
-                aria-label="Overdue rung"
-                value={rung}
-                onChange={(event) => {
-                  setRung(event.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value={ANY}>Rung: Any</option>
-                <option value="on_time">On time</option>
-                <option value="reminder">Reminder</option>
-                <option value="overdue">Overdue</option>
-                <option value="escalated">Escalated</option>
-              </select>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
+                <input
+                  type="search"
+                  placeholder="Search clinician..."
+                  value={name}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Search clinician"
+                />
+              </label>
+              <label className="wx-filter-field">
+                <span>Status</span>
+                <select
+                  className="wx-select"
+                  aria-label="Last check-in status"
+                  value={status}
+                  onChange={(event) => {
+                    setStatus(event.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value={ANY}>All</option>
+                  <option value="ok">I'm OK</option>
+                  <option value="concerned_continue">Concerned - continuing</option>
+                  <option value="concerned_stop">Not OK - stopping</option>
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Rung</span>
+                <select
+                  className="wx-select"
+                  aria-label="Overdue rung"
+                  value={rung}
+                  onChange={(event) => {
+                    setRung(event.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value={ANY}>All</option>
+                  <option value="on_time">On time</option>
+                  <option value="reminder">Reminder</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="escalated">Escalated</option>
+                </select>
+              </label>
               {activeFilters > 0 ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -489,8 +498,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const controlGroupStyle = {
   display: "flex",
@@ -530,8 +537,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 const tdStyle = {
   padding: "0.75rem 1rem",
@@ -575,6 +580,4 @@ const detailLabelStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.7rem",
   fontWeight: 650,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };

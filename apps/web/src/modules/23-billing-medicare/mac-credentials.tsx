@@ -248,53 +248,59 @@ export function MacCredentials(): JSX.Element {
                     : undefined
                 }
               >
-                <div style={{ position: "relative", width: "100%" }}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search credentials..."
+                    placeholder="Search credentials…"
                     aria-label="Search credentials"
-                    style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
                   />
-                  <span style={inputIconStyle}>
-                    <Glyph name="search" size={14} />
-                  </span>
-                </div>
-                <select
-                  value={jurisdictionFilter}
-                  onChange={(e) => setJurisdictionFilter(e.target.value)}
-                  aria-label="Filter by MAC jurisdiction"
-                  style={selectStyle}
-                >
-                  <option value="all">MAC: All</option>
-                  {MAC_JURISDICTIONS.map((m) => (
-                    <option key={m} value={m}>
-                      {macLabel(m)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={secretFilter}
-                  onChange={(e) => setSecretFilter(e.target.value)}
-                  aria-label="Filter by secret status"
-                  style={selectStyle}
-                >
-                  <option value="all">Secret: All</option>
-                  <option value="present">Secret on file</option>
-                  <option value="missing">No secret</option>
-                </select>
-                <select
-                  value={expiryFilter}
-                  onChange={(e) => setExpiryFilter(e.target.value)}
-                  aria-label="Filter by expiry"
-                  style={selectStyle}
-                >
-                  <option value="all">Expiry: All</option>
-                  <option value="active">Dated active</option>
-                  <option value="expired">Expired</option>
-                  <option value="none">No expiry</option>
-                </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>MAC</span>
+                  <select
+                    className="wx-select"
+                    value={jurisdictionFilter}
+                    onChange={(e) => setJurisdictionFilter(e.target.value)}
+                    aria-label="Filter by MAC jurisdiction"
+                  >
+                    <option value="all">All</option>
+                    {MAC_JURISDICTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {macLabel(m)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Secret</span>
+                  <select
+                    className="wx-select"
+                    value={secretFilter}
+                    onChange={(e) => setSecretFilter(e.target.value)}
+                    aria-label="Filter by secret status"
+                  >
+                    <option value="all">All</option>
+                    <option value="present">Secret on file</option>
+                    <option value="missing">No secret</option>
+                  </select>
+                </label>
+                <label className="wx-filter-field">
+                  <span>Expiry</span>
+                  <select
+                    className="wx-select"
+                    value={expiryFilter}
+                    onChange={(e) => setExpiryFilter(e.target.value)}
+                    aria-label="Filter by expiry"
+                  >
+                    <option value="all">All</option>
+                    <option value="active">Dated active</option>
+                    <option value="expired">Expired</option>
+                    <option value="none">No expiry</option>
+                  </select>
+                </label>
               </FilterBar>
             }
           />
@@ -759,14 +765,6 @@ const inputStyle = {
   fontSize: "0.85rem",
 };
 const selectStyle = { ...inputStyle, maxWidth: "16rem" };
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: t.onSurfaceVariant,
-  pointerEvents: "none" as const,
-};
 const linkButtonStyle = {
   display: "inline-flex",
   alignItems: "center",

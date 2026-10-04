@@ -631,7 +631,7 @@ export function CalendarPage(): JSX.Element {
         >
           <div className="wx-rail-filters">
             <RailSelect label="Staff" value={staffFilter} onChange={setStaffFilter}>
-              <option value="">All staff</option>
+              <option value="">All</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -639,7 +639,7 @@ export function CalendarPage(): JSX.Element {
               ))}
             </RailSelect>
             <RailSelect label="Visit type" value={purposeFilter} onChange={setPurposeFilter}>
-              <option value="">All visit types</option>
+              <option value="">All</option>
               {Object.entries(PURPOSES).map(([k, p]) => (
                 <option key={k} value={k}>
                   {p.label}
@@ -647,7 +647,7 @@ export function CalendarPage(): JSX.Element {
               ))}
             </RailSelect>
             <RailSelect label="Location" value={settingFilter} onChange={setSettingFilter}>
-              <option value="">All locations</option>
+              <option value="">All</option>
               {Object.entries(SETTINGS).map(([k, s]) => (
                 <option key={k} value={k}>
                   {s.label}
@@ -655,7 +655,7 @@ export function CalendarPage(): JSX.Element {
               ))}
             </RailSelect>
             <RailSelect label="Status" value={statusFilter} onChange={setStatusFilter}>
-              <option value="">All statuses</option>
+              <option value="">All</option>
               {Object.keys(VISIT_TONE).map((s) => (
                 <option key={s} value={s}>
                   {stateLabel(s)}

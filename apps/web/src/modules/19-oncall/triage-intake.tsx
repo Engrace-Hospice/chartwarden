@@ -487,7 +487,6 @@ const labelStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
   fontWeight: 650,
-  textTransform: "uppercase",
 };
 
 const inputStyle: CSSProperties = {

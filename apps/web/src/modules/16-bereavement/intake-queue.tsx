@@ -69,8 +69,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const tdStyle: CSSProperties = {
@@ -207,7 +205,8 @@ export function BereavementIntakeQueue(): JSX.Element {
               <div
                 style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}
               >
-                <div style={{ position: "relative", minWidth: "15rem" }}>
+                <label className="wx-search-field">
+                  <Glyph name="search" size={16} />
                   <input
                     type="search"
                     placeholder="Search plans by ID or death date..."
@@ -217,61 +216,50 @@ export function BereavementIntakeQueue(): JSX.Element {
                       setPage(1);
                     }}
                     aria-label="Search bereavement intake plans"
-                    style={{
-                      width: "100%",
-                      paddingLeft: "2rem",
-                      height: "2.25rem",
-                      fontSize: "0.85rem",
-                    }}
                   />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: "0.625rem",
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      color: "var(--color-on-surface-variant)",
-                      pointerEvents: "none",
+                </label>
+
+                <label className="wx-filter-field">
+                  <span>Status</span>
+                  <select
+                    className="wx-select"
+                    value={status}
+                    onChange={(event) => {
+                      setStatus(event.target.value);
+                      setPage(1);
+                      setSelectedPlanId(null);
                     }}
+                    aria-label="Filter by intake status"
+                    style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
                   >
-                    <Glyph name="search" size={14} />
-                  </div>
-                </div>
+                    {STATUSES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                <select
-                  value={status}
-                  onChange={(event) => {
-                    setStatus(event.target.value);
-                    setPage(1);
-                    setSelectedPlanId(null);
-                  }}
-                  aria-label="Filter by intake status"
-                  style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-                >
-                  {STATUSES.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      Status: {option.label}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={riskFilter}
-                  onChange={(event) => {
-                    setRiskFilter(event.target.value as RiskFilter);
-                    setPage(1);
-                  }}
-                  aria-label="Filter by risk tier"
-                  style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-                >
-                  <option value="all">Risk: All</option>
-                  <option value="low">Low</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="high">High</option>
-                  <option value="complicated">Complicated</option>
-                  <option value="unscored">Not yet scored</option>
-                  <option value="withheld">Not disclosed</option>
-                </select>
+                <label className="wx-filter-field">
+                  <span>Risk</span>
+                  <select
+                    className="wx-select"
+                    value={riskFilter}
+                    onChange={(event) => {
+                      setRiskFilter(event.target.value as RiskFilter);
+                      setPage(1);
+                    }}
+                    aria-label="Filter by risk tier"
+                  >
+                    <option value="all">All</option>
+                    <option value="low">Low</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="high">High</option>
+                    <option value="complicated">Complicated</option>
+                    <option value="unscored">Not yet scored</option>
+                    <option value="withheld">Not disclosed</option>
+                  </select>
+                </label>
 
                 {hasActiveFilters ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>

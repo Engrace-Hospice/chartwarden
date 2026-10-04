@@ -27,8 +27,6 @@ const cell = { padding: "0.55rem 0.75rem", textAlign: "left" as const };
 const head = {
   ...cell,
   fontSize: "0.72rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
   color: "var(--color-on-surface-variant)",
   fontWeight: 600,
 };

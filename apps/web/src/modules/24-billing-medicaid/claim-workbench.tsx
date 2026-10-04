@@ -278,43 +278,47 @@ export function MedicaidClaimWorkbench(): JSX.Element {
               </div>
             }
           >
-            <select
-              aria-label="Filter by claim state"
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              style={selectStyle}
-            >
-              {STATE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  State: {option.label}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Filter by kind"
-              value={kind}
-              onChange={(e) => setKind(e.target.value)}
-              style={selectStyle}
-            >
-              {KIND_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  Kind: {option.label}
-                </option>
-              ))}
-            </select>
-            <div style={{ position: "relative", width: "7rem" }}>
+            <label className="wx-filter-field">
+              <span>State</span>
+              <select
+                className="wx-select"
+                aria-label="Filter by claim state"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+              >
+                {STATE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Kind</span>
+              <select
+                className="wx-select"
+                aria-label="Filter by kind"
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+              >
+                {KIND_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field" style={{ flex: "0 0 7rem", minWidth: "7rem" }}>
+              <span>Service state</span>
               <input
                 aria-label="Service state"
                 value={serviceState}
                 maxLength={2}
                 placeholder="OR"
                 onChange={(e) => setServiceState(e.target.value)}
-                style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+                style={{ minHeight: "2.5rem", width: "100%" }}
               />
-              <span style={inputIconStyle}>
-                <Glyph name="shield" size={14} />
-              </span>
-            </div>
+            </label>
             <div style={{ minWidth: "12rem" }}>
               <MdmEntityLookupField kind="payer" label="MCO" value={mcoId} onChange={setMcoId} />
             </div>
@@ -502,14 +506,6 @@ const enhancedRowLine = {
   ...rowLine,
   borderTop: "none",
   borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none" as const,
 };
 const linkButtonStyle = {
   display: "inline-flex",

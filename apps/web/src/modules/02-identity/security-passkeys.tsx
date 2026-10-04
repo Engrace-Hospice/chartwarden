@@ -156,7 +156,7 @@ export function SecurityPasskeys(): JSX.Element {
 
             <div style={controlGroupStyle}>
               <div style={searchBoxStyle}>
-                <Glyph name="eye" size={14} />
+                <Glyph name="search" size={14} />
                 <input
                   type="search"
                   placeholder="Search passkeys..."
@@ -169,20 +169,23 @@ export function SecurityPasskeys(): JSX.Element {
                   style={embeddedSearchInputStyle}
                 />
               </div>
-              <select
-                value={deviceFilter}
-                onChange={(e) => {
-                  setDeviceFilter(e.target.value as typeof deviceFilter);
-                  setPage(1);
-                }}
-                aria-label="Filter by authenticator type"
-                style={selectStyle}
-              >
-                <option value="all">Device: All</option>
-                <option value="platform">This device</option>
-                <option value="cross-platform">Security key</option>
-                <option value="unknown">Unknown</option>
-              </select>
+              <label className="wx-filter-field">
+                <span>Device</span>
+                <select
+                  className="wx-select"
+                  value={deviceFilter}
+                  onChange={(e) => {
+                    setDeviceFilter(e.target.value as typeof deviceFilter);
+                    setPage(1);
+                  }}
+                  aria-label="Filter by authenticator type"
+                >
+                  <option value="all">All</option>
+                  <option value="platform">This device</option>
+                  <option value="cross-platform">Security key</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
               {hasActiveFilters ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -394,11 +397,6 @@ const embeddedSearchInputStyle: CSSProperties = {
   color: "var(--color-on-surface)",
   fontSize: "0.85rem",
 };
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
 const tableWrapStyle: CSSProperties = {
   width: "100%",
   overflowX: "auto",
@@ -423,8 +421,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const tdStyle: CSSProperties = {
   padding: "0.75rem 1rem",

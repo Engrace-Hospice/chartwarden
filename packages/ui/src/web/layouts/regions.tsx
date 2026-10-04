@@ -242,7 +242,8 @@ export function FilterBar({
         alignItems: "flex-end",
         justifyContent: "space-between",
         gap: "0.75rem",
-        margin: `0 ${t.space5} ${t.space4}`,
+        // No outer margin: a work queue's filter slot (.wx-work-filters) or the page's own content
+        // padding supplies the gutter.
         padding: "0.875rem 1rem",
         background: t.surfaceLowest,
         border: `1px solid ${t.cardBorder}`,
@@ -259,7 +260,7 @@ export function FilterBar({
               {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} applied
             </span>
           ) : null}
-          {onClear ? (
+          {onClear && activeFilterCount > 0 ? (
             <Button tone="tertiary" size="sm" onClick={onClear}>
               Clear filters
             </Button>

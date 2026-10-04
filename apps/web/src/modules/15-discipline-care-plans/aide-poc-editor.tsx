@@ -232,7 +232,7 @@ export function AidePocEditor(): JSX.Element {
     scopeText.trim() !== "" && frequencyText.trim() !== "" && frequencyValue.trim() !== "";
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Aide Plan of Care — editor</span>}
         breadcrumb="Clinical — 42 CFR §418.76(b) aide task list"

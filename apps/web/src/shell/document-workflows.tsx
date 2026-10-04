@@ -556,35 +556,43 @@ function DocumentCollection({
           </div>
 
           <div style={filterControls}>
-            <select
-              aria-label="Source"
-              value={sourceFilter}
-              onChange={(event) => setSourceFilter(event.target.value)}
-              style={select}
-            >
-              <option value="">Source: All</option>
+            <label className="wx-filter-field">
+              <span>Source</span>
+              <select
+                className="wx-select"
+                aria-label="Source"
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
+                style={select}
+              >
+                <option value="">All</option>
 
-              {sourceOptions.map((source) => (
-                <option key={source} value={source}>
-                  {sourceLabel(source)}
-                </option>
-              ))}
-            </select>
+                {sourceOptions.map((source) => (
+                  <option key={source} value={source}>
+                    {sourceLabel(source)}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-            <select
-              aria-label="Status"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              style={select}
-            >
-              <option value="">Status: All</option>
+            <label className="wx-filter-field">
+              <span>Status</span>
+              <select
+                className="wx-select"
+                aria-label="Status"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                style={select}
+              >
+                <option value="">All</option>
 
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {labelize(status)}
-                </option>
-              ))}
-            </select>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {labelize(status)}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             {activeSecondaryFilters > 0 ? (
               <button type="button" style={resetButton} onClick={clearSecondaryFilters}>
@@ -901,7 +909,7 @@ function PatientLibrary({
             setPage(1);
           }}
         >
-          <option value="">All types</option>
+          <option value="">All</option>
           {DOCUMENT_TYPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -916,7 +924,7 @@ function PatientLibrary({
             setPage(1);
           }}
         >
-          <option value="">All sources</option>
+          <option value="">All</option>
           {sourceOptions.map((o) => (
             <option key={o} value={o}>
               {sourceLabel(o)}
@@ -931,7 +939,7 @@ function PatientLibrary({
             setPage(1);
           }}
         >
-          <option value="">All statuses</option>
+          <option value="">All</option>
           {statusOptions.map((o) => (
             <option key={o} value={o}>
               {labelize(o)}
@@ -2177,10 +2185,8 @@ const headerCopy: CSSProperties = {
 
 const eyebrow: CSSProperties = {
   color: "var(--color-primary)",
-  fontSize: "0.72rem",
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.07em",
+  fontSize: "0.8125rem",
+  fontWeight: 500,
 };
 
 const pageTitle: CSSProperties = {
@@ -2405,8 +2411,6 @@ const listHeader: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.69rem",
   fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
 };
 
 const documentRow: CSSProperties = {
@@ -2919,8 +2923,6 @@ const fieldLabel: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.67rem",
   fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.045em",
 };
 
 const fieldValue: CSSProperties = {

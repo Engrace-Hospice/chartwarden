@@ -362,8 +362,6 @@ const metricLabelStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.72rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const metricValueStyle: CSSProperties = {

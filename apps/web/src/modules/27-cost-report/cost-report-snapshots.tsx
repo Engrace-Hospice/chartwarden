@@ -226,7 +226,8 @@ export function CostReportSnapshots(): JSX.Element {
                 setPage(1);
               }}
             />
-            <div style={{ position: "relative", minWidth: "17rem" }}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 placeholder="Search hash, snapshot, prior..."
@@ -236,12 +237,8 @@ export function CostReportSnapshots(): JSX.Element {
                   setPage(1);
                 }}
                 aria-label="Search snapshots"
-                style={searchInputStyle}
               />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
+            </label>
             <label style={filterLabelStyle}>
               <span style={mutedStyle}>Reason</span>
               <select
@@ -434,26 +431,6 @@ const filterLabelStyle: CSSProperties = {
 const mutedStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.8125rem",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  minHeight: "2.35rem",
-  padding: "0.45rem 0.75rem 0.45rem 2rem",
-  borderRadius: "0.5rem",
-  border: "1px solid var(--color-surface-container)",
-  background: "var(--color-surface)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-
-const searchIconStyle: CSSProperties = {
-  position: "absolute",
-  left: "0.65rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none",
 };
 
 const selectStyle: CSSProperties = {

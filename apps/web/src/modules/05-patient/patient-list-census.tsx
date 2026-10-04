@@ -191,7 +191,7 @@ export function PatientListCensus(): JSX.Element {
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               >
-                <option value="">Any status</option>
+                <option value="">All</option>
                 <option value="prospective">Prospective</option>
                 <option value="active">Active</option>
                 <option value="on_hold">On hold</option>
@@ -477,8 +477,6 @@ function Field({ label, children }: { label: string; children: JSX.Element }): J
         style={{
           fontSize: "0.6875rem",
           fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
           color: "var(--color-on-surface-variant)",
         }}
       >

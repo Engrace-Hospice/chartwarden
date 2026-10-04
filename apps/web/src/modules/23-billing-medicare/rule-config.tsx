@@ -164,48 +164,51 @@ export function RuleConfigEditor(): JSX.Element {
               </span>
             }
           >
-            <div style={{ position: "relative", minWidth: "13rem" }}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 aria-label="Search validation rules"
                 placeholder="Search rules..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                style={{ ...inputStyle, width: "100%", height: "2.25rem", paddingLeft: "2rem" }}
               />
-              <div style={inputIconStyle}>
-                <Glyph name="search" size={14} />
-              </div>
-            </div>
-            <select
-              aria-label="Filter by severity"
-              value={severityFilter}
-              onChange={(event) => setSeverityFilter(event.target.value as "" | Severity)}
-              style={{ ...selectStyle, height: "2.25rem" }}
-            >
-              <option value="">Severity: All</option>
-              {SEVERITIES.map((severity) => (
-                <option key={severity} value={severity}>
-                  {statusLabel(severity)}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Filter by rule status"
-              value={stateFilter}
-              onChange={(event) =>
-                setStateFilter(
-                  event.target.value as "" | "enabled" | "disabled" | "locked" | "custom",
-                )
-              }
-              style={{ ...selectStyle, height: "2.25rem" }}
-            >
-              <option value="">Status: All</option>
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-              <option value="locked">Locked</option>
-              <option value="custom">Custom</option>
-            </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Severity</span>
+              <select
+                className="wx-select"
+                aria-label="Filter by severity"
+                value={severityFilter}
+                onChange={(event) => setSeverityFilter(event.target.value as "" | Severity)}
+              >
+                <option value="">All</option>
+                {SEVERITIES.map((severity) => (
+                  <option key={severity} value={severity}>
+                    {statusLabel(severity)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="wx-filter-field">
+              <span>Status</span>
+              <select
+                className="wx-select"
+                aria-label="Filter by rule status"
+                value={stateFilter}
+                onChange={(event) =>
+                  setStateFilter(
+                    event.target.value as "" | "enabled" | "disabled" | "locked" | "custom",
+                  )
+                }
+              >
+                <option value="">All</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+                <option value="locked">Locked</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
           </FilterBar>
           <RuleRail rules={filteredRules} selectedId={selectedId} onSelect={setSelectedId} />
         </div>
@@ -630,14 +633,6 @@ const inputStyle = {
   background: t.surfaceLow,
   color: t.onSurface,
   fontSize: "0.85rem",
-};
-const inputIconStyle = {
-  position: "absolute" as const,
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: t.onSurfaceVariant,
-  pointerEvents: "none" as const,
 };
 const primaryButtonStyle = {
   padding: "0.45rem 0.95rem",

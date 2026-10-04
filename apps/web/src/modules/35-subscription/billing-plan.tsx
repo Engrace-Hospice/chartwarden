@@ -300,8 +300,6 @@ const chipLabelStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const currentSlugStyle: CSSProperties = {
@@ -384,10 +382,8 @@ const meterBlockStyle: CSSProperties = {
 
 const sectionEyebrowStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
-  fontSize: "0.72rem",
+  fontSize: "0.8125rem",
   fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
 };
 
 const meterTableStyle: CSSProperties = {
@@ -408,8 +404,6 @@ const thStyle: CSSProperties = {
   padding: "0.5rem 0.625rem",
   fontWeight: 600,
   fontSize: "0.68rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const tdStyle: CSSProperties = {

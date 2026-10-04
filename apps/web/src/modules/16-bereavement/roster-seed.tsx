@@ -125,7 +125,7 @@ export function BereavementRosterSeed(): JSX.Element {
   };
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Seed roster + schedule</span>}
         breadcrumb={`Bereavement — plan ${shortId(plan.planId)}`}

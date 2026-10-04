@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
@@ -238,7 +239,8 @@ export function QualityHub(): JSX.Element {
               <strong>{filteredMeasures.length} matching measures</strong>
             </div>
             <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search measure, domain, band..."
@@ -248,42 +250,49 @@ export function QualityHub(): JSX.Element {
                     setPage(1);
                   }}
                   aria-label="Search quality measures"
-                  style={searchInputStyle}
                 />
-              </div>
-              <select
-                aria-label="Measure domain"
-                value={domain}
-                onChange={(e) => {
-                  setDomain(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Domain: All</option>
-                {domainOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {DOMAIN_LABEL[option] ?? humanize(option)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Measure band"
-                value={band}
-                onChange={(e) => {
-                  setBand(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Band: All</option>
-                <option value="green">Green</option>
-                <option value="yellow">Yellow</option>
-                <option value="red">Red</option>
-                <option value="insufficient_n">Suppressed</option>
-                <option value="not_computable">Not computable here</option>
-                <option value="not_computed">Not computed</option>
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Domain</span>
+                <select
+                  className="wx-select"
+                  aria-label="Measure domain"
+                  value={domain}
+                  onChange={(e) => {
+                    setDomain(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">All</option>
+                  {domainOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {DOMAIN_LABEL[option] ?? humanize(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Band</span>
+                <select
+                  className="wx-select"
+                  aria-label="Measure band"
+                  value={band}
+                  onChange={(e) => {
+                    setBand(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">All</option>
+                  <option value="green">Green</option>
+                  <option value="yellow">Yellow</option>
+                  <option value="red">Red</option>
+                  <option value="insufficient_n">Suppressed</option>
+                  <option value="not_computable">Not computable here</option>
+                  <option value="not_computed">Not computed</option>
+                </select>
+              </label>
               {activeFilters > 0 ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -475,8 +484,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const controlGroupStyle = {
@@ -484,16 +491,6 @@ const controlGroupStyle = {
   alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap" as const,
-};
-
-const searchWrapStyle = {
-  minWidth: "15rem",
-};
-
-const searchInputStyle = {
-  width: "100%",
-  height: "2.25rem",
-  fontSize: "0.85rem",
 };
 
 const selectStyle = {
@@ -550,8 +547,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

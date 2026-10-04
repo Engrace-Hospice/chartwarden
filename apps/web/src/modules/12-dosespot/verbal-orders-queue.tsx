@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -142,7 +143,8 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
               <strong>{rows.length} matching verbal medications</strong>
             </div>
             <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search drug, patient, prescriber..."
@@ -152,41 +154,48 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
                     setPage(1);
                   }}
                   aria-label="Search verbal medication orders"
-                  style={searchInputStyle}
                 />
-              </div>
-              <select
-                aria-label="Medication class"
-                value={medClass}
-                onChange={(e) => {
-                  setMedClass(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Class: All</option>
-                {medClassOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Named prescriber"
-                value={prescriber}
-                onChange={(e) => {
-                  setPrescriber(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Prescriber: All</option>
-                {prescriberOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {shortId(option)}
-                  </option>
-                ))}
-              </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Class</span>
+                <select
+                  className="wx-select"
+                  aria-label="Medication class"
+                  value={medClass}
+                  onChange={(e) => {
+                    setMedClass(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">All</option>
+                  {medClassOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Prescriber</span>
+                <select
+                  className="wx-select"
+                  aria-label="Named prescriber"
+                  value={prescriber}
+                  onChange={(e) => {
+                    setPrescriber(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">All</option>
+                  {prescriberOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {shortId(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {activeFilters > 0 ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -363,8 +372,6 @@ const toolbarTitleStyle = {
 const toolbarEyebrowStyle = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const controlGroupStyle = {
@@ -372,16 +379,6 @@ const controlGroupStyle = {
   alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap" as const,
-};
-
-const searchWrapStyle = {
-  minWidth: "15rem",
-};
-
-const searchInputStyle = {
-  width: "100%",
-  height: "2.25rem",
-  fontSize: "0.85rem",
 };
 
 const selectStyle = {
@@ -440,8 +437,6 @@ const thStyle = {
   padding: "0.625rem 1rem",
   fontWeight: 600,
   fontSize: "0.75rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
 };
 
 const tdStyle = {

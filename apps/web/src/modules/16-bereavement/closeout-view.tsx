@@ -102,7 +102,7 @@ export function BereavementCloseoutView(): JSX.Element {
   const activeContacts = plan.contacts.filter((c) => c.status === "active");
 
   return (
-    <div style={columnStyle}>
+    <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Bereavement closeout</span>}
         breadcrumb={`Bereavement — plan ${shortId(planId)}`}

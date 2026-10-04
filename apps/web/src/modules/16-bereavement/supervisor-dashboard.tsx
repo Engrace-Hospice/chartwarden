@@ -59,8 +59,6 @@ const thStyle: CSSProperties = {
   padding: "0.625rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 
 const tdStyle: CSSProperties = {
@@ -248,7 +246,8 @@ export function BereavementSupervisorDashboard(): JSX.Element {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
                 <input
                   type="search"
                   placeholder="Search metrics..."
@@ -258,42 +257,27 @@ export function BereavementSupervisorDashboard(): JSX.Element {
                     setPage(1);
                   }}
                   aria-label="Search bereavement program metrics"
-                  style={{
-                    width: "100%",
-                    paddingLeft: "2rem",
-                    height: "2.25rem",
-                    fontSize: "0.85rem",
-                  }}
                 />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "0.625rem",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--color-on-surface-variant)",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <Glyph name="search" size={14} />
-                </div>
-              </div>
+              </label>
 
-              <select
-                value={categoryFilter}
-                onChange={(event) => {
-                  setCategoryFilter(event.target.value as MetricCategory);
-                  setPage(1);
-                }}
-                aria-label="Filter by metric category"
-                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-              >
-                <option value="all">Category: All</option>
-                <option value="plans">Plans</option>
-                <option value="touchpoints">Touchpoints</option>
-                <option value="risk">Risk</option>
-                <option value="closures">Closures</option>
-              </select>
+              <label className="wx-filter-field">
+                <span>Category</span>
+                <select
+                  className="wx-select"
+                  value={categoryFilter}
+                  onChange={(event) => {
+                    setCategoryFilter(event.target.value as MetricCategory);
+                    setPage(1);
+                  }}
+                  aria-label="Filter by metric category"
+                >
+                  <option value="all">All</option>
+                  <option value="plans">Plans</option>
+                  <option value="touchpoints">Touchpoints</option>
+                  <option value="risk">Risk</option>
+                  <option value="closures">Closures</option>
+                </select>
+              </label>
 
               {hasActiveFilters ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>

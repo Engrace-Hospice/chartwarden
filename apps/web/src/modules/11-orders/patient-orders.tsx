@@ -892,8 +892,8 @@ function StatCard({
         <Glyph name={icon} size={24} strokeWidth={1.6} />
       </span>
       <div style={{ minWidth: 0 }}>
+        <div className="wx-stat-label">{label}</div>
         <strong className="wx-stat-value wx-nums">{value}</strong>
-        <div style={{ color: t.onSurface, fontSize: "0.875rem" }}>{label}</div>
         <div className="wx-stat-label">{hint}</div>
       </div>
     </div>

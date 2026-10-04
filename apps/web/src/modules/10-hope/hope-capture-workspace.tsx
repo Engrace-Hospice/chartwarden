@@ -458,8 +458,6 @@ const labelStyle: CSSProperties = {
   color: t.muted,
   fontSize: "0.72rem",
   fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
 };
 const factValue: CSSProperties = { color: t.onSurface, fontSize: "0.9rem" };
 const formGrid: CSSProperties = {
