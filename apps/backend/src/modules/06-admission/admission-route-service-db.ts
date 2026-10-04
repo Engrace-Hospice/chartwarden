@@ -19,6 +19,10 @@ import {
   type PatientIntakeResolver,
   ValidationError,
   WardenXError,
+  isValidMedicaidNumber,
+  isValidMedicareNumber,
+  normalizeMedicaidNumber,
+  normalizeMedicareNumber,
 } from "@wardenx/types";
 import type { LevelOfCare } from "@wardenx/types";
 import {
@@ -373,6 +377,41 @@ const toSummary = (r: {
   patientId: r.patientId ?? null,
 });
 
+/**
+ * Referral intake's Medicare number: normalized ("1EG4-TE5-MK73" → "1EG4TE5MK73"), "" → null, and held
+ * to the CMS MBI format — a typo is a 422 on the field, not a broken chart identifier later.
+ */
+function referralMedicareNumber(raw: string | undefined): string | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const mbi = normalizeMedicareNumber(raw);
+  if (!isValidMedicareNumber(mbi)) {
+    throw new ValidationError("Medicare number is not a valid MBI", [
+      {
+        field: "medicareNumberAtReceipt",
+        code: "INVALID_MBI",
+        message: "Enter the 11-character Medicare Beneficiary Identifier (e.g. 1EG4-TE5-MK73).",
+      },
+    ]);
+  }
+  return mbi;
+}
+
+/** Referral intake's Medicaid number: normalized, "" → null, 1-14 letters/digits (HOPE A0700). */
+function referralMedicaidNumber(raw: string | undefined): string | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const id = normalizeMedicaidNumber(raw);
+  if (!isValidMedicaidNumber(id)) {
+    throw new ValidationError("Medicaid number is not valid", [
+      {
+        field: "medicaidNumberAtReceipt",
+        code: "INVALID_MEDICAID_NUMBER",
+        message: "Enter the Medicaid number: up to 14 letters and digits.",
+      },
+    ]);
+  }
+  return id;
+}
+
 function toReferralReadView(
   r: {
     id: string;
@@ -382,6 +421,8 @@ function toReferralReadView(
     patientResolutionStatus: string;
     patientNameAtReceipt: string;
     patientDobAtReceipt: string | null;
+    medicareNumberAtReceipt: string | null;
+    medicaidNumberAtReceipt: string | null;
     referringDxText: string | null;
     icd10TerminalPrimary: string | null;
     sourceChannel: string;
@@ -410,6 +451,8 @@ function toReferralReadView(
     patientResolutionStatus: r.patientResolutionStatus,
     patientNameAtReceipt: r.patientNameAtReceipt,
     patientDobAtReceipt: r.patientDobAtReceipt,
+    medicareNumberAtReceipt: r.medicareNumberAtReceipt,
+    medicaidNumberAtReceipt: r.medicaidNumberAtReceipt,
     referringDxText: r.referringDxText,
     icd10TerminalPrimary: r.icd10TerminalPrimary,
     source: r.sourceChannel,
@@ -927,6 +970,7 @@ export function createDbAdmissionRouteService(
     patientResolutionStatus: string;
     patientNameAtReceipt: string;
     patientDobAtReceipt: string | null;
+    medicareNumberAtReceipt: string | null;
     referringDxText: string | null;
     referrerName: string | null;
     referrerOrganization: string | null;
@@ -940,6 +984,7 @@ export function createDbAdmissionRouteService(
         patientResolutionStatus: REF.patientResolutionStatus,
         patientNameAtReceipt: REF.patientNameAtReceipt,
         patientDobAtReceipt: REF.patientDobAtReceipt,
+        medicareNumberAtReceipt: REF.medicareNumberAtReceipt,
         referringDxText: REF.referringDxText,
         referrerName: REF.referrerName,
         referrerOrganization: REF.referrerOrganization,
@@ -1008,6 +1053,8 @@ export function createDbAdmissionRouteService(
     patientResolutionStatus: REF.patientResolutionStatus,
     patientNameAtReceipt: REF.patientNameAtReceipt,
     patientDobAtReceipt: REF.patientDobAtReceipt,
+    medicareNumberAtReceipt: REF.medicareNumberAtReceipt,
+    medicaidNumberAtReceipt: REF.medicaidNumberAtReceipt,
     referringDxText: REF.referringDxText,
     icd10TerminalPrimary: REF.icd10TerminalPrimary,
     sourceChannel: REF.sourceChannel,
@@ -1861,6 +1908,7 @@ export function createDbAdmissionRouteService(
               patientResolutionStatus: r.patientResolutionStatus,
               patientNameAtReceipt: r.patientNameAtReceipt,
               patientDobAtReceipt: r.patientDobAtReceipt,
+              medicareNumberAtReceipt: r.medicareNumberAtReceipt,
               referringDxText: r.referringDxText,
               referrerName: r.referrerName,
               referrerOrganization: r.referrerOrganization,
@@ -1887,6 +1935,7 @@ export function createDbAdmissionRouteService(
                 patientResolutionStatus: r.patientResolutionStatus,
                 patientNameAtReceipt: r.patientNameAtReceipt,
                 patientDobAtReceipt: r.patientDobAtReceipt,
+                medicareNumberAtReceipt: r.medicareNumberAtReceipt,
                 referringDxText: r.referringDxText,
                 referrerName: r.referrerName,
                 referrerOrganization: r.referrerOrganization,
@@ -2377,6 +2426,8 @@ export function createDbAdmissionRouteService(
             patientResolutionStatus: input.patientId ? "matched" : "unresolved",
             patientNameAtReceipt: input.patientNameAtReceipt,
             patientDobAtReceipt: input.patientDobAtReceipt ?? null,
+            medicareNumberAtReceipt: referralMedicareNumber(input.medicareNumberAtReceipt),
+            medicaidNumberAtReceipt: referralMedicaidNumber(input.medicaidNumberAtReceipt),
             referringDxText: input.referringDxText ?? null,
             referrerName: input.referrerName ?? null,
             referrerOrganization: input.referrerOrganization ?? null,
@@ -2400,6 +2451,15 @@ export function createDbAdmissionRouteService(
           null,
           r.status,
         );
+        const mbi = referralMedicareNumber(input.medicareNumberAtReceipt);
+        if (input.patientId && mbi) {
+          // Referral for an already-known patient: seed the chart's MBI when it has none.
+          await patientResolver().recordMedicareNumberIfMissing({
+            organizationId,
+            patientId: input.patientId,
+            medicareNumber: mbi,
+          });
+        }
         await outbox.publish(tx, {
           eventName: "m6.referral.received",
           payload: {
@@ -2425,6 +2485,14 @@ export function createDbAdmissionRouteService(
         const [r] = await tx
           .update(REF)
           .set({
+            medicareNumberAtReceipt:
+              input.medicareNumberAtReceipt === undefined
+                ? undefined
+                : referralMedicareNumber(input.medicareNumberAtReceipt),
+            medicaidNumberAtReceipt:
+              input.medicaidNumberAtReceipt === undefined
+                ? undefined
+                : referralMedicaidNumber(input.medicaidNumberAtReceipt),
             referringDxText: input.referringDxText,
             referrerName: input.referrerName,
             referrerOrganization: input.referrerOrganization,
@@ -2435,6 +2503,18 @@ export function createDbAdmissionRouteService(
           .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
           .returning({ id: REF.id, status: REF.status, version: REF.version });
         if (!r) return failStale(tx, REF, id, ifVersion);
+        const mbi =
+          input.medicareNumberAtReceipt === undefined
+            ? null
+            : referralMedicareNumber(input.medicareNumberAtReceipt);
+        if (cur.patientId && mbi) {
+          // Already linked to a patient: the number reaches the chart only if it has none (M5 decides).
+          await patientResolver().recordMedicareNumberIfMissing({
+            organizationId,
+            patientId: cur.patientId,
+            medicareNumber: mbi,
+          });
+        }
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -2550,6 +2630,7 @@ export function createDbAdmissionRouteService(
           organizationId,
           patientNameAtReceipt: cur.patientNameAtReceipt,
           patientDobAtReceipt: cur.patientDobAtReceipt,
+          medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
         });
         const nextResolution = result.outcome === "no_match" ? "unresolved" : "possible_match";
         const r = firstOrThrow(
@@ -2600,6 +2681,14 @@ export function createDbAdmissionRouteService(
         });
         if (!patient)
           throw new WardenXError("PATIENT_NOT_FOUND", "patient was not found in M5", 404);
+        // The referral's Medicare number reaches the chart only if the chart has none (M5 decides).
+        const medicareOnChart = cur.medicareNumberAtReceipt
+          ? await patientResolver().recordMedicareNumberIfMissing({
+              organizationId,
+              patientId: patient.id,
+              medicareNumber: cur.medicareNumberAtReceipt,
+            })
+          : null;
         const r = firstOrThrow(
           await tx
             .update(REF)
@@ -2627,6 +2716,7 @@ export function createDbAdmissionRouteService(
           r.status,
           {
             patientId: patient.id,
+            ...(medicareOnChart ? { medicareNumber: medicareOnChart } : {}),
           },
         );
         return { id: r.id, state: r.status, version: Number(r.version) };
@@ -2653,6 +2743,7 @@ export function createDbAdmissionRouteService(
           organizationId,
           patientNameAtReceipt: cur.patientNameAtReceipt,
           patientDobAtReceipt: cur.patientDobAtReceipt,
+          medicareNumberAtReceipt: cur.medicareNumberAtReceipt,
         });
         const r = firstOrThrow(
           await tx

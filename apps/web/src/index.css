@@ -1965,7 +1965,7 @@
   .wx-hope-nav li {
     position: relative;
   }
-  .wx-hope-nav li:not(:last-child)::after {
+  .wx-hope-nav > ol > li:not(:last-child)::after {
     content: "";
     position: absolute;
     left: 1.5rem;
@@ -1990,7 +1990,7 @@
   .wx-hope-nav button:hover {
     background: var(--color-surface-low);
   }
-  .wx-hope-nav li.active button {
+  .wx-hope-nav > ol > li.active > button {
     background: var(--color-primary-tint);
   }
   .wx-hope-nav button:focus-visible {
@@ -2034,7 +2034,7 @@
     font-size: 0.875rem;
     font-weight: 600;
   }
-  .wx-hope-nav li.active .wx-hope-nav-label {
+  .wx-hope-nav > ol > li.active .wx-hope-nav-label {
     color: var(--color-primary);
   }
   .wx-hope-nav-status {
@@ -2109,6 +2109,13 @@
     gap: 0.75rem;
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+  .wx-hope-action-error {
+    flex-basis: 100%;
+    margin: 0;
+    text-align: right;
+    color: var(--color-error);
+    font-size: 0.8125rem;
   }
   .wx-hope-progress {
     display: flex;
@@ -2261,25 +2268,20 @@
     font-size: 0.75rem;
     font-weight: 500;
   }
+  /* CMS item code: the same blue tag everywhere in HOPE, pushed to the right of its row. */
   .wx-cms-code {
     display: inline-block;
-    padding: 0.05rem 0.4rem;
-    border: 1px solid var(--color-card-border);
-    border-radius: var(--radius-sm);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    color: var(--color-muted);
-    background: var(--color-surface-low);
-    white-space: nowrap;
-    letter-spacing: 0.01em;
-  }
-  .wx-cms-code-primary {
+    flex-shrink: 0;
     margin-left: auto;
-    border-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    padding: 0.05rem 0.45rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 22%, transparent);
+    border-radius: var(--radius-sm);
     background: var(--color-primary-tint);
     color: var(--color-primary);
     font-size: 0.75rem;
     font-weight: 600;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
   }
   .wx-locked-value {
     position: relative;
@@ -2305,6 +2307,7 @@
     min-width: 0;
   }
   .wx-choice-fieldset > legend.wx-hope-field-label {
+    width: 100%;
     margin-bottom: 0.6rem;
     padding: 0;
   }
@@ -2330,6 +2333,18 @@
   .wx-tile.checked {
     border-color: var(--color-primary);
     background: var(--color-primary-tint);
+  }
+  /* A choice made unavailable by a mutually exclusive selection: visibly greyed, not clickable. */
+  .wx-tile.blocked,
+  .wx-option-row.blocked {
+    opacity: 0.45;
+    background: var(--color-surface-low);
+    border-style: dashed;
+    cursor: not-allowed;
+  }
+  .wx-tile.blocked:hover,
+  .wx-option-row.blocked:hover {
+    border-color: var(--color-card-border);
   }
   .wx-tile input,
   .wx-option-row input {
@@ -2378,10 +2393,6 @@
     font-size: 0.9375rem;
     font-weight: 700;
     color: var(--color-on-surface);
-  }
-  .wx-question-code {
-    color: var(--color-on-surface);
-    font-weight: 700;
   }
   .wx-option-rows {
     display: grid;
@@ -2454,6 +2465,297 @@
     background: color-mix(in srgb, var(--color-background) 92%, transparent);
     backdrop-filter: blur(6px);
     border-top: 1px solid var(--color-card-border);
+  }
+  /* Option 1 (guided): the active section's question groups nested under it in the rail. */
+  .wx-hope-subnav {
+    list-style: none;
+    margin: 0.125rem 0 0.375rem 2.25rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .wx-hope-nav .wx-hope-subnav button {
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8125rem;
+  }
+  .wx-hope-nav .wx-hope-subnav li.active button {
+    background: var(--color-primary-tint);
+    font-weight: 600;
+    color: var(--color-primary);
+  }
+  .wx-hope-nav .wx-hope-subnav li::after {
+    display: none;
+  }
+  .wx-hope-subnav-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 9999px;
+    border: 1.5px solid var(--color-outline);
+    background: var(--color-surface-lowest);
+  }
+  .wx-hope-subnav-active {
+    border: 4px solid var(--color-primary);
+  }
+  .wx-hope-subnav-complete {
+    border-color: var(--color-success);
+    background: var(--color-success);
+    color: var(--color-on-emphasis);
+  }
+  .wx-hope-subnav-progress {
+    border-color: var(--color-primary);
+  }
+  .wx-hope-subnav-attention {
+    border-color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 14%, var(--color-surface-lowest));
+  }
+  .wx-hope-subnav-label {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .wx-hope-subnav-count {
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: var(--color-error);
+  }
+  .wx-hope-step-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.625rem;
+    margin: 0.25rem 0 0;
+    font-size: 0.9375rem;
+    color: var(--color-on-surface);
+  }
+  .wx-hope-step-line span {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+  /* "Show all" switch — toggles Option 1 (guided) ↔ Option 2 (single page). */
+  .wx-hope-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-on-surface-variant);
+    cursor: pointer;
+    user-select: none;
+  }
+  .wx-hope-mode-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+  }
+  .wx-hope-mode-track {
+    position: relative;
+    width: 2.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    background: var(--color-surface-high);
+    border: 1px solid var(--color-card-border);
+    transition: background 0.15s;
+  }
+  .wx-hope-mode-track::after {
+    content: "";
+    position: absolute;
+    top: 0.125rem;
+    left: 0.125rem;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 9999px;
+    background: var(--color-surface-lowest);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+    transition: transform 0.15s;
+  }
+  .wx-hope-mode-toggle input:checked + .wx-hope-mode-track {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+  .wx-hope-mode-toggle input:checked + .wx-hope-mode-track::after {
+    transform: translateX(1rem);
+  }
+  .wx-hope-mode-toggle input:focus-visible + .wx-hope-mode-track {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  /* Option 2 (show all): sticky jump bar + section headings on one long page. */
+  .wx-hope-jumpbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0 -1.5rem;
+    padding: 0.625rem 1.5rem;
+    background: color-mix(in srgb, var(--color-background) 94%, transparent);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--color-card-border);
+  }
+  .wx-hope-jumpbar button {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: 9999px;
+    background: var(--color-surface-lowest);
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+    cursor: pointer;
+  }
+  .wx-hope-jumpbar button span {
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .wx-hope-jumpbar button.active {
+    border-color: var(--color-primary);
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+  }
+  .wx-hope-all-section {
+    scroll-margin-top: 4rem;
+  }
+  .wx-hope-all-section + .wx-hope-all-section {
+    margin-top: 1rem;
+  }
+  .wx-hope-all-section-title {
+    margin: 0 0 0.75rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  [data-hope-group] {
+    scroll-margin-top: 4.5rem;
+  }
+  .wx-rail-todo {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .wx-rail-todo-count {
+    font-size: 0.75rem;
+    color: var(--color-error);
+    white-space: nowrap;
+  }
+  /* SFV dialog: the same guided / show-all navigation as the workspace. */
+  .wx-sfv-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0.75rem 0;
+  }
+  .wx-sfv-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .wx-sfv-steps button {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    border: 1px solid var(--color-card-border);
+    background: var(--color-surface-lowest);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-on-surface-variant);
+    cursor: pointer;
+  }
+  .wx-sfv-steps button.done {
+    background: var(--color-success);
+    border-color: var(--color-success);
+    color: var(--color-on-emphasis);
+  }
+  .wx-sfv-steps button.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-sfv-questions {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .wx-sfv-questions.all {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wx-sfv-question {
+    margin: 0;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    min-width: 0;
+  }
+  .wx-sfv-question.answered {
+    border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-card-border));
+  }
+  .wx-sfv-question legend {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.25rem;
+  }
+  .wx-sfv-severity {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.625rem;
+  }
+  .wx-sfv-questions.all .wx-sfv-severity {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wx-sfv-stepnav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+  @media (max-width: 640px) {
+    .wx-sfv-questions.all,
+    .wx-sfv-severity {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  /* A HOPE answer that is not (or not the same) on the patient's chart — e.g. A0600B Medicare number. */
+  .wx-chart-note {
+    color: var(--color-on-surface-variant);
+  }
+  .wx-chart-note-warning {
+    color: var(--color-warning);
+  }
+  .wx-chart-note a {
+    font-weight: 600;
+    color: var(--color-primary);
+  }
+  .wx-chart-note-action {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-primary);
+    text-decoration: underline;
+    cursor: pointer;
   }
   .wx-hope-footer-note {
     font-size: 0.8125rem;

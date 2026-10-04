@@ -1,3 +1,4 @@
+import { ssnCmsProblem } from "@wardenx/types";
 import {
   type HopeRuleFinding,
   type HopeValidationContext,
@@ -368,6 +369,21 @@ const sectionARule: HopeValidationRule = {
   id: "hope-v1.00.1-section-a-consistency",
   evaluate(ctx) {
     const out: HopeRuleFinding[] = [];
+    // A0600A SSN — the CMS fatal format edits -3015 / -3001 / -3002 / -3003 (iQIES rejects the record).
+    const ssn = answerValue(ctx.answers, "A0600A");
+    const ssnProblem = typeof ssn === "string" ? ssnCmsProblem(ssn, { asStored: true }) : null;
+    if (ssnProblem) {
+      out.push(
+        finding({
+          ruleId: ssnProblem.ruleId,
+          severity: "error",
+          findingKind: "inconsistent_value",
+          itemCode: "A0600A",
+          section: "A",
+          message: `A0600A: ${ssnProblem.message}`,
+        }),
+      );
+    }
     if (
       ETHNICITY_EXCLUSIVE.some((code) => checked(ctx, code)) &&
       ETHNICITY_POSITIVE.some((code) => checked(ctx, code))

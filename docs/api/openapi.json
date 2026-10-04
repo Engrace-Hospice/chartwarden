@@ -171096,6 +171096,14 @@
                     "format": "date",
                     "type": "string"
                   },
+                  "medicareNumberAtReceipt": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "medicaidNumberAtReceipt": {
+                    "maxLength": 24,
+                    "type": "string"
+                  },
                   "referringDxText": {
                     "maxLength": 2000,
                     "type": "string"
@@ -171222,6 +171230,14 @@
                   "ifVersion"
                 ],
                 "properties": {
+                  "medicareNumberAtReceipt": {
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "medicaidNumberAtReceipt": {
+                    "maxLength": 24,
+                    "type": "string"
+                  },
                   "referringDxText": {
                     "maxLength": 2000,
                     "type": "string"

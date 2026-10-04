@@ -1,3 +1,4 @@
+import { isValidMedicaidNumber, isValidMedicareNumber } from "@wardenx/types";
 import {
   Button,
   DetailPageLayout,
@@ -53,6 +54,8 @@ export function ReferralDetail(): JSX.Element {
   const [terminalReason, setTerminalReason] = useState("");
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
   const [edit, setEdit] = useState({
+    medicareNumberAtReceipt: "",
+    medicaidNumberAtReceipt: "",
     referrerName: "",
     referrerOrganization: "",
     referrerPhone: "",
@@ -77,6 +80,8 @@ export function ReferralDetail(): JSX.Element {
       setActivity(activityRows);
       setPrimaryDiagnosisIcd10(ref.icd10TerminalPrimary ?? "");
       setEdit({
+        medicareNumberAtReceipt: ref.medicareNumberAtReceipt ?? "",
+        medicaidNumberAtReceipt: ref.medicaidNumberAtReceipt ?? "",
         referrerName: ref.referrerName ?? "",
         referrerOrganization: ref.referrerOrganization ?? "",
         referrerPhone: ref.referrerPhone ?? "",
@@ -115,6 +120,12 @@ export function ReferralDetail(): JSX.Element {
     r.patientResolutionStatus === "matched" || r.patientResolutionStatus === "created";
   const terminal = ["declined", "duplicate", "withdrawn", "converted"].includes(r.status);
   const canEditReferral = ["received", "under_review", "pending_information"].includes(r.status);
+  const mbiValid =
+    edit.medicareNumberAtReceipt.trim() === "" ||
+    isValidMedicareNumber(edit.medicareNumberAtReceipt);
+  const medicaidValid =
+    edit.medicaidNumberAtReceipt.trim() === "" ||
+    isValidMedicaidNumber(edit.medicaidNumberAtReceipt);
   const canReview = r.status === "received" || r.status === "pending_information";
   const canPending = r.status === "under_review";
   const canQualify = r.status === "under_review" && r.qualificationBlockers.length === 0;
@@ -421,7 +432,14 @@ export function ReferralDetail(): JSX.Element {
               <h2 style={heading}>Patient Information</h2>
 
               {r.patientId ? (
-                <PatientIntakeDetails patientId={r.patientId} onSaved={load} />
+                <PatientIntakeDetails
+                  patientId={r.patientId}
+                  onSaved={load}
+                  referralNumbers={{
+                    medicare: r.medicareNumberAtReceipt ?? null,
+                    medicaid: r.medicaidNumberAtReceipt ?? null,
+                  }}
+                />
               ) : (
                 <div style={resolvedBox}>
                   <strong>Resolve the patient first</strong>
@@ -441,6 +459,43 @@ export function ReferralDetail(): JSX.Element {
                   label="DOB at receipt"
                   value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
                 />
+                <label style={label}>
+                  Medicare number (MBI)
+                  <input
+                    value={edit.medicareNumberAtReceipt}
+                    disabled={!canEditReferral}
+                    placeholder="1EG4-TE5-MK73"
+                    maxLength={20}
+                    autoComplete="off"
+                    aria-invalid={!mbiValid}
+                    onChange={(ev) =>
+                      setEdit({ ...edit, medicareNumberAtReceipt: ev.target.value })
+                    }
+                  />
+                  {!mbiValid ? (
+                    <span role="alert" style={fieldError}>
+                      Enter the 11-character MBI (e.g. 1EG4-TE5-MK73).
+                    </span>
+                  ) : null}
+                </label>
+                <label style={label}>
+                  Medicaid number
+                  <input
+                    value={edit.medicaidNumberAtReceipt}
+                    disabled={!canEditReferral}
+                    maxLength={24}
+                    autoComplete="off"
+                    aria-invalid={!medicaidValid}
+                    onChange={(ev) =>
+                      setEdit({ ...edit, medicaidNumberAtReceipt: ev.target.value })
+                    }
+                  />
+                  {!medicaidValid ? (
+                    <span role="alert" style={fieldError}>
+                      Enter up to 14 letters and digits.
+                    </span>
+                  ) : null}
+                </label>
                 <ReadOnly label="Source channel" value={sourceLabel(r.source)} />
                 <ReadOnly
                   label="External referral ID"
@@ -493,7 +548,7 @@ export function ReferralDetail(): JSX.Element {
               <Button
                 size="sm"
                 tone="secondary"
-                disabled={!canEditReferral || busy === "save-info"}
+                disabled={!canEditReferral || !mbiValid || !medicaidValid || busy === "save-info"}
                 onClick={() =>
                   void run("save-info", async () => {
                     await patchReferral(client, r.id, {
@@ -881,6 +936,11 @@ const labelInline: CSSProperties = {
   gap: "0.3rem",
   fontSize: "0.8rem",
   fontWeight: 600,
+};
+const fieldError: CSSProperties = {
+  color: "var(--color-error)",
+  fontSize: "0.75rem",
+  fontWeight: 400,
 };
 const label: CSSProperties = {
   display: "grid",

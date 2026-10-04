@@ -8,7 +8,7 @@
 **Depends on:** 1 (Foundation — `packages/db`, `packages/tenancy`, `withOrgContext`, RLS generator, `audit()` helper, outbox helper, idempotency, error envelope), 2 (Identity — session/actor resolution), 3 (Authorization — `requirePermission` / `requireAbac` contract; the catalog this module contributes to), 4 (Audit — write-audit trigger generator, read-audit helper, destruction-cert workflow, retention classes), 5 (Patient & Demographics — `Patient`, `Payer`, `PrivacyFlag`), 29 (External Interfaces — inbound HL7 v2 ADT proposal-accepted outbox events consumed by the `AdmissionEventApplier`), 38 (Terminology — ICD-10 validation, hospice diagnosis value sets, level-of-care revenue/Q-code mapping), 39 (Consent & Authorization Management — election authority verification, DPOA gating for proxy-signed elections, 42 CFR Part 2 redaction), 40 (Master Data Management — `ExternalPhysician` for attending NPIs, `Facility` for transfer/place-of-service references, `ReferralSource`)
 **Consumed by:** 7 (Care Plan — initial care plan tied to admission), 8 (Encounters — visit notes scoped to active admission), 11 (Orders — orders gated by active election), 14 (IDG — meeting scope is the active caseload of admitted patients; also consumes `m6.referral.withdrawn` for the cancellation notification template), 16 (Bereavement — listens for `bereavement.eligible`), 22 (Document Management — listens for `election.signed`, `revocation.signed`, `discharge.executed`, `notice_of_rights.required`, `cti.signed` to render and store forms), 23 (Billing — Medicare — reads `ElectionPeriod`, `CertificationOfTerminalIllness`, `FaceToFaceEncounter`, `LevelOfCarePeriod`, `RevocationEvent`, `DischargeEvent`; owns the NOE/NOTR wire artifact and emits acceptance back to M6 via outbox), 26 (Cap Management — reads admission and discharge dates to drive cap accrual), 27 (Cost Report — patient-day census derives from M6), 28 (FHIR Gateway — maps Admission → `Encounter`/`EpisodeOfCare`, CTI → `Condition`/`Composition`), 30 (HQRP & Quality — survey readiness queries the F2F window log and CTI lateness register; also consumes `m6.applier.refused` and the `info`-severity external-signal windows), 33 (Reporting — admission/discharge/recert reports), 36 (Secure Messaging — subscribes to compliance-window outbox events), 37 (Inpatient Unit Management — admission's `LevelOfCarePeriod` drives IPU bed assignment for GIP/IRC)
 **Owns:** `apps/backend/src/modules/06-admission` (the admission spine, election periods, CTI/F2F compliance, the `AdmissionEventApplier`), `packages/domain/admission`, and the twelve owned tables (`referral`, `admission`, `election_period`, `election_statement`, `certification_of_terminal_illness`, `face_to_face_encounter`, `level_of_care_period`, `revocation_event`, `transfer_event`, `discharge_event`, `notice_of_rights_acknowledgment`, `compliance_window`, **`election_addendum`** — M06-F02/ADR-0015 D1).
-**Spec status:** Re-locked v0.6 (attending CTI signature is a billing prerequisite, not an activation gate — D3 amended; supersedes Re-locked v0.5)
+**Spec status:** Re-locked v0.7 (referral intake captures the patient's Medicare (MBI) and Medicaid numbers; supersedes Re-locked v0.6 — attending CTI signature is a billing prerequisite, not an activation gate — D3 amended; supersedes Re-locked v0.5)
 
 > **Phase-4 remediation (2026-06-11; ADR-0015) — 6 BLOCKERs.**
 > - **M06-F02:** `election_addendum` entity added (Patient Notification of Non-Covered Items, 418.24(c)) — a **condition of payment**: furnished within 5 days of election (72 h if requested later), signed/dated, versioned, amendable on POC change. The M21 non-covered DME path terminates here.
@@ -20,6 +20,7 @@
 
 ## Changelog
 
+- **v0.7 (Re-locked; 2026-10-04)** — Referral intake captures the patient's **Medicare number (MBI)** and **Medicaid number**: two `referral` columns (`medicare_number_at_receipt`, `medicaid_number_at_receipt`) with format CHECKs, added to the referral write-audit denylist (migration `0317_m6_referral_payer_numbers.sql`); `POST`/`PATCH /api/v1/referrals` accept both (normalized server-side; 422 on a malformed value). The MBI is recorded on the patient's chart through M5's `PatientIntakeResolver` (create-from-intake, or `recordMedicareNumberIfMissing` on match / when linked) without ever overwriting a chart MBI; the Medicaid number pre-fills the intake Coverage / Payers form (M5 keeps Medicaid IDs on `patient_payer`). See §2.2 "Payer numbers at intake".
 - **v0.6 (Re-locked)** — Aligned the period-1 attending-physician CTI signature with 42 CFR 418.22 and the as-built code. The attending signature is still required on the period-1 CTI when the patient has an attending, but it gates **claim submission** (M23 rule `cti_signed_per_period`, `packages/billing/src/rules/cti-signed.ts`), not admission activation: §418.22(a)(3) requires the written certification before the claim is submitted, not before care starts. `R-CTI-03` now enforces the attending sign on the CTI's `signByAttending` transition (attending NPI match); a period-1 CTI stays `awaiting_attending` — not `signed` — until then. Removed `attending_signed` from the §4.2.2 activate 412 list, the §5.2.3 wizard and §5.2.5 activation checklist, and the §8 `m6_admission_activation_blocked_total` reasons; D3 amended.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Closed the M29 forward-stub gap on the M6 side. Shipped the narrow M29 consumer surface: the `AdmissionEventApplier` service (internal, not a seam) consuming `m29.hl7_inbound_proposal.accepted` for `ownerModule='m6'`, handling three resource kinds (`discharge_event`, `admission_event`, `cancel_admission`); three new informational compliance window types (`concurrent_hospital_admission`, `external_discharge_notice`, `hl7_admission_cancellation`); the new `info` severity level; one new outbox event `m6.referral.withdrawn` (distinct from `m6.referral.declined`); the `m6.applier.refused` event; schema additions (three new `compliance_window_type` enum values, the `info` severity, the `withdrawn` referral status, the `referral.external_message_ref` JSONB column + GIN index, migration `0036_m6_v03_hl7_consumers.sql`); four decisions (D13–D16); five workflow acceptance criteria (W-M6-31 through W-M6-35); and five implementation tasks (T-M6-23 through T-M6-27). M6's state machines remained the only path to active-state mutations; M29 is a workflow-context contributor only.
@@ -149,6 +150,8 @@ erDiagram
         text referrer_phone
         text patient_name_at_receipt
         date patient_dob_at_receipt
+        text medicare_number_at_receipt "MBI from the referrer; CMS MBI format"
+        text medicaid_number_at_receipt "Medicaid ID from the referrer; 1-14 alphanumerics"
         text referring_dx_text "free-form before ICD assignment"
         text icd10_terminal_primary
         text source_channel "phone fax portal walk_in self_referral"
@@ -351,7 +354,9 @@ All M6 tables have the standard tenant-required columns (`organization_id`, `cre
 - `INDEX (organization_id, status, received_at DESC)` — referral inbox
 - `INDEX (patient_id)` — patient-side lookup
 - `INDEX USING GIN ((external_message_ref->'messageControlId')) WHERE external_message_ref IS NOT NULL` — cancel-admit matching from the `AdmissionEventApplier`
-- High-sensitivity columns (audit denylist): `patient_name_at_receipt`, `patient_dob_at_receipt`, `referring_dx_text`, `referrer_phone`
+- High-sensitivity columns (audit denylist): `patient_name_at_receipt`, `patient_dob_at_receipt`, `referring_dx_text`, `referrer_phone`, `medicare_number_at_receipt`, `medicaid_number_at_receipt`
+- `CHECK referral_medicare_number_format` — NULL or the CMS MBI format (`^[1-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y]{9}$`, the same rule as M5's `patient_identifier_mbi_format`); `CHECK referral_medicaid_number_format` — NULL or `^[A-Z0-9]{1,14}$` (the HOPE A0700 shape; state formats vary). Both are stored normalized: dashes/spaces removed, upper case (migration `0317_m6_referral_payer_numbers.sql`).
+- **Payer numbers at intake (v0.7).** The referral form captures the patient's Medicare number (MBI) and Medicaid number. The **MBI** reaches the chart through M5's `PatientIntakeResolver` (M5 §4.11): `createPatientFromIntake` writes it as the new patient's `mbi` identifier, and confirming a match (or creating / updating a referral already linked to a patient) calls `recordMedicareNumberIfMissing`, which adds it only when the chart has no active MBI — a differing chart MBI is reported, never overwritten (M5 D12). The **Medicaid number** is not copied automatically: M5 keeps a Medicaid ID on the `patient_payer` row, which needs the state payer the referral does not know, so the intake Coverage / Payers form (referral and admission screens) pre-fills the subscriber ID from the referral when Medicare or Medicaid coverage is picked; staff choose the payer and save. The MBI also sharpens patient matching at referral review.
 
 **`admission`**
 - `UNIQUE (organization_id, patient_id) WHERE status NOT IN ('discharged','bereavement','closed')` — a patient can have only one active or pending admission at a time
@@ -815,6 +820,8 @@ export const referrals = pgTable('referral', {
   referrerPhone: text('referrer_phone'),
   patientNameAtReceipt: text('patient_name_at_receipt').notNull(),
   patientDobAtReceipt: date('patient_dob_at_receipt'),
+  medicareNumberAtReceipt: text('medicare_number_at_receipt'),   // v0.7 — normalized MBI
+  medicaidNumberAtReceipt: text('medicaid_number_at_receipt'),   // v0.7 — normalized Medicaid ID
   referringDxText: text('referring_dx_text'),
   icd10TerminalPrimary: text('icd10_terminal_primary'),
   sourceChannel: referralSourceChannel('source_channel').notNull(),
@@ -1345,6 +1352,10 @@ CREATE TABLE referral (
   referrer_phone text,
   patient_name_at_receipt text NOT NULL,
   patient_dob_at_receipt date,
+  medicare_number_at_receipt text CHECK (medicare_number_at_receipt IS NULL
+    OR medicare_number_at_receipt ~ '^[1-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y]{9}$'),   -- v0.7 (0317)
+  medicaid_number_at_receipt text CHECK (medicaid_number_at_receipt IS NULL
+    OR medicaid_number_at_receipt ~ '^[A-Z0-9]{1,14}$'),                               -- v0.7 (0317)
   referring_dx_text text,
   icd10_terminal_primary text,
   source_channel referral_source_channel NOT NULL,
@@ -1713,7 +1724,8 @@ FROM wardenx_app;
 -- Write-audit triggers (M4 generator) — emits scrubbed before/after to audit_event.
 -- The denylist matches §2.2 (free-text and PII high-sensitivity columns).
 SELECT wardenx_generate_audit_trigger('referral', 'referral',
-  ARRAY['patient_name_at_receipt','patient_dob_at_receipt','referring_dx_text','referrer_phone']);
+  ARRAY['patient_name_at_receipt','patient_dob_at_receipt','referring_dx_text','referrer_phone',
+        'medicare_number_at_receipt','medicaid_number_at_receipt']);   -- v0.7: payer numbers (0317)
 SELECT wardenx_generate_audit_trigger('admission', 'admission',
   ARRAY['hold_reason']);
 SELECT wardenx_generate_audit_trigger('election_period', 'election_period', ARRAY[]::text[]);
@@ -1864,6 +1876,10 @@ Type.Object({
   receivingUserId: Type.String({ format:'uuid' }),
   patientNameAtReceipt: Type.String({ minLength:1, maxLength:200 }),
   patientDobAtReceipt: Type.Optional(Type.String({ format:'date' })),
+  // v0.7 — dashes/spaces allowed; normalized server-side. 422 INVALID_MBI / INVALID_MEDICAID_NUMBER
+  // on a malformed value. Also accepted (with "" = clear) on PATCH /api/v1/referrals/:id.
+  medicareNumberAtReceipt: Type.Optional(Type.String({ maxLength:20 })),
+  medicaidNumberAtReceipt: Type.Optional(Type.String({ maxLength:24 })),
   referringDxText: Type.Optional(Type.String({ maxLength:2000 })),
   referrerName: Type.Optional(Type.String({ maxLength:200 })),
   referrerOrganization: Type.Optional(Type.String({ maxLength:200 })),

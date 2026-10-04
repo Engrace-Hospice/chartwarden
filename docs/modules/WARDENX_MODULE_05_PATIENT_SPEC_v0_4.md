@@ -8,7 +8,7 @@
 **Owns:** `apps/backend/src/modules/05-patient`, the patient spine schema (16 tables + the v0.3 schema additions), the `CaseloadProvider` seam, the `PatientReader` seam, and the `PatientMutator` seam.
 **Depends on:** 1 (Platform Foundation — KEK/DEK envelope-encryption helper, outbox, Pino redaction, `SeamRegistry`, typed `OrganizationSettingsReader`, tenancy/RLS generator), 2 (Identity — `user`, `membership`, session classes), 3 (Authorization — RBAC keys + ABAC predicates + the `CaseloadProvider` seam this module *implements* + the `validateSeams` boot gate that requires `PatientReader` / `PatientMutator`), 4 (Audit — write-trigger generator, `auditRead()`, destruction-certificate workflow + per-module `eraseFn` registration + the `m5.patient.mutator_applied` audit action), 36 (Secure Messaging — privacy-flag alerts, caregiver outreach, SLO-breach operator alerts), 38 (Clinical Terminology — race/ethnicity SNOMED, language ISO‑639, SOGI value-sets, address state codes), 40 (Master Data Management — canonical `Payer`, `ExternalPhysician` for attending, `ReferralSource`)
 **Consumed by:** 6 (Admission/Election — every admission attaches to a patient), 11/12/13 (Orders / DoseSpot / eMAR — patient sync + identity), 16 (Bereavement — patient + caregiver records, decedent transition), 17 (Scheduling & Routing — caseload source + address for routing), 18 (EVV — patient address for geofence), 19 (On-Call Triage — patient lookup), 22 (Documents — patient as document subject + extraction chart-writeback target), 23 (Billing Medicare — MBI, address, payer), 24 (Billing Medicaid — state-payer per address state), 28 (FHIR Gateway — `Patient` resource projection), 29 (External Interfaces — ADT/labs/NPPES match; consumes the `PatientReader` seam for its T-29.05 patient-match cascade and publishes `m29.hl7_inbound_proposal.accepted` which this module applies through the `PatientMutator` seam), 31 (Patient/Family Portal — patient/caregiver identity + access scope), 33 (Reporting), 39 (Consent — consents attach to patients; PrivacyFlag snapshot consumer)
-**Spec status:** Re-locked v0.5 (Phase-2 tenancy sweep applied; supersedes Locked v0.4)
+**Spec status:** Re-locked v0.6 (referral-intake MBI recording on the `PatientIntakeResolver` seam; supersedes Re-locked v0.5 — Phase-2 tenancy sweep applied)
 
 > **Phase-2 tenancy three-column sweep (2026-06-11; ADR-0010 D1 / ARCH-011) — M05-F04 closed.** All
 > **16 PHI tables** now carry `organization_id` (NOT NULL) + `provider_entity_id` + `location_id`
@@ -22,6 +22,7 @@
 
 ## Changelog
 
+- **v0.6 (Re-locked; 2026-10-04)** — Documented the `PatientIntakeResolver` seam M6 consumes (§4.11) and extended it for referral-intake payer numbers: `PatientIntakeSubject.medicareNumberAtReceipt` feeds the deterministic MBI match and `createPatientFromIntake` writes it as the new patient's `mbi` identifier (`issuer='referral_intake'`); new `recordMedicareNumberIfMissing` adds a referral MBI to an existing patient only when the chart has no active MBI (returns `added` / `already_on_chart` / `different_on_chart`; never overwrites — D12). Shared validators in `@wardenx/types` (`normalizeMedicareNumber` / `isValidMedicareNumber`, the `patient_identifier_mbi_format` rule; `normalizeMedicaidNumber` / `isValidMedicaidNumber`). Medicaid IDs stay on `patient_payer` (§2 "Payers") — no identifier kind added.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Closed the M29 forward-stub gap. v0.2 established the patient spine, the deterministic-first / probabilistic-queued match pipeline, and the `CaseloadProvider` seam; v0.3 shipped the three pieces M29 needs for its inbound ADT pipeline to close end-to-end on the M5 side:
   - **`PatientReader` seam** (published seam) — the typed read interface M29's T-29.05 patient-match cascade consumes (`findByMrn`, `findByExternalMrn`, `findBySsnLast4AndDob`, `findByNameDobSex`, `findByLooseName`, `findById`). M5 already had the underlying data (`patient_identifier` with `value_last4`, `patientResolver` for merge-redirect); the seam packages it as a typed interface, adds two indexes for L2 (external MRN) and L3 (SSN-last4 + DOB) lookup performance, and boot-registers via the `SeamRegistry`.
@@ -2386,6 +2387,23 @@ if (recentAudit?.some((a: any) => a.payload?.sourceRef?.id === payload.proposalI
 
 -----
 
+
+### 4.11 The `PatientIntakeResolver` Seam (consumed by Module 6)
+
+M6 orchestrates referrals; M5 stays the patient-identity authority. M6 never writes `patient` or
+`patient_identifier` directly — it calls this seam (`packages/types/src/patient.ts`, implemented by
+`apps/backend/src/modules/05-patient/seams/patient-intake-resolver.ts`):
+
+| Method | Behavior |
+| --- | --- |
+| `findPatientCandidates(subject)` | Runs the §2 match pipeline on the referral's name / DOB **and MBI** (`medicareNumberAtReceipt`); an MBI hit is deterministic. |
+| `confirmPatient({ patientId })` | Reads the patient M6 is about to link. |
+| `createPatientFromIntake(subject)` | Inserts a `prospective` patient + its `mrn`; when the referral carries a valid MBI, also inserts the `mbi` identifier (`issuer='referral_intake'`). |
+| `recordMedicareNumberIfMissing({ patientId, medicareNumber })` | Adds a referral MBI to an **existing** patient only when no active `mbi` identifier exists. Returns `added`, `already_on_chart` (same value, or the input is not a valid MBI) or `different_on_chart` (the chart's MBI wins; nothing is written — D12). |
+
+A Medicaid number captured at referral is **not** an identifier: per §2 "Payers" it lives on the
+`patient_payer` row with its state payer, so M6's intake Coverage / Payers form pre-fills it for staff to
+confirm rather than this seam writing it.
 ## 5. Frontend Screens
 
 Delivered in `apps/web` (admin + clinical web). Portal-side amendment submission lives in `apps/portal` (Module 31, consumes our routes).

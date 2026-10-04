@@ -173,11 +173,15 @@ test.describe("HOPE", () => {
     const sfv = page.getByRole("dialog", { name: "Complete SFV" });
     await expect(sfv).toBeVisible();
     await expect(sfv.getByLabel("Author discipline")).toHaveValue("RN");
-    const reassessment = sfv.getByRole("combobox", { name: /J2053[A-H]/ });
+    // The dialog shares the workspace's "Show all" preference, set above: all 8 questions at once.
+    const reassessment = sfv.getByRole("group", { name: /J2053[A-H]/ });
     await expect(reassessment).toHaveCount(8);
     for (let i = 0; i < 8; i += 1) {
       // Pain eased to mild at the follow-up; nothing else present.
-      await reassessment.nth(i).selectOption({ label: i === 0 ? "Mild" : "None" });
+      await reassessment
+        .nth(i)
+        .getByRole("radio", { name: i === 0 ? "Mild" : "None", exact: true })
+        .check();
     }
     await sfv.getByRole("button", { name: "Complete SFV" }).click();
     await expect(sfv).toBeHidden({ timeout: 15_000 });
@@ -240,7 +244,15 @@ async function openSection(page: Page, code: string): Promise<void> {
     .getByRole("button", { name: new RegExp(`^${code}\\b`) })
     .click();
   const heading = code === "Review" ? /^Review & Sign$/ : new RegExp(`^${code}\\. `);
-  await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+  // Guided mode titles the page "A. …" (h2); Show all heads each section "A. …" (h3).
+  await expect(page.getByRole("heading", { name: heading }).first()).toBeVisible();
+}
+
+/** The workspace defaults to one group at a time; this spec answers whole sections, so show all. */
+async function showAll(page: Page): Promise<void> {
+  const toggle = workspace(page).getByRole("switch", { name: "Show all" });
+  if (!(await toggle.isChecked())) await toggle.check();
+  await expect(page.getByRole("navigation", { name: "Jump to section" })).toBeVisible();
 }
 
 /**
@@ -299,6 +311,7 @@ async function completeAdmissionSections(page: Page): Promise<void> {
   // A — Administrative. Identity, payer and admission items arrive pre-filled from the chart; the rest
   // is the nurse's. "Select all that apply" groups: CMS scores every box, so each one left unticked must
   // be answered "not checked" too — in the workspace that is ticking it and clearing it again.
+  await showAll(page);
   await openSection(page, "A");
   await answerText(page, "Social Security Number", "123456789");
   await answerText(page, "Patient Medicaid number", "N");
@@ -307,7 +320,9 @@ async function completeAdmissionSections(page: Page): Promise<void> {
     const count = await boxes.count();
     for (let i = 0; i < count; i += 1) {
       const box = boxes.nth(i);
-      if (await box.isChecked()) continue;
+      // A greyed box is ruled out by an exclusive choice already ticked; each toggle saves the whole
+      // group (0/1 for every box), so it is already answered "not checked".
+      if ((await box.isChecked()) || (await box.isDisabled())) continue;
       await saving(page, () => box.click());
       await expect(box).toBeChecked();
       await saving(page, () => box.click());
@@ -338,7 +353,9 @@ async function completeAdmissionSections(page: Page): Promise<void> {
 
   // I — Diagnoses: the principal diagnosis category and each comorbidity flag.
   await openSection(page, "I");
-  const diagnoses = main.getByRole("combobox");
+  // Show all renders every section: scope to Section I's own block.
+  const sectionI = page.locator("#hope-section-I");
+  const diagnoses = sectionI.getByRole("combobox");
   const diagnosisCount = await diagnoses.count();
   expect(diagnosisCount).toBeGreaterThan(0);
   for (let i = 0; i < diagnosisCount; i += 1) await answerSelect(diagnoses.nth(i), page);
@@ -346,7 +363,7 @@ async function completeAdmissionSections(page: Page): Promise<void> {
   // checkboxes) rather than a dropdown, and unticking one saves nothing — so each is answered by ticking
   // "No". Left unanswered they are 15 "active and applicable but unanswered" blockers and the review never
   // reaches "Ready to complete".
-  const flags = main.getByRole("group", { name: /: select Yes or No$/ });
+  const flags = sectionI.getByRole("group", { name: /: select Yes or No$/ });
   const flagCount = await flags.count();
   expect(flagCount).toBeGreaterThan(0);
   for (let i = 0; i < flagCount; i += 1) {

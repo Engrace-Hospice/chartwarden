@@ -240,6 +240,8 @@ export interface ReferralCreateInput {
   readonly patientId?: string;
   readonly patientNameAtReceipt: string;
   readonly patientDobAtReceipt?: string;
+  readonly medicareNumberAtReceipt?: string;
+  readonly medicaidNumberAtReceipt?: string;
   readonly referringDxText?: string;
   readonly referrerName?: string;
   readonly referrerOrganization?: string;
@@ -289,6 +291,8 @@ export interface AcceptReferralInput {
 }
 
 export interface ReferralUpdateInput {
+  readonly medicareNumberAtReceipt?: string;
+  readonly medicaidNumberAtReceipt?: string;
   readonly referringDxText?: string;
   readonly referrerName?: string;
   readonly referrerOrganization?: string;
@@ -325,6 +329,8 @@ export interface ReferralReadView extends SummaryRow {
   readonly patientResolutionStatus: string;
   readonly patientNameAtReceipt: string;
   readonly patientDobAtReceipt: string | null;
+  readonly medicareNumberAtReceipt: string | null;
+  readonly medicaidNumberAtReceipt: string | null;
   readonly referringDxText: string | null;
   readonly icd10TerminalPrimary: string | null;
   readonly source: string;
@@ -1048,6 +1054,8 @@ interface Rec {
   referrerPhone?: string;
   patientNameAtReceipt?: string;
   patientDobAtReceipt?: string;
+  medicareNumberAtReceipt?: string;
+  medicaidNumberAtReceipt?: string;
   patientResolutionStatus?: "unresolved" | "possible_match" | "matched" | "created";
   electionPeriodId?: string;
   sequence?: number;
@@ -1281,6 +1289,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       patientResolutionStatus: rec.patientResolutionStatus ?? "unresolved",
       patientNameAtReceipt: rec.patientNameAtReceipt ?? "Unknown patient",
       patientDobAtReceipt: rec.patientDobAtReceipt ?? null,
+      medicareNumberAtReceipt: rec.medicareNumberAtReceipt ?? null,
+      medicaidNumberAtReceipt: rec.medicaidNumberAtReceipt ?? null,
       referringDxText: rec.referringDxText ?? null,
       icd10TerminalPrimary: rec.primaryDiagnosisIcd10 ?? null,
       source: rec.source ?? "phone",
@@ -1462,6 +1472,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         source: input.source,
         patientNameAtReceipt: input.patientNameAtReceipt,
         patientDobAtReceipt: input.patientDobAtReceipt,
+        medicareNumberAtReceipt: input.medicareNumberAtReceipt,
+        medicaidNumberAtReceipt: input.medicaidNumberAtReceipt,
         referringDxText: input.referringDxText,
         referrerName: input.referrerName,
         referrerOrganization: input.referrerOrganization,

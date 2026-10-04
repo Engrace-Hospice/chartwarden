@@ -179,6 +179,54 @@ describe("Referral Phase 2 workflow screens", () => {
     );
   });
 
+  it("sends the Medicare and Medicaid numbers with a new referral", async () => {
+    const client = clientFor();
+    renderWithShell(<ReferralNew />, client, "/referrals/new");
+
+    fireEvent.change(screen.getByLabelText("Patient full name"), {
+      target: { value: "Robert Johnson" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Medicare number \(MBI\)/), {
+      target: { value: "1EG4-TE5-MK73" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Medicaid number/), {
+      target: { value: "OR123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create referral/i }));
+
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith(
+        "/api/v1/referrals",
+        expect.objectContaining({
+          body: expect.objectContaining({
+            medicareNumberAtReceipt: "1EG4-TE5-MK73",
+            medicaidNumberAtReceipt: "OR123456",
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("blocks a malformed Medicare number before it is sent", async () => {
+    const client = clientFor();
+    renderWithShell(<ReferralNew />, client, "/referrals/new");
+
+    fireEvent.change(screen.getByLabelText("Patient full name"), {
+      target: { value: "Robert Johnson" },
+    });
+    // 12 characters, starts with a letter: not a CMS MBI.
+    fireEvent.change(screen.getByLabelText(/^Medicare number \(MBI\)/), {
+      target: { value: "A12B4590N1ZW" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create referral/i }));
+
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Medicare number must be the 11-character MBI (e.g. 1EG4-TE5-MK73).",
+    );
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
   it("prefills and pre-links a referral opened from a patient-scoped admission lookup", async () => {
     const patientId = "22222222-2222-4222-8222-222222222222";
     const client = clientFor({

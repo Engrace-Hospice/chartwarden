@@ -27,6 +27,9 @@ export interface ReferralView {
   patientResolutionStatus: PatientResolutionStatus;
   patientNameAtReceipt: string;
   patientDobAtReceipt: string | null;
+  /** The patient's Medicare number (MBI) as the referrer gave it — normalized by the server. */
+  medicareNumberAtReceipt?: string | null;
+  medicaidNumberAtReceipt?: string | null;
   referringDxText: string | null;
   icd10TerminalPrimary: string | null;
   source: string;

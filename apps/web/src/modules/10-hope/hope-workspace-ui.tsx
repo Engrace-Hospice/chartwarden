@@ -29,11 +29,14 @@ export function SectionNavigator({
   active,
   onSelect,
   ariaLabel,
+  renderSub,
 }: {
   sections: NavSectionView[];
   active: string;
   onSelect: (id: string) => void;
   ariaLabel: string;
+  /** Nested rows under a section (its question groups); return null to show none. */
+  renderSub?: (id: string) => ReactNode;
 }): JSX.Element {
   return (
     <nav className="wx-hope-nav" aria-label={ariaLabel}>
@@ -67,11 +70,65 @@ export function SectionNavigator({
                   </span>
                 </span>
               </button>
+              {renderSub?.(s.id) ?? null}
             </li>
           );
         })}
       </ol>
     </nav>
+  );
+}
+
+export interface NavGroupView {
+  key: string;
+  label: string;
+  state: NavState;
+  /** "3 to answer", "Done" … */
+  statusLine: string;
+}
+
+/** Sub-steps of one section (Option 1 rail): ✓ done · ◉ current · ○ to do · ! needs answers. */
+export function GroupSubNav({
+  groups,
+  active,
+  onSelect,
+  label,
+}: {
+  groups: NavGroupView[];
+  active: string | null;
+  onSelect: (key: string) => void;
+  label: string;
+}): JSX.Element {
+  return (
+    <ul className="wx-hope-subnav" aria-label={label}>
+      {groups.map((g) => {
+        const isActive = g.key === active;
+        return (
+          <li key={g.key} className={isActive ? "active" : undefined}>
+            <button
+              type="button"
+              onClick={() => onSelect(g.key)}
+              aria-current={isActive ? "location" : undefined}
+              aria-label={`${g.label} — ${g.statusLine}`}
+            >
+              <span
+                className={`wx-hope-subnav-mark wx-hope-subnav-${isActive ? "active" : g.state}`}
+              >
+                {g.state === "complete" && !isActive ? (
+                  <Glyph name="check" size={10} strokeWidth={3.5} />
+                ) : null}
+              </span>
+              <span className="wx-hope-subnav-label">
+                {g.label}
+                {g.state === "attention" && !isActive ? (
+                  <small className="wx-hope-subnav-count">{g.statusLine}</small>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -110,12 +167,12 @@ export function ClinicalSection({
   );
 }
 
-/** Muted CMS item identifier — tertiary information, never competing with the question. */
-export function CmsCode({
-  code,
-  tone = "muted",
-}: { code: string; tone?: "muted" | "primary" }): JSX.Element {
-  return <span className={`wx-cms-code wx-cms-code-${tone}`}>{code}</span>;
+/**
+ * CMS item identifier: one look everywhere in HOPE — a blue tag pushed to the right edge of its row
+ * (question head, field label, tile, group legend, skipped/pending row, SFV question).
+ */
+export function CmsCode({ code }: { code: string }): JSX.Element {
+  return <span className="wx-cms-code">{code}</span>;
 }
 
 export function RequiredChip(): JSX.Element {
@@ -224,6 +281,8 @@ export interface TileOption {
   code: string;
   checked: boolean;
   hint?: ReactNode;
+  /** Why this tile is unavailable (a mutually exclusive choice is selected); greys it out. */
+  blockedReason?: string;
 }
 
 /** "Select all that apply" — CMS 0/1 items rendered as one checkbox tile group. */
@@ -259,21 +318,38 @@ export function CheckboxTiles({
         {code ? <CmsCode code={code} /> : null}
       </legend>
       <div className="wx-tile-grid" style={{ "--wx-tile-cols": String(columns) } as CSSProperties}>
-        {options.map((o) => (
-          <label key={o.key} className={o.checked ? "wx-tile checked" : "wx-tile"}>
-            <input
-              type="checkbox"
-              checked={o.checked}
-              onChange={(e) => onToggle(o.key, e.currentTarget.checked)}
-            />
-            <span className="wx-tile-text">
-              <span>{o.label}</span>
-              {o.hint ? <small>{o.hint}</small> : null}
-            </span>
-            <CmsCode code={o.code} />
-          </label>
-        ))}
+        {options.map((o) => {
+          const blocked = !o.checked && Boolean(o.blockedReason);
+          return (
+            <label
+              key={o.key}
+              className={o.checked ? "wx-tile checked" : blocked ? "wx-tile blocked" : "wx-tile"}
+              title={blocked ? o.blockedReason : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={o.checked}
+                disabled={blocked}
+                aria-describedby={blocked ? `${o.key}-blocked` : undefined}
+                onChange={(e) => onToggle(o.key, e.currentTarget.checked)}
+              />
+              <span className="wx-tile-text">
+                <span>{o.label}</span>
+                {o.hint ? <small>{o.hint}</small> : null}
+              </span>
+              <CmsCode code={o.code} />
+            </label>
+          );
+        })}
       </div>
+      {/* Reasons live outside the labels so they describe — not rename — the greyed checkboxes. */}
+      {options.map((o) =>
+        !o.checked && o.blockedReason ? (
+          <span key={o.key} id={`${o.key}-blocked`} className="wx-sr-only">
+            {o.blockedReason}
+          </span>
+        ) : null,
+      )}
     </fieldset>
   );
 }
@@ -287,6 +363,8 @@ export function OptionRows({
   disabled,
   describedBy,
   onChange,
+  blockedReason,
+  onClear,
 }: {
   name: string;
   legend: string;
@@ -295,6 +373,10 @@ export function OptionRows({
   disabled?: boolean;
   describedBy?: string;
   onChange: (valueCode: string) => void;
+  /** Greys out every unchecked row (a competing answer — e.g. a typed value — is in place). */
+  blockedReason?: string;
+  /** Clicking the selected row again clears it (for optional special values). */
+  onClear?: () => void;
 }): JSX.Element {
   const twoCol = options.length > 4;
   return (
@@ -303,18 +385,30 @@ export function OptionRows({
       <div className={twoCol ? "wx-option-rows two-col" : "wx-option-rows"}>
         {options.map((o) => {
           const checked = value === o.valueCode;
+          const blocked = !checked && Boolean(blockedReason);
           return (
             <label
               key={o.valueCode}
-              className={checked ? "wx-option-row checked" : "wx-option-row"}
+              className={
+                checked
+                  ? "wx-option-row checked"
+                  : blocked
+                    ? "wx-option-row blocked"
+                    : "wx-option-row"
+              }
+              title={blocked ? blockedReason : undefined}
             >
               <input
                 type="radio"
                 name={name}
                 value={o.valueCode}
                 checked={checked}
+                disabled={blocked}
                 aria-label={o.label}
                 onChange={() => onChange(o.valueCode)}
+                onClick={() => {
+                  if (checked && onClear && !disabled) onClear();
+                }}
               />
               <span>{o.label}</span>
             </label>
