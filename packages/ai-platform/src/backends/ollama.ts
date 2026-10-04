@@ -94,7 +94,12 @@ export function createOllamaModelBackend(options: OllamaModelBackendOptions): Mo
     async complete(request: ModelBackendCompletionRequest): Promise<ModelBackendCompletionResult> {
       const messages = [
         ...(request.systemPrompt ? [{ role: "system", content: request.systemPrompt }] : []),
-        { role: "user", content: request.prompt },
+        {
+          role: "user",
+          content: request.prompt,
+          // F-237 — Ollama's chat API takes raw base64 images on the message (vision models only).
+          ...(request.images?.length ? { images: request.images.map((i) => i.dataBase64) } : {}),
+        },
       ];
       const res = await doFetch(`${base}/api/chat`, {
         method: "POST",

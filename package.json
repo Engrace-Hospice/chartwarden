@@ -189,6 +189,7 @@
     "test:f225:m22-portal-access-log:live": "vitest run apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
     "test:f235:doclens-m5-writeback:live": "vitest run apps/backend/__tests__/f235-doclens-m5-writeback.live.test.ts",
     "test:f236:doclens-intake:live": "vitest run apps/backend/__tests__/f236-doclens-intake.live.test.ts",
+    "test:f237:doclens-review:live": "vitest run apps/backend/__tests__/f237-doclens-review.live.test.ts",
     "test:f194:m18-visit-verified:live": "vitest run apps/backend/__tests__/f194-m18-visit-verified.live.test.ts",
     "test:f205:m12-medication-error-reported:live": "vitest run apps/backend/__tests__/f205-m12-medication-error-reported.live.test.ts",
     "test:f207:m27-vendor-invoice:live": "vitest run apps/backend/__tests__/f207-m27-vendor-invoice.live.test.ts",

@@ -13,6 +13,9 @@ import { type AiChartContextValidator, createDenyingAiChartContextValidator } fr
 const RULES: Readonly<Record<string, ReadonlySet<string>>> = {
   doclens_classify: new Set(["documentId", "pageCount", "pageNumber"]),
   doclens_extract: new Set(["documentId", "documentType", "schemaKey", "pageCount"]),
+  // F-237 — stage 5 names the field it reads (a schema path, not a value) and the page it came from.
+  doclens_vision_verify: new Set(["documentId", "verificationKey", "pageNumber", "fieldPath"]),
+  doclens_sud_detect: new Set(["documentId", "pageCount"]),
 };
 
 const MAX_STRING = 128;

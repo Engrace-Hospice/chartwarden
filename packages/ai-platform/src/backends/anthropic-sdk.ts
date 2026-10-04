@@ -49,7 +49,21 @@ export function createAnthropicSdkTransport(options: AnthropicSdkTransportOption
       model: options.model,
       max_tokens: request.maxOutputTokens,
       ...(request.systemPrompt ? { system: request.systemPrompt } : {}),
-      messages: [{ role: "user", content: request.prompt }],
+      messages: [
+        {
+          role: "user",
+          // F-237 — a vision request sends the images first, then the instruction text.
+          content: request.images?.length
+            ? [
+                ...request.images.map((i) => ({
+                  type: "image" as const,
+                  source: { type: "base64" as const, media_type: i.mediaType, data: i.dataBase64 },
+                })),
+                { type: "text" as const, text: request.prompt },
+              ]
+            : request.prompt,
+        },
+      ],
       ...(request.responseSchema
         ? {
             output_config: {

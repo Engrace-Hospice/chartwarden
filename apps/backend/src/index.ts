@@ -179,6 +179,7 @@ import {
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
   buildM5ExtractionWritebackConsumer,
+  buildM5IntakeSudPrivacyConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
@@ -576,6 +577,8 @@ import {
 import {
   type DocLensClassifierPort,
   type DocLensExtractorPort,
+  type DocLensSudDetectorPort,
+  type DocLensVisionVerifierPort,
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
@@ -5660,6 +5663,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         cipher: createCandidateValueCipher(getTenantKeyProvider()),
         classifier: () => getSeam("DocLensClassifier") as DocLensClassifierPort,
         extractor: () => getSeam("DocLensExtractor") as DocLensExtractorPort,
+        // F-237 — stage 5 and the model pass of SUD detection go through the same governed M32 seams
+        // (each refuses on its own gates; the job degrades to "unverified" / "rules only").
+        visionVerifier: () => getSeam("DocLensVisionVerifier") as DocLensVisionVerifierPort,
+        sudDetector: () => getSeam("DocLensSudDetector") as DocLensSudDetectorPort,
+        outbox: m22OutboxPublisher,
       },
       (msg, detail) => app.log.info(detail, msg),
     );
@@ -6072,6 +6080,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `extraction_provenance` from the reply and emits the terminal `m22.extraction.commit_completed`.
           buildM5ExtractionWritebackConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           buildM22ExtractionBackrefConsumer({ db: dbHandle.db, outbox: m22OutboxPublisher }),
+          // F-237 — M22 §7.4 W4: DocLens SUD detection → the patient's interim `sud` privacy flag, and the
+          // reviewer's confirm / false-positive round-trip (a rejection retires only a DocLens-set flag).
+          buildM5IntakeSudPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
           // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
           buildM5AdmissionSitingConsumer({ db: dbHandle.db }),

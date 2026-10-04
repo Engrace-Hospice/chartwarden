@@ -74,6 +74,11 @@ export interface WritebackPlan {
 export function planDocLensWriteback(input: {
   readonly batchPatientId: string | null;
   readonly facts: readonly WritebackCandidateFact[];
+  /**
+   * F-237 — the batch's §7.4 W4 SUD state. A `sud_detected` candidate is committable ONLY after a reviewer
+   * rejected the detection as a false positive; `detected` (unresolved) and `confirmed` keep it out.
+   */
+  readonly batchSudStatus?: "not_detected" | "detected" | "confirmed" | "rejected";
 }): WritebackPlan {
   const excluded: WritebackExclusion[] = [];
   const eligible: PlannedCommitField[] = [];
@@ -91,7 +96,7 @@ export function planDocLensWriteback(input: {
       exclude(f, "risk_not_low");
       continue;
     }
-    if (f.sudDetected) {
+    if (f.sudDetected && input.batchSudStatus !== "rejected") {
       exclude(f, "sud_detected");
       continue;
     }

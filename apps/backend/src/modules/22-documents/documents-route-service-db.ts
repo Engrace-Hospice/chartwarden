@@ -30,7 +30,7 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { DegradedError, NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
-import { and, desc, eq, exists, isNull } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, isNull } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import {
   type ExtractionWritebackDeps,
@@ -169,6 +169,22 @@ export function createDbDocumentRouteService(
       .where(eq(ER.id, reviewId))
       .limit(1);
     if (!r) throw new NotFoundError("review");
+    return r;
+  }
+
+  /** F-237 — a decision may only be written into a review that is still open. */
+  async function requireOpenReview(
+    tx: DbClient,
+    reviewId: string,
+  ): Promise<{ id: string; batchId: string; status: string }> {
+    const r = await requireReview(tx, reviewId);
+    if (r.status !== "in_progress") {
+      throw new WardenXError(
+        "REVIEW_NOT_IN_PROGRESS",
+        `review is ${r.status}; decisions can only be recorded on an in-progress review`,
+        409,
+      );
+    }
     return r;
   }
 
@@ -672,21 +688,51 @@ export function createDbDocumentRouteService(
     },
     async recordDecision(organizationId, actor, reviewId, args) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireReview(tx, reviewId);
+        const review = await requireOpenReview(tx, reviewId);
+        // F-237 — the candidate must be this review's batch's (the ABAC guard already denied any other).
+        const [cand] = await tx
+          .select({ id: EC.id, visionDisagreement: EC.visionDisagreement })
+          .from(EC)
+          .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
+          .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
+          .where(and(eq(EC.id, args.candidateId), eq(CP.intakeUploadBatchId, review.batchId)))
+          .limit(1);
+        if (!cand) throw new NotFoundError("extraction candidate");
+        // F-237 — stage 5 read the page differently. Approving the extraction as-is over that
+        // disagreement is allowed, but only with the reviewer's stated reason (an edit is a correction).
+        if (args.decision === "approve" && cand.visionDisagreement !== null && !args.reason) {
+          throw new WardenXError(
+            "VISION_DISAGREEMENT_REASON_REQUIRED",
+            "the vision check read this field differently; approving it unchanged needs a reason",
+            422,
+          );
+        }
+        const values = {
+          decision: args.decision as never,
+          // F-235 — the edited value IS the attestation for `approve_with_edit`; the writeback commit
+          // reads it from here. It used to be parsed off the request and dropped.
+          editedValue: args.editedValue ?? null,
+          editedCode: args.editedCode ?? null,
+          chartOverwriteConfirmed: args.chartOverwriteConfirmed ?? null,
+          reason: args.reason ?? null,
+          sourceViewConfirmed: true,
+          partOfBulkApprove: false,
+          bulkApproveBatchId: null,
+          decidedAt: new Date(),
+        };
+        // F-237 — a reviewer may change their mind before completing: one decision per candidate per
+        // review (the unique index), revised in place — the M4 trigger audits the before/after.
         const [d] = await tx
           .insert(ED)
           .values({
             organizationId,
             extractionCandidateId: args.candidateId,
             extractionReviewId: reviewId,
-            decision: args.decision as never,
-            // F-235 — the edited value IS the attestation for `approve_with_edit`; the writeback commit
-            // reads it from here. It used to be parsed off the request and dropped.
-            editedValue: args.editedValue ?? null,
-            editedCode: args.editedCode ?? null,
-            chartOverwriteConfirmed: args.chartOverwriteConfirmed ?? null,
-            reason: args.reason ?? null,
-            sourceViewConfirmed: true,
+            ...values,
+          })
+          .onConflictDoUpdate({
+            target: [ED.extractionCandidateId, ED.extractionReviewId],
+            set: values,
           })
           .returning({ id: ED.id });
         if (!d) throw new Error("extraction_decision insert returned no row");
@@ -695,18 +741,43 @@ export function createDbDocumentRouteService(
     },
     async bulkApprove(organizationId, actor, reviewId, candidateIds) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
-        await requireReview(tx, reviewId);
+        const review = await requireOpenReview(tx, reviewId);
+        // F-237 — every id must be this review's batch's candidate (defense in depth behind the ABAC guard).
+        const owned = await tx
+          .select({ id: EC.id })
+          .from(EC)
+          .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
+          .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
+          .where(
+            and(inArray(EC.id, [...candidateIds]), eq(CP.intakeUploadBatchId, review.batchId)),
+          );
+        if (new Set(owned.map((o) => o.id)).size !== new Set(candidateIds).size) {
+          throw new NotFoundError("extraction candidate");
+        }
         const bulkApproveBatchId = randomUUID();
         for (const candidateId of candidateIds) {
-          await tx.insert(ED).values({
-            organizationId,
-            extractionCandidateId: candidateId,
-            extractionReviewId: reviewId,
-            decision: "approve",
+          const values = {
+            decision: "approve" as const,
+            editedValue: null,
+            editedCode: null,
+            reason: null,
             sourceViewConfirmed: true,
             partOfBulkApprove: true,
             bulkApproveBatchId,
-          });
+            decidedAt: new Date(),
+          };
+          await tx
+            .insert(ED)
+            .values({
+              organizationId,
+              extractionCandidateId: candidateId,
+              extractionReviewId: reviewId,
+              ...values,
+            })
+            .onConflictDoUpdate({
+              target: [ED.extractionCandidateId, ED.extractionReviewId],
+              set: values,
+            });
         }
         return { bulkApproveBatchId, decisionsCreated: candidateIds.length };
       });
@@ -748,11 +819,19 @@ export function createDbDocumentRouteService(
           );
         }
         const [batch] = await tx
-          .select({ patientId: BATCH.patientId })
+          .select({ patientId: BATCH.patientId, sudStatus: BATCH.sudStatus })
           .from(BATCH)
           .where(eq(BATCH.id, r.batchId))
           .limit(1);
         if (!batch) throw new NotFoundError("intake batch");
+        // F-237 — §7.4 W4: a SUD detection must be confirmed or rejected before anything is committed.
+        if (batch.sudStatus === "detected") {
+          throw new WardenXError(
+            "SUD_DETECTION_UNRESOLVED",
+            "possible substance-use content was detected; confirm or reject it before completing the review",
+            409,
+          );
+        }
         // §7.1 W1 steps 11–12 (F-235) — provenance + `m22.extraction.commit_requested`, in THIS transaction.
         const summary = await commitReviewWriteback(tx, writeback, {
           organizationId,
@@ -760,6 +839,7 @@ export function createDbDocumentRouteService(
           batchId: r.batchId,
           batchPatientId: batch.patientId,
           reviewerMembershipId: actor.membershipId,
+          batchSudStatus: batch.sudStatus,
         });
         await tx
           .update(ER)
@@ -889,6 +969,33 @@ export function createDbDocumentAbacResolver(db: DbClient): DocumentAbacResolver
           // the care-team read window stays open (null) until M22L binds the AdmissionStatus reader.
           patientDischargedAt: null,
         };
+      });
+    },
+    // F-237 — risk tiers come from the candidate rows, joined through job → classified page to the
+    // review's own batch, so a candidate of another batch (or tenant) is never authorized against this one.
+    async loadReviewCandidateRisks(organizationId, reviewId, candidateIds) {
+      if (candidateIds.length === 0) return new Map();
+      return withOrg(db, organizationId, async (tx) => {
+        const rows = await tx
+          .select({ id: EC.id, risk: EC.riskLevel })
+          .from(EC)
+          .innerJoin(EJ, eq(EJ.id, EC.extractionJobId))
+          .innerJoin(CP, eq(CP.id, EJ.classifiedPageId))
+          .innerJoin(ER, eq(ER.intakeUploadBatchId, CP.intakeUploadBatchId))
+          .where(and(eq(ER.id, reviewId), inArray(EC.id, [...candidateIds])));
+        return new Map(rows.map((r) => [r.id, r.risk]));
+      });
+    },
+    async loadDiscrepancyRisk(organizationId, reviewId, discrepancyId) {
+      return withOrg(db, organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ risk: EC.riskLevel })
+          .from(DISC)
+          .innerJoin(ER, eq(ER.intakeUploadBatchId, DISC.intakeUploadBatchId))
+          .innerJoin(EC, eq(EC.id, DISC.candidateAId))
+          .where(and(eq(ER.id, reviewId), eq(DISC.id, discrepancyId)))
+          .limit(1);
+        return row?.risk ?? null;
       });
     },
   };

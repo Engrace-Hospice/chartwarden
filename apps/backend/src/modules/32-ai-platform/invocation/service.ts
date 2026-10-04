@@ -41,12 +41,14 @@
 //
 // `cipher` is required outright: a pipeline that could be built without an envelope-encryption binding
 // is a pipeline that could write plaintext PHI into `prompt_payload_cipher`.
+import { createHash } from "node:crypto";
 import {
   type AiInvocationGate,
   type AiInvocationGateDecision,
   type AiPhiMinimizationVerdict,
   type AiResolvedRoute,
   type AiTokenCapState,
+  type ModelBackendImage,
   type ModelBackendRegistry,
   aiInvocationGateRecordsLedgerRow,
   aiTokenCapStateFor,
@@ -172,6 +174,12 @@ export interface AiInvokeRequest {
   /** F-236 — overrides the pipeline's dispatch timeout for THIS call. A background capability (DocLens
    *  extraction on a local model) needs minutes; the clinician-facing default stays what it was. */
   readonly dispatchTimeoutMs?: number;
+  /**
+   * F-237 — images for a vision capability. Their presence makes `vision` the required modality at the
+   * routing gate (a text-only backend in the chain is filtered out). The ledger records each image's
+   * SHA-256 inside the encrypted prompt payload, never the bytes.
+   */
+  readonly images?: readonly ModelBackendImage[];
   /** From the caller's session clock; the partition key and the cap window both derive from it. */
   readonly invokedAt: string;
 }
@@ -330,7 +338,7 @@ export function createAiInvocationPipeline(deps: AiInvocationPipelineDeps): AiIn
           allowedBackendKeys: capability.allowedBackendKeys,
           fallbackChainKeys: capability.fallbackChainKeys,
           tenantOverrideAllowed: capability.tenantOverrideAllowed,
-          requiredModality: capability.requiredModality,
+          requiredModality: request.images?.length ? "vision" : capability.requiredModality,
         },
         routingPreference,
         override,
@@ -395,6 +403,7 @@ export function createAiInvocationPipeline(deps: AiInvocationPipelineDeps): AiIn
             chartContext: request.chartContext,
             maxOutputTokens: request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
             ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}),
+            ...(request.images?.length ? { images: request.images } : {}),
           }),
           request.dispatchTimeoutMs ?? timeoutMs,
         );
@@ -428,6 +437,14 @@ export function createAiInvocationPipeline(deps: AiInvocationPipelineDeps): AiIn
         JSON.stringify({
           systemPrompt: request.prompt.systemPrompt ?? null,
           prompt: request.prompt.text,
+          ...(request.images?.length
+            ? {
+                images: request.images.map((i) => ({
+                  mediaType: i.mediaType,
+                  sha256: createHash("sha256").update(i.dataBase64, "base64").digest("hex"),
+                })),
+              }
+            : {}),
         }),
       );
       const chartCipher = await deps.cipher.encrypt(

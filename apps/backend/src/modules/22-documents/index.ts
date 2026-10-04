@@ -24,6 +24,7 @@ import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
 import { createDbDocumentBackend } from "./documents-route-service-db";
+import { createHttpDoclingClient, doclingConfigFromEnv } from "./extraction/docling-client";
 import {
   type DocumentFeatureFlagReader as _DocumentFeatureFlagReader,
   createDocLensPipelineService as _createDocLensPipelineService,
@@ -31,6 +32,8 @@ import {
   resolveDocLensCapability as _resolveDocLensCapability,
 } from "./extraction/index";
 import type { DocLensIntakeEnqueue } from "./extraction/intake-queue";
+import { createReviewWorkspaceService } from "./extraction/review-workspace";
+import { registerDocLensReviewWorkspaceRoutes } from "./extraction/review-workspace-routes";
 import type { ExtractionWritebackDeps } from "./extraction/writeback-commit-db";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
@@ -132,6 +135,40 @@ export function mountDocumentRoutes(
     ...(flags ? { flags } : {}),
     ...(intake ? { intake } : {}),
   });
+
+  // F-237 — the DocLens review screen's server half: the intake queue, the side-by-side workspace (values
+  // DEK-decrypted for the reviewer, read-audited), page images from the docling-worker, and the §7.4 W4
+  // SUD confirm / reject (published to M5 in the same transaction).
+  const doclingConfig = doclingConfigFromEnv(process.env);
+  registerDocLensReviewWorkspaceRoutes(
+    app,
+    createReviewWorkspaceService({
+      db,
+      ...(writeback.cipher ? { cipher: writeback.cipher } : {}),
+      ...(writeback.outbox ? { outbox: writeback.outbox } : {}),
+      ...(doclingConfig ? { docling: createHttpDoclingClient(doclingConfig) } : {}),
+      ...(objects
+        ? {
+            presignSource: async ({ organizationId, bucket, objectKey }) =>
+              (
+                await objects.presign({
+                  organizationId,
+                  descriptor: {
+                    bucket,
+                    objectKey,
+                    ttlSeconds: 120,
+                    accessKind: "content_download",
+                  },
+                })
+              ).url,
+          }
+        : {}),
+      patientName: async (organizationId, patientId) => {
+        const p = await getSeam("PatientReader").findById({ organizationId, id: patientId });
+        return p ? `${p.lastName}, ${p.firstName}` : null;
+      },
+    }),
+  );
 }
 
 export {

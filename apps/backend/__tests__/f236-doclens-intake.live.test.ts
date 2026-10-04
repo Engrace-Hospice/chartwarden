@@ -184,7 +184,12 @@ describe.skipIf(!DB_URL)("F-236 — DocLens intake job + live M32 pipeline — L
   };
   const deps = (over: Partial<Parameters<typeof runDocLensIntake>[0]> = {}) => ({
     db: handle.db,
-    docling: { parse: async () => ({ doclingVersion: "2.133.0", pages: PAGES }) },
+    docling: {
+      parse: async () => ({ doclingVersion: "2.133.0", pages: PAGES }),
+      render: async () => {
+        throw new Error("F-236 suite runs no stage 5");
+      },
+    },
     presignSource: async () => "https://minio.invalid/x?sig",
     cipher: candidateCipher,
     classifier: () => classifier,

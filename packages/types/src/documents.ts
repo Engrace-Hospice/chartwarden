@@ -290,7 +290,7 @@ export const M22_AUDIT_DENYLIST: { readonly [K in M22TableName]: readonly string
   form_template_version: [],
   tenant_template_overlay: ["branding", "state_addendum"],
   form_fill: ["render_payload"],
-  intake_upload_batch: ["source_metadata"],
+  intake_upload_batch: ["source_metadata", "sud_evidence_cipher", "sud_resolution_reason"],
   classified_page: [],
   extraction_job: [],
   extraction_candidate: [

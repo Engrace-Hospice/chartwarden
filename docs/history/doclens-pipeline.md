@@ -55,3 +55,54 @@ output), `f236-m32-doclens-backends` (14), `document-doclens` (+2), pytest 6, an
 `local_only` routed locally, ledger ciphertext decrypts, budget/flag gates). Mutation checks (each
 reverted, each caught): ungrounded fields kept, a default token budget, the PHI allowlist disabled,
 plaintext candidate values stored.
+
+## F-237 — the review screen, stage 5, SUD detection, and the server-side licence check (2026-10-03)
+
+*What.* The four DocLens items F-236 left open. (1) **The licence check is the server's.** Route 20's
+`extraction_reviewer_eligible` read the candidate's risk tier from `?riskLevel=` (and bulk approve read
+`?anyHighRisk=`), so a browser that sent `low` for a medication let an unlicensed reviewer decide it. The
+predicates now load the tier from the candidate row, constrained to the review's own batch (a stranger id
+is denied); the discrepancy route resolves its candidate through the discrepancy, never a body field; the
+services re-check batch ownership (404) on decide and bulk approve. (2) **Stage 5.** High- and
+medium-risk values (medications, allergies, legal name, DOB) are re-read by a vision model from a crop of
+their Docling box rendered by the docling-worker's new `/render`; the model is **never shown the extracted
+value** — M22 compares the reading (alphanumerics) and stores `vision_verified`, or the reading
+DEK-encrypted in `vision_disagreement`, or neither (unverified, said out loud). List fields read every
+visible entry and verify membership (Docling often returns a whole list as one block, so a crop cannot
+isolate a line — the first E2E run read the neighbouring medication). M32 gained image support end to end
+(`ModelBackendCompletionRequest.images`, Ollama `images`, Anthropic image blocks; a request with images
+requires the `vision` modality at routing; the ledger records image SHA-256s, never bytes) and a local
+vision route, `local-qwen2.5-vl-7b-instruct` (ADR-0048 amendment). Approving a disagreed value unchanged
+needs a reason (422). (3) **SUD detection (§7.4 W4 / D8).** A deterministic, high-recall rule set
+(`sud-detection/flagger.ts`: MAT drugs, ICD-10 F10–F19 minus tobacco per 42 CFR §2.11, disorder/withdrawal
+wording, substance-use history, treatment settings; negation suppresses wording, never a medication) runs
+on every page whatever the AI posture, plus the governed `doclens_sud_detect` model pass whose quotes are
+grounded before they count. Candidates on indicator pages are tagged; evidence is stored only as
+ciphertext; `m22.intake.sud_detected` (ids only) is published atomically with completion; M5's new
+`m5.m22-intake-sud-privacy` consumer adds an interim `sud` flag (migration 0308 `sud_flag_origin`), promotes
+it on confirm, and retires it on a false-positive rejection **only if DocLens put it there**. Completion is
+409 while SUD is unresolved; resolution needs RN-or-above and, for a rejection, a reason; after a rejection
+SUD-page contact fields become committable. (4) **The review screen** (`/intake` queue,
+`/intake/:batchId/review` workspace): page images with every value's box, per-field accept / edit / reject
+behind a per-field source-view confirmation, stage-5 and SUD chips, the W4 banner, bulk approve of eligible
+low-risk fields, and a completion dialog showing what will and will not reach the chart. Server half:
+`GET /intake/uploads`, `GET …/:id/workspace` (decrypted, read-audited), `GET …/:id/pages/:page/image`,
+`POST …/:id/sud-review`. Decisions can now be revised (upsert, audited). Also fixed: `decisions:bulk-approve`
+was registered unescaped, so find-my-way read `:bulk` as a parameter (the route matched
+`decisions<anything>-approve`); it is `decisions::bulk-approve` now and the OpenAPI emitter understands `::`.
+
+*Not built.* Discrepancy detection (stage 6) and its drawer; reclassification and the fax splitter; an
+intake upload UI (batches are still created by API); writeback beyond M5 contacts. Boxes are Docling
+block-level: when Docling merges a list into one block every entry shares the list's box. The Claude path
+is wired (including images) but untested against the real API.
+
+*Verification.* Real local models on the Docker stack (llama3.1 8B + qwen2.5-vl 7B on host Ollama), a
+synthetic fax with methadone and heroin history: rules + model flagged page 2 → M5 interim flag →
+workspace/queue/page image over HTTP → 422 on an unchanged disagreed approval → 409 completing with SUD
+unresolved → 422 rejecting without reason → rejection retired the flag → completion wrote only the 8
+contact fields. Stage 5 verified name, DOB, allergy and two medications and correctly flagged an
+OCR-damaged lorazepam line. Tests: `f237-sud-flagger` (20), `f237-doclens-stage5-sud` (24),
+`document-routes` (+5, the `?riskLevel=low` bypass now 403), docling-worker pytest (+9), web DOM (7), and
+the live suite `test:f237:doclens-review:live` (4) plus the F-235/F-236/M22/M5/M32/M39/dispatcher live
+suites. Mutation checks (each reverted, each caught): licence bypass on high risk, planner ignoring SUD,
+rejection lifting a consent-derived flag, images not routed to a vision backend.

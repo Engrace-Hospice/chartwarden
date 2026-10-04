@@ -214,6 +214,8 @@ export function buildM5ConsentPrivacyConsumer(deps: {
                   flags: [...flags],
                   capturedAt: new Date(),
                   sourceConsentVersion: facts.sourceConsentVersion,
+                  // F-237 — M39's consent state now governs `sud`; a DocLens interim origin no longer applies.
+                  sudFlagOrigin: null,
                   invalidatedAt: null,
                 })
                 .onConflictDoUpdate({
@@ -223,6 +225,7 @@ export function buildM5ConsentPrivacyConsumer(deps: {
                     flags: [...flags],
                     capturedAt: new Date(),
                     sourceConsentVersion: facts.sourceConsentVersion,
+                    sudFlagOrigin: null,
                     invalidatedAt: null,
                   },
                 });

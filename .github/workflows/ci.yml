@@ -681,6 +681,15 @@ jobs:
               name: "F-236 DocLens intake + live M32 pipeline",
               scripts: "test:f236:doclens-intake:live",
             }
+          # F-237 — DocLens stage 5 (vision re-read of high/medium-risk values from a padded crop) and §7.4
+          # W4 SUD detection (rules + grounded model indicators → encrypted evidence, an id-only
+          # `m22.intake.sud_detected`, M5's interim flag); the review rules (vision-disagreement reason,
+          # revised decisions, completion blocked while SUD is unresolved, false-positive rejection retiring
+          # only the DocLens flag) and the licence predicate's server-side risk lookup.
+          - {
+              name: "F-237 DocLens review + stage 5 + SUD",
+              scripts: "test:f237:doclens-review:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.

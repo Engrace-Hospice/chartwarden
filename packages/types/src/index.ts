@@ -28,6 +28,7 @@ export * from "./external-interfaces";
 export * from "./scheduling";
 export * from "./evv";
 export * from "./documents";
+export * from "./doclens-sud";
 export * from "./doclens-writeback";
 export * from "./portal";
 export * from "./subscription-billing";

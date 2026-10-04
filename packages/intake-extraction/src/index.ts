@@ -21,6 +21,18 @@ export {
 } from "./schemas/registry";
 export { SUD_SUGGESTED_KINDS } from "./sud-detection/domain";
 export type { SudSuggestedKind } from "./sud-detection/domain";
+export {
+  SUD_RULES,
+  SUD_RULESET_VERSION,
+  detectSudIndicators,
+  dominantSudCategory,
+} from "./sud-detection/flagger";
+export type {
+  SudIndicator,
+  SudIndicatorCategory,
+  SudPageInput,
+  SudTextBlock,
+} from "./sud-detection/flagger";
 
 // §7.1 W1 (M22-T08) — the DocLens extraction pipeline (classify → extract → discrepancy → review →
 // decide → provenance) as pure domain + the M32 capability port + Phase-1 deny-stub. Built-not-active:

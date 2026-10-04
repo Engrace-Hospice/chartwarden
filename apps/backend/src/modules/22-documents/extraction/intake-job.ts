@@ -5,7 +5,19 @@
 //     ──per page──▶ M32 DocLensClassifier                       (stage 3: document type)
 //     ──per same-type run──▶ M32 DocLensExtractor               (stage 4: value + verbatim quote + page)
 //     ──▶ groundQuote against Docling's text                    (the box is always Docling's)
+//     ──▶ high/medium-risk values: docling /render crop ──▶ M32 DocLensVisionVerifier (stage 5, F-237)
 //     ──▶ classified_page / extraction_job / extraction_candidate (value DEK-encrypted)
+//   every page ──▶ SUD rules (+ optional M32 DocLensSudDetector, grounded) (§7.4 W4, F-237)
+//     ──▶ batch `sud_status` + encrypted evidence + `m22.intake.sud_detected`, atomic with completion
+//
+// Stage 5 never shows the model the extracted value: it asks the model to READ the field from a crop of
+// the page and compares the reading here (alphanumerics only). A match sets `vision_verified`; a mismatch
+// stores the model's reading encrypted in `vision_disagreement`; a refusal or an illegible crop leaves the
+// value unverified, which the review UI says out loud.
+//
+// SUD detection runs whatever the AI posture: the rules need no capability. Every candidate on a page
+// with an indicator is tagged `sud_detected` (the page is Part 2-bearing content; the F-235 planner
+// excludes it from writeback until a reviewer rejects the detection as a false positive).
 //
 // What it never does:
 //   · trust the model for a box, a page, a risk tier or a field path. Box/page come from grounding; tier
@@ -24,18 +36,29 @@ import {
   type ClassifiedPage,
   DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
   type IntakeDocumentType,
+  SUD_RULESET_VERSION,
+  type SudIndicator,
+  type SudIndicatorCategory,
   classifyPages,
+  detectSudIndicators,
+  dominantSudCategory,
   findExtractionField,
   findExtractionSchema,
   groundQuote,
   groupContiguousRuns,
 } from "@wardenx/intake-extraction";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { ClassifiedPageDocType } from "@wardenx/types";
-import { eq } from "drizzle-orm";
+import {
+  type ClassifiedPageDocType,
+  DegradedError,
+  type IntakeSudDetectedPayload,
+  M22_INTAKE_SUD_DETECTED_EVENT,
+} from "@wardenx/types";
+import { and, eq } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
 import { type DoclingClient, type DoclingPage, DoclingParseError } from "./docling-client";
+import type { ExtractionOutboxPort } from "./writeback-commit-db";
 
 const BATCH = schema.intakeUploadBatches;
 const DOC = schema.documents;
@@ -93,6 +116,49 @@ export interface DocLensExtractorPort {
   >;
 }
 
+/** F-237 — M32's stage-5 seam, `field_value` mode only (structural). */
+export interface DocLensVisionVerifierPort {
+  verify(input: {
+    organizationId: string;
+    actorUserId: string;
+    documentId: string;
+    verificationKey: "field_value";
+    images: readonly { pageNumber: number; mediaType: "image/png"; dataBase64: string }[];
+    field: { fieldPath: string; description: string };
+  }): Promise<
+    | {
+        readonly available: true;
+        readonly invocationId: string;
+        readonly verdict: "pass" | "fail" | "uncertain";
+        readonly observedValue?: string;
+        readonly observedValues?: readonly string[];
+      }
+    | SeamRefusal
+  >;
+}
+
+/** F-237 — M32's SUD detector seam (structural). Its quotes are GROUNDED here before they count. */
+export interface DocLensSudDetectorPort {
+  detect(input: {
+    organizationId: string;
+    actorUserId: string;
+    documentId: string;
+    extractedText: string;
+    pages: readonly { page: number; text: string }[];
+  }): Promise<
+    | {
+        readonly available: true;
+        readonly invocationId: string;
+        readonly indicators: readonly {
+          readonly pageNumber: number;
+          readonly snippet: string;
+          readonly category: string;
+        }[];
+      }
+    | SeamRefusal
+  >;
+}
+
 export interface DocLensIntakeDeps {
   readonly db: DbClient;
   readonly docling: DoclingClient;
@@ -104,7 +170,65 @@ export interface DocLensIntakeDeps {
   readonly cipher: CandidateValueCipher;
   readonly classifier: () => DocLensClassifierPort;
   readonly extractor: () => DocLensExtractorPort;
+  /** F-237 — stage 5. Absent ⇒ high/medium-risk values stay unverified (and say so). */
+  readonly visionVerifier?: () => DocLensVisionVerifierPort;
+  /** F-237 — the optional model pass of SUD detection. Absent ⇒ the rules alone. */
+  readonly sudDetector?: () => DocLensSudDetectorPort;
+  /** F-237 — publishes `m22.intake.sud_detected`. Required the moment a batch has an indicator. */
+  readonly outbox?: ExtractionOutboxPort;
   readonly confidenceFloor?: number;
+}
+
+/** F-237 — the risk tiers stage 5 re-reads from the page (medications/allergies + name/DOB). */
+export const VISION_VERIFIED_RISK_LEVELS: ReadonlySet<string> = new Set(["high", "medium"]);
+/**
+ * Context around a value's box, in page units (points). Wide horizontally (the label beside the value),
+ * TIGHT vertically: a list's neighbouring entries sit ~20pt apart on a fax, and a crop that shows three
+ * medication lines lets the model read the wrong one — the first E2E run did exactly that (F-237).
+ */
+const CROP_PAD_X = 48;
+const CROP_PAD_Y = 6;
+const CROP_SCALE = 3;
+
+/**
+ * Does the model's independent reading agree with the extracted value? Alphanumerics only, lower-cased
+ * (OCR spacing and punctuation are not disagreements); one containing the other counts when they are of
+ * comparable length ("Penicillin" vs "penicillin." agrees; "Penicillin" vs "Penicillin — anaphylaxis"
+ * does not, and the reviewer sees the longer reading).
+ */
+const alnum = (s: string): string => s.toLowerCase().replace(/[^0-9a-z]/g, "");
+
+/** The reading most like the extracted value (bigram overlap) — what the reviewer is shown on a mismatch. */
+export function closestReading(extracted: string, readings: readonly string[]): string {
+  const grams = (s: string) => {
+    const a = alnum(s);
+    const out = new Set<string>();
+    for (let i = 0; i < a.length - 1; i++) out.add(a.slice(i, i + 2));
+    return out;
+  };
+  const target = grams(extracted);
+  let best = readings[0] as string;
+  let bestScore = -1;
+  for (const r of readings) {
+    const g = grams(r);
+    let shared = 0;
+    for (const x of g) if (target.has(x)) shared += 1;
+    const score = (2 * shared) / (g.size + target.size || 1);
+    if (score > bestScore) {
+      best = r;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+export function visionReadingAgrees(extracted: string, observed: string): boolean {
+  const a = alnum(extracted);
+  const b = alnum(observed);
+  if (a.length === 0 || b.length === 0) return false;
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= 3 && long.includes(short) && short.length / long.length >= 0.6;
 }
 
 export interface DocLensIntakeJob {
@@ -125,6 +249,13 @@ export type DocLensIntakeSummary =
       readonly candidates: number;
       readonly dropped: Readonly<Record<string, number>>;
       readonly refusals: readonly string[];
+      /** F-237 — counts only. */
+      readonly vision: {
+        readonly verified: number;
+        readonly disagreed: number;
+        readonly unverified: number;
+      };
+      readonly sud: { readonly indicators: number; readonly pages: readonly number[] };
     };
 
 const SCHEMA_KEY = "doclens_v1";
@@ -141,7 +272,11 @@ export async function runDocLensIntake(
   // ── 1. the batch and its filed source document ─────────────────────────────────────────────────────
   const source = await inOrg(async (tx) => {
     const [b] = await tx
-      .select({ status: BATCH.status, documentId: BATCH.initialDocumentId })
+      .select({
+        status: BATCH.status,
+        documentId: BATCH.initialDocumentId,
+        patientId: BATCH.patientId,
+      })
       .from(BATCH)
       .where(eq(BATCH.id, job.batchId))
       .limit(1);
@@ -156,7 +291,12 @@ export async function runDocLensIntake(
       .where(eq(DOC.id, b.documentId))
       .limit(1);
     return d
-      ? { kind: "ok" as const, documentId: b.documentId, objectKey: d.objectKey }
+      ? {
+          kind: "ok" as const,
+          documentId: b.documentId,
+          objectKey: d.objectKey,
+          patientId: b.patientId,
+        }
       : { kind: "unfiled" as const, documentId: b.documentId };
   });
   if (source.kind === "missing") return { outcome: "skipped", reason: "batch_not_found" };
@@ -179,12 +319,14 @@ export async function runDocLensIntake(
 
   // ── 2. Docling ───────────────────────────────────────────────────────────────────────────────────
   let pages: readonly DoclingPage[];
-  try {
-    const url = await deps.presignSource({
+  const presign = () =>
+    deps.presignSource({
       organizationId: org,
       bucket: deriveTenantBucket(org),
       objectKey: source.objectKey,
     });
+  try {
+    const url = await presign();
     pages = (
       await deps.docling.parse({
         organizationId: org,
@@ -200,10 +342,53 @@ export async function runDocLensIntake(
     }
     throw err; // worker unavailable / storage error ⇒ BullMQ retries
   }
-  await setBatch("docling_complete");
+  await inOrg((tx) =>
+    tx
+      .update(BATCH)
+      .set({
+        status: "docling_complete",
+        pageGeometry: pages.map((p) => ({ page: p.page, width: p.width, height: p.height })),
+      })
+      .where(eq(BATCH.id, job.batchId))
+      .then(() => undefined),
+  );
+
+  // ── 2b. SUD detection over every page (§7.4 W4 step 1) — rules always, the model when it may run ──
+  const sudIndicators: SudIndicator[] = detectSudIndicators(pages);
+  const sudRefs = [SUD_RULESET_VERSION];
+  const refusalsEarly: string[] = [];
+  if (deps.sudDetector) {
+    const r = await deps.sudDetector().detect({
+      organizationId: org,
+      actorUserId: job.actorUserId,
+      documentId: source.documentId,
+      extractedText: "",
+      pages: pages.map((p) => ({ page: p.page, text: pageText(p) })),
+    });
+    if (!r.available) {
+      refusalsEarly.push(`sud_detect: ${r.detail ?? "refused"}`);
+    } else {
+      sudRefs.push(`ai_invocation:${r.invocationId}`);
+      for (const i of r.indicators) {
+        // A model indicator counts only when its quote is really on the page it names.
+        const g = groundQuote(pages, { page: i.pageNumber, quote: i.snippet, value: i.snippet });
+        if (!g.grounded) continue;
+        sudIndicators.push({
+          page: g.page,
+          category: (SUD_CATEGORIES.has(i.category)
+            ? i.category
+            : "social_history") as SudIndicatorCategory,
+          ruleId: `ai:${i.category}`,
+          term: i.snippet,
+          bbox: g.bbox,
+        });
+      }
+    }
+  }
+  const sudPages = new Set(sudIndicators.map((i) => i.page));
 
   // ── 3. classify each page ────────────────────────────────────────────────────────────────────────
-  const refusals: string[] = [];
+  const refusals: string[] = [...refusalsEarly];
   const classified: ClassifiedPage[] = [];
   const classifierRef = new Map<number, string>();
   for (const p of pages) {
@@ -248,7 +433,9 @@ export async function runDocLensIntake(
   };
   let jobs = 0;
   let candidates = 0;
+  let sudCandidates = 0;
   let anyAwaiting = false;
+  const vision = { verified: 0, disagreed: 0, unverified: 0 };
 
   // Pages that need a human (unknown / below the floor) still get a classified_page row, so the
   // reviewer sees them; they form no extraction job.
@@ -359,7 +546,28 @@ export async function runDocLensIntake(
       });
     }
 
+    // ── 5. stage 5: re-read each high/medium-risk value from a crop of its page (F-237) ─────────────
+    const checks = await Promise.all(
+      accepted.map(async (a) => {
+        if (!VISION_VERIFIED_RISK_LEVELS.has(a.riskLevel)) return { kind: "not_required" as const };
+        if (!deps.visionVerifier) return { kind: "unverified" as const };
+        return verifyByVision(a, docType);
+      }),
+    );
+    for (const c of checks) {
+      if (c.kind === "verified") vision.verified += 1;
+      else if (c.kind === "disagreed") vision.disagreed += 1;
+      else if (c.kind === "unverified") vision.unverified += 1;
+    }
+    const visionRef = checks.find((c) => "invocationId" in c && c.invocationId);
     const encrypted = await Promise.all(accepted.map((a) => deps.cipher.encrypt(org, a.value)));
+    const disagreements = await Promise.all(
+      checks.map((c) =>
+        c.kind === "disagreed"
+          ? deps.cipher.encrypt(org, JSON.stringify({ observedValue: c.observedValue }))
+          : null,
+      ),
+    );
     await inOrg(async (tx) => {
       const [ej] = await tx
         .insert(EJ)
@@ -369,6 +577,10 @@ export async function runDocLensIntake(
           documentType: docType,
           status: "ready_for_review",
           extractorModelVersionRef: extractorRef,
+          visionVerifierModelVersionRef:
+            visionRef && "invocationId" in visionRef
+              ? `ai_invocation:${visionRef.invocationId}`
+              : null,
           aggregateConfidence: accepted.length
             ? (accepted.reduce((s, a) => s + a.confidence, 0) / accepted.length).toFixed(3)
             : null,
@@ -388,17 +600,72 @@ export async function runDocLensIntake(
           confidence: a.confidence.toFixed(3),
           sourcePage: a.page,
           sourceBoundingBox: { x1: a.bbox[0], y1: a.bbox[1], x2: a.bbox[2], y2: a.bbox[3] },
-          // Vision verification (stage 5) and the SUD detector are not run in this build: a high-risk
-          // value is therefore NOT vision-verified, and says so.
-          visionVerified: false,
-          sudDetected: false,
+          visionVerified: checks[i]?.kind === "verified",
+          visionDisagreement: disagreements[i] ?? null,
+          sudDetected: sudPages.has(a.page),
         });
       }
     });
     candidates += accepted.length;
+    sudCandidates += accepted.filter((a) => sudPages.has(a.page)).length;
   }
 
-  await setBatch(anyAwaiting && candidates === 0 ? "classifier_complete" : "extraction_complete");
+  // ── 6. completion + the W4 SUD record, in ONE transaction (status, evidence, event) ──────────────
+  const finalStatus =
+    anyAwaiting && candidates === 0 ? "classifier_complete" : "extraction_complete";
+  const sudEvidence =
+    sudIndicators.length > 0
+      ? await deps.cipher.encrypt(
+          org,
+          JSON.stringify(
+            sudIndicators.map((i) => ({
+              page: i.page,
+              category: i.category,
+              ruleId: i.ruleId,
+              term: i.term,
+              bbox: i.bbox,
+            })),
+          ),
+        )
+      : null;
+  if (sudEvidence !== null && !deps.outbox) {
+    // A detection M5 never hears about is a Part 2 flag that silently does not exist. Retry instead.
+    throw new DegradedError("doclens-intake", "SUD indicators found but no outbox is bound");
+  }
+  await inOrg(async (tx) => {
+    const updated = await tx
+      .update(BATCH)
+      .set({
+        status: finalStatus,
+        sudDetectorRef: sudRefs.join("+"),
+        ...(sudEvidence !== null
+          ? { sudStatus: "detected" as const, sudEvidenceCipher: sudEvidence }
+          : {}),
+      })
+      .where(and(eq(BATCH.id, job.batchId), eq(BATCH.sudStatus, "not_detected")))
+      .returning({ id: BATCH.id });
+    if (sudEvidence === null || updated.length === 0) {
+      if (updated.length === 0) {
+        // Already resolved/detected by an earlier run: keep that state, just finish the batch.
+        await tx.update(BATCH).set({ status: finalStatus }).where(eq(BATCH.id, job.batchId));
+      }
+      return;
+    }
+    const payload: IntakeSudDetectedPayload = {
+      intakeBatchId: job.batchId,
+      patientId: source.patientId,
+      candidateCount: sudCandidates,
+      suggestedSudKind: dominantSudCategory(sudIndicators),
+      pages: [...sudPages].sort((x, y) => x - y),
+    };
+    await (deps.outbox as ExtractionOutboxPort).publish(tx, {
+      eventName: M22_INTAKE_SUD_DETECTED_EVENT,
+      payload: { ...payload, organizationId: org },
+      organizationId: org,
+      aggregateKind: "intake_upload_batch",
+      aggregateId: job.batchId,
+    });
+  });
   return {
     outcome: anyAwaiting && candidates === 0 ? "awaiting_capability" : "extracted",
     pages: pages.length,
@@ -406,5 +673,87 @@ export async function runDocLensIntake(
     candidates,
     dropped,
     refusals,
+    vision,
+    sud: { indicators: sudIndicators.length, pages: [...sudPages].sort((x, y) => x - y) },
   };
+
+  /** Stage 5 for one value: render a padded crop of its box and ask the model to read the field. */
+  async function verifyByVision(
+    a: {
+      fieldPath: string;
+      value: string;
+      page: number;
+      bbox: readonly [number, number, number, number];
+    },
+    docType: IntakeDocumentType,
+  ): Promise<
+    | { kind: "verified"; invocationId: string }
+    | { kind: "disagreed"; invocationId: string; observedValue: string }
+    | { kind: "unverified"; invocationId?: string }
+  > {
+    const spec = findExtractionField(docType, a.fieldPath);
+    const geometry = pages.find((p) => p.page === a.page);
+    if (!spec || !geometry || !deps.visionVerifier) return { kind: "unverified" };
+    let png: Uint8Array;
+    try {
+      png = (
+        await deps.docling.render({
+          organizationId: org,
+          jobId: job.batchId,
+          sourceUrl: await presign(),
+          correlationId: job.correlationId,
+          page: a.page,
+          scale: CROP_SCALE,
+          crop: [
+            Math.max(0, a.bbox[0] - CROP_PAD_X),
+            Math.max(0, a.bbox[1] - CROP_PAD_Y),
+            Math.min(geometry.width, a.bbox[2] + CROP_PAD_X),
+            Math.min(geometry.height, a.bbox[3] + CROP_PAD_Y),
+          ],
+        })
+      ).png;
+    } catch {
+      return { kind: "unverified" }; // a render failure costs the check, never the extraction
+    }
+    const r = await deps.visionVerifier().verify({
+      organizationId: org,
+      actorUserId: job.actorUserId,
+      documentId: (source as { documentId: string }).documentId,
+      verificationKey: "field_value",
+      images: [
+        {
+          pageNumber: a.page,
+          mediaType: "image/png",
+          dataBase64: Buffer.from(png).toString("base64"),
+        },
+      ],
+      field: { fieldPath: a.fieldPath, description: spec.description },
+    });
+    if (!r.available) {
+      refusals.push(`vision ${a.fieldPath}: ${r.detail ?? "refused"}`);
+      return { kind: "unverified" };
+    }
+    const readings = r.observedValues?.length
+      ? r.observedValues
+      : r.observedValue
+        ? [r.observedValue]
+        : [];
+    if (r.verdict !== "pass" || readings.length === 0) {
+      return { kind: "unverified", invocationId: r.invocationId };
+    }
+    return readings.some((o) => visionReadingAgrees(a.value, o))
+      ? { kind: "verified", invocationId: r.invocationId }
+      : {
+          kind: "disagreed",
+          invocationId: r.invocationId,
+          observedValue: closestReading(a.value, readings),
+        };
+  }
 }
+
+const SUD_CATEGORIES: ReadonlySet<string> = new Set([
+  "medication",
+  "diagnosis",
+  "social_history",
+  "treatment_setting",
+]);

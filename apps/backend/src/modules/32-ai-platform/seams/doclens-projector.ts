@@ -1,5 +1,5 @@
 // apps/backend/src/modules/32-ai-platform/seams/doclens-projector.ts — the §2.5 output projector for the
-// DocLens classifier and extractor seams, plus the JSON Schemas their backends are constrained to
+// DocLens classifier, extractor, stage-5 vision verifier and SUD detector seams, plus the JSON Schemas their backends are constrained to
 // (F-236, ADR-0048).
 //
 // The projector's job is to turn `output.text` into a seam contract's payload or answer `null` ("cannot")
@@ -57,6 +57,48 @@ export const DOCLENS_EXTRACT_RESPONSE_SCHEMA: Record<string, unknown> = {
     },
   },
   required: ["fields"],
+  additionalProperties: false,
+};
+
+/** F-237 — stage 5: the model's independent reading of one field from an image crop. */
+export const DOCLENS_VISION_VERIFY_RESPONSE_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    legible: { type: "boolean" },
+    observedValues: { type: "array", items: { type: "string" } },
+    confidence: { type: "number" },
+  },
+  required: ["legible", "observedValues", "confidence"],
+  additionalProperties: false,
+};
+
+/** F-237 — the SUD categories the model may report (M22 `SudIndicatorCategory`). */
+export const DOCLENS_SUD_CATEGORIES = [
+  "medication",
+  "diagnosis",
+  "social_history",
+  "treatment_setting",
+] as const;
+
+export const DOCLENS_SUD_DETECT_RESPONSE_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    indicators: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          page: { type: "integer" },
+          quote: { type: "string" },
+          category: { type: "string", enum: [...DOCLENS_SUD_CATEGORIES] },
+        },
+        required: ["page", "quote", "category"],
+        additionalProperties: false,
+      },
+    },
+    confidence: { type: "number" },
+  },
+  required: ["indicators", "confidence"],
   additionalProperties: false,
 };
 
@@ -130,6 +172,54 @@ export function projectDocLensExtract(output: AiInvocationOutput) {
   return { fields, warnings: [] };
 }
 
+/**
+ * F-237 — `field_value`: legible ⇒ `pass` with the reading(s); illegible ⇒ `uncertain` with none. A LIST
+ * field (`medications[1].name`) reads every visible entry: Docling often hands back a whole list as one
+ * block, so the crop cannot isolate one line, and the consumer checks the value is AMONG the readings.
+ */
+export function projectDocLensVisionVerify(output: AiInvocationOutput) {
+  const o = parseObject(output.text);
+  if (!o || typeof o.legible !== "boolean" || !Array.isArray(o.observedValues)) return null;
+  if (!o.observedValues.every((v) => typeof v === "string")) return null;
+  if (!isConfidence(o.confidence)) return null;
+  const values = (o.observedValues as string[]).map((v) => v.trim()).filter((v) => v !== "");
+  const read = o.legible && values.length > 0;
+  return {
+    verdict: read ? ("pass" as const) : ("uncertain" as const),
+    confidence: o.confidence,
+    evidence: [],
+    warnings: [],
+    ...(read ? { observedValue: values[0] as string, observedValues: values } : {}),
+  };
+}
+
+export function projectDocLensSudDetect(output: AiInvocationOutput) {
+  const o = parseObject(output.text);
+  if (!o || !Array.isArray(o.indicators) || !isConfidence(o.confidence)) return null;
+  const indicators: { pageNumber: number; snippet: string; category: string }[] = [];
+  for (const raw of o.indicators as unknown[]) {
+    const i = raw as Record<string, unknown> | null;
+    if (
+      !i ||
+      typeof i.page !== "number" ||
+      !Number.isInteger(i.page) ||
+      i.page < 1 ||
+      typeof i.quote !== "string" ||
+      !(DOCLENS_SUD_CATEGORIES as readonly unknown[]).includes(i.category)
+    ) {
+      return null;
+    }
+    if (i.quote.trim() === "") continue;
+    indicators.push({ pageNumber: i.page, snippet: i.quote, category: i.category as string });
+  }
+  return {
+    sudIndicatorsDetected: indicators.length > 0,
+    confidence: o.confidence,
+    indicators,
+    warnings: [],
+  };
+}
+
 /** Structurally `AiSeamOutputProjector` (published.ts) — not imported, so published.ts may import this file. */
 export function createDocLensOutputProjector(): {
   project(seam: string, output: AiInvocationOutput): unknown | null;
@@ -138,6 +228,8 @@ export function createDocLensOutputProjector(): {
     project(seam, output) {
       if (seam === "DocLensClassifier") return projectDocLensClassify(output);
       if (seam === "DocLensExtractor") return projectDocLensExtract(output);
+      if (seam === "DocLensVisionVerifier") return projectDocLensVisionVerify(output);
+      if (seam === "DocLensSudDetector") return projectDocLensSudDetect(output);
       return null;
     },
   };

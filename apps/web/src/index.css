@@ -2523,17 +2523,19 @@
     font-family: var(--font-display);
     font-weight: 500;
   }
-  /* Bare action buttons in headers/footers read as buttons, not plain text. */
-  .wx-page-actions button,
-  .wx-sticky-footer button {
+  /* Bare action buttons in headers/footers read as buttons, not plain text. Buttons that already carry
+     a .wx-btn-* class keep their own look: this selector outranks `.wx-btn-primary`, and used to paint a
+     primary button's white label onto a white background. */
+  .wx-page-actions button:not([class*="wx-btn-"]),
+  .wx-sticky-footer button:not([class*="wx-btn-"]) {
     padding: 0.4rem 0.8rem;
     border: 1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent);
     border-radius: var(--radius-md);
     background: var(--color-surface-lowest);
     cursor: pointer;
   }
-  .wx-page-actions button:hover,
-  .wx-sticky-footer button:hover {
+  .wx-page-actions button:not([class*="wx-btn-"]):hover,
+  .wx-sticky-footer button:not([class*="wx-btn-"]):hover {
     background: var(--color-surface-container);
   }
 

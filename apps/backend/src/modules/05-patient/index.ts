@@ -190,6 +190,14 @@ export {
   parseCommitRequested,
   planExtractionWriteback,
 } from "./outbox-consumers/m22-extraction-writeback";
+export {
+  M5_INTAKE_SUD_PRIVACY_CONSUMER,
+  type SudFlagDecision,
+  type SudFlagOrigin,
+  type SudSnapshotFacts,
+  buildM5IntakeSudPrivacyConsumer,
+  decideSudFlag,
+} from "./outbox-consumers/m22-intake-sud-privacy";
 
 // F-171 (#248) — the real §2.4/§4.3 direct patient-merge write path (`POST /patients/:id/merge`):
 // folds a duplicate into a survivor, applies field resolutions to the survivor, and emits the real

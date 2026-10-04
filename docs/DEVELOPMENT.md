@@ -131,16 +131,18 @@ value; M22 grounds the quote against Docling's text. Every model call goes throu
 pipeline, which is only **built** when a backend is configured and only **dispatches** when every gate
 passes. To run it end to end against a local model:
 
-1. **A local model.** Run Ollama on the host and pull the model the registry key names:
-   `ollama pull llama3.1:8b-instruct-q8_0`. Give the `api` and `worker` services (a local, git-excluded
+1. **Local models.** Run Ollama on the host and pull the models the registry keys name:
+   `ollama pull llama3.1:8b-instruct-q8_0` (classify, extract, SUD screen) and `ollama pull qwen2.5vl:7b`
+   (stage-5 vision double-check, F-237). Give the `api` and `worker` services (a local, git-excluded
    `docker-compose.override.yml` is the place):
    `OLLAMA_BASE_URL=http://host.docker.internal:11434`,
-   `OLLAMA_MODELS=local-llama-3.1-8b-instruct=llama3.1:8b-instruct-q8_0`, `OLLAMA_NUM_CTX=16384`.
+   `OLLAMA_MODELS=local-llama-3.1-8b-instruct=llama3.1:8b-instruct-q8_0,local-qwen2.5-vl-7b-instruct=qwen2.5vl:7b`,
+   `OLLAMA_NUM_CTX=16384`.
    (Claude instead: `ANTHROPIC_API_KEY`, plus `ANTHROPIC_BAA_REFERENCE` and an unexpired
    `ANTHROPIC_ZDR_CONTRACT_REF` / `ANTHROPIC_ZDR_EXPIRES_AT` — without them every call refuses, D19.)
 2. **Register** with `DATABASE_ADMIN_URL` set: `bun run db:sync:ai-capabilities`, then
    `bun run db:sync:ai-backends` (same `OLLAMA_*` env as above but reachable from the host, plus
-   `OLLAMA_LICENSES="local-llama-3.1-8b-instruct=Llama 3.1 Community License Agreement"`). The worker's
+   `OLLAMA_LICENSES="local-llama-3.1-8b-instruct=Llama 3.1 Community License Agreement,local-qwen2.5-vl-7b-instruct=Apache-2.0"`). The worker's
    health sweep marks the backend `healthy` within a minute.
 3. **Enable for the demo org only:** `bun run db:seed:scenario-doclens-ai` — flags `ai.full` +
    `documents.doclens`, the hash-pinned prompt templates, PILOT + a pilot-enrolled `local_only` opt-in, and
@@ -149,6 +151,9 @@ passes. To run it end to end against a local model:
    `BETTER_AUTH_URL`). Upload a PDF/fax via `POST /api/v1/document-uploads` → `…/complete`, create the
    batch with `POST /api/v1/intake/uploads {documentId, patientId}`, then
    `POST /api/v1/intake/uploads/:id/extraction/run` (202, queued; the worker runs it).
+5. **Review** in the web app at `/intake` (F-237): the queue, then the side-by-side workspace — page image
+   with each value's box, per-field accept / edit / reject after a source-view check, the stage-5 vision
+   result, and the 42 CFR Part 2 SUD banner (confirm / reject before completing).
 
 ## How to add a module (Phase 1+)
 

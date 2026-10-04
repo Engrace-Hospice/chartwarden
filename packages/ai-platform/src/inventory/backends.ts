@@ -26,7 +26,7 @@
 import type { AiPhase1BackendRegistration } from "@wardenx/types";
 
 /**
- * The eight backends §2.3 registers at lock time.
+ * The eight backends §2.3 registers at lock time, plus the local vision route ADR-0048 adds (F-237).
  *
  * `servesCapabilityKeys` is §2.3's own "Capabilities served (Phase 1)" column. It is the DEFAULT/opt-in
  * mapping, not a permission: whether a tenant's invocation actually reaches a backend is decided at the
@@ -84,6 +84,8 @@ export const AI_PHASE_1_BACKENDS: readonly AiPhase1BackendRegistration[] = [
       "doclens_extract",
       // ADR-0048 (F-236): DocLens page classification runs on the same LLM path as extraction.
       "doclens_classify",
+      // ADR-0048 (F-237): the optional model pass of DocLens SUD detection, for local_only tenants.
+      "doclens_sud_detect",
       "copilot_clinical",
       "copilot_admin",
     ],
@@ -108,6 +110,22 @@ export const AI_PHASE_1_BACKENDS: readonly AiPhase1BackendRegistration[] = [
     ],
     additionalSeedBlockers: [],
     note: "Per-tenant alternative to Llama over the same capability set. Its 32K window is a quarter of Llama's — the routing gate cannot treat the two as interchangeable for a long chart context.",
+  },
+  {
+    // ADR-0048 (F-237) — DocLens stage 5 for tenants whose PHI may not leave the host. §2.3 gave vision
+    // verification exactly one home (Opus), which left a `local_only` tenant no stage 5 at all.
+    backendKey: "local-qwen2.5-vl-7b-instruct",
+    kind: "local",
+    vendor: "alibaba",
+    modelFamily: "qwen",
+    supportedModalities: ["text", "vision"],
+    // Qwen2.5-VL's native window; the YaRN-extended 128K is not what Ollama serves by default, and a
+    // stage-5 prompt is one field name plus one image crop.
+    contextWindowTokens: 32_768,
+    isActive: true,
+    servesCapabilityKeys: ["doclens_vision_verify"],
+    additionalSeedBlockers: [],
+    note: "Local vision route for doclens_vision_verify (ADR-0048, F-237). Apache-2.0. Reads one field from an image crop; M22 compares the reading with the extracted value, so the model is never shown the answer it is checking.",
   },
   {
     backendKey: "local-bge-small-en",

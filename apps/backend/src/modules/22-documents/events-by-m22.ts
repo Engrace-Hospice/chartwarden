@@ -26,6 +26,9 @@ import { Type } from "@sinclair/typebox";
 import {
   M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
   M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
+  M22_INTAKE_SUD_CONFIRMED_EVENT,
+  M22_INTAKE_SUD_DETECTED_EVENT,
+  M22_INTAKE_SUD_REJECTED_EVENT,
   type ModuleEventContribution,
 } from "@wardenx/types";
 
@@ -117,6 +120,60 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
       completedAt: Iso,
     }),
     declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  // F-237 — §7.4 W4 / D8: DocLens SUD detection → M5's interim `sud` privacy flag, and the reviewer's
+  // confirm / false-positive round-trip. Ids only: a Part 2 indicator on a named patient is itself
+  // protected, so no term, snippet or reason travels on the outbox (they stay encrypted on the batch).
+  {
+    eventName: M22_INTAKE_SUD_DETECTED_EVENT,
+    moduleOwner: "m22",
+    description:
+      "The DocLens SUD detector (rules, plus the governed model pass when it may run) found 42 CFR Part 2 indicators in an intake batch. Emitted once per batch, in the transaction that completes extraction, independent of any reviewer decision (W4 step 3). M5 adds an interim, unconfirmed `sud` flag to the patient's privacy snapshot.",
+    payloadSchema: Type.Object({
+      intakeBatchId: Id,
+      organizationId: Id,
+      patientId: IdN,
+      candidateCount: Type.Integer({ minimum: 0 }),
+      suggestedSudKind: Type.Union([
+        Type.Literal("medication"),
+        Type.Literal("diagnosis"),
+        Type.Literal("social_history"),
+        Type.Literal("treatment_setting"),
+      ]),
+      pages: Type.Array(Type.Integer({ minimum: 1 })),
+    }),
+    declaredConsumers: ["m5"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: M22_INTAKE_SUD_CONFIRMED_EVENT,
+    moduleOwner: "m22",
+    description:
+      "A licensed reviewer confirmed a DocLens SUD detection (W4 step 6). M5 marks the patient's interim `sud` flag confirmed; a §2.31 consent is still required before any disclosure.",
+    payloadSchema: Type.Object({
+      intakeBatchId: Id,
+      organizationId: Id,
+      patientId: IdN,
+      resolvedByMembershipId: Id,
+      resolvedAt: Iso,
+    }),
+    declaredConsumers: ["m5"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: M22_INTAKE_SUD_REJECTED_EVENT,
+    moduleOwner: "m22",
+    description:
+      "A licensed reviewer rejected a DocLens SUD detection as a false positive (W4 step 6, e.g. methadone for pain). M5 retires the interim `sud` flag ONLY if DocLens put it there; a consent-derived flag is untouched.",
+    payloadSchema: Type.Object({
+      intakeBatchId: Id,
+      organizationId: Id,
+      patientId: IdN,
+      resolvedByMembershipId: Id,
+      resolvedAt: Iso,
+    }),
+    declaredConsumers: ["m5"],
     isOutboxOnly: true,
   },
 ];

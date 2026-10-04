@@ -105704,7 +105704,87 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reviewId",
+                    "status"
+                  ],
+                  "properties": {
+                    "reviewId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "complete",
+                      "type": "string"
+                    },
+                    "writeback": {
+                      "type": "object",
+                      "required": [
+                        "targetModule",
+                        "targetAggregateId",
+                        "committedFieldPaths",
+                        "excluded"
+                      ],
+                      "properties": {
+                        "targetModule": {
+                          "anyOf": [
+                            {
+                              "const": "m5",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "targetAggregateId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "committedFieldPaths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "excluded": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "candidateId",
+                              "fieldPath",
+                              "reason"
+                            ],
+                            "properties": {
+                              "candidateId": {
+                                "type": "string"
+                              },
+                              "fieldPath": {
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -105821,7 +105901,7 @@
         }
       }
     },
-    "/api/v1/intake/reviews/{id}/decisions{bulk}-approve": {
+    "/api/v1/intake/reviews/{id}/decisions:bulk-approve": {
       "post": {
         "operationId": "postApiV1IntakeReviewsByIdDecisionsbulkapprove",
         "tags": [
@@ -105831,14 +105911,6 @@
         "parameters": [
           {
             "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bulk",
             "in": "path",
             "required": true,
             "schema": {
@@ -105943,6 +106015,209 @@
       }
     },
     "/api/v1/intake/uploads": {
+      "get": {
+        "operationId": "getApiV1IntakeUploads",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: the intake work queue (pipeline status, SUD state, candidate counts; no values)",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "done",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "createdAt",
+                          "status",
+                          "sourceChannel",
+                          "patientId",
+                          "patientName",
+                          "sudStatus",
+                          "candidates",
+                          "review"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "sourceChannel": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patientName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sudStatus": {
+                            "anyOf": [
+                              {
+                                "const": "not_detected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "detected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "candidates": {
+                            "type": "object",
+                            "required": [
+                              "total",
+                              "lowConfidence",
+                              "highRisk",
+                              "visionDisagreed"
+                            ],
+                            "properties": {
+                              "total": {
+                                "type": "integer"
+                              },
+                              "lowConfidence": {
+                                "type": "integer"
+                              },
+                              "highRisk": {
+                                "type": "integer"
+                              },
+                              "visionDisagreed": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "review": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "status",
+                                  "decided"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "decided": {
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1IntakeUploads",
         "tags": [
@@ -106500,6 +106775,44 @@
         }
       }
     },
+    "/api/v1/intake/uploads/{id}/pages/{page}/image": {
+      "get": {
+        "operationId": "getApiV1IntakeUploadsByIdPagesByPageImage",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: one source page as PNG (the review overlay's coordinate space x2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/intake/uploads/{id}/review": {
       "post": {
         "operationId": "postApiV1IntakeUploadsByIdReview",
@@ -106519,7 +106832,48 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "batchId",
+                    "status",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "complete",
+                          "type": "string"
+                        },
+                        {
+                          "const": "abandoned",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -106537,6 +106891,624 @@
                 "properties": {}
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads/{id}/sud-review": {
+      "post": {
+        "operationId": "postApiV1IntakeUploadsByIdSudreview",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "batchId",
+                    "sudStatus"
+                  ],
+                  "properties": {
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "sudStatus": {
+                      "anyOf": [
+                        {
+                          "const": "not_detected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "detected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "outcome"
+                ],
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "confirmed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rejected",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 5,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads/{id}/workspace": {
+      "get": {
+        "operationId": "getApiV1IntakeUploadsByIdWorkspace",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens: one batch for side-by-side review (decrypted values, boxes, stage-5 and SUD state)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "batch",
+                    "sud",
+                    "pages",
+                    "jobs",
+                    "review",
+                    "candidates"
+                  ],
+                  "properties": {
+                    "batch": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "status",
+                        "sourceChannel",
+                        "uploadedAt",
+                        "documentId",
+                        "patientId",
+                        "patientName"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "sourceChannel": {
+                          "type": "string"
+                        },
+                        "uploadedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "documentId": {
+                          "type": "string"
+                        },
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "sud": {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "detectorRef",
+                        "resolvedAt",
+                        "resolvedByMembershipId",
+                        "indicators"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "not_detected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "detected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "confirmed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rejected",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "detectorRef": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolvedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolvedByMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "indicators": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "page",
+                              "category",
+                              "ruleId",
+                              "term",
+                              "bbox"
+                            ],
+                            "properties": {
+                              "page": {
+                                "type": "integer"
+                              },
+                              "category": {
+                                "type": "string"
+                              },
+                              "ruleId": {
+                                "type": "string"
+                              },
+                              "term": {
+                                "type": "string"
+                              },
+                              "bbox": {
+                                "type": "array",
+                                "items": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "additionalItems": false,
+                                "minItems": 4,
+                                "maxItems": 4
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "page",
+                          "width",
+                          "height",
+                          "documentType",
+                          "confidence",
+                          "needsHumanClassification"
+                        ],
+                        "properties": {
+                          "page": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "documentType": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "confidence": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "needsHumanClassification": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "documentType",
+                          "status",
+                          "pageFrom",
+                          "pageTo",
+                          "failureReason"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "documentType": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "pageFrom": {
+                            "type": "integer"
+                          },
+                          "pageTo": {
+                            "type": "integer"
+                          },
+                          "failureReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "review": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "status",
+                            "reviewerMembershipId",
+                            "isMine"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "reviewerMembershipId": {
+                              "type": "string"
+                            },
+                            "isMine": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "candidates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "jobId",
+                          "documentType",
+                          "fieldPath",
+                          "description",
+                          "riskLevel",
+                          "confidence",
+                          "value",
+                          "page",
+                          "bbox",
+                          "vision",
+                          "sudDetected",
+                          "writebackTarget",
+                          "decision"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "jobId": {
+                            "type": "string"
+                          },
+                          "documentType": {
+                            "type": "string"
+                          },
+                          "fieldPath": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "riskLevel": {
+                            "anyOf": [
+                              {
+                                "const": "low",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medium",
+                                "type": "string"
+                              },
+                              {
+                                "const": "high",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "confidence": {
+                            "type": "number"
+                          },
+                          "value": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "page": {
+                            "type": "integer"
+                          },
+                          "bbox": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ],
+                            "additionalItems": false,
+                            "minItems": 4,
+                            "maxItems": 4
+                          },
+                          "vision": {
+                            "type": "object",
+                            "required": [
+                              "status",
+                              "observedValue"
+                            ],
+                            "properties": {
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "not_required",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "verified",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "disagreed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unverified",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "observedValue": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "sudDetected": {
+                            "type": "boolean"
+                          },
+                          "writebackTarget": {
+                            "type": "boolean"
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "decision",
+                                  "editedValue",
+                                  "reason",
+                                  "partOfBulkApprove",
+                                  "decidedAt"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "decision": {
+                                    "type": "string"
+                                  },
+                                  "editedValue": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "reason": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "partOfBulkApprove": {
+                                    "type": "boolean"
+                                  },
+                                  "decidedAt": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

@@ -1388,6 +1388,22 @@
       "app": "web",
       "module": "22-documents",
       "moduleId": 22,
+      "id": "intake.review-queue",
+      "path": "/intake",
+      "permission": "intake.read"
+    },
+    {
+      "app": "web",
+      "module": "22-documents",
+      "moduleId": 22,
+      "id": "intake.review-workspace",
+      "path": "/intake/:batchId/review",
+      "permission": "intake.review"
+    },
+    {
+      "app": "web",
+      "module": "22-documents",
+      "moduleId": 22,
       "id": "documents.intake-batch",
       "path": "/intake/:batchId",
       "permission": "intake.read"

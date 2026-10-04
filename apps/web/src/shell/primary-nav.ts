@@ -87,7 +87,7 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Documents",
         icon: "file-text",
         to: "/documents",
-        claims: ["/documents", "/admin/forms"],
+        claims: ["/documents", "/admin/forms", "/intake"],
       },
       {
         key: "billing",

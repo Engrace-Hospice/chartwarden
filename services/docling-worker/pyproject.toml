@@ -8,6 +8,9 @@ dependencies = [
   "uvicorn[standard]>=0.32",
   "httpx>=0.28",
   "pydantic>=2.9",
+  # F-237 — /render (page images for the review overlay and stage-5 crops). Docling depends on both too.
+  "pypdfium2>=4.30",
+  "pillow>=10.4",
 ]
 
 [project.optional-dependencies]

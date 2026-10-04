@@ -9650,7 +9650,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/intake/reviews/{id}/decisions{bulk}-approve": {
+    "/api/v1/intake/reviews/{id}/decisions:bulk-approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -9691,7 +9691,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** DocLens: the intake work queue (pipeline status, SUD state, candidate counts; no values) */
+        get: operations["getApiV1IntakeUploads"];
         put?: never;
         /** Upload a new intake batch */
         post: operations["postApiV1IntakeUploads"];
@@ -9803,6 +9804,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/intake/uploads/{id}/pages/{page}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DocLens: one source page as PNG (the review overlay's coordinate space x2) */
+        get: operations["getApiV1IntakeUploadsByIdPagesByPageImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/intake/uploads/{id}/review": {
         parameters: {
             query?: never;
@@ -9814,6 +9832,40 @@ export interface paths {
         put?: never;
         /** Open an extraction-review session (acquires lock) */
         post: operations["postApiV1IntakeUploadsByIdReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/intake/uploads/{id}/sud-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** DocLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key) */
+        post: operations["postApiV1IntakeUploadsByIdSudreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/intake/uploads/{id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DocLens: one batch for side-by-side review (decrypted values, boxes, stage-5 and SUD state) */
+        get: operations["getApiV1IntakeUploadsByIdWorkspace"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -47055,7 +47107,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        reviewId: string;
+                        /** @constant */
+                        status: "complete";
+                        writeback?: {
+                            targetModule: "m5" | null;
+                            targetAggregateId: string | null;
+                            committedFieldPaths: string[];
+                            excluded: {
+                                candidateId: string;
+                                fieldPath: string;
+                                reason: string;
+                            }[];
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -47103,7 +47171,6 @@ export interface operations {
             header?: never;
             path: {
                 id: string;
-                bulk: string;
             };
             cookie?: never;
         };
@@ -47151,6 +47218,56 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IntakeUploads: {
+        parameters: {
+            query?: {
+                view?: "open" | "done";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            status: string;
+                            sourceChannel: string;
+                            patientId: string | null;
+                            patientName: string | null;
+                            sudStatus: "not_detected" | "detected" | "confirmed" | "rejected";
+                            candidates: {
+                                total: number;
+                                lowConfidence: number;
+                                highRisk: number;
+                                visionDisagreed: number;
+                            };
+                            review: {
+                                id: string;
+                                status: string;
+                                decided: number;
+                            } | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -47383,6 +47500,29 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IntakeUploadsByIdPagesByPageImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                page: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IntakeUploadsByIdReview: {
         parameters: {
             query?: never;
@@ -47403,7 +47543,155 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        batchId: string;
+                        status: "in_progress" | "complete" | "abandoned";
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IntakeUploadsByIdSudreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "confirmed" | "rejected";
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        batchId: string;
+                        sudStatus: "not_detected" | "detected" | "confirmed" | "rejected";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IntakeUploadsByIdWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        batch: {
+                            id: string;
+                            status: string;
+                            sourceChannel: string;
+                            /** Format: date-time */
+                            uploadedAt: string;
+                            documentId: string;
+                            patientId: string | null;
+                            patientName: string | null;
+                        };
+                        sud: {
+                            status: "not_detected" | "detected" | "confirmed" | "rejected";
+                            detectorRef: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                            indicators: {
+                                page: number;
+                                category: string;
+                                ruleId: string;
+                                term: string;
+                                bbox: [
+                                    number,
+                                    number,
+                                    number,
+                                    number
+                                ];
+                            }[];
+                        };
+                        pages: {
+                            page: number;
+                            width: number;
+                            height: number;
+                            documentType: string | null;
+                            confidence: number | null;
+                            needsHumanClassification: boolean;
+                        }[];
+                        jobs: {
+                            id: string;
+                            documentType: string;
+                            status: string;
+                            pageFrom: number;
+                            pageTo: number;
+                            failureReason: string | null;
+                        }[];
+                        review: {
+                            id: string;
+                            status: string;
+                            reviewerMembershipId: string;
+                            isMine: boolean;
+                        } | null;
+                        candidates: {
+                            id: string;
+                            jobId: string;
+                            documentType: string;
+                            fieldPath: string;
+                            description: string | null;
+                            riskLevel: "low" | "medium" | "high";
+                            confidence: number;
+                            value: string | null;
+                            page: number;
+                            bbox: [
+                                number,
+                                number,
+                                number,
+                                number
+                            ];
+                            vision: {
+                                status: "not_required" | "verified" | "disagreed" | "unverified";
+                                observedValue: string | null;
+                            };
+                            sudDetected: boolean;
+                            writebackTarget: boolean;
+                            decision: {
+                                id: string;
+                                decision: string;
+                                editedValue: string | null;
+                                reason: string | null;
+                                partOfBulkApprove: boolean;
+                                decidedAt: string;
+                            } | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

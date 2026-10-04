@@ -73,6 +73,8 @@ export async function commitReviewWriteback(
     readonly batchId: string;
     readonly batchPatientId: string | null;
     readonly reviewerMembershipId: string;
+    /** F-237 — see `planDocLensWriteback`'s `batchSudStatus`. */
+    readonly batchSudStatus?: "not_detected" | "detected" | "confirmed" | "rejected";
   },
 ): Promise<ExtractionWritebackSummary> {
   const rows = await tx
@@ -134,7 +136,11 @@ export async function commitReviewWriteback(
     });
   }
 
-  const plan = planDocLensWriteback({ batchPatientId: input.batchPatientId, facts });
+  const plan = planDocLensWriteback({
+    batchPatientId: input.batchPatientId,
+    facts,
+    ...(input.batchSudStatus ? { batchSudStatus: input.batchSudStatus } : {}),
+  });
   if (plan.committed.length === 0 || plan.targetPatientId === null) {
     return {
       targetModule: null,

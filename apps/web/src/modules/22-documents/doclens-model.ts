@@ -1,0 +1,222 @@
+// apps/web/src/modules/22-documents — the PURE half of the DocLens review screens (F-237): labels,
+// confidence bands, bounding-box geometry, and the three eligibility rules the workspace shows before the
+// server enforces them (bulk-approve, chart write-back, vision-disagreement reason). No React, no IO, so
+// each rule is unit-testable on its own and the screen cannot drift from a second copy of it.
+//
+// The rules MIRROR the server; they never replace it. Bulk-approve scope is enforced by the
+// `extraction_high_risk_field_per_field_only` ABAC (422), the vision reason by
+// `VISION_DISAGREEMENT_REASON_REQUIRED`, and what reaches the chart by the write-back planner
+// (`writeback-plan.ts`) — which is why the completion result shows the SERVER's committed/excluded
+// lists, not this file's prediction.
+import type { Bbox, Candidate, SudStatus, WorkspacePage } from "./doclens-api";
+
+// ── labels ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Field-path leaf → reviewer copy. Covers the v1 registry (`@wardenx/intake-extraction` schemas). */
+const FIELD_LABEL: Record<string, string> = {
+  "patient.legalFirstName": "Legal first name",
+  "patient.legalLastName": "Legal last name",
+  "patient.dateOfBirth": "Date of birth",
+  "patient.preferredName": "Preferred name",
+  "patient.phoneHome": "Home phone",
+  "patient.phoneMobile": "Mobile phone",
+  "patient.email": "Email",
+  "patient.address.line1": "Street address",
+  "patient.address.line2": "Apt / unit",
+  "patient.address.city": "City",
+  "patient.address.state": "State",
+  "patient.address.postalCode": "ZIP code",
+};
+const SINGULAR: Record<string, string> = {
+  medications: "Medication",
+  allergies: "Allergy",
+  diagnoses: "Diagnosis",
+  problems: "Problem",
+};
+
+const words = (camel: string): string =>
+  camel
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .toLowerCase();
+const capital = (s: string): string => (s ? s[0]?.toUpperCase() + s.slice(1) : s);
+
+/**
+ * `patient.phoneHome` → "Home phone"; `medications[0].name` → "Medication 1 · name". A path the map
+ * does not know falls back to its leaf in words, so an unmapped field is still readable, never blank.
+ */
+export function fieldLabel(fieldPath: string): string {
+  const known = FIELD_LABEL[fieldPath];
+  if (known) return known;
+  const indexed = /^([a-zA-Z]+)\[(\d+)\](?:\.(.+))?$/.exec(fieldPath);
+  if (indexed) {
+    const [, list = "", index = "0", rest] = indexed;
+    const noun = SINGULAR[list] ?? capital(words(list).replace(/s$/, ""));
+    const head = `${noun} ${Number(index) + 1}`;
+    return rest ? `${head} · ${words(rest.split(".").pop() ?? rest)}` : head;
+  }
+  const leaf = fieldPath.split(".").pop() ?? fieldPath;
+  return capital(words(leaf));
+}
+
+/** The section a field is grouped under in the list (within its document type). */
+export function fieldSection(fieldPath: string): string {
+  if (fieldPath.startsWith("patient.address.")) return "Address";
+  if (fieldPath.startsWith("patient.")) return "Patient";
+  const list = /^([a-zA-Z]+)\[/.exec(fieldPath)?.[1];
+  return list ? capital(words(list)) : "Other";
+}
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  discharge_summary: "Discharge summary",
+  med_recon: "Medication reconciliation",
+  hp: "History & physical",
+  lab: "Lab report",
+  imaging: "Imaging report",
+  consult: "Consult note",
+  insurance_card: "Insurance card",
+  photo_id: "Photo ID",
+  advance_directive: "Advance directive",
+  dpoa: "Durable power of attorney",
+  transfer_record: "Transfer record",
+  other: "Other",
+  unknown: "Unclassified",
+};
+export const docTypeLabel = (v: string | null | undefined): string =>
+  v ? (DOC_TYPE_LABEL[v] ?? capital(words(v))) : "Unclassified";
+
+const BATCH_STATUS_LABEL: Record<string, string> = {
+  uploaded: "Uploaded",
+  docling_complete: "Reading pages",
+  classifier_complete: "Classified",
+  extraction_complete: "Ready for review",
+  in_review: "In review",
+  writeback_complete: "Complete",
+  discarded: "Discarded",
+  split_into_children: "Split",
+  split_resolved_no_split: "Not split",
+  parse_failed: "Could not read",
+};
+export const batchStatusLabel = (v: string): string => BATCH_STATUS_LABEL[v] ?? capital(words(v));
+
+const SOURCE_LABEL: Record<string, string> = {
+  fax: "Fax",
+  email: "Email",
+  scanned_physical: "Scanned copy",
+  manual_upload: "Manual upload",
+  portal: "Portal",
+  api: "API",
+};
+export const sourceLabel = (v: string): string => SOURCE_LABEL[v] ?? capital(words(v));
+
+/** The completion's exclusion reasons (`WritebackExclusionReason`) as reviewer copy. */
+const EXCLUSION_LABEL: Record<string, string> = {
+  not_a_writeback_target: "Not a chart field",
+  risk_not_low: "Evidence only (risk)",
+  sud_detected: "SUD-flagged page",
+  patient_unresolved: "No patient matched to this batch",
+  edited_value_missing: "Edited value missing",
+  value_missing: "No value extracted",
+  conflicting_values: "Conflicting values for the same field",
+};
+/**
+ * `not_a_writeback_target` covers two different things, and "Not a chart field" was wrong for both: the
+ * patient's legal name and date of birth ARE chart fields, which intake never overwrites (they identify
+ * the patient; a change is an identity correction), and medications/allergies/diagnoses have no intake
+ * writeback yet (they are reconciled by a clinician). Say which, by field.
+ */
+function notWrittenLabel(fieldPath: string): string {
+  if (
+    /^patient\.(legal(First|Middle|Last)Name|dob|dateOfBirth|sexAssignedAtBirth|ssn|mrn)\b/.test(
+      fieldPath,
+    )
+  )
+    return "Identity field — intake never changes it; correct it on the patient record if needed";
+  if (/^(medications|allergies|diagnos)/.test(fieldPath))
+    return "Kept as evidence — reconcile it in the chart; intake does not write it";
+  return "Kept as evidence — intake does not write this field";
+}
+
+export const exclusionLabel = (v: string, fieldPath = ""): string =>
+  v === "not_a_writeback_target"
+    ? notWrittenLabel(fieldPath)
+    : (EXCLUSION_LABEL[v] ?? capital(words(v)));
+
+/** Statuses that still have pipeline work ahead of them (the queue's "Processing" KPI). */
+export const PROCESSING_STATUSES = new Set(["uploaded", "docling_complete", "classifier_complete"]);
+/** Statuses a reviewer can act on (the queue's "Ready for review" KPI). */
+export const REVIEWABLE_STATUSES = new Set(["extraction_complete", "in_review"]);
+
+// ── confidence + risk ──────────────────────────────────────────────────────────────────────────────────
+
+export type Band = "high" | "medium" | "low";
+export const confidenceBand = (c: number): Band =>
+  c >= 0.9 ? "high" : c >= 0.75 ? "medium" : "low";
+export const pct = (c: number): string => `${Math.round(c * 100)}%`;
+
+/** Page classification below the §5 0.75 floor (or flagged by the classifier) needs a human label. */
+export const needsManualLabel = (p: WorkspacePage): boolean =>
+  p.needsHumanClassification || p.confidence === null || p.confidence < 0.75;
+
+// ── geometry ───────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A bbox in the page's own units (top-left origin, `[left, top, right, bottom]`) → CSS percentages of
+ * the rendered page. Percentages, not pixels, so the overlay stays registered to the image at any
+ * zoom/width; clamped so a box that spills past the page edge cannot escape the viewer.
+ */
+export function bboxPercent(
+  bbox: Bbox,
+  page: Pick<WorkspacePage, "width" | "height">,
+): { left: string; top: string; width: string; height: string } {
+  const [l, t, r, b] = bbox;
+  const clamp = (v: number): number => Math.min(100, Math.max(0, v));
+  const w = page.width > 0 ? page.width : 1;
+  const h = page.height > 0 ? page.height : 1;
+  const left = clamp((Math.min(l, r) / w) * 100);
+  const top = clamp((Math.min(t, b) / h) * 100);
+  const fmt = (v: number): string => `${Number(v.toFixed(3))}%`;
+  return {
+    left: fmt(left),
+    top: fmt(top),
+    width: fmt(Math.min(100 - left, (Math.abs(r - l) / w) * 100)),
+    height: fmt(Math.min(100 - top, (Math.abs(b - t) / h) * 100)),
+  };
+}
+
+// ── eligibility ────────────────────────────────────────────────────────────────────────────────────────
+
+export const isApproved = (c: Candidate): boolean =>
+  c.decision?.decision === "approve" || c.decision?.decision === "approve_with_edit";
+
+/** A decided `approve` with the vision check disagreeing must carry a reason of at least 5 characters. */
+export const MIN_REASON = 5;
+
+/**
+ * The fields the completion is EXPECTED to send to the chart: an approved write-back target that is not
+ * on a SUD-flagged page (unless the flag was rejected as a false positive). A preview only — the dialog
+ * says so, and the result shows what the server actually committed.
+ */
+export const updatesChart = (c: Candidate, sud: SudStatus): boolean =>
+  c.writebackTarget && isApproved(c) && !(c.sudDetected && sud !== "rejected");
+
+/**
+ * Bulk-approve scope: low risk, not SUD-tagged, not vision-disagreed, undecided, and source-confirmed
+ * by THIS reviewer in this session. High-risk fields are never in scope (spec: per-field only).
+ */
+export const bulkEligible = (c: Candidate, confirmed: ReadonlySet<string>): boolean =>
+  c.riskLevel === "low" &&
+  !c.sudDetected &&
+  c.vision.status !== "disagreed" &&
+  c.decision === null &&
+  confirmed.has(c.id);
+
+/** Decision → state chip copy. */
+export const decisionLabel = (d: string): string =>
+  d === "approve"
+    ? "Approved"
+    : d === "approve_with_edit"
+      ? "Edited"
+      : d === "reject"
+        ? "Rejected"
+        : capital(words(d));

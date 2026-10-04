@@ -62,6 +62,10 @@ export {
   type DocLensClassifierPort,
   type DocLensExtractorPort,
   type DocLensIntakeDeps,
+  type DocLensSudDetectorPort,
+  type DocLensVisionVerifierPort,
+  VISION_VERIFIED_RISK_LEVELS,
+  visionReadingAgrees,
   type DocLensIntakeJob,
   type DocLensIntakeSummary,
   runDocLensIntake,
@@ -72,3 +76,20 @@ export {
   createDocLensIntakeEnqueue,
   registerDocLensIntakeWorker,
 } from "./intake-queue";
+export {
+  type ReviewQueueItem,
+  type ReviewWorkspace,
+  type ReviewWorkspaceDeps,
+  type ReviewWorkspaceService,
+  type WorkspaceCandidate,
+  createReviewWorkspaceService,
+  visionStatusOf,
+} from "./review-workspace";
+export {
+  ReviewQueueQuerySchema,
+  ReviewQueueResponseSchema,
+  ReviewWorkspaceResponseSchema,
+  SudReviewRequest,
+  SudReviewResponseSchema,
+  registerDocLensReviewWorkspaceRoutes,
+} from "./review-workspace-routes";

@@ -5,16 +5,17 @@
  * Safety Owner eventually would, for one dev tenant, and prints what it did:
  *
  *   1. feature flags `ai.full` + `documents.doclens` ON for the demo org (both default OFF everywhere).
- *   2. the two reviewed prompt templates registered ACTIVE (`ai_prompt_template`), each pinned by the
+ *   2. the four reviewed prompt templates registered ACTIVE (`ai_prompt_template`), each pinned by the
  *      SHA-256 of its file in packages/ai-platform/prompts/doclens — the registry refuses a drifted file.
- *   3. `doclens_classify` / `doclens_extract` moved to PILOT (serves pilot-enrolled tenants only) with the
+ *   3. the four DocLens capabilities moved to PILOT (serves pilot-enrolled tenants only) with the
  *      local backend as their fallback chain. DEV-ONLY: in production that transition is the AI Safety
  *      Owner's, through the lifecycle workflow and its evaluation evidence. Nothing is marked APPROVED.
- *   4. an ACTIVE, pilot-enrolled tenant opt-in for both, routing preference `local_only` (PHI stays on
+ *   4. an ACTIVE, pilot-enrolled tenant opt-in for each, routing preference `local_only` (PHI stays on
  *      this machine; the cloud backend is never contacted for this tenant — W8).
- *   5. a monthly token budget for both (`ai_token_budgets`).
+ *   5. a monthly token budget for each (`ai_token_budgets`).
  *
- * Prereqs: db:seed, db:sync:ai-capabilities, db:sync:ai-backends (a healthy local backend registered).
+ * Prereqs: db:seed, db:sync:ai-capabilities, db:sync:ai-backends (healthy local backends registered:
+ *          llama for classify/extract/SUD, qwen2.5-vl for stage-5 vision — F-237).
  * Run:     DATABASE_ADMIN_URL=… bun run db:seed:scenario-doclens-ai
  * Undo:    re-run with DOCLENS_AI=off (flags off, opt-ins opted_out; prompt rows and lifecycle kept).
  */
@@ -27,11 +28,32 @@ const ADMIN_URL = process.env.DATABASE_ADMIN_URL;
 const ORG_SLUG = "wardenx-demo";
 const ADMIN_EMAIL = "admin@wardenx.local";
 const LOCAL_BACKEND = "local-llama-3.1-8b-instruct";
+// F-237 — stage 5 needs a model that can see; the local route is Qwen2.5-VL (ADR-0048).
+const LOCAL_VISION_BACKEND = "local-qwen2.5-vl-7b-instruct";
 const OFF = process.env.DOCLENS_AI === "off";
 
 const TEMPLATES = [
-  { capability: "doclens_classify", file: "packages/ai-platform/prompts/doclens/classify.v1.md" },
-  { capability: "doclens_extract", file: "packages/ai-platform/prompts/doclens/extract.v1.md" },
+  {
+    capability: "doclens_classify",
+    file: "packages/ai-platform/prompts/doclens/classify.v1.md",
+    backend: LOCAL_BACKEND,
+  },
+  {
+    capability: "doclens_extract",
+    file: "packages/ai-platform/prompts/doclens/extract.v1.md",
+    backend: LOCAL_BACKEND,
+  },
+  // F-237 — stage 5 (vision double-check) and the model pass of SUD detection.
+  {
+    capability: "doclens_vision_verify",
+    file: "packages/ai-platform/prompts/doclens/vision_verify.v1.md",
+    backend: LOCAL_VISION_BACKEND,
+  },
+  {
+    capability: "doclens_sud_detect",
+    file: "packages/ai-platform/prompts/doclens/sud_detect.v1.md",
+    backend: LOCAL_BACKEND,
+  },
 ] as const;
 
 async function main(): Promise<void> {
@@ -90,11 +112,7 @@ async function main(): Promise<void> {
           t.capability,
           t.file,
           hash,
-          JSON.stringify([
-            LOCAL_BACKEND,
-            "anthropic-claude-opus-4-7",
-            "anthropic-claude-haiku-4-5",
-          ]),
+          JSON.stringify([t.backend, "anthropic-claude-opus-4-7", "anthropic-claude-haiku-4-5"]),
           `m22:${t.capability}:input:v1`,
           `m32:${t.capability}:output:v1`,
           `doclens_${t.capability.slice("doclens_".length)}`,
@@ -105,7 +123,7 @@ async function main(): Promise<void> {
       await db.query(
         `UPDATE ai_capability SET lifecycle_state='PILOT', current_prompt_template_key=$2,
            fallback_chain_keys=$3::jsonb, updated_at=now() WHERE id=$1`,
-        [cap.id, key, JSON.stringify([LOCAL_BACKEND])],
+        [cap.id, key, JSON.stringify([t.backend])],
       );
       // 4. pilot-enrolled local_only opt-in
       await db.query(
@@ -136,6 +154,8 @@ async function main(): Promise<void> {
         JSON.stringify({
           doclens_classify: { hardCapTokens: 2_000_000 },
           doclens_extract: { hardCapTokens: 5_000_000 },
+          doclens_vision_verify: { hardCapTokens: 3_000_000 },
+          doclens_sud_detect: { hardCapTokens: 2_000_000 },
         }),
       ],
     );

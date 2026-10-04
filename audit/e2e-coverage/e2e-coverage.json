@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 157,
+  "totalStaticWebScreens": 158,
   "e2eReachedCount": 19,
-  "axeReachedCount": 151,
+  "axeReachedCount": 152,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -449,6 +449,14 @@
       "module": "14-idg",
       "path": "/idg/action-items",
       "permission": "idg.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "intake.review-queue",
+      "module": "22-documents",
+      "path": "/intake",
+      "permission": "intake.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1662,6 +1670,14 @@
       "path": "/idg/schedule",
       "permission": "idg.read",
       "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "intake.review-queue",
+      "module": "22-documents",
+      "path": "/intake",
+      "permission": "intake.read",
+      "e2eReached": false,
       "axeReached": true
     },
     {

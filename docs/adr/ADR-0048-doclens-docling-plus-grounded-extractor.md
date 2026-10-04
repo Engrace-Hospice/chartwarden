@@ -57,3 +57,17 @@ existed. Three facts shaped the decision:
   is the fail-closed direction.
 - Nothing becomes active by this ADR. The four `doclens_*` capabilities stay at `DESIGN_REVIEW`; `ai.full`
   and `documents.doclens` stay OFF for every tenant. Promotion remains the AI Safety Owner's act.
+
+## Amendment (F-237, 2026-10-03) — stage 5 and SUD detection
+
+- **Stage 5 is a blind re-read, not a confirmation.** `doclens_vision_verify` receives a crop of the value's
+  Docling box (rendered by the docling-worker's `/render`) and the field's path and description — never the
+  extracted value. M22 compares. List fields read every visible entry and verify membership.
+- **A local vision route.** §2.3 gave vision verification one home (Opus), which left a `local_only` tenant
+  without stage 5. `local-qwen2.5-vl-7b-instruct` (Apache-2.0, `text` + `vision`) is registered for
+  `doclens_vision_verify` only. Images travel in `ModelBackendCompletionRequest.images`; a request carrying
+  images requires the `vision` modality at the routing gate; the ledger keeps image SHA-256s, never bytes.
+- **SUD detection is rules first.** A deterministic flagger runs on every page whatever the AI posture;
+  `doclens_sud_detect` (served locally by the Llama route as well) only ADDS indicators, each grounded like
+  an extraction quote. Nothing is promoted: all four capabilities remain at `DESIGN_REVIEW`.
+

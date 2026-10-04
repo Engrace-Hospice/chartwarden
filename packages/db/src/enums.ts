@@ -2115,6 +2115,14 @@ export const intakeBatchStatus = pgEnum("intake_batch_status", [
   "parse_failed",
 ]);
 
+/** F-237 — `intake_batch_sud_status` — the §7.4 W4 / D8 SUD-detection state of an intake batch. */
+export const intakeBatchSudStatus = pgEnum("intake_batch_sud_status", [
+  "not_detected",
+  "detected",
+  "confirmed",
+  "rejected",
+]);
+
 /** §3.2 `classified_page_doc_type` — the per-page classifier output document type. */
 export const classifiedPageDocType = pgEnum("classified_page_doc_type", [
   "discharge_summary",

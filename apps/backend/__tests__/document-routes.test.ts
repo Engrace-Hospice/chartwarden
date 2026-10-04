@@ -73,6 +73,9 @@ const VERSION = "d0000000-0000-4000-8000-000000000001";
 const BATCH = "b0000000-0000-4000-8000-0000000000aa";
 const REFERRAL = "66666666-6666-4666-8666-666666666666";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
+const CAND_HIGH = "e0000000-0000-4000-8000-0000000000e1";
+const CAND_LOW = "e0000000-0000-4000-8000-0000000000e2";
+const CAND_OTHER_BATCH = "e0000000-0000-4000-8000-0000000000e3";
 const PATIENT_OFF = "22222222-2222-4222-8222-222222222222";
 
 /** Everything an intake reviewer needs at the RBAC layer, shared by the three reviewer personas so a
@@ -128,6 +131,11 @@ const sharedBackend = createInMemoryDocumentBackend({
     { id: DOC_HOLD, organizationId: ORG, patientId: PATIENT, legalHoldActive: true },
   ],
   batches: [{ id: BATCH, organizationId: ORG, patientId: PATIENT }],
+  // F-237 — the stored risk tier the eligibility predicate loads (never the request's say-so).
+  candidates: [
+    { id: CAND_HIGH, batchId: BATCH, riskLevel: "high" },
+    { id: CAND_LOW, batchId: BATCH, riskLevel: "low" },
+  ],
 });
 // Pin DOC's first version to the well-known VERSION id used by the signed-URL test.
 const sharedObjectResolver: SignedUrlObjectResolver = {
@@ -399,13 +407,13 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const reviewId = review.json().id as string;
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
       // A DIFFERENT PERSON holding no credential row — and holding the SAME `intake.review` grant as
       // the RN, so this 403 can only be the licensure predicate. It used to be `rn_1` sending a
       // different `x-test-roles` header with the licensure header omitted; a licence belongs to a
       // membership, not to a request header, so that is no longer a way to be unlicensed.
       headers: { ...AIDE, "idempotency-key": "dc-1" },
-      payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
     });
     expect(res.statusCode).toBe(403);
   });
@@ -421,9 +429,9 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const reviewId = review.json().id as string;
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
       headers: { ...RN, "idempotency-key": "dc-2" },
-      payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().decisionId).toMatch(/^a0000000-/);
@@ -444,9 +452,77 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const reviewId = review.json().id as string;
     const res = await app.inject({
       method: "POST",
-      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
       headers: { ...PA, "idempotency-key": "dc-3" },
-      payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+});
+
+describe("F-237 — the candidate's risk tier is the server's, not the request's", () => {
+  async function openReviewAs(headers: Record<string, string>, key: string) {
+    const { app } = makeServer();
+    const review = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/uploads/${BATCH}/review`,
+      headers: { ...headers, "idempotency-key": key },
+      payload: {},
+    });
+    return { app, reviewId: review.json().id as string };
+  }
+
+  it("a client-sent ?riskLevel=low does not lift the licence check on a high-risk candidate (403)", async () => {
+    const { app, reviewId } = await openReviewAs(AIDE, "f237-rv-1");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=low`,
+      headers: { ...AIDE, "idempotency-key": "f237-dc-1" },
+      payload: { candidateId: CAND_HIGH, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("an unlicensed reviewer may decide a LOW-risk candidate (201)", async () => {
+    const { app, reviewId } = await openReviewAs(AIDE, "f237-rv-2");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
+      headers: { ...AIDE, "idempotency-key": "f237-dc-2" },
+      payload: { candidateId: CAND_LOW, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("a candidate that is not this review's batch's is refused even for a licensed reviewer (403)", async () => {
+    const { app, reviewId } = await openReviewAs(RN, "f237-rv-3");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions`,
+      headers: { ...RN, "idempotency-key": "f237-dc-3" },
+      payload: { candidateId: CAND_OTHER_BATCH, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("bulk-approve is refused when the scope holds a high-risk candidate, whatever ?anyHighRisk says", async () => {
+    const { app, reviewId } = await openReviewAs(RN, "f237-rv-4");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions:bulk-approve?anyHighRisk=false`,
+      headers: { ...RN, "idempotency-key": "f237-bk-1" },
+      payload: { candidateIds: [CAND_LOW, CAND_HIGH] },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("bulk-approve of low-risk candidates only is allowed (201)", async () => {
+    const { app, reviewId } = await openReviewAs(RN, "f237-rv-5");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions:bulk-approve`,
+      headers: { ...RN, "idempotency-key": "f237-bk-2" },
+      payload: { candidateIds: [CAND_LOW] },
     });
     expect(res.statusCode).toBe(201);
   });

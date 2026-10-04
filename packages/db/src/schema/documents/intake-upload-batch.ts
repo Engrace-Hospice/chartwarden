@@ -8,7 +8,7 @@ import { sql } from "drizzle-orm";
 // `source_metadata` is DENYLISTED in the audit trigger (§3.6 — may carry fax sender info). Cross-
 // references (initial_document_id, child batch ids) are plain uuid app-validated; no SQL FK out.
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { intakeBatchStatus } from "../../enums";
+import { intakeBatchStatus, intakeBatchSudStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -32,6 +32,16 @@ export const intakeUploadBatches = pgTable(
     status: intakeBatchStatus("status").notNull().default("uploaded"),
     childBatchIds: jsonb("child_batch_ids"), // uuid[] when status='split_into_children' (D10 / W3)
     auditMetadata: jsonb("audit_metadata"), // AI split-suggestion record retained for ML feedback (W3)
+    // F-237 (0308) — §7.4 W4 / D8 SUD detection: state, DEK-enveloped evidence (DENYLISTED §3.6), which
+    // detectors ran, and the reviewer's resolution (reason DENYLISTED). Resolver + time set together.
+    sudStatus: intakeBatchSudStatus("sud_status").notNull().default("not_detected"),
+    sudEvidenceCipher: text("sud_evidence_cipher"),
+    sudDetectorRef: text("sud_detector_ref"),
+    sudResolvedByMembershipId: uuid("sud_resolved_by_membership_id"),
+    sudResolvedAt: timestamp("sud_resolved_at", { withTimezone: true }),
+    sudResolutionReason: text("sud_resolution_reason"),
+    // F-237 — `[{page, width, height}]` in Docling's units; the review overlay scales boxes by it.
+    pageGeometry: jsonb("page_geometry"),
     uploadedByMembershipId: uuid("uploaded_by_membership_id").notNull(),
     correlationId: text("correlation_id").notNull(),
     uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),

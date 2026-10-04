@@ -126,18 +126,27 @@ const ABAC_OWNER = requireAbac("documents.read_phi_content", "document_owner_or_
   notFoundOnDeny: true,
 }) as PreHandler;
 const ABAC_LEGAL_HOLD = requireAbac("documents.edit_metadata", "legal_hold_aware") as PreHandler;
-// The candidate's risk level is a server-resolved fact (the candidate row in prod); the slice surfaces it on
-// the query so the eligibility predicate is exercisable end-to-end. M22 never authorizes off the request body.
-const riskTarget = (request: GuardRequest): Record<string, unknown> => {
-  const q = request.query as { riskLevel?: unknown } | undefined;
-  return { ...(request.params as Record<string, unknown>), riskLevel: q?.riskLevel };
-};
-const bulkTarget = (request: GuardRequest): Record<string, unknown> => {
-  const q = request.query as { anyHighRisk?: unknown } | undefined;
-  return { ...(request.params as Record<string, unknown>), anyHighRisk: q?.anyHighRisk === "true" };
-};
+// F-237 — the targets carry IDS ONLY. The candidate's risk tier is loaded from its row by the predicate;
+// it is never read from the request (it used to be `?riskLevel=` / `?anyHighRisk=`, which let the client
+// decide whether the licence check applied). The body ids are read here only to NAME the candidate —
+// the predicate loads it constrained to the review's own batch, and the handler re-validates the body.
+const bodyOf = (request: GuardRequest): Record<string, unknown> =>
+  request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+const riskTarget = (request: GuardRequest): Record<string, unknown> => ({
+  ...(request.params as Record<string, unknown>),
+  candidateId: bodyOf(request).candidateId,
+});
+const bulkTarget = (request: GuardRequest): Record<string, unknown> => ({
+  ...(request.params as Record<string, unknown>),
+  candidateIds: bodyOf(request).candidateIds,
+});
 const ABAC_REVIEWER = requireAbac("intake.review", "extraction_reviewer_eligible", {
   getTarget: riskTarget,
+}) as PreHandler;
+// The discrepancy resolve names its candidate through the DISCREPANCY (params only) — a body `candidateId`
+// must not be able to stand in for the discrepancy's own, possibly high-risk, candidate.
+const ABAC_DISCREPANCY_REVIEWER = requireAbac("intake.review", "extraction_reviewer_eligible", {
+  getTarget: (request) => ({ ...(request.params as Record<string, unknown>) }),
 }) as PreHandler;
 const ABAC_BULK = requireAbac("intake.review", "extraction_high_risk_field_per_field_only", {
   getTarget: bulkTarget,
@@ -519,7 +528,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
 
   // 21 — bulk-approve low-risk (extraction_high_risk_field_per_field_only ABAC → 422 if high-risk in scope).
   app.post(
-    "/api/v1/intake/reviews/:id/decisions:bulk-approve",
+    "/api/v1/intake/reviews/:id/decisions::bulk-approve",
     { preHandler: [INTAKE_REVIEW, ABAC_BULK] },
     async (request, reply) => {
       const { organizationId, actor } = actorOf(request);
@@ -533,7 +542,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // 22 — resolve a discrepancy.
   app.post(
     "/api/v1/intake/reviews/:id/discrepancies/:discrepancyId/resolve",
-    { preHandler: [INTAKE_REVIEW, ABAC_REVIEWER] },
+    { preHandler: [INTAKE_REVIEW, ABAC_DISCREPANCY_REVIEWER] },
     async (request) => {
       const { organizationId, actor } = actorOf(request);
       const { id, discrepancyId } = parse(DiscrepancyParamsSchema, request.params);

@@ -404,6 +404,13 @@ export interface DocumentRouteSeed {
     Partial<DocumentRecord> & { id: string; organizationId: string }
   >;
   readonly batches?: ReadonlyArray<Partial<BatchRecord> & { id: string; organizationId: string }>;
+  /** F-237 — extraction candidates' stored risk tiers (candidate id → tier), visible to every review of
+   *  the candidate's batch. The slice has no candidate rows otherwise. */
+  readonly candidates?: ReadonlyArray<{
+    id: string;
+    batchId: string;
+    riskLevel: "low" | "medium" | "high";
+  }>;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M6/M8 slice). */
@@ -867,6 +874,13 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     },
   };
 
+  const candidateRisk = (organizationId: string, reviewId: string, candidateId: string) => {
+    const batchId = reviewIndex.get(reviewId);
+    const batch = batchId ? batches.get(batchId) : undefined;
+    if (!batch || batch.organizationId !== organizationId) return undefined;
+    return (seed.candidates ?? []).find((c) => c.id === candidateId && c.batchId === batch.id)
+      ?.riskLevel;
+  };
   const abacResolver: DocumentAbacResolver = {
     async loadDocument(organizationId, documentId): Promise<DocumentAbacFacts | null> {
       const r = docs.get(documentId);
@@ -878,6 +892,17 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         legalHoldActive: r.legalHoldActive,
         patientDischargedAt: null,
       };
+    },
+    async loadReviewCandidateRisks(organizationId, reviewId, candidateIds) {
+      const out = new Map<string, "low" | "medium" | "high">();
+      for (const id of candidateIds) {
+        const risk = candidateRisk(organizationId, reviewId, id);
+        if (risk) out.set(id, risk);
+      }
+      return out;
+    },
+    async loadDiscrepancyRisk() {
+      return null; // the slice models no discrepancy rows
     },
   };
 

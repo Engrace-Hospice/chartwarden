@@ -498,6 +498,34 @@ export const ReviewDetailResponseSchema = Type.Object({
   ),
 });
 
+/** Route 18 — the opened review session (F-237: published so the review screen can type it). */
+export const OpenReviewResponseSchema = Type.Object({
+  id: Type.String(),
+  batchId: Type.String(),
+  status: lit(EXTRACTION_REVIEW_STATUS),
+  createdAt: Type.String({ format: "date-time" }),
+});
+
+/** Route 23 — completion + the F-235 writeback summary (ids, paths and reasons only — no values). */
+export const CompleteReviewResponseSchema = Type.Object({
+  reviewId: Type.String(),
+  status: Type.Literal("complete"),
+  writeback: Type.Optional(
+    Type.Object({
+      targetModule: Type.Union([Type.Literal("m5"), Type.Null()]),
+      targetAggregateId: Type.Union([Type.String(), Type.Null()]),
+      committedFieldPaths: Type.Array(Type.String()),
+      excluded: Type.Array(
+        Type.Object({
+          candidateId: Type.String(),
+          fieldPath: Type.String(),
+          reason: Type.String(),
+        }),
+      ),
+    }),
+  ),
+});
+
 export const FormTemplateListResponseSchema = CursorPageOf(
   Type.Object({
     id: Type.String(),

@@ -1,7 +1,8 @@
 """WardenX docling-worker — DocLens stage 2 (parse). See ../README.md.
 
-POST /parse  {job_id, source_url}  →  {job_id, docling_version, page_count, pages:[...]}
-GET  /health                       →  {status}
+POST /parse   {job_id, source_url}                     →  {job_id, docling_version, page_count, pages:[...]}
+POST /render  {job_id, source_url, page, scale?, crop?}   →  image/png (+ X-Page-Width / X-Page-Height)
+GET  /health                                             →  {status}
 
 Security posture:
   * Every /parse call needs ``Authorization: Bearer <DOCLING_WORKER_TOKEN>`` (System Design §5.5; a
@@ -25,10 +26,11 @@ from functools import lru_cache
 from typing import Any, Callable
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .layout import document_to_pages
+from .render import RenderError, render_page
 
 log = logging.getLogger("docling-worker")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
@@ -41,6 +43,14 @@ MAX_PAGES = int(os.environ.get("DOCLING_MAX_PAGES", "200"))
 class ParseRequest(BaseModel):
     job_id: str = Field(min_length=1, max_length=128)
     source_url: str = Field(min_length=1, max_length=8192)
+
+
+class RenderRequest(BaseModel):
+    job_id: str = Field(min_length=1, max_length=128)
+    source_url: str = Field(min_length=1, max_length=8192)
+    page: int = Field(ge=1, le=10_000)
+    scale: float = Field(default=2.0, ge=0.25, le=4.0)
+    crop: tuple[float, float, float, float] | None = None
 
 
 def require_service_token(authorization: str | None = Header(default=None)) -> None:
@@ -164,3 +174,33 @@ def parse(
         "page_count": len(pages),
         "pages": pages,
     }
+
+
+@app.post("/render", dependencies=[Depends(require_service_token)])
+def render(req: RenderRequest, x_correlation_id: str | None = Header(default=None)) -> Response:
+    started = time.monotonic()
+    data = _download(req.source_url)
+    _suffix(data)  # same accepted types as /parse (415 otherwise)
+    try:
+        out = render_page(data, req.page, req.scale, req.crop)
+    except RenderError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    log.info(
+        "rendered job=%s corr=%s page=%d crop=%s bytes=%d ms=%d",
+        req.job_id,
+        x_correlation_id,
+        req.page,
+        req.crop is not None,
+        len(out.png),
+        int((time.monotonic() - started) * 1000),
+    )
+    return Response(
+        content=out.png,
+        media_type="image/png",
+        headers={
+            "X-Page-Width": f"{out.page_width:.2f}",
+            "X-Page-Height": f"{out.page_height:.2f}",
+            "X-Render-Scale": f"{out.scale:g}",
+            "Cache-Control": "no-store",
+        },
+    )

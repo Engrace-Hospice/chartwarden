@@ -98,9 +98,17 @@ export {
   DOCLENS_CLASSIFY_RESPONSE_SCHEMA,
   DOCLENS_DOCUMENT_TYPES,
   DOCLENS_EXTRACT_RESPONSE_SCHEMA,
+  DOCLENS_SUD_DETECT_RESPONSE_SCHEMA,
+  DOCLENS_VISION_VERIFY_RESPONSE_SCHEMA,
   createDocLensOutputProjector,
   projectDocLensClassify,
   projectDocLensExtract,
+  projectDocLensSudDetect,
+  projectDocLensVisionVerify,
 } from "./seams/doclens-projector";
-export { composeDocLensExtractPrompt } from "./seams/published";
+export {
+  composeDocLensExtractPrompt,
+  composeDocLensPages,
+  composeDocLensVisionFieldPrompt,
+} from "./seams/published";
 export { createFilesystemAiPromptArtifactReader } from "./prompts/store";

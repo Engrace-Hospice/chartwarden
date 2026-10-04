@@ -308,12 +308,14 @@ import {
   UpsertTenantSupplyItemBody as M21UpsertTenantSupplyItemBody,
 } from "../../apps/backend/src/modules/21-supplies/routes/m21-typebox";
 import {
+  CompleteReviewResponseSchema as M22CompleteReviewResponseSchema,
   DocumentListQuerySchema as M22DocumentListQuerySchema,
   DocumentListResponseSchema as M22DocumentListResponseSchema,
   DocumentViewSchema as M22DocumentViewSchema,
   FormTemplateListResponseSchema as M22FormTemplateListResponseSchema,
   IntakeBatchViewSchema as M22IntakeBatchViewSchema,
   IntakeJobListResponseSchema as M22IntakeJobListResponseSchema,
+  OpenReviewResponseSchema as M22OpenReviewResponseSchema,
   TemplateListQuerySchema as M22TemplateListQuerySchema,
   VersionListQuerySchema as M22VersionListQuerySchema,
   VersionListResponseSchema as M22VersionListResponseSchema,
@@ -5361,6 +5363,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/intake/uploads/:id/review": {
     summary: "Open an extraction-review session (acquires lock)",
     body: M22OpenReviewRequest,
+    response: M22OpenReviewResponseSchema,
   },
   "GET /api/v1/intake/reviews/:id": {
     summary: "Read review state (candidates + decisions, cursor-paginated)",
@@ -5371,7 +5374,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Record a per-candidate decision (§4.7 ABAC)",
     body: M22RecordDecisionRequest,
   },
-  "POST /api/v1/intake/reviews/:id/decisions:bulk-approve": {
+  "POST /api/v1/intake/reviews/:id/decisions::bulk-approve": {
     summary: "Bulk-approve low-risk candidates (high-risk -> 422)",
     body: M22BulkApproveRequest,
   },
@@ -5382,6 +5385,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/intake/reviews/:id/complete": {
     summary: "Attest + trigger the writeback dispatcher",
     body: M22CompleteReviewRequest,
+    response: M22CompleteReviewResponseSchema,
   },
   "POST /api/v1/intake/reviews/:id/abandon": {
     summary: "Release the review lock (decisions preserved)",
@@ -5433,6 +5437,35 @@ import {
   CommitReviewRequest as M22CommitReviewRequest,
   RunBatchRequest as M22RunBatchRequest,
 } from "../../apps/backend/src/modules/22-documents/extraction/extraction-routes";
+import {
+  ReviewQueueQuerySchema as M22ReviewQueueQuerySchema,
+  ReviewQueueResponseSchema as M22ReviewQueueResponseSchema,
+  ReviewWorkspaceResponseSchema as M22ReviewWorkspaceResponseSchema,
+  SudReviewRequest as M22SudReviewRequest,
+  SudReviewResponseSchema as M22SudReviewResponseSchema,
+} from "../../apps/backend/src/modules/22-documents/extraction/review-workspace-routes";
+// F-237 — the DocLens review screen's server half.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/intake/uploads": {
+    summary:
+      "DocLens: the intake work queue (pipeline status, SUD state, candidate counts; no values)",
+    query: M22ReviewQueueQuerySchema,
+    response: M22ReviewQueueResponseSchema,
+  },
+  "GET /api/v1/intake/uploads/:id/workspace": {
+    summary:
+      "DocLens: one batch for side-by-side review (decrypted values, boxes, stage-5 and SUD state)",
+    response: M22ReviewWorkspaceResponseSchema,
+  },
+  "GET /api/v1/intake/uploads/:id/pages/:page/image": {
+    summary: "DocLens: one source page as PNG (the review overlay's coordinate space x2)",
+  },
+  "POST /api/v1/intake/uploads/:id/sud-review": {
+    summary: "DocLens: confirm or reject a SUD detection (§7.4 W4; RN-or-above; Idempotency-Key)",
+    body: M22SudReviewRequest,
+    response: M22SudReviewResponseSchema,
+  },
+});
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/intake/uploads/:id/extraction/run": {
     summary: "DocLens: run the extraction pipeline over a batch (flag-gated, 503 when OFF)",

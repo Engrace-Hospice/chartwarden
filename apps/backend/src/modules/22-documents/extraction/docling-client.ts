@@ -34,6 +34,14 @@ export interface DoclingParseResult {
   readonly pages: readonly DoclingPage[];
 }
 
+/** F-237 — one rendered page (or crop of it): PNG bytes plus the page's size in Docling's units. */
+export interface DoclingRenderResult {
+  readonly png: Uint8Array;
+  readonly pageWidth: number;
+  readonly pageHeight: number;
+  readonly scale: number;
+}
+
 export interface DoclingClient {
   parse(input: {
     readonly organizationId: string;
@@ -41,6 +49,19 @@ export interface DoclingClient {
     readonly sourceUrl: string;
     readonly correlationId: string;
   }): Promise<DoclingParseResult>;
+  /**
+   * F-237 — render 1-based `page` at `scale`, optionally cropped to `crop` (`[l, t, r, b]` in page units,
+   * the same system `parse` reports boxes in). Feeds the review overlay and stage-5 vision crops.
+   */
+  render(input: {
+    readonly organizationId: string;
+    readonly jobId: string;
+    readonly sourceUrl: string;
+    readonly correlationId: string;
+    readonly page: number;
+    readonly scale: number;
+    readonly crop?: readonly [number, number, number, number];
+  }): Promise<DoclingRenderResult>;
 }
 
 /** A parse that did not produce a usable layout. `kind` decides retry vs terminal at the job layer. */
@@ -171,18 +192,66 @@ export function createHttpDoclingClient(
       }
       return parseDoclingResponse(await res.json());
     },
+    async render(input) {
+      let res: Response;
+      try {
+        res = await fetchImpl(`${config.baseUrl}/render`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${config.token}`,
+            "x-correlation-id": input.correlationId,
+            "x-org-id": input.organizationId,
+          },
+          body: JSON.stringify({
+            job_id: input.jobId,
+            source_url: input.sourceUrl,
+            page: input.page,
+            scale: input.scale,
+            ...(input.crop ? { crop: input.crop } : {}),
+          }),
+          signal: AbortSignal.timeout(60_000),
+        });
+      } catch (err) {
+        throw new DoclingParseError(
+          "unavailable",
+          `docling-worker unreachable (${err instanceof Error ? err.name : "error"})`,
+          503,
+        );
+      }
+      if (res.status === 422 || res.status === 413 || res.status === 415) {
+        throw new DoclingParseError("rejected", `docling-worker cannot render that page`, 422);
+      }
+      if (!res.ok || res.headers.get("content-type") !== "image/png") {
+        throw new DoclingParseError(
+          "unavailable",
+          `docling-worker answered HTTP ${res.status}`,
+          503,
+        );
+      }
+      const pageWidth = Number(res.headers.get("x-page-width"));
+      const pageHeight = Number(res.headers.get("x-page-height"));
+      if (!(pageWidth > 0) || !(pageHeight > 0)) {
+        throw new DoclingParseError("malformed_response", "render response has no page size", 502);
+      }
+      return {
+        png: new Uint8Array(await res.arrayBuffer()),
+        pageWidth,
+        pageHeight,
+        scale: input.scale,
+      };
+    },
   };
 }
 
 /** No worker configured: every parse refuses (typed 503), never an empty "document with no text". */
 export function createUnboundDoclingClient(): DoclingClient {
-  return {
-    async parse() {
-      throw new DoclingParseError(
-        "unavailable",
-        "no docling-worker is configured (DOCLING_WORKER_URL / DOCLING_WORKER_TOKEN)",
-        503,
-      );
-    },
+  const refuse = (): never => {
+    throw new DoclingParseError(
+      "unavailable",
+      "no docling-worker is configured (DOCLING_WORKER_URL / DOCLING_WORKER_TOKEN)",
+      503,
+    );
   };
+  return { parse: async () => refuse(), render: async () => refuse() };
 }
