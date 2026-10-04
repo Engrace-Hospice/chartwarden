@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1359,
     "coveredRoutes": 1359,
-    "directRoutesReferenced": 1303
+    "directRoutesReferenced": 1306
   },
   "modules": [
     {
@@ -154,7 +154,7 @@
         "apps/backend/__tests__/emar-caregiver-barcode.test.ts",
         "apps/backend/__tests__/emar-routes.test.ts"
       ],
-      "directRoutesReferenced": 16
+      "directRoutesReferenced": 19
     },
     {
       "module": "14-idg",

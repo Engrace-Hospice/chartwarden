@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1359/1359 route defs sit behind a covered module · 1303/1359 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1359/1359 route defs sit behind a covered module · 1306/1359 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -19,7 +19,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 10-hope | 29 | ✅ | 27/29 | apps/backend/__tests__/hope-routes.test.ts |
 | 11-orders | 34 | ✅ | 27/34 | apps/backend/__tests__/orders-routes.test.ts, apps/backend/__tests__/orm-recovery.test.ts, apps/backend/__tests__/orm-resend.test.ts, apps/backend/__tests__/stuck-recovery.test.ts |
 | 12-dosespot | 32 | ✅ | 23/32 | apps/backend/__tests__/dosespot-routes.test.ts, apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts, apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts, apps/backend/__tests__/m12-vendor-boundary.live.test.ts |
-| 13-emar | 28 | ✅ | 16/28 | apps/backend/__tests__/emar-caregiver-barcode.test.ts, apps/backend/__tests__/emar-routes.test.ts |
+| 13-emar | 28 | ✅ | 19/28 | apps/backend/__tests__/emar-caregiver-barcode.test.ts, apps/backend/__tests__/emar-routes.test.ts |
 | 14-idg | 36 | ✅ | 36/36 | apps/backend/__tests__/idg-discipline-notes.test.ts, apps/backend/__tests__/idg-enrichment.test.ts, apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-packet-content.test.ts, apps/backend/__tests__/idg-routes.test.ts, apps/backend/__tests__/idg-schedule-meeting.test.ts, apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts |
 | 15-discipline-care-plans | 28 | ✅ | 28/28 | apps/backend/__tests__/discipline-plans-inject.test.ts |
 | 16-bereavement | 33 | ✅ | 33/33 | apps/backend/__tests__/bereavement-inject.test.ts |

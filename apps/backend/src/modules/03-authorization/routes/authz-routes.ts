@@ -21,7 +21,12 @@
 // route's existing existence lookup, so the §9.3 IDOR semantics are unchanged: an unauthorized
 // actor still sees 403 (never 422) and an authorized actor still sees 404 for an absent object.
 import type { AuditContext } from "@wardenx/audit";
-import { allPermissionMirrorRows, requirePermission, requireSession } from "@wardenx/auth";
+import {
+  allPermissionMirrorRows,
+  isTenantRoleReserved,
+  requirePermission,
+  requireSession,
+} from "@wardenx/auth";
 import {
   ForbiddenError,
   type HttpRequestContext,
@@ -152,6 +157,16 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       const { organizationId, userId } = actorOf(request.context);
       const body = parse(CreateRoleBody, request.body);
       const permissionKeys = body.permissionKeys ?? [];
+      // GAP-003: platform authority (`platform_*` keys, `platform_staff`) lives only on platform-owned
+      // rows. Refused before anti-escalation, which a zero-permission spoof passes trivially. The
+      // enrichment reader and the migration 0318 CHECK enforce the same rule below this route.
+      if (isTenantRoleReserved(body)) {
+        throw new WardenXError(
+          "RESERVED_ROLE",
+          "platform_* role keys and the platform_staff category are reserved to the platform",
+          422,
+        );
+      }
 
       await assertNoEscalation(request, organizationId, userId, permissionKeys);
 

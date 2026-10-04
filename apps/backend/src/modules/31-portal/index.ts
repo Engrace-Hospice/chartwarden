@@ -33,6 +33,7 @@ export {
 export {
   type PortalReasonCipher,
   type PortalRoomCipher,
+  type PortalAmendmentIntakePort,
   type PortalRouteDeps,
   type PortalStore,
   type PortalTenantKeyProvider,

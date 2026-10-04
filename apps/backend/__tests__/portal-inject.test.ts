@@ -405,9 +405,50 @@ function makeServer(
     /** F-220 — bind the lazy room mint: the M17 visit the published reader returns, and whether the vendor
      *  adapter can `mintRoom` (absent ⇒ the fail-closed NOOP shape production has today). */
     readonly lazyMint?: { readonly visit: M17VisitForRoom | null; readonly vendorCanMint: boolean };
+    /** GAP-006 — leave M5's amendment intake UNBOUND (submit/list must then refuse 503). */
+    readonly amendmentIntakeUnbound?: boolean;
   } = {},
 ) {
   const backend = createFakePortalStore();
+  // GAP-006 — stands in for M5's `createDbPortalAmendmentIntake` (proven live in its own suite).
+  const amendments: Array<{
+    id: string;
+    organizationId: string;
+    patientId: string;
+    requestedByUserId: string;
+    portalAccountId: string;
+    targetKind: string;
+    targetRef: string;
+    requestedChange: string;
+  }> = [];
+  const amendmentIntake = {
+    async submit(input: Omit<(typeof amendments)[number], "id">) {
+      const row = {
+        ...input,
+        id: `00000000-0000-4000-8000-${String(amendments.length + 1).padStart(12, "0")}`,
+      };
+      amendments.push(row);
+      return { id: row.id, status: "pending" };
+    },
+    async listOwn(q: { organizationId: string; patientId: string; requestedByUserId: string }) {
+      return amendments
+        .filter(
+          (a) =>
+            a.organizationId === q.organizationId &&
+            a.patientId === q.patientId &&
+            a.requestedByUserId === q.requestedByUserId,
+        )
+        .map((a) => ({
+          id: a.id,
+          targetKind: a.targetKind,
+          requestedChange: a.requestedChange,
+          status: "pending",
+          submittedAt: NOW,
+          slaDueAt: NOW,
+          decidedAt: null,
+        }));
+    },
+  };
 
   backend.seedAccount({
     portalAccountId: ACCOUNT,
@@ -581,6 +622,7 @@ function makeServer(
     store: backend.store,
     telehealth,
     now: () => new Date(NOW),
+    ...(opts.amendmentIntakeUnbound ? {} : { amendmentIntake }),
     ...(opts.lazyMint
       ? {
           visitReader: {
@@ -607,7 +649,7 @@ function makeServer(
         }),
   };
   mountM31Routes(app, deps);
-  return { app, backend, messagingCalls };
+  return { app, backend, messagingCalls, amendments };
 }
 
 const CAREGIVER = {
@@ -1511,6 +1553,63 @@ describe("M31 download-url — F-225", () => {
     const res = await app.inject({ method: "GET", url: URL_, headers: CAREGIVER });
     expect(res.statusCode).toBe(403);
     expect(calls.resolve).toEqual([]);
+    await app.close();
+  });
+});
+
+describe("GAP-006 — portal §164.526 amendment submit reaches M5", () => {
+  const submit = {
+    targetKind: "patient_demographic",
+    requestedChange: "Correct the date of birth to 1950-01-01.",
+  };
+
+  it("submit creates exactly one M5 amendment row and returns its real id; the list reads it back", async () => {
+    const { app, amendments } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/amendments/submit",
+      headers: { ...CAREGIVER, ...IDEMP("gap006-a") },
+      payload: submit,
+    });
+    expect(res.statusCode).toBe(202);
+    expect(amendments).toHaveLength(1);
+    expect(amendments[0]).toMatchObject({
+      organizationId: ORG,
+      patientId: PATIENT,
+      requestedByUserId: "caregiver_user",
+      portalAccountId: ACCOUNT,
+      requestedChange: submit.requestedChange,
+    });
+    expect(res.json()).toEqual({ amendmentRequestRefId: amendments[0]?.id, status: "pending" });
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/portal/amendments",
+      headers: CAREGIVER,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().items).toEqual([
+      expect.objectContaining({ id: amendments[0]?.id, requestedChange: submit.requestedChange }),
+    ]);
+    await app.close();
+  });
+
+  it("with no M5 intake bound, submit and list refuse 503 — never a fake 'submitted'", async () => {
+    const { app } = makeServer({ amendmentIntakeUnbound: true });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/amendments/submit",
+      headers: { ...CAREGIVER, ...IDEMP("gap006-b") },
+      payload: submit,
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe("AMENDMENT_INTAKE_UNAVAILABLE");
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/portal/amendments",
+      headers: CAREGIVER,
+    });
+    expect(list.statusCode).toBe(503);
     await app.close();
   });
 });

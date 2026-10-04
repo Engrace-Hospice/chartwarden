@@ -367,6 +367,9 @@ export interface EmarDeploymentSeed {
 export interface EmarOrderSeed {
   readonly medicationOrderId: string;
   readonly patientId: string;
+  /** GAP-005 — the order's class. The DB backend always has it (M12); absent here, the slice falls back to
+   *  the body's claim so older fixtures keep working — production never does. */
+  readonly medClass?: "standard" | "controlled_substance" | "compounded";
   readonly route: string;
   readonly doseAmount?: number | null;
   readonly doseUnit?: string | null;
@@ -705,13 +708,43 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       const w = worksheets.get(worksheetId);
       return w && w.organizationId === orgId ? w.triggerKind : null;
     },
+    async loadScopePatientId(orgId, kind, id): Promise<string | null> {
+      const inOrg = <T extends { organizationId: string; patientId: string }>(r: T | undefined) =>
+        r && r.organizationId === orgId ? r.patientId : null;
+      switch (kind) {
+        case "administrationId":
+          return inOrg(admins.get(id));
+        case "ivSessionId":
+          return inOrg([...admins.values()].find((a) => a.ivSessionId === id));
+        case "scheduledDoseId":
+          return inOrg(scheduled.get(id));
+        case "missedDoseId":
+          return inOrg(missed.get(id));
+        case "worksheetId":
+          return inOrg(worksheets.get(id));
+        case "deploymentId":
+          return inOrg(deployments.get(id));
+        case "medicationOrderId":
+          // The slice's orders carry no org; an unseeded order is the slice's permissive default.
+          return orders.get(id)?.patientId ?? null;
+      }
+    },
+    async loadOrderMedClass(_orgId, medicationOrderId): Promise<string | null> {
+      // Slice default: an unseeded or class-less order is `standard` (the DB backend has no default).
+      return orders.get(medicationOrderId)?.medClass ?? "standard";
+    },
 
     // ── §4.1 routes ──────────────────────────────────────────────────────────────────────────────────────
     async recordAdministration(orgId, userId, args): Promise<AdministrationView> {
       const m = memberships.get(userId);
       const recordedAt = args.offlineCapture ? now() : now();
       const lateEntryTier = resolveLateEntryTier(args.administeredAt, recordedAt);
-      const isControlled = args.medClass === "controlled_substance";
+      const orderClass = orders.get(args.medicationOrderId)?.medClass;
+      if (orderClass && args.medClass !== undefined && args.medClass !== orderClass)
+        throw new ValidationError("medClass does not match the medication order", [
+          { field: "medClass", code: "MED_CLASS_MISMATCH", message: `the order is ${orderClass}` },
+        ]);
+      const isControlled = (orderClass ?? args.medClass) === "controlled_substance";
       let witnessMembershipId: string | null = null;
       if (isControlled) {
         // D7 — controlled administration requires a consumed witness-attestation token.
@@ -1036,7 +1069,9 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         scheduledDoseId: args.scheduledDoseId ?? null,
         comfortKitDeploymentId: null,
         ivSessionId: null,
-        isControlledSubstance: args.medClass === "controlled_substance",
+        isControlledSubstance:
+          (orders.get(args.medicationOrderId)?.medClass ?? args.medClass) ===
+          "controlled_substance",
         isComfortKitDrawdown: false,
         requiresRnReview: false,
         supersededById: null,

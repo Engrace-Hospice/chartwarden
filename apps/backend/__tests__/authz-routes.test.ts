@@ -207,6 +207,25 @@ describe("M3-T08 authorization route inventory", () => {
       await app.close();
     });
 
+    it.each([
+      { key: "platform_admin", category: "operations" },
+      { key: "platform_ops", category: "operations" },
+      { key: "helpdesk", category: "platform_staff" },
+    ])("GAP-003 a tenant cannot mint platform authority ($key / $category) → 422", async (role) => {
+      const { app, auditSink } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: ADMIN,
+        // Zero permissions: anti-escalation passes trivially, which is exactly how the spoof got in.
+        payload: { ...role, name: "Spoof", permissionKeys: [] },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("RESERVED_ROLE");
+      expect(auditSink.rows.some((r) => r.eventType === "m3.role.created")).toBe(false);
+      await app.close();
+    });
+
     it("renames a system_locked role (allowed) → marks it customized", async () => {
       const { app } = makeServer();
       const res = await app.inject({

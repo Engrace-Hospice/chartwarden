@@ -1,4 +1,4 @@
-import { Glyph, useApiClient } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, Glyph, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -77,27 +77,34 @@ export function NotificationBell(): JSX.Element {
 
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async (): Promise<void> => {
-    setLoading(true);
+  const load = useCallback(
+    async (background = false): Promise<void> => {
+      setLoading(true);
 
-    const { data, error } = await client.GET("/api/v1/alerts/inbox");
+      // The timer poll is not user activity (GAP-002): marked so it cannot defeat the idle logoff.
+      const { data, error } = await client.GET(
+        "/api/v1/alerts/inbox",
+        background ? { headers: BACKGROUND_REQUEST_HEADERS } : {},
+      );
 
-    setLoading(false);
+      setLoading(false);
 
-    if (error) {
-      setLoadFailed(true);
-      return;
-    }
+      if (error) {
+        setLoadFailed(true);
+        return;
+      }
 
-    setLoadFailed(false);
-    setAlerts((data?.alerts ?? []) as AlertItem[]);
-  }, [client]);
+      setLoadFailed(false);
+      setAlerts((data?.alerts ?? []) as AlertItem[]);
+    },
+    [client],
+  );
 
   useEffect(() => {
     void load();
 
     const interval = window.setInterval(() => {
-      void load();
+      void load(true);
     }, 60_000);
 
     function handleFocus(): void {

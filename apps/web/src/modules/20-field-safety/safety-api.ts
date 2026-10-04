@@ -30,7 +30,7 @@
 //
 // The server stays the only authorization point: nothing here decides what a caller may see. An
 // out-of-scope row is a non-leaking 404 from the server, never a frontend hide.
-import type { ApiClient, operations } from "@wardenx/ui";
+import { type ApiClient, BACKGROUND_REQUEST_HEADERS, type operations } from "@wardenx/ui";
 
 // ── schema-derived type extraction (TASK-022) ──────────────────────────────────────────────────────────
 
@@ -251,8 +251,12 @@ export function errorMessage(error: unknown, fallback: string): string {
 export async function getDashboard(
   client: ApiClient,
   query: ReqQuery<operations["getApiV1SafetyDashboard"]> = {},
+  opts: { background?: boolean } = {},
 ): Promise<{ board: SafetyDashboardView | null; error: unknown }> {
-  const res = await client.GET("/api/v1/safety/dashboard", { params: { query } });
+  const res = await client.GET("/api/v1/safety/dashboard", {
+    params: { query },
+    ...(opts.background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
+  });
   if (res.error) return { board: null, error: res.error };
   return { board: res.data, error: null };
 }
@@ -261,8 +265,13 @@ export async function getDashboard(
  *  board that paged would hide the fourth simultaneous emergency behind a "next" button. */
 export async function listActiveSos(
   client: ApiClient,
+  opts: { background?: boolean } = {},
 ): Promise<{ active: ActiveSosView | null; error: unknown }> {
-  const res = await client.GET("/api/v1/safety/sos/active", {});
+  // `background`: a timer poll, not user activity — it must not hold the session open (GAP-002).
+  const res = await client.GET(
+    "/api/v1/safety/sos/active",
+    opts.background ? { headers: BACKGROUND_REQUEST_HEADERS } : {},
+  );
   if (res.error) return { active: null, error: res.error };
   return { active: res.data, error: null };
 }

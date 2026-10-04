@@ -6,7 +6,7 @@
 // injected, so this stays M1-owned and unit-testable. Roles come from the resolver (M2 over the M1
 // session repo); permission evaluation remains M3's separate concern.
 import { timingSafeEqual } from "node:crypto";
-import { DEVICE_ATTESTATION_ATTRIBUTE } from "@wardenx/auth";
+import { DEVICE_ATTESTATION_ATTRIBUTE, type SessionTimeoutEnforcer } from "@wardenx/auth";
 import type { OrgScope, SessionContextResolver } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
@@ -29,6 +29,8 @@ export interface SystemCredentialConfig {
 
 const SYSTEM_TOKEN_HEADER = "x-internal-service-token";
 const SYSTEM_ORG_HEADER = "x-internal-org-id";
+/** GAP-002 — a timer poll the user did not cause; checked for timeout but not counted as activity. */
+const BACKGROUND_HEADER = "x-wardenx-background";
 
 export interface SessionAuthenticateDeps {
   /** Read the session for a request (Better Auth in prod via getIdentitySession; a stub in tests). */
@@ -41,6 +43,14 @@ export interface SessionAuthenticateDeps {
    * those routes stay unreachable exactly as before, rather than accepting an unconfigured/empty match.
    */
   systemCredential?: SystemCredentialConfig;
+  /**
+   * GAP-002 — the server-side SESSION_POLICY idle/absolute enforcer (M2 §2.2.4). Called once per
+   * request before anything is stamped; an expired session is deleted by the enforcer and the request
+   * proceeds ANONYMOUS, carrying `attributes.sessionExpired` so the error handler can answer 401
+   * SESSION_EXPIRED rather than a bare UNAUTHORIZED. Absent (unit tests that do not exercise it) → no
+   * timeout check.
+   */
+  sessionTimeout?: Pick<SessionTimeoutEnforcer, "enforce">;
 }
 
 /** Constant-time header/secret comparison (mirrors the M12/M19/M20/M13 witness-token precedent). */
@@ -78,6 +88,18 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     }
     const snap = await deps.getSnapshot(request);
     if (!snap) return; // unauthenticated — context stays anonymous (org routes deny)
+    if (deps.sessionTimeout) {
+      const state = await deps.sessionTimeout.enforce(snap.sessionId, {
+        recordActivity: headerOf(request, BACKGROUND_HEADER) !== "1",
+      });
+      if (state !== "active") {
+        // Terminal: the enforcer has deleted the row. Nothing about the session is stamped, so
+        // every guard sees an anonymous caller; public routes (sign-in) still work.
+        request.context.attributes ??= {};
+        request.context.attributes.sessionExpired = state;
+        return;
+      }
+    }
     request.context.userId = snap.userId; // authenticated (pre-org or org-bound)
     // Expose the real Better Auth session id so route helpers (e.g. select-organization's session
     // writer) can act on the actual session row, not the per-request id. Init the bag if absent.

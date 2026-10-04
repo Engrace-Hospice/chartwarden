@@ -23,6 +23,7 @@ import type {
   OrgScope,
 } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
+import { roleConfersKey } from "../roles/platform-reserved";
 import {
   type EffectivePermissionStore,
   type RbacEngineHandle,
@@ -141,6 +142,8 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
         const roleRows = await tx
           .select({
             roleKey: schema.roles.key,
+            roleOrganizationId: schema.roles.organizationId,
+            roleCategory: schema.roles.category,
             enabled: schema.roles.enabled,
             expiresAt: schema.membershipRoles.expiresAt,
           })
@@ -153,6 +156,15 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
           ...new Set(
             roleRows
               .filter((r) => r.enabled && (r.expiresAt === null || r.expiresAt.getTime() > now))
+              // GAP-003: a tenant-owned row never confers platform authority (`platform_*` key or
+              // `platform_staff` category) — only a platform-owned (organization_id NULL) row does.
+              .filter((r) =>
+                roleConfersKey({
+                  organizationId: r.roleOrganizationId,
+                  key: r.roleKey,
+                  category: r.roleCategory,
+                }),
+              )
               .map((r) => r.roleKey),
           ),
         ];

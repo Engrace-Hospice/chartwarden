@@ -179,4 +179,29 @@ describe("applyErrorHandler — diagnosable failures reach the caller (F-022 / #
     expect(logged?.level).toBe(INFO);
     expect(logged?.err).toBeUndefined();
   });
+
+  it("GAP-002: a 401 on a request whose session was just expired answers SESSION_EXPIRED", async () => {
+    const app = Fastify();
+    applyErrorHandler(app);
+    app.addHook("onRequest", async (request) => {
+      const expired = request.headers["x-expired"];
+      (request as { context?: unknown }).context = {
+        correlationId: "cid-test",
+        attributes: typeof expired === "string" ? { sessionExpired: expired } : {},
+      };
+    });
+    app.get("/guarded", async () => {
+      throw new WardenXError("UNAUTHORIZED", "Authentication required", 401);
+    });
+    const expired = await app.inject({ url: "/guarded", headers: { "x-expired": "expired_idle" } });
+    expect(expired.statusCode).toBe(401);
+    expect(expired.json().error).toMatchObject({
+      code: "SESSION_EXPIRED",
+      details: { reason: "expired_idle" },
+    });
+    const plain = await app.inject({ url: "/guarded" });
+    expect(plain.statusCode).toBe(401);
+    expect(plain.json().error.code).toBe("UNAUTHORIZED");
+    await app.close();
+  });
 });

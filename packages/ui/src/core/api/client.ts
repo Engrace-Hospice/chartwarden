@@ -30,6 +30,15 @@ export interface ApiClientOptions {
   onResponseStatus?: (status: number, url: string) => void;
 }
 
+/**
+ * GAP-002 — mark a request the USER did not cause (a timer-driven poll). The server still checks the
+ * session's idle/absolute timeout on it but does not count it as activity, so an open tab polling the
+ * inbox cannot keep an unattended workstation signed in past the 15-minute idle logoff.
+ */
+export const BACKGROUND_REQUEST_HEADERS: Readonly<Record<string, string>> = Object.freeze({
+  "x-wardenx-background": "1",
+});
+
 function defaultCorrelationId(): string | undefined {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
     return crypto.randomUUID();

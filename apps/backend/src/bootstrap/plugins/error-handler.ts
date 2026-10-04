@@ -40,6 +40,22 @@ export function applyErrorHandler(app: FastifyInstance): void {
     const correlationId = request.context?.correlationId ?? "unknown";
 
     if (err instanceof WardenXError) {
+      // GAP-002 — a request whose session the authenticate hook just expired is anonymous, so its
+      // guards throw the ordinary UNAUTHORIZED. Say why, so the client can show "signed out for
+      // inactivity" instead of a generic failure. Same 401; only the code and message differ.
+      const expired = request.context?.attributes?.sessionExpired;
+      if (err.code === "UNAUTHORIZED" && typeof expired === "string") {
+        request.log.info({ errCode: "SESSION_EXPIRED", reason: expired }, "handled error");
+        return reply.code(err.statusCode).send({
+          error: {
+            code: "SESSION_EXPIRED",
+            message: `Session ended (${expired}); sign in again`,
+            details: { reason: expired },
+            correlationId,
+            documentationUrl: `${DOCS_BASE}/SESSION_EXPIRED`,
+          },
+        });
+      }
       // A 5xx WardenXError is a SERVER-side condition the platform declared on purpose — a fail-closed
       // unbound infra port answering DEGRADED, say. It is not a caller error and it is not an
       // unhandled fault, and it has to be readable as neither: `warn` with the full error keeps the

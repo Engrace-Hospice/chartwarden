@@ -7,7 +7,12 @@
 export type { FeatureFlags, SystemStatusComponent, SystemStatusLevel } from "./types";
 
 // API client (typed, generated from docs/api/openapi.json — ADR-0032)
-export { ApiClientProvider, createApiClient, useApiClient } from "./api";
+export {
+  ApiClientProvider,
+  BACKGROUND_REQUEST_HEADERS,
+  createApiClient,
+  useApiClient,
+} from "./api";
 export type {
   ApiClient,
   ApiClientOptions,

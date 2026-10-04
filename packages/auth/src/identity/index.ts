@@ -123,3 +123,13 @@ export {
   isPortalSessionClass,
   isVendorSessionClass,
 } from "./session-classes";
+export {
+  SESSION_ACTIVITY_TOUCH_SEC,
+  SESSION_MAX_ABSOLUTE_SEC,
+  type SessionEnforceOptions,
+  type SessionTimeoutEnforcer,
+  type SessionTimeoutFacts,
+  type SessionTimeoutState,
+  createDbSessionTimeoutEnforcer,
+  evaluateSessionTimeout,
+} from "./session-timeout";

@@ -973,6 +973,69 @@ describe("M2-T06 identity route inventory", () => {
       expect(auditSink.rows.some((r) => r.eventType === "m2.user.deactivated")).toBe(true);
       await app.close();
     });
+
+    it("GAP-001 deactivating a user with no membership in the caller's org → 404, nothing touched", async () => {
+      const { app, users, sessions, auditSink } = makeServer({
+        seed: [
+          ...seed(),
+          membership({ membershipId: "b_1", userId: "b_user", organizationId: "org_b" }),
+        ],
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/users/b_user/deactivate",
+        headers: ADMIN,
+        payload: { reason: "cross-tenant attempt" },
+      });
+      expect(res.statusCode).toBe(404);
+      expect(users.isDeactivated("b_user")).toBe(false);
+      expect(sessions.revokedUsers()).not.toContain("b_user");
+      expect(auditSink.rows.some((r) => r.eventType === "m2.user.deactivated")).toBe(false);
+      await app.close();
+    });
+
+    it("GAP-001 a user who is still a live member of another org → 409, not deactivated globally", async () => {
+      const { app, users, sessions } = makeServer({
+        seed: [
+          ...seed(),
+          membership({ membershipId: "rn_b", userId: "rn_user", organizationId: "org_b" }),
+        ],
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/users/rn_user/deactivate",
+        headers: ADMIN,
+        payload: { reason: "left the company" },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("USER_IN_OTHER_ORGS");
+      expect(users.isDeactivated("rn_user")).toBe(false);
+      expect(sessions.revokedUsers()).not.toContain("rn_user");
+      await app.close();
+    });
+
+    it("GAP-001 a revoked membership elsewhere does not block deactivation", async () => {
+      const { app, users } = makeServer({
+        seed: [
+          ...seed(),
+          membership({
+            membershipId: "rn_b",
+            userId: "rn_user",
+            organizationId: "org_b",
+            status: "revoked",
+          }),
+        ],
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/users/rn_user/deactivate",
+        headers: ADMIN,
+        payload: { reason: "left the company" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(users.isDeactivated("rn_user")).toBe(true);
+      await app.close();
+    });
   });
 
   describe("§7.6 external collaborator — per-patient magic-link", () => {

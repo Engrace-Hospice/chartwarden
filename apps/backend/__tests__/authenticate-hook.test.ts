@@ -266,4 +266,61 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       expect(ctx.attributes.actorKind).toBeUndefined();
     });
   });
+
+  describe("GAP-002 server-side session timeout", () => {
+    const snapshot = async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" });
+
+    it.each(["expired_idle", "expired_absolute"] as const)(
+      "%s → the request stays anonymous and carries the expiry reason",
+      async (state) => {
+        const { req, ctx } = reqWith();
+        const enforced: string[] = [];
+        const hook = createSessionAuthenticate({
+          getSnapshot: snapshot,
+          getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
+          sessionTimeout: {
+            enforce: async (sessionId) => {
+              enforced.push(sessionId);
+              return state;
+            },
+          },
+        });
+        await hook(req);
+        expect(enforced).toEqual(["s1"]);
+        expect(ctx.userId).toBe("");
+        expect(ctx.organizationId).toBe("");
+        expect(ctx.roles).toEqual([]);
+        expect(ctx.attributes.sessionExpired).toBe(state);
+      },
+    );
+
+    it("a background poll is checked for timeout but not recorded as activity", async () => {
+      const calls: unknown[] = [];
+      const hook = createSessionAuthenticate({
+        getSnapshot: snapshot,
+        getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
+        sessionTimeout: {
+          enforce: async (_id, opts) => {
+            calls.push(opts?.recordActivity);
+            return "active";
+          },
+        },
+      });
+      await hook(reqWith({ "x-wardenx-background": "1" }).req);
+      await hook(reqWith().req);
+      expect(calls).toEqual([false, true]);
+    });
+
+    it("an active session resolves exactly as before", async () => {
+      const { req, ctx } = reqWith();
+      const hook = createSessionAuthenticate({
+        getSnapshot: snapshot,
+        getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
+        sessionTimeout: { enforce: async () => "active" },
+      });
+      await hook(req);
+      expect(ctx.organizationId).toBe("org1");
+      expect(ctx.attributes.sessionExpired).toBeUndefined();
+    });
+  });
 });

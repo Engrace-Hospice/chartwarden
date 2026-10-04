@@ -271,6 +271,13 @@ export {
   registerPatientErasers,
 } from "./erasers/patient-eraser";
 export { createDbPatientRouteService } from "./patient-route-service-db";
+// GAP-006 — the M5 side of the portal §164.526 amendment submit (bound onto M31's route port at the root).
+export {
+  type PortalAmendmentIntake,
+  type PortalAmendmentRecord,
+  type PortalAmendmentSubmission,
+  createDbPortalAmendmentIntake,
+} from "./portal-amendment-intake";
 
 // The Privacy Officer surface (M5 §4.2 / §5.1 "Privacy flags"): the per-patient view, the §4.2 resync and
 // the restricted-patients work queue, over ports M39 (Part 2 consent state), M22 (DocLens SUD batches) and

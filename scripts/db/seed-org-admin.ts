@@ -23,6 +23,7 @@ import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { grantPlatformRole } from "./lib/platform-role";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -150,19 +151,14 @@ async function main(): Promise<void> {
   // catalog, and `context.roles` is the union of every role bound to the membership — this role
   // exists purely to add the `platform_ops` key to that union. Gives the local dev environment one
   // account that can actually sign into and use the admin console (none could before).
-  const platformOpsRole = await db.query<{ id: string }>(
-    `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
-     VALUES ($1,'platform_ops','Platform Operations','admin_executive'::role_category,'organization', true,
-             'Platform-ops console access (dev seed)')
-     ON CONFLICT (organization_id, key) DO UPDATE SET name = EXCLUDED.name
-     RETURNING id`,
-    [orgId],
-  );
-  await db.query(
-    `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)
-     ON CONFLICT (membership_id, role_id) DO NOTHING`,
-    [orgId, membershipId, firstRow(platformOpsRole, "seed-org-admin: platform-ops role lookup").id],
-  );
+  // Platform-owned since GAP-003: a tenant `platform_ops` row confers nothing and 0318 refuses it.
+  await grantPlatformRole(db, {
+    organizationId: orgId,
+    membershipId,
+    key: "platform_ops",
+    name: "Platform Operations",
+    description: "Platform-ops console access (dev seed)",
+  });
 
   await db.end();
 

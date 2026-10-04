@@ -418,8 +418,6 @@ export interface IdentityRouteDeps {
   /** The `m2.*` transactional-outbox publisher. Omitted → record-only, no-op (the M28 `NOOP_FHIR_OUTBOX`
    *  precedent) — every existing route keeps working without it. */
   outbox?: IdentityOutboxPort;
-  /** Org-binding session TTL in seconds (spec §SESSION_POLICY); default 12h. */
-  sessionTtlSec?: number;
   /** External-collaborator session TTL in seconds (spec §7.6, up to 8h); default 8h. */
   collaboratorSessionTtlSec?: number;
   /**

@@ -12,6 +12,7 @@ import {
   createDbAdminMembershipReader,
   createDbEffectivePermissionStore,
   createDbSessionContextStore,
+  createDbSessionTimeoutEnforcer,
   createIdentityAuth,
   createInMemoryFailedLoginStore,
   getIdentitySession,
@@ -186,6 +187,7 @@ import {
   buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
   createCaseloadStoreWithShiftCache,
+  createDbPortalAmendmentIntake,
   createDrizzleCareTeamStore,
   createDrizzleCaseloadStore,
   createDrizzlePatientEraseStore,
@@ -222,6 +224,7 @@ import {
   buildM6RecertificationSignedConsumer,
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
+  createAdmissionLocPeriodsReader,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   electionPeriodContextForOrg,
@@ -2869,56 +2872,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         : null;
     },
   };
-  // M24 → M1 (WX-PR-011) — `provider_entity` is M1-owned, so this read lives HERE (the composition root
-  // sits outside every module's codePaths, unlike write-service-drizzle.ts, which the table-ownership gate
-  // scans) rather than inside the M24 module itself.
+  // M24 → M1 (`provider_entity` CCN) and M24 → M6 (`level_of_care_period`) — each owner's own reader, each
+  // under its own `withOrgContext` (assembleClaim calls them outside its org-context transaction; the bare
+  // `db.select`s these replaced ran with no `app.org_id` and 500'd every Medicaid claim assembly).
   const m24CcnReader = dbHandle
-    ? {
-        async ccnForProviderEntity(organizationId: string, providerEntityId: string) {
-          const rows = await dbHandle.db
-            .select({ ccn: schema.providerEntities.ccn })
-            .from(schema.providerEntities)
-            .where(
-              and(
-                eq(schema.providerEntities.id, providerEntityId),
-                eq(schema.providerEntities.organizationId, organizationId),
-              ),
-            )
-            .limit(1);
-          return rows[0]?.ccn ?? null;
-        },
-      }
+    ? { ccnForProviderEntity: buildProviderEntityCcnResolver(dbHandle.db).ccnFor }
     : undefined;
-  // M24 → M6 (WX-PR-011 line-assembly follow-up) — `level_of_care_period` is M6-owned; same escape-valve
-  // posture as `m24CcnReader` immediately above. Excludes `status='assigning'` (confirm-handshake fix,
-  // 2026-08-05): an IRC/GIP period awaiting M37 bed confirmation is not yet a real period of care and
-  // must never generate a billable claim line.
-  const m24LocPeriodReader = dbHandle
-    ? {
-        async periodsForAdmission(organizationId: string, admissionId: string) {
-          return dbHandle.db
-            .select({
-              id: schema.levelOfCarePeriods.id,
-              levelOfCare: schema.levelOfCarePeriods.levelOfCare,
-              effectiveAt: schema.levelOfCarePeriods.effectiveAt,
-              endedAt: schema.levelOfCarePeriods.endedAt,
-              facilityId: schema.levelOfCarePeriods.facilityId,
-              ipuBedAssignmentId: schema.levelOfCarePeriods.ipuBedAssignmentId,
-            })
-            .from(schema.levelOfCarePeriods)
-            .where(
-              and(
-                eq(schema.levelOfCarePeriods.organizationId, organizationId),
-                eq(schema.levelOfCarePeriods.admissionId, admissionId),
-                ne(schema.levelOfCarePeriods.status, "assigning"),
-              ),
-            )
-            .orderBy(schema.levelOfCarePeriods.effectiveAt);
-        },
-      }
-    : undefined;
+  const m24LocPeriodReader = dbHandle ? createAdmissionLocPeriodsReader(dbHandle.db) : undefined;
   // M24 → M40 (place-of-service follow-up) — `facility` is M40-owned/NON_ORG_SCOPED; same escape-valve
-  // posture as `m24LocPeriodReader`. Batched by id so one claim assembly issues at most one query here.
+  // posture as `m24LocPeriodReader`, but NON_ORG_SCOPED so no org context. Batched by id so one claim assembly issues at most one query here.
   const m24FacilityKindReader = dbHandle
     ? {
         async kindsFor(facilityIds: readonly string[]) {
@@ -3020,6 +2982,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     ? createSessionAuthenticate({
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => getSeam("SessionContextResolver"),
+        // GAP-002 — SESSION_POLICY idle/absolute timeouts, enforced server-side on every request.
+        ...(dbHandle ? { sessionTimeout: createDbSessionTimeoutEnforcer(dbHandle.db) } : {}),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
         // reachability. Unset (dev/no secret configured) → `systemCredential` is undefined and the
         // machine-credential branch never runs, exactly today's fail-closed posture.
@@ -3916,6 +3880,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 getSeam("VisitReader").visitForEncounter(organizationId, visitId),
             },
             roomCipher: createPortalRoomCipher(getTenantKeyProvider()),
+            // GAP-006 — the portal §164.526 submit lands as a real M5 `patient_amendment_request` row.
+            amendmentIntake: createDbPortalAmendmentIntake(dbHandle.db),
           });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet

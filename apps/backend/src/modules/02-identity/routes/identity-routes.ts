@@ -728,12 +728,29 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
   });
 
   app.post("/api/v1/users/:id/deactivate", async (request, reply) => {
-    // §4.7: org_admin (own org) or platform_ops (any) hold `user.deactivate`; the resolver
-    // grants it per the assigned role templates.
+    // §4.7: `user.deactivate` is an org_admin key, valid for the OWN org only. `users` and
+    // `sessions` carry no RLS, so the org boundary is enforced here (GAP-001): the target must hold
+    // a membership in the caller's org (404 otherwise — no cross-tenant existence oracle), and a
+    // global deactivation may not reach a user who is still a live member elsewhere (409 — offboard
+    // from this org with DELETE /orgs/:id/members/:mId instead). Platform-wide deactivation waits
+    // on a platform identity that is not a tenant-mintable role key (GAP-003).
     await requirePermission("user.deactivate")(request);
     const userId = (request.params as { id: string }).id;
     const actor = await resolveActor(deps, request);
     const reason = readString(request.body, "reason");
+
+    const orgId = request.context.organizationId;
+    const targetMemberships = await deps.memberships.listForUser(userId);
+    if (!orgId || !targetMemberships.some((m) => m.organizationId === orgId)) {
+      throw new WardenXError("NOT_FOUND", "user not found", 404);
+    }
+    if (targetMemberships.some((m) => m.organizationId !== orgId && m.status !== "revoked")) {
+      throw new WardenXError(
+        "USER_IN_OTHER_ORGS",
+        "the user belongs to other organizations; revoke their membership in this org instead",
+        409,
+      );
+    }
 
     await deps.users.deactivate(userId, reason); // disable credentials everywhere
     await deps.sessions.revokeAllForUser(userId); // reap all sessions (§7.5)

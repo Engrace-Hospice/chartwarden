@@ -5,11 +5,14 @@
 // Each route validates its typed lay DTO at the boundary, resolves the minimal upstream facts through the
 // seam registry (fail-closed for a blocking fact), then runs the PURE plan core from `../write-paths` — the
 // §7.6 post-discharge read-only gate, the §7.7 attestation window, the §7.8 MIME/size cap, the §164.526
-// amendment shape — which THROWS a `PortalWriteError` on any violation. The plan's payload names the
-// `m31.*` outbox event the owning module (M13 / M22 / M5 / M36) consumes; the composition root's outbox
-// publisher (bound via `deps.outbox`) emits it. `portal.administration.attest` and `portal.amendment.submit`
-// additionally carry TOTP step-up (M2), composed in `./mount`.
+// amendment shape — which THROWS a `PortalWriteError` on any violation. The amendment submit then hands the
+// validated request to M5's intake (`deps.amendmentIntake`, GAP-006) — synchronously, so the 202 means an M5
+// row exists and the §164.526 60-day clock has started. (This header used to say a `deps.outbox` publisher
+// emitted the plan's `m31.*` event; M31 has no outbox publisher, and the request was simply dropped.)
+// `portal.administration.attest` and `portal.amendment.submit` additionally carry TOTP step-up (M2),
+// composed in `./mount`.
 import type { MedicationOrderProvider } from "@wardenx/types";
+import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { planAmendmentRequest } from "../write-paths/amendment-request";
@@ -36,6 +39,18 @@ import {
 } from "./portal-typebox";
 
 const IDEMPOTENT = requireIdempotencyKey();
+
+/** GAP-006 — M5's intake, or a 503: never a success the patient is told about while nothing is recorded. */
+function amendmentIntakeOf(deps: PortalRouteDeps) {
+  if (!deps.amendmentIntake) {
+    throw new WardenXError(
+      "AMENDMENT_INTAKE_UNAVAILABLE",
+      "Amendment requests cannot be accepted right now. Please contact your care team.",
+      503,
+    );
+  }
+  return deps.amendmentIntake;
+}
 
 interface AdmissionArm {
   isDischargedReadOnly?(orgId: string, patientId: string): Promise<boolean>;
@@ -198,10 +213,16 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         requestedChange: body.requestedChange,
         patientDischargedReadOnly: await dischargedReadOnly(actor.organizationId, patientId),
       });
-      return reply.code(202).send({
-        amendmentRequestRefId: `${payload.originatingPortalAccountId}:${now().getTime()}`,
-        status: "submitted",
+      const created = await amendmentIntakeOf(deps).submit({
+        organizationId: payload.orgId,
+        patientId: payload.patientId,
+        requestedByUserId: actor.userId,
+        portalAccountId: payload.originatingPortalAccountId,
+        targetKind: payload.targetKind,
+        targetRef: payload.targetRef,
+        requestedChange: payload.requestedChange,
       });
+      return reply.code(202).send({ amendmentRequestRefId: created.id, status: created.status });
     },
   );
 
@@ -213,8 +234,13 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       config: { auditRead: { resourceKind: "portal_amendment", list: true } },
     },
     async (request) => {
-      actorOf(request);
-      return { category: "amendments", items: [] };
+      const actor = actorOf(request);
+      const items = await amendmentIntakeOf(deps).listOwn({
+        organizationId: actor.organizationId,
+        patientId: portalPatientIdOf(actor),
+        requestedByUserId: actor.userId,
+      });
+      return { category: "amendments", items };
     },
   );
 

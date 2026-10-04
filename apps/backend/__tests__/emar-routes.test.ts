@@ -40,6 +40,7 @@ function headerAuth(request: FastifyRequest): void {
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ORDER = "00000000-0000-4000-8000-0000000000a1";
+const CONTROLLED_ORDER = "00000000-0000-4000-8000-0000000000a2";
 const WORKSHEET = "22222222-2222-4222-8222-222222222222";
 const CAREGIVER_ADMIN = "33333333-3333-4333-8333-333333333333";
 const ADMIN_MEMBERSHIP = "00000000-0000-4000-8000-0000000000c1";
@@ -83,7 +84,20 @@ const PERMISSION_SEED = [
   },
   { userId: "chap_1", permissions: [...READ, "administration.record"] },
   { userId: "viewer_1", permissions: READ },
+  // GAP-004 — an RN with the full RN key set who is NOT on PATIENT's caseload.
+  {
+    userId: "rn_off",
+    permissions: [
+      ...READ,
+      "administration.record",
+      "administration.correct",
+      "reconciliation.decide",
+    ],
+  },
 ];
+
+/** GAP-004 — who is on PATIENT's caseload (stands in for M5's CaseloadProvider). */
+const CASELOAD = new Set(["md_1", "rn_1", "chap_1", "viewer_1"]);
 
 function makeServer() {
   const backend = createInMemoryEmarBackend({
@@ -93,6 +107,16 @@ function makeServer() {
       { userId: "rn_1", membershipId: "mem_rn", organizationId: ORG, discipline: "rn" },
       { userId: "chap_1", membershipId: "mem_chap", organizationId: ORG, discipline: "chaplain" },
       { userId: "viewer_1", membershipId: "mem_view", organizationId: ORG, discipline: "auditor" },
+      { userId: "rn_off", membershipId: "mem_rn_off", organizationId: ORG, discipline: "rn" },
+    ],
+    orders: [
+      { medicationOrderId: ORDER, patientId: PATIENT, route: "oral", medClass: "standard" },
+      {
+        medicationOrderId: CONTROLLED_ORDER,
+        patientId: PATIENT,
+        route: "oral",
+        medClass: "controlled_substance",
+      },
     ],
     caseManagers: { [PATIENT]: "rn_1" },
     administrations: [
@@ -129,7 +153,11 @@ function makeServer() {
   // A FRESH predicate registry per server (the shared `abacRegistry` would otherwise persist a predicate
   // closed over a prior test's backend across the file).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildEmarAbacPredicates({ resolver: backend }))) {
+  const isInCaseload = async (q: { userId: string; patientId: string }) =>
+    q.patientId === PATIENT && CASELOAD.has(q.userId);
+  for (const [name, predicate] of Object.entries(
+    buildEmarAbacPredicates({ resolver: backend, isInCaseload }),
+  )) {
     reg.register(name, predicate);
   }
   registerAbacRegistry(reg);
@@ -143,6 +171,7 @@ const MD = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "md" };
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const CHAPLAIN = { "x-test-user": "chap_1", "x-test-org": ORG, "x-test-roles": "chaplain" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
+const RN_OFF = { "x-test-user": "rn_off", "x-test-org": ORG, "x-test-roles": "rn" };
 
 const recordBody = (over: Record<string, unknown> = {}) => ({
   medicationOrderId: ORDER,
@@ -299,6 +328,104 @@ describe("M13-T08 — §2.8 reconciliation finalize gate", () => {
       payload: { attestation: "reviewed" },
     });
     expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+describe("GAP-004 — §4.1 caseload_or_scope (emar.scope) on M13 PHI routes", () => {
+  it.each([
+    ["GET", `/api/v1/administrations/${CAREGIVER_ADMIN}`],
+    ["GET", `/api/v1/administrations?patient=${PATIENT}`],
+    ["GET", `/api/v1/scheduled-doses?patient=${PATIENT}`],
+    ["GET", `/api/v1/missed-doses?patient=${PATIENT}`],
+    ["GET", `/api/v1/reconciliation/worksheets?patient=${PATIENT}`],
+    ["GET", `/api/v1/reconciliation/worksheets/${WORKSHEET}`],
+    ["GET", `/api/v1/comfort-kits/deployments?patient=${PATIENT}`],
+  ] as const)("an off-caseload RN gets 404 on %s %s", async (method, url) => {
+    const { app } = makeServer();
+    const res = await app.inject({ method, url, headers: RN_OFF });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("an off-caseload RN cannot record, correct or decide for the patient (404)", async () => {
+    const { app } = makeServer();
+    const record = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: RN_OFF,
+      payload: recordBody(),
+    });
+    expect(record.statusCode).toBe(404);
+    const correct = await app.inject({
+      method: "POST",
+      url: `/api/v1/administrations/${CAREGIVER_ADMIN}/correct`,
+      headers: RN_OFF,
+      payload: { reason: "wrong dose entered" },
+    });
+    expect(correct.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("an on-caseload RN reads the same administration (200)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/administrations/${CAREGIVER_ADMIN}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("an org-wide role (medical_director) passes without a caseload assignment", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/administrations?patient=${PATIENT}`,
+      headers: { ...RN_OFF, "x-test-roles": "medical_director" },
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a list with no patient named is refused rather than org-wide", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/administrations", headers: RN });
+    expect([400, 404]).toContain(res.statusCode);
+    await app.close();
+  });
+});
+
+describe("GAP-005 — the controlled-substance witness keys on the ORDER, not the body", () => {
+  it("a Schedule II order sent as medClass 'standard' with no witness is refused (422 MED_CLASS_MISMATCH)", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
+      payload: recordBody({ medicationOrderId: CONTROLLED_ORDER, medClass: "standard" }),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json())).toContain("MED_CLASS_MISMATCH");
+    const list = await backend.listAdministrations(ORG, { patient: PATIENT });
+    expect(list.some((a) => a.medicationOrderId === CONTROLLED_ORDER)).toBe(false);
+    await app.close();
+  });
+
+  it("the same order declared honestly still demands the witness token", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
+      payload: recordBody({
+        medicationOrderId: CONTROLLED_ORDER,
+        medClass: "controlled_substance",
+      }),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json())).not.toContain("MED_CLASS_MISMATCH");
     await app.close();
   });
 });

@@ -327,7 +327,79 @@ describe.skipIf(!DB_URL)(
       // A user with no active membership in the org → null (no actor context).
       expect(await reader.read({ orgId: org }, crypto.randomUUID())).toBeNull();
 
+      // GAP-003 — platform authority comes only from a PLATFORM-OWNED row. The DB refuses a
+      // tenant-owned `platform_*` key or `platform_staff` category (migration 0318)...
+      for (const [key, category] of [
+        ["platform_admin", "admin_executive"],
+        ["helpdesk", "platform_staff"],
+      ]) {
+        await expect(
+          admin.query(
+            "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,$2,'Spoof',$3,true)",
+            [org, key, category],
+          ),
+        ).rejects.toThrow(/role_platform_authority_platform_owned/);
+      }
+      // ...and an assigned platform-owned (organization_id NULL) row does reach `roles`.
+      const platformRole = (
+        await admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES (NULL,'platform_admin','Platform Admin','platform_staff',true) RETURNING id",
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [org, membership, platformRole],
+      );
+      const withPlatform = await reader.read({ orgId: org }, userId);
+      expect([...(withPlatform?.roles ?? [])].sort()).toEqual(["en-rn", "platform_admin"]);
+      await admin.query("DELETE FROM membership_role WHERE role_id = $1", [platformRole]);
+      await admin.query("DELETE FROM role WHERE id = $1", [platformRole]);
+
       await handle4.close();
+    });
+
+    it("GAP-002: the live enforcer expires idle/absolute sessions and stamps activity (wardenx_app)", async () => {
+      const { createDbClient: mkDbT } = await import("@wardenx/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const handleT = mkDbT({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const enforcer = createDbSessionTimeoutEnforcer(handleT.db as never);
+      const userId = (
+        await admin.query(
+          `INSERT INTO "user" (email,name) VALUES ($1,'Timeout User') RETURNING id`,
+          [`to${Date.now()}@example.test`],
+        )
+      ).rows[0].id as string;
+      const mint = async (id: string, createdAgo: string, activityAgo: string | null) =>
+        admin.query(
+          `INSERT INTO session (id,user_id,token,expires_at,created_at,last_activity_at)
+           VALUES ($1,$2,$1,now() + interval '3 days',now() - $3::interval,
+                   CASE WHEN $4::text IS NULL THEN NULL ELSE now() - $4::interval END)`,
+          [id, userId, createdAgo, activityAgo],
+        );
+      const exists = async (id: string) =>
+        (await admin.query("SELECT 1 FROM session WHERE id = $1", [id])).rowCount === 1;
+
+      await mint("gap002-idle", "2 hours", "16 minutes");
+      await mint("gap002-absolute", "8 hours 5 minutes", "1 minute");
+      await mint("gap002-live", "1 hour", "5 minutes");
+
+      expect(await enforcer.enforce("gap002-idle")).toBe("expired_idle");
+      expect(await exists("gap002-idle")).toBe(false); // terminal: the row is gone
+      expect(await enforcer.enforce("gap002-absolute")).toBe("expired_absolute");
+      expect(await exists("gap002-absolute")).toBe(false);
+
+      expect(await enforcer.enforce("gap002-live")).toBe("active");
+      const touched = await admin.query(
+        "SELECT now() - last_activity_at < interval '30 seconds' AS fresh FROM session WHERE id = $1",
+        ["gap002-live"],
+      );
+      expect(touched.rows[0].fresh).toBe(true);
+      expect(await enforcer.enforce("gap002-gone")).toBe("revoked");
+
+      await admin.query("DELETE FROM session WHERE id = 'gap002-live'");
+      await handleT.close();
     });
 
     it("M3 RBAC: the live RoleStore lists the org's catalog (templates + own roles) with permission keys", async () => {
@@ -1053,6 +1125,32 @@ describe.skipIf(!DB_URL)(
       expect((await svc.decideAmendment(org, amd.id, { accept: true }, actor)).status).toBe(
         "accepted",
       );
+
+      // GAP-006 — the portal submit lands as a real M5 row (60-day clock started), and the requester's
+      // own list returns it — portal-origin rows only, never the staff-submitted amendment above.
+      const { createDbPortalAmendmentIntake } = await import("../src/modules/05-patient/index");
+      const intake = createDbPortalAmendmentIntake(asTenantRole(handle10.db) as never);
+      const portalReq = await intake.submit({
+        organizationId: org,
+        patientId,
+        requestedByUserId: actor,
+        portalAccountId: crypto.randomUUID(),
+        targetKind: "patient_demographic",
+        targetRef: "dateOfBirth",
+        requestedChange: "Date of birth should be 1960-01-01",
+      });
+      expect(portalReq.status).toBe("pending");
+      expect(new Date(portalReq.slaDueAt).getTime()).toBeGreaterThan(Date.now());
+      const mine = await intake.listOwn({ organizationId: org, patientId, requestedByUserId: actor });
+      expect(mine.map((r) => r.id)).toEqual([portalReq.id]);
+      expect(mine[0]).toMatchObject({ targetKind: "patient_demographic", targetRef: "dateOfBirth" });
+      expect(
+        await intake.listOwn({
+          organizationId: org,
+          patientId,
+          requestedByUserId: crypto.randomUUID(),
+        }),
+      ).toEqual([]);
 
       await handle10.close();
     });

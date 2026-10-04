@@ -4,7 +4,17 @@
 // rows. `system_locked` roles are CoP-required and cannot be deleted or stripped below
 // their permission floor (§3.4.1 / M03-F06). org_id is nullable here BY DESIGN (template
 // rows) — RLS is the bespoke role policy in M3-T04, not the generic generator.
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { roleCategory, scopeLevel } from "../enums";
 import { organizations } from "./organizations";
 
@@ -29,6 +39,11 @@ export const roles = pgTable(
   (t) => ({
     orgKeyUnique: uniqueIndex("role_org_key_idx").on(t.organizationId, t.key),
     orgIdx: index("role_org_idx").on(t.organizationId),
+    // GAP-003 (0318, NOT VALID): platform authority lives only on platform-owned rows.
+    platformAuthorityPlatformOwned: check(
+      "role_platform_authority_platform_owned",
+      sql`${t.organizationId} IS NULL OR (${t.key} NOT LIKE 'platform\\_%' AND ${t.category} <> 'platform_staff')`,
+    ),
   }),
 );
 

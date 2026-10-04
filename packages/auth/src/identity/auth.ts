@@ -25,6 +25,7 @@ import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
+import { SESSION_MAX_ABSOLUTE_SEC } from "./session-timeout";
 import { loadTwoFactorKey } from "./two-factor-crypto";
 
 /**
@@ -268,6 +269,12 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       },
     },
     session: {
+      // GAP-002 — a FIXED lifetime, never extended on use. Better Auth's default was 7 days rolling
+      // (refreshed daily), which outlived every SESSION_POLICY bound. The per-class idle/absolute
+      // decision is the authenticate hook's (createDbSessionTimeoutEnforcer); this is only the outer
+      // cap, sized to the longest class absolute so it never cuts a session the policy still allows.
+      expiresIn: SESSION_MAX_ABSOLUTE_SEC,
+      disableSessionRefresh: true,
       // M2-T03 (M2 spec §3.6): the session-class / lifecycle / step-up fields are carried
       // as Better Auth additionalFields over M1's `session` table (their at-rest columns +
       // CHECK invariants live in packages/db/src/schema/sessions.ts). All are server-bound:

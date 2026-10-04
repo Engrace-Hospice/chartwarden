@@ -300,6 +300,11 @@ export {
   planRecomputeWindows,
   planWindowAlert,
 } from "./jobs/index";
+export {
+  type AdmissionLocPeriod,
+  type AdmissionLocPeriodsReader,
+  createAdmissionLocPeriodsReader,
+} from "./seams/admission-loc-periods-reader";
 export { wireM6Tenancy } from "./wiring";
 
 export {

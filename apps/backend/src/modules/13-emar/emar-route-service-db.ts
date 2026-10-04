@@ -74,9 +74,13 @@ import {
   witnessTokenDigest,
 } from "@wardenx/emar";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { type MedClass, NotFoundError, ValidationError } from "@wardenx/types";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
-import type { CaregiverReviewAbacFacts, WitnessAbacFacts } from "./abac-predicates";
+import type {
+  CaregiverReviewAbacFacts,
+  EmarScopeRefKind,
+  WitnessAbacFacts,
+} from "./abac-predicates";
 import type {
   AdministrationPolicyView,
   AdministrationView,
@@ -187,7 +191,39 @@ export interface EmarMedicationOrderPort {
     readonly allowAdministration: boolean;
     /** The reasons behind a `false` verdict, echoed to the caller so the refusal names itself. */
     readonly blockedReasons: readonly string[];
+    /**
+     * GAP-005 — the order's medication class and controlled-substance flag (M12 `MedicationOrderDto`).
+     * The ONLY source of "is this a controlled administration": the D7 witness requirement, the stored
+     * `is_controlled_substance`, and the administering-clinician matrix all key on these, never on the
+     * request body.
+     */
+    readonly medClass: MedClass;
+    readonly isControlledSubstance: boolean;
   } | null>;
+}
+
+/** GAP-005 — the order decides; a body `medClass` may only agree with it. */
+function assertMedClassAgrees(bodyMedClass: string | undefined, orderMedClass: MedClass): void {
+  if (bodyMedClass === undefined || bodyMedClass === orderMedClass) return;
+  throw new ValidationError("medClass does not match the medication order", [
+    {
+      field: "medClass",
+      code: "MED_CLASS_MISMATCH",
+      message: `the order is ${orderMedClass}; the administration cannot be recorded as ${bodyMedClass}`,
+    },
+  ]);
+}
+
+/** The order must resolve for M13 to know whether the D7 witness applies — unknown is refused, not assumed. */
+function unresolvedOrder(): ValidationError {
+  return new ValidationError("the medication order for this administration is unresolvable", [
+    {
+      field: "medicationOrderId",
+      code: "MEDICATION_ORDER_UNRESOLVED",
+      message:
+        "the medication order could not be read, so neither the patient nor whether a witness is required is known",
+    },
+  ]);
 }
 
 /**
@@ -491,6 +527,41 @@ export function createDbEmarBackend(
         return w ? w.triggerKind : null;
       });
     },
+    // GAP-004 — `emar.scope`: the patient each M13 id belongs to, read under RLS (a cross-tenant id is
+    // simply absent). The order's patient comes through M12's seam, like every other order fact here.
+    async loadScopePatientId(orgId, kind: EmarScopeRefKind, id) {
+      if (kind === "medicationOrderId") {
+        const identity = await medOrder().administrationIdentity({
+          organizationId: orgId,
+          medicationOrderId: id,
+        });
+        return identity?.patientId ?? null;
+      }
+      const table = {
+        administrationId: { t: ADM, col: ADM.id },
+        ivSessionId: { t: ADM, col: ADM.ivSessionId },
+        scheduledDoseId: { t: SD, col: SD.id },
+        missedDoseId: { t: MD, col: MD.id },
+        worksheetId: { t: WS, col: WS.id },
+        deploymentId: { t: CKD, col: CKD.id },
+      }[kind];
+      return withOrg(orgId, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: table.t.patientId })
+          .from(table.t)
+          .where(eq(table.col, id))
+          .limit(1);
+        return r?.patientId ?? null;
+      });
+    },
+    // GAP-005 — the administering-clinician matrix keys on the ORDER's class.
+    async loadOrderMedClass(orgId, medicationOrderId) {
+      const identity = await medOrder().administrationIdentity({
+        organizationId: orgId,
+        medicationOrderId,
+      });
+      return identity?.medClass ?? null;
+    },
 
     // ── administration reads ─────────────────────────────────────────────────────────────────────────
     async getAdministration(orgId, id): Promise<AdministrationView> {
@@ -711,7 +782,6 @@ export function createDbEmarBackend(
       return withOrg(orgId, async (tx) => {
         const recordedAt = new Date();
         const lateEntryTier = resolveLateEntryTier(args.administeredAt, recordedAt.toISOString());
-        const isControlled = args.medClass === "controlled_substance";
         const isComfortKitDrawdown = Boolean(args.comfortKitDeploymentId);
 
         // Siting + patient/admission anchor come from the scheduled dose when named; else null siting +
@@ -730,18 +800,12 @@ export function createDbEmarBackend(
           organizationId: orgId,
           medicationOrderId: args.medicationOrderId,
         });
-        if (!sched && identity === null)
-          throw new ValidationError(
-            "the medication order for this administration is unresolvable",
-            [
-              {
-                field: "medicationOrderId",
-                code: "MEDICATION_ORDER_UNRESOLVED",
-                message:
-                  "no scheduled dose was named and the medication order could not be read, so the patient this dose was given to is unknown",
-              },
-            ],
-          );
+        // GAP-005 — refused even when a scheduled dose names the patient: without the order, whether this
+        // is a controlled administration (and so whether the D7 witness applies) is unknown.
+        if (identity === null) throw unresolvedOrder();
+        assertMedClassAgrees(args.medClass, identity.medClass);
+        const isControlled =
+          identity.isControlledSubstance || identity.medClass === "controlled_substance";
         // §2.9 D6 — is this order administrable at all? ARMED (F-058). It was threaded for the identity
         // facts and deliberately left off, because only `status = "active"` clears M12's verdict and
         // nothing in the platform activated an order — so arming it would have refused every
@@ -1301,21 +1365,35 @@ export function createDbEmarBackend(
           organizationId: orgId,
           medicationOrderId: args.medicationOrderId,
         });
+        // GAP-005 — the controlled flag comes from the order, and the refusal is filed only under the
+        // order's own patient (a body patientId naming someone else is refused, not trusted).
+        if (identity === null) throw unresolvedOrder();
+        assertMedClassAgrees(args.medClass, identity.medClass);
+        if (identity.patientId !== args.patientId) {
+          throw new ValidationError("patientId does not match the medication order", [
+            {
+              field: "patientId",
+              code: "PATIENT_ORDER_MISMATCH",
+              message: "the refusal names a different patient than the order it refuses",
+            },
+          ]);
+        }
         const inserted = (
           await tx
             .insert(ADM)
             .values({
               organizationId: orgId,
               patientId: args.patientId,
-              admissionId: identity?.admissionId ?? ADMISSION_SENTINEL,
+              admissionId: identity.admissionId,
               medicationOrderId: args.medicationOrderId,
               scheduledDoseId: args.scheduledDoseId ?? null,
               mode: "single_dose",
               status: "committed",
               data: {},
-              drugNameSnapshot: identity?.drugName ?? "",
-              routeSnapshot: identity?.route ?? "",
-              isControlledSubstance: args.medClass === "controlled_substance",
+              drugNameSnapshot: identity.drugName,
+              routeSnapshot: identity.route,
+              isControlledSubstance:
+                identity.isControlledSubstance || identity.medClass === "controlled_substance",
               refused: true,
               administeredAt: new Date(args.refusedAt),
               actorKind: "clinician",

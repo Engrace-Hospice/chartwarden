@@ -37,6 +37,8 @@ const USER2 = "3b3b3b3b-3b3b-4b3b-8b3b-3b3b3b3b3b3b";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const MED_ORDER = "66666666-6666-6666-6666-666666666666";
+/** GAP-005 — a Schedule II order. Controlled status comes from the ORDER; the body may only agree. */
+const CONTROLLED_MED_ORDER = "6c6c6c6c-6c6c-4c6c-8c6c-6c6c6c6c6c6c";
 /** An order M12's D6 verdict refuses — resolvable, but discontinued (F-058). */
 const BLOCKED_MED_ORDER = "6b6b6b6b-6b6b-4b6b-8b6b-6b6b6b6b6b6b";
 
@@ -130,7 +132,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   }
 
   const recordArgs = (over: Record<string, unknown> = {}) => ({
-    medicationOrderId: MED_ORDER,
+    medicationOrderId: over.medClass === "controlled_substance" ? CONTROLLED_MED_ORDER : MED_ORDER,
     medClass: "standard" as const,
     mode: "single_dose" as const,
     administeredAt: new Date().toISOString(),
@@ -212,8 +214,12 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
             ivContinuousPolicy: null,
             allowAdministration: false,
             blockedReasons: ["discontinued"],
+            medClass: "standard",
+            isControlledSubstance: false,
           };
-        if (medicationOrderId !== MED_ORDER) return null;
+        if (medicationOrderId !== MED_ORDER && medicationOrderId !== CONTROLLED_MED_ORDER)
+          return null;
+        const controlled = medicationOrderId === CONTROLLED_MED_ORDER;
         return {
           patientId: PATIENT,
           admissionId: ADMISSION,
@@ -224,6 +230,8 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
           ivContinuousPolicy: { minRate: 1, maxRate: 10 },
           allowAdministration: true,
           blockedReasons: [],
+          medClass: controlled ? "controlled_substance" : "standard",
+          isControlledSubstance: controlled,
         };
       },
     };
@@ -286,7 +294,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     // patient/order/administering-clinician.
     const { token } = await svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
       patientId: PATIENT,
-      medicationOrderId: MED_ORDER,
+      medicationOrderId: CONTROLLED_MED_ORDER,
       administeringClinicianMembershipId: memberOf[ORG_A],
     });
     const view = await svc.recordAdministration(
@@ -309,6 +317,76 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       [view.id],
     );
     expect(rows[0].n).toBe(1);
+  });
+
+  it("GAP-004: emar.scope resolves every M13 id to its patient under RLS; another org sees nothing", async () => {
+    const sched = await seedScheduledDose(ORG_A);
+    const missedId = await seedMissedDose(ORG_A, sched);
+    const ws = await seedWorksheet(ORG_A, 1);
+    const dep = await seedDeployment(ORG_A);
+    const adm = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
+    const refs = [
+      ["administrationId", adm.id],
+      ["scheduledDoseId", sched],
+      ["missedDoseId", missedId],
+      ["worksheetId", ws],
+      ["deploymentId", dep],
+      ["medicationOrderId", MED_ORDER],
+    ] as const;
+    for (const [kind, id] of refs) {
+      expect(await svc.loadScopePatientId(ORG_A, kind, id)).toBe(PATIENT);
+    }
+    for (const [kind, id] of refs.filter(([k]) => k !== "medicationOrderId")) {
+      expect(await svc.loadScopePatientId(ORG_B, kind, id)).toBeNull();
+    }
+    expect(await svc.loadOrderMedClass(ORG_A, CONTROLLED_MED_ORDER)).toBe("controlled_substance");
+  });
+
+  it("GAP-005: a controlled order sent as medClass 'standard' with no witness → 422, nothing written", async () => {
+    const before = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM administration_record WHERE medication_order_id=$1",
+        [CONTROLLED_MED_ORDER],
+      )
+    ).rows[0].n as number;
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs(),
+        medicationOrderId: CONTROLLED_MED_ORDER,
+        medClass: "standard",
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    // Even the old "standard" claim with the order itself left to decide still needs the witness.
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs(),
+        medicationOrderId: CONTROLLED_MED_ORDER,
+        medClass: undefined as never,
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    const after = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM administration_record WHERE medication_order_id=$1",
+        [CONTROLLED_MED_ORDER],
+      )
+    ).rows[0].n as number;
+    expect(after).toBe(before);
+  });
+
+  it("GAP-005: a refusal of a controlled order is stored controlled, and a wrong patient is refused", async () => {
+    const refused = await svc.recordRefusal(ORG_A, memberOf[ORG_A], {
+      patientId: PATIENT,
+      medicationOrderId: CONTROLLED_MED_ORDER,
+      refusedAt: new Date().toISOString(),
+    } as never);
+    expect(refused.isControlledSubstance).toBe(true);
+    await expect(
+      svc.recordRefusal(ORG_A, memberOf[ORG_A], {
+        patientId: "77777777-7777-4777-8777-777777777777",
+        medicationOrderId: MED_ORDER,
+        refusedAt: new Date().toISOString(),
+      } as never),
+    ).rejects.toMatchObject({ statusCode: 422 });
   });
 
   it("F-031: an ad-hoc administration is filed under the ORDER's patient, not a sentinel", async () => {
@@ -336,7 +414,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     // controlled-substance path refused every caller, including a correctly-witnessed one.
     const { token } = await svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
       patientId: PATIENT,
-      medicationOrderId: MED_ORDER,
+      medicationOrderId: CONTROLLED_MED_ORDER,
       administeringClinicianMembershipId: memberOf[ORG_A],
     });
     const view = await svc.recordAdministration(
@@ -501,7 +579,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       (
         await svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
           patientId: PATIENT,
-          medicationOrderId: MED_ORDER,
+          medicationOrderId: CONTROLLED_MED_ORDER,
           administeringClinicianMembershipId: memberOf[ORG_A],
         })
       ).token;

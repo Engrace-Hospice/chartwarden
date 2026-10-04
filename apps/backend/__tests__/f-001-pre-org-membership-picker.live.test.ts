@@ -133,6 +133,28 @@ describe.skipIf(!DB_URL)("F-001 pre-org membership picker — LIVE Postgres", ()
     expect(other.map((r) => r.organizationId)).toEqual([ORG_FOREIGN]);
   });
 
+  it("GAP-001: returns revoked and other-org memberships, so deactivate can bound itself to one org", async () => {
+    // POST /users/:id/deactivate refuses (404) a target with no membership in the caller's org and
+    // (409) one still live elsewhere. Both decisions read listForUser, so it must see every org and
+    // every status — a filter to `active` here would let a revoked-elsewhere user look foreign.
+    const leaver = "66666666-6666-4666-8666-6666f0010006";
+    await admin.query(
+      `INSERT INTO "user" (id,email,name) VALUES ($1,'leaver@f001.test','Lee Ver')`,
+      [leaver],
+    );
+    await admin.query(
+      `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active'),($1,$3,'revoked')`,
+      [leaver, ORG_A, ORG_FOREIGN],
+    );
+    const rows = await repo.listForUser(leaver);
+    expect(rows.map((r) => [r.organizationId, r.status]).sort()).toEqual(
+      [
+        [ORG_A, "active"],
+        [ORG_FOREIGN, "revoked"],
+      ].sort(),
+    );
+  });
+
   it("an org-scoped session still cannot read another org's membership rows (F-001)", async () => {
     // The regression itself, through the production tenancy helper: withOrgContext sets BOTH
     // app.org_id and app.user_id, which is the envelope that made the dropped pre-org policies

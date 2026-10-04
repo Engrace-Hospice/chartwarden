@@ -119,7 +119,7 @@ export interface ProviderEntityCcnReader {
 
 /** M6's `level_of_care_period` raw list (per-line assembly follow-up). `level_of_care_period` is M6-owned —
  * same "composition-root escape valve" posture as `ProviderEntityCcnReader` (the read lives outside every
- * module's codePaths in apps/backend/src/index.ts, injected here as a narrow port). `facilityId`/
+ * module's codePaths: M6's `createAdmissionLocPeriodsReader`, bound in apps/backend/src/index.ts), injected here as a narrow port). `facilityId`/
  * `ipuBedAssignmentId` (place-of-service follow-up) are the same two pre-existing M6 columns, just now
  * also selected — M6's own write path does not populate them for IRC/GIP yet (a separate, pre-existing
  * M6-T04 gap — `changeLoc` hardcodes `facilityId: null`), so they read null in practice until that lands;
