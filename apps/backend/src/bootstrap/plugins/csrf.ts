@@ -38,7 +38,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  *  - `/webhooks/`, `/api/v1/webhooks/`, `/api/v1/telehealth/webhooks/` — server-to-server calls
  *    authenticated by a provider HMAC/signature header (Stripe, Twilio, Postmark, Daily.co), never
  *    by the browser's session cookie.
- *  - `/health`, `/ready`, `/healthz` — unauthenticated infra probes.
+ *  - `/health`, `/ready` — unauthenticated infra probes.
  */
 const DEFAULT_EXEMPT_PREFIXES: readonly string[] = [
   "/api/auth/",
@@ -47,7 +47,6 @@ const DEFAULT_EXEMPT_PREFIXES: readonly string[] = [
   "/api/v1/telehealth/webhooks/",
   "/health",
   "/ready",
-  "/healthz",
 ];
 
 export interface CsrfOptions {

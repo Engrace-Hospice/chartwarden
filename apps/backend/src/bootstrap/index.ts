@@ -318,7 +318,6 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   });
 
   // --- routes ---
-  app.get("/healthz", async () => ({ status: "ok" })); // legacy probe (boot smoke test)
   registerHealthRoutes(app, deps.readinessProbe ?? defaultReadinessProbe);
   registerSystemRoutes(app, {
     statusReader: deps.systemStatusReader ?? createInMemorySystemStatusReader(),

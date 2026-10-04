@@ -3,7 +3,7 @@
 // Asserts: (1) validateSeams() applies REQUIRED_SEAMS deny-stub defaults so an unregistered
 // cross-module seam boots FAIL-CLOSED (present, but throwing on call) rather than open;
 // (2) a module's real registration survives validateSeams() unchanged; (3) the eraser gate
-// FAILS CLOSED at boot when a PHI data class has no eraser; (4) buildServer() serves /healthz.
+// FAILS CLOSED at boot when a PHI data class has no eraser; (4) buildServer() serves /health.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { wireErasers } from "../../apps/backend/src/bootstrap/erasers/providers";
@@ -75,9 +75,9 @@ describe("seam + eraser boot gate (§3.18 fail-closed)", () => {
     expect(() => bootSeams()).not.toThrow();
   });
 
-  it("buildServer() boots and serves /healthz", async () => {
+  it("buildServer() boots and serves /health", async () => {
     const app = buildServer();
-    const res = await app.inject({ method: "GET", url: "/healthz" });
+    const res = await app.inject({ method: "GET", url: "/health" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: "ok" });
     await app.close();

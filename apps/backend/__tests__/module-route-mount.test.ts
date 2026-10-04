@@ -28,7 +28,7 @@ describe("buildServer registerModuleRoutes hook", () => {
     app = buildServer({ security: { rateLimitEnabled: false } });
     const probe = await app.inject({ method: "GET", url: "/api/v1/_probe" });
     expect(probe.statusCode).toBe(404);
-    const health = await app.inject({ method: "GET", url: "/healthz" });
+    const health = await app.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200); // foundation routes still served
   });
 
