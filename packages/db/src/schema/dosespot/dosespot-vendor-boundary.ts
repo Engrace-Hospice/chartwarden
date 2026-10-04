@@ -8,6 +8,7 @@
 //   • medication_order_dispense  — §4.4 one row per Dispensed/PickedUp ScriptStatusUpdate webhook.
 // `patient_id` / `medication_order_id` are plain uuid with no cross-module/partitioned FK (the
 // `dosespot_sync_queue` / `medication_order_transmission` precedent).
+import { sql } from "drizzle-orm";
 import { integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { dosespotWebhookEvents } from "./dosespot-webhook-events";
@@ -62,11 +63,14 @@ export const medicationHistoryRecords = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
     patientId: uuid("patient_id").notNull(),
-    pullId: uuid("pull_id")
+    // F-238 (0311): NOT NULL only for `dosespot_medhx` (the `medication_history_record_source_shape_chk`
+    // CHECK); a `doclens_intake` line has no MedHx pull — its provenance is the `source_extraction_*` set.
+    pullId: uuid("pull_id").references(() => medicationHistoryPulls.id, { onDelete: "restrict" }),
+    source: text("source")
+      .$type<"dosespot_medhx" | "doclens_intake">()
       .notNull()
-      .references(() => medicationHistoryPulls.id, { onDelete: "restrict" }),
-    source: text("source").$type<"dosespot_medhx">().notNull().default("dosespot_medhx"),
-    sourceEventId: uuid("source_event_id").notNull(),
+      .default("dosespot_medhx"),
+    sourceEventId: uuid("source_event_id"),
     lineIndex: integer("line_index").notNull(),
     rxnormRxcui: text("rxnorm_rxcui"),
     ndc: text("ndc"),
@@ -80,6 +84,22 @@ export const medicationHistoryRecords = pgTable(
     sourcePharmacy: text("source_pharmacy"),
     pharmacyNcpdp: text("pharmacy_ncpdp"),
     prescriberNpi: text("prescriber_npi"),
+    // ── F-238 (0311) — DocLens intake provenance + the D10 reconciliation decision ─────────────────────
+    // A `doclens_intake` row is a referral-fax medication line AS THE REVIEWER ATTESTED IT, verbatim in
+    // `drug_name` (never parsed; strength/dose_form/sig/rxnorm stay NULL). Plain uuids — M12 never imports
+    // M22 schema. `line_key` is the deterministic dedupe key (`doclensClinicalLineKey`).
+    sourceExtractionCandidateId: uuid("source_extraction_candidate_id"),
+    sourceExtractionDecisionId: uuid("source_extraction_decision_id"),
+    sourceDocumentId: uuid("source_document_id"),
+    sourcePage: integer("source_page"),
+    attestedByMembershipId: uuid("attested_by_membership_id"),
+    attestedAt: timestamp("attested_at", { withTimezone: true }),
+    lineKey: text("line_key"),
+    reconciliationDecision: text("reconciliation_decision").$type<
+      "carry_forward" | "discontinue" | "document_only"
+    >(),
+    reconciledByMembershipId: uuid("reconciled_by_membership_id"),
+    reconciledAt: timestamp("reconciled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -88,6 +108,12 @@ export const medicationHistoryRecords = pgTable(
       t.pullId,
       t.lineIndex,
     ),
+    candidateUq: uniqueIndex("medication_history_record_source_candidate_uq")
+      .on(t.organizationId, t.sourceExtractionCandidateId)
+      .where(sql`source_extraction_candidate_id IS NOT NULL`),
+    doclensKeyUq: uniqueIndex("medication_history_record_doclens_key_uq")
+      .on(t.organizationId, t.patientId, t.lineKey)
+      .where(sql`source = 'doclens_intake'`),
   }),
 );
 

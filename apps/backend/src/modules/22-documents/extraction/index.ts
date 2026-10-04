@@ -75,6 +75,26 @@ export {
   buildM22ExtractionDiagnosisBackrefConsumer,
   parseDiagnosisItemKey,
 } from "./extraction-dx-backref-consumer";
+// F-238 — the medication-history (→ M12) and allergy (→ M5) clinical writeback: pure planner, commit,
+// and the back-ref consumer for both replies.
+export {
+  type ClinicalCandidateFact,
+  type ClinicalWritebackExclusion,
+  type ClinicalWritebackExclusionReason,
+  type ClinicalWritebackPlan,
+  type ClinicalWritebackTarget,
+  clinicalWritebackTargetOf,
+  planDocLensClinicalWriteback,
+} from "./writeback-plan-clinical";
+export {
+  type ClinicalWritebackSummary,
+  commitClinicalWriteback,
+} from "./writeback-commit-clinical-db";
+export {
+  M22_EXTRACTION_CLINICAL_BACKREF_CONSUMER,
+  buildM22ExtractionClinicalBackrefConsumer,
+  parseClinicalReply,
+} from "./extraction-clinical-backref-consumer";
 // F-236 (ADR-0048) — DocLens stages 2–4 as a background job: Docling client, intake job, its queue.
 export {
   type DoclingClient,

@@ -9,6 +9,7 @@ import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
 import type {
+  MedicationHistoryRecordView,
   ControlledSubstancePolicyView as ServiceControlledSubstancePolicyView,
   MedicationOrderView as ServiceMedicationOrderView,
   PrescriberRosterView as ServicePrescriberRosterView,
@@ -361,7 +362,31 @@ export const TransmissionResponseSchema = Type.Object({
 /** Route 17 — the reconciled medication-history list. */
 export const MedicationHistoryResponseSchema = Type.Object({
   records: Type.Array(
-    Type.Object({ id: Type.String(), drugName: Type.String(), source: Type.String() }),
+    Type.Object({
+      id: Type.String(),
+      /** For a `doclens_intake` row: the reviewer-attested referral line, verbatim (never parsed). */
+      drugName: Type.String(),
+      /** `dosespot_medhx` | `doclens_intake` (F-238) — the UI labels the row by it. */
+      source: Type.String(),
+      strength: Type.Optional(Nullable(Type.String())),
+      sigText: Type.Optional(Nullable(Type.String())),
+      lastFillDate: Type.Optional(Nullable(Type.String())),
+      sourceDocumentId: Type.Optional(Nullable(Type.String())),
+      sourcePage: Type.Optional(Nullable(Type.Integer())),
+      attestedByMembershipId: Type.Optional(Nullable(Type.String())),
+      attestedAt: Type.Optional(Nullable(Type.String())),
+      reconciliationDecision: Type.Optional(
+        Nullable(
+          Type.Union([
+            Type.Literal("carry_forward"),
+            Type.Literal("discontinue"),
+            Type.Literal("document_only"),
+          ]),
+        ),
+      ),
+      reconciledAt: Type.Optional(Nullable(Type.String())),
+      createdAt: Type.Optional(Type.String()),
+    }),
   ),
 });
 
@@ -433,7 +458,7 @@ type _Transmission = Conforms<
 >;
 type _MedHistory = Conforms<
   Static<typeof MedicationHistoryResponseSchema>,
-  { records: ReadonlyArray<{ id: string; drugName: string; source: string }> }
+  { records: ReadonlyArray<MedicationHistoryRecordView> }
 >;
 type _Refresh = Conforms<Static<typeof HistoryRefreshResponseSchema>, { jobId: string }>;
 type _Reconcile = Conforms<

@@ -107,6 +107,48 @@ the live suite `test:f237:doclens-review:live` (4) plus the F-235/F-236/M22/M5/M
 suites. Mutation checks (each reverted, each caught): licence bypass on high risk, planner ignoring SUD,
 rejection lifting a consent-derived flag, images not routed to a vision backend.
 
+## F-238 — complex referral packets: ICD-10-CM, the fax splitter, page-scanned codes and coding checks (2026-10-04)
+
+**Goal.** Help the clinical reviewer check a complex patient's faxed records for diagnosis accuracy before
+anything is parsed into the chart: which diagnoses the packet documents, with which ICD-10-CM codes, where,
+and what is wrong with them. DocLens points out; it never codes, never picks the principal diagnosis and
+never decides related/unrelated (AI Governance §2.1.1 hard-blocks AI-introduced codes; the physician decides).
+
+**Measured against a synthetic packet.** `scripts/doclens/make-complex-packet.py` renders a fictional 85M
+(end-stage HFrEF, COPD, CKD 4, Alzheimer's, T2DM, AFib, alcohol dependence in remission) as a 21-page fax of
+19 documents, with an answer key: document boundaries, 38 diagnosis mentions with pages, 15 planted coding
+problems, negations, prognosis evidence present and missing. The real docling-worker parses (both OCR
+engines) are committed beside it, so every stage is scored, not eyeballed.
+
+- **OCR.** EasyOCR read 15/55 key phrases and 14/31 ICD codes exactly (`I5o.23`, `EF 15%` → `EF' 158`,
+  dropped lines). Tesseract: 42/55 and 21/31, ~10x faster on CPU → now the docling-worker default
+  (`DOCLING_OCR_ENGINE`). Its misses are systematic (I→1, Z→2), which the scanner repairs.
+- **ICD-10-CM in M38.** `scripts/db/load-icd10cm.ts` loads the real NCHS releases (FY2026 superseded,
+  FY2027 active; checksum-pinned), with the Tabular List's manifestation / code-first / use-additional
+  flags and FY2027 deprecation mappings (30, e.g. I42.0 → I42.00/.01/.09). M38 search had ignored as-of
+  (one row per loaded version came back); fixed. The provider gained `listVersions`.
+- **Fax splitter** (`packages/intake-extraction/src/pipeline/splitter.ts`). Replaces "contiguous same-type
+  pages = one document" (which merged a 2025 pulmonology note with a memory-clinic letter): continuation
+  markers, new section headers, type changes, re-sent pages (word-set + same numbers), the document's own
+  date (labelled dates first, never the DOB). 19/19 documents on Tesseract output, also with a classifier
+  that calls every page "consult". Segments persist on `classified_page` (migration 0309).
+- **Code scanner** (`coding/icd-scanner.ts`). Codes come from the page, never the model (`diagnoses[].icd10`
+  is `source: page_scan` and never asked of the extractor; a model-supplied code is dropped). An OCR repair
+  is accepted only if the result is a real code AND its title shares words with the diagnosis written
+  beside it — "Hypertension (110)" → I10, "BP 110/70" stays a blood pressure; ties are refused. 31/31 key
+  codes on the right page.
+- **Coding checks** (`coding/coding-checks.ts`, deterministic, each citing its rule): not valid on the
+  document's date / retired since written (+ successors), unknown, OCR-repaired, manifestation, CMS-
+  unacceptable hospice principal (R53.81, R62.7, R54), symptom code as principal, unspecified while a
+  specific code is documented, I10 with HF/CKD → I11.0/I12.x/I13.x, E11.9 with CKD → E11.22, cross-document
+  conflicts, resolved, Part 2. A document older than the loaded releases is judged by the earliest one, not
+  failed. 15/15 planted problems. Flags are DEK-encrypted per `diagnoses[n].icd10` candidate
+  (`coding_flags_cipher`, audit-denylisted) and returned by the workspace API with the document list.
+
+**Not built yet.** The review panel for diagnoses (conditions grouped across documents, click-through
+mentions), merging mentions into conditions, the evidence-backed principal suggestion and missing-evidence
+list, and code suggestions for uncoded diagnoses.
+
 ## F-238 (dx-writeback) — reviewer-attested diagnoses → M7 problem PROPOSALS (2026-10-04)
 
 **What.** A completed DocLens review's approved `diagnoses[n].description | .icd10 | .role` candidates
@@ -163,3 +205,62 @@ governance rule, fail-closed payload parsing, the M38 validator); live `test:f23
 until accept (then the clinician's `terminal` sequences first), 409/412/422 on decide, redelivery
 idempotency, cross-referral dedupe, Part 2 exclusion / hiding / claim withholding, `no_care_plan`, and RLS
 as `wardenx_app` (org B sees and decides nothing; the app role cannot DELETE a proposal).
+
+## F-238 (meds + allergies) — reviewer-attested medication lines → M12 medication history; allergies → M5 (2026-10-04)
+
+*What.* F-231's A1 kept every extracted medication out of writeback because M12 D12 / AI Governance
+§2.1.1 hard-block AI-introduced medication changes. D12 makes that block operational as "M32's LLM may not
+create, modify, sign or otherwise mutate a `medication_order`", and M12 D10 already defines the store an
+outside medication list belongs in: `medication_history_record`, "persisted for clinical reconciliation but
+never auto-linked to medication_order". So an approved `medications[].name` line now becomes a
+reconciliation-only history row (`source = 'doclens_intake'`, the reviewer-attested text verbatim in
+`drug_name`, strength/sig/RxNorm NULL — no AI parse, no RxNorm guess), and **nothing on the path can reach a
+`medication_order`**: the M12 consumer does not reference the table, `reconcileHistory` records a decision
+and always returns `resultingOrderId: null` (for a DocLens row because of D12 — not even a pre-filled draft;
+for a DoseSpot row because the D10 carry-forward draft is still unbuilt), and the M32 D18 zone (`medication_`,
+D12's boot enforcement — there is no function literally named `validateMedicationAIBlock()`) still passes:
+DocLens templates target `extraction_candidate`, and the zone also covers `medication_history_*`, so no
+model template may target the history store directly. Approved `allergies[].substance` lines go to the
+new M5-owned `patient_allergy` (architecture §10.6.6 "Allergies → Module 5"; migration 0311) as
+`unverified`, `source = 'intake_extraction'`; a clinician verifies or marks entered-in-error
+(`POST /api/v1/patients/:id/allergies/:allergyId/verify|entered-in-error`, `patient.edit` + caseload), and
+the list (`GET /api/v1/patients/:id/allergies`) returns unverified rows, labelled — the Medications tab
+shows them in an allergy banner (a failed read is an alert, never "no allergies") beside the outside
+medication list with its reconcile actions.
+
+*Mechanics.* A separate pure planner (`writeback-plan-clinical.ts`) and commit
+(`writeback-commit-clinical-db.ts`) run in `completeReview`'s transaction after F-235's, leaving F-235's
+planner untouched. Exclusions, each named: `risk_not_high` (both paths are HIGH tier), `sud_detected`
+(unless the batch's detection was rejected), `sud_treatment_medication` (the W4 flagger's MAT rules,
+applied to medication AND allergy lines, unless the batch's detection was rejected — `not_detected`
+included), `patient_unresolved`, `edited_value_missing` / `value_missing`, `value_too_long` (never
+truncated), `duplicate_in_batch`. One event per target rather than D5's single discriminated
+`commit_requested` — the live F-235 M5 consumer fails closed on any other `targetModule`, so a shared event
+would hand every target's PHI to every consumer: `m22.extraction.medication_history_requested` → M12
+`m12.extraction-medication-history` → `m12.medication_history_record.draft_created_from_extraction`;
+`m22.extraction.allergies_requested` → M5 `m5.extraction-allergy-writeback` →
+`m5.patient_allergy.draft_created_from_extraction`; M22's `m22.extraction-clinical-writeback-backref`
+stamps each line's provenance with the ROW id and emits `m22.extraction.commit_completed` (`targetModule`
+widened to `m5 | m12`). Per-line outcomes: `created`, `already_present` (same candidate — redelivery),
+`duplicate` (a second fax repeating a line the chart already holds — flagged with the existing row id,
+nothing new written; enforced again by partial unique indexes), `skipped`. Both consumers share one
+fail-closed parser in `@wardenx/types` (`parseDocLensClinicalCommit`). The completion response gained
+`clinicalWriteback`; the review dialog previews and reports it.
+
+*Not built / for the user.* Architecture §10.6.6's table still says Medications → "MedicationOrder (held
+for prescriber confirmation)"; the as-built target is the stricter D10 history store, which needs an
+ADR/§10.6.6 amendment if accepted. M12's `requestSignature` allergy gate is still the hard-coded
+`allergyCheckPassed: true` (no drug-allergy matching exists) — the allergy list is shown to the
+prescriber, labelled, but no gate reads it. Verify/EIE reuse `patient.edit` (no dedicated allergy
+permission). The M13 reconciliation worksheet still refuses `m12_medhx` lines; reconciliation of DocLens
+lines happens on the Medications tab via M12's route. No clinician-entry allergy route yet.
+
+*Verification.* `f238-doclens-clinical-writeback` (18: every exclusion, MAT for meds and allergies, the
+methadone-for-pain false positive, dedupe, the shared parsers, and governance — no M22 file touches
+`medicationOrders`, the only M12 handler of an `m22.extraction.*` event writes only
+`medication_history_record`, reconcile never mints, the D18 zone), a web DOM suite (3), and the live suite
+`test:f238:doclens-clinical-writeback:live` (5, disposable PG, real publisher + dispatcher, app role):
+completion → both consumers → back-ref, `medication_order` empty throughout, redelivery idempotent, a second
+fax flagged `duplicate`, reconcile 409 on a second decision, allergy verify / EIE with attribution and shape
+CHECKs, and org-B denial on every surface. F-235's live suite now counts the medication's M12 provenance row
+separately; F-235/F-236/F-237 and the M12 vendor-boundary live suites pass.

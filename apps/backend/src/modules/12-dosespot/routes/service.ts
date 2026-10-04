@@ -233,6 +233,28 @@ export interface DoseSpotAbacResolver {
 }
 
 /** The §4.1 route service contract (the routes compose over it; in-mem slice + prod Drizzle both implement). */
+/**
+ * §2.8 D10 — one medication-history row on the reconciliation worksheet. `source` labels it: `dosespot_medhx`
+ * (a Surescripts fill) or `doclens_intake` (F-238 — a referral-fax line a DocLens reviewer attested, verbatim
+ * in `drugName`, with `attestedByMembershipId` / `attestedAt` and the source document + page). The optional
+ * fields are the DB projection's; the in-memory reference returns the three required ones.
+ */
+export interface MedicationHistoryRecordView {
+  readonly id: string;
+  readonly drugName: string;
+  readonly source: string;
+  readonly strength?: string | null;
+  readonly sigText?: string | null;
+  readonly lastFillDate?: string | null;
+  readonly sourceDocumentId?: string | null;
+  readonly sourcePage?: number | null;
+  readonly attestedByMembershipId?: string | null;
+  readonly attestedAt?: string | null;
+  readonly reconciliationDecision?: "carry_forward" | "discontinue" | "document_only" | null;
+  readonly reconciledAt?: string | null;
+  readonly createdAt?: string;
+}
+
 export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
   listOrders(
     organizationId: string,
@@ -330,7 +352,7 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
   medicationHistory(
     organizationId: string,
     patientId: string,
-  ): Promise<{ records: ReadonlyArray<{ id: string; drugName: string; source: string }> }>;
+  ): Promise<{ records: ReadonlyArray<MedicationHistoryRecordView> }>;
   refreshHistory(organizationId: string, patientId: string): Promise<{ jobId: string }>;
   reconcileHistory(
     organizationId: string,

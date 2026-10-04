@@ -15,8 +15,9 @@ import {
 // "Medications"): KPI cards, status chips with counts, the medication list with a colored class bar,
 // and an inline detail card for the selected order; the right rail carries Patient Summary, the
 // controlled-substance ("High Risk") list, and the medication actions. Every value comes from the M12
-// medication-order route — dose/route/frequency/PRN reason from the order's structured sig. Allergies
-// and interaction checks are not modeled in WardenX yet, so they are not drawn.
+// medication-order route — dose/route/frequency/PRN reason from the order's structured sig. F-238: the
+// M5 allergy list (unverified entries shown, labelled) and the outside medication list to reconcile sit
+// above the orders (chart-allergies-outside-meds.tsx); drug-allergy interaction checking is not modeled.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -27,6 +28,7 @@ import {
   fmtDate,
   useChartIdentity,
 } from "../../shell/patient-context";
+import { AllergyBanner, OutsideMedicationList } from "./chart-allergies-outside-meds";
 import { MED_ORDER_TONE, controlledLabel, stateLabel } from "./medication-status";
 import { ATTENTION_STATUSES } from "./medication-workspace";
 import { loadPatientAdmissions } from "./medications-api";
@@ -327,6 +329,13 @@ export function PatientMedications(): JSX.Element {
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
         {patientId ? <ChartModuleRail patientId={patientId} current="medications" /> : null}
         <div style={{ flex: 1, overflow: "auto", padding: "1.125rem 1.5rem 1.5rem", minWidth: 0 }}>
+          {patientId ? (
+            <div style={{ display: "grid", gap: "0.875rem", marginBottom: "0.875rem" }}>
+              {/* F-238 — allergies (unverified shown, labelled) + the outside med list to reconcile. */}
+              <AllergyBanner patientId={patientId} />
+              <OutsideMedicationList patientId={patientId} />
+            </div>
+          ) : null}
           <section className="wx-chart-section" aria-label="Medications" aria-busy={loading}>
             <div className="wx-stat-grid" aria-label="Medication summary">
               <StatCard icon="pill" label="Active Medications" value={kpis.active} />

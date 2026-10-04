@@ -72,11 +72,14 @@ export type RefillRequestStatus = "pending" | "approved" | "denied" | "expired";
 /** The §2.7 refill-decision channel (mirrors `refill_response_channel`). */
 export type RefillResponseChannel = "electronic_via_dosespot" | "phone" | "fax" | "in_person";
 
-/** The §2.8 medication-history provenance (mirrors `medication_history_source`). */
+/** The §2.8 medication-history provenance (mirrors `medication_history_source`). `doclens_intake`
+ *  (F-238, migration 0311) is a reviewer-attested line from a DocLens referral packet — reconciliation
+ *  evidence only, never linked to a `medication_order` (D10/D12). */
 export type MedicationHistorySource =
   | "dosespot_medhx"
   | "manual_entry"
-  | "reconciliation_carryforward";
+  | "reconciliation_carryforward"
+  | "doclens_intake";
 
 /** The §2.5 / §7.4 D7 typed inbound webhook taxonomy (mirrors `dosespot_webhook_event_type`). */
 export type DoseSpotWebhookEventType =
@@ -189,6 +192,7 @@ export const M12_EVENT_NAMES = [
   "m12.refill_request_sla_critical",
   "m12.medication_history_pulled",
   "m12.medication_history_reconciled",
+  "m12.medication_history_record.draft_created_from_extraction", // F-238
   "m12.dosespot_patient_synced",
   "m12.dosespot_patient_sync_failed",
   "m12.prescriber_enrolled",

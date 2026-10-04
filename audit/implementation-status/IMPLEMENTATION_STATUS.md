@@ -14,7 +14,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 6/6 ✅ |
 | M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/17 ✅ | ✅ | ❌ | — | 6/6 ✅ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 13/13 ✅ | ✅ | ✅ | — | 7/7 ✅ |
-| M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 16/16 ✅ | ✅ | ✅ | — | 16/16 ✅ |
+| M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 17/17 ✅ |
 | M06 Admission, Election & Certification | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 68/68 ✅ | ✅ | ✅ | — | 12/15 ⚠️ |
 | M07 Care Plan (IPOC) | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M08 Encounters & Visit Notes | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 37/37 ✅ | ✅ | ✅ | — | 10/10 ✅ |

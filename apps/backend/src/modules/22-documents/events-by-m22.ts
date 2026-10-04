@@ -32,6 +32,7 @@ import {
   M22_INTAKE_SUD_REJECTED_EVENT,
   type ModuleEventContribution,
 } from "@wardenx/types";
+import { M22_CLINICAL_WRITEBACK_EVENTS } from "./events-by-m22-clinical";
 
 const Id = Type.String({ minLength: 1 });
 const IdN = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);
@@ -111,11 +112,12 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
     moduleOwner: "m22",
     description:
-      "M5's writeback reply was stamped onto `extraction_provenance.target_aggregate_id` for the fields the chart now holds (W1 step 13). Terminal and informational; carries ids and per-field outcomes only, no values.",
+      "A target module's writeback reply was stamped onto `extraction_provenance.target_aggregate_id` for the fields the chart now holds (W1 step 13): M5 demographics (F-235), M5 allergies or M12 medication history (F-238). Terminal and informational; carries ids and per-field outcomes only, no values.",
     payloadSchema: Type.Object({
       extractionCommitId: Id,
-      // F-238 — `m7` when the reply was M7's diagnosis proposals (`targetAggregateId` is then the patient).
-      targetModule: Type.Union([Type.Literal("m5"), Type.Literal("m7")]),
+      // F-238 — `m7` when the reply was M7's diagnosis proposals (`targetAggregateId` is then the patient);
+      // `m12` for medication history; `m5` for demographics and allergies.
+      targetModule: Type.Union([Type.Literal("m5"), Type.Literal("m7"), Type.Literal("m12")]),
       targetAggregateId: Id,
       provenanceIds: Type.Array(Id),
       skippedFieldPaths: Type.Array(Id),
@@ -222,4 +224,6 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m5"],
     isOutboxOnly: true,
   },
+  // F-238 — the medication-history (→ M12) and allergy (→ M5) commit requests (events-by-m22-clinical.ts).
+  ...M22_CLINICAL_WRITEBACK_EVENTS,
 ];

@@ -2847,4 +2847,14 @@ These are spec-organization refinements recorded for traceability; none reverse 
 
 **End of Module 5 — Patient & Demographics Specification v0.4 (Consolidated)**
 
+---
+
+## As built — patient allergy list (F-238, 2026-10-04)
+
+Architecture §10.6.6 assigns the patient's allergy list to Module 5 ("Allergies → Module 5 → Allergy (linked to Patient)"), and M12 §6 reads "allergies (M5)" for its prescribe-modal banner; this spec had no table for it. Migration 0311 adds the M5-owned **`patient_allergy`** (three-column tenancy, ENABLE + FORCE RLS on `app.org_id`, SELECT/INSERT/UPDATE to `wardenx_app`, never DELETE; M4 write-audit trigger with `allergen_text`, `reaction`, `entered_in_error_reason` denylisted).
+
+- **Columns.** `allergen_text` (as recorded — for a DocLens row the referral-fax line verbatim, reaction included when stated), `allergen_key` (deterministic dedupe key), `reaction` / `severity` (`mild|moderate|severe|unknown`, nullable; only a clinician sets them), `verification_status`, `source` (`intake_extraction|clinician_entry`), provenance (`source_extraction_candidate_id` / `_decision_id` / `_commit_id`, `source_document_id`, `source_page`), `reported_by_membership_id` / `reported_at`, `verified_by_membership_id` / `verified_at`, `entered_in_error_by_membership_id` / `_at` / `_reason`.
+- **Lifecycle.** `unverified` → `verified` (clinician) · `unverified|verified` → `entered_in_error` (clinician, reason required). Shape CHECKs tie each status to its attribution; no row is deleted. An `unverified` allergy is returned by the list and shown to prescribers, labelled — hiding an unconfirmed allergy is the unsafe failure.
+- **DocLens writeback.** M5's `m5.extraction-allergy-writeback` consumer applies `m22.extraction.allergies_requested` (M22 §7.1, F-238) to the batch's already-resolved patient (never a headless create; merged patient → DLQ), one `unverified` row per approved line, idempotent per source candidate and deduped against the patient's non-entered-in-error allergies (`duplicate`), and replies `m5.patient_allergy.draft_created_from_extraction` in the same transaction.
+- **Routes.** `GET /api/v1/patients/:id/allergies` (`patient.read` + `caseload_or_scope`), `POST /api/v1/patients/:id/allergies/:allergyId/verify` and `…/entered-in-error` (`patient.edit` + `caseload_or_scope`; the acting membership is recorded). A dedicated allergy-verification permission and a clinician-entry create route are not built.
 

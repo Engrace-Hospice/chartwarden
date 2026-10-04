@@ -60,6 +60,7 @@ import {
   batchStatusLabel,
   bboxPercent,
   bulkEligible,
+  clinicalTargetOf,
   confidenceBand,
   decisionLabel,
   docTypeLabel,
@@ -70,6 +71,7 @@ import {
   pct,
   sourceLabel,
   updatesChart,
+  updatesChartClinical,
 } from "./doclens-model";
 import { lifecycleTone } from "./lantern";
 import "./doclens-review.css";
@@ -803,7 +805,10 @@ function PageStage({
 function FieldSummary({ c, sud }: { c: Candidate; sud: Workspace["sud"]["status"] }): JSX.Element {
   const band = confidenceBand(c.confidence);
   const risk = RISK[c.riskLevel];
-  const showsOnChart = c.writebackTarget && !(c.sudDetected && sud !== "rejected");
+  const clinical = clinicalTargetOf(c.fieldPath);
+  const showsOnChart =
+    (c.writebackTarget || (clinical !== null && c.riskLevel === "high")) &&
+    !(c.sudDetected && sud !== "rejected");
   return (
     <>
       <span className="wx-doclens-field-head">
@@ -851,7 +856,13 @@ function FieldSummary({ c, sud }: { c: Candidate; sud: Workspace["sud"]["status"
         {c.sudDetected ? <StatusPill label="SUD page" tone="critical" glyph="shield" /> : null}
         <span className="wx-doclens-chart">
           <Glyph name={showsOnChart ? "arrow-right" : "lock"} size={13} />
-          {showsOnChart ? "Updates chart" : "Evidence only"}
+          {!showsOnChart
+            ? "Evidence only"
+            : clinical === "medication_history"
+              ? "Outside med list (to reconcile)"
+              : clinical === "allergy"
+                ? "Allergy list (unverified)"
+                : "Updates chart"}
         </span>
       </span>
     </>
@@ -1171,7 +1182,23 @@ function CompleteDialog({
   const [result, setResult] = useState<CompleteResult | null>(null);
   const decided = ws.candidates.filter((c) => c.decision !== null).length;
   const toChart = ws.candidates.filter((c) => updatesChart(c, ws.sud.status));
+  const toMeds = ws.candidates.filter(
+    (c) =>
+      updatesChartClinical(c, ws.sud.status) &&
+      clinicalTargetOf(c.fieldPath) === "medication_history",
+  );
+  const toAllergies = ws.candidates.filter(
+    (c) => updatesChartClinical(c, ws.sud.status) && clinicalTargetOf(c.fieldPath) === "allergy",
+  );
   const label = (path: string): string => fieldLabel(path);
+  const lineOf = (c: (typeof ws.candidates)[number]): string =>
+    c.decision?.editedValue ?? c.value ?? "—";
+  // The demographics planner reports every medication / allergy line as "not a demographics field"; the
+  // clinical half (`clinicalWriteback`) is what decided them, so show its outcome instead.
+  const demographicExcluded = (result?.writeback?.excluded ?? []).filter(
+    (x) => clinicalTargetOf(x.fieldPath) === null,
+  );
+  const clinicalResult = result?.clinicalWriteback;
 
   return (
     <Modal
@@ -1201,11 +1228,11 @@ function CompleteDialog({
                     ))}
                   </ul>
                 ) : null}
-                {result.writeback.excluded.length ? (
+                {demographicExcluded.length ? (
                   <>
                     <p>Kept off the chart:</p>
                     <ul>
-                      {result.writeback.excluded.map((x) => (
+                      {demographicExcluded.map((x) => (
                         <li key={`${x.candidateId}-${x.fieldPath}`}>
                           {label(x.fieldPath)} — {exclusionLabel(x.reason, x.fieldPath)}
                         </li>
@@ -1217,6 +1244,37 @@ function CompleteDialog({
             ) : (
               <p>The server did not report a chart write-back for this review.</p>
             )}
+            {clinicalResult ? (
+              <>
+                {clinicalResult.medicationHistoryFieldPaths.length ? (
+                  <p>
+                    {clinicalResult.medicationHistoryFieldPaths.length} medication line
+                    {clinicalResult.medicationHistoryFieldPaths.length === 1 ? " was" : "s were"}{" "}
+                    added to the patient&apos;s outside medication list for a clinician to
+                    reconcile. No medication order was created or changed.
+                  </p>
+                ) : null}
+                {clinicalResult.allergyFieldPaths.length ? (
+                  <p>
+                    {clinicalResult.allergyFieldPaths.length} allerg
+                    {clinicalResult.allergyFieldPaths.length === 1 ? "y was" : "ies were"} added to
+                    the allergy list as unverified, pending clinician verification.
+                  </p>
+                ) : null}
+                {clinicalResult.excluded.length ? (
+                  <>
+                    <p>Medications and allergies kept off the chart:</p>
+                    <ul>
+                      {clinicalResult.excluded.map((x) => (
+                        <li key={`${x.candidateId}-${x.fieldPath}`}>
+                          {label(x.fieldPath)} — {exclusionLabel(x.reason, x.fieldPath)}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+              </>
+            ) : null}
             <div className="wx-doclens-buttons" style={{ justifyContent: "flex-end" }}>
               <button type="button" className="wx-btn-primary" onClick={onClose}>
                 Done
@@ -1243,10 +1301,34 @@ function CompleteDialog({
                 ))}
               </ul>
             ) : null}
+            {toMeds.length ? (
+              <>
+                <p>
+                  These medication lines go to the outside medication list, for a clinician to
+                  reconcile — no medication order is created or changed:
+                </p>
+                <ul>
+                  {toMeds.map((c) => (
+                    <li key={c.id}>{lineOf(c)}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {toAllergies.length ? (
+              <>
+                <p>These allergies go to the allergy list as unverified:</p>
+                <ul>
+                  {toAllergies.map((c) => (
+                    <li key={c.id}>{lineOf(c)}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
             <p className="wx-row-sub">
-              Everything else — rejected and undecided fields, and every medication, allergy, legal
-              name or date of birth — stays as evidence on the source document only. The server
-              makes the final call; you will see exactly what it wrote.
+              Everything else — rejected and undecided fields, legal name or date of birth, and
+              diagnoses — stays as evidence on the source document only. Substance-use treatment
+              medications stay off the chart unless the SUD flag was rejected. The server makes the
+              final call; you will see exactly what it wrote.
             </p>
             <label className="wx-doclens-check">
               <input

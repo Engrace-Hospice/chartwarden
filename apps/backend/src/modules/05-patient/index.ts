@@ -190,6 +190,17 @@ export {
   parseCommitRequested,
   planExtractionWriteback,
 } from "./outbox-consumers/m22-extraction-writeback";
+// F-238 — the DocLens allergy writeback: `m22.extraction.allergies_requested` → unverified `patient_allergy`
+// rows → `m5.patient_allergy.draft_created_from_extraction`; plus the allergy list / verify routes.
+export {
+  M5_EXTRACTION_ALLERGY_CONSUMER,
+  applyAllergyWriteback,
+  buildM5ExtractionAllergyConsumer,
+} from "./outbox-consumers/m22-extraction-allergies";
+export {
+  type PatientAllergyRouteDeps,
+  registerPatientAllergyRoutes,
+} from "./routes/allergy-routes";
 export {
   M5_INTAKE_SUD_PRIVACY_CONSUMER,
   type SudFlagDecision,
@@ -248,6 +259,7 @@ import type { FastifyInstance } from "fastify";
 import type { M5OutboxPort } from "./deceased-db";
 import { mergePatients as _mergePatients } from "./merges-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
+import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 
 /**
@@ -264,4 +276,6 @@ export function mountPatientRoutes(app: FastifyInstance, db: DbClient, outbox: M
     service: _dbPatientService(db),
     mergePatients: (input) => _mergePatients(db, outbox, input),
   });
+  // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
+  _registerPatientAllergyRoutes(app, { db });
 }

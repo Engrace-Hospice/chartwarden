@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1339,
-    "coveredRoutes": 1339,
-    "directRoutesReferenced": 1280
+    "routes": 1342,
+    "coveredRoutes": 1342,
+    "directRoutesReferenced": 1286
   },
   "modules": [
     {
@@ -52,17 +52,18 @@
     },
     {
       "module": "05-patient",
-      "routes": 16,
+      "routes": 19,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 16
+      "directRoutesReferenced": 19
     },
     {
       "module": "06-admission",
@@ -84,6 +85,7 @@
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
@@ -137,10 +139,11 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/dosespot-routes.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
       ],
-      "directRoutesReferenced": 20
+      "directRoutesReferenced": 23
     },
     {
       "module": "13-emar",
@@ -240,7 +243,8 @@
         "apps/backend/__tests__/document-doclens.test.ts",
         "apps/backend/__tests__/document-routes.test.ts",
         "apps/backend/__tests__/document-workflow-acceptance.test.ts",
-        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts"
+        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
+        "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts"
       ],
       "directRoutesReferenced": 39
     },

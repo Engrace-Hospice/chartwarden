@@ -59,6 +59,7 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
         needsHumanClassification: false,
       },
     ],
+    documents: [],
     jobs: [],
     review: {
       id: REVIEW,
@@ -81,6 +82,7 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
         bbox: [61.2, 79.2, 306, 158.4],
         vision: { status: "not_required", observedValue: null },
         sudDetected: false,
+        codingFlags: [],
         writebackTarget: true,
         decision: null,
       },
@@ -97,6 +99,7 @@ function fixture(sud: Workspace["sud"]["status"]): Workspace {
         bbox: [61.2, 396, 306, 435.6],
         vision: { status: "disagreed", observedValue: "Morphine 15 mg PO q4h" },
         sudDetected: false,
+        codingFlags: [],
         writebackTarget: false,
         decision: null,
       },

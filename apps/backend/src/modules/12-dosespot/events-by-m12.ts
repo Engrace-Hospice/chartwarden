@@ -518,6 +518,39 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
+  // F-238 — M12's reply to `m22.extraction.medication_history_requested`: the DocLens medication lines it
+  // recorded as reconciliation-only `medication_history_record` rows (source `doclens_intake`). D10/D12: no
+  // `medication_order` is created, drafted or touched on this path; a clinician reconciles each row and
+  // any order goes through the normal human prescribe flow. M22's `m22.extraction-clinical-writeback-backref`
+  // stamps `extraction_provenance` from it.
+  {
+    eventName: "m12.medication_history_record.draft_created_from_extraction",
+    moduleOwner: "m12",
+    description:
+      "M12 recorded a DocLens review's attested medication lines as reconciliation-only medication-history rows (source `doclens_intake`; never a medication_order). Carries a per-line outcome (created | already_present | duplicate | skipped) with the row id; ids and reasons only.",
+    payloadSchema: Type.Object({
+      patientId: id,
+      organizationId: id,
+      extractionCommitId: id,
+      lineOutcomes: Type.Array(
+        Type.Union([
+          Type.Object({
+            candidateId: id,
+            outcome: Type.Union([
+              Type.Literal("created"),
+              Type.Literal("already_present"),
+              Type.Literal("duplicate"),
+            ]),
+            recordId: id,
+          }),
+          Type.Object({ candidateId: id, outcome: Type.Literal("skipped"), reason: id }),
+        ]),
+      ),
+      appliedAt: isoInstant,
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
 ];
 
 /** Module 12's §4.4 outbox-event catalog contribution (the boot UPSERTs each into `outbox_event_catalog`). */

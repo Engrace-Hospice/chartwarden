@@ -11462,7 +11462,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reconcile a medication-history record */
+        /** Record a reconciliation decision on a medication-history record (never mints a medication order; F-238) */
         post: operations["postApiV1MedicationhistoryrecordsByIdReconcile"];
         delete?: never;
         options?: never;
@@ -12932,6 +12932,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/allergies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient allergy list (F-238) — every status; an UNVERIFIED (e.g. DocLens referral) allergy is returned, labelled, never hidden */
+        get: operations["getApiV1PatientsByIdAllergies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/allergies/{allergyId}/entered-in-error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark an allergy entered-in-error (reason required; the row is kept for the survey trail) */
+        post: operations["postApiV1PatientsByIdAllergiesByAllergyIdEnteredinerror"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/allergies/{allergyId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify an unverified allergy (clinician; optional confirmed reaction / severity) */
+        post: operations["postApiV1PatientsByIdAllergiesByAllergyIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/amendments": {
         parameters: {
             query?: never;
@@ -13317,7 +13368,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation) */
+        /** Medication-history records for a patient — DoseSpot MedHx and DocLens referral lines (`source`), for reconciliation (§4.1 / §6.1; F-238) */
         get: operations["getApiV1PatientsByPatientIdMedicationsHistory"];
         put?: never;
         post?: never;
@@ -47308,6 +47359,16 @@ export interface operations {
                                 reason: string;
                             }[];
                         };
+                        clinicalWriteback?: {
+                            targetPatientId: string | null;
+                            medicationHistoryFieldPaths: string[];
+                            allergyFieldPaths: string[];
+                            excluded: {
+                                candidateId: string;
+                                fieldPath: string;
+                                reason: string;
+                            }[];
+                        };
                     };
                 };
             };
@@ -52185,7 +52246,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        resultingOrderId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -56665,6 +56730,143 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdAllergies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        allergies: {
+                            id: string;
+                            patientId: string;
+                            allergenText: string;
+                            reaction: string | null;
+                            severity: ("mild" | "moderate" | "severe" | "unknown") | null;
+                            verificationStatus: "unverified" | "verified" | "entered_in_error";
+                            source: "intake_extraction" | "clinician_entry";
+                            sourceDocumentId: string | null;
+                            sourcePage: number | null;
+                            reportedByMembershipId: string;
+                            /** Format: date-time */
+                            reportedAt: string;
+                            verifiedByMembershipId: string | null;
+                            verifiedAt: string | null;
+                            enteredInErrorAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdAllergiesByAllergyIdEnteredinerror: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                allergyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        allergenText: string;
+                        reaction: string | null;
+                        severity: ("mild" | "moderate" | "severe" | "unknown") | null;
+                        verificationStatus: "unverified" | "verified" | "entered_in_error";
+                        source: "intake_extraction" | "clinician_entry";
+                        sourceDocumentId: string | null;
+                        sourcePage: number | null;
+                        reportedByMembershipId: string;
+                        /** Format: date-time */
+                        reportedAt: string;
+                        verifiedByMembershipId: string | null;
+                        verifiedAt: string | null;
+                        enteredInErrorAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdAllergiesByAllergyIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                allergyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reaction?: string;
+                    severity?: "mild" | "moderate" | "severe" | "unknown";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        allergenText: string;
+                        reaction: string | null;
+                        severity: ("mild" | "moderate" | "severe" | "unknown") | null;
+                        verificationStatus: "unverified" | "verified" | "entered_in_error";
+                        source: "intake_extraction" | "clinician_entry";
+                        sourceDocumentId: string | null;
+                        sourcePage: number | null;
+                        reportedByMembershipId: string;
+                        /** Format: date-time */
+                        reportedAt: string;
+                        verifiedByMembershipId: string | null;
+                        verifiedAt: string | null;
+                        enteredInErrorAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PatientsByIdAmendments: {
         parameters: {
             query?: never;
@@ -57878,6 +58080,16 @@ export interface operations {
                             id: string;
                             drugName: string;
                             source: string;
+                            strength?: string | null;
+                            sigText?: string | null;
+                            lastFillDate?: string | null;
+                            sourceDocumentId?: string | null;
+                            sourcePage?: number | null;
+                            attestedByMembershipId?: string | null;
+                            attestedAt?: string | null;
+                            reconciliationDecision?: ("carry_forward" | "discontinue" | "document_only") | null;
+                            reconciledAt?: string | null;
+                            createdAt?: string;
                         }[];
                     };
                 };

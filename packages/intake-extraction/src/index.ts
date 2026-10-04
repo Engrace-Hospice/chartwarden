@@ -26,6 +26,7 @@ export {
   SUD_RULESET_VERSION,
   detectSudIndicators,
   dominantSudCategory,
+  lineNamesSudTreatmentMedication,
 } from "./sud-detection/flagger";
 export type {
   SudIndicator,

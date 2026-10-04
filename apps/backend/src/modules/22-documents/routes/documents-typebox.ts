@@ -540,6 +540,22 @@ export const CompleteReviewResponseSchema = Type.Object({
       ),
     }),
   ),
+  // F-238 — approved medication lines sent to M12 as reconciliation-only history, allergy lines sent to
+  // M5 as unverified allergies, and each excluded candidate's named reason. Paths and ids only.
+  clinicalWriteback: Type.Optional(
+    Type.Object({
+      targetPatientId: Type.Union([Type.String(), Type.Null()]),
+      medicationHistoryFieldPaths: Type.Array(Type.String()),
+      allergyFieldPaths: Type.Array(Type.String()),
+      excluded: Type.Array(
+        Type.Object({
+          candidateId: Type.String(),
+          fieldPath: Type.String(),
+          reason: Type.String(),
+        }),
+      ),
+    }),
+  ),
 });
 
 export const FormTemplateListResponseSchema = CursorPageOf(

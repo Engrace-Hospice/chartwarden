@@ -178,6 +178,7 @@ import {
   buildM5AdmissionSitingConsumer,
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
+  buildM5ExtractionAllergyConsumer,
   buildM5ExtractionWritebackConsumer,
   buildM5IntakeSudPrivacyConsumer,
   buildM5VisitAssignedConsumer,
@@ -355,6 +356,7 @@ import {
   buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
   buildM12DraftOrderRequestedConsumer,
+  buildM12ExtractionMedicationHistoryConsumer,
   buildM12IdgDecisionConsumer,
   buildM12PatientSyncAddressChangedConsumer,
   buildM12PatientSyncCreatedConsumer,
@@ -584,6 +586,7 @@ import {
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
+  buildM22ExtractionClinicalBackrefConsumer,
   buildM22ExtractionDiagnosisBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
@@ -6094,6 +6097,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m7OutboxPublisher,
           }),
           buildM22ExtractionDiagnosisBackrefConsumer({
+            db: dbHandle.db,
+            outbox: m22OutboxPublisher,
+          }),
+          // F-238 — the DocLens clinical writeback, all three legs. M12 records approved medication lines as
+          // reconciliation-only `medication_history_record` rows (never a medication_order — D10/D12); M5
+          // records approved allergy lines as UNVERIFIED `patient_allergy` rows; M22 stamps each line's
+          // provenance with the row id and emits `m22.extraction.commit_completed`.
+          buildM12ExtractionMedicationHistoryConsumer({
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+          }),
+          buildM5ExtractionAllergyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          buildM22ExtractionClinicalBackrefConsumer({
             db: dbHandle.db,
             outbox: m22OutboxPublisher,
           }),
