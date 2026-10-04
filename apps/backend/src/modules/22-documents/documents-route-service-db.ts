@@ -36,6 +36,8 @@ import {
   type ExtractionWritebackDeps,
   commitReviewWriteback,
 } from "./extraction/writeback-commit-db";
+import { commitReviewDiagnosisWriteback } from "./extraction/writeback-commit-dx-db";
+import { isDiagnosisFieldPath } from "./extraction/writeback-plan-dx";
 import { type CursorPage, paginate } from "./routes/concurrency";
 import type {
   DocumentRouteService,
@@ -833,7 +835,7 @@ export function createDbDocumentRouteService(
           );
         }
         // §7.1 W1 steps 11–12 (F-235) — provenance + `m22.extraction.commit_requested`, in THIS transaction.
-        const summary = await commitReviewWriteback(tx, writeback, {
+        const m5Summary = await commitReviewWriteback(tx, writeback, {
           organizationId,
           reviewId,
           batchId: r.batchId,
@@ -841,6 +843,21 @@ export function createDbDocumentRouteService(
           reviewerMembershipId: actor.membershipId,
           batchSudStatus: batch.sudStatus,
         });
+        // F-238 — the diagnosis half: approved `diagnoses[n].*` → `m22.extraction.diagnosis_commit_requested`
+        // (M7 lands them as PROPOSED problems a clinician must accept). Its candidates are reported by its
+        // own summary, so they are not also listed as M5 `not_a_writeback_target` exclusions.
+        const diagnosisWriteback = await commitReviewDiagnosisWriteback(tx, writeback, {
+          organizationId,
+          reviewId,
+          batchId: r.batchId,
+          batchPatientId: batch.patientId,
+          reviewerMembershipId: actor.membershipId,
+          batchSudStatus: batch.sudStatus,
+        });
+        const summary = {
+          ...m5Summary,
+          excluded: m5Summary.excluded.filter((e) => !isDiagnosisFieldPath(e.fieldPath)),
+        };
         await tx
           .update(ER)
           .set({ status: "complete", closedAt: new Date() })
@@ -851,7 +868,7 @@ export function createDbDocumentRouteService(
           .update(BATCH)
           .set({ status: "writeback_complete", dispositionAt: new Date() })
           .where(eq(BATCH.id, r.batchId));
-        return { reviewId, status: "complete" as const, writeback: summary };
+        return { reviewId, status: "complete" as const, writeback: summary, diagnosisWriteback };
       });
     },
     async abandonReview(organizationId, actor, reviewId) {

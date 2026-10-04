@@ -241,6 +241,7 @@ import {
   activeProblemIdsForOrg,
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
+  buildM7ExtractionDiagnosisWritebackConsumer,
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
   claimDiagnosesForOrg,
@@ -583,6 +584,7 @@ import {
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
+  buildM22ExtractionDiagnosisBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
   createCandidateValueCipher,
@@ -6084,6 +6086,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `extraction_provenance` from the reply and emits the terminal `m22.extraction.commit_completed`.
           buildM5ExtractionWritebackConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           buildM22ExtractionBackrefConsumer({ db: dbHandle.db, outbox: m22OutboxPublisher }),
+          // F-238 dx-writeback — the DIAGNOSIS half. M7 lands an approved review's diagnoses as PENDING
+          // problem proposals on the patient's care plan (never `problem` rows — a clinician must accept)
+          // and replies; M22 stamps `extraction_provenance` with the proposal ids.
+          buildM7ExtractionDiagnosisWritebackConsumer({
+            db: dbHandle.db,
+            outbox: m7OutboxPublisher,
+          }),
+          buildM22ExtractionDiagnosisBackrefConsumer({
+            db: dbHandle.db,
+            outbox: m22OutboxPublisher,
+          }),
           // F-237 — M22 §7.4 W4: DocLens SUD detection → the patient's interim `sud` privacy flag, and the
           // reviewer's confirm / false-positive round-trip (a rejection retires only a DocLens-set flag).
           buildM5IntakeSudPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),

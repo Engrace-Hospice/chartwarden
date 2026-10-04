@@ -4819,6 +4819,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/care-plans/{planId}/problem-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** DocLens-proposed diagnoses on the plan (SUD-filtered per §7.6) */
+        get: operations["getApiV1CareplansByPlanIdProblemproposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/care-plans/{planId}/problem-proposals/{proposalId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a proposed diagnosis: the clinician sets kind; creates the problem */
+        post: operations["postApiV1CareplansByPlanIdProblemproposalsByProposalIdAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/care-plans/{planId}/problem-proposals/{proposalId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss a proposed diagnosis (nothing is charted) */
+        post: operations["postApiV1CareplansByPlanIdProblemproposalsByProposalIdDismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/care-plans/{planId}/problems": {
         parameters: {
             query?: never;
@@ -33435,6 +33486,130 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1CareplansByPlanIdProblemproposals: {
+        parameters: {
+            query?: {
+                status?: "pending" | "accepted" | "dismissed";
+            };
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proposals: {
+                            id: string;
+                            carePlanId: string;
+                            description: string;
+                            icd10Code: string | null;
+                            icd10Source: "document" | "reviewer_edit" | null;
+                            icd10Validation: "valid" | "not_valid_as_of" | "unvalidated" | null;
+                            documentRole: "principal" | "secondary" | "history" | "unspecified";
+                            sudRelated: boolean;
+                            status: "pending" | "accepted" | "dismissed";
+                            duplicateOfProblemId: string | null;
+                            acceptedProblemId: string | null;
+                            sourceIntakeBatchId: string;
+                            decidedAt: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                            version: number;
+                        }[];
+                        redacted: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1CareplansByPlanIdProblemproposalsByProposalIdAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    kind: "terminal" | "related" | "unrelated";
+                    icd10Code?: string | null;
+                    /** @constant */
+                    acknowledgeExtracted: true;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proposalId: string;
+                        problemId: string;
+                        /** @constant */
+                        status: "accepted";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1CareplansByPlanIdProblemproposalsByProposalIdDismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proposalId: string;
+                        /** @constant */
+                        status: "dismissed";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1CareplansByPlanIdProblems: {
         parameters: {
             query?: never;
@@ -47115,6 +47290,17 @@ export interface operations {
                         writeback?: {
                             targetModule: "m5" | null;
                             targetAggregateId: string | null;
+                            committedFieldPaths: string[];
+                            excluded: {
+                                candidateId: string;
+                                fieldPath: string;
+                                reason: string;
+                            }[];
+                        };
+                        diagnosisWriteback?: {
+                            targetModule: "m7" | null;
+                            targetAggregateId: string | null;
+                            committedItemKeys: string[];
                             committedFieldPaths: string[];
                             excluded: {
                                 candidateId: string;

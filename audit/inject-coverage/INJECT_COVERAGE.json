@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1336,
-    "coveredRoutes": 1336,
-    "directRoutesReferenced": 1277
+    "routes": 1339,
+    "coveredRoutes": 1339,
+    "directRoutesReferenced": 1280
   },
   "modules": [
     {
@@ -78,16 +78,17 @@
     },
     {
       "module": "07-care-plan",
-      "routes": 22,
+      "routes": 25,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
+        "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 21
+      "directRoutesReferenced": 24
     },
     {
       "module": "08-encounters",

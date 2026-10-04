@@ -362,6 +362,7 @@ exports.MODULES = [
       "intervention",
       "care_plan_idg_decision_application",
       "care_plan_idg_proposed_change",
+      "problem_proposal", // F-238 — DocLens-extracted diagnoses awaiting clinician accept/dismiss
     ],
   }, // M07-F02
   {

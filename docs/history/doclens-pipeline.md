@@ -106,3 +106,60 @@ OCR-damaged lorazepam line. Tests: `f237-sud-flagger` (20), `f237-doclens-stage5
 the live suite `test:f237:doclens-review:live` (4) plus the F-235/F-236/M22/M5/M32/M39/dispatcher live
 suites. Mutation checks (each reverted, each caught): licence bypass on high risk, planner ignoring SUD,
 rejection lifting a consent-derived flag, images not routed to a vision backend.
+
+## F-238 (dx-writeback) — reviewer-attested diagnoses → M7 problem PROPOSALS (2026-10-04)
+
+**What.** A completed DocLens review's approved `diagnoses[n].description | .icd10 | .role` candidates
+(same `n` within one extraction job = one diagnosis) now leave review evidence — as **proposals**, never as
+charted problems. M22's pure `writeback-plan-dx.ts` (composed next to the F-235 M5 planner; no change to
+it) groups and filters them; `writeback-commit-dx-db.ts` writes `extraction_provenance` (`target_module =
+'m7'`) and publishes `m22.extraction.diagnosis_commit_requested` in the completion transaction; M7's
+`m7.extraction-diagnosis-writeback` consumer lands each as a `pending` row in the new M7 table
+`problem_proposal` (migration 0310) and replies `m7.problem.draft_created_from_extraction`; M22's
+`m22.extraction-diagnosis-backref` stamps provenance with the proposal id and emits
+`m22.extraction.commit_completed` (`targetModule: 'm7'`). A clinician accepts or dismisses via
+`GET /api/v1/care-plans/:planId/problem-proposals` and `POST …/:proposalId/accept|dismiss`
+(`care_plan.author` + `caseload_or_scope`, AI principals refused, `ifVersion` concurrency).
+
+**Lifecycle decision — a separate table, not a `problem_status`.** Every reader of `problem` (M23 claim
+sequencing via `claimDiagnosesForOrg` and the F-214 Part 2 gate, the IDG packet cover, HOPE, the portal
+digest, the encounter picker, version `state_snapshot`s, M38 code-usage remediation, the eraser) would
+otherwise have to learn to exclude drafts, and one that forgot would surface an unaccepted AI-extracted
+diagnosis as a charted one. With `problem_proposal` that is impossible by construction, no `problem`
+reader changed, and `problem.kind` keeps NOT NULL with no placeholder value. Accept inserts the real
+`problem` (`source = 'intake_extraction'` — the visible extraction label — `status = 'active'`, `kind`
+**chosen by the clinician**, `added_by_membership_id` = the accepter), links it (`accepted_problem_id`) and
+emits `m7.problem.added`; dismiss charts nothing.
+
+**Governance rules as built.** (1) Never a charted record from DocLens: proposals only. (2) The code is
+the as-printed extraction (every stored candidate is grounded verbatim) or the reviewer's typed edit
+(`editedCode`, else `editedValue`); `extraction_candidate.value_code` is never read. The shape is checked
+(`normalizeIcd10CmShape`, shared in `@wardenx/types`): malformed → that code candidate is excluded
+(`icd10_malformed`) and the diagnosis goes without a code. M7 asks M38 (`lookupBatch('icd10cm', …, asOf =
+batch upload date)`) → `valid` / `not_valid_as_of`; when ICD-10-CM is not loaded for the date (probe:
+R69) or M38 is unbound/erroring → `unvalidated`. The code is kept in every case. (3) The document's
+`role` (principal/secondary/history/unspecified) is stored as `document_role`, a label; it never sets
+`kind`. (4) Part 2: a diagnosis on a SUD-flagged page is excluded unless the batch detection was rejected
+(the F-235 rule); an F10–F19 (not F17) code or SUD wording (the W4 rules, negation-aware) sets
+`sud_related`; a CONFIRMED batch sends nothing SUD (`sud_confirmed_batch`); a SUD proposal is omitted
+(`redacted: true`) and 404 on decide for a caller without §7.6 disclosure; once accepted it is a
+`sud_related` problem the F-214 claim gate withholds without consent. (5) No headless patient
+(`patient_unresolved` at M22); M7 attaches to the patient's single non-discharged care plan and otherwise
+reports `no_care_plan` / `care_plan_ambiguous` — it never creates a plan. (6) Outbox only. A **separate
+event** rather than `commit_requested` + `targetModule='m7'`: on the outbox every declared consumer sees
+every row, and M5's F-235 consumer fail-closes (DLQ) on a non-M5 payload; the payload still carries the D5
+`targetModule`. (7) Idempotent per source item (UNIQUE org + commit + itemKey → `already_proposed` on
+redelivery); at most one PENDING proposal per (patient, code-or-normalized-description) — a second
+referral repeating it reports the existing proposal and both referrals' provenance point at it; an ACTIVE
+problem with the same code is flagged (`duplicate_of_problem_id`), never merged.
+
+*Not built.* The web UI for accept/dismiss (API only). A dismissed proposal does not suppress a later
+referral re-proposing the same diagnosis (deliberate: a new document is new evidence — open question for
+the user). `kind = 'terminal'` at accept needs only `care_plan.author`, the same as adding a problem by hand.
+
+*Tests.* `f238-doclens-dx-writeback.test.ts` (pure: shared helpers, every planner exclusion reason and
+governance rule, fail-closed payload parsing, the M38 validator); live `test:f238:doclens-dx-writeback:live`
+(5): completion → outbox → M7 proposals → back-ref, nothing in `problem` and nothing on the claim read
+until accept (then the clinician's `terminal` sequences first), 409/412/422 on decide, redelivery
+idempotency, cross-referral dedupe, Part 2 exclusion / hiding / claim withholding, `no_care_plan`, and RLS
+as `wardenx_app` (org B sees and decides nothing; the app role cannot DELETE a proposal).
