@@ -159777,6 +159777,66 @@
         }
       }
     },
+    "/api/v1/privacy/snapshot-rebuild": {
+      "post": {
+        "operationId": "postApiV1PrivacySnapshotrebuild",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Run the M5 §4.5 privacy-snapshot rebuild for the caller's org now (manual trigger of the quarterly patient.snapshot_rebuild; privacy.admin) — counts only",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "organizationId",
+                    "patients",
+                    "rewritten",
+                    "flagsChanged",
+                    "staleCleared",
+                    "unchanged",
+                    "failed"
+                  ],
+                  "properties": {
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "patients": {
+                      "type": "integer"
+                    },
+                    "rewritten": {
+                      "type": "integer"
+                    },
+                    "flagsChanged": {
+                      "type": "integer"
+                    },
+                    "staleCleared": {
+                      "type": "integer"
+                    },
+                    "unchanged": {
+                      "type": "integer"
+                    },
+                    "failed": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/provider-entities": {
       "get": {
         "operationId": "getApiV1Providerentities",

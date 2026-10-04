@@ -212,7 +212,11 @@ const VIEW: PatientPrivacyView = {
 };
 
 function makeServer() {
-  const calls: { resync: string[]; list: unknown[] } = { resync: [], list: [] };
+  const calls: { resync: string[]; list: unknown[]; rebuild: [string, string][] } = {
+    resync: [],
+    list: [],
+    rebuild: [],
+  };
   const service: PrivacyOfficerService = {
     async getPatientPrivacy(org, id) {
       return org === ORG && id === PATIENT ? VIEW : null;
@@ -261,7 +265,21 @@ function makeServer() {
   );
   registerEffectivePermissionResolver(grantStore.store);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerPatientPrivacyRoutes(app, { service });
+  registerPatientPrivacyRoutes(app, {
+    service,
+    async rebuildSnapshots(org, actor) {
+      calls.rebuild.push([org, actor]);
+      return {
+        organizationId: org,
+        patients: 3,
+        rewritten: 1,
+        flagsChanged: 1,
+        staleCleared: 0,
+        unchanged: 2,
+        failed: 0,
+      };
+    },
+  });
   return { app, calls };
 }
 
@@ -294,19 +312,41 @@ describe("Privacy Officer routes — privacy.admin (M5 §4.7)", () => {
     expect(res.json().restrictions[0].origin).toBe("intake_unconfirmed");
   });
 
-  it("refuses org_admin and a clinical reviewer (403) on all three routes", async () => {
+  it("refuses org_admin and a clinical reviewer (403) on every route", async () => {
     const { app, calls } = makeServer();
     for (const headers of [ADMIN, RN]) {
       for (const [method, url] of [
         ["GET", `/api/v1/patients/${PATIENT}/privacy`],
         ["POST", `/api/v1/patients/${PATIENT}/privacy-flags/resync`],
         ["GET", "/api/v1/privacy/restricted-patients"],
+        ["POST", "/api/v1/privacy/snapshot-rebuild"],
       ] as const) {
         const res = await app.inject({ method, url, headers });
         expect(res.statusCode, `${headers["x-test-user"]} ${method} ${url}`).toBe(403);
       }
     }
     expect(calls.resync).toEqual([]);
+    expect(calls.rebuild).toEqual([]);
+  });
+
+  it("the manual snapshot rebuild (§4.5) runs for the caller's org as the acting officer, counts only", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/privacy/snapshot-rebuild",
+      headers: OFFICER,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(calls.rebuild).toEqual([[ORG, "officer_1"]]);
+    expect(res.json()).toEqual({
+      organizationId: ORG,
+      patients: 3,
+      rewritten: 1,
+      flagsChanged: 1,
+      staleCleared: 0,
+      unchanged: 2,
+      failed: 0,
+    });
   });
 
   it("refuses an unauthenticated caller", async () => {

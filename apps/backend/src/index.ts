@@ -175,6 +175,7 @@ import {
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
+  M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
   buildM5AdmissionSitingConsumer,
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
@@ -197,8 +198,11 @@ import {
   membershipUserIdForOrg,
   mountPatientRoutes,
   patientDisplayLabelsForOrg,
+  rebuildPrivacySnapshotsForOrg,
   registerPatientErasers,
   registerPatientSeams,
+  registerSnapshotRebuildWorker,
+  scheduleSnapshotRebuild,
 } from "./modules/05-patient/index";
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 // F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
@@ -1685,6 +1689,7 @@ export function wireModuleSeams(
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
   registerPlatformJob(M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID); // F-238 — the hourly records-request expiry sweep's org enumeration
+  registerPlatformJob(M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID); // M5 §4.5 — the quarterly privacy-snapshot rebuild's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
   wireM19Tenancy(); // F-155 (#248) — allowlist the cron job id so the on_call_roster_sync_queue drain + catch-up-seed workers may enter withPlatformContext
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
@@ -5499,6 +5504,42 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       });
     } catch (err) {
       app.log.error(err, "M22 records-request expiry schedule registration failed");
+    }
+    // M5 §4.5 `patient.snapshot_rebuild` — the quarterly full privacy-snapshot rebuild (D3 "quarterly full
+    // rebuild job reconciles drift"). Same per-org fan-out as the sweeps above; per org it pages the patients
+    // and re-derives each one in its own org-explicit `withOrgContext` transaction as the system (the officer
+    // resync's own derivation: M39 Part 2 state decides `sud`, a DocLens flag is never lifted while M39 is
+    // silent), writing only drifted rows and emitting `m5.patient.privacy_flag_changed` only on a real change.
+    const m5SnapshotRebuildPorts = {
+      consent: buildPart2ConsentStateReader(dbHandle.db),
+      intake: buildIntakeSudBatchReader(dbHandle.db),
+    };
+    const m5SnapshotRebuildWorker = registerSnapshotRebuildWorker({
+      connection: queueConnection,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
+        reason: "M5 §4.5 quarterly privacy-snapshot rebuild fan-out",
+      }),
+      rebuildForOrg: (organizationId) =>
+        rebuildPrivacySnapshotsForOrg(dbHandle.db, organizationId, {
+          outbox: m5OutboxPublisher,
+          ports: m5SnapshotRebuildPorts,
+        }),
+      log: (msg, detail) => app.log.info(detail, msg),
+    });
+    attachDlqAlertsToAll([m5SnapshotRebuildWorker], "m5");
+    app.addHook("onClose", async () => {
+      await m5SnapshotRebuildWorker.close();
+    });
+    try {
+      const m5SnapshotRebuildQueue = await scheduleSnapshotRebuild(queueConnection);
+      app.addHook("onClose", async () => {
+        await m5SnapshotRebuildQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M5 privacy-snapshot rebuild schedule registration failed");
     }
     // M12 §2.6 D4 / §2.8 D10 — the `dosespot_sync_queue` drain (patient-sync + MedHx-fetch). Scheduled
     // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real

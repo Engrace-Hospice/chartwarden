@@ -13,7 +13,9 @@
 //     record; when M39 has never spoken, the DocLens detections still in force are re-applied (a restriction
 //     is only ever ADDED from them, never lifted: lifting a detection is the licensed reviewer's act in the
 //     intake review, M22 §7.4 step 6, not the officer's);
-//   · drift between the snapshot and its sources, so the officer can see what a resync would change.
+//   · drift between the snapshot and its sources, so the officer can see what a resync would change;
+//   · whether a re-derivation changes the persisted row at all (`snapshotNeedsWrite` — the quarterly
+//     `patient.snapshot_rebuild` job, §4.5, writes only drifted rows; it shares `decideResync`).
 //
 // Cross-module facts arrive through PORTS bound at the composition root (M5 has no `dependsOn` edge to
 // M22 or M39): `Part2ConsentStateReader` is implemented by M39, `IntakeSudBatchReader` by M22, and
@@ -216,6 +218,34 @@ export function decideResync(
   }
   const flagsChanged = flags.join(",") !== before.join(",");
   return { flags, sudFlagOrigin, sourceConsentVersion, flagsChanged };
+}
+
+/**
+ * Does a re-derivation actually change the persisted snapshot? The quarterly rebuild (M5 §4.5
+ * `patient.snapshot_rebuild`, "reconciles any drift") writes ONLY when this is true, so a no-drift patient
+ * produces no write, no M4 audit row and no event — the run is idempotent. A stale snapshot always needs
+ * the write (it clears `invalidated_at`). An ABSENT row is "no flag recorded" (most patients have none —
+ * `privacy-flag-reader.ts`), so a derivation that would write an empty, unattributed row needs nothing.
+ * The officer's per-patient resync writes unconditionally (it also re-stamps `captured_at`).
+ */
+export function snapshotNeedsWrite(
+  current: SnapshotFacts | null,
+  decision: ResyncDecision,
+): boolean {
+  if (current === null) {
+    return (
+      decision.flags.length > 0 ||
+      decision.sudFlagOrigin !== null ||
+      decision.sourceConsentVersion !== null
+    );
+  }
+  if (current.invalidatedAt !== null) return true;
+  return (
+    decision.flagsChanged ||
+    [...new Set(current.flags)].sort().join(",") !== decision.flags.join(",") ||
+    (current.sudFlagOrigin ?? null) !== decision.sudFlagOrigin ||
+    (current.sourceConsentVersion ?? null) !== decision.sourceConsentVersion
+  );
 }
 
 /** A disagreement between the snapshot and its sources that a resync (or the intake review) resolves. */

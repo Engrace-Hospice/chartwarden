@@ -32,6 +32,7 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 // (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
 import type { M5OutboxPort } from "../src/modules/05-patient/deceased-db";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
+import { rebuildPrivacySnapshotsForOrg } from "../src/modules/05-patient/jobs/snapshot-rebuild";
 import { buildM5ConsentPrivacyConsumer } from "../src/modules/05-patient/outbox-consumers/m39-consent-privacy";
 import { createDbPrivacyOfficerService } from "../src/modules/05-patient/privacy/officer-db";
 import { buildIntakeSudBatchReader } from "../src/modules/22-documents/extraction/privacy-sud-batches";
@@ -549,6 +550,136 @@ describe.skipIf(!DB_URL)(
           flags: ["sud"],
         }),
       ]);
+    });
+
+    // ── M5 §4.5 `patient.snapshot_rebuild` — the quarterly full rebuild (same derivation as the resync) ──
+    function rebuild(organizationId: string, pageSize?: number) {
+      return rebuildPrivacySnapshotsForOrg(handle.db, organizationId, {
+        outbox,
+        ports: {
+          consent: buildPart2ConsentStateReader(handle.db),
+          intake: buildIntakeSudBatchReader(handle.db),
+        },
+        pageSize,
+      });
+    }
+    async function snapshotRow(patientId: string) {
+      const { rows } = await admin.query(
+        `SELECT flags, sud_flag_origin, source_consent_version, captured_at, invalidated_at
+           FROM patient_privacy_flag_snapshot WHERE patient_id = $1`,
+        [patientId],
+      );
+      return rows[0] ?? null;
+    }
+
+    it("rebuild reconciles drift org-wide: stale cleared, consent-lifted flag lifted, DocLens flag kept, missed consent applied", async () => {
+      // Stale snapshot, flags already right: rewritten (invalidated_at cleared), no event.
+      const stale = await seedPatient(ORG_A);
+      await seedSnapshot(ORG_A, stale, ["hiv"]);
+      await admin.query(
+        "UPDATE patient_privacy_flag_snapshot SET invalidated_at = now() WHERE patient_id = $1",
+        [stale],
+      );
+      // Consent-derived `sud` whose Part 2 release is now in force (a missed `signed` delivery): lifted.
+      const lifted = await seedPatient(ORG_A);
+      await seedSnapshot(ORG_A, lifted, ["sud"]);
+      await admin.query(
+        "UPDATE patient_privacy_flag_snapshot SET source_consent_version = gen_random_uuid() WHERE patient_id = $1",
+        [lifted],
+      );
+      const liftedConsent = await seedPart2Consent(ORG_A, lifted, "active");
+      // DocLens interim flag, M39 silent, detection rejected: KEPT, untouched (no write, no event).
+      const docLens = await seedPatient(ORG_A);
+      await seedDocLensSnapshot(ORG_A, docLens, "m22_intake_unconfirmed");
+      await seedSudBatch(ORG_A, docLens, "rejected");
+      const docLensBefore = await snapshotRow(docLens);
+      // No row at all, but M39 holds an expired release (a missed `expired` delivery): restricted.
+      const missed = await seedPatient(ORG_A);
+      await seedPart2Consent(ORG_A, missed, "expired");
+      // Nothing anywhere: still no row.
+      const clean = await seedPatient(ORG_A);
+
+      const summary = await rebuild(ORG_A);
+      expect(summary).toEqual({
+        organizationId: ORG_A,
+        patients: 5,
+        rewritten: 3,
+        flagsChanged: 2,
+        staleCleared: 1,
+        unchanged: 2,
+        failed: 0,
+      });
+
+      expect(await snapshotRow(stale)).toMatchObject({ flags: ["hiv"], invalidated_at: null });
+      expect(await privacyFlagChangedRows(stale)).toEqual([]);
+
+      expect(await snapshotRow(lifted)).toMatchObject({
+        flags: [],
+        source_consent_version: liftedConsent,
+      });
+      expect(await privacyFlagChangedRows(lifted)).toEqual([
+        { patientId: lifted, organizationId: ORG_A, flags: [] },
+      ]);
+
+      expect(await snapshotRow(docLens)).toEqual(docLensBefore);
+      expect(await privacyFlagChangedRows(docLens)).toEqual([]);
+
+      expect(await snapshotRow(missed)).toMatchObject({ flags: ["sud"], sud_flag_origin: null });
+      expect(await privacyFlagChangedRows(missed)).toEqual([
+        { patientId: missed, organizationId: ORG_A, flags: ["sud"] },
+      ]);
+
+      expect(await snapshotRow(clean)).toBeNull();
+
+      // The job writes as the SYSTEM: the M4 trail of the rewritten row names no acting user.
+      const view = await officerService().getPatientPrivacy(ORG_A, lifted);
+      expect(view?.history[0]).toMatchObject({ actorUserId: null, flagsAfter: [] });
+    });
+
+    it("rebuild is idempotent — a second run writes nothing and emits nothing", async () => {
+      const a = await seedPatient(ORG_A);
+      await seedPart2Consent(ORG_A, a, "expired");
+      const b = await seedPatient(ORG_A);
+      await seedDocLensSnapshot(ORG_A, b, "m22_intake_unconfirmed");
+      await seedSudBatch(ORG_A, b, "detected");
+
+      expect(await rebuild(ORG_A)).toMatchObject({ rewritten: 1, flagsChanged: 1 });
+      const rowA = await snapshotRow(a);
+      const events = (await privacyFlagChangedRows(a)).length;
+      expect(await rebuild(ORG_A)).toMatchObject({ patients: 2, rewritten: 0, unchanged: 2 });
+      expect(await snapshotRow(a)).toEqual(rowA);
+      expect(await privacyFlagChangedRows(a)).toHaveLength(events);
+      expect(await privacyFlagChangedRows(b)).toEqual([]);
+    });
+
+    it("rebuild pages through a large org (one transaction per patient) and never touches another tenant", async () => {
+      const mine: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const id = await seedPatient(ORG_A);
+        await seedPart2Consent(ORG_A, id, "expired");
+        mine.push(id);
+      }
+      // ORG_B: drifted (expired release, no row) and stale — an ORG_A run must leave both alone.
+      const foreign = await seedPatient(ORG_B);
+      await seedPart2Consent(ORG_B, foreign, "expired");
+      const foreignStale = await seedPatient(ORG_B);
+      await seedSnapshot(ORG_B, foreignStale, ["sud"]);
+      await admin.query(
+        "UPDATE patient_privacy_flag_snapshot SET invalidated_at = now() WHERE patient_id = $1",
+        [foreignStale],
+      );
+
+      const summary = await rebuild(ORG_A, 2);
+      expect(summary).toMatchObject({ patients: 5, rewritten: 5, flagsChanged: 5, failed: 0 });
+      for (const id of mine) expect(await snapshotFlags(id)).toEqual(["sud"]);
+
+      expect(await snapshotRow(foreign)).toBeNull();
+      expect(await privacyFlagChangedRows(foreign)).toEqual([]);
+      expect((await snapshotRow(foreignStale))?.invalidated_at).not.toBeNull();
+
+      // ORG_B's own run reconciles ORG_B only.
+      expect(await rebuild(ORG_B)).toMatchObject({ patients: 2, rewritten: 2, staleCleared: 1 });
+      expect(await snapshotFlags(foreign)).toEqual(["sud"]);
     });
   },
 );

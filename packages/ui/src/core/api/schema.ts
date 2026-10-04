@@ -14813,6 +14813,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/privacy/snapshot-rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the M5 §4.5 privacy-snapshot rebuild for the caller's org now (manual trigger of the quarterly patient.snapshot_rebuild; privacy.admin) — counts only */
+        post: operations["postApiV1PrivacySnapshotrebuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/provider-entities": {
         parameters: {
             query?: never;
@@ -61698,6 +61715,36 @@ export interface operations {
                             unattributed: number;
                             stale: number;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PrivacySnapshotrebuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        organizationId: string;
+                        patients: number;
+                        rewritten: number;
+                        flagsChanged: number;
+                        staleCleared: number;
+                        unchanged: number;
+                        failed: number;
                     };
                 };
             };

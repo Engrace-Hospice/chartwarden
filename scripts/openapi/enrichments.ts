@@ -660,6 +660,7 @@ import {
 import {
   PatientPrivacyViewSchema as M5EPatientPrivacyViewSchema,
   PrivacyResyncResponseSchema as M5EPrivacyResyncResponseSchema,
+  PrivacySnapshotRebuildResponseSchema as M5EPrivacySnapshotRebuildResponseSchema,
   RestrictedPatientsQuerySchema as M5ERestrictedPatientsQuerySchema,
   RestrictedPatientsResponseSchema as M5ERestrictedPatientsResponseSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/privacy-typebox";
@@ -5964,6 +5965,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Resync the privacy-flag snapshot from M39 consent state (M5 §4.2; privacy.admin) — WardenLens detections are re-applied, never lifted",
     response: M5EPrivacyResyncResponseSchema,
+  },
+  "POST /api/v1/privacy/snapshot-rebuild": {
+    summary:
+      "Run the M5 §4.5 privacy-snapshot rebuild for the caller's org now (manual trigger of the quarterly patient.snapshot_rebuild; privacy.admin) — counts only",
+    response: M5EPrivacySnapshotRebuildResponseSchema,
   },
   "GET /api/v1/privacy/restricted-patients": {
     summary:

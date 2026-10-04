@@ -129,6 +129,24 @@ export {
   type GeocodeAddressPorts,
   type GeocodeResult,
 } from "./jobs/index";
+// M5 §4.5 `patient.snapshot_rebuild` — the quarterly (+ manual admin route) full privacy-snapshot rebuild.
+export {
+  SNAPSHOT_REBUILD_PAGE_SIZE,
+  SnapshotRebuildPartialFailure,
+  type SnapshotRebuildDeps,
+  type SnapshotRebuildSummary,
+  rebuildPrivacySnapshotsForOrg,
+} from "./jobs/snapshot-rebuild";
+export {
+  M5_SNAPSHOT_REBUILD_PLATFORM_JOB_ID,
+  M5_SNAPSHOT_REBUILD_QUEUE,
+  M5_SNAPSHOT_REBUILD_SCHEDULE,
+  type SnapshotRebuildRunSummary,
+  type SnapshotRebuildWorkerDeps,
+  registerSnapshotRebuildWorker,
+  runSnapshotRebuildFanout,
+  scheduleSnapshotRebuild,
+} from "./jobs/snapshot-rebuild-worker";
 export {
   type PrivacyFlag,
   type ConsentSignal,
@@ -273,12 +291,15 @@ export {
   decideResync,
   detectDrift,
   flagSinceFromHistory,
+  snapshotNeedsWrite,
 } from "./privacy/officer";
 export {
   type PatientPrivacyView,
   type PrivacyOfficerService,
   type PrivacyResyncResult,
+  type PrivacySnapshotRederivation,
   createDbPrivacyOfficerService,
+  rederivePrivacySnapshot,
 } from "./privacy/officer-db";
 export {
   type PatientPrivacyRouteDeps,
@@ -288,6 +309,7 @@ export {
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import type { M5OutboxPort } from "./deceased-db";
+import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
 import { mergePatients as _mergePatients } from "./merges-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
 import type { PrivacyOfficerPorts } from "./privacy/officer";
@@ -319,6 +341,15 @@ export function mountPatientRoutes(
   });
   // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
   _registerPatientAllergyRoutes(app, { db });
-  // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue.
-  _registerPatientPrivacyRoutes(app, { service: _dbPrivacyOfficerService(db, outbox, privacy) });
+  // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the
+  // manual trigger of the quarterly snapshot rebuild (same derivation as the resync, run as the officer).
+  _registerPatientPrivacyRoutes(app, {
+    service: _dbPrivacyOfficerService(db, outbox, privacy),
+    rebuildSnapshots: (organizationId, actorUserId) =>
+      _rebuildPrivacySnapshotsForOrg(db, organizationId, {
+        outbox,
+        ports: privacy,
+        actorUserId,
+      }),
+  });
 }

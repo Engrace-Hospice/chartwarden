@@ -6,7 +6,9 @@
 // another tenant's patient is a 404. The resync runs as the ACTING user, so the M4 write trigger on
 // `patient_privacy_flag_snapshot` attributes the change to the officer (that trail is the page's
 // timeline). `m5.patient.privacy_flag_changed` is emitted in the same transaction, only when the flag set
-// changed — the event's own meaning (M5 §4.6).
+// changed — the event's own meaning (M5 §4.6). The per-patient re-derivation (`rederivePrivacySnapshot`) is
+// shared with the quarterly `patient.snapshot_rebuild` job (§4.5, `../jobs/snapshot-rebuild.ts`), which runs
+// it org-explicitly as the system and writes only drifted rows.
 import type { Static } from "@sinclair/typebox";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -21,12 +23,14 @@ import type {
 import {
   type PrivacyFlagOrigin,
   type PrivacyOfficerPorts,
+  type ResyncDecision,
   type SnapshotFacts,
   batchContributes,
   decideResync,
   detectDrift,
   flagSinceFromHistory,
   originOf,
+  snapshotNeedsWrite,
 } from "./officer";
 
 export type PatientPrivacyView = Static<typeof PatientPrivacyViewSchema>;
@@ -94,41 +98,137 @@ function originWhere(origin: PrivacyFlagOrigin | "stale"): SQL {
   }
 }
 
+async function loadPatient(tx: DbClient, patientId: string) {
+  const [p] = await tx
+    .select({
+      id: P.id,
+      mrn: P.mrn,
+      status: P.status,
+      legalFirstName: P.legalFirstName,
+      legalLastName: P.legalLastName,
+    })
+    .from(P)
+    .where(eq(P.id, patientId))
+    .limit(1);
+  return p ?? null;
+}
+
+async function loadSnapshot(tx: DbClient, patientId: string, forUpdate = false) {
+  const q = tx
+    .select({
+      flags: PFS.flags,
+      sudFlagOrigin: PFS.sudFlagOrigin,
+      sourceConsentVersion: PFS.sourceConsentVersion,
+      capturedAt: PFS.capturedAt,
+      invalidatedAt: PFS.invalidatedAt,
+    })
+    .from(PFS)
+    .where(eq(PFS.patientId, patientId))
+    .limit(1);
+  const [row] = forUpdate ? await q.for("update") : await q;
+  return row ?? null;
+}
+
+/** What one re-derivation of a patient's snapshot did. */
+export interface PrivacySnapshotRederivation {
+  readonly patientId: string;
+  /** The snapshot's flags before (sorted; empty when no row existed). */
+  readonly flagsBefore: string[];
+  readonly decision: ResyncDecision;
+  /** Whether a snapshot row existed before. */
+  readonly existed: boolean;
+  /** Whether the row was stale (`invalidated_at` set) before. */
+  readonly wasStale: boolean;
+  /** Whether the row was written (always for a resync; only on drift for the rebuild). */
+  readonly written: boolean;
+  /** Whether `m5.patient.privacy_flag_changed` was emitted (only when the flag SET changed). */
+  readonly eventEmitted: boolean;
+  readonly capturedAt: string;
+}
+
+/**
+ * Re-derive ONE patient's `patient_privacy_flag_snapshot` from its sources — the single derivation the
+ * officer's resync (§4.2) and the quarterly rebuild (§4.5 `patient.snapshot_rebuild`) share. ORG-EXPLICIT
+ * (a cron tick is not a request): the source reads go through the M39/M22 ports, each in its own
+ * org-scoped transaction; the decision (`decideResync` — never lifts a DocLens flag while M39 is silent),
+ * the upsert and the `m5.patient.privacy_flag_changed` emit are one `withOrgContext` transaction, run as
+ * `actorUserId` (the officer for a resync, `""` — audited as system — for the job). With
+ * `onlyWhenDrifted`, an unchanged non-stale snapshot is left untouched (no write, no M4 audit row).
+ * Returns null when the patient is not visible in the org (RLS: another tenant's patient).
+ */
+export async function rederivePrivacySnapshot(
+  db: DbClient,
+  outbox: M5OutboxPort,
+  ports: Pick<PrivacyOfficerPorts, "consent" | "intake">,
+  input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+    readonly actorUserId: string;
+    readonly onlyWhenDrifted: boolean;
+    readonly now?: Date;
+  },
+): Promise<PrivacySnapshotRederivation | null> {
+  const { organizationId, patientId, actorUserId } = input;
+  if (!UUID.test(patientId)) return null;
+  // The source reads run first, each under its own org-scoped transaction (they are other modules'
+  // tables, reached through their ports); the decision and the write are one transaction.
+  const exists = await withOrgContext(db, { organizationId, userId: "" }, async (scoped) =>
+    loadPatient(scoped as unknown as DbClient, patientId),
+  );
+  if (!exists) return null;
+  const [consent, batches] = await Promise.all([
+    ports.consent.part2ConsentState(organizationId, patientId),
+    ports.intake.sudBatchesForPatient(organizationId, patientId),
+  ]);
+  return withOrgContext(db, { organizationId, userId: actorUserId }, async (scoped) => {
+    const tx = scoped as unknown as DbClient;
+    if (!(await loadPatient(tx, patientId))) return null;
+    const row = await loadSnapshot(tx, patientId, true);
+    const current = row ? factsOf(row) : null;
+    const decision = decideResync(current, consent, batches);
+    const now = input.now ?? new Date();
+    const written = !input.onlyWhenDrifted || snapshotNeedsWrite(current, decision);
+    if (written) {
+      const values = {
+        flags: [...decision.flags],
+        capturedAt: now,
+        sudFlagOrigin: decision.sudFlagOrigin,
+        sourceConsentVersion: decision.sourceConsentVersion,
+        invalidatedAt: null,
+      };
+      await tx
+        .insert(PFS)
+        .values({ patientId, organizationId, ...values })
+        .onConflictDoUpdate({ target: PFS.patientId, set: values });
+    }
+    const eventEmitted = written && decision.flagsChanged;
+    if (eventEmitted) {
+      await outbox.publish(tx, {
+        eventName: "m5.patient.privacy_flag_changed",
+        payload: { patientId, organizationId, flags: [...decision.flags] },
+        organizationId,
+        aggregateKind: "patient",
+        aggregateId: patientId,
+      });
+    }
+    return {
+      patientId,
+      flagsBefore: [...(current?.flags ?? [])].sort(),
+      decision,
+      existed: row !== null,
+      wasStale: row?.invalidatedAt != null,
+      written,
+      eventEmitted,
+      capturedAt: (written ? now : (row?.capturedAt ?? now)).toISOString(),
+    };
+  });
+}
+
 export function createDbPrivacyOfficerService(
   db: DbClient,
   outbox: M5OutboxPort,
   ports: PrivacyOfficerPorts,
 ): PrivacyOfficerService {
-  const loadPatient = async (tx: DbClient, patientId: string) => {
-    const [p] = await tx
-      .select({
-        id: P.id,
-        mrn: P.mrn,
-        status: P.status,
-        legalFirstName: P.legalFirstName,
-        legalLastName: P.legalLastName,
-      })
-      .from(P)
-      .where(eq(P.id, patientId))
-      .limit(1);
-    return p ?? null;
-  };
-  const loadSnapshot = async (tx: DbClient, patientId: string, forUpdate = false) => {
-    const q = tx
-      .select({
-        flags: PFS.flags,
-        sudFlagOrigin: PFS.sudFlagOrigin,
-        sourceConsentVersion: PFS.sourceConsentVersion,
-        capturedAt: PFS.capturedAt,
-        invalidatedAt: PFS.invalidatedAt,
-      })
-      .from(PFS)
-      .where(eq(PFS.patientId, patientId))
-      .limit(1);
-    const [row] = forUpdate ? await q.for("update") : await q;
-    return row ?? null;
-  };
-
   return {
     async getPatientPrivacy(organizationId, patientId) {
       if (!UUID.test(patientId)) return null;
@@ -190,55 +290,23 @@ export function createDbPrivacyOfficerService(
     },
 
     async resync(organizationId, patientId, actorUserId) {
-      if (!UUID.test(patientId)) return null;
-      // The source reads run first, each under its own org-scoped transaction (they are other modules'
-      // tables, reached through their ports); the decision and the write are one transaction.
-      const exists = await withOrgContext(db, { organizationId, userId: "" }, async (scoped) =>
-        loadPatient(scoped as unknown as DbClient, patientId),
-      );
-      if (!exists) return null;
-      const [consent, batches] = await Promise.all([
-        ports.consent.part2ConsentState(organizationId, patientId),
-        ports.intake.sudBatchesForPatient(organizationId, patientId),
-      ]);
-      return withOrgContext(db, { organizationId, userId: actorUserId }, async (scoped) => {
-        const tx = scoped as unknown as DbClient;
-        if (!(await loadPatient(tx, patientId))) return null;
-        const row = await loadSnapshot(tx, patientId, true);
-        const current = row ? factsOf(row) : null;
-        const decision = decideResync(current, consent, batches);
-        const now = new Date();
-        const values = {
-          flags: [...decision.flags],
-          capturedAt: now,
-          sudFlagOrigin: decision.sudFlagOrigin,
-          sourceConsentVersion: decision.sourceConsentVersion,
-          invalidatedAt: null,
-        };
-        await tx
-          .insert(PFS)
-          .values({ patientId, organizationId, ...values })
-          .onConflictDoUpdate({ target: PFS.patientId, set: values });
-        if (decision.flagsChanged) {
-          await outbox.publish(tx, {
-            eventName: "m5.patient.privacy_flag_changed",
-            payload: { patientId, organizationId, flags: [...decision.flags] },
-            organizationId,
-            aggregateKind: "patient",
-            aggregateId: patientId,
-          });
-        }
-        return {
-          patientId,
-          flagsBefore: [...(current?.flags ?? [])].sort(),
-          flagsAfter: [...decision.flags],
-          sudOriginAfter: decision.sudFlagOrigin,
-          sourceConsentVersion: decision.sourceConsentVersion,
-          flagsChanged: decision.flagsChanged,
-          eventEmitted: decision.flagsChanged,
-          capturedAt: now.toISOString(),
-        };
+      const out = await rederivePrivacySnapshot(db, outbox, ports, {
+        organizationId,
+        patientId,
+        actorUserId,
+        onlyWhenDrifted: false,
       });
+      if (!out) return null;
+      return {
+        patientId,
+        flagsBefore: out.flagsBefore,
+        flagsAfter: [...out.decision.flags],
+        sudOriginAfter: out.decision.sudFlagOrigin,
+        sourceConsentVersion: out.decision.sourceConsentVersion,
+        flagsChanged: out.decision.flagsChanged,
+        eventEmitted: out.eventEmitted,
+        capturedAt: out.capturedAt,
+      };
     },
 
     async listRestricted(organizationId, query) {

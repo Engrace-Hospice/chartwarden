@@ -103,6 +103,17 @@ export const PrivacyResyncResponseSchema = Type.Object({
   capturedAt: IsoDate,
 });
 
+/** M5 §4.5 `patient.snapshot_rebuild` run summary (manual admin trigger) — counts only. */
+export const PrivacySnapshotRebuildResponseSchema = Type.Object({
+  organizationId: Type.String(),
+  patients: Type.Integer(),
+  rewritten: Type.Integer(),
+  flagsChanged: Type.Integer(),
+  staleCleared: Type.Integer(),
+  unchanged: Type.Integer(),
+  failed: Type.Integer(),
+});
+
 export const RestrictedPatientsQuerySchema = Type.Object({
   origin: Type.Optional(Type.Union([PrivacyFlagOriginSchema, Type.Literal("stale")])),
   cursor: Type.Optional(Type.String({ maxLength: 16 })),

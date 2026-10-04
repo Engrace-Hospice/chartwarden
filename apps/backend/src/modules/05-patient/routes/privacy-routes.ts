@@ -8,6 +8,9 @@
 //                                                   re-read from M39; admin-only"
 //   GET  /api/v1/privacy/restricted-patients        the officer's work queue (patients with a restriction),
 //                                                   filterable by origin (e.g. an unreviewed detection)
+//   POST /api/v1/privacy/snapshot-rebuild           M5 §4.5 `patient.snapshot_rebuild` "manual via admin
+//                                                   route": runs the quarterly rebuild for the caller's org
+//                                                   now, as the acting officer; returns counts only
 //
 // All three are `privacy.admin` (§4.7: "Privacy Officer, Compliance Officer · abac none · resync snapshot,
 // etc."). ABAC is `none` by the catalog — the officer is an org-wide records role, not a caseload role — so
@@ -21,6 +24,7 @@
 import { requirePermission } from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { SnapshotRebuildSummary } from "../jobs/snapshot-rebuild";
 import type { PrivacyOfficerService } from "../privacy/officer-db";
 import { LooseIdParamsSchema, parse } from "./patient-typebox";
 import { RestrictedPatientsQuerySchema } from "./privacy-typebox";
@@ -29,6 +33,11 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface PatientPrivacyRouteDeps {
   service: PrivacyOfficerService;
+  /** The §4.5 rebuild for one org, run as `actorUserId` (`rebuildPrivacySnapshotsForOrg`, bound at mount). */
+  rebuildSnapshots: (
+    organizationId: string,
+    actorUserId: string,
+  ) => Promise<SnapshotRebuildSummary>;
 }
 
 const PRIVACY_ADMIN = requirePermission("privacy.admin") as PreHandler;
@@ -45,7 +54,7 @@ export function registerPatientPrivacyRoutes(
   app: FastifyInstance,
   deps: PatientPrivacyRouteDeps,
 ): void {
-  const { service } = deps;
+  const { service, rebuildSnapshots } = deps;
 
   app.get(
     "/api/v1/patients/:id/privacy",
@@ -104,4 +113,12 @@ export function registerPatientPrivacyRoutes(
       return service.listRestricted(organizationId, query);
     },
   );
+
+  // M5 §4.5 — the manual trigger of the quarterly `patient.snapshot_rebuild`. Synchronous over the caller's
+  // org only (RLS + the org-explicit rebuild); a partial failure surfaces as a 500 after the pass, with every
+  // reconciled patient already committed (each patient is its own transaction; a re-run skips them).
+  app.post("/api/v1/privacy/snapshot-rebuild", { preHandler: [PRIVACY_ADMIN] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    return rebuildSnapshots(organizationId, userId);
+  });
 }

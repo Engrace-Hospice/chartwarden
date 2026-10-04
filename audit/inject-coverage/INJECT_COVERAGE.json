@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1358,
-    "coveredRoutes": 1358,
-    "directRoutesReferenced": 1302
+    "routes": 1359,
+    "coveredRoutes": 1359,
+    "directRoutesReferenced": 1303
   },
   "modules": [
     {
@@ -52,7 +52,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 22,
+      "routes": 23,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -64,7 +64,7 @@
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 22
+      "directRoutesReferenced": 23
     },
     {
       "module": "06-admission",
