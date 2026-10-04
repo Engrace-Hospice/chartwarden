@@ -242,3 +242,20 @@ export function dominantSudCategory(indicators: readonly SudIndicator[]): SudInd
   }
   return best;
 }
+
+/**
+ * F-238 — does this ONE attested line name a medication-assisted-treatment drug (any `medication`-category
+ * rule: methadone, buprenorphine, naltrexone, disulfiram/acamprosate, lofexidine)? The DocLens clinical
+ * writeback planner keeps such a line out of every chart writeback unless the batch's SUD detection was
+ * REJECTED as a false positive by a reviewer (42 CFR Part 2: a Part 2 record does not leave review evidence
+ * without a consent decision nobody has made on this path). A medication is never negated, so no negation
+ * window applies. Pure; the matched term is not returned (it is PHI).
+ */
+export function lineNamesSudTreatmentMedication(text: string): boolean {
+  for (const rule of SUD_RULES) {
+    if (rule.category !== "medication") continue;
+    const re = new RegExp(rule.pattern.source, rule.pattern.flags.replace("g", ""));
+    if (re.test(text)) return true;
+  }
+  return false;
+}

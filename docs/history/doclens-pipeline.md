@@ -106,3 +106,62 @@ OCR-damaged lorazepam line. Tests: `f237-sud-flagger` (20), `f237-doclens-stage5
 the live suite `test:f237:doclens-review:live` (4) plus the F-235/F-236/M22/M5/M32/M39/dispatcher live
 suites. Mutation checks (each reverted, each caught): licence bypass on high risk, planner ignoring SUD,
 rejection lifting a consent-derived flag, images not routed to a vision backend.
+
+## F-238 (meds + allergies) — reviewer-attested medication lines → M12 medication history; allergies → M5 (2026-10-04)
+
+*What.* F-231's A1 kept every extracted medication out of writeback because M12 D12 / AI Governance
+§2.1.1 hard-block AI-introduced medication changes. D12 makes that block operational as "M32's LLM may not
+create, modify, sign or otherwise mutate a `medication_order`", and M12 D10 already defines the store an
+outside medication list belongs in: `medication_history_record`, "persisted for clinical reconciliation but
+never auto-linked to medication_order". So an approved `medications[].name` line now becomes a
+reconciliation-only history row (`source = 'doclens_intake'`, the reviewer-attested text verbatim in
+`drug_name`, strength/sig/RxNorm NULL — no AI parse, no RxNorm guess), and **nothing on the path can reach a
+`medication_order`**: the M12 consumer does not reference the table, `reconcileHistory` records a decision
+and always returns `resultingOrderId: null` (for a DocLens row because of D12 — not even a pre-filled draft;
+for a DoseSpot row because the D10 carry-forward draft is still unbuilt), and the M32 D18 zone (`medication_`,
+D12's boot enforcement — there is no function literally named `validateMedicationAIBlock()`) still passes:
+DocLens templates target `extraction_candidate`, and the zone also covers `medication_history_*`, so no
+model template may target the history store directly. Approved `allergies[].substance` lines go to the
+new M5-owned `patient_allergy` (architecture §10.6.6 "Allergies → Module 5"; migration 0311) as
+`unverified`, `source = 'intake_extraction'`; a clinician verifies or marks entered-in-error
+(`POST /api/v1/patients/:id/allergies/:allergyId/verify|entered-in-error`, `patient.edit` + caseload), and
+the list (`GET /api/v1/patients/:id/allergies`) returns unverified rows, labelled — the Medications tab
+shows them in an allergy banner (a failed read is an alert, never "no allergies") beside the outside
+medication list with its reconcile actions.
+
+*Mechanics.* A separate pure planner (`writeback-plan-clinical.ts`) and commit
+(`writeback-commit-clinical-db.ts`) run in `completeReview`'s transaction after F-235's, leaving F-235's
+planner untouched. Exclusions, each named: `risk_not_high` (both paths are HIGH tier), `sud_detected`
+(unless the batch's detection was rejected), `sud_treatment_medication` (the W4 flagger's MAT rules,
+applied to medication AND allergy lines, unless the batch's detection was rejected — `not_detected`
+included), `patient_unresolved`, `edited_value_missing` / `value_missing`, `value_too_long` (never
+truncated), `duplicate_in_batch`. One event per target rather than D5's single discriminated
+`commit_requested` — the live F-235 M5 consumer fails closed on any other `targetModule`, so a shared event
+would hand every target's PHI to every consumer: `m22.extraction.medication_history_requested` → M12
+`m12.extraction-medication-history` → `m12.medication_history_record.draft_created_from_extraction`;
+`m22.extraction.allergies_requested` → M5 `m5.extraction-allergy-writeback` →
+`m5.patient_allergy.draft_created_from_extraction`; M22's `m22.extraction-clinical-writeback-backref`
+stamps each line's provenance with the ROW id and emits `m22.extraction.commit_completed` (`targetModule`
+widened to `m5 | m12`). Per-line outcomes: `created`, `already_present` (same candidate — redelivery),
+`duplicate` (a second fax repeating a line the chart already holds — flagged with the existing row id,
+nothing new written; enforced again by partial unique indexes), `skipped`. Both consumers share one
+fail-closed parser in `@wardenx/types` (`parseDocLensClinicalCommit`). The completion response gained
+`clinicalWriteback`; the review dialog previews and reports it.
+
+*Not built / for the user.* Architecture §10.6.6's table still says Medications → "MedicationOrder (held
+for prescriber confirmation)"; the as-built target is the stricter D10 history store, which needs an
+ADR/§10.6.6 amendment if accepted. M12's `requestSignature` allergy gate is still the hard-coded
+`allergyCheckPassed: true` (no drug-allergy matching exists) — the allergy list is shown to the
+prescriber, labelled, but no gate reads it. Verify/EIE reuse `patient.edit` (no dedicated allergy
+permission). The M13 reconciliation worksheet still refuses `m12_medhx` lines; reconciliation of DocLens
+lines happens on the Medications tab via M12's route. No clinician-entry allergy route yet.
+
+*Verification.* `f238-doclens-clinical-writeback` (18: every exclusion, MAT for meds and allergies, the
+methadone-for-pain false positive, dedupe, the shared parsers, and governance — no M22 file touches
+`medicationOrders`, the only M12 handler of an `m22.extraction.*` event writes only
+`medication_history_record`, reconcile never mints, the D18 zone), a web DOM suite (3), and the live suite
+`test:f238:doclens-clinical-writeback:live` (5, disposable PG, real publisher + dispatcher, app role):
+completion → both consumers → back-ref, `medication_order` empty throughout, redelivery idempotent, a second
+fax flagged `duplicate`, reconcile 409 on a second decision, allergy verify / EIE with attribution and shape
+CHECKs, and org-B denial on every surface. F-235's live suite now counts the medication's M12 provenance row
+separately; F-235/F-236/F-237 and the M12 vendor-boundary live suites pass.

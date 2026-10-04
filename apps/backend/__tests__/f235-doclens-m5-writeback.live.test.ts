@@ -246,7 +246,7 @@ describe.skipIf(!DB_URL)("F-235 — DocLens → M5 demographics writeback — LI
     if (admin) await admin.end();
   });
 
-  it("commits approved low-risk contacts to the resolved patient; medications, SUD, identity and rejected fields never leave review", async () => {
+  it("commits approved low-risk contacts to the resolved patient; SUD, identity and rejected fields never leave review, and no medication reaches M5", async () => {
     const patient = await seedPatient(ORG_A, "MRN-F235-1");
     const doc = await seedSourceDocument(ORG_A, patient);
     const { batchId, candidateIds } = await seedBatch({
@@ -324,11 +324,19 @@ describe.skipIf(!DB_URL)("F-235 — DocLens → M5 demographics writeback — LI
 
     const prov = await admin.query(
       `SELECT target_field_path, target_aggregate_id, source_document_version_id FROM extraction_provenance
-       WHERE organization_id=$1 ORDER BY target_field_path`,
+       WHERE organization_id=$1 AND target_module='m5' ORDER BY target_field_path`,
       [ORG_A],
     );
     expect(prov.rows).toHaveLength(7);
     expect(prov.rows.every((r) => r.target_aggregate_id === null)).toBe(true);
+    // F-238 — the approved medication line is no longer only review evidence: it is committed to M12 as a
+    // reconciliation-only medication-history line (its own event + provenance row), never to M5 and never
+    // as a medication_order. Its M12 consumer is not bound in this suite (see the F-238 live suite).
+    const medProv = await admin.query(
+      `SELECT target_field_path FROM extraction_provenance WHERE organization_id=$1 AND target_module='m12'`,
+      [ORG_A],
+    );
+    expect(medProv.rows).toEqual([{ target_field_path: "medications[0].name" }]);
 
     // Hop 1: M5 applies. Hop 2: M22 stamps provenance.
     await dispatcher.tick();

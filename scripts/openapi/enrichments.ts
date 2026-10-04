@@ -622,6 +622,12 @@ import {
   ReleaseLegalHoldResponseSchema as M4EReleaseLegalHoldResponseSchema,
 } from "../../apps/backend/src/modules/04-audit/routes/audit-typebox";
 
+import {
+  EnteredInErrorAllergyBodySchema as M5EEnteredInErrorAllergyBodySchema,
+  PatientAllergyListResponseSchema as M5EPatientAllergyListResponseSchema,
+  PatientAllergyViewSchema as M5EPatientAllergyViewSchema,
+  VerifyAllergyBodySchema as M5EVerifyAllergyBodySchema,
+} from "../../apps/backend/src/modules/05-patient/routes/allergy-typebox";
 // M05 Patient & Demographics — OpenAPI enrichment imports. EVERY symbol is M5E-aliased because the
 // M5 patient schemas are ALREADY imported un-aliased in scripts/openapi/enrichments.ts; the M5E prefix
 // avoids a redeclaration collision when this block is merged in via a later Object.assign.
@@ -1377,6 +1383,7 @@ import {
   NewOrderIdResponseSchema as M12NewOrderIdResponseSchema,
   PrescriberRosterListResponseSchema as M12PrescriberRosterListResponseSchema,
   ReconcileRequest as M12ReconcileRequest,
+  ReconcileResponseSchema as M12ReconcileResponseSchema,
   RecordVerbalRequest as M12RecordVerbalRequest,
   RefillInboxPolicyRequest as M12RefillInboxPolicyRequest,
   RefillInboxPolicyResponseSchema as M12RefillInboxPolicyResponseSchema,
@@ -4542,7 +4549,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/patients/:patientId/medications/history": {
     summary:
-      "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
+      "Medication-history records for a patient — DoseSpot MedHx and DocLens referral lines (`source`), for reconciliation (§4.1 / §6.1; F-238)",
     response: M12MedicationHistoryResponseSchema,
   },
   "POST /api/v1/patients/:patientId/medications/history/refresh": {
@@ -4550,8 +4557,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12HistoryRefreshResponseSchema,
   },
   "POST /api/v1/medication-history-records/:id/reconcile": {
-    summary: "Reconcile a medication-history record",
+    summary:
+      "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238)",
     body: M12ReconcileRequest,
+    response: M12ReconcileResponseSchema,
   },
   "GET /api/v1/refills": {
     summary: "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
@@ -5790,6 +5799,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/patients/:id/payers": {
     summary: "Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4)",
     response: M5EPatientPayersResponseSchema,
+  },
+  "GET /api/v1/patients/:id/allergies": {
+    summary:
+      "Patient allergy list (F-238) — every status; an UNVERIFIED (e.g. DocLens referral) allergy is returned, labelled, never hidden",
+    response: M5EPatientAllergyListResponseSchema,
+  },
+  "POST /api/v1/patients/:id/allergies/:allergyId/verify": {
+    summary: "Verify an unverified allergy (clinician; optional confirmed reaction / severity)",
+    body: M5EVerifyAllergyBodySchema,
+    response: M5EPatientAllergyViewSchema,
+  },
+  "POST /api/v1/patients/:id/allergies/:allergyId/entered-in-error": {
+    summary:
+      "Mark an allergy entered-in-error (reason required; the row is kept for the survey trail)",
+    body: M5EEnteredInErrorAllergyBodySchema,
+    response: M5EPatientAllergyViewSchema,
   },
   "GET /api/v1/patients/:id/care-team": {
     summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",

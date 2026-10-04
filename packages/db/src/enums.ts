@@ -1553,6 +1553,7 @@ export const medicationHistorySource = pgEnum("medication_history_source", [
   "dosespot_medhx",
   "manual_entry",
   "reconciliation_carryforward",
+  "doclens_intake", // F-238 (0311) — reviewer-attested DocLens referral line; reconciliation-only
 ]);
 
 /** `dosespot_webhook_event_type` — the §2.5 / §7.4 D7 typed inbound webhook taxonomy. */

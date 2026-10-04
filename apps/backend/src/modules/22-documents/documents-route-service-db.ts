@@ -32,6 +32,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { DegradedError, NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
 import { and, desc, eq, exists, inArray, isNull } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
+import { commitClinicalWriteback } from "./extraction/writeback-commit-clinical-db";
 import {
   type ExtractionWritebackDeps,
   commitReviewWriteback,
@@ -841,6 +842,16 @@ export function createDbDocumentRouteService(
           reviewerMembershipId: actor.membershipId,
           batchSudStatus: batch.sudStatus,
         });
+        // F-238 — approved medication lines → M12 reconciliation-only history; allergy lines → M5
+        // unverified allergies. Same transaction, same server-side-only inputs.
+        const clinicalWriteback = await commitClinicalWriteback(tx, writeback, {
+          organizationId,
+          reviewId,
+          batchId: r.batchId,
+          batchPatientId: batch.patientId,
+          reviewerMembershipId: actor.membershipId,
+          batchSudStatus: batch.sudStatus,
+        });
         await tx
           .update(ER)
           .set({ status: "complete", closedAt: new Date() })
@@ -851,7 +862,7 @@ export function createDbDocumentRouteService(
           .update(BATCH)
           .set({ status: "writeback_complete", dispositionAt: new Date() })
           .where(eq(BATCH.id, r.batchId));
-        return { reviewId, status: "complete" as const, writeback: summary };
+        return { reviewId, status: "complete" as const, writeback: summary, clinicalWriteback };
       });
     },
     async abandonReview(organizationId, actor, reviewId) {

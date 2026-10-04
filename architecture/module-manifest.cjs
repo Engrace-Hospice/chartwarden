@@ -289,6 +289,7 @@ exports.MODULES = [
       "patient_phone",
       "patient_email",
       "patient_payer",
+      "patient_allergy", // F-238 — architecture §10.6.6 "Allergies → Module 5"
       "caregiver",
       "patient_caregiver",
       "emergency_contact",

@@ -690,6 +690,15 @@ jobs:
               name: "F-237 DocLens review + stage 5 + SUD",
               scripts: "test:f237:doclens-review:live",
             }
+          # F-238 — DocLens → M12 medication HISTORY (reconciliation-only `medication_history_record`,
+          # source `doclens_intake`; never a medication_order — D10/D12) and → M5 UNVERIFIED allergies, through
+          # the real publisher, dispatcher and both consumers + M22's provenance back-ref; MAT / SUD-page lines
+          # excluded, redelivery idempotent, a repeat fax flagged `duplicate`; the reconcile path mints no
+          # order; the allergy routes verify / entered-in-error; RLS denial as wardenx_app.
+          - {
+              name: "F-238 DocLens medication history + allergies",
+              scripts: "test:f238:doclens-clinical-writeback:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.

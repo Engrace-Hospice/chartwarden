@@ -118,12 +118,18 @@ const EXCLUSION_LABEL: Record<string, string> = {
   edited_value_missing: "Edited value missing",
   value_missing: "No value extracted",
   conflicting_values: "Conflicting values for the same field",
+  // F-238 — the medication-history / allergy planner's reasons.
+  risk_not_high: "Evidence only (risk tier)",
+  sud_treatment_medication: "Substance-use treatment medication (42 CFR Part 2)",
+  value_too_long: "Too long to record",
+  duplicate_in_batch: "Listed twice in this packet",
 };
 /**
  * `not_a_writeback_target` covers two different things, and "Not a chart field" was wrong for both: the
  * patient's legal name and date of birth ARE chart fields, which intake never overwrites (they identify
- * the patient; a change is an identity correction), and medications/allergies/diagnoses have no intake
- * writeback yet (they are reconciled by a clinician). Say which, by field.
+ * the patient; a change is an identity correction), and diagnoses have no intake writeback yet (they are
+ * reconciled by a clinician). Medication and allergy LINES do write back since F-238 — see
+ * `clinicalTargetOf` — so the demographics planner's `not_a_writeback_target` for them is not shown.
  */
 function notWrittenLabel(fieldPath: string): string {
   if (
@@ -199,6 +205,27 @@ export const MIN_REASON = 5;
  */
 export const updatesChart = (c: Candidate, sud: SudStatus): boolean =>
   c.writebackTarget && isApproved(c) && !(c.sudDetected && sud !== "rejected");
+
+/**
+ * F-238 — where an approved medication / allergy LINE goes: M12's medication history as an outside
+ * medication for a clinician to reconcile (never an order), or M5's allergy list as UNVERIFIED. Mirrors the
+ * server's `clinicalWritebackTargetOf` (the registry's `medications[].name` / `allergies[].substance`).
+ */
+export type ClinicalTarget = "medication_history" | "allergy";
+export const clinicalTargetOf = (fieldPath: string): ClinicalTarget | null =>
+  /^medications\[\d+\]\.name$/.test(fieldPath)
+    ? "medication_history"
+    : /^allergies\[\d+\]\.substance$/.test(fieldPath)
+      ? "allergy"
+      : null;
+
+/** The approved medication / allergy lines completion is EXPECTED to send (a preview — the server also
+ *  keeps substance-use treatment medications out while SUD is unresolved, and dedupes). */
+export const updatesChartClinical = (c: Candidate, sud: SudStatus): boolean =>
+  clinicalTargetOf(c.fieldPath) !== null &&
+  c.riskLevel === "high" &&
+  isApproved(c) &&
+  !(c.sudDetected && sud !== "rejected");
 
 /**
  * Bulk-approve scope: low risk, not SUD-tagged, not vision-disagreed, undecided, and source-confirmed

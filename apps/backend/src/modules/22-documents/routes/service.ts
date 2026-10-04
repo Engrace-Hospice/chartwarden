@@ -14,6 +14,7 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates";
+import type { ClinicalWritebackSummary } from "../extraction/writeback-commit-clinical-db";
 import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-db";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
 import { type CursorPage, paginate } from "./concurrency";
@@ -155,6 +156,8 @@ export interface CompleteReviewResult {
   readonly reviewId: string;
   readonly status: "complete";
   readonly writeback?: ExtractionWritebackSummary;
+  /** F-238 — the medication-history (M12) / allergy (M5) half of the commit. */
+  readonly clinicalWriteback?: ClinicalWritebackSummary;
 }
 
 export interface DocumentWriteActor {

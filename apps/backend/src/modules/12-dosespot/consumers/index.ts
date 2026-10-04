@@ -88,4 +88,9 @@ export const M12_OUTBOX_SUBSCRIPTIONS = [
   },
   { eventName: "m22.document.rendered", consumerName: "m12.document-backref" },
   { eventName: "idg.decision_recorded", consumerName: "m12.idg-decision-intake" },
+  // F-238 — DocLens medication lines → reconciliation-only medication history (never a medication_order).
+  {
+    eventName: "m22.extraction.medication_history_requested",
+    consumerName: "m12.extraction-medication-history",
+  },
 ] as const;

@@ -178,6 +178,7 @@ import {
   buildM5AdmissionSitingConsumer,
   buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
+  buildM5ExtractionAllergyConsumer,
   buildM5ExtractionWritebackConsumer,
   buildM5IntakeSudPrivacyConsumer,
   buildM5VisitAssignedConsumer,
@@ -354,6 +355,7 @@ import {
   buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
   buildM12DraftOrderRequestedConsumer,
+  buildM12ExtractionMedicationHistoryConsumer,
   buildM12IdgDecisionConsumer,
   buildM12PatientSyncAddressChangedConsumer,
   buildM12PatientSyncCreatedConsumer,
@@ -583,6 +585,7 @@ import {
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
+  buildM22ExtractionClinicalBackrefConsumer,
   buildM22LabBackrefConsumer,
   buildM22MedicationListConsumer,
   createCandidateValueCipher,
@@ -6080,6 +6083,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `extraction_provenance` from the reply and emits the terminal `m22.extraction.commit_completed`.
           buildM5ExtractionWritebackConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           buildM22ExtractionBackrefConsumer({ db: dbHandle.db, outbox: m22OutboxPublisher }),
+          // F-238 — the DocLens clinical writeback, all three legs. M12 records approved medication lines as
+          // reconciliation-only `medication_history_record` rows (never a medication_order — D10/D12); M5
+          // records approved allergy lines as UNVERIFIED `patient_allergy` rows; M22 stamps each line's
+          // provenance with the row id and emits `m22.extraction.commit_completed`.
+          buildM12ExtractionMedicationHistoryConsumer({
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+          }),
+          buildM5ExtractionAllergyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          buildM22ExtractionClinicalBackrefConsumer({
+            db: dbHandle.db,
+            outbox: m22OutboxPublisher,
+          }),
           // F-237 — M22 §7.4 W4: DocLens SUD detection → the patient's interim `sud` privacy flag, and the
           // reviewer's confirm / false-positive round-trip (a rejection retires only a DocLens-set flag).
           buildM5IntakeSudPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),

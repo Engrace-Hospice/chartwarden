@@ -247,4 +247,38 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m5.patient_allergy.draft_created_from_extraction",
+    moduleOwner: "m5",
+    // F-238 — M5 recorded a DocLens review's attested allergy lines as UNVERIFIED `patient_allergy` rows
+    // (`outbox-consumers/m22-extraction-allergies.ts`, same transaction). M22's
+    // `m22.extraction-clinical-writeback-backref` stamps `extraction_provenance` with each row id.
+    description:
+      "M5 recorded an M22 DocLens allergy commit (`m22.extraction.allergies_requested`) as unverified allergies on an existing patient; carries a per-line outcome (created | already_present | duplicate | skipped) with the `patient_allergy` id, no values.",
+    payloadSchema: Type.Object({
+      ...corePatient,
+      extractionCommitId: Type.String({ minLength: 1 }),
+      lineOutcomes: Type.Array(
+        Type.Union([
+          Type.Object({
+            candidateId: Type.String({ minLength: 1 }),
+            outcome: Type.Union([
+              Type.Literal("created"),
+              Type.Literal("already_present"),
+              Type.Literal("duplicate"),
+            ]),
+            recordId: Type.String({ minLength: 1 }),
+          }),
+          Type.Object({
+            candidateId: Type.String({ minLength: 1 }),
+            outcome: Type.Literal("skipped"),
+            reason: Type.String({ minLength: 1 }),
+          }),
+        ]),
+      ),
+      appliedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
 ];
