@@ -183,7 +183,9 @@ export function WorkQueueLayout({
     <div className="wx-work-queue" style={fillColumn}>
       {header}
       {kpis}
-      {filters}
+      {/* `wx-work-filters` puts whatever a screen passes here (FilterBar or its own search/select row)
+          on the shared filter panel (index.css), so every queue's filters look alike. */}
+      {filters ? <div className="wx-work-filters">{filters}</div> : null}
       {/* `wx-work-split` marks the region that must NOT be padded by the bare-slot rule in index.css:
           the table and the context rail each own their inset. */}
       <div

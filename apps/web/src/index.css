@@ -797,9 +797,22 @@
     padding: var(--space-4) var(--space-5) var(--space-4) 0;
   }
 
+  /* The shared DataTable sits on a card, like the redesigned list tables (.wx-list-table-wrap). */
   .wx-data-table-scroll {
     width: 100%;
     overflow-x: auto;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-data-table th {
+    padding: 0.7rem 1rem;
+  }
+  .wx-data-table td {
+    padding: 0.75rem 1rem;
+  }
+  .wx-data-table tbody tr:last-child td {
+    border-bottom: none;
   }
   .wx-data-table {
     display: table;
@@ -941,9 +954,59 @@
      So: pad every direct child EXCEPT the regions that already handle it, and except the split row,
      whose table and context rail own their own insets. Same shape as the context-rail rule above. */
   .wx-work-queue
-    > :not(.wx-page-header):not(.wx-kpi-strip):not(.wx-filter-bar):not(.wx-work-split) {
+    > :not(.wx-page-header):not(.wx-kpi-strip):not(.wx-filter-bar):not(.wx-work-split):not(
+      .wx-work-filters
+    ) {
     padding-left: var(--space-5);
     padding-right: var(--space-5);
+  }
+  /* WorkQueueLayout's filter slot is the shared filter panel (same look as .wx-filter-panel). A screen's
+     own row brought its own gutter (inline padding); inside the panel that gutter is dropped. A slot that
+     already is a panel (FilterBar, .wx-filter-panel) is left as it is. */
+  .wx-work-filters {
+    margin: 0 var(--space-5) var(--space-4);
+  }
+  .wx-work-filters:not(:has(> .wx-filter-bar, > .wx-filter-panel, > * > .wx-filter-panel)) {
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-work-filters:not(:has(> .wx-filter-bar, > .wx-filter-panel, > * > .wx-filter-panel)) > * {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .wx-work-filters > .wx-filter-bar {
+    margin: 0 !important;
+  }
+  /* A screen that drops a bare <table> into the queue's table slot (directly, or as the only child of a
+     plain wrapper) gets the list-table card:
+     full width inside the page gutter, hairline edge, header band. (DataTable / .wx-list-table bring
+     their own card.) The slot itself scrolls, so the table can be a real table again. */
+  .wx-work-table > table:not(.wx-data-table):not(.wx-list-table),
+  .wx-work-table > div:only-child > table:not(.wx-data-table):not(.wx-list-table) {
+    display: table;
+    width: calc(100% - 2 * var(--space-5)) !important;
+    margin: 0 var(--space-5) var(--space-5);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--color-surface-lowest);
+    overflow: hidden;
+  }
+  .wx-work-table > table:not(.wx-data-table):not(.wx-list-table) thead th,
+  .wx-work-table > div:only-child > table:not(.wx-data-table):not(.wx-list-table) thead th {
+    background: var(--color-surface-low);
+  }
+  .wx-work-table > table:not(.wx-data-table):not(.wx-list-table) tbody tr:last-child td,
+  .wx-work-table
+    > div:only-child
+    > table:not(.wx-data-table):not(.wx-list-table)
+    tbody
+    tr:last-child
+    td {
+    border-bottom: none;
   }
 
   /* Patient workspaces: shared chrome for every /patients/* route that uses PatientWorkspaceLayout
@@ -2795,7 +2858,8 @@
     font-weight: 600;
     color: var(--color-on-surface);
   }
-  .wx-sr-only {
+  .wx-sr-only,
+  .wx-visually-hidden {
     position: absolute;
     width: 1px;
     height: 1px;

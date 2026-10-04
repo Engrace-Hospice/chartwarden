@@ -42,20 +42,6 @@ interface CensusMetrics {
   byStatus: Record<string, number>;
 }
 
-const ADMIT_BTN = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  minHeight: "2.25rem",
-  padding: "0.45rem 1rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-primary)",
-  color: "var(--color-on-primary)",
-  fontSize: "0.85rem",
-  fontWeight: 600,
-  textDecoration: "none",
-} as const;
-
 // §4.2 census KPI strip (frame: wardenx-P0-foundation.pen `DNqXm`). Census is the real active count;
 // the cross-module KPIs show "—" with the owning module noted — honest, never fabricated numbers.
 function CensusKpis({
@@ -76,14 +62,26 @@ function CensusKpis({
         value={metrics ? active : "—"}
         detail={metrics ? `${total} total in organization` : "Loading metrics"}
         tone="success"
-        accentColor="var(--color-success)"
+        icon="users"
         selected={status === "active"}
         onSelect={() => onStatusSelect(status === "active" ? "" : "active")}
       />
-      <KpiCard label="Admissions" value="—" detail="Today · M6 Admission" />
-      <KpiCard label="Discharges" value="—" detail="Today · M6 Admission" />
-      <KpiCard label="GIP" value="—" detail="Billing source pending" />
-      <KpiCard label="Recerts due" value="—" detail="M6 Certification" />
+      <KpiCard label="Admissions" value="—" detail="Today · M6 Admission" icon="user-plus" />
+      <KpiCard
+        label="Discharges"
+        value="—"
+        detail="Today · M6 Admission"
+        icon="arrow-right"
+        accentColor="var(--color-viz-violet)"
+      />
+      <KpiCard label="GIP" value="—" detail="Billing source pending" icon="bed" tone="warning" />
+      <KpiCard
+        label="Recerts due"
+        value="—"
+        detail="M6 Certification"
+        icon="calendar-check"
+        accentColor="var(--color-viz-teal)"
+      />
     </KpiStrip>
   );
 }
@@ -148,9 +146,8 @@ export function PatientListCensus(): JSX.Element {
           title="Patients · Census"
           breadcrumb="Clinical — patient list"
           actions={
-            <Link to="/referrals" style={ADMIT_BTN}>
-              <Glyph name="sparkle" size={14} />
-              Admit patient
+            <Link to="/referrals" className="wx-btn-primary">
+              <Glyph name="plus" size={16} /> Admit patient
             </Link>
           }
         >
@@ -168,34 +165,31 @@ export function PatientListCensus(): JSX.Element {
       }
       kpis={<CensusKpis metrics={metrics} status={status} onStatusSelect={setStatus} />}
       filters={
-        <div style={filterPanelStyle}>
+        <div style={{ display: "grid", gap: "0.75rem" }}>
           {error ? (
             <div role="alert" style={errorBannerStyle}>
               <Glyph name="alert" size={16} />
               <span>{error}</span>
             </div>
           ) : null}
-          <div style={filterRowStyle}>
-            <div style={{ position: "relative", minWidth: "17rem" }}>
+          <div className="wx-filter-panel">
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
               <input
                 type="search"
                 aria-label="Search name or MRN"
-                placeholder="Search name or MRN..."
+                placeholder="Search name or MRN…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                style={searchInputStyle}
               />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
-            <label style={filterLabelStyle}>
-              <span style={mutedStyle}>Status</span>
+            </label>
+            <label className="wx-filter-field">
+              <span>Status</span>
               <select
+                className="wx-select"
                 aria-label="Status"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                style={selectStyle}
               >
                 <option value="">Any status</option>
                 <option value="prospective">Prospective</option>
@@ -206,18 +200,18 @@ export function PatientListCensus(): JSX.Element {
               </select>
             </label>
             {hasActiveFilters ? (
-              <Button
-                size="sm"
-                tone="tertiary"
+              <button
+                type="button"
+                className="wx-btn-secondary"
                 onClick={() => {
                   setQ("");
                   setStatus("");
                 }}
               >
-                Clear
-              </Button>
+                <Glyph name="filter" size={15} /> Clear
+              </button>
             ) : null}
-            <span style={mutedStyle}>
+            <span style={{ ...mutedStyle, lineHeight: "2.5rem", marginLeft: "auto" }}>
               {items.length} loaded{nextCursor ? " · more available" : ""}
             </span>
           </div>
@@ -324,59 +318,9 @@ function CensusTable({
   );
 }
 
-const filterPanelStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-  padding: "0 1.5rem 0.75rem",
-};
-
-const filterRowStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "end",
-  gap: "0.75rem",
-  justifyContent: "space-between",
-};
-
-const filterLabelStyle: CSSProperties = {
-  display: "grid",
-  gap: "0.25rem",
-};
-
 const mutedStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.8125rem",
-};
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  minHeight: "2.25rem",
-  padding: "0.45rem 0.75rem 0.45rem 2rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
-  background: "var(--color-surface)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-
-const searchIconStyle: CSSProperties = {
-  position: "absolute",
-  left: "0.65rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none",
-};
-
-const selectStyle: CSSProperties = {
-  minHeight: "2.25rem",
-  padding: "0.45rem 0.65rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
-  background: "var(--color-surface)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
 };
 
 const errorBannerStyle: CSSProperties = {

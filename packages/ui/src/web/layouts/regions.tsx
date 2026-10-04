@@ -10,6 +10,7 @@
 import { useEffect, useRef } from "react";
 import type { JSX, ReactNode } from "react";
 import { Button } from "../components/button";
+import { Glyph, type GlyphName } from "../system/glyphs";
 import { ghostBorder, t } from "../theme/tokens";
 
 /** Page Header — screen title, breadcrumb, page-level actions. */
@@ -19,6 +20,9 @@ export interface PageHeaderProps {
   actions?: ReactNode;
   children?: ReactNode;
 }
+// 2026-10-04 — matches the redesigned list pages (Admissions, its Pending Referrals / Compliance tabs):
+// a bold sans title over the canvas, no divider rule; the KPI cards and filter panel below carry the
+// structure.
 export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderProps): JSX.Element {
   return (
     <header
@@ -26,9 +30,8 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: t.space2,
-        padding: `${t.space4} ${t.space5}`,
-        borderBottom: ghostBorder,
+        gap: t.space1,
+        padding: `${t.space5} ${t.space5} ${t.space2}`,
       }}
     >
       {breadcrumb ? (
@@ -39,19 +42,20 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           justifyContent: "space-between",
+          flexWrap: "wrap",
           gap: t.space4,
         }}
       >
-        {/* headline-lg — Fraunces, the human voice for the screen title (§3.1). */}
         <h1
           className="wx-page-title"
           style={{
             margin: 0,
-            fontFamily: t.fontDisplay,
-            fontSize: "1.75rem",
-            fontWeight: 500,
+            fontFamily: t.fontSans,
+            fontSize: "1.875rem",
+            fontWeight: 700,
+            letterSpacing: "-0.01em",
             lineHeight: 1.2,
             color: t.onSurface,
           }}
@@ -59,7 +63,10 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
           {title}
         </h1>
         {actions ? (
-          <div className="wx-page-actions" style={{ display: "flex", gap: t.space2 }}>
+          <div
+            className="wx-page-actions"
+            style={{ display: "flex", flexWrap: "wrap", gap: t.space2 }}
+          >
             {actions}
           </div>
         ) : null}
@@ -69,17 +76,17 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
   );
 }
 
-/** KPI Strip — horizontal row of summary metric cards. */
+/** KPI Strip — row of summary metric cards; the cards share the row's width. */
 export function KpiStrip({ children }: { children: ReactNode }): JSX.Element {
   return (
     <div
       className="wx-kpi-strip"
       style={{
-        display: "flex",
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(12.5rem, 1fr))",
         flexShrink: 0,
         gap: t.space4,
         padding: `${t.space4} ${t.space5}`,
-        overflowX: "auto",
       }}
     >
       {children}
@@ -94,11 +101,22 @@ export interface KpiCardProps {
   trend?: ReactNode;
   tone?: "neutral" | "info" | "success" | "warning" | "danger";
   selected?: boolean;
-  /** Optional left accent rail for dashboard/work-queue KPI cards. */
+  /** Overrides the tone's icon colour. */
   accentColor?: string;
+  /** Icon in the tinted square; defaults to one per tone. */
+  icon?: GlyphName;
   /** Optional click → e.g. apply a saved filter into the queue below. */
   onSelect?: () => void;
 }
+const TONE_ICON: Record<NonNullable<KpiCardProps["tone"]>, GlyphName> = {
+  neutral: "bar-chart",
+  info: "file-text",
+  success: "check-circle",
+  warning: "clock",
+  danger: "alert-circle",
+};
+// 2026-10-04 — the redesigned stat card (Admissions): a tone-tinted icon square, a sentence-case label,
+// the figure, and its detail line, on a bordered card.
 export function KpiCard({
   label,
   value,
@@ -107,6 +125,7 @@ export function KpiCard({
   tone = "neutral",
   selected = false,
   accentColor,
+  icon,
   onSelect,
 }: KpiCardProps): JSX.Element {
   const semantic =
@@ -118,54 +137,70 @@ export function KpiCard({
           ? t.warning
           : tone === "danger"
             ? t.error
-            : t.onSurface;
+            : t.primary;
+  // Callers pass the outline grey to mean "no accent" (it was the old left rail's quiet colour); as an
+  // icon colour it would vanish, so it reads as neutral here.
+  const color =
+    accentColor && !accentColor.includes("outline")
+      ? accentColor
+      : accentColor
+        ? t.onSurfaceVariant
+        : semantic;
   const body = (
     <>
-      {/* label-sm — Fraunces eyebrow, all-caps (§3.3 Big/Small editorial rule). */}
-      <div
+      <span
+        aria-hidden
         style={{
-          fontFamily: t.fontDisplay,
-          fontSize: "0.6875rem",
-          fontWeight: 600,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-          color: t.onSurfaceVariant,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          width: "2.75rem",
+          height: "2.75rem",
+          borderRadius: t.radiusMd,
+          color,
+          background: `color-mix(in srgb, ${color} 12%, ${t.surfaceLowest})`,
         }}
       >
-        {label}
-      </div>
-      {/* The figure — Inter with tabular-nums; never Fraunces (its numerals aren't tabular). */}
-      <div
-        style={{
-          fontFamily: t.fontSans,
-          fontSize: "1.5rem",
-          fontWeight: 600,
-          fontVariantNumeric: "tabular-nums",
-          color: semantic,
-        }}
-      >
-        {value}
-      </div>
-      {detail || trend ? (
-        <div
-          style={{ display: "flex", gap: t.space2, color: t.onSurfaceVariant, fontSize: "0.75rem" }}
+        <Glyph name={icon ?? TONE_ICON[tone]} size={22} strokeWidth={1.6} />
+      </span>
+      <span style={{ display: "grid", minWidth: 0 }}>
+        <span style={{ color: t.muted, fontSize: "0.8125rem" }}>{label}</span>
+        {/* The figure — tabular numerals. */}
+        <span
+          style={{
+            fontFamily: t.fontSans,
+            fontSize: "1.625rem",
+            fontWeight: 700,
+            lineHeight: 1.2,
+            fontVariantNumeric: "tabular-nums",
+            color: t.onSurface,
+          }}
         >
-          {detail}
-          {trend ? <span style={{ color: semantic, fontWeight: 600 }}>{trend}</span> : null}
-        </div>
-      ) : null}
+          {value}
+        </span>
+        {detail || trend ? (
+          <span style={{ display: "flex", gap: t.space2, color: t.muted, fontSize: "0.8125rem" }}>
+            {detail}
+            {trend ? <span style={{ color: semantic, fontWeight: 600 }}>{trend}</span> : null}
+          </span>
+        ) : null}
+      </span>
     </>
   );
-  // No-Line card: surface-lowest fill + soft shadow + xl radius, no border (§2.5/§4.3).
   const style = {
-    minWidth: "10rem",
-    padding: `${t.space3} ${t.space4}`,
+    display: "flex",
+    alignItems: "center",
+    gap: "0.875rem",
+    minWidth: 0,
+    padding: "1rem 1.125rem",
     background: t.surfaceLowest,
-    borderRadius: t.radiusXl,
-    boxShadow: t.shadowSoft,
+    border: `1px solid ${selected ? t.primary : t.cardBorder}`,
+    borderRadius: t.radiusLg,
+    boxShadow: selected ? `inset 0 0 0 1px ${t.primary}` : undefined,
     textAlign: "left" as const,
-    border: selected ? `2px solid ${t.primary}` : "2px solid transparent",
-    borderLeft: accentColor ? `4px solid ${accentColor}` : undefined,
+    font: "inherit",
+    color: "inherit",
   };
   return onSelect ? (
     <button
@@ -173,7 +208,7 @@ export function KpiCard({
       className="wx-kpi-card"
       onClick={onSelect}
       aria-pressed={selected}
-      style={{ ...style, cursor: "pointer" }}
+      style={{ ...style, width: "100%", cursor: "pointer" }}
     >
       {body}
     </button>
@@ -203,14 +238,20 @@ export function FilterBar({
       className="wx-filter-bar"
       style={{
         display: "flex",
-        alignItems: "center",
+        flexWrap: "wrap",
+        alignItems: "flex-end",
         justifyContent: "space-between",
-        gap: "1rem",
-        padding: "0.75rem 1.5rem",
-        borderBottom: ghostBorder,
+        gap: "0.75rem",
+        margin: `0 ${t.space5} ${t.space4}`,
+        padding: "0.875rem 1rem",
+        background: t.surfaceLowest,
+        border: `1px solid ${t.cardBorder}`,
+        borderRadius: t.radiusLg,
       }}
     >
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>{children}</div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "0.75rem", flexWrap: "wrap" }}>
+        {children}
+      </div>
       {actions || activeFilterCount > 0 ? (
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           {activeFilterCount > 0 ? (
