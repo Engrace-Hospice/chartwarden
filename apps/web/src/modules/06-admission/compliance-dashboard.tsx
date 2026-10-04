@@ -1,14 +1,10 @@
 import {
-  Button,
-  DashboardLayout,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
-  PageHeader,
   StatusPill,
+  t,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Compliance Dashboard (M6 §5.2.11, Track B / ADR-0030).
@@ -16,10 +12,12 @@ import {
 // Org-wide compliance windows (F2F / recert / NOR / late-CTI) read from GET /api/v1/compliance-windows
 // via the generated typed client; a row deep-links to the owning admission's Compliance tab. The
 // server enforces every scope (ADR-0030 — no authz on the frontend). Reconciled to Lantern (R1): §6.6
-// status pills (overdue → error tone), mono ids, No-Line table. Imports only leaves (@wardenx/ui).
+// status pills (overdue → error tone), mono ids. Lays out as a tab of the Admissions area (shared
+// admissions-chrome: sub-tabs, stat cards that filter by state, filter panel, list table).
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { WINDOW_TONE, stateLabel } from "./admission-status";
+import { AdmissionsTabs, Filter, Stat } from "./admissions-chrome";
 
 interface WindowRow {
   id: string;
@@ -42,8 +40,8 @@ export function ComplianceDashboard(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const query: { state?: string; limit?: number } = { limit: 100 };
-    if (state) query.state = state;
+    // State filters client-side so the Open / Overdue / Closed cards keep their totals while one is picked.
+    const query: { limit?: number } = { limit: 100 };
     const { data, error: err } = await client.GET("/api/v1/compliance-windows", {
       params: { query },
     });
@@ -54,7 +52,7 @@ export function ComplianceDashboard(): JSX.Element {
     }
     setItems(data?.items ?? []);
     setLoading(false);
-  }, [client, state]);
+  }, [client]);
 
   useEffect(() => {
     void load();
@@ -65,6 +63,7 @@ export function ComplianceDashboard(): JSX.Element {
   const closed = items.filter((w) => w.state === "closed").length;
   const filtered = items.filter((w) => {
     const q = searchQuery.trim().toLowerCase();
+    if (state && w.state !== state) return false;
     return !q || w.id.toLowerCase().includes(q) || w.state.toLowerCase().includes(q);
   });
   const hasActiveFilters = searchQuery !== "" || state !== "";
@@ -78,150 +77,131 @@ export function ComplianceDashboard(): JSX.Element {
     setPage(1);
   }
 
+  const pick = (next: string) => {
+    setState((cur) => (cur === next ? "" : next));
+    setPage(1);
+  };
+
   return (
-    <DashboardLayout
-      header={
-        <PageHeader title="Compliance — Admissions" breadcrumb="Admissions / Compliance">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Track admission compliance windows, overdue work, and closed readiness checkpoints.
+    <div className="wx-admissions">
+      <div className="wx-admissions-main">
+        <header className="wx-page-head">
+          <div>
+            <h1 style={{ fontSize: "1.875rem" }}>Admissions</h1>
+            <p>
+              Track admission compliance windows, overdue work, and closed readiness checkpoints.
+            </p>
           </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Open"
+        </header>
+
+        <AdmissionsTabs current="/compliance/admissions" />
+
+        <div className="wx-stat-grid" aria-label="Compliance windows summary">
+          <Stat
+            icon="clock"
             value={open}
-            detail="Active windows"
-            tone="info"
-            accentColor="var(--color-primary)"
-            onSelect={() => {
-              setState("open");
-              setPage(1);
-            }}
+            label="Open"
+            hint="Active windows"
+            onSelect={() => pick("open")}
             selected={state === "open"}
           />
-          <KpiCard
-            label="Overdue"
+          <Stat
+            icon="alert-circle"
             value={overdue}
-            detail="Needs attention"
-            tone={overdue > 0 ? "danger" : "neutral"}
-            accentColor={overdue > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            onSelect={() => {
-              setState("overdue");
-              setPage(1);
-            }}
+            label="Overdue"
+            hint="Needs attention"
+            color={overdue > 0 ? t.error : "var(--color-viz-amber)"}
+            onSelect={() => pick("overdue")}
             selected={state === "overdue"}
           />
-          <KpiCard
-            label="Closed"
+          <Stat
+            icon="check-circle"
             value={closed}
-            detail="Completed windows"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-            onSelect={() => {
-              setState("closed");
-              setPage(1);
-            }}
+            label="Closed"
+            hint="Completed windows"
+            color={t.success}
+            onSelect={() => pick("closed")}
             selected={state === "closed"}
           />
-          <KpiCard
-            label="In view"
+          <Stat
+            icon="filter"
             value={filtered.length}
-            detail="After filters"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
+            label="In View"
+            hint="After filters"
+            color="var(--color-viz-violet)"
           />
-        </KpiStrip>
-      }
-      charts={
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {error ? (
-            <div role="alert" style={alertStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{error}</span>
-            </div>
-          ) : null}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "1rem",
-            }}
-          >
-            <div style={tabsShellStyle}>
-              <button type="button" style={tabButtonStyle(true)}>
-                Compliance windows ({items.length})
-              </button>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
-                <input
-                  type="search"
-                  placeholder="Search windows by ID or state..."
-                  value={searchQuery}
-                  onChange={(event) => {
-                    setSearchQuery(event.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search compliance windows"
-                  style={searchInputStyle}
-                />
-                <div style={searchIconStyle}>
-                  <Glyph name="search" size={14} />
-                </div>
-              </div>
-              <select
-                aria-label="Window state"
-                value={state}
-                onChange={(event) => {
-                  setState(event.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">State: All</option>
-                <option value="open">Open</option>
-                <option value="overdue">Overdue</option>
-                <option value="closed">Closed</option>
-              </select>
-              {hasActiveFilters ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
         </div>
-      }
-      table={
-        loading && items.length === 0 ? (
-          <div style={{ padding: "2rem 0", textAlign: "center" }}>
-            <LoadingSpinner />
+
+        <div className="wx-filter-panel">
+          <label className="wx-search-field">
+            <Glyph name="search" size={16} />
+            <input
+              type="search"
+              placeholder="Search windows by ID or state…"
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setPage(1);
+              }}
+              aria-label="Search compliance windows"
+            />
+          </label>
+          <Filter
+            label="State"
+            value={state}
+            onChange={(v) => {
+              setState(v);
+              setPage(1);
+            }}
+            ariaLabel="Window state"
+          >
+            <option value="">All</option>
+            <option value="open">Open</option>
+            <option value="overdue">Overdue</option>
+            <option value="closed">Closed</option>
+          </Filter>
+          {hasActiveFilters ? (
+            <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+              <Glyph name="filter" size={15} /> Clear
+            </button>
+          ) : null}
+        </div>
+
+        {error ? (
+          <div className="wx-list-state" role="alert">
+            <EmptyState title="Compliance windows unavailable" description={error} />
+            <button type="button" className="wx-btn-secondary" onClick={() => void load()}>
+              Try again
+            </button>
           </div>
+        ) : loading && items.length === 0 ? (
+          <LoadingSpinner />
         ) : filtered.length === 0 ? (
-          <EmptyState
-            title={
-              hasActiveFilters ? "No matching compliance windows found" : "No compliance windows"
-            }
-            description={
-              hasActiveFilters
-                ? "Try adjusting the search or state filter."
-                : "No windows match the current filter."
-            }
-            action={
-              hasActiveFilters ? (
-                <Button tone="secondary" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              ) : undefined
-            }
-          />
+          <div className="wx-list-state">
+            <EmptyState
+              title={
+                hasActiveFilters ? "No matching compliance windows found" : "No compliance windows"
+              }
+              description={
+                hasActiveFilters
+                  ? "Try adjusting the search or state filter."
+                  : "Windows open as admissions reach their compliance checkpoints."
+              }
+            />
+            {hasActiveFilters ? (
+              <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+                Clear filters
+              </button>
+            ) : null}
+          </div>
         ) : (
-          <>
-            <WindowTable items={pagedItems} loading={loading} />
+          <section
+            className="wx-list-table-wrap"
+            aria-label="Compliance windows"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
+            tabIndex={0}
+          >
+            <WindowTable items={pagedItems} />
             <OffsetPagination
               page={activePage}
               pageSize={pageSize}
@@ -234,148 +214,56 @@ export function ComplianceDashboard(): JSX.Element {
               pageSizeOptions={WINDOW_PAGE_SIZES}
               noun="windows"
             />
-          </>
-        )
-      }
-    />
+          </section>
+        )}
+      </div>
+    </div>
   );
 }
 
-function WindowTable({
-  items,
-  loading,
-}: {
-  items: WindowRow[];
-  loading: boolean;
-}): JSX.Element {
+function WindowTable({ items }: { items: WindowRow[] }): JSX.Element {
   return (
-    <section
-      aria-label="Compliance windows"
-      // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be keyboard-focusable (axe scrollable-region-focusable).
-      tabIndex={0}
-      style={{ width: "100%", overflowX: "auto" }}
-    >
-      <table style={tableStyle}>
-        <thead>
-          <tr style={tableHeadRowStyle}>
-            <th style={{ ...thStyle, width: "58%" }}>Window</th>
-            <th style={{ ...thStyle, width: "22%" }}>State</th>
-            <th style={{ ...thStyle, width: "20%" }}>Version</th>
+    <table className="wx-list-table">
+      <caption className="wx-sr-only">Compliance windows</caption>
+      <thead>
+        <tr>
+          <th scope="col" style={{ width: "58%" }}>
+            Window
+          </th>
+          <th scope="col" style={{ width: "22%" }}>
+            State
+          </th>
+          <th scope="col" style={{ width: "20%" }}>
+            Version
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((w) => (
+          <tr key={w.id} style={{ cursor: "default" }}>
+            <td>
+              <span style={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0 }}>
+                <span style={rowIconStyle(w.state)} aria-hidden>
+                  <Glyph name={w.state === "overdue" ? "alert" : "clock"} size={16} />
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span className="wx-row-title wx-data-md" style={{ cursor: "default" }}>
+                    {w.id}
+                  </span>
+                  <span className="wx-row-sub">Admission compliance window</span>
+                </span>
+              </span>
+            </td>
+            <td>
+              <StatusPill label={stateLabel(w.state)} tone={WINDOW_TONE[w.state] ?? "neutral"} />
+            </td>
+            <td className="wx-nums">v{w.version}</td>
           </tr>
-        </thead>
-        <tbody>
-          {items.map((w) => (
-            <tr key={w.id}>
-              <td style={tdStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
-                  <div style={rowIconStyle(w.state)}>
-                    <Glyph name={w.state === "overdue" ? "alert" : "clock"} size={16} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="wx-data-md" style={{ fontWeight: 650 }}>
-                      {w.id}
-                    </div>
-                    <div style={rowSubtextStyle}>Admission compliance window</div>
-                  </div>
-                </div>
-              </td>
-              <td style={tdStyle}>
-                <StatusPill label={stateLabel(w.state)} tone={WINDOW_TONE[w.state] ?? "neutral"} />
-              </td>
-              <td className="wx-data-md" style={tdStyle}>
-                v{w.version}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+        ))}
+      </tbody>
+    </table>
   );
 }
-
-const alertStyle: CSSProperties = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
-  fontSize: "0.85rem",
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-};
-
-const tabsShellStyle: CSSProperties = {
-  display: "flex",
-  gap: "0.25rem",
-  background: "var(--color-surface-container)",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-};
-
-function tabButtonStyle(active: boolean): CSSProperties {
-  return {
-    border: "none",
-    borderRadius: "calc(var(--radius-md) - 2px)",
-    background: active ? "var(--color-surface-lowest)" : "transparent",
-    color: active ? "var(--color-on-surface)" : "var(--color-on-surface-variant)",
-    padding: "0.4rem 0.8rem",
-    fontSize: "0.85rem",
-    fontWeight: active ? 650 : 500,
-    cursor: "pointer",
-    boxShadow: active ? "var(--shadow-soft)" : "none",
-  };
-}
-
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  paddingLeft: "2rem",
-  height: "2.25rem",
-  fontSize: "0.85rem",
-};
-
-const searchIconStyle: CSSProperties = {
-  position: "absolute",
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none",
-};
-
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
-const tableStyle: CSSProperties = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-};
-
-const tableHeadRowStyle: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-
-const thStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  fontSize: "0.75rem",
-  fontWeight: 650,
-  letterSpacing: "0.03em",
-  textTransform: "uppercase",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "0.875rem 1rem",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-  verticalAlign: "middle",
-};
 
 function rowIconStyle(state: string): CSSProperties {
   const urgent = state === "overdue";
@@ -392,8 +280,3 @@ function rowIconStyle(state: string): CSSProperties {
     justifyContent: "center",
   };
 }
-
-const rowSubtextStyle: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.75rem",
-};

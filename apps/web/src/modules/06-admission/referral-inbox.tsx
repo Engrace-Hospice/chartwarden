@@ -1,20 +1,16 @@
 import {
-  Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
-  PageHeader,
   StatusPill,
-  WorkQueueLayout,
   interactiveRowProps,
+  t,
   useApiClient,
 } from "@wardenx/ui";
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import {
   PATIENT_RESOLUTION_LABEL,
@@ -23,6 +19,7 @@ import {
   REFERRAL_TONE,
   stateLabel,
 } from "./admission-status";
+import { AdmissionsTabs, Avatar, Filter, Stat } from "./admissions-chrome";
 import { type ReferralListQuery, type ReferralView, listReferrals } from "./referrals-api";
 
 const FILTERS = [
@@ -115,142 +112,124 @@ export function ReferralInbox(): JSX.Element {
   }
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Referral Inbox"
-          breadcrumb="Admissions / Intake"
-          actions={
-            <Button tone="primary" onClick={() => navigate("/referrals/new")}>
-              New Referral
-            </Button>
-          }
-        >
-          <div style={muted}>Review and manage incoming referrals before admission.</div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard label="New" value={counts.received} detail="Awaiting review" tone="info" />
-          <KpiCard
-            label="Unassigned"
+    <div className="wx-admissions">
+      <div className="wx-admissions-main">
+        <header className="wx-page-head">
+          <div>
+            <h1 style={{ fontSize: "1.875rem" }}>Admissions</h1>
+            <p>Review and manage incoming referrals before admission.</p>
+          </div>
+          <Link to="/referrals/new" className="wx-btn-primary">
+            <Glyph name="plus" size={16} /> New Referral
+          </Link>
+        </header>
+
+        <AdmissionsTabs current="/referrals" />
+
+        <div className="wx-stat-grid wx-stat-grid-5" aria-label="Referral summary">
+          <Stat icon="file-text" value={counts.received} label="New" hint="Awaiting review" />
+          <Stat
+            icon="user"
             value={counts.unassigned}
-            detail="Needs owner"
-            tone="warning"
+            label="Unassigned"
+            hint="Needs owner"
+            color="var(--color-viz-amber)"
           />
-          <KpiCard
-            label="My referrals"
+          <Stat
+            icon="users"
             value={counts.mine}
-            detail="Assigned to you"
-            tone="neutral"
+            label="My Referrals"
+            hint="Assigned to you"
+            color="var(--color-viz-violet)"
           />
-          <KpiCard
-            label="Pending information"
+          <Stat
+            icon="clock"
             value={counts.pending}
-            detail="Waiting on source"
-            tone="warning"
+            label="Pending Information"
+            hint="Waiting on source"
+            color="var(--color-viz-amber)"
           />
-          <KpiCard
-            label="Ready"
+          <Stat
+            icon="check-circle"
             value={counts.ready}
-            detail="Qualified for admission"
-            tone="success"
+            label="Ready"
+            hint="Qualified for admission"
+            color={t.success}
           />
-        </KpiStrip>
-      }
-      filters={
-        <div style={filtersStyle}>
-          {error ? (
-            <div role="alert" style={alert}>
-              {error}
-            </div>
-          ) : null}
-          <div style={filterRow}>
-            <div style={tabs}>
-              {FILTERS.map(([value, label]) => (
-                <button
-                  key={value || "all"}
-                  type="button"
-                  onClick={() => setFilter(value)}
-                  style={tab(filter === value)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div style={tools}>
-              <div style={{ position: "relative", minWidth: "18rem" }}>
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(ev) => setSearch(ev.target.value)}
-                  placeholder="Search patient, source, referrer, diagnosis..."
-                  aria-label="Search referrals"
-                  style={{ width: "100%", paddingLeft: "2rem" }}
-                />
-                <span style={searchIcon}>
-                  <Glyph name="search" size={14} />
-                </span>
-              </div>
-              <select
-                aria-label="Priority"
-                value={priority}
-                onChange={(ev) => setPriority(ev.target.value)}
-              >
-                <option value="">Priority: All</option>
-                <option value="routine">Routine</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-              <select
-                aria-label="Patient resolution"
-                value={resolution}
-                onChange={(ev) => setResolution(ev.target.value)}
-              >
-                <option value="">Patient match: All</option>
-                <option value="unresolved">Not resolved</option>
-                <option value="possible_match">Review match</option>
-                <option value="matched">Matched</option>
-                <option value="created">New patient</option>
-              </select>
-              <select
-                aria-label="Source"
-                value={source}
-                onChange={(ev) => setSource(ev.target.value)}
-              >
-                <option value="">Source: All</option>
-                <option value="phone">Phone</option>
-                <option value="fax">Fax</option>
-                <option value="portal">Portal</option>
-                <option value="walk_in">Walk-in</option>
-                <option value="self_referral">Self referral</option>
-                <option value="physician_office">Physician office</option>
-                <option value="hospital_discharge_planner">Hospital discharge planner</option>
-              </select>
-              <label style={checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={includeConverted}
-                  onChange={(ev) => setIncludeConverted(ev.target.checked)}
-                />
-                Show converted referrals
-              </label>
-              {filtered ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
         </div>
-      }
-      table={
-        loading && items.length === 0 ? (
-          <div style={loadingBox}>
-            <LoadingSpinner />
+
+        <div className="wx-filter-panel">
+          <label className="wx-search-field">
+            <Glyph name="search" size={16} />
+            <input
+              type="search"
+              value={search}
+              onChange={(ev) => setSearch(ev.target.value)}
+              placeholder="Search patient, source, referrer, diagnosis…"
+              aria-label="Search referrals"
+            />
+          </label>
+          <Filter label="Queue" value={filter} onChange={setFilter} ariaLabel="Referral queue">
+            {FILTERS.map(([value, label]) => (
+              <option key={value || "all"} value={value}>
+                {label}
+              </option>
+            ))}
+          </Filter>
+          <Filter label="Priority" value={priority} onChange={setPriority}>
+            <option value="">All</option>
+            <option value="routine">Routine</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </Filter>
+          <Filter
+            label="Patient match"
+            value={resolution}
+            onChange={setResolution}
+            ariaLabel="Patient resolution"
+          >
+            <option value="">All</option>
+            <option value="unresolved">Not resolved</option>
+            <option value="possible_match">Review match</option>
+            <option value="matched">Matched</option>
+            <option value="created">New patient</option>
+          </Filter>
+          <Filter label="Source" value={source} onChange={setSource}>
+            <option value="">All</option>
+            <option value="phone">Phone</option>
+            <option value="fax">Fax</option>
+            <option value="portal">Portal</option>
+            <option value="walk_in">Walk-in</option>
+            <option value="self_referral">Self referral</option>
+            <option value="physician_office">Physician office</option>
+            <option value="hospital_discharge_planner">Hospital discharge planner</option>
+          </Filter>
+          <label className="wx-filter-check">
+            <input
+              type="checkbox"
+              checked={includeConverted}
+              onChange={(ev) => setIncludeConverted(ev.target.checked)}
+            />
+            Show converted referrals
+          </label>
+          {filtered ? (
+            <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+              <Glyph name="filter" size={15} /> Clear
+            </button>
+          ) : null}
+        </div>
+
+        {error ? (
+          <div className="wx-list-state" role="alert">
+            <EmptyState title="Referrals unavailable" description={error} />
+            <button type="button" className="wx-btn-secondary" onClick={() => void load()}>
+              Try again
+            </button>
           </div>
+        ) : loading && items.length === 0 ? (
+          <LoadingSpinner />
         ) : items.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
+          <div className="wx-list-state">
             <EmptyState
               title={filtered ? "No referrals match these filters." : "No referrals yet."}
               description={
@@ -259,38 +238,43 @@ export function ReferralInbox(): JSX.Element {
                   : "Create a referral to begin the intake process."
               }
             />
+            {filtered ? (
+              <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+                Clear filters
+              </button>
+            ) : null}
           </div>
         ) : (
-          <>
+          <div className="wx-list-table-wrap">
             <ReferralTable items={paged} onOpen={(id) => navigate(`/referrals/${id}`)} />
-            <div style={pager}>
-              <OffsetPagination
-                page={activePage}
-                pageSize={pageSize}
-                pageSizeOptions={[...PAGE_SIZES]}
-                totalItems={items.length}
-                noun="referrals"
-                onPageChange={setPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size);
-                  setPage(1);
-                }}
-              />
-              {nextCursor ? (
-                <Button
-                  size="sm"
-                  tone="secondary"
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              pageSizeOptions={[...PAGE_SIZES]}
+              totalItems={items.length}
+              noun="referrals"
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+            {nextCursor ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "0 1rem 1rem" }}>
+                <button
+                  type="button"
+                  className="wx-btn-secondary"
                   onClick={() => void load(nextCursor)}
                   disabled={loading}
                 >
                   Load more
-                </Button>
-              ) : null}
-            </div>
-          </>
-        )
-      }
-    />
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -299,71 +283,78 @@ function ReferralTable({
   onOpen,
 }: { items: ReferralView[]; onOpen: (id: string) => void }): JSX.Element {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={table}>
-        <thead>
-          <tr>
-            <th style={th}>Patient</th>
-            <th style={th}>Source</th>
-            <th style={th}>Received</th>
-            <th style={th}>Diagnosis / reason</th>
-            <th style={th}>Priority</th>
-            <th style={th}>Owner</th>
-            <th style={th}>Status</th>
-            <th style={th}>Patient match</th>
+    <table className="wx-list-table" style={{ minWidth: "64rem" }}>
+      <caption className="wx-sr-only">Referrals</caption>
+      <thead>
+        <tr>
+          <th scope="col">Patient</th>
+          <th scope="col">Source</th>
+          <th scope="col">Received</th>
+          <th scope="col">Diagnosis / reason</th>
+          <th scope="col">Priority</th>
+          <th scope="col">Owner</th>
+          <th scope="col">Status</th>
+          <th scope="col">Patient match</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((r) => (
+          <tr
+            key={r.id}
+            className="wx-data-row-interactive"
+            {...interactiveRowProps(() => onOpen(r.id), false, true)}
+          >
+            <td>
+              <span style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+                <Avatar name={firstLast(r.patientNameAtReceipt)} />
+                <span style={{ minWidth: 0 }}>
+                  <button type="button" className="wx-row-title" onClick={() => onOpen(r.id)}>
+                    {r.patientNameAtReceipt}
+                  </button>
+                  <span className="wx-row-sub">
+                    {r.patientDobAtReceipt
+                      ? `DOB ${formatDate(r.patientDobAtReceipt)}`
+                      : "DOB not provided"}
+                  </span>
+                </span>
+              </span>
+            </td>
+            <td>
+              <span style={{ display: "block" }}>
+                {r.referrerOrganization || sourceLabel(r.source)}
+              </span>
+              <span className="wx-row-sub">{sourceLabel(r.source)}</span>
+            </td>
+            <td className="wx-nums" style={{ whiteSpace: "nowrap" }}>
+              {formatDateTime(r.receivedAt)}
+            </td>
+            <td style={{ maxWidth: "18rem" }}>
+              {r.referringDxText || r.externalReferralId || "Not provided"}
+            </td>
+            <td>
+              <PriorityBadge value={r.priority} />
+            </td>
+            <td>
+              {r.assignedToUserId ? `Assigned to ${shortId(r.assignedToUserId)}` : "Unassigned"}
+            </td>
+            <td>
+              <StatusPill
+                label={stateLabel(r.status)}
+                tone={REFERRAL_TONE[r.status] ?? "neutral"}
+              />
+            </td>
+            <td>
+              <StatusPill
+                label={
+                  PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
+                }
+                tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
+              />
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {items.map((r) => (
-            <tr
-              key={r.id}
-              style={tr}
-              className="wx-data-row-interactive"
-              {...interactiveRowProps(() => onOpen(r.id), false, true)}
-            >
-              <td style={td}>
-                <button type="button" style={linkButton} onClick={() => onOpen(r.id)}>
-                  {r.patientNameAtReceipt}
-                </button>
-                <div style={subtext}>
-                  {r.patientDobAtReceipt
-                    ? `DOB ${formatDate(r.patientDobAtReceipt)}`
-                    : "DOB not provided"}
-                </div>
-              </td>
-              <td style={td}>
-                <div>{r.referrerOrganization || sourceLabel(r.source)}</div>
-                <div style={subtext}>{sourceLabel(r.source)}</div>
-              </td>
-              <td style={td}>{formatDateTime(r.receivedAt)}</td>
-              <td style={{ ...td, maxWidth: "18rem" }}>
-                {r.referringDxText || r.externalReferralId || "Not provided"}
-              </td>
-              <td style={td}>
-                <PriorityBadge value={r.priority} />
-              </td>
-              <td style={td}>
-                {r.assignedToUserId ? `Assigned to ${shortId(r.assignedToUserId)}` : "Unassigned"}
-              </td>
-              <td style={td}>
-                <StatusPill
-                  label={stateLabel(r.status)}
-                  tone={REFERRAL_TONE[r.status] ?? "neutral"}
-                />
-              </td>
-              <td style={td}>
-                <StatusPill
-                  label={
-                    PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
-                  }
-                  tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
-                />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -374,6 +365,12 @@ function PriorityBadge({ value }: { value: string }): JSX.Element {
       {PRIORITY_LABEL[value] ?? value}
     </span>
   );
+}
+
+// Referral names often arrive "LAST, FIRST"; the avatar's initials read first-then-last.
+function firstLast(name: string): string {
+  const [last, first] = name.split(",").map((part) => part.trim());
+  return first ? `${first} ${last}` : name;
 }
 
 function sourceLabel(value: string): string {
@@ -406,82 +403,6 @@ function errorMessage(err: unknown, fallback: string): string {
   return e.error?.message ?? e.message ?? fallback;
 }
 
-const muted: CSSProperties = { color: "var(--color-on-surface-variant)", fontSize: "0.875rem" };
-const filtersStyle: CSSProperties = {
-  padding: "0 1.5rem 0.75rem",
-  display: "grid",
-  gap: "0.75rem",
-};
-const filterRow: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "1rem",
-  flexWrap: "wrap",
-};
-const tabs: CSSProperties = { display: "flex", flexWrap: "wrap", gap: "0.25rem" };
-const tools: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "0.5rem",
-  alignItems: "center",
-};
-const checkboxLabel: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  fontSize: "0.875rem",
-  whiteSpace: "nowrap",
-};
-const tab = (active: boolean): CSSProperties => ({
-  border: "1px solid var(--color-outline-variant)",
-  background: active ? "var(--color-primary-container)" : "var(--color-surface)",
-  color: active ? "var(--color-on-primary-container)" : "var(--color-on-surface)",
-  borderRadius: "8px",
-  padding: "0.45rem 0.7rem",
-  cursor: "pointer",
-});
-const searchIcon: CSSProperties = {
-  position: "absolute",
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-};
-const alert: CSSProperties = {
-  padding: "0.65rem 0.85rem",
-  borderRadius: "8px",
-  border: "1px solid color-mix(in srgb, var(--color-error) 35%, transparent)",
-  color: "var(--color-error)",
-};
-const loadingBox: CSSProperties = { padding: "3rem 1.5rem", textAlign: "center" };
-const table: CSSProperties = { width: "100%", borderCollapse: "collapse", minWidth: "72rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.75rem",
-  borderBottom: "1px solid var(--color-outline-variant)",
-  fontSize: "0.78rem",
-  color: "var(--color-on-surface-variant)",
-};
-const td: CSSProperties = {
-  padding: "0.85rem 0.75rem",
-  borderBottom: "1px solid var(--color-outline-variant)",
-  verticalAlign: "top",
-};
-const tr: CSSProperties = { cursor: "pointer" };
-const subtext: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.78rem",
-  marginTop: "0.2rem",
-};
-const linkButton: CSSProperties = {
-  border: 0,
-  background: "transparent",
-  color: "var(--color-primary)",
-  padding: 0,
-  font: "inherit",
-  fontWeight: 700,
-  cursor: "pointer",
-};
 const priorityBadge: CSSProperties = {
   border: "1px solid var(--color-outline-variant)",
   borderRadius: "999px",
@@ -492,11 +413,4 @@ const urgentBadge: CSSProperties = {
   borderColor: "var(--color-error)",
   color: "var(--color-error)",
   fontWeight: 700,
-};
-const pager: CSSProperties = {
-  padding: "1rem 1.5rem",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "1rem",
-  flexWrap: "wrap",
 };

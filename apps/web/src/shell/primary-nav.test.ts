@@ -39,12 +39,43 @@ describe("buildPrimaryNav", () => {
     expect(keys).toEqual(["home", "patients"]);
   });
 
-  it("files Intake review under Referrals (intake starts with the referral), not Documents", () => {
-    const nav = buildPrimaryNav([screen("/referrals"), screen("/documents"), screen("/intake")]);
+  it("files referrals and Intake review under Admissions (Pending Referrals is its tab), not Documents", () => {
+    const nav = buildPrimaryNav([
+      screen("/admissions"),
+      screen("/referrals"),
+      screen("/documents"),
+      screen("/intake"),
+    ]);
     const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
-    expect(byKey.get("referrals")?.children.map((c) => c.path)).toContain("/intake");
+    expect(byKey.get("admissions")?.children.map((c) => c.path)).toEqual(
+      expect.arrayContaining(["/referrals", "/intake"]),
+    );
+    expect(byKey.has("referrals")).toBe(false);
     expect(byKey.get("documents")?.children.map((c) => c.path) ?? []).not.toContain("/intake");
-    expect(activeEntryKey(nav, "/intake/abc/review")).toBe("referrals");
+    expect(activeEntryKey(nav, "/intake/abc/review")).toBe("admissions");
+    expect(activeEntryKey(nav, "/referrals")).toBe("admissions");
+    expect(activeEntryKey(nav, "/referrals/r-1")).toBe("admissions");
+  });
+
+  it("groups the Admissions submenu: admission pages, then referral pages, then IPU", () => {
+    const nav = buildPrimaryNav([
+      screen("/referrals"),
+      screen("/referrals/new"),
+      screen("/admissions"),
+      screen("/ipu/units"),
+      screen("/compliance/admissions"),
+      screen("/admissions/new"),
+      screen("/intake"),
+    ]);
+    const admissions = nav.flatMap((s) => s.entries).find((e) => e.key === "admissions");
+    expect(admissions?.children.map((c) => c.path)).toEqual([
+      "/admissions/new",
+      "/compliance/admissions",
+      "/referrals",
+      "/referrals/new",
+      "/intake",
+      "/ipu/units",
+    ]);
   });
 
   it("marks the owning entry current for nested patient routes", () => {

@@ -21,6 +21,8 @@ export interface NavEntrySpec {
   claims: string[];
   /** Extra route prefixes that mark this entry current without being nav children (e.g. /patients/:id). */
   activeOn?: string[];
+  /** Child display order by path prefix (first match wins); children matching none keep their order, last. */
+  childOrder?: string[];
 }
 
 export interface NavSectionSpec {
@@ -44,7 +46,11 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Admissions",
         icon: "user-plus",
         to: "/admissions",
-        claims: ["/admissions", "/compliance/admissions", "/ipu"],
+        // Referrals are the Admissions area's "Pending Referrals" tab, so the inbox, new referral,
+        // referral detail and Intake review (DocLens faxes start with the referral) live here too —
+        // switching between the area's tabs never moves the sidebar highlight.
+        claims: ["/admissions", "/compliance/admissions", "/ipu", "/referrals", "/intake"],
+        childOrder: ["/admissions", "/compliance/admissions", "/referrals", "/intake", "/ipu"],
       },
       {
         key: "assessments",
@@ -144,15 +150,6 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         to: "/messaging",
         claims: ["/messaging", "/notifications"],
       },
-      {
-        key: "referrals",
-        label: "Referrals",
-        icon: "send",
-        to: "/referrals",
-        // Intake review (DocLens faxes) starts with the referral, so it lives under Referrals while
-        // keeping its own /intake URL.
-        claims: ["/referrals", "/intake"],
-      },
     ],
   },
   {
@@ -224,6 +221,16 @@ function matchLength(path: string, prefix: string): number {
   return path === prefix || path.startsWith(`${prefix}/`) ? prefix.length : 0;
 }
 
+function sortChildren(children: NavScreen[], order?: string[]): NavScreen[] {
+  if (!order) return children;
+  const rank = (path: string) => {
+    const i = order.findIndex((prefix) => matchLength(path, prefix) > 0);
+    return i === -1 ? order.length : i;
+  };
+  // Array.prototype.sort is stable, so screens of one group keep their registration order.
+  return [...children].sort((a, b) => rank(a.path) - rank(b.path));
+}
+
 /**
  * Assign each visible, non-parametric screen to the entry whose claim is its longest matching
  * prefix (so `/billing/eligibility` lands in Eligibility, not Billing). Unclaimed screens go to
@@ -252,7 +259,7 @@ export function buildPrimaryNav(
       label: section.label,
       entries: section.entries
         .map((entry): NavEntry => {
-          const children = owned.get(entry.key) ?? [];
+          const children = sortChildren(owned.get(entry.key) ?? [], entry.childOrder);
           const landing =
             entry.key === "home"
               ? "/"
