@@ -266,6 +266,9 @@ export function AdmissionDetail(): JSX.Element {
   );
   const [ctiNarrative, setCtiNarrative] = useState("");
 
+  const [referralNumbers, setReferralNumbers] = useState<
+    { medicare: string | null; medicaid: string | null } | undefined
+  >(undefined);
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -280,6 +283,24 @@ export function AdmissionDetail(): JSX.Element {
     }
     const detail = data as AdmissionDetailView;
     setAdmission(detail);
+    // Numbers captured on the originating referral pre-fill the Coverage / Payers form (best-effort).
+    if (detail.referralId) {
+      void client
+        .GET("/api/v1/referrals/{id}", { params: { path: { id: detail.referralId } } })
+        .then(({ data: ref }) => {
+          const r = ref as
+            | { medicareNumberAtReceipt?: string | null; medicaidNumberAtReceipt?: string | null }
+            | undefined;
+          setReferralNumbers(
+            r
+              ? {
+                  medicare: r.medicareNumberAtReceipt ?? null,
+                  medicaid: r.medicaidNumberAtReceipt ?? null,
+                }
+              : undefined,
+          );
+        });
+    }
     setAdmissionDate(toDateInput(detail.admissionAt));
     setProviderEntityId(detail.providerEntityId ?? "");
     setHospicePhysicianId(detail.hospicePhysicianId ?? "");
@@ -1072,7 +1093,11 @@ export function AdmissionDetail(): JSX.Element {
               </div>
 
               {admission.patientId ? (
-                <PatientIntakeDetails patientId={admission.patientId} onSaved={load} />
+                <PatientIntakeDetails
+                  patientId={admission.patientId}
+                  onSaved={load}
+                  referralNumbers={referralNumbers}
+                />
               ) : null}
 
               <RequirementLine

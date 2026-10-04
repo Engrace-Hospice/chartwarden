@@ -148,13 +148,28 @@ function activeMbi(
   return identifiers[0]?.value ?? null;
 }
 
+function coverageNumber(
+  input: {
+    readonly coverages: readonly PatientCoverage[];
+    readonly numberFallbackCoverages?: readonly PatientCoverage[];
+  },
+  coverageKinds: readonly string[],
+): string | null {
+  return (
+    coverageSubscriberId(input.coverages, coverageKinds) ??
+    coverageSubscriberId(input.numberFallbackCoverages ?? [], coverageKinds)
+  );
+}
+
 function coverageSubscriberId(
   coverages: readonly PatientCoverage[],
   coverageKinds: readonly string[],
 ): string | null {
   const coverage = [...coverages]
     .filter((row) => coverageKinds.includes(row.coverageKind) && row.subscriberId?.trim())
-    .sort((a, b) => a.rank - b.rank)[0];
+    // Same rank: the current row wins over one it superseded (a corrected subscriber ID re-files the
+    // coverage from its original start date, so both can be "in force" on that day).
+    .sort((a, b) => a.rank - b.rank || Number(b.current) - Number(a.current))[0];
 
   return coverage?.subscriberId?.trim() || null;
 }
@@ -165,6 +180,13 @@ export function buildHopeAdmissionPrefillAnswers(input: {
   readonly postalCode: string | null;
   readonly residenceSite: string | null;
   readonly coverages: readonly PatientCoverage[];
+  /**
+   * Fallback for the Medicare / Medicaid NUMBER (A0600B / A0700) when no coverage in force on the
+   * admission date has one. The number identifies the patient, not the date, so a coverage whose
+   * effective date was keyed after admission (intake entered it "today") still supplies it; the A1400
+   * payer answers stay bound to the admission date.
+   */
+  readonly numberFallbackCoverages?: readonly PatientCoverage[];
   readonly providerNpi: string | null;
   readonly providerCcn: string | null;
 }): HopePrefillAnswer[] {
@@ -180,13 +202,13 @@ export function buildHopeAdmissionPrefillAnswers(input: {
     out,
     "A0600B",
     activeMbi(input.patient, input.admissionDate) ??
-      coverageSubscriberId(input.coverages, ["medicare_ffs", "medicare_advantage"]),
+      coverageNumber(input, ["medicare_ffs", "medicare_advantage"]),
     "patient_prefill",
   );
   add(
     out,
     "A0700",
-    coverageSubscriberId(input.coverages, ["medicaid", "medicaid_managed_care"]),
+    coverageNumber(input, ["medicaid", "medicaid_managed_care"]),
     "patient_prefill",
   );
   add(out, "A0810", mapHopeSexAssignedAtBirth(input.patient.sexAssignedAtBirth), "patient_prefill");
@@ -221,6 +243,11 @@ export interface HopeAdmissionPrefillService {
     readonly assessment: AssessmentRow;
     readonly specVersionCode: string;
     readonly admissionDate: string;
+    /**
+     * Re-sync mode (workspace load): when no answer changed, skip the applicability reconcile and the
+     * assessment `updated_at` bump, so re-reading chart facts on every open writes nothing.
+     */
+    readonly refreshOnly?: boolean;
   }): Promise<HopeAdmissionPrefillResult>;
 }
 
@@ -368,7 +395,14 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
   }
 
   return {
-    async prefillAdmission({ tx, organizationId, assessment, specVersionCode, admissionDate }) {
+    async prefillAdmission({
+      tx,
+      organizationId,
+      assessment,
+      specVersionCode,
+      admissionDate,
+      refreshOnly = false,
+    }) {
       if (!assessment.specVersionId || !assessment.isc || assessment.status !== "draft") {
         return { assessmentId: assessment.id, prefilledItemCodes: [] };
       }
@@ -388,12 +422,19 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         assessment.patientId,
         admissionDate,
       );
-      const coverages = (
-        await coverageReader.coveragesForPatient({
-          organizationId,
-          patientId: assessment.patientId,
-        })
-      ).filter((coverage) => isHopeCoverageInForceOn(coverage, admissionDate));
+      const allCoverages = await coverageReader.coveragesForPatient({
+        organizationId,
+        patientId: assessment.patientId,
+      });
+      const coverages = allCoverages.filter((coverage) =>
+        isHopeCoverageInForceOn(coverage, admissionDate),
+      );
+      // Medicare / Medicaid numbers fall back to coverage that had not ended by admission.
+      const numberFallbackCoverages = allCoverages.filter(
+        (coverage) =>
+          !coverages.includes(coverage) &&
+          (!coverage.effectiveTo || coverage.effectiveTo >= admissionDate),
+      );
       const provider = assessment.providerEntityId
         ? await foundationSites.providerEntityIdentifiers(
             tx,
@@ -407,6 +448,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         postalCode: residence?.postalCode ?? null,
         residenceSite: mapHopeResidenceSite(residence?.kind, residence?.facilityId),
         coverages,
+        numberFallbackCoverages,
         providerNpi: provider?.npi ?? null,
         providerCcn: provider?.ccn ?? null,
       });
@@ -423,6 +465,13 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         if (!item || !(await validValue(tx, item, answer.value))) continue;
         const current = existing.get(item.id);
         if (!shouldApplyHopeAdmissionPrefill(current?.source)) continue;
+        // Already holds this chart value: rewriting it would only churn the PHI audit trail.
+        if (
+          current?.state === "answered" &&
+          current.source === answer.source &&
+          String(current.value) === String(answer.value)
+        )
+          continue;
         await tx
           .insert(ANSWER)
           .values({
@@ -449,6 +498,9 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
             },
           });
         written.push(answer.itemCode);
+      }
+      if (refreshOnly && written.length === 0) {
+        return { assessmentId: assessment.id, prefilledItemCodes: written };
       }
       await reconcileApplicability({ tx, assessment, specVersionCode });
       await tx.update(A).set({ updatedAt: new Date() }).where(eq(A.id, assessment.id));

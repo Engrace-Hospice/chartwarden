@@ -1,13 +1,15 @@
 import crypto from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import type {
-  PatientCreateFromIntakeInput,
-  PatientIdentity,
-  PatientIntakeResolver,
-  PatientIntakeSubject,
+import {
+  type PatientCreateFromIntakeInput,
+  type PatientIdentity,
+  type PatientIntakeResolver,
+  type PatientIntakeSubject,
+  isValidMedicareNumber,
+  normalizeMedicareNumber,
 } from "@wardenx/types";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, isNull, or } from "drizzle-orm";
 import { type MatchCandidate, runMatch } from "../matching/matcher";
 import { normalizeSubject } from "../matching/normalize";
 import { createDrizzlePatientReaderStore } from "./drizzle-stores";
@@ -36,7 +38,15 @@ function subjectFor(input: PatientIntakeSubject) {
     firstName: name.firstName,
     lastName: name.lastName,
     dob: input.patientDobAtReceipt ?? "1900-01-01",
+    mbi: input.medicareNumberAtReceipt ?? null,
   };
+}
+
+/** The intake MBI, normalized, or null when absent / not a CMS-format MBI (never written then). */
+function intakeMbi(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const mbi = normalizeMedicareNumber(raw);
+  return isValidMedicareNumber(mbi) ? mbi : null;
 }
 
 function toIdentity(row: {
@@ -122,6 +132,39 @@ export function createDbPatientIntakeResolver(db: DbClient): PatientIntakeResolv
       );
     },
 
+    async recordMedicareNumberIfMissing(input) {
+      const mbi = intakeMbi(input.medicareNumber);
+      if (!mbi) return "already_on_chart";
+      return withOrgContext(
+        db,
+        { organizationId: input.organizationId, userId: SEAM_SYSTEM_USER_ID },
+        async (tx) => {
+          const today = new Date().toISOString().slice(0, 10);
+          const active = await tx
+            .select({ value: ID.value })
+            .from(ID)
+            .where(
+              and(
+                eq(ID.patientId, input.patientId),
+                eq(ID.kind, "mbi"),
+                or(isNull(ID.effectiveTo), gte(ID.effectiveTo, today)),
+              ),
+            );
+          if (active.some((row) => row.value === mbi)) return "already_on_chart";
+          if (active.length > 0) return "different_on_chart";
+          await tx.insert(ID).values({
+            patientId: input.patientId,
+            organizationId: input.organizationId,
+            kind: "mbi",
+            value: mbi,
+            issuer: "referral_intake",
+            effectiveFrom: today,
+          });
+          return "added";
+        },
+      );
+    },
+
     confirmPatient(input) {
       return reader.findById({ organizationId: input.organizationId, id: input.patientId });
     },
@@ -166,6 +209,17 @@ export function createDbPatientIntakeResolver(db: DbClient): PatientIntakeResolv
             value: mrn,
             effectiveFrom: today,
           });
+          const mbi = intakeMbi(input.medicareNumberAtReceipt);
+          if (mbi) {
+            await tx.insert(ID).values({
+              patientId: row.id,
+              organizationId: input.organizationId,
+              kind: "mbi",
+              value: mbi,
+              issuer: "referral_intake",
+              effectiveFrom: today,
+            });
+          }
           return toIdentity(row);
         },
       );

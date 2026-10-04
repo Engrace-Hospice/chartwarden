@@ -303,4 +303,44 @@ describe("HOPE Admission prefill mappings", () => {
     expect(answers.get("A0600B")?.value).toBe("1EG4TE5MK73");
     expect(answers.get("A0700")?.value).toBe("MDCD123456");
   });
+  it("takes the Medicare number from coverage keyed after admission (intake entered it 'today'), not the A1400 payer", () => {
+    // Coverage effective Oct 4 for an Oct 1 admission: not in force on the admission date.
+    const late = coverage({ subscriberId: "1EG4TE5MK73", effectiveFrom: "2025-10-04" });
+    const answers = new Map(
+      buildHopeAdmissionPrefillAnswers({
+        patient: patient(),
+        admissionDate: "2025-10-01",
+        postalCode: null,
+        residenceSite: null,
+        coverages: [],
+        numberFallbackCoverages: [late],
+        providerNpi: null,
+        providerCcn: null,
+      }).map((answer) => [answer.itemCode, answer]),
+    );
+
+    expect(answers.get("A0600B")).toMatchObject({
+      value: "1EG4TE5MK73",
+      source: "patient_prefill",
+    });
+    // The payer checkbox stays bound to coverage in force on the admission date.
+    expect(answers.has("A1400A")).toBe(false);
+  });
+
+  it("prefers the number on coverage in force at admission over a fallback coverage", () => {
+    const answers = new Map(
+      buildHopeAdmissionPrefillAnswers({
+        patient: patient(),
+        admissionDate: "2025-10-01",
+        postalCode: null,
+        residenceSite: null,
+        coverages: [coverage({ subscriberId: "1EG4TE5MK73", rank: 2 })],
+        numberFallbackCoverages: [coverage({ id: "c-2", subscriberId: "9AA9AA9AA99", rank: 1 })],
+        providerNpi: null,
+        providerCcn: null,
+      }).map((answer) => [answer.itemCode, answer]),
+    );
+
+    expect(answers.get("A0600B")?.value).toBe("1EG4TE5MK73");
+  });
 });

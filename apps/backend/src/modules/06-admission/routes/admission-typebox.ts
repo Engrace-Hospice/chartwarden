@@ -66,6 +66,10 @@ export const ReferralCreateSchema = Type.Object({
   patientId: Type.Optional(Uuid()),
   patientNameAtReceipt: Type.String({ minLength: 1, maxLength: 200 }),
   patientDobAtReceipt: Type.Optional(Type.String({ format: "date" })),
+  // The patient's Medicare number (MBI) from the referrer; dashes/spaces allowed, normalized server-side.
+  medicareNumberAtReceipt: Type.Optional(Type.String({ maxLength: 20 })),
+  // The patient's Medicaid number from the referrer (1-14 letters/digits once dashes/spaces are removed).
+  medicaidNumberAtReceipt: Type.Optional(Type.String({ maxLength: 24 })),
   referringDxText: Type.Optional(Type.String({ maxLength: 2000 })),
   referrerName: Type.Optional(Type.String({ maxLength: 200 })),
   referrerOrganization: Type.Optional(Type.String({ maxLength: 200 })),
@@ -172,6 +176,9 @@ export const ReferralTerminalSchema = Type.Object({
 });
 
 export const ReferralUpdateSchema = Type.Object({
+  // "" clears either number. Dashes/spaces allowed; normalized server-side.
+  medicareNumberAtReceipt: Type.Optional(Type.String({ maxLength: 20 })),
+  medicaidNumberAtReceipt: Type.Optional(Type.String({ maxLength: 24 })),
   referringDxText: Type.Optional(Type.String({ maxLength: 2000 })),
   referrerName: Type.Optional(Type.String({ maxLength: 200 })),
   referrerOrganization: Type.Optional(Type.String({ maxLength: 200 })),

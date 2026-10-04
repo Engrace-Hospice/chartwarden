@@ -1,3 +1,4 @@
+import { isValidMedicaidNumber, isValidMedicareNumber } from "@wardenx/types";
 import { Button, DetailPageLayout, PageHeader, useApiClient } from "@wardenx/ui";
 import type { CSSProperties, JSX } from "react";
 import { useEffect, useState } from "react";
@@ -24,6 +25,8 @@ export function ReferralNew(): JSX.Element {
   const [form, setForm] = useState({
     patientNameAtReceipt: "",
     patientDobAtReceipt: "",
+    medicareNumberAtReceipt: "",
+    medicaidNumberAtReceipt: "",
     source: "phone",
     referrerOrganization: "",
     referrerName: "",
@@ -65,6 +68,20 @@ export function ReferralNew(): JSX.Element {
       setError("Patient full name is required.");
       return;
     }
+    if (
+      form.medicareNumberAtReceipt.trim() &&
+      !isValidMedicareNumber(form.medicareNumberAtReceipt)
+    ) {
+      setError("Medicare number must be the 11-character MBI (e.g. 1EG4-TE5-MK73).");
+      return;
+    }
+    if (
+      form.medicaidNumberAtReceipt.trim() &&
+      !isValidMedicaidNumber(form.medicaidNumberAtReceipt)
+    ) {
+      setError("Medicaid number must be up to 14 letters and digits.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -74,6 +91,12 @@ export function ReferralNew(): JSX.Element {
         ...(patientId ? { patientId } : {}),
         patientNameAtReceipt: form.patientNameAtReceipt.trim(),
         ...(form.patientDobAtReceipt ? { patientDobAtReceipt: form.patientDobAtReceipt } : {}),
+        ...(form.medicareNumberAtReceipt.trim()
+          ? { medicareNumberAtReceipt: form.medicareNumberAtReceipt.trim() }
+          : {}),
+        ...(form.medicaidNumberAtReceipt.trim()
+          ? { medicaidNumberAtReceipt: form.medicaidNumberAtReceipt.trim() }
+          : {}),
         ...(form.referrerOrganization.trim()
           ? { referrerOrganization: form.referrerOrganization.trim() }
           : {}),
@@ -133,6 +156,43 @@ export function ReferralNew(): JSX.Element {
               value={form.patientDobAtReceipt}
               onChange={(ev) => setField("patientDobAtReceipt", ev.target.value)}
             />
+          </label>
+          <label style={label}>
+            Medicare number (MBI)
+            <input
+              value={form.medicareNumberAtReceipt}
+              onChange={(ev) => setField("medicareNumberAtReceipt", ev.target.value)}
+              placeholder="1EG4-TE5-MK73"
+              maxLength={20}
+              autoComplete="off"
+              aria-describedby="referral-mbi-hint"
+              aria-invalid={
+                form.medicareNumberAtReceipt.trim() !== "" &&
+                !isValidMedicareNumber(form.medicareNumberAtReceipt)
+              }
+            />
+            <span id="referral-mbi-hint" style={hint}>
+              Optional. Added to the patient's chart when the patient is created or matched, and
+              pre-fills HOPE.
+            </span>
+          </label>
+          <label style={label}>
+            Medicaid number
+            <input
+              value={form.medicaidNumberAtReceipt}
+              onChange={(ev) => setField("medicaidNumberAtReceipt", ev.target.value)}
+              maxLength={24}
+              autoComplete="off"
+              aria-describedby="referral-medicaid-hint"
+              aria-invalid={
+                form.medicaidNumberAtReceipt.trim() !== "" &&
+                !isValidMedicaidNumber(form.medicaidNumberAtReceipt)
+              }
+            />
+            <span id="referral-medicaid-hint" style={hint}>
+              Optional, if the patient has Medicaid. Pre-fills the Medicaid coverage on the referral
+              once the patient is resolved.
+            </span>
           </label>
         </section>
 
@@ -235,6 +295,11 @@ const label: CSSProperties = {
   fontWeight: 600,
 };
 const muted: CSSProperties = { color: "var(--color-on-surface-variant)", fontSize: "0.875rem" };
+const hint: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  fontWeight: 400,
+};
 const alert: CSSProperties = {
   marginBottom: "1rem",
   padding: "0.75rem 1rem",

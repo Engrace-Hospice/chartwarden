@@ -227,10 +227,72 @@ export interface PatientIntakeCandidate {
   readonly score?: number;
 }
 
+/** CMS Medicare Beneficiary Identifier format — the `patient_identifier_mbi_format` CHECK (M5). */
+export const MBI_PATTERN = /^[1-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y]{9}$/;
+
+/** People type MBIs as "1EG4-TE5-MK73" / "1eg4 te5 mk73"; the chart stores "1EG4TE5MK73". */
+export function normalizeMedicareNumber(raw: string): string {
+  return raw.replace(/[\s-]/g, "").toUpperCase();
+}
+
+export function isValidMedicareNumber(raw: string): boolean {
+  return MBI_PATTERN.test(normalizeMedicareNumber(raw));
+}
+
+/** People type SSNs as "123-45-6789" / "123 45 6789"; CMS submits "123456789". */
+export function normalizeSsn(raw: string): string {
+  return raw.replace(/[\s-]/g, "");
+}
+
+/** The SSN values CMS HOPE edit -3003 rejects outright (well-known placeholder / test numbers). */
+export const CMS_REJECTED_SSNS: readonly string[] = [
+  "111111111",
+  "333333333",
+  "123456789",
+  "999999999",
+];
+
+/**
+ * The CMS HOPE fatal format edits for A0600A (Detailed Data Specifications v1.00.1), applied to the
+ * value (normalized unless `asStored`): -3015 digits only · -3001 exactly 9 · -3002 not starting "000" · -3003 not a
+ * rejected placeholder. Returns the failing edit, or null when the SSN passes (or is the "^" blank).
+ */
+export function ssnCmsProblem(
+  raw: string,
+  /** `asStored`: judge the value exactly as it would be submitted (server); else as typed (form). */
+  options: { asStored?: boolean } = {},
+): { ruleId: string; message: string } | null {
+  const ssn = options.asStored ? raw : normalizeSsn(raw);
+  if (ssn === "" || ssn === "^") return null;
+  if (!/^[0-9]+$/.test(ssn))
+    return { ruleId: "-3015", message: "SSN may contain only the digits 0-9." };
+  if (ssn.length !== 9) return { ruleId: "-3001", message: "SSN must be exactly 9 digits." };
+  if (ssn.startsWith("000")) return { ruleId: "-3002", message: "SSN cannot start with 000." };
+  if (CMS_REJECTED_SSNS.includes(ssn))
+    return { ruleId: "-3003", message: "This SSN is a placeholder CMS rejects." };
+  return null;
+}
+
+/**
+ * Medicaid IDs: formats vary by state, so only the HOPE A0700 shape is enforced — 1-14 letters/digits
+ * once spaces and dashes are removed.
+ */
+export const MEDICAID_NUMBER_PATTERN = /^[A-Z0-9]{1,14}$/;
+
+export function normalizeMedicaidNumber(raw: string): string {
+  return raw.replace(/[\s-]/g, "").toUpperCase();
+}
+
+export function isValidMedicaidNumber(raw: string): boolean {
+  return MEDICAID_NUMBER_PATTERN.test(normalizeMedicaidNumber(raw));
+}
+
 export interface PatientIntakeSubject {
   readonly organizationId: string;
   readonly patientNameAtReceipt: string;
   readonly patientDobAtReceipt?: string | null;
+  /** Normalized MBI from referral intake — sharpens matching and seeds the chart's `mbi` identifier. */
+  readonly medicareNumberAtReceipt?: string | null;
 }
 
 export interface PatientCreateFromIntakeInput extends PatientIntakeSubject {
@@ -248,6 +310,15 @@ export interface PatientIntakeResolver {
     readonly patientId: string;
   }): Promise<PatientIdentity | null>;
   createPatientFromIntake(input: PatientCreateFromIntakeInput): Promise<PatientIdentity>;
+  /**
+   * Records an intake-supplied MBI on an existing patient's chart — only when the chart has no active
+   * MBI. Never overwrites: a differing chart value is reported, not replaced (M5 owns identity, D12).
+   */
+  recordMedicareNumberIfMissing(input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+    readonly medicareNumber: string;
+  }): Promise<"added" | "already_on_chart" | "different_on_chart">;
 }
 
 export type PatientAdmissionClearanceReason =

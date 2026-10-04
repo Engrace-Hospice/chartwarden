@@ -8,6 +8,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  check,
   date,
   index,
   jsonb,
@@ -47,6 +48,12 @@ export const referrals = pgTable(
     externalReferralId: text("external_referral_id"),
     patientNameAtReceipt: text("patient_name_at_receipt").notNull(),
     patientDobAtReceipt: date("patient_dob_at_receipt"),
+    // The patient's Medicare number (MBI) as given by the referrer — normalized, CMS MBI format (0317).
+    // Copied to M5's `mbi` identifier when the referral creates / is matched to a patient without one.
+    medicareNumberAtReceipt: text("medicare_number_at_receipt"),
+    // The patient's Medicaid number from the referrer (1-14 alphanumerics, 0317). M5 keeps Medicaid IDs on
+    // `patient_payer`, so it pre-fills the intake Coverage / Payers form instead of being copied.
+    medicaidNumberAtReceipt: text("medicaid_number_at_receipt"),
     referringDxText: text("referring_dx_text"),
     icd10TerminalPrimary: text("icd10_terminal_primary"),
     sourceChannel: referralSourceChannel("source_channel").notNull(),
@@ -89,6 +96,14 @@ export const referrals = pgTable(
     externalReferralIdx: uniqueIndex("referral_org_external_referral_uidx")
       .on(t.organizationId, t.externalReferralId)
       .where(sql`external_referral_id IS NOT NULL`),
+    medicareNumberFormat: check(
+      "referral_medicare_number_format",
+      sql`${t.medicareNumberAtReceipt} IS NULL OR ${t.medicareNumberAtReceipt} ~ '^[1-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y]{9}$'`,
+    ),
+    medicaidNumberFormat: check(
+      "referral_medicaid_number_format",
+      sql`${t.medicaidNumberAtReceipt} IS NULL OR ${t.medicaidNumberAtReceipt} ~ '^[A-Z0-9]{1,14}$'`,
+    ),
   }),
 );
 

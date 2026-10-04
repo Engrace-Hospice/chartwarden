@@ -1,3 +1,4 @@
+import { normalizeSsn, ssnCmsProblem } from "@wardenx/types";
 import {
   Button,
   CountBadge,
@@ -19,14 +20,19 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  type ChartNumber,
+  type ChartPayer,
+  ChartReconcileDialog,
+  type ReconcileItem,
+} from "./hope-chart-reconcile";
 import { ASSESSMENT_TONE, rfaLabel, stateLabel } from "./hope-status";
 import {
   CheckboxTiles,
   ClinicalSection,
   CmsCode,
-  CompletionRing,
   FieldShell,
-  LegendDot,
+  GroupSubNav,
   LockedValue,
   type NavSectionView,
   OptionRows,
@@ -220,7 +226,80 @@ interface PatientSummary {
 interface PatientExtra {
   sex: string | null;
   mbiTail: string | null;
+  /** The chart's Medicare number (MBI, else Medicare coverage subscriber ID) — compared to A0600B. */
+  medicareOnChart: ChartNumber | null;
+  /** The chart's Medicaid number (current Medicaid coverage subscriber ID) — compared to A0700. */
+  medicaidOnChart: ChartNumber | null;
+  /** The patient's coverage rows — the reconcile dialog re-files / ranks against them. */
+  payers: ChartPayer[];
   address: string | null;
+}
+
+type ChartNumbers = Pick<PatientExtra, "medicareOnChart" | "medicaidOnChart" | "payers">;
+
+/** Reads the chart's identifiers + coverage and resolves the Medicare / Medicaid numbers. */
+async function fetchChartNumbers(api: HopeApiCompat, patientId: string): Promise<ChartNumbers> {
+  const [ids, pay] = await Promise.all([
+    api.GET("/api/v1/patients/{id}/identifiers", { params: { path: { id: patientId } } }),
+    api.GET("/api/v1/patients/{id}/payers", { params: { path: { id: patientId } } }),
+  ]);
+  const identifiers =
+    (
+      ids.data as
+        | { identifiers?: { kind: string; value: string | null; effectiveTo?: string | null }[] }
+        | undefined
+    )?.identifiers ?? [];
+  const payers = (pay.data as { payers?: ChartPayer[] } | undefined)?.payers ?? [];
+  return {
+    medicareOnChart: chartMedicareNumber(
+      identifiers,
+      payers,
+      new Date().toISOString().slice(0, 10),
+    ),
+    medicaidOnChart: chartMedicaidNumber(payers),
+    payers,
+  };
+}
+
+/**
+ * The patient's Medicare number as the chart holds it — the same rule HOPE's admission prefill uses
+ * for A0600B: the active MBI identifier, else the subscriber ID of the best-ranked current Medicare
+ * coverage (entered on the intake Coverage / Payers form).
+ */
+function chartMedicareNumber(
+  identifiers: { kind: string; value: string | null; effectiveTo?: string | null }[],
+  payers: ChartPayer[],
+  today: string,
+): ChartNumber | null {
+  const mbi = identifiers.find(
+    (i) => i.kind === "mbi" && i.value && (!i.effectiveTo || i.effectiveTo >= today),
+  );
+  if (mbi?.value) return { value: mbi.value, source: "identifier", coverage: null };
+  const coverage = payers
+    .filter(
+      (p) =>
+        p.current &&
+        (p.coverageKind === "medicare_ffs" || p.coverageKind === "medicare_advantage") &&
+        p.subscriberId?.trim(),
+    )
+    .sort((a, b) => a.rank - b.rank)[0];
+  const value = coverage?.subscriberId?.trim();
+  return coverage && value ? { value, source: "coverage", coverage } : null;
+}
+
+/** Medicaid IDs live only on coverage (M5 §2 "Payers"): the best-ranked current Medicaid coverage. */
+function chartMedicaidNumber(payers: ChartPayer[]): ChartNumber | null {
+  const coverage = payers
+    .filter((p) => p.current && p.coverageKind === "medicaid" && p.subscriberId?.trim())
+    .sort((a, b) => a.rank - b.rank)[0];
+  const value = coverage?.subscriberId?.trim();
+  return coverage && value ? { value, source: "coverage", coverage } : null;
+}
+
+/** Medicare / Medicaid numbers compare case- and separator-insensitively ("1EG4-TE5-MK73" = "1eg4te5mk73"). */
+function sameMedicareNumber(a: string, b: string): boolean {
+  const norm = (v: string) => v.replace(/[\s-]/g, "").toUpperCase();
+  return norm(a) === norm(b);
 }
 
 interface TimepointRow {
@@ -228,6 +307,7 @@ interface TimepointRow {
   rfaKind: string;
   status: string;
   targetDate: string;
+  correctsAssessmentId?: string | null;
 }
 
 const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
@@ -270,6 +350,59 @@ const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
     helper: "Check completion, blockers, warnings, SFV state, and signature readiness.",
   },
 ];
+
+type NavMode = "guided" | "all";
+const NAV_MODE_KEY = "wx.hope.navMode";
+const VISITED_KEY = "wx.hope.visitedGroups";
+
+/**
+ * Scrolls the workspace pane — not the window — so the app shell (top bar, banner) never shifts.
+ * `scrollIntoView` scrolls every scrollable ancestor, including the document.
+ */
+function scrollWithinWorkspace(element: HTMLElement, block: "start" | "center"): void {
+  const pane = element.closest<HTMLElement>(".wx-patient-workspace-body");
+  if (!pane) {
+    element.scrollIntoView({ behavior: "smooth", block });
+    return;
+  }
+  const paneRect = pane.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  const offset =
+    block === "start"
+      ? rect.top - paneRect.top - 72 // clear the sticky jump bar
+      : rect.top - paneRect.top - (paneRect.height - rect.height) / 2;
+  pane.scrollTo({ top: pane.scrollTop + offset, behavior: "smooth" });
+}
+
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable (private mode): the preference just doesn't persist.
+  }
+}
+
+function readNavMode(): NavMode {
+  return readStorage(NAV_MODE_KEY) === "all" ? "all" : "guided";
+}
+
+function readVisited(assessmentId: string | undefined): Set<string> {
+  if (!assessmentId) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(readStorage(`${VISITED_KEY}.${assessmentId}`) ?? "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
 
 const PROTECTED_ITEMS = new Set([
   "A0100A", // Facility NPI — from selected Hospice Provider
@@ -357,6 +490,9 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [patientExtra, setPatientExtra] = useState<PatientExtra>({
     sex: null,
     mbiTail: null,
+    medicareOnChart: null,
+    medicaidOnChart: null,
+    payers: [],
     address: null,
   });
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -377,6 +513,30 @@ export function HopeAssessmentDetail(): JSX.Element {
   const latestVersionRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [pendingItemFocus, setPendingItemFocus] = useState<string | null>(null);
+  // Navigation: "guided" = one question group at a time (default); "all" = every section on one page.
+  const [navMode, setNavModeState] = useState<NavMode>(readNavMode);
+  const setNavMode = useCallback((mode: NavMode) => {
+    setNavModeState(mode);
+    writeStorage(NAV_MODE_KEY, mode);
+  }, []);
+  // Guided mode: the open group per section ("A" → "patient-identity").
+  const [groupBySection, setGroupBySection] = useState<Record<string, string>>({});
+  // Groups the user has moved past: only these may show "required" errors in red.
+  const [visited, setVisited] = useState<Set<string>>(() => readVisited(id));
+  const markVisited = useCallback(
+    (keys: string[]) => {
+      setVisited((prev) => {
+        if (keys.every((key) => prev.has(key))) return prev;
+        const next = new Set([...prev, ...keys]);
+        writeStorage(`${VISITED_KEY}.${id}`, JSON.stringify([...next]));
+        return next;
+      });
+    },
+    [id],
+  );
+  // Show-all mode: the group currently at the top of the viewport (scroll-spy).
+  const [spy, setSpy] = useState<{ section: string; group: string } | null>(null);
+  const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
   useEffect(() => {
     if (workspace) latestVersionRef.current = workspace.assessment.version;
@@ -388,16 +548,16 @@ export function HopeAssessmentDetail(): JSX.Element {
     }
 
     const timeout = window.setTimeout(() => {
-      const element = document.getElementById(`hope-item-${pendingItemFocus}`);
+      // Checkbox tiles are anchored by their 5-char stem ("hope-item-A1005"), not the item code.
+      const element =
+        document.getElementById(`hope-item-${pendingItemFocus}`) ??
+        document.getElementById(`hope-item-${pendingItemFocus.slice(0, 5)}`);
 
       if (!element) {
         return;
       }
 
-      element.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
+      scrollWithinWorkspace(element, "center");
 
       if (element instanceof HTMLElement) {
         element.focus({
@@ -414,11 +574,67 @@ export function HopeAssessmentDetail(): JSX.Element {
   }, [pendingItemFocus]);
   // A new section starts at its top (unless an issue link is about to scroll to a specific item).
   const workspaceRef = useRef<HTMLDivElement>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: activeSection is the intentional trigger.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: section/group changes are the intentional trigger.
   useEffect(() => {
-    if (pendingItemFocus) return;
+    if (pendingItemFocus || pendingScroll) return;
+    if (navMode === "all" && activeSection !== "Review") return;
     workspaceRef.current?.closest(".wx-patient-workspace-body")?.scrollTo({ top: 0 });
-  }, [activeSection]);
+  }, [activeSection, groupBySection, navMode]);
+
+  // Show-all: jump to a section/group once it is rendered.
+  useEffect(() => {
+    if (!pendingScroll) return;
+    const timeout = window.setTimeout(() => {
+      const target = document.getElementById(pendingScroll);
+      if (target) scrollWithinWorkspace(target, "start");
+      setPendingScroll(null);
+    }, 30);
+    return () => window.clearTimeout(timeout);
+  }, [pendingScroll]);
+
+  // Guided: an issue link to an item opens the group that holds it.
+  useEffect(() => {
+    if (!pendingItemFocus || !workspace || navMode !== "guided" || activeSection === "Review")
+      return;
+    const section = workspace.sections.find((sec) => sec.code === activeSection);
+    if (!section) return;
+    const group = sectionGroups(activeSection, section).find((g) =>
+      g.items.some(
+        (item) => item.itemCode === pendingItemFocus || item.itemCode.startsWith(pendingItemFocus),
+      ),
+    );
+    if (group) setGroupBySection((prev) => ({ ...prev, [activeSection]: group.key }));
+  }, [activeSection, navMode, pendingItemFocus, workspace]);
+
+  // Show-all scroll-spy: track the topmost visible group; groups scrolled past count as visited.
+  useEffect(() => {
+    if (navMode !== "all" || activeSection === "Review" || !workspace) return;
+    const root = workspaceRef.current?.closest(".wx-patient-workspace-body") ?? null;
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-hope-group]"));
+    if (!nodes.length || typeof IntersectionObserver === "undefined") return;
+    const visible = new Set<HTMLElement>();
+    let last: string | null = null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const el = entry.target as HTMLElement;
+          if (entry.isIntersecting) visible.add(el);
+          else visible.delete(el);
+        }
+        const top = nodes.find((node) => visible.has(node));
+        const value = top?.dataset.hopeGroup;
+        // Passing a group while scrolling does not count as visiting it: marking it would insert
+        // error text above the scroll target mid-scroll and push the target down.
+        if (!value || value === last) return;
+        last = value;
+        const [section, group] = value.split(":");
+        setSpy({ section: section ?? "", group: group ?? "" });
+      },
+      { root, rootMargin: "-120px 0px -55% 0px" },
+    );
+    for (const node of nodes) observer.observe(node);
+    return () => observer.disconnect();
+  }, [activeSection, navMode, workspace]);
   const [signing, setSigning] = useState(false);
   const [completionDateSaving, setCompletionDateSaving] = useState(false);
 
@@ -457,30 +673,15 @@ export function HopeAssessmentDetail(): JSX.Element {
     setLoading(false);
     // Banner + Patient Summary context — best-effort; a failure only blanks those fields.
     const pid = nextAssessment.patientId;
-    const [demo, ids, addrs] = await Promise.all([
+    const [demo, addrs, chartNumbers] = await Promise.all([
       api.GET("/api/v1/patients/{id}/demographics", {
-        params: { path: { id: pid } },
-      }),
-      api.GET("/api/v1/patients/{id}/identifiers", {
         params: { path: { id: pid } },
       }),
       api.GET("/api/v1/patients/{id}/addresses", {
         params: { path: { id: pid } },
       }),
+      fetchChartNumbers(api, pid),
     ]);
-    const identifiers =
-      (
-        ids.data as
-          | {
-              identifiers?: {
-                kind: string;
-                value: string | null;
-                last4: string | null;
-              }[];
-            }
-          | undefined
-      )?.identifiers ?? [];
-    const mbi = identifiers.find((i) => i.kind === "mbi");
     const addresses =
       (
         addrs.data as
@@ -500,12 +701,27 @@ export function HopeAssessmentDetail(): JSX.Element {
       addresses.find((a) => a.current && a.isPrimary) ?? addresses.find((a) => a.current);
     setPatientExtra({
       sex: (demo.data as { sexAssignedAtBirth?: string } | undefined)?.sexAssignedAtBirth ?? null,
-      mbiTail: mbi ? (mbi.last4 ?? mbi.value?.slice(-4) ?? null) : null,
+      mbiTail: chartNumbers.medicareOnChart?.value.slice(-4) ?? null,
+      ...chartNumbers,
       address: home
         ? `${home.line1}, ${home.city}${home.state ? `, ${home.state}` : ""} ${home.postalCode}`
         : null,
     });
   }, [api, id]);
+
+  // After a reconcile writes to the chart: re-read just the chart numbers (no page reload).
+  const refreshChartNumbers = useCallback(async () => {
+    if (!assessment) return;
+    const chartNumbers = await fetchChartNumbers(api, assessment.patientId);
+    setPatientExtra((prev) => ({
+      ...prev,
+      ...chartNumbers,
+      mbiTail: chartNumbers.medicareOnChart?.value.slice(-4) ?? null,
+    }));
+  }, [api, assessment]);
+  const [reconcile, setReconcile] = useState<{ itemCode: ReconcileItem; value: string } | null>(
+    null,
+  );
 
   const goToIssue = useCallback((section: SectionId, itemCode?: string | null) => {
     setActiveSection(section);
@@ -682,8 +898,20 @@ export function HopeAssessmentDetail(): JSX.Element {
     [api, assessment?.status, id, refreshWorkspaceOnly, workspace],
   );
 
+  // A signed record with a correction already in progress: open that draft instead of a second one
+  // (the server refuses a second pending correction with 409).
+  const openCorrectionId =
+    assessment?.status === "signed"
+      ? (timeline.find((t) => t.correctsAssessmentId === id && t.status === "draft")?.id ?? null)
+      : null;
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
   const createCorrection = useCallback(async () => {
     if (!id || !assessment) return;
+    setCorrectionError(null);
+    if (openCorrectionId) {
+      navigate(`/hope/assessments/${openCorrectionId}`);
+      return;
+    }
     const reason = window.prompt(
       "Briefly describe why this completed HOPE record needs a correction.",
     );
@@ -699,8 +927,24 @@ export function HopeAssessmentDetail(): JSX.Element {
       },
     });
     const correctionId = (res.data as { id?: string } | undefined)?.id;
-    if (correctionId) navigate(`/hope/assessments/${correctionId}`);
-  }, [api, assessment, id, navigate]);
+    if (correctionId) {
+      navigate(`/hope/assessments/${correctionId}`);
+      return;
+    }
+    // Another session may have started one: look it up before reporting the failure.
+    const tl = await api.GET("/api/v1/patients/{patientId}/hope/assessments", {
+      params: { path: { patientId: assessment.patientId } },
+    });
+    const rows = (tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ?? [];
+    setTimeline(rows);
+    const existing = rows.find((t) => t.correctsAssessmentId === id && t.status === "draft");
+    if (existing) navigate(`/hope/assessments/${existing.id}`);
+    else
+      setCorrectionError(
+        (res.error as { error?: { message?: string } } | undefined)?.error?.message ??
+          "The correction could not be created.",
+      );
+  }, [api, assessment, id, navigate, openCorrectionId]);
 
   const requestSummary = useCallback(async () => {
     if (!id) return;
@@ -759,7 +1003,6 @@ export function HopeAssessmentDetail(): JSX.Element {
   const completed = assessment.status === "signed";
   const sections = sectionsFromWorkspace(workspace);
   const visibleSections = visibleSectionOrder(workspace);
-  const current = activeSection === "Review" ? null : (sections.get(activeSection) ?? null);
   const status = derivedStatus(assessment, review, workspace);
   const recordLabel = rfaLabel(assessment.rfaKind);
   const canInactivate =
@@ -808,24 +1051,211 @@ export function HopeAssessmentDetail(): JSX.Element {
   );
 
   const activeIndex = visibleSections.findIndex((s) => s.id === activeSection);
-  const nextSection = visibleSections[activeIndex + 1];
-  const prevSection = activeIndex > 0 ? visibleSections[activeIndex - 1] : undefined;
   const config = visibleSections[activeIndex] ?? visibleSections[0]!;
-  const sectionTitle =
-    activeSection === "Review"
-      ? completed
-        ? "Completed Record"
-        : "Review & Sign"
-      : `${config.id}. ${config.label}`;
-  const secReview = review?.sections.find((s) => s.code === activeSection);
-  const navViews: NavSectionView[] = visibleSections.map((section) =>
-    navView(section, review, workspace, completed),
+  const showAll = navMode === "all" && activeSection !== "Review";
+  const clinicalSections = visibleSections.filter(
+    (s): s is { id: Exclude<SectionId, "Review">; label: string; helper: string } =>
+      s.id !== "Review",
   );
-  const saveDraft = async (): Promise<void> => {
-    await saveQueueRef.current;
-    setSaving((s) => (s === "failed" || s === "conflict" ? s : "saved"));
-    setLastSavedAt(Date.now());
+  // Every section's groups — the shared unit of guided steps, the show-all index and the to-do list.
+  const groupsBySection = new Map(
+    clinicalSections.map((s) => {
+      const sec = sections.get(s.id);
+      return [s.id, sec ? sectionGroups(s.id, sec) : []] as const;
+    }),
+  );
+  // One count everywhere: the rail, the sub-steps and the To-do list all use openRequiredItems.
+  const openBySection = new Map(
+    clinicalSections.map((s) => [
+      s.id as string,
+      (groupsBySection.get(s.id) ?? []).reduce((n, g) => n + openRequiredItems(g.items).length, 0),
+    ]),
+  );
+  const navViews: NavSectionView[] = visibleSections.map((section) => {
+    const view = navView(section, review, workspace, completed);
+    const open = openBySection.get(section.id);
+    if (open === undefined || completed) return view;
+    if (open === 0)
+      return view.state === "attention"
+        ? { ...view, statusLine: "Answered — see corrections" }
+        : { ...view, state: "complete", statusLine: "Complete" };
+    return { ...view, state: "attention", statusLine: `${open} to answer` };
+  });
+  const currentGroups =
+    activeSection === "Review" ? [] : (groupsBySection.get(activeSection) ?? []);
+  const currentGroup =
+    currentGroups.find((g) => g.key === groupBySection[activeSection]) ?? currentGroups[0] ?? null;
+  const visitKey = (section: string, key: string) => `${section}:${key}`;
+  // Guided order: every group of every clinical section, then Review.
+  const steps: { section: SectionId; group: GroupView | null }[] = [
+    ...clinicalSections.flatMap((s) =>
+      (groupsBySection.get(s.id) ?? []).map((group) => ({ section: s.id as SectionId, group })),
+    ),
+    ...(visibleSections.some((s) => s.id === "Review")
+      ? [{ section: "Review" as SectionId, group: null }]
+      : []),
+  ];
+  const stepIndex = steps.findIndex(
+    (step) =>
+      step.section === activeSection &&
+      (step.group === null || step.group.key === currentGroup?.key),
+  );
+  const prevStep = stepIndex > 0 ? steps[stepIndex - 1] : undefined;
+  const nextStep = stepIndex >= 0 ? steps[stepIndex + 1] : undefined;
+  const stepLabel = (step: (typeof steps)[number]): string =>
+    step.section === "Review"
+      ? completed
+        ? "Completed record"
+        : "Review & sign"
+      : step.section !== activeSection
+        ? `${step.section}. ${visibleSections.find((v) => v.id === step.section)?.label ?? ""}`
+        : (step.group?.label ?? "");
+
+  const leaveCurrent = () => {
+    if (activeSection !== "Review" && currentGroup)
+      markVisited([visitKey(activeSection, currentGroup.key)]);
   };
+  const goToStep = (section: SectionId, groupKey?: string) => {
+    leaveCurrent();
+    setActiveSection(section);
+    if (section !== "Review" && groupKey)
+      setGroupBySection((prev) => ({ ...prev, [section]: groupKey }));
+  };
+  const selectSection = (section: SectionId) => {
+    if (section !== "Review" && navMode === "all") {
+      setActiveSection(section);
+      setPendingScroll(`hope-section-${section}`);
+      return;
+    }
+    goToStep(section, section === "Review" ? undefined : groupsBySection.get(section)?.[0]?.key);
+  };
+  const selectGroup = (section: Exclude<SectionId, "Review">, key: string) => {
+    if (navMode === "all") {
+      setActiveSection(section);
+      setPendingScroll(`hope-group-${section}-${key}`);
+      return;
+    }
+    goToStep(section, key);
+  };
+  const switchMode = (mode: NavMode) => {
+    leaveCurrent();
+    setNavMode(mode);
+    if (mode === "all" && activeSection !== "Review" && currentGroup)
+      setPendingScroll(`hope-group-${activeSection}-${currentGroup.key}`);
+    if (mode === "guided" && spy && spy.section !== "Review") {
+      setActiveSection(spy.section as SectionId);
+      setGroupBySection((prev) => ({ ...prev, [spy.section]: spy.group }));
+    }
+  };
+
+  const groupFindings = (section: string, group: GroupView): Findings =>
+    visited.has(visitKey(section, group.key))
+      ? findingsByItem
+      : withoutMissingRequired(findingsByItem, group.items);
+  const subNavFor = (sectionId: string) => {
+    if (sectionId === "Review") return null;
+    const sid = sectionId as Exclude<SectionId, "Review">;
+    const expanded = navMode === "all" ? true : sid === activeSection;
+    if (!expanded) return null;
+    const groups = groupsBySection.get(sid) ?? [];
+    if (groups.length < 2) return null;
+    const active =
+      navMode === "all"
+        ? spy?.section === sid
+          ? spy.group
+          : null
+        : activeSection === sid
+          ? (currentGroup?.key ?? null)
+          : null;
+    return (
+      <GroupSubNav
+        label={`${sid} groups`}
+        active={active}
+        onSelect={(key) => selectGroup(sid, key)}
+        groups={groups.map((g) => {
+          const nav = groupNavState(g, visited.has(visitKey(sid, g.key)));
+          return {
+            key: g.key,
+            label: g.label,
+            state: nav.state,
+            statusLine: nav.open ? `${nav.open} to answer` : "Done",
+          };
+        })}
+      />
+    );
+  };
+  const todo = clinicalSections
+    .map((s) => ({
+      section: s.id,
+      label: `${s.id}. ${s.label}`,
+      open: (groupsBySection.get(s.id) ?? []).flatMap((g) =>
+        openRequiredItems(g.items).map((item) => ({ item, group: g.key })),
+      ),
+    }))
+    .filter((row) => row.open.length > 0);
+  const goToTodo = (section: Exclude<SectionId, "Review">, group: string, itemCode: string) => {
+    leaveCurrent();
+    setActiveSection(section);
+    if (navMode === "guided") setGroupBySection((prev) => ({ ...prev, [section]: group }));
+    setPendingItemFocus(itemCode);
+  };
+  const progressDone = workspace.progress.answered + workspace.progress.skipped;
+  const sectionCounts = (sid: string) => {
+    const sec = review?.sections.find((r) => r.code === sid);
+    if (sec) return { done: sec.answered + sec.skipped, total: sec.active };
+    const raw = sections.get(sid as Exclude<SectionId, "Review">)?.items ?? [];
+    return {
+      done: raw.filter((i) => i.state !== "unanswered").length,
+      total: raw.length,
+    };
+  };
+  // A0600B / A0700 vs the chart: a number typed here that the chart lacks (or contradicts) is flagged so
+  // it reaches the patient record — iQIES expects the submitted MBI to match the patient's (spec §5).
+  const itemNotes: Record<string, ReactNode> = {};
+  const chartNote = (itemCode: ReconcileItem, chart: ChartNumber | null) => {
+    const item = sections.get("A")?.items.find((i) => i.itemCode === itemCode);
+    // Any staff-entered value — typed here or copied into a correction — not the chart prefill itself.
+    const typed =
+      item &&
+      (item.source === "user" || item.source === "correction_copy") &&
+      typeof item.value === "string"
+        ? item.value.trim()
+        : "";
+    // CMS special values ("^" blank, "+" pending, "N" not a recipient) are not numbers to compare.
+    if (!typed || ["^", "-", "+", "N"].includes(typed)) return;
+    if (chart && sameMedicareNumber(chart.value, typed)) return;
+    itemNotes[itemCode] = (
+      <span className={chart ? "wx-chart-note wx-chart-note-warning" : "wx-chart-note"}>
+        {chart
+          ? `Differs from the chart (…${chart.value.slice(-4)}).`
+          : "Not on the patient's chart."}{" "}
+        <button
+          type="button"
+          className="wx-chart-note-action"
+          onClick={() => setReconcile({ itemCode, value: typed })}
+        >
+          Reconcile…
+        </button>
+      </span>
+    );
+  };
+  chartNote("A0600B", patientExtra.medicareOnChart);
+  chartNote("A0700", patientExtra.medicaidOnChart);
+  const admissionDateAnswer = sections.get("A")?.items.find((i) => i.itemCode === "A0220")?.value;
+  const renderGroup = (sid: Exclude<SectionId, "Review">, group: GroupView) => (
+    <GroupCard
+      key={`${sid}:${group.key}`}
+      sectionId={sid}
+      group={group}
+      readonly={completed}
+      findingsByItem={groupFindings(sid, group)}
+      fieldErrors={fieldErrors}
+      onSave={saveAnswer}
+      notes={itemNotes}
+      onCompleteSfv={() => setSfvOpen(true)}
+      onReviewSfv={() => setSfvReviewOpen(true)}
+    />
+  );
 
   return (
     <PatientWorkspaceLayout
@@ -836,8 +1266,9 @@ export function HopeAssessmentDetail(): JSX.Element {
           patientExtra={patientExtra}
           patientId={assessment.patientId}
           review={review}
-          workspace={workspace}
-          visibleSections={visibleSections}
+          todo={todo}
+          completed={completed}
+          onGoToTodo={goToTodo}
           onGoTo={goToIssue}
         />
       }
@@ -848,7 +1279,7 @@ export function HopeAssessmentDetail(): JSX.Element {
             className="wx-hope-admission-section-select"
             aria-label="HOPE section"
             value={activeSection}
-            onChange={(event) => setActiveSection(event.target.value as SectionId)}
+            onChange={(event) => selectSection(event.target.value as SectionId)}
             style={mobileSectionSelect}
           >
             {visibleSections.map((section) => (
@@ -860,9 +1291,10 @@ export function HopeAssessmentDetail(): JSX.Element {
           <div className="wx-hope-admission-section-nav">
             <SectionNavigator
               sections={navViews}
-              active={activeSection}
-              onSelect={(id) => setActiveSection(id as SectionId)}
+              active={showAll && spy ? spy.section : activeSection}
+              onSelect={(sid) => selectSection(sid as SectionId)}
               ariaLabel={`${recordLabel} sections`}
+              renderSub={subNavFor}
             />
           </div>
         </aside>
@@ -873,11 +1305,29 @@ export function HopeAssessmentDetail(): JSX.Element {
               <h1 className="wx-hope-eyebrow">
                 {completed ? `Completed ${recordLabel}` : `${recordLabel} Workspace`}
               </h1>
-              <h2 className="wx-hope-title">{sectionTitle}</h2>
+              <h2 className="wx-hope-title">
+                {activeSection === "Review"
+                  ? completed
+                    ? "Completed Record"
+                    : "Review & Sign"
+                  : showAll
+                    ? "All sections"
+                    : `${config.id}. ${config.label}`}
+              </h2>
+              {!showAll && activeSection !== "Review" && currentGroup ? (
+                <p className="wx-hope-step-line">
+                  <strong>{currentGroup.label}</strong>
+                  <span>
+                    Step {currentGroups.indexOf(currentGroup) + 1} of {currentGroups.length}
+                  </span>
+                </p>
+              ) : null}
               <p className="wx-hope-helper">
                 {activeSection === "Review"
                   ? `Use backend readiness to decide whether this ${recordLabel} can be completed.`
-                  : config.helper}
+                  : showAll
+                    ? "Every section on one page. Jump with the bar or the index; open items are listed on the right."
+                    : config.helper}
               </p>
               <div className="wx-hope-meta">
                 <span>CMS {workspace.assessment.specVersion}</span>
@@ -891,6 +1341,17 @@ export function HopeAssessmentDetail(): JSX.Element {
             </div>
             <div className="wx-hope-head-side">
               <div className="wx-hope-head-actions">
+                <label className="wx-hope-mode-toggle">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={navMode === "all"}
+                    aria-checked={navMode === "all"}
+                    onChange={(event) => switchMode(event.currentTarget.checked ? "all" : "guided")}
+                  />
+                  <span className="wx-hope-mode-track" aria-hidden />
+                  Show all
+                </label>
                 <span className={`wx-status-dot-chip wx-status-${status.tone}`}>
                   <span className="wx-dot" aria-hidden />
                   {status.label}
@@ -916,37 +1377,52 @@ export function HopeAssessmentDetail(): JSX.Element {
                           ? "Retry summary request"
                           : "Request summary"}
                     </Button>
-                    <Button onClick={() => void createCorrection()}>Create correction</Button>
-                  </>
-                ) : (
-                  <>
-                    <Button tone="secondary" onClick={() => void saveDraft()}>
-                      Save draft
+                    <Button onClick={() => void createCorrection()}>
+                      {openCorrectionId ? "Open correction draft" : "Create correction"}
                     </Button>
-                    {review?.readiness.readyToSign ? (
-                      <Button onClick={() => setSignOpen(true)}>Sign &amp; complete</Button>
-                    ) : (
-                      <Button onClick={() => setActiveSection(nextSection?.id ?? "Review")}>
-                        {activeSection === "Review" ? "Review issues" : "Review & Continue"}
-                        <Glyph name="arrow-right" size={16} />
-                      </Button>
-                    )}
+                    {correctionError ? (
+                      <p role="alert" className="wx-hope-action-error">
+                        {correctionError}
+                      </p>
+                    ) : null}
                   </>
-                )}
+                ) : review?.readiness.readyToSign ? (
+                  <Button onClick={() => setSignOpen(true)}>Sign &amp; complete</Button>
+                ) : null}
               </div>
-              {secReview && activeSection !== "Review" ? (
-                <div className="wx-hope-progress">
-                  <span>
-                    {secReview.answered + secReview.skipped} of {secReview.active} complete
-                  </span>
-                  <ProgressBar
-                    value={secReview.answered + secReview.skipped}
-                    max={secReview.active}
-                  />
-                </div>
-              ) : null}
+              <div className="wx-hope-progress">
+                <span>
+                  {progressDone} of {workspace.progress.active} answered
+                </span>
+                <ProgressBar value={progressDone} max={workspace.progress.active} />
+              </div>
             </div>
           </header>
+
+          {showAll ? (
+            <nav className="wx-hope-jumpbar" aria-label="Jump to section">
+              {visibleSections.map((section) => {
+                const counts = section.id === "Review" ? null : sectionCounts(section.id);
+                const isActive = (spy?.section ?? activeSection) === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={isActive ? "active" : undefined}
+                    aria-current={isActive ? "true" : undefined}
+                    onClick={() => selectSection(section.id)}
+                  >
+                    <strong>{section.id === "Review" ? "Review" : section.id}</strong>
+                    {counts ? (
+                      <span>
+                        {counts.done}/{counts.total}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </nav>
+          ) : null}
 
           {completed ? (
             <CompletedSummary assessment={assessment} review={review} api={api} />
@@ -965,18 +1441,30 @@ export function HopeAssessmentDetail(): JSX.Element {
               completionDateSaving={completionDateSaving}
               onSign={() => setSignOpen(true)}
               onCorrection={() => void createCorrection()}
+              correctionLabel={openCorrectionId ? "Open correction draft" : "Create correction"}
             />
-          ) : current ? (
-            <SectionPanel
-              sectionId={activeSection}
-              section={current}
-              readonly={completed}
-              findingsByItem={findingsByItem}
-              fieldErrors={fieldErrors}
-              onSave={saveAnswer}
-              onCompleteSfv={() => setSfvOpen(true)}
-              onReviewSfv={() => setSfvReviewOpen(true)}
-            />
+          ) : showAll ? (
+            <div className="wx-hope-stack">
+              {clinicalSections.map((section) => (
+                <section
+                  key={section.id}
+                  id={`hope-section-${section.id}`}
+                  className="wx-hope-all-section"
+                  aria-label={`${section.id}. ${section.label}`}
+                >
+                  <h3 className="wx-hope-all-section-title">
+                    {section.id}. {section.label}
+                  </h3>
+                  <div className="wx-hope-stack">
+                    {(groupsBySection.get(section.id) ?? []).map((group) =>
+                      renderGroup(section.id, group),
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : currentGroup ? (
+            renderGroup(activeSection as Exclude<SectionId, "Review">, currentGroup)
           ) : (
             <EmptyState
               title="No active section items"
@@ -984,42 +1472,66 @@ export function HopeAssessmentDetail(): JSX.Element {
             />
           )}
 
-          <footer className="wx-hope-footer">
-            <Button
-              tone="secondary"
-              disabled={!prevSection}
-              onClick={() => prevSection && setActiveSection(prevSection.id)}
-            >
-              <Glyph name="arrow-right" size={16} style={{ transform: "rotate(180deg)" }} />
-              Previous Section
-            </Button>
-            <span className="wx-hope-footer-note">Answers save automatically.</span>
-            {!completed ? (
-              <span style={{ display: "flex", gap: "0.625rem" }}>
-                <Button tone="secondary" onClick={() => void saveDraft()}>
-                  Save Draft
-                </Button>
-                <Button
-                  disabled={!nextSection}
-                  onClick={() => nextSection && setActiveSection(nextSection.id)}
-                >
-                  Save &amp; Continue
-                  <Glyph name="arrow-right" size={16} />
-                </Button>
-              </span>
-            ) : (
+          {!showAll ? (
+            <footer className="wx-hope-footer">
               <Button
                 tone="secondary"
-                disabled={!nextSection}
-                onClick={() => nextSection && setActiveSection(nextSection.id)}
+                disabled={!prevStep}
+                onClick={() => prevStep && goToStep(prevStep.section, prevStep.group?.key)}
               >
-                Next Section
-                <Glyph name="arrow-right" size={16} />
+                <Glyph name="arrow-right" size={16} style={{ transform: "rotate(180deg)" }} />
+                {prevStep ? `Back: ${stepLabel(prevStep)}` : "Back"}
               </Button>
-            )}
-          </footer>
+              <span className="wx-hope-footer-note">Answers save automatically.</span>
+              {nextStep ? (
+                <Button onClick={() => goToStep(nextStep.section, nextStep.group?.key)}>
+                  Next: {stepLabel(nextStep)}
+                  <Glyph name="arrow-right" size={16} />
+                </Button>
+              ) : (
+                <span />
+              )}
+            </footer>
+          ) : null}
         </main>
       </div>
+      {reconcile ? (
+        <ChartReconcileDialog
+          itemCode={reconcile.itemCode}
+          hopeValue={reconcile.value}
+          chart={
+            reconcile.itemCode === "A0600B"
+              ? patientExtra.medicareOnChart
+              : patientExtra.medicaidOnChart
+          }
+          patientId={assessment.patientId}
+          payers={patientExtra.payers}
+          admissionDate={
+            typeof admissionDateAnswer === "string" &&
+            /^\d{4}-\d{2}-\d{2}$/.test(admissionDateAnswer)
+              ? admissionDateAnswer
+              : null
+          }
+          canEditHope={!completed}
+          correction={
+            completed && !assessment.supersededByAssessmentId
+              ? {
+                  label: openCorrectionId ? "Open correction draft" : "Create correction",
+                  onOpen: () => {
+                    setReconcile(null);
+                    void createCorrection();
+                  },
+                }
+              : null
+          }
+          onUseChart={async (value) => {
+            const item = sections.get("A")?.items.find((i) => i.itemCode === reconcile.itemCode);
+            if (item) await saveAnswer(item, value);
+          }}
+          onChartUpdated={refreshChartNumbers}
+          onClose={() => setReconcile(null)}
+        />
+      ) : null}
       {signOpen ? (
         <SignDialog
           review={review}
@@ -1071,6 +1583,13 @@ export function HopeAssessmentDetail(): JSX.Element {
   );
 }
 
+const SFV_SEVERITY = [
+  { value: "0", label: "None" },
+  { value: "1", label: "Mild" },
+  { value: "2", label: "Moderate" },
+  { value: "3", label: "Severe" },
+] as const;
+
 function CompleteSfvDialog({
   assessment,
   api,
@@ -1102,6 +1621,29 @@ function CompleteSfvDialog({
 
   const canSubmit =
     Boolean(assessment.admissionId) && date !== "" && completedCount === codes.length;
+
+  // Same navigation as the workspace: one question at a time, or "Show all" (shared preference).
+  const [showAll, setShowAll] = useState(() => readNavMode() === "all");
+  const [step, setStep] = useState(0);
+  const stepTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (stepTimer.current) window.clearTimeout(stepTimer.current);
+    },
+    [],
+  );
+  const answer = (itemCode: string, value: string, index: number) => {
+    setAnswers((previous) => ({ ...previous, [itemCode]: value }));
+    if (showAll || index >= sfvQuestions.length - 1) return;
+    // Brief pause so the choice is seen, then move to the next question.
+    if (stepTimer.current) window.clearTimeout(stepTimer.current);
+    stepTimer.current = window.setTimeout(() => setStep(index + 1), 250);
+  };
+  const visibleQuestions = showAll
+    ? sfvQuestions.map((item, index) => ({ item, index }))
+    : sfvQuestions[step]
+      ? [{ item: sfvQuestions[step]!, index: step }]
+      : [];
 
   async function submit() {
     if (!assessment.admissionId || !canSubmit || saving) {
@@ -1295,49 +1837,107 @@ function CompleteSfvDialog({
               />
             </div>
 
-            <div style={sfvAnswersGrid}>
-              {sfvQuestions.map((item, index) => {
+            <div className="wx-sfv-toolbar">
+              {!showAll ? (
+                <ol className="wx-sfv-steps" aria-label="Reassessment questions">
+                  {sfvQuestions.map((item, index) => {
+                    const done = Boolean(answers[item.itemCode]);
+                    const isActive = index === step;
+                    return (
+                      <li key={item.itemCode}>
+                        <button
+                          type="button"
+                          className={isActive ? "active" : done ? "done" : undefined}
+                          aria-current={isActive ? "step" : undefined}
+                          aria-label={`${item.itemCode}${done ? " — answered" : ""}`}
+                          onClick={() => setStep(index)}
+                        >
+                          {done && !isActive ? "✓" : index + 1}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <span />
+              )}
+              <label className="wx-hope-mode-toggle">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={showAll}
+                  aria-checked={showAll}
+                  onChange={(event) => {
+                    const next = event.currentTarget.checked;
+                    setShowAll(next);
+                    writeStorage(NAV_MODE_KEY, next ? "all" : "guided");
+                  }}
+                />
+                <span className="wx-hope-mode-track" aria-hidden />
+                Show all
+              </label>
+            </div>
+
+            <div className={showAll ? "wx-sfv-questions all" : "wx-sfv-questions"}>
+              {visibleQuestions.map(({ item, index }) => {
                 const value = answers[item.itemCode] ?? "";
-
                 return (
-                  <label
+                  <fieldset
                     key={item.itemCode}
-                    style={{
-                      ...sfvAnswerCard,
-                      ...(value ? sfvAnswerCardComplete : null),
-                    }}
+                    className={value ? "wx-sfv-question answered" : "wx-sfv-question"}
+                    disabled={saving}
                   >
-                    <div style={sfvAnswerCardHeader}>
+                    <legend>
                       <span style={sfvAnswerNumber}>{index + 1}</span>
-
-                      <div style={sfvQuestionContent}>
-                        <span style={sfvQuestionCode}>{item.itemCode}</span>
-
-                        <strong style={sfvQuestionText}>{item.label}</strong>
-                      </div>
+                      <strong style={sfvQuestionText}>{item.label}</strong>
+                      <CmsCode code={item.itemCode} />
+                    </legend>
+                    <div className="wx-sfv-severity">
+                      {SFV_SEVERITY.map((option) => (
+                        <label
+                          key={option.value}
+                          className={
+                            value === option.value ? "wx-option-row checked" : "wx-option-row"
+                          }
+                        >
+                          <input
+                            type="radio"
+                            name={`sfv-${item.itemCode}`}
+                            value={option.value}
+                            checked={value === option.value}
+                            onChange={() => answer(item.itemCode, option.value, index)}
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      ))}
                     </div>
-
-                    <select
-                      value={value}
-                      style={sfvInput}
-                      disabled={saving}
-                      onChange={(event) =>
-                        setAnswers((previous) => ({
-                          ...previous,
-                          [item.itemCode]: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Select severity...</option>
-                      <option value="0">None</option>
-                      <option value="1">Mild</option>
-                      <option value="2">Moderate</option>
-                      <option value="3">Severe</option>
-                    </select>
-                  </label>
+                  </fieldset>
                 );
               })}
             </div>
+            {!showAll ? (
+              <div className="wx-sfv-stepnav">
+                <button
+                  type="button"
+                  style={secondaryButton}
+                  disabled={step === 0}
+                  onClick={() => setStep((n) => Math.max(0, n - 1))}
+                >
+                  ← Previous question
+                </button>
+                <span>
+                  Question {step + 1} of {sfvQuestions.length}
+                </span>
+                <button
+                  type="button"
+                  style={secondaryButton}
+                  disabled={step >= sfvQuestions.length - 1}
+                  onClick={() => setStep((n) => Math.min(sfvQuestions.length - 1, n + 1))}
+                >
+                  Next question →
+                </button>
+              </div>
+            ) : null}
           </section>
 
           {sfvError ? (
@@ -1483,10 +2083,9 @@ function ReviewSfvDialog({
                       <span style={sfvAnswerNumber}>{index + 1}</span>
 
                       <div style={sfvQuestionContent}>
-                        <span style={sfvQuestionCode}>{item.itemCode}</span>
-
                         <strong style={sfvQuestionText}>{item.label}</strong>
                       </div>
+                      <CmsCode code={item.itemCode} />
                     </div>
 
                     <div style={sfvReadonlyAnswer}>{option?.label || value || "—"}</div>
@@ -1572,6 +2171,8 @@ interface ItemRenderProps {
   findingsByItem: Findings;
   fieldErrors: Record<string, string>;
   onSave: SaveFn;
+  /** Extra hint under one item's control, keyed by item code (e.g. A0600B vs the chart). */
+  notes?: Record<string, ReactNode>;
 }
 
 const OPTIONAL_ITEMS = new Set(["A0500B", "A0500D"]);
@@ -1626,19 +2227,85 @@ const TILE_GROUP_LABEL: Record<string, string> = {
   A1005: "Ethnicity (Select all that apply)",
   A1010: "Race (Select all that apply)",
   A1400: "Payer information (Select all that apply)",
+  J0910: "Pain assessment included (Select all that apply)",
+  M1195: "Skin conditions (Select all that apply)",
+  M1200: "Skin treatments (Select all that apply)",
 };
+
+/**
+ * CMS short labels repeat the group name on every box ("Pain asmt included: location", "Payer: Self-pay",
+ * "Skin Condition - Rash(es)"). The group legend already says it, so each tile shows only its own part.
+ */
+function tileLabels(items: WorkspaceItem[]): Map<string, string> {
+  const prefixOf = (label: string) => /^(.+?)(?::\s+|\s+-\s+)/.exec(label)?.[0] ?? null;
+  const first = items[0] ? prefixOf(items[0].label) : null;
+  const shared = first && items.every((item) => item.label.startsWith(first)) ? first : null;
+  return new Map(
+    items.map((item) => {
+      const rest = shared ? item.label.slice(shared.length).trim() : item.label;
+      return [item.itemCode, rest.charAt(0).toUpperCase() + rest.slice(1)];
+    }),
+  );
+}
+
+/**
+ * CMS mutual-exclusivity inside a "select all that apply" group (mirrors the backend v1.00.1 rules
+ * -3080/-3090/-3041/-3094/-3095 and the payer consistency errors). `solo` codes stand alone: picking
+ * one greys out every other tile, and picking any other tile greys out the solo codes. `pairs`
+ * are two codes that cannot both be checked.
+ */
+const TILE_EXCLUSIVITY: Record<string, { solo: string[]; pairs?: [string, string][] }> = {
+  A1005: { solo: ["A1005A", "A1005X", "A1005Y"] },
+  A1010: { solo: ["A1010X", "A1010Y", "A1010Z"] },
+  A1400: {
+    solo: ["A1400K", "A1400X"],
+    pairs: [
+      ["A1400A", "A1400B"],
+      ["A1400C", "A1400D"],
+    ],
+  },
+  J0910: { solo: ["J0910C9"] },
+  M1195: { solo: ["M1195Z"] },
+  M1200: { solo: ["M1200Z"] },
+};
+
+/** Why `code` cannot be checked given the currently checked codes, or undefined when it can. */
+function tileBlockedReason(
+  stem: string,
+  code: string,
+  checked: ReadonlySet<string>,
+  labelOf: (code: string) => string,
+): string | undefined {
+  const rule = TILE_EXCLUSIVITY[stem];
+  if (!rule || checked.has(code)) return undefined;
+  const others = [...checked].filter((c) => c !== code);
+  if (others.length === 0) return undefined;
+  const soloOther = others.find((c) => rule.solo.includes(c));
+  if (soloOther) return `Unavailable while "${labelOf(soloOther)}" is selected — uncheck it first.`;
+  if (rule.solo.includes(code))
+    return `"${labelOf(code)}" cannot be combined with other selections — uncheck them first.`;
+  for (const [a, b] of rule.pairs ?? []) {
+    const partner = code === a ? b : code === b ? a : null;
+    if (partner && checked.has(partner))
+      return `Cannot be combined with "${labelOf(partner)}" — uncheck it first.`;
+  }
+  return undefined;
+}
 
 function isCheckboxItem(item: WorkspaceItem): boolean {
   // Only CMS "check all that apply" items (0 = Not checked, 1 = Checked). Real yes/no questions that
-  // happen to be coded 0/1 (F2000A "Yes, discussion occurred") stay single-choice rows.
-  const codes = item.options.map((o) => o.valueCode).sort();
+  // happen to be coded 0/1 (F2000A "Yes, discussion occurred") stay single-choice rows. The CMS
+  // "^ Blank (skip pattern)" value (J0910C*, M1195*, M1200*) is written by skip logic, never chosen,
+  // so it does not stop an item from being a checkbox.
+  const options = answerOptionsForControl(item);
+  const codes = options.map((o) => o.valueCode).sort();
   return (
     item.applicability === "applicable" &&
     !PROTECTED_ITEMS.has(item.itemCode) &&
     codes.length === 2 &&
     codes[0] === "0" &&
     codes[1] === "1" &&
-    item.options.every((o) => /check/i.test(o.label))
+    options.every((o) => /check/i.test(o.label))
   );
 }
 
@@ -1683,60 +2350,212 @@ function partitionTiles(
   return out;
 }
 
-function SectionPanel(props: {
-  sectionId: Exclude<SectionId, "Review">;
-  section: WorkspaceSection;
-  readonly: boolean;
-  findingsByItem: Findings;
-  fieldErrors: Record<string, string>;
-  onSave: SaveFn;
-  onCompleteSfv?: () => void;
-  onReviewSfv?: () => void;
-}): JSX.Element {
+/** One navigable unit of a section: a single clinical card (Option 1 shows one at a time). */
+interface GroupView {
+  /** Stable within its section, e.g. "patient-identity". */
+  key: string;
+  label: string;
+  icon: GlyphName;
+  description?: string;
+  /** Extra DOM id existing issue links target (e.g. "hope-item-A1400"). */
+  anchorId?: string;
+  /** `fields` = Section A grid; `questions` = stacked block questions; `sfv` = SFV workflow card. */
+  kind: "fields" | "questions" | "sfv";
+  items: WorkspaceItem[];
+}
+
+function groupKey(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/** Splits a section into the cards it renders as — the shared unit of both navigation modes. */
+function sectionGroups(
+  sectionId: Exclude<SectionId, "Review">,
+  section: WorkspaceSection,
+): GroupView[] {
+  const items = section.items;
+  const view = (
+    label: string,
+    kind: GroupView["kind"],
+    rows: WorkspaceItem[],
+    extra: Partial<GroupView> = {},
+  ): GroupView => ({
+    key: groupKey(label),
+    label,
+    icon: GROUP_ICON[label] ?? "clipboard-list",
+    kind,
+    items: rows,
+    ...extra,
+  });
+  if (sectionId === "A") {
+    return groupSectionA(items).map((group) =>
+      view(group.label, "fields", group.items, {
+        icon: A_GROUP_META[group.label]?.icon ?? "file-text",
+        description: A_GROUP_META[group.label]?.description,
+        anchorId:
+          group.label === "Demographics"
+            ? "hope-group-demographics"
+            : group.label === "Payer / Coverage"
+              ? "hope-item-A1400"
+              : undefined,
+      }),
+    );
+  }
+  if (sectionId === "F")
+    return groupByCodes(items, F_GROUPS).map((g) => view(g.label, "questions", g.items));
+  if (sectionId === "I") {
+    const principal = items.filter((i) => i.itemCode === "I0010");
+    const others = items.filter((i) => i.itemCode !== "I0010");
+    return [
+      ...(principal.length
+        ? [
+            view("Principal Diagnosis Category", "questions", principal, {
+              icon: "stethoscope",
+              description:
+                "Use the chart diagnosis as context only. The HOPE category remains a clinician-selected answer.",
+            }),
+          ]
+        : []),
+      ...(others.length ? [view("Other Conditions", "fields", others)] : []),
+    ];
+  }
+  if (sectionId === "J") {
+    const isSfv = (item: WorkspaceItem) =>
+      item.itemCode.startsWith("J2052") || item.itemCode.startsWith("J2053");
+    const sfvItems = items.filter(isSfv);
+    const regular = items.filter((item) => !isSfv(item));
+    const groups = J_GROUPS.filter((label) => label !== "Symptom Follow-Up Visit")
+      .map((label) => ({
+        label,
+        items: regular.filter((item) => (item.group ?? groupJItem(item.itemCode)) === label),
+      }))
+      .filter((group) => group.items.length > 0);
+    const grouped = new Set(groups.flatMap((group) => group.items.map((item) => item.itemCode)));
+    const leftover = regular.filter((item) => !grouped.has(item.itemCode));
+    if (leftover.length) groups.push({ label: "Other Health Conditions", items: leftover });
+    return [
+      ...groups.map((g) => view(g.label, "questions", g.items)),
+      ...(sfvItems.length
+        ? [view("Symptom Follow-Up Visit", "sfv", sfvItems, { icon: "calendar-check" })]
+        : []),
+    ];
+  }
+  return groupGeneric(
+    items,
+    sectionId === "M"
+      ? ["Skin condition screening", "Conditions identified", "Treatments / interventions"]
+      : ["Scheduled opioid", "PRN opioid", "Bowel regimen"],
+  ).map((g) => view(g.label, "questions", g.items));
+}
+
+/**
+ * Required, applicable, still-unanswered questions — what "to do" means everywhere on this screen.
+ * A "select all that apply" group is one question (one tick answers every box), so it counts once.
+ */
+function openRequiredItems(items: WorkspaceItem[]): WorkspaceItem[] {
+  const seenStems = new Set<string>();
+  return items.filter((item) => {
+    if (!isRequired(item) || item.state !== "unanswered") return false;
+    if (!isCheckboxItem(item)) return true;
+    const stem = item.itemCode.slice(0, 5);
+    if (seenStems.has(stem)) return false;
+    seenStems.add(stem);
+    return true;
+  });
+}
+
+function groupNavState(
+  group: GroupView,
+  visited: boolean,
+): { state: "complete" | "progress" | "attention" | "empty"; open: number } {
+  const open = openRequiredItems(group.items).length;
+  if (open === 0) return { state: "complete", open };
+  if (visited) return { state: "attention", open };
+  const touched = group.items.some((item) => item.state !== "unanswered");
+  return { state: touched ? "progress" : "empty", open };
+}
+
+/** Drop "required" findings for a group the user has not reached yet — no red before first visit. */
+function withoutMissingRequired(findings: Findings, items: WorkspaceItem[]): Findings {
+  const codes = new Set(items.map((item) => item.itemCode));
+  const out: Findings = new Map();
+  for (const [code, list] of findings) {
+    const kept = codes.has(code) ? list.filter((f) => !isMissingRequiredFinding(f)) : list;
+    if (kept.length) out.set(code, kept);
+  }
+  return out;
+}
+
+function isMissingRequiredFinding(finding: { ruleId: string; message: string }): boolean {
+  return /is required for final HOPE validation|is active and applicable but unanswered/i.test(
+    finding.message,
+  );
+}
+
+function GroupCard(
+  props: ItemRenderProps & {
+    group: GroupView;
+    sectionId: Exclude<SectionId, "Review">;
+    onCompleteSfv?: () => void;
+    onReviewSfv?: () => void;
+  },
+): JSX.Element {
+  const { group } = props;
+  const domId = `hope-group-${props.sectionId}-${group.key}`;
+  if (group.kind === "sfv") {
+    return (
+      <div id={domId}>
+        <SfvWorkflowSection
+          items={group.items}
+          readonly={props.readonly}
+          onComplete={props.onCompleteSfv}
+          onReview={props.onReviewSfv}
+        />
+      </div>
+    );
+  }
   const common: ItemRenderProps = {
     readonly: props.readonly,
     findingsByItem: props.findingsByItem,
     fieldErrors: props.fieldErrors,
     onSave: props.onSave,
+    notes: props.notes,
   };
-  if (props.sectionId === "A") {
-    return (
-      <div className="wx-hope-stack">
-        {groupSectionA(props.section.items).map((group) => (
-          <ClinicalSection
-            key={group.label}
-            id={
-              group.label === "Demographics"
-                ? "hope-group-demographics"
-                : group.label === "Payer / Coverage"
-                  ? "hope-item-A1400"
-                  : undefined
-            }
-            icon={A_GROUP_META[group.label]?.icon ?? "file-text"}
-            title={group.label}
-            description={A_GROUP_META[group.label]?.description}
-          >
-            <FieldGridItems items={group.items} {...common} />
-          </ClinicalSection>
-        ))}
-      </div>
-    );
-  }
-  if (props.sectionId === "F") {
-    return <QuestionGroups groups={groupByCodes(props.section.items, F_GROUPS)} {...common} />;
-  }
-  if (props.sectionId === "I") return <DiagnosisSection {...props} />;
-  if (props.sectionId === "J") return <SectionJ {...props} />;
   return (
-    <QuestionGroups
-      groups={groupGeneric(
-        props.section.items,
-        props.sectionId === "M"
-          ? ["Skin condition screening", "Conditions identified", "Treatments / interventions"]
-          : ["Scheduled opioid", "PRN opioid", "Bowel regimen"],
-      )}
-      {...common}
-    />
+    <div id={domId} data-hope-group={`${props.sectionId}:${group.key}`}>
+      <ClinicalSection
+        id={group.anchorId}
+        icon={group.icon}
+        title={group.label}
+        description={group.description}
+      >
+        {group.kind === "fields" ? (
+          <FieldGridItems items={group.items} {...common} />
+        ) : (
+          <div className="wx-question-stack">
+            {partitionTiles(group.items).map((part) =>
+              part.kind === "tiles" ? (
+                <TileGroup key={part.stem} stem={part.stem} items={part.items} {...common} />
+              ) : (
+                <QuestionRenderer
+                  key={part.item.itemCode}
+                  item={part.item}
+                  layout="block"
+                  readonly={props.readonly}
+                  findings={props.findingsByItem.get(part.item.itemCode) ?? []}
+                  fieldError={props.fieldErrors[part.item.itemCode]}
+                  note={props.notes?.[part.item.itemCode]}
+                  onSave={props.onSave}
+                />
+              ),
+            )}
+          </div>
+        )}
+      </ClinicalSection>
+    </div>
   );
 }
 
@@ -1757,6 +2576,7 @@ function FieldGridItems(props: ItemRenderProps & { items: WorkspaceItem[] }): JS
             readonly={props.readonly}
             findings={props.findingsByItem.get(part.item.itemCode) ?? []}
             fieldError={props.fieldErrors[part.item.itemCode]}
+            note={props.notes?.[part.item.itemCode]}
             onSave={props.onSave}
           />
         ),
@@ -1772,6 +2592,18 @@ function TileGroup(props: ItemRenderProps & { stem: string; items: WorkspaceItem
   ]);
   const payerFindings = props.stem === "A1400" ? payerConsistencyFindings(props.items) : [];
   const sourced = props.items.find((i) => i.source && i.source !== "user");
+  const labels = tileLabels(props.items);
+  const tileLabel = (item: WorkspaceItem) =>
+    props.stem === "A1010"
+      ? item.label.replace(/^Race\s*:\s*/i, "")
+      : (labels.get(item.itemCode) ?? item.label);
+  const checkedCodes = new Set(
+    props.items.filter((i) => String(i.value ?? "") === "1").map((i) => i.itemCode),
+  );
+  const labelOf = (code: string) => {
+    const item = props.items.find((i) => i.itemCode === code);
+    return item ? tileLabel(item) : code;
+  };
   return (
     <div id={`hope-item-${props.stem}`} tabIndex={-1}>
       <CheckboxTiles
@@ -1782,9 +2614,10 @@ function TileGroup(props: ItemRenderProps & { stem: string; items: WorkspaceItem
         columns={3}
         options={props.items.map((item) => ({
           key: item.itemCode,
-          label: props.stem === "A1010" ? item.label.replace(/^Race\s*:\s*/i, "") : item.label,
+          label: tileLabel(item),
           code: item.itemCode,
-          checked: String(item.value ?? "") === "1",
+          checked: checkedCodes.has(item.itemCode),
+          blockedReason: tileBlockedReason(props.stem, item.itemCode, checkedCodes, labelOf),
         }))}
         onToggle={(code, checked) => {
           const values = new Map(
@@ -1829,82 +2662,6 @@ function TileGroup(props: ItemRenderProps & { stem: string; items: WorkspaceItem
           {finding.message}
         </div>
       ))}
-    </div>
-  );
-}
-
-/** F / J / M / N: one section card per clinical concept, questions stacked flat inside it. */
-function QuestionGroups(
-  props: ItemRenderProps & {
-    groups: { label: string; items: WorkspaceItem[] }[];
-  },
-): JSX.Element {
-  return (
-    <div className="wx-hope-stack">
-      {props.groups.map((group) => (
-        <ClinicalSection
-          key={group.label}
-          icon={GROUP_ICON[group.label] ?? "clipboard-list"}
-          title={group.label}
-        >
-          <div className="wx-question-stack">
-            {partitionTiles(group.items).map((part) =>
-              part.kind === "tiles" ? (
-                <TileGroup key={part.stem} stem={part.stem} items={part.items} {...props} />
-              ) : (
-                <QuestionRenderer
-                  key={part.item.itemCode}
-                  item={part.item}
-                  layout="block"
-                  readonly={props.readonly}
-                  findings={props.findingsByItem.get(part.item.itemCode) ?? []}
-                  fieldError={props.fieldErrors[part.item.itemCode]}
-                  onSave={props.onSave}
-                />
-              ),
-            )}
-          </div>
-        </ClinicalSection>
-      ))}
-    </div>
-  );
-}
-
-function DiagnosisSection(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
-  const principal = props.section.items.filter((i) => i.itemCode === "I0010");
-  const others = props.section.items.filter((i) => i.itemCode !== "I0010");
-  const common: ItemRenderProps = {
-    readonly: props.readonly,
-    findingsByItem: props.findingsByItem,
-    fieldErrors: props.fieldErrors,
-    onSave: props.onSave,
-  };
-  return (
-    <div className="wx-hope-stack">
-      <ClinicalSection
-        icon="stethoscope"
-        title="Principal Diagnosis Category"
-        description="Use the chart diagnosis as context only. The HOPE category remains a clinician-selected answer."
-      >
-        <div className="wx-question-stack">
-          {principal.map((item) => (
-            <QuestionRenderer
-              key={item.itemCode}
-              item={item}
-              layout="block"
-              readonly={props.readonly}
-              findings={props.findingsByItem.get(item.itemCode) ?? []}
-              fieldError={props.fieldErrors[item.itemCode]}
-              onSave={props.onSave}
-            />
-          ))}
-        </div>
-      </ClinicalSection>
-      {others.length ? (
-        <ClinicalSection icon="clipboard-list" title="Other Conditions">
-          <FieldGridItems items={others} {...common} />
-        </ClinicalSection>
-      ) : null}
     </div>
   );
 }
@@ -1962,43 +2719,6 @@ function SfvWorkflowSection({
   );
 }
 
-function SectionJ(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
-  const sfvItems = props.section.items.filter(
-    (item) => item.itemCode.startsWith("J2052") || item.itemCode.startsWith("J2053"),
-  );
-  const regularItems = props.section.items.filter(
-    (item) => !item.itemCode.startsWith("J2052") && !item.itemCode.startsWith("J2053"),
-  );
-  const groups = J_GROUPS.filter((label) => label !== "Symptom Follow-Up Visit")
-    .map((label) => ({
-      label,
-      items: regularItems.filter((item) => (item.group ?? groupJItem(item.itemCode)) === label),
-    }))
-    .filter((group) => group.items.length > 0);
-  const grouped = new Set(groups.flatMap((group) => group.items.map((item) => item.itemCode)));
-  const leftover = regularItems.filter((item) => !grouped.has(item.itemCode));
-  if (leftover.length) groups.push({ label: "Other Health Conditions", items: leftover });
-  return (
-    <div className="wx-hope-stack">
-      <QuestionGroups
-        groups={groups}
-        readonly={props.readonly}
-        findingsByItem={props.findingsByItem}
-        fieldErrors={props.fieldErrors}
-        onSave={props.onSave}
-      />
-      {sfvItems.length > 0 ? (
-        <SfvWorkflowSection
-          items={sfvItems}
-          readonly={props.readonly}
-          onComplete={props.onCompleteSfv}
-          onReview={props.onReviewSfv}
-        />
-      ) : null}
-    </div>
-  );
-}
-
 function QuestionRenderer(props: {
   item: WorkspaceItem;
   /** `field` = compact grid field (Section A); `block` = full-width question with option rows. */
@@ -2007,6 +2727,7 @@ function QuestionRenderer(props: {
   findings: ReviewModel["validation"]["findings"];
   fieldError?: string;
   onSave: SaveFn;
+  note?: ReactNode;
 }): JSX.Element {
   const { item } = props;
   const optional = OPTIONAL_ITEMS.has(item.itemCode);
@@ -2069,6 +2790,7 @@ function QuestionRenderer(props: {
   if (coverageHint) hintParts.push(coverageHint);
   if (props.readonly && !workflowControlled)
     hintParts.push("Read-only — this record is completed.");
+  if (props.note) hintParts.push(props.note);
   const hint = hintParts.length ? (
     <>
       {hintParts.map((h, i) => (
@@ -2111,13 +2833,12 @@ function QuestionRenderer(props: {
     );
   }
 
-  // Block question (mockup J0200): code + bold title + Required chip, code tag right, then rows.
+  // Block question (mockup J0200): bold title + Required chip, CMS code tag right, then rows.
   const unanswered = item.state === "unanswered";
   return (
     <div id={`hope-item-${item.itemCode}`} tabIndex={-1} className="wx-question-block">
       <div className="wx-question-head">
         <label htmlFor={inputId} className="wx-question-title">
-          <span className="wx-question-code">{item.itemCode}</span>
           <span>{item.label}</span>
           {optional ? (
             <span className="wx-optional-mark" aria-hidden>
@@ -2126,7 +2847,7 @@ function QuestionRenderer(props: {
           ) : null}
         </label>
         {isRequired(item) && unanswered && !props.readonly ? <RequiredChip /> : null}
-        <CmsCode code={item.itemCode} tone="primary" />
+        <CmsCode code={item.itemCode} />
       </div>
       {hint ? (
         <div id={hintId} className="wx-hope-field-hint">
@@ -2245,6 +2966,76 @@ function PreferredLanguageControl({
   );
 }
 
+/**
+ * Free-text item with CMS special values (Blank "^", "+", "N"). The typed value and a special value
+ * are mutually exclusive: choosing a special value clears and greys out the text box; typing greys
+ * out the special values. Clicking the selected special value again clears it.
+ */
+function TextWithSpecialValues(props: {
+  item: WorkspaceItem;
+  value: string;
+  specialOptions: { valueCode: string; label: string }[];
+  inputId: string;
+  readonly: boolean;
+  describedBy: string;
+  onSave: SaveFn;
+}): JSX.Element {
+  const special = props.specialOptions.some((o) => o.valueCode === props.value) ? props.value : "";
+  const [draft, setDraft] = useState(special ? "" : props.value);
+  useEffect(() => {
+    setDraft(special ? "" : props.value);
+  }, [props.value, special]);
+  const typed = draft.trim() !== "";
+  // A0600A SSN: CMS fatal edits -3015/-3001/-3002/-3003, shown as you type (iQIES would reject it).
+  const isSsn = props.item.itemCode === "A0600A";
+  // Only for an unsaved edit: once saved, the server's finding for the same edit takes over.
+  const ssnProblem =
+    isSsn && typed && normalizeSsn(draft) !== props.value ? ssnCmsProblem(draft) : null;
+  const ssnErrorId = `${props.inputId}-ssn`;
+  return (
+    <div style={{ display: "grid", gap: ".75rem" }}>
+      <input
+        id={props.inputId}
+        type="text"
+        value={draft}
+        maxLength={props.item.maxLength ?? undefined}
+        placeholder={special ? `Special value "${special}" selected` : textPlaceholder(props.item)}
+        readOnly={props.readonly}
+        disabled={Boolean(special) && !props.readonly}
+        aria-describedby={ssnProblem ? `${props.describedBy} ${ssnErrorId}` : props.describedBy}
+        aria-invalid={ssnProblem ? true : undefined}
+        inputMode={isSsn ? "numeric" : undefined}
+        style={special ? { ...inputStyle, opacity: 0.55, cursor: "not-allowed" } : inputStyle}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onBlur={(event) => {
+          // CMS submits the SSN as 9 bare digits: "123-45-6789" is saved as "123456789".
+          const next = isSsn ? normalizeSsn(event.currentTarget.value) : event.currentTarget.value;
+          if (isSsn && next !== event.currentTarget.value) setDraft(next);
+          if (next !== props.value) void props.onSave(props.item, next || null);
+        }}
+      />
+      {ssnProblem ? (
+        <span id={ssnErrorId} className="wx-hope-field-msg wx-hope-field-msg-error">
+          {ssnProblem.message} (CMS edit {ssnProblem.ruleId})
+        </span>
+      ) : null}
+      {props.specialOptions.length ? (
+        <OptionRows
+          name={`${props.item.itemCode}-special`}
+          legend="Or select a CMS special value"
+          options={props.specialOptions}
+          value={special}
+          disabled={props.readonly}
+          describedBy={props.describedBy}
+          blockedReason={typed ? "Clear the typed value to choose this instead." : undefined}
+          onChange={(code) => void props.onSave(props.item, code)}
+          onClear={() => void props.onSave(props.item, null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function AnswerControl(props: {
   item: WorkspaceItem;
   inputId: string;
@@ -2343,33 +3134,15 @@ function AnswerControl(props: {
 
   if (isTextItem(props.item)) {
     return (
-      <div style={{ display: "grid", gap: ".75rem" }}>
-        <input
-          id={props.inputId}
-          type="text"
-          defaultValue={displayOptions.some((option) => option.valueCode === value) ? "" : value}
-          maxLength={props.item.maxLength ?? undefined}
-          placeholder={textPlaceholder(props.item)}
-          readOnly={props.readonly}
-          aria-describedby={props.describedBy}
-          style={inputStyle}
-          onBlur={(event) => {
-            if (event.currentTarget.value !== value)
-              void props.onSave(props.item, event.currentTarget.value || null);
-          }}
-        />
-        {displayOptions.length ? (
-          <OptionRows
-            name={`${props.item.itemCode}-special`}
-            legend="Or select a CMS special value"
-            options={displayOptions}
-            value={displayOptions.some((option) => option.valueCode === value) ? value : ""}
-            disabled={props.readonly}
-            describedBy={props.describedBy}
-            onChange={(code) => void props.onSave(props.item, code)}
-          />
-        ) : null}
-      </div>
+      <TextWithSpecialValues
+        item={props.item}
+        value={value}
+        specialOptions={displayOptions}
+        inputId={props.inputId}
+        readonly={props.readonly}
+        describedBy={props.describedBy}
+        onSave={props.onSave}
+      />
     );
   }
   // Block questions show their choices as full-width option rows (mockup); grid fields use a select.
@@ -2618,6 +3391,7 @@ function ReviewPanel(props: {
   completionDateSaving: boolean;
   onSign: () => void;
   onCorrection: () => void;
+  correctionLabel: string;
 }): JSX.Element {
   const completed = props.assessment.status === "signed";
   const isHuv = props.workspace.assessment.isc === "HUV";
@@ -2689,7 +3463,7 @@ function ReviewPanel(props: {
       <div style={actionRow}>
         {completed ? (
           <button type="button" style={primaryButton} onClick={props.onCorrection}>
-            Create correction
+            {props.correctionLabel}
           </button>
         ) : (
           <button
@@ -3130,49 +3904,39 @@ function navView(
   };
 }
 
-/** Right context rail: patient summary, section completion, open issues, quick links (mockups). */
+/** Right context rail: patient summary, the to-do list, items needing correction, quick links. */
 function HopeRail({
   patient,
   patientExtra,
   patientId,
   review,
-  workspace,
-  visibleSections,
+  todo,
+  completed,
+  onGoToTodo,
   onGoTo,
 }: {
   patient: PatientSummary | null;
   patientExtra: PatientExtra;
   patientId: string;
   review: ReviewModel | null;
-  workspace: Workspace;
-  visibleSections: { id: SectionId; label: string; helper: string }[];
+  todo: {
+    section: Exclude<SectionId, "Review">;
+    label: string;
+    open: { item: WorkspaceItem; group: string }[];
+  }[];
+  completed: boolean;
+  onGoToTodo: (section: Exclude<SectionId, "Review">, group: string, itemCode: string) => void;
   onGoTo: (section: SectionId, itemCode?: string | null) => void;
 }): JSX.Element {
   const age = patient ? ageYears(patient.dob) : null;
-  const progress = workspace.progress;
-  const percent = progress.active
-    ? Math.round(((progress.answered + progress.skipped) / progress.active) * 100)
-    : 0;
-  const clinical = visibleSections.filter((s) => s.id !== "Review");
-  const views = clinical.map((s) => navView(s, review, workspace));
-  const completedCount = views.filter((v) => v.state === "complete").length;
-  const issueCount = views.filter((v) => v.state === "attention").length;
-  const issues = [
-    ...(review?.readiness.blockers ?? []).map((b) => ({
-      key: `b:${b.code}:${b.itemCode ?? ""}:${b.message}`,
-      section: b.section ?? "Review",
-      itemCode: b.itemCode ?? null,
-      message: b.message,
-      severity: "error" as const,
-    })),
-    ...(review?.validation.findings ?? []).map((f) => ({
-      key: `f:${f.ruleId}:${f.itemCode ?? ""}:${f.message}`,
-      section: f.section,
-      itemCode: f.itemCode,
-      message: f.message,
-      severity: f.severity,
-    })),
-  ].filter((row, i, all) => all.findIndex((r) => r.key === row.key) === i);
+  const openCount = todo.reduce((n, row) => n + row.open.length, 0);
+  const firstOpen = todo[0]?.open[0];
+  // "Needs correction": answered-but-wrong findings. Plain "unanswered" findings live in To do.
+  const corrections = (review?.validation.findings ?? [])
+    .filter((f) => !isMissingRequiredFinding(f))
+    .filter(
+      (f, i, all) => all.findIndex((o) => o.ruleId === f.ruleId && o.itemCode === f.itemCode) === i,
+    );
   const links: { label: string; icon: GlyphName; to: string }[] = [
     { label: "View patient chart", icon: "user", to: `/patients/${patientId}` },
     {
@@ -3221,6 +3985,14 @@ function HopeRail({
                 label: "Medicare",
                 value: patientExtra.mbiTail ? `...${patientExtra.mbiTail}` : "—",
               },
+              ...(patientExtra.medicaidOnChart
+                ? [
+                    {
+                      label: "Medicaid",
+                      value: `...${patientExtra.medicaidOnChart.value.slice(-4)}`,
+                    },
+                  ]
+                : []),
               { label: "Address", value: patientExtra.address ?? "—" },
             ]}
           />
@@ -3228,48 +4000,74 @@ function HopeRail({
           <p style={muted}>Patient details unavailable.</p>
         )}
       </Panel>
-      <Panel title="Section Completion" icon="clipboard-check">
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <CompletionRing percent={percent} />
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            <LegendDot color={t.success} label={`${completedCount} Completed`} />
-            <LegendDot color={t.outline} label={`${clinical.length - completedCount} Remaining`} />
-            <LegendDot color={t.error} label={`${issueCount} With issues`} />
-          </div>
-        </div>
-      </Panel>
-      <Panel
-        title={
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem",
-            }}
-          >
-            Assessment Issues {issues.length ? <CountBadge count={issues.length} /> : null}
-          </span>
-        }
-        icon="alert-circle"
-        tone={issues.some((i) => i.severity === "error") ? "danger" : "default"}
-        flush
-      >
-        {issues.length === 0 ? (
-          <p style={{ ...muted, padding: "0 1.125rem 0.875rem" }}>No open validation issues.</p>
-        ) : (
+      {completed ? null : (
+        <Panel
+          title={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              To do {openCount ? <CountBadge count={openCount} /> : null}
+            </span>
+          }
+          icon="clipboard-check"
+          flush
+        >
+          {openCount === 0 ? (
+            <p style={{ ...muted, padding: "0 1.125rem 0.875rem" }}>
+              Every required answer is in. Continue to Review &amp; sign.
+            </p>
+          ) : (
+            <>
+              {firstOpen && todo[0] ? (
+                <div style={{ padding: "0 1.125rem 0.75rem" }}>
+                  <Button
+                    onClick={() =>
+                      onGoToTodo(todo[0]!.section, firstOpen.group, firstOpen.item.itemCode)
+                    }
+                  >
+                    Next missing answer
+                    <Glyph name="arrow-right" size={16} />
+                  </Button>
+                </div>
+              ) : null}
+              <ul className="wx-rail-list">
+                {todo.map((row) => (
+                  <li key={row.section}>
+                    <button
+                      type="button"
+                      className="wx-rail-alert wx-rail-todo"
+                      onClick={() =>
+                        onGoToTodo(row.section, row.open[0]!.group, row.open[0]!.item.itemCode)
+                      }
+                    >
+                      <span style={{ flex: 1, minWidth: 0, fontSize: "0.8125rem" }}>
+                        <strong>{row.label}</strong>
+                      </span>
+                      <span className="wx-rail-todo-count">{row.open.length} left</span>
+                      <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Panel>
+      )}
+      {corrections.length ? (
+        <Panel
+          title={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              Needs correction <CountBadge count={corrections.length} />
+            </span>
+          }
+          icon="alert-circle"
+          tone={corrections.some((c) => c.severity === "error") ? "danger" : "default"}
+          flush
+        >
           <ul className="wx-rail-list">
-            {issues.slice(0, 5).map((issue) => (
-              <li key={issue.key}>
+            {corrections.slice(0, 5).map((issue) => (
+              <li key={`${issue.ruleId}:${issue.itemCode ?? ""}`}>
                 <button
                   type="button"
-                  className="wx-rail-alert"
-                  style={{
-                    width: "100%",
-                    border: 0,
-                    background: "transparent",
-                    textAlign: "left",
-                    cursor: "pointer",
-                  }}
+                  className="wx-rail-alert wx-rail-todo"
                   onClick={() => onGoTo(asSection(issue.section), issue.itemCode)}
                 >
                   <span
@@ -3290,27 +4088,21 @@ function HopeRail({
                 </button>
               </li>
             ))}
-            {issues.length > 5 ? (
+            {corrections.length > 5 ? (
               <li>
                 <button
                   type="button"
-                  className="wx-rail-alert"
-                  style={{
-                    width: "100%",
-                    border: 0,
-                    background: "transparent",
-                    color: t.primary,
-                    cursor: "pointer",
-                  }}
+                  className="wx-rail-alert wx-rail-todo"
+                  style={{ color: t.primary }}
                   onClick={() => onGoTo("Review")}
                 >
-                  View all {issues.length} issues
+                  View all {corrections.length} in Review
                 </button>
               </li>
             ) : null}
           </ul>
-        )}
-      </Panel>
+        </Panel>
+      ) : null}
       <Panel title="Quick Links" icon="link" flush>
         <ul className="wx-rail-links">
           {links.map((l) => (
@@ -4414,11 +5206,6 @@ const sfvAnswerCard: CSSProperties = {
   color: t.onSurface,
 };
 
-const sfvAnswerCardComplete: CSSProperties = {
-  border: `1px solid ${t.primary}`,
-  background: `color-mix(in srgb, ${t.primary} 6%, ${t.surface})`,
-};
-
 const sfvAnswerCardHeader: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -4430,18 +5217,6 @@ const sfvQuestionContent: CSSProperties = {
   flexDirection: "column",
   gap: "0.3rem",
   minWidth: 0,
-};
-
-const sfvQuestionCode: CSSProperties = {
-  alignSelf: "flex-start",
-  padding: "0.15rem 0.4rem",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 6,
-  background: t.surfaceLow,
-  color: t.muted,
-  fontSize: "0.72rem",
-  fontWeight: 700,
-  lineHeight: 1.2,
 };
 
 const sfvQuestionText: CSSProperties = {

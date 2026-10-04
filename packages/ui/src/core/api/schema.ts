@@ -65061,6 +65061,8 @@ export interface operations {
                     patientNameAtReceipt: string;
                     /** Format: date */
                     patientDobAtReceipt?: string;
+                    medicareNumberAtReceipt?: string;
+                    medicaidNumberAtReceipt?: string;
                     referringDxText?: string;
                     referrerName?: string;
                     referrerOrganization?: string;
@@ -65122,6 +65124,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    medicareNumberAtReceipt?: string;
+                    medicaidNumberAtReceipt?: string;
                     referringDxText?: string;
                     referrerName?: string;
                     referrerOrganization?: string;

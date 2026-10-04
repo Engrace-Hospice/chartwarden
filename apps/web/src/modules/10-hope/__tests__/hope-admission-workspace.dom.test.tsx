@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HopeAssessmentDetail } from "../hope-assessment-detail";
 
 const assessment = {
@@ -256,14 +256,19 @@ function clientFor(
     review?: unknown;
     assessment?: unknown;
     patchError?: string;
+    identifiers?: unknown[];
+    payers?: unknown[];
+    timeline?: unknown[];
   } = {},
 ): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
       if (path.includes("/workspace")) return ok(input.workspace ?? workspace());
+      if (path.endsWith("/identifiers")) return ok({ identifiers: input.identifiers ?? [] });
+      if (path.endsWith("/payers")) return ok({ payers: input.payers ?? [] });
       if (path.includes("/review")) return ok(input.review ?? review());
       if (path.includes("/patients/{patientId}/hope/assessments"))
-        return ok({ assessments: [assessment] });
+        return ok({ assessments: input.timeline ?? [assessment] });
       if (path.includes("/patients/{id}")) return ok(patient);
       return ok(input.assessment ?? assessment);
     }),
@@ -303,6 +308,17 @@ function renderWorkspace(client: ApiClient): void {
 }
 
 describe("Admission HOPE workspace", () => {
+  beforeEach(() => {
+    // In-memory storage: the nav-mode choice and visited groups persist through localStorage.
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+      clear: () => store.clear(),
+    });
+  });
+
   it("renders backend-driven section navigation, prefill badges, and applicability states", async () => {
     renderWorkspace(clientFor());
     await waitFor(() =>
@@ -311,6 +327,8 @@ describe("Admission HOPE workspace", () => {
 
     expect(screen.getByRole("button", { name: /A Administrative/ })).toBeTruthy();
     expect(screen.getByText("From admission")).toBeTruthy();
+    // Guided mode shows one group at a time; the rail's sub-steps open the next one.
+    fireEvent.click(screen.getByRole("button", { name: /^Patient Identity/ }));
     expect(screen.getByText("From patient chart")).toBeTruthy();
     const middleInitial = screen.queryByLabelText(/^Patient middle initial/) as HTMLInputElement;
     expect(middleInitial).toBeTruthy();
@@ -462,5 +480,514 @@ describe("Admission HOPE workspace", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Review — Completed" })).toBeTruthy(),
     );
+  });
+  it("guides one group at a time with Back / Next naming the destination", async () => {
+    renderWorkspace(clientFor());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
+    );
+    expect(screen.getByText("Step 1 of 2")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Patient middle initial/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Next: Patient Identity/ }));
+    expect(screen.getByLabelText(/^Patient middle initial/)).toBeTruthy();
+    expect(screen.getByText("Step 2 of 2")).toBeTruthy();
+
+    // The last group of A continues into the next section.
+    fireEvent.click(screen.getByRole("button", { name: /Next: F\. Preferences/ }));
+    expect(screen.getByRole("heading", { name: "F. Preferences & Goals" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Back: A\. Administrative/ }));
+    expect(screen.getByLabelText(/^Patient middle initial/)).toBeTruthy();
+  });
+
+  it("Show all renders every section on one page and remembers the choice", async () => {
+    renderWorkspace(clientFor());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /Show all/ }));
+
+    expect(screen.getByRole("heading", { name: "All sections" })).toBeTruthy();
+    expect(screen.getByText("From admission")).toBeTruthy();
+    expect(screen.getByText("From patient chart")).toBeTruthy();
+    expect(screen.getByLabelText("Yes, discussion occurred")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Jump to section" })).toBeTruthy();
+    expect(window.localStorage.getItem("wx.hope.navMode")).toBe("all");
+  });
+
+  it("holds back 'required' errors until the user has moved past the group", async () => {
+    const base = review();
+    const client = clientFor({
+      workspace: workspace({
+        sections: [
+          {
+            code: "A",
+            label: "Administrative",
+            items: [
+              item({ itemCode: "A0500A", label: "First name", value: "Ada", state: "answered" }),
+              item({
+                itemCode: "A1805",
+                label: "Admitted from",
+                options: [{ valueCode: "01", label: "Home", sortOrder: 1 }],
+              }),
+            ],
+          },
+        ],
+      }),
+      review: {
+        ...base,
+        validation: {
+          ...base.validation,
+          findings: [
+            {
+              ruleId: "CMS-HOPE-REQUIRED",
+              severity: "error",
+              section: "A",
+              itemCode: "A1805",
+              message: "A1805 is required for final HOPE validation.",
+            },
+          ],
+        },
+      },
+    });
+    renderWorkspace(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Living Situation/ }));
+    expect(screen.queryByText("A1805 is required for final HOPE validation.")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Back: Patient Identity/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Next: Living Situation/ }));
+    expect(screen.getByText("A1805 is required for final HOPE validation.")).toBeTruthy();
+  });
+
+  it("greys out choices a selected exclusive option rules out", async () => {
+    const tile = (itemCode: string, label: string, value: string | null) =>
+      item({
+        itemCode,
+        label,
+        value,
+        state: value ? "answered" : "unanswered",
+        options: [
+          { valueCode: "0", label: "Not checked", sortOrder: 1 },
+          { valueCode: "1", label: "Checked", sortOrder: 2 },
+        ],
+      });
+    const client = clientFor({
+      workspace: workspace({
+        sections: [
+          {
+            code: "A",
+            label: "Administrative",
+            items: [
+              tile("A1010A", "White", "0"),
+              tile("A1010B", "Black or African American", "0"),
+              tile("A1010Z", "None of the above", "1"),
+              item({
+                itemCode: "A0700",
+                label: "Patient Medicaid number",
+                cmsItemTypeCode: "Text",
+                value: "N",
+                state: "answered",
+                options: [
+                  { valueCode: "Text", label: "Medicaid number", sortOrder: 1 },
+                  { valueCode: "+", label: "Pending", sortOrder: 2 },
+                  { valueCode: "N", label: "Not a Medicaid recipient", sortOrder: 3 },
+                ],
+              }),
+            ],
+          },
+        ],
+      }),
+    });
+    renderWorkspace(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /Show all/ }));
+
+    expect((screen.getByRole("checkbox", { name: /White/ }) as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole("checkbox", { name: /None of the above/ }) as HTMLInputElement).disabled,
+    ).toBe(false);
+    // A special value ("N") greys out the typed-value box; the others stay selectable.
+    expect((screen.getByLabelText(/^Patient Medicaid number/) as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByLabelText("Not a Medicaid recipient"));
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalled());
+    expect(client.PATCH).toHaveBeenCalledWith(
+      "/api/v1/hope/assessments/{id}/answers",
+      expect.objectContaining({
+        body: { ifVersion: 4, changes: [{ itemCode: "A0700", action: "clear" }] },
+      }),
+    );
+  });
+  it("steps through the SFV reassessment one question at a time", async () => {
+    const sfvItem = (itemCode: string, label: string) =>
+      item({ itemCode, label, section: "J", group: "Symptom Follow-Up Visit" });
+    const client = clientFor({
+      workspace: workspace({
+        sections: [
+          {
+            code: "J",
+            label: "Health Conditions",
+            items: [
+              item({
+                itemCode: "J2052A",
+                label: "SFV completed",
+                section: "J",
+                group: "Symptom Follow-Up Visit",
+              }),
+              sfvItem("J2053A", "Impact of pain"),
+              sfvItem("J2053B", "Impact of shortness of breath"),
+            ],
+          },
+        ],
+      }),
+    });
+    renderWorkspace(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Complete SFV" }));
+    const dialog = screen.getByRole("dialog", { name: "Complete SFV" });
+    expect(within(dialog).getByText("Question 1 of 2")).toBeTruthy();
+    expect(within(dialog).queryByText("Impact of shortness of breath")).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Mild" }));
+    await waitFor(() => expect(within(dialog).getByText("Question 2 of 2")).toBeTruthy());
+    expect(within(dialog).getByText("Impact of shortness of breath")).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole("switch", { name: /Show all/ }));
+    expect(within(dialog).getByText("Impact of pain")).toBeTruthy();
+    expect(within(dialog).getByText("Impact of shortness of breath")).toBeTruthy();
+  });
+  it("renders CMS check-all items with a skip-pattern value as checkboxes, labels without the shared prefix", async () => {
+    const painItem = (itemCode: string, label: string) =>
+      item({
+        itemCode,
+        label,
+        section: "J",
+        group: "Pain",
+        options: [
+          { valueCode: "0", label: "Not checked (No)", sortOrder: 1 },
+          { valueCode: "1", label: "Checked (Yes)", sortOrder: 2 },
+          { valueCode: "^", label: "Blank (skip pattern)", sortOrder: 3 },
+        ],
+      });
+    const client = clientFor({
+      workspace: workspace({
+        sections: [
+          {
+            code: "J",
+            label: "Health Conditions",
+            items: [
+              painItem("J0910C1", "Pain asmt included: location"),
+              painItem("J0910C2", "Pain asmt included: severity"),
+              painItem("J0910C9", "Pain asmt included: none of the above"),
+            ],
+          },
+        ],
+      }),
+    });
+    renderWorkspace(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
+    );
+    const group = screen.getByRole("group", { name: /^Pain assessment included/ });
+    expect(within(group).getAllByRole("checkbox")).toHaveLength(3);
+    expect(within(group).getByRole("checkbox", { name: /^Location/ })).toBeTruthy();
+    expect(screen.queryByText("Not checked (No)")).toBeNull();
+    expect(screen.queryByText(/Pain asmt included/)).toBeNull();
+  });
+  describe("A0600B Medicare number vs the patient's chart", () => {
+    const medicareWorkspace = (value: string, source = "user") =>
+      workspace({
+        sections: [
+          {
+            code: "A",
+            label: "Administrative",
+            items: [
+              item({
+                itemCode: "A0600B",
+                label: "Patient Medicare number",
+                cmsItemTypeCode: "Text",
+                value,
+                source,
+                state: "answered",
+                options: [{ valueCode: "Text", label: "Medicare number", sortOrder: 1 }],
+              }),
+            ],
+          },
+        ],
+      });
+    const medicarePayer = (subscriberId: string) => ({
+      coverageKind: "medicare_ffs",
+      subscriberId,
+      rank: 1,
+      current: true,
+    });
+
+    it("shows the Medicare coverage number in Patient Summary when the chart has no MBI identifier", async () => {
+      renderWorkspace(
+        clientFor({
+          workspace: medicareWorkspace("1EG4TE5MK73"),
+          payers: [medicarePayer("1EG4-TE5-MK73")],
+        }),
+      );
+      await waitFor(() => expect(screen.getByText("...MK73")).toBeTruthy());
+      // Same number (separators ignored): no chart note.
+      expect(screen.queryByText(/Not on the patient's chart/)).toBeNull();
+      expect(screen.queryByText(/Differs from the chart/)).toBeNull();
+    });
+
+    it("flags a typed number the chart does not have and offers to add it as coverage", async () => {
+      renderWorkspace(clientFor({ workspace: medicareWorkspace("1EG4TE5MK73") }));
+      await waitFor(() => expect(screen.getByText(/Not on the patient's chart/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Reconcile…" }));
+      const dialog = screen.getByRole("dialog", { name: "Reconcile Medicare number" });
+      expect(within(dialog).getByText("Add it to the patient's chart")).toBeTruthy();
+      // A payer must be chosen before the coverage can be filed.
+      expect(
+        (within(dialog).getByRole("button", { name: "Add to chart" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+
+    it("warns when the typed number differs from the chart's", async () => {
+      renderWorkspace(
+        clientFor({
+          workspace: medicareWorkspace("1EG4TE5MK73"),
+          identifiers: [{ kind: "mbi", value: "9AA9AA9AA99", last4: "AA99", effectiveTo: null }],
+        }),
+      );
+      await waitFor(() => expect(screen.getByText(/Differs from the chart/)).toBeTruthy());
+      expect(screen.getByText(/Differs from the chart \(…AA99\)/)).toBeTruthy();
+    });
+
+    it("adds no note when the value came from the chart itself", async () => {
+      renderWorkspace(
+        clientFor({ workspace: medicareWorkspace("1EG4TE5MK73", "patient_prefill") }),
+      );
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
+      );
+      expect(screen.queryByText(/Not on the patient's chart/)).toBeNull();
+    });
+  });
+  describe("A0600A SSN (CMS format edits)", () => {
+    const ssnWorkspace = () =>
+      workspace({
+        sections: [
+          {
+            code: "A",
+            label: "Administrative",
+            items: [
+              item({
+                itemCode: "A0600A",
+                label: "Social Security Number",
+                cmsItemTypeCode: "Text",
+                maxLength: 9,
+                options: [
+                  { valueCode: "Text", label: "Patient social security number", sortOrder: 1 },
+                  { valueCode: "^", label: "Blank (not available or unknown)", sortOrder: 2 },
+                ],
+              }),
+            ],
+          },
+        ],
+      });
+
+    it("saves a dashed SSN as the 9 bare digits CMS expects", async () => {
+      const client = clientFor({ workspace: ssnWorkspace() });
+      renderWorkspace(client);
+      const box = (await screen.findByLabelText(/^Social Security Number/)) as HTMLInputElement;
+      fireEvent.change(box, { target: { value: "909-67-3453" } });
+      fireEvent.blur(box);
+      await waitFor(() =>
+        expect(client.PATCH).toHaveBeenCalledWith(
+          "/api/v1/hope/assessments/{id}/answers",
+          expect.objectContaining({
+            body: {
+              ifVersion: 4,
+              changes: [{ itemCode: "A0600A", action: "set", value: "909673453" }],
+            },
+          }),
+        ),
+      );
+    });
+
+    it("flags an SSN CMS would reject while it is typed", async () => {
+      renderWorkspace(clientFor({ workspace: ssnWorkspace() }));
+      const box = await screen.findByLabelText(/^Social Security Number/);
+      fireEvent.change(box, { target: { value: "000123456" } });
+      expect(screen.getByText(/SSN cannot start with 000\. \(CMS edit -3002\)/)).toBeTruthy();
+      fireEvent.change(box, { target: { value: "123456789" } });
+      expect(screen.getByText(/placeholder CMS rejects/)).toBeTruthy();
+    });
+  });
+  describe("Reconciling A0600B with the chart", () => {
+    const workspaceWith = (value: string, source = "user") =>
+      workspace({
+        sections: [
+          {
+            code: "A",
+            label: "Administrative",
+            items: [
+              item({
+                itemCode: "A0600B",
+                label: "Patient Medicare number",
+                cmsItemTypeCode: "Text",
+                value,
+                source,
+                state: "answered",
+                options: [{ valueCode: "Text", label: "Medicare number", sortOrder: 1 }],
+              }),
+            ],
+          },
+        ],
+      });
+    const coverage = {
+      id: "pp-1",
+      payerId: "payer-cms",
+      rank: 1,
+      coverageKind: "medicare_ffs",
+      subscriberId: "9AA9AA9AA99",
+      groupNumber: null,
+      binPcn: null,
+      current: true,
+      effectiveFrom: "2026-10-04",
+      effectiveTo: null,
+    };
+
+    it("uses the chart's number in HOPE", async () => {
+      const client = clientFor({ workspace: workspaceWith("1EG4TE5MK73"), payers: [coverage] });
+      renderWorkspace(client);
+      fireEvent.click(await screen.findByRole("button", { name: "Reconcile…" }));
+      fireEvent.click(screen.getByRole("button", { name: "Use the chart's number in HOPE" }));
+      await waitFor(() =>
+        expect(client.PATCH).toHaveBeenCalledWith(
+          "/api/v1/hope/assessments/{id}/answers",
+          expect.objectContaining({
+            body: {
+              ifVersion: 4,
+              changes: [{ itemCode: "A0600B", action: "set", value: "9AA9AA9AA99" }],
+            },
+          }),
+        ),
+      );
+    });
+
+    it("re-files the chart's coverage with the HOPE number, keeping its payer, rank and dates", async () => {
+      const client = clientFor({ workspace: workspaceWith("1EG4TE5MK73"), payers: [coverage] });
+      renderWorkspace(client);
+      fireEvent.click(await screen.findByRole("button", { name: "Reconcile…" }));
+      fireEvent.click(screen.getByRole("button", { name: "Update the chart" }));
+      await waitFor(() =>
+        expect(client.POST).toHaveBeenCalledWith(
+          "/api/v1/patients/{id}/payers",
+          expect.objectContaining({
+            body: {
+              payerId: "payer-cms",
+              rank: 1,
+              coverageKind: "medicare_ffs",
+              subscriberId: "1EG4TE5MK73",
+              groupNumber: null,
+              binPcn: null,
+              effectiveFrom: "2026-10-04",
+            },
+          }),
+        ),
+      );
+    });
+
+    it("will not put an invalid MBI on the chart", async () => {
+      renderWorkspace(clientFor({ workspace: workspaceWith("A12B4590N1ZW"), payers: [coverage] }));
+      fireEvent.click(await screen.findByRole("button", { name: "Reconcile…" }));
+      expect(screen.queryByRole("button", { name: "Update the chart" })).toBeNull();
+      expect(screen.getByText(/cannot go on the\s+chart/)).toBeTruthy();
+    });
+
+    it("points to the patient chart when the chart's MBI is a patient identifier", async () => {
+      renderWorkspace(
+        clientFor({
+          workspace: workspaceWith("1EG4TE5MK73"),
+          identifiers: [{ kind: "mbi", value: "9AA9AA9AA99", last4: "AA99", effectiveTo: null }],
+        }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Reconcile…" }));
+      expect(screen.queryByRole("button", { name: "Update the chart" })).toBeNull();
+      expect(screen.getByRole("link", { name: "patient chart" })).toBeTruthy();
+    });
+
+    it("saves the member-card number in HOPE and on the chart when neither is right", async () => {
+      const client = clientFor({
+        workspace: workspaceWith("A12B4590N1ZW"),
+        payers: [{ ...coverage, subscriberId: "JU4877GDHJ" }],
+      });
+      renderWorkspace(client);
+      fireEvent.click(await screen.findByRole("button", { name: "Reconcile…" }));
+      const save = screen.getByRole("button", { name: "Save the correct number" });
+      const input = screen.getByRole("textbox", { name: "Correct Medicare number" });
+      fireEvent.change(input, { target: { value: "1EG4-TE5-MK73x" } });
+      expect(screen.getByText("Not a valid MBI.")).toBeTruthy();
+      expect((save as HTMLButtonElement).disabled).toBe(true);
+
+      fireEvent.change(input, { target: { value: "1eg4-te5-mk73" } });
+      fireEvent.click(save);
+      await waitFor(() =>
+        expect(client.POST).toHaveBeenCalledWith(
+          "/api/v1/patients/{id}/payers",
+          expect.objectContaining({
+            body: expect.objectContaining({ payerId: "payer-cms", subscriberId: "1EG4TE5MK73" }),
+          }),
+        ),
+      );
+      expect(client.PATCH).toHaveBeenCalledWith(
+        "/api/v1/hope/assessments/{id}/answers",
+        expect.objectContaining({
+          body: {
+            ifVersion: 4,
+            changes: [{ itemCode: "A0600B", action: "set", value: "1EG4TE5MK73" }],
+          },
+        }),
+      );
+      expect(
+        await screen.findByText("The Medicare number is saved in HOPE and on the chart."),
+      ).toBeTruthy();
+    });
+
+    it("flags a number copied into a correction draft", async () => {
+      renderWorkspace(
+        clientFor({
+          workspace: workspaceWith("A12B4590N1ZW", "correction_copy"),
+          payers: [coverage],
+        }),
+      );
+      expect(await screen.findByRole("button", { name: "Reconcile…" })).toBeTruthy();
+    });
+
+    it("sends a signed record to its open correction draft", async () => {
+      const signed = { ...assessment, status: "signed", signedAt: "2026-09-08T14:00:00.000Z" };
+      renderWorkspace(
+        clientFor({
+          assessment: signed,
+          workspace: workspaceWith("A12B4590N1ZW"),
+          payers: [coverage],
+          timeline: [
+            signed,
+            { ...assessment, id: "hope-2", status: "draft", correctsAssessmentId: "hope-1" },
+          ],
+        }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Reconcile…" }));
+      const dialog = screen.getByRole("dialog", { name: "Reconcile Medicare number" });
+      expect(within(dialog).getByRole("button", { name: "Open correction draft" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Create correction" })).toBeNull();
+    });
   });
 });

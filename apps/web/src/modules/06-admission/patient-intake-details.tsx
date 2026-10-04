@@ -32,11 +32,21 @@ interface PatientPayer {
 interface Props {
   patientId: string;
   onSaved?: () => void | Promise<void>;
+  /** Numbers captured on the referral — pre-fill the subscriber ID when that coverage kind is picked. */
+  referralNumbers?: { medicare: string | null; medicaid: string | null };
+}
+
+/** The referral's number for a coverage kind (Medicare FFS / Advantage share the MBI). */
+function referralNumberFor(kind: string, numbers: Props["referralNumbers"]): string | null {
+  if (!numbers) return null;
+  if (kind === "medicare_ffs" || kind === "medicare_advantage") return numbers.medicare;
+  if (kind === "medicaid") return numbers.medicaid;
+  return null;
 }
 
 type LoadState = "loading" | "ready" | "error";
 
-export function PatientIntakeDetails({ patientId, onSaved }: Props): JSX.Element {
+export function PatientIntakeDetails({ patientId, onSaved, referralNumbers }: Props): JSX.Element {
   const client = useApiClient();
 
   const [addresses, setAddresses] = useState<AddressView[]>([]);
@@ -569,12 +579,22 @@ export function PatientIntakeDetails({ patientId, onSaved }: Props): JSX.Element
 
                   <select
                     value={coverage.coverageKind}
-                    onChange={(event) =>
-                      setCoverage((current) => ({
-                        ...current,
-                        coverageKind: event.target.value,
-                      }))
-                    }
+                    onChange={(event) => {
+                      const kind = event.target.value;
+                      setCoverage((current) => {
+                        // Fill from the referral only over an empty ID or one we filled ourselves —
+                        // never over what staff typed.
+                        const previous = referralNumberFor(current.coverageKind, referralNumbers);
+                        const untouched =
+                          current.subscriberId.trim() === "" || current.subscriberId === previous;
+                        const fromReferral = referralNumberFor(kind, referralNumbers);
+                        return {
+                          ...current,
+                          coverageKind: kind,
+                          subscriberId: untouched ? (fromReferral ?? "") : current.subscriberId,
+                        };
+                      });
+                    }}
                     style={input}
                   >
                     <option value="">Select coverage kind</option>
@@ -621,6 +641,11 @@ export function PatientIntakeDetails({ patientId, onSaved }: Props): JSX.Element
                   autoComplete="off"
                   style={input}
                 />
+                {coverage.subscriberId &&
+                coverage.subscriberId ===
+                  referralNumberFor(coverage.coverageKind, referralNumbers) ? (
+                  <span style={fieldHint}>From the referral — confirm with the member card.</span>
+                ) : null}
               </label>
 
               <div style={twoColumns}>

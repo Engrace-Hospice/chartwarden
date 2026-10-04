@@ -595,6 +595,45 @@ export function createDbHopeBackend(
       });
   }
 
+  /**
+   * Chart facts captured after the draft was created (e.g. a Medicare number added to the patient's
+   * coverage at intake) flow into the draft when it is opened. Only answers the clinician has not
+   * typed (`source !== "user"`) are refreshed, and an unchanged chart writes nothing.
+   */
+  async function refreshChartPrefill(
+    tx: DbClient,
+    organizationId: string,
+    assessment: AssessmentRow,
+  ): Promise<void> {
+    if (
+      assessment.status !== "draft" ||
+      assessment.correctsAssessmentId ||
+      !assessment.specVersionId ||
+      !assessment.isc ||
+      !["01_admission", "02_huv1", "03_huv2", "05_discharge"].includes(assessment.rfaKind)
+    )
+      return;
+    const [spec] = await tx
+      .select({ code: schema.hopeSpecVersions.code })
+      .from(schema.hopeSpecVersions)
+      .where(eq(schema.hopeSpecVersions.id, assessment.specVersionId))
+      .limit(1);
+    if (!spec) return;
+    const admission = await getSeam("AdmissionStatusReader").getAdmissionSummary(
+      organizationId,
+      assessment.admissionId,
+    );
+    if (!admission || admission.organizationId !== organizationId) return;
+    await admissionPrefillService.prefillAdmission({
+      tx,
+      organizationId,
+      assessment,
+      specVersionCode: spec.code,
+      admissionDate: (admission.admissionAt ?? assessment.targetDate.toISOString()).slice(0, 10),
+      refreshOnly: true,
+    });
+  }
+
   async function ensureDraftSpecInitialized(
     tx: DbClient,
     organizationId: string,
@@ -1339,9 +1378,11 @@ export function createDbHopeBackend(
     },
 
     async getAssessmentWorkspace(organizationId, id) {
-      await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
-      );
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const assessment = await ensureDraftSpecInitialized(t, organizationId, id);
+        await refreshChartPrefill(t, organizationId, assessment);
+      });
       return answerService.getWorkspace(organizationId, id);
     },
 

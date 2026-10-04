@@ -124,6 +124,17 @@ describe("HOPE v1.00.1 validation engine", () => {
     expect(ruleIds({ A0220: "2025-10-10", F2000A: "1", F2000B: "2025-10-01" })).toContain("-3063");
   });
 
+  it("enforces the CMS A0600A SSN format edits", () => {
+    expect(ruleIds({ A0600A: "12345678A" })).toContain("-3015"); // digits only
+    expect(ruleIds({ A0600A: "123-45-6789" })).toContain("-3015"); // dashes are not digits
+    expect(ruleIds({ A0600A: "12345678" })).toContain("-3001"); // exactly 9
+    expect(ruleIds({ A0600A: "000123456" })).toContain("-3002"); // not 000-prefixed
+    expect(ruleIds({ A0600A: "123456789" })).toContain("-3003"); // rejected placeholder
+    const clean = ruleIds({ A0600A: "909673453" });
+    for (const id of ["-3015", "-3001", "-3002", "-3003"]) expect(clean).not.toContain(id);
+    expect(ruleIds({ A0600A: "^" })).not.toContain("-3001"); // the CMS blank value
+  });
+
   it("detects mutually exclusive checklist choices", () => {
     expect(ruleIds({ A1005A: "1", A1005B: "1" })).toContain("-3080");
     expect(ruleIds({ A1010A: "1", A1010Z: "1" })).toContain("-3090");
