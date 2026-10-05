@@ -78,6 +78,18 @@ export {
   createInMemoryPatientRouteService,
 } from "./routes/service";
 
+// GAP-015 — the §4.3 care-team assignment contract + routes (the DB port is wired in `mountPatientRoutes`).
+export type {
+  AssignClinicianInput,
+  AssignmentView,
+  EndAssignmentInput,
+  PatientAssignmentsPort,
+} from "./assignments";
+export {
+  type PatientAssignmentRouteDeps,
+  registerPatientAssignmentRoutes,
+} from "./routes/assignment-routes";
+
 // M5-T10 — outbox events (§4.6), jobs (§4.5 geocode), privacy-flag recompute + SUD enforcement (§7.6).
 export { M5_OUTBOX_EVENTS } from "./events-by-m5";
 
@@ -315,6 +327,7 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db";
 import type { M5OutboxPort } from "./deceased-db";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
 import { mergePatients as _mergePatients } from "./merges-db";
@@ -322,6 +335,7 @@ import { createDbPatientRouteService as _dbPatientService } from "./patient-rout
 import type { PrivacyOfficerPorts } from "./privacy/officer";
 import { createDbPrivacyOfficerService as _dbPrivacyOfficerService } from "./privacy/officer-db";
 import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
+import { registerPatientAssignmentRoutes as _registerPatientAssignmentRoutes } from "./routes/assignment-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
 
@@ -346,6 +360,8 @@ export function mountPatientRoutes(
     service: _dbPatientService(db),
     mergePatients: (input) => _mergePatients(db, outbox, input),
   });
+  // GAP-015 — the §4.3 care-team assignment routes: the first production writer of `patient_assignment`.
+  _registerPatientAssignmentRoutes(app, { assignments: _dbAssignmentsPort(db, outbox) });
   // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
   _registerPatientAllergyRoutes(app, { db });
   // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the

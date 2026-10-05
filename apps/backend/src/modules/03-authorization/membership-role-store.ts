@@ -10,7 +10,7 @@ import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
-import type { MembershipRoleStore, MembershipRoleView } from "./authz-ports";
+import type { M3OutboxPublisher, MembershipRoleStore, MembershipRoleView } from "./authz-ports";
 
 const GRANT_COLUMNS = {
   grantId: schema.membershipRoles.id,
@@ -40,7 +40,10 @@ function toView(row: {
 }
 
 /** Build the live MembershipRoleStore over the pooled Drizzle client. */
-export function createDbMembershipRoleStore(db: DbClient): MembershipRoleStore {
+export function createDbMembershipRoleStore(
+  db: DbClient,
+  outbox?: M3OutboxPublisher,
+): MembershipRoleStore {
   return {
     async listForMembership(membershipId: string): Promise<MembershipRoleView[]> {
       return withOrgContextFromRequest(db, async (tx) => {
@@ -74,6 +77,19 @@ export function createDbMembershipRoleStore(db: DbClient): MembershipRoleStore {
               expiresAt: schema.membershipRoles.expiresAt,
             })) as Array<{ grantId: string; scope: unknown; expiresAt: Date | null }>;
           const row = inserted[0]!;
+          await outbox?.publish(tx as never, {
+            eventName: "m3.role.assigned",
+            payload: {
+              organizationId: input.organizationId,
+              membershipId: input.membershipId,
+              roleId: input.roleId,
+              roleKey: input.roleKey,
+              grantedByUserId: input.grantedByUserId,
+            },
+            organizationId: input.organizationId,
+            aggregateKind: "membership_role",
+            aggregateId: row.grantId,
+          });
           return toView({
             grantId: row.grantId,
             membershipId: input.membershipId,
@@ -96,7 +112,19 @@ export function createDbMembershipRoleStore(db: DbClient): MembershipRoleStore {
               eq(schema.membershipRoles.roleId, roleId),
             ),
           )
-          .returning({ id: schema.membershipRoles.id })) as Array<{ id: string }>;
+          .returning({
+            id: schema.membershipRoles.id,
+            organizationId: schema.membershipRoles.organizationId,
+          })) as Array<{ id: string; organizationId: string }>;
+        for (const grant of deleted) {
+          await outbox?.publish(tx as never, {
+            eventName: "m3.role.revoked",
+            payload: { organizationId: grant.organizationId, membershipId, roleId },
+            organizationId: grant.organizationId,
+            aggregateKind: "membership_role",
+            aggregateId: grant.id,
+          });
+        }
         return deleted.length > 0;
       });
     },

@@ -19,6 +19,10 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+// GAP-030: order routes bind the shared M7-owned `caseload_or_scope` by name; the fresh per-server registry
+// needs it registered or every :id route fails closed. This file tests M11 behaviour, not scoping (see
+// orders-caseload-scope.test.ts), so the caseload here is permissive.
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import {
   buildOrderAbacPredicates,
   createInMemoryOrderBackend,
@@ -78,13 +82,22 @@ function makeServer() {
   // closed over a prior test's backend across the file — the boot path registers M11's predicates into the
   // shared registry via `registerOrderAbacPredicates`, which binds once at startup).
   const reg = createPredicateRegistry();
+  const m7 = buildCarePlanAbacPredicates({
+    resolver: {
+      loadPlan: async () => null,
+      loadProblem: async () => null,
+      loadVersion: async () => null,
+    },
+    isInCaseload: async () => true,
+  });
+  reg.register("caseload_or_scope", m7.caseload_or_scope);
   for (const [name, predicate] of Object.entries(buildOrderAbacPredicates({ resolver: backend }))) {
     reg.register(name, predicate);
   }
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerOrderRoutes(app, { service: backend });
+  registerOrderRoutes(app, { service: backend, caseloadPatientIds: async () => [PATIENT] });
   return { app, backend };
 }
 

@@ -141,3 +141,9 @@ export function mountMessagingRoutes(app: FastifyInstance, db: DbClient): void {
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   _registerMessagingRoutes(app, { service });
 }
+
+// GAP-010 — M36's consumer for M3's `m3.breakglass.invoked` (durable Compliance notification).
+export {
+  M36_BREAKGLASS_ALERT_CONSUMER,
+  buildM36BreakGlassAlertConsumer,
+} from "./outbox-consumers/breakglass-alert";

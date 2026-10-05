@@ -395,6 +395,22 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // ── M3 break-glass (GAP-010; M3 spec §4.5/§7.4) ────────────────────────────────────────────────────────────────────
+  // `m3.breakglass.invoked` is published in the invoke's own transaction and delivered by M36's
+  // `breakglass-alert` outbox consumer. Critical, to the Compliance Officer with `org_admin` as the backstop for a
+  // tenant that has no compliance-officer role assigned. Not `system_locked` (the seed's locked set is the three
+  // life/revenue/data-safety floors); the consumer emits at `critical` so a tenant override cannot quietly lower it
+  // below this floor.
+  {
+    eventType: "m3.breakglass.invoked",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // ── M11 stuck lab-order recovery (F-201, #248) ─────────────────────────────────────────────────────────────────────
   // A lab order that failed AFTER its HL7 message was built (`dlq_exhausted`, F-183's "held, delivery unverified",
   // `application_reject`, `recovery_blocked:*`) may already be at the laboratory, so it is never retried automatically: a

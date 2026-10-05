@@ -45,7 +45,26 @@ import type { EncounterAbacResolver } from "./routes/service";
  * `encounter.scope` (GAP-014) follows M6's `admission.scope` naming instead — module-qualified by
  * position, not prefix, since only M8 routes ever name it. Single-owner across the platform registry.
  */
-export const M8_ABAC_PREDICATES = ["m8.cosigner_role_match", "encounter.scope"] as const;
+export const M8_ABAC_PREDICATES = [
+  "m8.cosigner_role_match",
+  "encounter.scope",
+  "is_author",
+  "is_author_or_supervisor",
+  "is_addendum_author",
+] as const;
+
+/**
+ * Roles that count as the "supervisor" arm of `is_author_or_supervisor` (spec §4.5 routes 3-10). The
+ * same pair the cosign-release / late-entry service guards already treat as supervisors
+ * (`isSupervisor` in routes/encounters-routes.ts). Org-wide scope alone (e.g. an admin) is NOT enough.
+ */
+const SUPERVISOR_ROLES = ["clinical_supervisor", "don"] as const;
+
+/** The caller's org membership id — what `authored_by_membership_id` stores (never the raw user id). */
+const membershipIdOf = (context: AbacContext): string | null => {
+  const id = context.attributes?.membershipId;
+  return typeof id === "string" && id.length > 0 ? id : null;
+};
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetId = (target: AbacTarget, field: string): string | null => {
@@ -99,7 +118,38 @@ export function buildEncounterAbacPredicates(
     });
   };
 
+  /** Whether the caller authored the encounter named by `target.encounterId` (fail closed). */
+  const authoredByCaller = async (context: AbacContext, target: AbacTarget): Promise<boolean> => {
+    const caller = membershipIdOf(context);
+    const id = targetId(target, "encounterId");
+    if (!caller || !id) return false;
+    const facts = await resolver.loadEncounter(context.organizationId, id);
+    return facts !== null && facts.authoredByUserId === caller;
+  };
+
   return {
+    is_author: authoredByCaller,
+    is_author_or_supervisor: async (context, target) => {
+      if (!SUPERVISOR_ROLES.some((role) => hasRole(context, role))) {
+        return authoredByCaller(context, target);
+      }
+      // A supervisor still has to name a real, in-org encounter (fail closed on a bad/cross-tenant id).
+      const id = targetId(target, "encounterId");
+      if (!id) return false;
+      return (await resolver.loadEncounter(context.organizationId, id)) !== null;
+    },
+    is_addendum_author: async (context, target) => {
+      const caller = membershipIdOf(context);
+      const encounterId = targetId(target, "encounterId");
+      const addendumId = targetId(target, "addendumId");
+      if (!caller || !encounterId || !addendumId) return false;
+      const author = await resolver.loadAddendumAuthor(
+        context.organizationId,
+        encounterId,
+        addendumId,
+      );
+      return author !== null && author === caller;
+    },
     "m8.cosigner_role_match": async (context, target) => {
       if (!isRn(context)) return false; // a cosigner must be an RN (§4.6)
       const id = targetId(target, "encounterId");

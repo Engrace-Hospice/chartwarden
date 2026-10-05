@@ -10,9 +10,10 @@
 // bypass the per-reason policy by changing the path. §4.6: the four role-gated signer/override
 // predicates M6 owns are wired via `requireAbac` (routes 31/32/40/46); the scope + signer-identity
 // predicates resolve through M6's registered resolvers (see abac-predicates.ts).
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
 import { deriveDischargePermissionKey } from "../discharge";
 import {
@@ -72,13 +73,55 @@ import {
   UploadedNoticeOfRightsSchema,
   parse,
 } from "./admission-typebox";
-import { type AdmissionRouteService, ResourceNotFoundError } from "./service";
+import {
+  type AdmissionReadScope,
+  type AdmissionRouteService,
+  ResourceNotFoundError,
+} from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface AdmissionRouteDeps {
   service: AdmissionRouteService;
+  /**
+   * The patients on a clinician's caseload (GAP-020) — defaults to M5's published `CaseloadProvider` seam.
+   * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
+   */
+  caseloadPatientIds?: (q: {
+    organizationId: string;
+    userId: string;
+  }) => Promise<readonly string[]>;
+}
+
+type CaseloadLookup = NonNullable<AdmissionRouteDeps["caseloadPatientIds"]>;
+
+const defaultCaseloadPatientIds: CaseloadLookup = (q) =>
+  getSeam("CaseloadProvider").caseloadPatientIds(q);
+
+/**
+ * GAP-020 — the caseload narrowing the org-wide admission list applies. Org-wide scope roles are
+ * unrestricted; everyone else sees their caseload plus the one patient a pinned session names.
+ * Fail-CLOSED: a caseload that cannot be resolved narrows to the session patient (or nothing).
+ */
+async function readScopeOf(
+  request: FastifyRequest,
+  caseloadPatientIds: CaseloadLookup,
+): Promise<AdmissionReadScope> {
+  const ctx = request.context;
+  if (hasOrgWideScope(ctx.roles)) return { patientIds: null };
+  const pinned = ctx.attributes?.sessionPatientId;
+  const sessionIds = typeof pinned === "string" && pinned.length > 0 ? [pinned] : [];
+  if (!ctx.userId) return { patientIds: sessionIds };
+  try {
+    const caseload = await caseloadPatientIds({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+    return { patientIds: [...new Set([...caseload, ...sessionIds])] };
+  } catch {
+    return { patientIds: sessionIds };
+  }
 }
 
 function actorOf(request: FastifyRequest): {
@@ -153,7 +196,8 @@ const ABAC_COMPLIANCE_OVERRIDE = requireAbac(
 // LIST routes (2, 9, 44) are deliberately NOT gated this way: `requireAbac`'s target is a single
 // resource id (defaultTarget = request.params), so there is no `:id` for a list route to scope
 // against — narrowing a LIST's rows to the caller's caseload is a query-level filtering concern, not a
-// boolean allow/deny gate, and stays out of this fix's scope (RBAC + org-scoped RLS still apply).
+// boolean allow/deny gate. GAP-020 does that for GET /admissions (`readScopeOf`); the referral lists
+// are not patient-keyed and stay RBAC + RLS only.
 
 // `notFoundOnDeny: true` on every resource-scope guard below (§2.2 existence non-leak): the resolvers
 // return the SAME "no facts" signal whether a target id is absent, cross-tenant (RLS-backstopped), or
@@ -187,6 +231,24 @@ const admissionScope = (
         }),
   }) as PreHandler;
 
+/**
+ * GAP-020 — §7.5 per-chart scope for the PATIENT-keyed routes (`:patientId` path param, or `patientId`
+ * in the POST /admissions body). `caseload_or_scope` is M7's predicate, bound BY NAME (no import edge,
+ * the M5 `chartScope` pattern): it allows an org-wide oversight role, a session pinned to this patient,
+ * or an open caseload assignment; a miss is a 404 (`notFoundOnDeny`) so a refusal never confirms the
+ * chart exists. The patient-keyed GETs previously returned `{ items: [] }` for an unknown patient; an
+ * out-of-scope caller now gets the same 404 as an absent one, which is the intended non-leak.
+ */
+const patientScope = (action: string, source: "params" | "body"): PreHandler =>
+  requireAbac(action, "caseload_or_scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => {
+      const raw = source === "params" ? request.params : request.body;
+      const patientId = (raw as { patientId?: unknown } | null | undefined)?.patientId;
+      return { patientId };
+    },
+  }) as PreHandler;
+
 // The three signer-identity predicates (target = the CTI/F2F id itself, the native `loadCti`/`loadF2f`
 // shape — no `resourceKind` involved).
 const ABAC_CTI_HOSPICE_MD = requireAbac("cti.sign_hospice_md", "cti.is_hospice_md") as PreHandler;
@@ -212,6 +274,7 @@ const notFound = (id: string): never => {
 
 export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRouteDeps): void {
   const { service } = deps;
+  const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
 
   // ── Referral (routes 1–7) ──────────────────────────────────────────────────────────────────
   app.post("/api/v1/referrals", { preHandler: [REFERRAL_CREATE] }, async (request, reply) => {
@@ -504,12 +567,16 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   );
 
   // ── Admission (routes 8–14) ────────────────────────────────────────────────────────────────
-  app.post("/api/v1/admissions", { preHandler: [ADMISSION_CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(AdmissionCreateSchema, request.body);
-    const res = await service.createAdmission(organizationId, body, userId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions",
+    { preHandler: [ADMISSION_CREATE, patientScope("admission.create", "body")] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(AdmissionCreateSchema, request.body);
+      const res = await service.createAdmission(organizationId, body, userId);
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get(
     "/api/v1/admissions",
@@ -520,7 +587,11 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(AdmissionListQuerySchema, request.query);
-      return service.listAdmissions(organizationId, q);
+      return service.listAdmissions(
+        organizationId,
+        q,
+        await readScopeOf(request, caseloadPatientIds),
+      );
     },
   );
 
@@ -572,7 +643,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/patients/:patientId/admissions",
     {
-      preHandler: [ADMISSION_READ],
+      preHandler: [ADMISSION_READ, patientScope("admission.read", "params")],
       config: {
         auditRead: { resourceKind: "admission", patientIdParam: "patientId", list: true },
       },
@@ -590,7 +661,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/patients/:patientId/election-certification",
     {
-      preHandler: [ELECTION_READ],
+      preHandler: [ELECTION_READ, patientScope("election.read", "params")],
       config: {
         auditRead: {
           resourceKind: "election_certification",

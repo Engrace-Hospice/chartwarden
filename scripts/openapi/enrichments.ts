@@ -633,6 +633,12 @@ import {
   PatientAllergyViewSchema as M5EPatientAllergyViewSchema,
   VerifyAllergyBodySchema as M5EVerifyAllergyBodySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/allergy-typebox";
+import {
+  AssignClinicianBodySchema as M5EAssignClinicianBodySchema,
+  EndAssignmentBodySchema as M5EEndAssignmentBodySchema,
+  PatientAssignmentListResponseSchema as M5EPatientAssignmentListResponseSchema,
+  PatientAssignmentViewSchema as M5EPatientAssignmentViewSchema,
+} from "../../apps/backend/src/modules/05-patient/routes/assignment-typebox";
 // M05 Patient & Demographics — OpenAPI enrichment imports. EVERY symbol is M5E-aliased because the
 // M5 patient schemas are ALREADY imported un-aliased in scripts/openapi/enrichments.ts; the M5E prefix
 // avoids a redeclaration collision when this block is merged in via a later Object.assign.
@@ -5954,6 +5960,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Mark an allergy entered-in-error (reason required; the row is kept for the survey trail)",
     body: M5EEnteredInErrorAllergyBodySchema,
     response: M5EPatientAllergyViewSchema,
+  },
+  "GET /api/v1/patients/:id/assignments": {
+    summary:
+      "Patient care-team assignments — open first, then ended (§4.3; patient.read + caseload_or_scope)",
+    response: M5EPatientAssignmentListResponseSchema,
+  },
+  "POST /api/v1/patients/:id/assignments": {
+    summary:
+      "Assign a clinician to a patient (§4.3; patient.assign) — 409 PRIMARY_RN_ALREADY_ASSIGNED / ASSIGNMENT_ALREADY_OPEN; emits m5.patient.assignment_created",
+    body: M5EAssignClinicianBodySchema,
+    response: M5EPatientAssignmentViewSchema,
+  },
+  "POST /api/v1/patients/:id/assignments/:assignmentId/end": {
+    summary:
+      "End an open assignment — sets unassignedAt (default today); 409 when already ended; emits m5.patient.assignment_ended (§4.3; patient.assign)",
+    body: M5EEndAssignmentBodySchema,
+    response: M5EPatientAssignmentViewSchema,
   },
   "GET /api/v1/patients/:id/care-team": {
     summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",

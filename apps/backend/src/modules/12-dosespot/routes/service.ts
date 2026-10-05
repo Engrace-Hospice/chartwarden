@@ -224,6 +224,14 @@ export interface DoseSpotAbacResolver {
     organizationId: string,
     membershipId: string,
   ): Promise<readonly string[] | null>;
+  /**
+   * GAP-033 — the patient a medication order belongs to (null = absent / cross-tenant). The order
+   * routes carry an order id, but `caseload_or_scope` is a PATIENT-scope predicate, so the route guard
+   * resolves the order to its patient here and then asks that predicate.
+   */
+  loadOrderPatientId(organizationId: string, orderId: string): Promise<string | null>;
+  /** GAP-033 — the patient a medication-history record belongs to (null = absent / cross-tenant). */
+  loadHistoryRecordPatientId(organizationId: string, recordId: string): Promise<string | null>;
   /** The `refill_inbox_scope` facts for a refill id + actor (null = absent / cross-tenant). */
   loadRefillScope(
     organizationId: string,
@@ -255,10 +263,31 @@ export interface MedicationHistoryRecordView {
   readonly createdAt?: string;
 }
 
+/** GAP-033 — hard ceiling on one `GET /medication-orders` page (the list used to be unbounded). */
+export const MEDICATION_ORDER_LIST_LIMIT = 200;
+
+/**
+ * GAP-033 — who is asking, for the order list's caseload narrowing. `orgWide` is
+ * `hasOrgWideScope(roles)`; `sessionPatientId` is a session pinned to one patient; otherwise the list is
+ * narrowed to the patients on `userId`'s caseload (the M2 USER id — `patient_assignment.clinician_user_id`).
+ */
+export interface OrderListScope {
+  readonly orgWide: boolean;
+  readonly userId: string;
+  readonly sessionPatientId?: string | null;
+}
+
 export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
   listOrders(
     organizationId: string,
-    filter: { patientId?: string; prescriberId?: string; medClass?: string; status?: string },
+    filter: {
+      patientId?: string;
+      prescriberId?: string;
+      medClass?: string;
+      status?: string;
+      /** REQUIRED (GAP-033): there is no unscoped list — an ORG-level caller passes `orgWide: true` explicitly. */
+      scope: OrderListScope;
+    },
   ): Promise<{ orders: MedicationOrderView[]; statusCounts: Record<string, number> }>;
   getOrder(organizationId: string, id: string): Promise<MedicationOrderView>;
   createDraft(
@@ -455,6 +484,12 @@ export interface DoseSpotRouteSeed {
     userId: string;
     patientId: string;
   }>;
+  /** GAP-033 — seeded medication-history records (id → patient), for the reconcile route's scope guard. */
+  readonly historyRecords?: ReadonlyArray<{
+    id: string;
+    organizationId: string;
+    patientId: string;
+  }>;
   readonly now?: () => string;
   /** Injected M38 terminology validator (absent ⇒ code binding skipped). */
   readonly terminology?: DoseSpotTerminologyValidator;
@@ -503,6 +538,7 @@ export function createInMemoryDoseSpotBackend(
       ial2Status: string;
     }
   >();
+  const historyRecords = new Map((seed.historyRecords ?? []).map((h) => [h.id, h] as const));
   const events: RecordedDoseSpotEvent[] = [];
   const { terminology, mdm, consent } = seed;
   const caseload = new Set<string>(
@@ -717,9 +753,16 @@ export function createInMemoryDoseSpotBackend(
 
   return {
     async listOrders(organizationId, filter) {
+      const { scope } = filter;
+      const inScope = (patientId: string): boolean => {
+        if (scope.orgWide) return true;
+        if (scope.sessionPatientId === patientId) return true;
+        return caseload.has(`${organizationId}:${scope.userId}:${patientId}`);
+      };
       const scoped = [...orders.values()].filter(
         (r) =>
           r.organizationId === organizationId &&
+          inScope(r.patientId) &&
           (!filter.patientId || r.patientId === filter.patientId) &&
           (!filter.prescriberId || r.prescriberMembershipId === filter.prescriberId) &&
           (!filter.medClass || r.medClass === filter.medClass),
@@ -730,7 +773,10 @@ export function createInMemoryDoseSpotBackend(
       >;
       for (const r of scoped) statusCounts[r.status] = (statusCounts[r.status] ?? 0) + 1;
       return {
-        orders: scoped.filter((r) => !filter.status || r.status === filter.status).map(view),
+        orders: scoped
+          .filter((r) => !filter.status || r.status === filter.status)
+          .slice(0, MEDICATION_ORDER_LIST_LIMIT)
+          .map(view),
         statusCounts,
       };
     },
@@ -1116,6 +1162,14 @@ export function createInMemoryDoseSpotBackend(
     async loadAuthorizedSchedules(organizationId, userId) {
       const row = prescribers.get(`${organizationId}:${userId}`);
       return row ? row.deaAuthorizedSchedules : null;
+    },
+    async loadOrderPatientId(organizationId, orderId) {
+      const r = orders.get(orderId);
+      return r && r.organizationId === organizationId ? r.patientId : null;
+    },
+    async loadHistoryRecordPatientId(organizationId, recordId) {
+      const r = historyRecords.get(recordId);
+      return r && r.organizationId === organizationId ? r.patientId : null;
     },
     async loadRefillScope(organizationId, refillId, actor) {
       const r = refills.get(refillId);

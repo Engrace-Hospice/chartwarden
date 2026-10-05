@@ -90,7 +90,9 @@ export {
   type RefillInboxPolicyView,
   type RefillRequestView,
   type RefillScopeFacts,
+  type OrderListScope,
   type SignArgs,
+  MEDICATION_ORDER_LIST_LIMIT,
   createInMemoryDoseSpotBackend,
 } from "./routes/service";
 // M12-T08 — the §4.4 outbox contract (the full `m12.*` taxonomy; check-fitness-gaps.ts scans events-by-m12.ts

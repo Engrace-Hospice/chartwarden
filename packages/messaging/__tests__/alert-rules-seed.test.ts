@@ -61,6 +61,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "hl7_outbound.transmission_storm",
       "external_feed.baa_expired",
       "external_feed.baa_missing",
+      // GAP-010 — M3 break-glass Compliance notification (M36 consumer `breakglass-alert`).
+      "m3.breakglass.invoked",
       // F-201 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
       // sweep giving up.
       "m11.order.transmission_held_aging",

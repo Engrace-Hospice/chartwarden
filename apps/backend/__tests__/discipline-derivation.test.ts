@@ -116,6 +116,9 @@ describe("F-030 — the clinical discipline set derives from role keys, in every
               authoredByUserId,
             };
           },
+          async loadAddendumAuthor() {
+            return null;
+          },
         },
         async isInCaseload() {
           return true;

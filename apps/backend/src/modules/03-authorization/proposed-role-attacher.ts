@@ -27,7 +27,7 @@ import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
-import type { ActorPermissionResolver } from "./authz-ports";
+import type { ActorPermissionResolver, M3OutboxPublisher } from "./authz-ports";
 import { ROLE_ASSIGN_PERMISSION, createDbOrgRoleLookup } from "./proposed-role-ceiling";
 
 /** What attaching an invitation's proposed roles did. */
@@ -80,6 +80,8 @@ export function createDbProposedRoleAttacher(
   db: DbClient,
   /** Required, not optional: an attacher without the inviter's ceiling is the GAP-008 defect. */
   effectivePermissions: ActorPermissionResolver,
+  /** GAP-010 — `m3.role.assigned` per newly attached role, on the attach's own tx. Omitted → dropped. */
+  outbox?: M3OutboxPublisher,
 ): ProposedRoleAttacher {
   const lookup = createDbOrgRoleLookup(db);
   return {
@@ -118,7 +120,7 @@ export function createDbProposedRoleAttacher(
         );
         const byKey = new Map(rows.map((row) => [row.key, row.id]));
         if (rows.length > 0) {
-          await tx
+          const inserted = await tx
             .insert(schema.membershipRoles)
             .values(
               rows.map((row) => ({
@@ -130,7 +132,26 @@ export function createDbProposedRoleAttacher(
                 expiresAt: null,
               })),
             )
-            .onConflictDoNothing();
+            .onConflictDoNothing()
+            .returning({ id: schema.membershipRoles.id, roleId: schema.membershipRoles.roleId });
+          // Only NEWLY inserted grants announce themselves: a replayed accept conflicts, returns no row and
+          // so publishes nothing (idempotent by the same constraint as the insert).
+          const keyByRoleId = new Map(rows.map((row) => [row.id, row.key]));
+          for (const grant of inserted) {
+            await outbox?.publish(tx as never, {
+              eventName: "m3.role.assigned",
+              payload: {
+                organizationId,
+                membershipId,
+                roleId: grant.roleId,
+                roleKey: keyByRoleId.get(grant.roleId) ?? "",
+                grantedByUserId,
+              },
+              organizationId,
+              aggregateKind: "membership_role",
+              aggregateId: grant.id,
+            });
+          }
         }
         return {
           attached: wanted.filter((key) => byKey.has(key)),

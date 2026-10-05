@@ -13068,6 +13068,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient care-team assignments — open first, then ended (§4.3; patient.read + caseload_or_scope) */
+        get: operations["getApiV1PatientsByIdAssignments"];
+        put?: never;
+        /** Assign a clinician to a patient (§4.3; patient.assign) — 409 PRIMARY_RN_ALREADY_ASSIGNED / ASSIGNMENT_ALREADY_OPEN; emits m5.patient.assignment_created */
+        post: operations["postApiV1PatientsByIdAssignments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/assignments/{assignmentId}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End an open assignment — sets unassignedAt (default today); 409 when already ended; emits m5.patient.assignment_ended (§4.3; patient.assign) */
+        post: operations["postApiV1PatientsByIdAssignmentsByAssignmentIdEnd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/care-team": {
         parameters: {
             query?: never;
@@ -57462,6 +57497,129 @@ export interface operations {
                         patientId: string;
                         status: "pending" | "accepted" | "denied" | "withdrawn";
                         slaDueAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assignments: {
+                            id: string;
+                            patientId: string;
+                            clinicianUserId: string;
+                            role: string;
+                            /** Format: date */
+                            assignedAt: string;
+                            unassignedAt: string | null;
+                            reason: string | null;
+                            current: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    clinicianUserId: string;
+                    role: "primary_rn" | "attending_clinician" | "case_manager_msw" | "chaplain" | "aide" | "np" | "md" | "volunteer" | "bereavement";
+                    /** Format: date */
+                    assignedAt?: string;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        clinicianUserId: string;
+                        role: string;
+                        /** Format: date */
+                        assignedAt: string;
+                        unassignedAt: string | null;
+                        reason: string | null;
+                        current: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdAssignmentsByAssignmentIdEnd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                assignmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    unassignedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        clinicianUserId: string;
+                        role: string;
+                        /** Format: date */
+                        assignedAt: string;
+                        unassignedAt: string | null;
+                        reason: string | null;
+                        current: boolean;
                     };
                 };
             };

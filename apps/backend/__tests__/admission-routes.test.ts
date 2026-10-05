@@ -17,13 +17,17 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   buildAdmissionAbacPredicates,
   createInMemoryAdmissionBackend,
   registerAdmissionRoutes,
 } from "../src/modules/06-admission/index";
+// GAP-020: the patient-keyed routes bind M7's shared `caseload_or_scope` by name; the fresh per-test
+// registry must register it (test-only cross-module import, same as assessment-routes.test.ts). Its
+// `patientId` arm only consults `isInCaseload`, never the resolver, so the stub resolver is never called.
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -33,6 +37,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const sessionPatient = request.headers["x-test-session-patient"];
+  if (typeof sessionPatient === "string")
+    request.context.attributes.sessionPatientId = sessionPatient;
 }
 
 const ORG = "org_a";
@@ -102,6 +109,7 @@ function makeServer(
       userId: string;
       patientId: string;
     }) => Promise<boolean>;
+    caseloadPatientIds?: (q: { organizationId: string; userId: string }) => Promise<string[]>;
   } = {},
 ) {
   const backend = createInMemoryAdmissionBackend({
@@ -242,13 +250,25 @@ function makeServer(
     isInCaseload: options.isInCaseload ?? (async () => true),
   });
   for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  const m7Predicates = buildCarePlanAbacPredicates({
+    resolver: {
+      loadPlan: async () => null,
+      loadProblem: async () => null,
+      loadVersion: async () => null,
+    },
+    isInCaseload: options.isInCaseload ?? (async () => true),
+  });
+  registry.register("caseload_or_scope", m7Predicates.caseload_or_scope);
   registerAbacRegistry(registry);
 
   const app = buildServer({
     authenticate: headerAuth,
     security: { rateLimitEnabled: false },
   });
-  registerAdmissionRoutes(app, { service: backend.service });
+  registerAdmissionRoutes(app, {
+    service: backend.service,
+    caseloadPatientIds: options.caseloadPatientIds ?? (async () => [PATIENT_A, PATIENT_B]),
+  });
   return { app, backend };
 }
 
@@ -461,6 +481,143 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     });
     expect(res.statusCode).toBe(403);
     await app.close();
+  });
+
+  describe("GAP-020 — GET /admissions narrows the org list to the caller's caseload", () => {
+    const idsOf = (res: { json: () => { items: { id: string }[] } }) =>
+      res.json().items.map((i) => i.id);
+    const list = async (
+      headers: Record<string, string>,
+      caseloadPatientIds: () => Promise<string[]>,
+      url = "/api/v1/admissions",
+    ) => {
+      const { app } = makeServer({ caseloadPatientIds });
+      const res = await app.inject({ method: "GET", url, headers });
+      await app.close();
+      return res;
+    };
+
+    it("returns only the caseload patient's admissions to a scoped clinician", async () => {
+      const res = await list(RN, async () => [PATIENT_A]);
+      expect(res.statusCode).toBe(200);
+      const ids = idsOf(res);
+      expect(ids).toContain(ADMISSION);
+      expect(ids).not.toContain(ADMISSION_OTHER_PATIENT);
+    });
+
+    it("returns an empty list for an empty caseload", async () => {
+      const res = await list(RN, async () => []);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().items).toEqual([]);
+    });
+
+    it("fails closed (empty list) when the caseload cannot be resolved", async () => {
+      const res = await list(RN, async () => {
+        throw new Error("seam down");
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().items).toEqual([]);
+    });
+
+    it("lets an org-wide oversight role see every admission without a caseload lookup", async () => {
+      const lookup = vi.fn(async () => [] as string[]);
+      const res = await list({ ...RN, "x-test-roles": "medical_director" }, lookup);
+      expect(res.statusCode).toBe(200);
+      expect(idsOf(res)).toEqual(expect.arrayContaining([ADMISSION, ADMISSION_OTHER_PATIENT]));
+      expect(lookup).not.toHaveBeenCalled();
+    });
+
+    it("a session pinned to a patient sees that patient's admissions", async () => {
+      const res = await list({ ...RN, "x-test-session-patient": PATIENT_B }, async () => []);
+      expect(res.statusCode).toBe(200);
+      const ids = idsOf(res);
+      expect(ids).toContain(ADMISSION_OTHER_PATIENT);
+      expect(ids).not.toContain(ADMISSION);
+    });
+  });
+
+  describe("GAP-020 — patient-keyed routes carry caseload scope (404 on a miss, never 403)", () => {
+    const outOfCaseload = { isInCaseload: async () => false };
+    const createBody = {
+      patientId: PATIENT_A,
+      intakeMethod: "phone",
+      hospiceMedicalDirectorId: PROVIDER_ENTITY,
+    };
+
+    it("GET /patients/:patientId/admissions is 404 for a clinician outside the caseload", async () => {
+      const { app } = makeServer(outOfCaseload);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients/${PATIENT_A}/admissions`,
+        headers: RN,
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it("GET /patients/:patientId/election-certification is 404 for a clinician outside the caseload", async () => {
+      const { app } = makeServer(outOfCaseload);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients/${PATIENT_A}/election-certification`,
+        headers: RN,
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it("POST /admissions is 404 when body.patientId is outside the caller's caseload", async () => {
+      const { app } = makeServer(outOfCaseload);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/admissions",
+        headers: INTAKE,
+        payload: createBody,
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it("an in-caseload clinician still reads both patient-keyed GETs (200)", async () => {
+      const { app } = makeServer({ isInCaseload: async (q) => q.patientId === PATIENT_A });
+      const a = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients/${PATIENT_A}/admissions`,
+        headers: RN,
+      });
+      const e = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients/${PATIENT_A}/election-certification`,
+        headers: RN,
+      });
+      expect(a.statusCode).toBe(200);
+      expect(e.statusCode).toBe(200);
+      await app.close();
+    });
+
+    it("an in-caseload intake user can POST /admissions (scope passes; not a 404)", async () => {
+      const { app } = makeServer({ isInCaseload: async (q) => q.patientId === PATIENT_A });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/admissions",
+        headers: INTAKE,
+        payload: createBody,
+      });
+      expect(res.statusCode).not.toBe(404);
+      expect(res.statusCode).not.toBe(403);
+      await app.close();
+    });
+
+    it("an org-wide oversight role passes the scope gate with no caseload row", async () => {
+      const { app } = makeServer(outOfCaseload);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients/${PATIENT_A}/admissions`,
+        headers: { ...RN, "x-test-roles": "medical_director" },
+      });
+      expect(res.statusCode).toBe(200);
+      await app.close();
+    });
   });
 
   it("denies /patients/:patientId/election-certification without election.read (403)", async () => {

@@ -98,6 +98,8 @@ const ALL_AUTHOR = [
 
 const PERMISSION_SEED = [
   { userId: "rn_1", permissions: ALL_AUTHOR },
+  { userId: "rn_2", permissions: ALL_AUTHOR },
+  { userId: "sup_1", permissions: ALL_AUTHOR },
   { userId: "lpn_cos", permissions: ["encounter.read", "encounter.cosign"] },
   { userId: "viewer_1", permissions: ["encounter.read"] },
   { userId: "svc_m22", permissions: ["encounter.read_internal"] },
@@ -194,6 +196,12 @@ function makeServer(
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
+const RN2 = { "x-test-user": "rn_2", "x-test-org": ORG, "x-test-roles": "rn" };
+const SUPERVISOR = {
+  "x-test-user": "sup_1",
+  "x-test-org": ORG,
+  "x-test-roles": "clinical_supervisor",
+};
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const LPN_COSIGNER = { "x-test-user": "lpn_cos", "x-test-org": ORG, "x-test-roles": "lpn" };
 /** The system principal the M22 render seam (route 31) is called as. */
@@ -970,5 +978,192 @@ describe("M8-T09 — §4.6 cosigner_role_match ABAC predicate", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("acknowledged");
+  });
+});
+
+describe("GAP-028 — M8 author ABAC (is_author / is_author_or_supervisor / is_addendum_author)", () => {
+  type Server = ReturnType<typeof makeServer>;
+  const VITALS_BODY = { bpSystolic: 120, bpDiastolic: 80, heartRate: 70 };
+
+  async function draftBy(app: Server["app"], headers: Record<string, string>): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    return res.json().id as string;
+  }
+
+  async function finalizedBy(app: Server["app"], headers: Record<string, string>): Promise<string> {
+    const id = await draftBy(app, headers);
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...headers, "if-match": "0" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    const fin = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers,
+      payload: {},
+    });
+    expect(fin.statusCode).toBe(200);
+    return id;
+  }
+
+  const sign = (app: Server["app"], id: string, headers: Record<string, string>) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/sign`,
+      headers,
+      payload: { attestationConfirmed: true },
+    });
+
+  it("403 when another clinician (holding encounter.sign) signs someone else's note", async () => {
+    const { app } = makeServer();
+    const id = await finalizedBy(app, RN);
+    const res = await sign(app, id, RN2);
+    expect(res.statusCode).toBe(403);
+    // the author can still sign it — the refusal changed nothing.
+    expect((await sign(app, id, RN)).statusCode).toBe(200);
+  });
+
+  it("403 when another clinician finalizes someone else's note", async () => {
+    const { app } = makeServer();
+    const id = await draftBy(app, RN);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN2,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("vitals: a non-author is refused (403) but the author and a supervisor are allowed", async () => {
+    const { app } = makeServer();
+    const id = await draftBy(app, RN);
+    const url = `/api/v1/encounters/${id}/vitals`;
+    expect(
+      (await app.inject({ method: "POST", url, headers: RN2, payload: VITALS_BODY })).statusCode,
+    ).toBe(403);
+    expect(
+      (await app.inject({ method: "POST", url, headers: SUPERVISOR, payload: VITALS_BODY }))
+        .statusCode,
+    ).not.toBe(403);
+    expect(
+      (await app.inject({ method: "POST", url, headers: RN, payload: VITALS_BODY })).statusCode,
+    ).not.toBe(403);
+  });
+
+  it("selections PATCH: a non-author is refused (403)", async () => {
+    const { app } = makeServer();
+    const id = await draftBy(app, RN);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN2, "if-match": "0" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("routes 4-7/9-14 read as 404 when the patient is outside the caller's caseload", async () => {
+    const { app } = makeServer({
+      isInCaseload: async (q) => q.userId === "rn_1",
+    });
+    const id = await draftBy(app, RN);
+    const cases: Array<[string, string, Record<string, unknown>]> = [
+      ["POST", `/api/v1/encounters/${id}/vitals`, VITALS_BODY],
+      [
+        "POST",
+        `/api/v1/encounters/${id}/mileage`,
+        {
+          odometerStart: 1,
+          odometerEnd: 5,
+          source: "manual_override",
+          manualOverrideReason: "route offline",
+        },
+      ],
+      ["POST", `/api/v1/encounters/${id}/evv-reconcile`, { evvMissingReason: "device offline" }],
+      ["POST", `/api/v1/encounters/${id}/finalize`, {}],
+      ["POST", `/api/v1/encounters/${id}/sign`, { attestationConfirmed: true }],
+      ["POST", `/api/v1/encounters/${id}/hearthnote/enhance`, {}],
+    ];
+    for (const [method, url, payload] of cases) {
+      const res = await app.inject({ method: method as "POST", url, headers: RN2, payload });
+      expect(res.statusCode, url).toBe(404);
+    }
+  });
+
+  it("an addendum is attributed to the CALLER, not the parent's author", async () => {
+    const { app, backend } = makeServer();
+    const id = await finalizedBy(app, RN);
+    expect((await sign(app, id, RN)).statusCode).toBe(200);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/addenda`,
+      headers: RN2,
+      payload: { reason: "late clarification of the evening pain plan" },
+    });
+    expect(created.statusCode).toBe(201);
+    const addendumId = created.json().id as string;
+    expect(await backend.resolver.loadAddendumAuthor(ORG, id, addendumId)).toBe("rn_2");
+
+    // the addendum's author may edit it; the parent's author may not.
+    const url = `/api/v1/encounters/${id}/addenda/${addendumId}/selections`;
+    const payload = { sections: [{ sectionId: "plan", entries: [], freeText: "Clarify." }] };
+    expect(
+      (await app.inject({ method: "PATCH", url, headers: { ...RN, "if-match": "0" }, payload }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await app.inject({ method: "PATCH", url, headers: { ...RN2, "if-match": "0" }, payload }))
+        .statusCode,
+    ).toBe(200);
+    // finalize and sign are likewise addendum-author only.
+    const base = `/api/v1/encounters/${id}/addenda/${addendumId}`;
+    expect(
+      (await app.inject({ method: "POST", url: `${base}/finalize`, headers: RN, payload: {} }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `${base}/sign`,
+          headers: RN,
+          payload: { attestationConfirmed: true },
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+
+  it("predicates fail closed on missing ids and unknown addenda", async () => {
+    const { backend } = makeServer();
+    const preds = buildEncounterAbacPredicates({
+      resolver: backend.resolver,
+      isInCaseload: async () => true,
+    });
+    const ctx = {
+      organizationId: ORG,
+      userId: "rn_1",
+      roles: ["rn"],
+      attributes: { membershipId: "rn_1" },
+    } as never;
+    expect(await preds.is_author?.(ctx, {})).toBe(false);
+    expect(await preds.is_author_or_supervisor?.(ctx, {})).toBe(false);
+    expect(await preds.is_addendum_author?.(ctx, { encounterId: ENC_B })).toBe(false);
+    expect(
+      await preds.is_addendum_author?.(ctx, { encounterId: ENC_BY_RN, addendumId: "nope" }),
+    ).toBe(false);
   });
 });

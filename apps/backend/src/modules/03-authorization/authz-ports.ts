@@ -282,6 +282,24 @@ export interface ComplianceNotifier {
   }): Promise<void> | void;
 }
 
+/**
+ * The `m3.*` transactional-outbox publisher (GAP-010) — the composition root's catalog-validating
+ * `bindCallerModule(txOutboxPublisher, "m3")`. It takes the OPEN tx so every M3 event commits or rolls back
+ * with the state change it describes. Optional on the stores: omitted (slice/tests), the event is dropped.
+ */
+export interface M3OutboxPublisher {
+  publish(
+    tx: never,
+    input: {
+      eventName: string;
+      payload: Record<string, unknown>;
+      organizationId: string | null;
+      aggregateKind: string;
+      aggregateId: string;
+    },
+  ): Promise<void>;
+}
+
 /** Resolves an actor's effective permission set — the anti-escalation check (§6) reads it. */
 export type ActorPermissionResolver = (input: {
   organizationId: string;

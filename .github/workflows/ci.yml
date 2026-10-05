@@ -519,6 +519,9 @@ jobs:
           # read-then-write would let two concurrent co-signers through) and `bge_cosigner_distinct`
           # (migration 0210) holds when the store is bypassed — neither is provable off a database.
           - { name: "M3 break-glass co-signature", scripts: "test:m3:break-glass:live" }
+          # GAP-010: break-glass durably notifies Compliance — `m3.breakglass.invoked` through the real catalog-validating
+          # publisher on the invoke's own tx (atomic with the grant), RLS-scoped, delivered by the M36 consumer.
+          - { name: "M3 break-glass outbox (GAP-010)", scripts: "test:m3:break-glass-outbox:live" }
           - { name: "M3 proposed-role attach (F-097)", scripts: "test:m3:role-attach:live" }
           # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
           # was asserted by name in a code comment and existed in no migration, and nothing had ever
@@ -566,6 +569,9 @@ jobs:
           # F-171 (#248) — the real §4.3 M5 direct patient-merge write path: POST /patients/:id/merge,
           # field resolution, satellite-table preservation, m5.patient.merged emission.
           - { name: "M5 patient merge", scripts: "test:m5:patient-merge:live" }
+          # GAP-015 — the §4.3 M5 care-team assignment routes (first production writer of
+          # `patient_assignment`): assign/end through the route feeds the real CaseloadProvider store.
+          - { name: "M5 assignment routes", scripts: "test:m5:assignment-routes:live" }
           # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
           - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
           - {

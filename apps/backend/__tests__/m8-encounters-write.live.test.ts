@@ -479,6 +479,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     const a = await svc.createAddendum(ORG_A, id, {
       reason: "Correcting the signed encounter documentation.",
+      authorMembershipId: ACTOR_A.membershipId,
     });
     expect(a.status).toBe("draft");
     const addendumNote = await svc.updateAddendumSelections(ORG_A, id, a.id, TREE);
@@ -577,6 +578,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     const a = await svc.createAddendum(ORG_A, id, {
       reason: "Correcting the signed encounter documentation.",
+      authorMembershipId: ACTOR_A.membershipId,
     });
     await svc.updateAddendumSelections(ORG_A, id, a.id, TREE);
     await svc.finalizeAddendum(ORG_A, id, a.id);
@@ -1028,6 +1030,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     const a = await svc.createAddendum(ORG_A, id, {
       reason: "Correcting the signed encounter documentation.",
+      authorMembershipId: ACTOR_A.membershipId,
     });
     await expect(svc.finalizeAddendum(ORG_A, id, a.id)).rejects.toMatchObject({
       statusCode: 422,

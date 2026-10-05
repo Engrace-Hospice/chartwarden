@@ -367,6 +367,8 @@ export interface VerbalPolicyArgs {
 
 /** The §4.7 ABAC facts the order resolver loads for a target order id (for `signer_eligible` / `m11.cosigner_role_match`). */
 export interface OrderAbacFacts {
+  /** The order's patient — what `caseload_or_scope` is evaluated against (GAP-030). */
+  readonly patientId: string;
   readonly kind: OrderKind;
   readonly drafterMembershipId: string;
   readonly cosignerRoleNeeded:
@@ -413,6 +415,21 @@ export interface RecoverLabTransmissionResult {
   readonly recovery: RecoveryRequestView | null;
 }
 
+/**
+ * GAP-030 — the caseload narrowing a list / queue read applies. `undefined` (or `patientIds: null`) means
+ * org-wide (an org-wide scope role); an array restricts the rows to those patients (empty = none).
+ */
+export interface OrderReadScope {
+  readonly patientIds: readonly string[] | null;
+}
+
+/** Hard cap on rows a list / queue read returns (GAP-030: no unbounded reads). */
+export const ORDER_LIST_LIMIT = 500;
+
+/** Whether an order's patient is inside the read scope (in-memory slice mirror of the SQL narrowing). */
+export const inReadScope = (scope: OrderReadScope | undefined, patientId: string): boolean =>
+  !scope || scope.patientIds === null || scope.patientIds.includes(patientId);
+
 /** The resolver the §4.7 ABAC predicates read order facts through (the slice implements it in-memory). */
 export interface OrderAbacResolver {
   loadOrder(organizationId: string, orderId: string): Promise<OrderAbacFacts | null>;
@@ -428,6 +445,7 @@ export interface OrderRouteService extends OrderAbacResolver {
       kind?: string;
       status?: string;
     },
+    scope?: OrderReadScope,
   ): Promise<{ orders: OrderView[] }>;
   getOrder(organizationId: string, id: string, actor?: OrderDetailActor): Promise<OrderDetailView>;
   createDraft(
@@ -555,7 +573,10 @@ export interface OrderRouteService extends OrderAbacResolver {
     requestId: string,
     actor?: OrderDetailActor,
     auditUserId?: string,
-  ): Promise<{ readonly recovery: RecoveryRequestView; readonly order: OrderDetailView }>;
+  ): Promise<{
+    readonly recovery: RecoveryRequestView;
+    readonly order: OrderDetailView;
+  }>;
   /**
    * F-202 — the sweep: every pending recovery past its `expires_at` becomes `expired` and raises the compliance alert.
    * Runs from the hourly M11 timer (system actor, per org). Returns how many lapsed.
@@ -563,10 +584,16 @@ export interface OrderRouteService extends OrderAbacResolver {
   expireStaleLabRecoveryRequests(
     organizationId: string,
   ): Promise<{ readonly expired: number; readonly superseded: number }>;
-  pendingSignature(organizationId: string): Promise<{ orders: OrderView[] }>;
-  verbalExpiring(organizationId: string): Promise<{ orders: OrderView[] }>;
-  cosignPending(organizationId: string): Promise<{ orders: OrderView[] }>;
-  resultsPendingReview(organizationId: string): Promise<{ orders: OrderView[] }>;
+  pendingSignature(
+    organizationId: string,
+    scope?: OrderReadScope,
+  ): Promise<{ orders: OrderView[] }>;
+  verbalExpiring(organizationId: string, scope?: OrderReadScope): Promise<{ orders: OrderView[] }>;
+  cosignPending(organizationId: string, scope?: OrderReadScope): Promise<{ orders: OrderView[] }>;
+  resultsPendingReview(
+    organizationId: string,
+    scope?: OrderReadScope,
+  ): Promise<{ orders: OrderView[] }>;
   suggestions(
     organizationId: string,
     patientId: string,
@@ -843,16 +870,17 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
   }
 
   return {
-    async listOrders(organizationId, filter) {
+    async listOrders(organizationId, filter, scope) {
       const all = [...orders.values()].filter(
         (r) =>
           r.organizationId === organizationId &&
+          inReadScope(scope, r.patientId) &&
           (!filter.patientId || r.patientId === filter.patientId) &&
           (!filter.admissionId || r.admissionId === filter.admissionId) &&
           (!filter.kind || r.kind === filter.kind) &&
           (!filter.status || r.status === filter.status),
       );
-      return { orders: all.map(view) };
+      return { orders: all.slice(0, ORDER_LIST_LIMIT).map(view) };
     },
     async getOrder(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
@@ -1305,36 +1333,56 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       return detailView(r, actor);
     },
 
-    async pendingSignature(organizationId) {
-      return {
-        orders: [...orders.values()]
-          .filter((r) => r.organizationId === organizationId && r.status === "pending_signature")
-          .map(view),
-      };
-    },
-    async verbalExpiring(organizationId) {
-      return {
-        orders: [...orders.values()]
-          .filter((r) => r.organizationId === organizationId && r.status === "verbal_pending")
-          .map(view),
-      };
-    },
-    async cosignPending(organizationId) {
-      return {
-        orders: [...orders.values()]
-          .filter((r) => r.organizationId === organizationId && r.cosignStatus === "pending")
-          .map(view),
-      };
-    },
-    async resultsPendingReview(organizationId) {
+    async pendingSignature(organizationId, scope) {
       return {
         orders: [...orders.values()]
           .filter(
             (r) =>
               r.organizationId === organizationId &&
+              inReadScope(scope, r.patientId) &&
+              r.status === "pending_signature",
+          )
+          .slice(0, ORDER_LIST_LIMIT)
+          .map(view),
+      };
+    },
+    async verbalExpiring(organizationId, scope) {
+      return {
+        orders: [...orders.values()]
+          .filter(
+            (r) =>
+              r.organizationId === organizationId &&
+              inReadScope(scope, r.patientId) &&
+              r.status === "verbal_pending",
+          )
+          .slice(0, ORDER_LIST_LIMIT)
+          .map(view),
+      };
+    },
+    async cosignPending(organizationId, scope) {
+      return {
+        orders: [...orders.values()]
+          .filter(
+            (r) =>
+              r.organizationId === organizationId &&
+              inReadScope(scope, r.patientId) &&
+              r.cosignStatus === "pending",
+          )
+          .slice(0, ORDER_LIST_LIMIT)
+          .map(view),
+      };
+    },
+    async resultsPendingReview(organizationId, scope) {
+      return {
+        orders: [...orders.values()]
+          .filter(
+            (r) =>
+              r.organizationId === organizationId &&
+              inReadScope(scope, r.patientId) &&
               r.kind === "lab" &&
               r.resultsStatus === "results_received",
           )
+          .slice(0, ORDER_LIST_LIMIT)
           .map(view),
       };
     },
@@ -1584,6 +1632,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       const r = orders.get(orderId);
       if (!r || r.organizationId !== organizationId) return null;
       return {
+        patientId: r.patientId,
         kind: r.kind,
         drafterMembershipId: r.drafterMembershipId,
         cosignerRoleNeeded: r.cosignerRoleNeeded,
@@ -1629,7 +1678,11 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     // Mirrors `orders-route-service-db.ts`'s verbal-order sign path: a verbal order carries forward
     // its own status/signedAt independent of the order's own transition.
     if (r.verbalOrder) {
-      r.verbalOrder = { ...r.verbalOrder, status: "signed_in_time", signedAt: r.signedAt };
+      r.verbalOrder = {
+        ...r.verbalOrder,
+        status: "signed_in_time",
+        signedAt: r.signedAt,
+      };
       emit(
         "m11.order.verbal_signed_in_time",
         { orderId: id, signedAt: r.signedAt },

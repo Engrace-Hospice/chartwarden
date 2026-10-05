@@ -1947,9 +1947,12 @@ export function createDbAdmissionRouteService(
     },
 
     // ── Admission reads ──────────────────────────────────────────────────────────────────────────
-    async listAdmissions(organizationId, query) {
+    async listAdmissions(organizationId, query, scope) {
       const limit = clampLimit(query.limit);
       const offset = parseOffset(query.cursor);
+      // GAP-020 — narrow to the caller's caseload in SQL; an empty caseload reads nothing (no query).
+      const scopedIds = scope?.patientIds ?? null;
+      if (scopedIds !== null && scopedIds.length === 0) return { items: [], nextCursor: null };
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const filters: SQL[] = [];
         if (query.state) {
@@ -1958,6 +1961,7 @@ export function createDbAdmissionRouteService(
         if (query.patientId) {
           filters.push(eq(ADM.patientId, query.patientId));
         }
+        if (scopedIds !== null) filters.push(inArray(ADM.patientId, [...scopedIds]));
         const where = filters.length ? and(...filters) : undefined;
         const rows = await tx
           .select({

@@ -330,7 +330,9 @@ describe("M12-T10 cross-tenant isolation (service-layer non-leaking 404; live-PG
       refillsAuthorized: 0,
     });
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toThrow();
-    expect((await svc.listOrders(ORG_B, {})).orders).toEqual([]);
+    expect((await svc.listOrders(ORG_B, { scope: { orgWide: true, userId: "" } })).orders).toEqual(
+      [],
+    );
   });
 
   it("a refill request in org_a is invisible to org_b (non-leaking NotFound)", async () => {

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1360,
-    "coveredRoutes": 1360,
-    "directRoutesReferenced": 1308
+    "routes": 1363,
+    "coveredRoutes": 1363,
+    "directRoutesReferenced": 1316
   },
   "modules": [
     {
@@ -55,7 +55,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 23,
+      "routes": 26,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -64,10 +64,12 @@
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
+        "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
+        "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 23
+      "directRoutesReferenced": 26
     },
     {
       "module": "06-admission",
@@ -86,12 +88,19 @@
       "routes": 25,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
+        "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
+        "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/orders-caseload-scope.test.ts",
+        "apps/backend/__tests__/orders-routes.test.ts",
+        "apps/backend/__tests__/orm-recovery.test.ts",
+        "apps/backend/__tests__/orm-resend.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
       "directRoutesReferenced": 24
@@ -130,12 +139,13 @@
       "routes": 34,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",
         "apps/backend/__tests__/orm-recovery.test.ts",
         "apps/backend/__tests__/orm-resend.test.ts",
         "apps/backend/__tests__/stuck-recovery.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 30
     },
     {
       "module": "12-dosespot",
@@ -147,7 +157,7 @@
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
       ],
-      "directRoutesReferenced": 23
+      "directRoutesReferenced": 25
     },
     {
       "module": "13-emar",
