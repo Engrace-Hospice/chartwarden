@@ -34,8 +34,10 @@ the backend "never trusts URL or body for tenant identity". **None of it is buil
 - **The slug already exists.** `organization.slug` is `NOT NULL UNIQUE` (migration `0000`,
   `packages/db/src/schema/organizations.ts:13`), but nothing constrains it to be a valid DNS label or
   keeps it off reserved names.
-- **The infrastructure the docs name is gone.** §6.1's mechanism, Pangolin injecting a tenant-slug
-  header, does not match the deployment: production runs host nginx, not Pangolin.
+- **The docs' mechanism is unsafe as written.** §6.1 has Pangolin inject a tenant-slug header that
+  the backend trusts. Production today runs host nginx without Pangolin. The target platform puts
+  Pangolin back at the edge, in front of Talos Linux / Kubernetes. Either way, a tenant identity
+  carried in a proxy-set header is one misconfigured hop away from being client-settable.
 
 Two facts about the browser shape the design:
 
@@ -91,10 +93,26 @@ On those paths it applies D3's validation to the host and does nothing more.
   | `app` | the tenant-picker landing page (D5) |
   | `status`, `docs`, `mail` | reserved for future use |
 
-- **TLS:** one wildcard certificate for `*.<TENANT_BASE_DOMAIN>` from Let's Encrypt via **DNS-01**,
-  which requires DNS-provider API credentials on the VPS. A wildcard `A`/`AAAA` record points at the
-  host nginx, and one `server_name *.<TENANT_BASE_DOMAIN>` block replaces per-tenant vhosts. Adding a
-  tenant needs **no DNS, certificate or nginx change**.
+- **Edge: Pangolin.** The edge is a Pangolin **wildcard public resource** (subdomain `*` under
+  `TENANT_BASE_DOMAIN`). One resource proxies every tenant hostname through one tunnel. A wildcard DNS
+  record points `*.<TENANT_BASE_DOMAIN>` at Pangolin.
+- **TLS:** Pangolin terminates TLS with one wildcard certificate for `*.<TENANT_BASE_DOMAIN>` from
+  Let's Encrypt via **DNS-01**. HTTP-01 cannot issue wildcards, so Pangolin needs DNS-provider API
+  credentials.
+- **Downstream routing:** Pangolin forwards the original `Host` header unchanged to the downstream
+  router. On the target platform, Talos Linux running Kubernetes, that router is the cluster ingress.
+  It routes by path on every tenant host:
+  - `/api/` → the backend Service
+  - `/portal/` → the portal SPA (D7)
+  - `/` → the staff SPA
+- **Reserved hosts** (D2 table above) are separate, exact-host Pangolin resources. They take precedence
+  over the wildcard.
+- **Adding a tenant needs no DNS, certificate, Pangolin or ingress change.**
+- **Platform-independence:** this ADR depends only on two things: an edge that terminates the
+  wildcard certificate and preserves `Host`, and path routing below it. It does not decide the Talos /
+  Kubernetes migration itself; that is a separate ADR. Until the migration, the same shape runs on
+  today's VPS, with Pangolin in front of the host nginx and its `server_name` widened to
+  `*.<TENANT_BASE_DOMAIN>`.
 
 ### D3 — Slug rules
 
@@ -185,16 +203,26 @@ cache window.
 
 - **Architecture §19 and System Design §6.1** are amended to cite this ADR:
   - The pattern becomes `<slug>.<TENANT_BASE_DOMAIN>`.
-  - The Pangolin "tenant slug header" mechanism is removed. The backend reads the `Host` that nginx
-    passes through and resolves it itself, so no proxy-injected tenant header exists that a client
-    could forge.
+  - Pangolin stays as the edge, but the "tenant slug header" mechanism is removed. Pangolin and the
+    ingress only preserve `Host`, and the backend resolves it itself. No proxy-injected tenant header
+    exists for a client to forge. Any inbound tenant-identifying header is ignored.
+  - The backend honours `X-Forwarded-*` only from `TRUSTED_PROXY_CIDRS`. On Kubernetes that is the
+    ingress pods' CIDR, so a client cannot claim a different scheme or address through them.
 - **SECURITY_HARDENING** CSP: `img-src` / `connect-src` change from `*.wardenx.app` to
   `'self'` (tenant hosts are same-origin), plus the explicit `storage.` host.
 - **Env:** `TENANT_BASE_DOMAIN` joins `env.ts` and `.env.example`. It is optional; when it is set in
   production, `PASSKEY_RP_ID` must equal it, or boot fails.
-- **Ops:** the wildcard DNS record, the DNS-01 credentials and the wildcard `server_name` go into
-  `deploy/production/` and the ops runbook. Single-host mode keeps the current vhost working
-  throughout the migration.
+- **Ops:** the ops runbook documents:
+  - the wildcard DNS record
+  - Pangolin's DNS-01 credentials, the wildcard resource and the exact-host resources for reserved
+    names
+  - the ingress path rules (Kubernetes manifests on the Talos platform, or the widened nginx
+    `server_name` on today's VPS)
+
+  Single-host mode keeps the current host working throughout the migration.
+- **A follow-up ADR** records the move from the single VPS (Docker Compose + host nginx) to Talos
+  Linux / Kubernetes behind Pangolin. It covers manifests, secrets, the live database and the deploy
+  pipeline, which replaces `deploy.yml`'s SSH step. This ADR neither blocks on it nor decides it.
 - **Existing tenants:** slugs that fail D3 are listed by a one-off check before the `CHECK`
   constraint lands, and renamed by hand with an alias.
 - **Out of scope:** tenant-owned custom domains (for example `ehr.sunrisehospice.org`). These need
