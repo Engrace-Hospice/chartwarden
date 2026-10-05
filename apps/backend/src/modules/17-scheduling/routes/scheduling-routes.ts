@@ -10,11 +10,18 @@
 // visit purpose, the service date, the scheduled window, the patient). The publish/reassign/edit paths re-run
 // the D8 gate in the SERVICE layer (the visit machine takes the already-computed `gatePassed` verdict per
 // §2.2.1), so those routes carry the RBAC key alone. The portal route runs under the portal session class.
-import { type AbacTarget, type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
+import {
+  type AbacTarget,
+  type GuardRequest,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+  resolveActorPermissions,
+} from "@wardenx/auth";
 import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { UnauthorizedError } from "@wardenx/types";
+import { NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { requestStepUpFresh } from "../../../bootstrap/index";
+import { getSeam, requestStepUpFresh } from "../../../bootstrap/index";
 import {
   ApproveTimeOffRequest,
   AvailabilityQuerySchema,
@@ -52,13 +59,66 @@ import {
   WeekViewQuerySchema,
   parse,
 } from "./scheduling-typebox";
-import type { SchedulingRouteService } from "./service";
+import type { SchedulingRouteService, VisitReadScope } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface SchedulingRouteDeps {
   service: SchedulingRouteService;
+  /**
+   * The patients on a clinician's caseload (GAP-053) — defaults to M5's published `CaseloadProvider` seam.
+   * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on), not a membership id.
+   */
+  caseloadPatientIds?: (q: {
+    organizationId: string;
+    userId: string;
+  }) => Promise<readonly string[]>;
+}
+
+type CaseloadPatientIds = NonNullable<SchedulingRouteDeps["caseloadPatientIds"]>;
+
+const defaultCaseloadPatientIds: CaseloadPatientIds = (q) =>
+  getSeam("CaseloadProvider").caseloadPatientIds(q);
+
+/** Permission that widens visit reads from the caller's caseload to the whole team (M17 §4.6). */
+const READ_TEAM_PERMISSION = "visit.read_team";
+
+/** Sentinel patient for a visit that cannot be resolved: it is on no caseload, so the scope guard denies. */
+const UNRESOLVED_PATIENT = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * GAP-053 — the narrowing a visit / proposal read applies. Org-wide scope roles and `visit.read_team` holders
+ * are unrestricted; everyone else sees their caseload (plus the one patient a pinned collaborator / portal
+ * session names) and, for visits, the visits assigned to them. Fail-CLOSED: a caseload that cannot be
+ * resolved narrows to nothing rather than widening to the org.
+ */
+async function readScopeOf(
+  request: FastifyRequest,
+  caseloadPatientIds: CaseloadPatientIds,
+): Promise<VisitReadScope> {
+  const ctx = request.context;
+  if (hasOrgWideScope(ctx.roles)) return { patientIds: null };
+  const granted = await resolveActorPermissions({
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+  });
+  if (granted.has(READ_TEAM_PERMISSION)) return { patientIds: null };
+  const membershipId = ctx.attributes.membershipId;
+  const assignedMembershipId =
+    typeof membershipId === "string" && membershipId.length > 0 ? membershipId : undefined;
+  const pinned = ctx.attributes.sessionPatientId;
+  const sessionIds = typeof pinned === "string" && pinned.length > 0 ? [pinned] : [];
+  if (!ctx.userId) return { patientIds: sessionIds, assignedMembershipId };
+  try {
+    const caseload = await caseloadPatientIds({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+    return { patientIds: [...new Set([...caseload, ...sessionIds])], assignedMembershipId };
+  } catch {
+    return { patientIds: sessionIds, assignedMembershipId };
+  }
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -160,6 +220,33 @@ const ABAC_POOL = GATE("within_caseload_or_unassigned_pool");
 
 export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingRouteDeps): void {
   const { service } = deps;
+  const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
+  const readScope = (request: FastifyRequest) => readScopeOf(request, caseloadPatientIds);
+
+  // GAP-053 — per-visit caseload scope on the detail read. `requireAbac`'s `getTarget` is synchronous, so this
+  // guard first loads the visit (org-scoped, RLS-backstopped), then runs the shared `caseload_or_scope`
+  // predicate over its patient with `notFoundOnDeny`. Team-wide readers and the visit's own assignee skip the
+  // predicate; an absent / cross-tenant visit resolves to a patient nobody covers → 404, never an allow.
+  const resolvedPatient = new WeakMap<object, string>();
+  const visitScopeGuard = requireAbac("visit.read", "caseload_or_scope", {
+    getTarget: (request) => ({ patientId: resolvedPatient.get(request) ?? UNRESOLVED_PATIENT }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+  const VISIT_SCOPE: PreHandler = async (request, reply) => {
+    const { organizationId } = actorOf(request);
+    const scope = await readScope(request);
+    if (scope.patientIds === null) return;
+    const { visitId } = parse(VisitIdParamsSchema, request.params);
+    let visit: { patientId: string; assignedMembershipId: string } | null = null;
+    try {
+      visit = await service.getVisit(organizationId, visitId);
+    } catch (err) {
+      if (!(err instanceof NotFoundError)) throw err;
+    }
+    if (visit && scope.assignedMembershipId === visit.assignedMembershipId) return;
+    resolvedPatient.set(request, visit?.patientId ?? UNRESOLVED_PATIENT);
+    await visitScopeGuard(request, reply);
+  };
 
   // 1 — list visits with filters.
   app.get(
@@ -168,13 +255,17 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(VisitListQuerySchema, request.query);
-      return service.listVisits(organizationId, {
-        clinician: q.clinician,
-        patient: q.patient,
-        from: q.from,
-        to: q.to,
-        status: q.status,
-      });
+      return service.listVisits(
+        organizationId,
+        {
+          clinician: q.clinician,
+          patient: q.patient,
+          from: q.from,
+          to: q.to,
+          status: q.status,
+        },
+        await readScope(request),
+      );
     },
   );
 
@@ -182,7 +273,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   app.get(
     "/api/v1/visits/:visitId",
     {
-      preHandler: [READ],
+      preHandler: [READ, VISIT_SCOPE],
       config: { auditRead: { resourceKind: "visit", resourceIdParam: "visitId" } },
     },
     async (request) => {
@@ -317,7 +408,11 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(ProposalListQuerySchema, request.query);
-      return service.listProposals(organizationId, { patient: q.patient });
+      return service.listProposals(
+        organizationId,
+        { patient: q.patient },
+        await readScope(request),
+      );
     },
   );
 
@@ -478,7 +573,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(DayViewQuerySchema, request.query);
-      return service.dayView(organizationId, q.membership, q.date);
+      return service.dayView(organizationId, q.membership, q.date, await readScope(request));
     },
   );
 
@@ -489,7 +584,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(WeekViewQuerySchema, request.query);
-      return service.weekView(organizationId, q.membership, q.weekStart);
+      return service.weekView(organizationId, q.membership, q.weekStart, await readScope(request));
     },
   );
 
@@ -507,7 +602,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(MapViewQuerySchema, request.query);
-      return service.mapView(organizationId, q.membership, q.date);
+      return service.mapView(organizationId, q.membership, q.date, await readScope(request));
     },
   );
 

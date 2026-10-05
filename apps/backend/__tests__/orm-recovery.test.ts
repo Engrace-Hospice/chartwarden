@@ -398,7 +398,12 @@ const PERMISSION_SEED = [
 ];
 
 function makeServer() {
-  const backend = createInMemoryOrderBackend({ now: () => NOW, timeZone: "America/New_York" });
+  const backend = createInMemoryOrderBackend({
+    now: () => NOW,
+    timeZone: "America/New_York",
+    // The service re-checks caseload itself (GAP-030); the route-level ABAC here is permissive, so match it.
+    caseloadPatientIds: async () => [PATIENT],
+  });
   const grantStore = createInMemoryEffectivePermissionStore(
     PERMISSION_SEED.map((s) => ({
       orgId: ORG,

@@ -136,8 +136,17 @@ describe("F-030 — the clinical discipline set derives from role keys, in every
       expect(await build("u2")(ctx(["chaplain"], { disciplines: ["rn"] }), target)).toBe(false);
     });
 
+    it("GAP-029 — refuses the author's own MEMBERSHIP even when the user id differs", async () => {
+      // ctx() is user "u1" / membership "m1"; the encounter was authored by membership "m1".
+      expect(await build("m1")(ctx(["rn"]), target)).toBe(false);
+    });
+
+    it("GAP-029 — a different membership may cosign even if its user id equals the author's id", async () => {
+      expect(await build("u1")(ctx(["rn"]), target)).toBe(true);
+    });
+
     it("still refuses a self-cosign — removing the dead arm did not relax the other rule", async () => {
-      expect(await build("u1")(ctx(["rn"]), target)).toBe(false);
+      expect(await build("m1")(ctx(["rn"]), target)).toBe(false);
     });
   });
 });

@@ -91,7 +91,7 @@ describe.skipIf(!DB_URL)("F-096 census caseload narrowing — LIVE Postgres", ()
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    service = createDbPatientRouteService(handle.db);
+    service = createDbPatientRouteService(handle.db, { publish: async () => undefined });
   }, 180_000);
 
   afterAll(async () => {

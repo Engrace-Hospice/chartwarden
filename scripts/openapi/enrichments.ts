@@ -1407,6 +1407,7 @@ import {
   MedicationOrderListQuerySchema as M12MedicationOrderListQuerySchema,
   MedicationOrderListResponseSchema as M12MedicationOrderListResponseSchema,
   MedicationOrderResponseSchema as M12MedicationOrderResponseSchema,
+  NamedPrescriberListResponseSchema as M12NamedPrescriberListResponseSchema,
   NewOrderIdResponseSchema as M12NewOrderIdResponseSchema,
   PrescriberRosterListResponseSchema as M12PrescriberRosterListResponseSchema,
   ReconcileRequest as M12ReconcileRequest,
@@ -4627,6 +4628,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
     response: M12PrescriberRosterListResponseSchema,
+  },
+  "GET /api/v1/prescribing/named-prescribers": {
+    summary:
+      "Active prescribers with an MDM id — the valid namedPrescriberMdmId choices for recording a verbal order",
+    response: M12NamedPrescriberListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
     summary: "Enroll a prescriber into DoseSpot",

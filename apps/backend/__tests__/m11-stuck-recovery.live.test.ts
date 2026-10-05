@@ -58,6 +58,7 @@ import {
 } from "../src/modules/36-messaging/index";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { appRoleConnectionString } from "./_live-app-role";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -199,12 +200,12 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
       drafterDiscipline: "rn_case_manager",
       data: LAB_DATA,
       orderingPhysicianMdmId: PH_ACTIVE,
-    });
-    await svc.requestSignature(org, draft.id, { signerDiscipline: "rn_case_manager" });
+    }, SYSTEM_ORDER_ACTOR);
+    await svc.requestSignature(org, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
     await svc.signOrder(org, who, draft.id, {
       signerDiscipline: "rn_case_manager",
       signedAtClient: new Date().toISOString(),
-    });
+    }, SYSTEM_ORDER_ACTOR);
     return draft.id;
   }
   async function settle() {

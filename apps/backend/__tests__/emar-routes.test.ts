@@ -41,6 +41,8 @@ function headerAuth(request: FastifyRequest): void {
   const sessionPatient = request.headers["x-test-session-patient"];
   if (typeof sessionPatient === "string")
     request.context.attributes.sessionPatientId = sessionPatient;
+  // GAP-041 — stand-in for M3's step-up recency (what `step_up_recent` reads).
+  request.context.attributes.stepUpRecent = request.headers["x-test-stepup"] === "fresh";
 }
 
 const ORG = "org_a";
@@ -48,6 +50,7 @@ const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ORDER = "00000000-0000-4000-8000-0000000000a1";
 const CONTROLLED_ORDER = "00000000-0000-4000-8000-0000000000a2";
 const WORKSHEET = "22222222-2222-4222-8222-222222222222";
+const COMMITTED_ADMIN = "77777777-7777-4777-8777-777777777777";
 const CAREGIVER_ADMIN = "33333333-3333-4333-8333-333333333333";
 const ADMIN_MEMBERSHIP = "00000000-0000-4000-8000-0000000000c1";
 /** GAP-004 — a second patient nobody here has on caseload, and that patient's comfort kit. */
@@ -101,6 +104,8 @@ const PERMISSION_SEED = [
   },
   { userId: "chap_1", permissions: [...READ, "administration.record"] },
   { userId: "viewer_1", permissions: READ },
+  // GAP-041 — a clinical supervisor: holds the void key (and the read keys the void response needs).
+  { userId: "sup_1", permissions: [...READ, "administration.void"] },
   // GAP-004 — a caregiver portal session: may attest, holds no caseload.
   { userId: "cg_1", permissions: ["administration.caregiver_record"] },
   // GAP-004 — an RN with the full RN key set who is NOT on PATIENT's caseload.
@@ -117,7 +122,7 @@ const PERMISSION_SEED = [
 ];
 
 /** GAP-004 — who is on PATIENT's caseload (stands in for M5's CaseloadProvider). */
-const CASELOAD = new Set(["md_1", "rn_1", "chap_1", "viewer_1"]);
+const CASELOAD = new Set(["md_1", "rn_1", "chap_1", "viewer_1", "sup_1"]);
 
 /** How many times the §4.7 predicates asked the resolver for an order fact (offline-sync batching). */
 interface ResolverCalls {
@@ -125,7 +130,7 @@ interface ResolverCalls {
   loadScopePatientId: number;
 }
 
-function makeServer(opts: { calls?: ResolverCalls } = {}) {
+function makeServer(opts: { calls?: ResolverCalls; withCommittedAdmin?: boolean } = {}) {
   const backend = createInMemoryEmarBackend({
     now: () => NOW,
     memberships: [
@@ -179,6 +184,17 @@ function makeServer(opts: { calls?: ResolverCalls } = {}) {
       { id: OTHER_KIT, organizationId: ORG, patientId: OTHER_PATIENT, admissionId: "adm-2" },
     ],
     administrations: [
+      ...(opts.withCommittedAdmin
+        ? [
+            {
+              id: COMMITTED_ADMIN,
+              organizationId: ORG,
+              patientId: PATIENT,
+              admissionId: "adm-1",
+              medicationOrderId: ORDER,
+            },
+          ]
+        : []),
       {
         id: CAREGIVER_ADMIN,
         organizationId: ORG,
@@ -235,6 +251,8 @@ function makeServer(opts: { calls?: ResolverCalls } = {}) {
   )) {
     reg.register(name, predicate);
   }
+  // GAP-041 — `requireStepUp` composes M3's `step_up_recent`; decide it from the stand-in attribute.
+  reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -246,6 +264,12 @@ const MD = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "md" };
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const CHAPLAIN = { "x-test-user": "chap_1", "x-test-org": ORG, "x-test-roles": "chaplain" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
+const SUPERVISOR = {
+  "x-test-user": "sup_1",
+  "x-test-org": ORG,
+  "x-test-roles": "clinical_supervisor",
+  "x-test-stepup": "fresh",
+};
 const RN_OFF = { "x-test-user": "rn_off", "x-test-org": ORG, "x-test-roles": "rn" };
 /** A caregiver whose portal session is pinned to PATIENT. */
 const CAREGIVER = {
@@ -756,6 +780,89 @@ describe("offline-sync — per-row ABAC evaluated once per distinct target, batc
     });
     expect(res.statusCode).toBe(403);
     expect(await backend.listAdministrations(ORG, { patient: PATIENT })).toHaveLength(1);
+    await app.close();
+  });
+});
+
+describe("GAP-041 — POST /api/v1/administrations/:id/void", () => {
+  const REASON = "Recorded against the wrong patient chart by mistake; verified with the RN.";
+  const committedAdmin = async (_app: unknown): Promise<string> => COMMITTED_ADMIN;
+  const voidReq = (
+    app: ReturnType<typeof makeServer>["app"],
+    id: string,
+    headers: Record<string, string>,
+    voidReason: string = REASON,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/administrations/${id}/void`,
+      headers,
+      payload: { voidReason },
+    });
+
+  it("refuses a void without a fresh step-up (403 STEP_UP_REQUIRED)", async () => {
+    const { app } = makeServer({ withCommittedAdmin: true });
+    const id = await committedAdmin(app);
+    const res = await voidReq(app, id, { ...SUPERVISOR, "x-test-stepup": "stale" });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error?.code ?? res.json().code).toBe("STEP_UP_REQUIRED");
+    await app.close();
+  });
+
+  it("refuses a holder of administration.void who is below the supervisor floor (403)", async () => {
+    const { app } = makeServer({ withCommittedAdmin: true });
+    const id = await committedAdmin(app);
+    const res = await voidReq(app, id, { ...MD, "x-test-stepup": "fresh" });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("rejects a reason shorter than 40 characters at the schema (400)", async () => {
+    const { app } = makeServer({ withCommittedAdmin: true });
+    const id = await committedAdmin(app);
+    const res = await voidReq(app, id, SUPERVISOR, "x");
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("voids a committed row once, and a repeat void is 409 with no second event", async () => {
+    const { app, backend } = makeServer({ withCommittedAdmin: true });
+    const id = await committedAdmin(app);
+    backend.drainEvents();
+    const first = await voidReq(app, id, SUPERVISOR);
+    expect(first.statusCode, first.body).toBe(200);
+    expect(first.json().status).toBe("voided");
+    const again = await voidReq(app, id, SUPERVISOR);
+    expect(again.statusCode).toBe(409);
+    const voidedEvents = backend
+      .drainEvents()
+      .filter((e) => e.eventName === "m13.administration.voided");
+    expect(voidedEvents).toHaveLength(1);
+    await app.close();
+  });
+});
+
+describe("PUT /api/v1/admin/administration-policy — step-up (spec §4.1 route 28 / §4.6)", () => {
+  const policyReq = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) =>
+    app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/administration-policy",
+      headers,
+      payload: { graceWindowMinutes: 45, prnMinimumIntervalMinutes: 120, emarPdfOnCommit: false },
+    });
+
+  it("refuses a policy update without a fresh step-up (403 STEP_UP_REQUIRED)", async () => {
+    const { app } = makeServer({});
+    const res = await policyReq(app, { ...MD, "x-test-stepup": "stale" });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error?.code ?? res.json().code).toBe("STEP_UP_REQUIRED");
+    await app.close();
+  });
+
+  it("accepts a policy update with a fresh step-up", async () => {
+    const { app } = makeServer({});
+    const res = await policyReq(app, { ...MD, "x-test-stepup": "fresh" });
+    expect(res.statusCode, res.body).toBe(200);
     await app.close();
   });
 });

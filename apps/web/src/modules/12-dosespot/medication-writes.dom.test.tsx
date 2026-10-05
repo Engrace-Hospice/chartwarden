@@ -341,15 +341,16 @@ describe("#91 — a prescription can be written", () => {
 });
 
 describe("#91 — the lifecycle ceremonies the queues exist for", () => {
-  it("a pending_signature order offers Sign, and signing sends the discipline as provenance", async () => {
+  it("a pending_signature order offers Sign, and signing sends only the client timestamp (GAP-035: the server derives the signer)", async () => {
     mountOrder();
     fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Sign" })));
     fireEvent.click(
       await waitFor(() => screen.getAllByRole("button", { name: "Sign" })[1] as HTMLElement),
     );
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/medication-orders/${ORDER}/sign`));
-    // The caller holds exactly one prescribing role, so it is preselected rather than asked for.
-    expect(bodies[0]?.signerDiscipline).toBe("hospice_physician");
+    // GAP-035: the discipline and "ordering physician" standing are no longer client claims.
+    expect(bodies[0]?.signerDiscipline).toBeUndefined();
+    expect(bodies[0]?.signerIsOrderingPhysician).toBeUndefined();
     expect(typeof bodies[0]?.signedAtClient).toBe("string");
   });
 

@@ -10,7 +10,7 @@
 //
 // Optimistic concurrency is §2.5: every PATCH / state transition carries `expectedVersion` (the `If-Match`
 // header) and a mismatch raises `STALE_VERSION` → 412 with the current row.
-import type { M15WriteActor } from "./actor";
+import type { M15ReadActor, M15WriteActor } from "./actor";
 import type {
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
@@ -232,6 +232,11 @@ export interface VolunteerHourEntryView {
 
 /** The §4.1 POST/PATCH surface. Implemented over Drizzle in prod (RLS-scoped per `withOrgContext`). */
 export interface M15WriteService {
+  /**
+   * GAP-046 — the patient a plan belongs to, for the route-layer `caseload_or_scope` gate; `null` when the
+   * plan is absent / cross-tenant (the gate turns that into a 404, never an allow).
+   */
+  planPatientId(actor: M15ReadActor, planId: string): Promise<string | null>;
   finalizeVersion(
     actor: M15WriteActor,
     planId: string,

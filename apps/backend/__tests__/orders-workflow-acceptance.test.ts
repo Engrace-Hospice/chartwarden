@@ -24,7 +24,7 @@ import {
   transitionOrder,
 } from "@wardenx/orders";
 import { describe, expect, it } from "vitest";
-import { createInMemoryOrderBackend } from "../src/modules/11-orders/index";
+import { SYSTEM_ORDER_ACTOR, createInMemoryOrderBackend } from "../src/modules/11-orders/index";
 
 const ORG = "org_a";
 const ORG_B = "org_b";
@@ -44,25 +44,41 @@ function backend(now: string = NOW) {
 describe("M11-T09 §5 workflow acceptance", () => {
   it("W-VO-01 — verbal order received → 48h timer → physician signs in time", async () => {
     const svc = backend();
-    const draft = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "comfort_kit",
-      drafterDiscipline: "rn_case_manager",
-      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
-      orderingPhysicianMdmId: PHYS,
-    });
-    await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
+    const draft = await svc.createDraft(
+      ORG,
+      "rn_1",
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "comfort_kit",
+        drafterDiscipline: "rn_case_manager",
+        data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
+        orderingPhysicianMdmId: PHYS,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.requestSignature(
+      ORG,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
     svc.drainEvents();
 
-    const verbal = await svc.recordVerbal(ORG, "rn_1", draft.id, {
-      recorderDiscipline: "rn_case_manager",
-      verbalAttestation: ATTEST,
-      readBackVerified: true,
-      effectiveAt: NOW,
-      receivedAt: NOW,
-      orderingPhysicianMdmId: PHYS,
-    });
+    const verbal = await svc.recordVerbal(
+      ORG,
+      "rn_1",
+      draft.id,
+      {
+        recorderDiscipline: "rn_case_manager",
+        verbalAttestation: ATTEST,
+        readBackVerified: true,
+        effectiveAt: NOW,
+        receivedAt: NOW,
+        orderingPhysicianMdmId: PHYS,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect(verbal.status).toBe("verbal_pending");
     // §2.3 D3 — deadline_at = received_at + 48h (wall-clock default policy).
     expect(verbal.verbalDeadlineAt).toBe("2026-06-10T12:00:00.000Z");
@@ -71,33 +87,55 @@ describe("M11-T09 §5 workflow acceptance", () => {
     // The named practitioner signs 24h after receipt — comfortably before the deadline.
     const signAt = "2026-06-09T12:00:00.000Z";
     expect(isVerbalExpired(signAt, verbal.verbalDeadlineAt as string)).toBe(false);
-    const signed = await svc.signOrder(ORG, PHYS, draft.id, {
-      signerDiscipline: "hospice_physician",
-      signedAtClient: signAt,
-    });
+    const signed = await svc.signOrder(
+      ORG,
+      PHYS,
+      draft.id,
+      {
+        signerDiscipline: "hospice_physician",
+        signedAtClient: signAt,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect(signed.status).toBe("active");
     expect(svc.drainEvents().map((e) => e.eventName)).toContain("m11.order.signed");
   });
 
   it("W-VO-02 — verbal order expires without signature (verbal-timer worker path)", async () => {
     const svc = backend();
-    const draft = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "comfort_kit",
-      drafterDiscipline: "rn_case_manager",
-      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
-      orderingPhysicianMdmId: PHYS,
-    });
-    await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
-    const verbal = await svc.recordVerbal(ORG, "rn_1", draft.id, {
-      recorderDiscipline: "rn_case_manager",
-      verbalAttestation: ATTEST,
-      readBackVerified: true,
-      effectiveAt: NOW,
-      receivedAt: NOW,
-      orderingPhysicianMdmId: PHYS,
-    });
+    const draft = await svc.createDraft(
+      ORG,
+      "rn_1",
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "comfort_kit",
+        drafterDiscipline: "rn_case_manager",
+        data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
+        orderingPhysicianMdmId: PHYS,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.requestSignature(
+      ORG,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    const verbal = await svc.recordVerbal(
+      ORG,
+      "rn_1",
+      draft.id,
+      {
+        recorderDiscipline: "rn_case_manager",
+        verbalAttestation: ATTEST,
+        readBackVerified: true,
+        effectiveAt: NOW,
+        receivedAt: NOW,
+        orderingPhysicianMdmId: PHYS,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     const deadline = verbal.verbalDeadlineAt as string; // 2026-06-10T12:00:00Z
 
     // §2.3 / §4.9 — the quarter-hourly pre-expiry cron fires 12h-pre (medium) then 2h-pre (high).
@@ -132,64 +170,108 @@ describe("M11-T09 §5 workflow acceptance", () => {
   it("W-CS-01 — LPN draft → RN cosign → physician sign", async () => {
     const svc = backend();
     // An LPN may draft a clinical kind; the order then carries an RN-cosign requirement (§2.5 axis 1).
-    const draft = await svc.createDraft(ORG, "lpn_1", {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "lab",
-      drafterDiscipline: "lpn",
-      data: {
-        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
-        priority: "routine",
-        fastingRequired: false,
+    const draft = await svc.createDraft(
+      ORG,
+      "lpn_1",
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "lab",
+        drafterDiscipline: "lpn",
+        data: {
+          testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+          priority: "routine",
+          fastingRequired: false,
+        },
+        orderingPhysicianMdmId: PHYS,
       },
-      orderingPhysicianMdmId: PHYS,
-    });
-    const req = await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
+      SYSTEM_ORDER_ACTOR,
+    );
+    const req = await svc.requestSignature(
+      ORG,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect(req.cosignRequired).toBe(true);
     expect(req.cosignStatus).toBe("pending");
 
     // The physician cannot sign while the cosignature is still pending (COSIGN_PENDING gate).
     await expect(
-      svc.signOrder(ORG, PHYS, draft.id, {
-        signerDiscipline: "medical_director",
-        signedAtClient: NOW,
-      }),
+      svc.signOrder(
+        ORG,
+        PHYS,
+        draft.id,
+        {
+          signerDiscipline: "medical_director",
+          signedAtClient: NOW,
+        },
+        SYSTEM_ORDER_ACTOR,
+      ),
     ).rejects.toThrow();
 
     // A DIFFERENT RN cosigns (the author cannot cosign their own order, §7.3).
-    const cos = await svc.cosignOrder(ORG, "rn_2", draft.id, {
-      cosignerRole: "rn_case_manager",
-      attestationText: "Reviewed and cosigned per scope.",
-    });
+    const cos = await svc.cosignOrder(
+      ORG,
+      "rn_2",
+      draft.id,
+      {
+        cosignerRole: "rn_case_manager",
+        attestationText: "Reviewed and cosigned per scope.",
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect(cos.cosignStatus).toBe("attached");
 
-    const signed = await svc.signOrder(ORG, PHYS, draft.id, {
-      signerDiscipline: "medical_director",
-      signedAtClient: NOW,
-    });
+    const signed = await svc.signOrder(
+      ORG,
+      PHYS,
+      draft.id,
+      {
+        signerDiscipline: "medical_director",
+        signedAtClient: NOW,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect(signed.status).toBe("active");
   });
 
   it("W-CS-01 edge — the order's own author cannot cosign it (self-cosign blocked)", async () => {
     const svc = backend();
-    const draft = await svc.createDraft(ORG, "lpn_1", {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "lab",
-      drafterDiscipline: "lpn",
-      data: {
-        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
-        priority: "routine",
-        fastingRequired: false,
+    const draft = await svc.createDraft(
+      ORG,
+      "lpn_1",
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "lab",
+        drafterDiscipline: "lpn",
+        data: {
+          testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+          priority: "routine",
+          fastingRequired: false,
+        },
+        orderingPhysicianMdmId: PHYS,
       },
-      orderingPhysicianMdmId: PHYS,
-    });
-    await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.requestSignature(
+      ORG,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
     await expect(
-      svc.cosignOrder(ORG, "lpn_1", draft.id, {
-        cosignerRole: "rn_case_manager",
-        attestationText: "x".repeat(40),
-      }),
+      svc.cosignOrder(
+        ORG,
+        "lpn_1",
+        draft.id,
+        {
+          cosignerRole: "rn_case_manager",
+          attestationText: "x".repeat(40),
+        },
+        SYSTEM_ORDER_ACTOR,
+      ),
     ).rejects.toThrow();
   });
 
@@ -299,14 +381,19 @@ describe("M11-T09 §9.3 race / concurrency (verbal-timer vs in-flight sign)", ()
 describe("M11-T09 cross-tenant isolation (service-layer non-leaking 404; live-PG RLS in rls-isolation.live)", () => {
   it("an order created in org_a is invisible to org_b (non-leaking NotFound)", async () => {
     const svc = backend();
-    const draft = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "comfort_kit",
-      drafterDiscipline: "rn_case_manager",
-      data: {},
-      orderingPhysicianMdmId: PHYS,
-    });
+    const draft = await svc.createDraft(
+      ORG,
+      "rn_1",
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "comfort_kit",
+        drafterDiscipline: "rn_case_manager",
+        data: {},
+        orderingPhysicianMdmId: PHYS,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toThrow();
     expect((await svc.listOrders(ORG_B, {})).orders).toEqual([]);
   });
@@ -315,34 +402,56 @@ describe("M11-T09 cross-tenant isolation (service-layer non-leaking 404; live-PG
 describe("M11 correction parity", () => {
   it("creates a draft replacement and discontinues the immutable active original", async () => {
     const svc = backend();
-    const original = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "lab",
-      drafterDiscipline: "rn_case_manager",
-      data: {
-        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
-        fastingRequired: false,
+    const original = await svc.createDraft(
+      ORG,
+      "rn_1",
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "lab",
+        drafterDiscipline: "rn_case_manager",
+        data: {
+          testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+          fastingRequired: false,
+        },
+        orderingPhysicianMdmId: PHYS,
       },
-      orderingPhysicianMdmId: PHYS,
-    });
-    await svc.requestSignature(ORG, original.id, { signerDiscipline: "rn_case_manager" });
-    await svc.signOrder(ORG, PHYS, original.id, {
-      signerDiscipline: "medical_director",
-      signedAtClient: NOW,
-    });
-    const replacement = await svc.correctOrder(ORG, "rn_1", original.id, {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "lab",
-      drafterDiscipline: "rn_case_manager",
-      data: {
-        testCodes: [{ system: "http://loinc.org", code: "718-7", display: "Hemoglobin" }],
-        fastingRequired: false,
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.requestSignature(
+      ORG,
+      original.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.signOrder(
+      ORG,
+      PHYS,
+      original.id,
+      {
+        signerDiscipline: "medical_director",
+        signedAtClient: NOW,
       },
-      priority: "routine",
-      orderingPhysicianMdmId: PHYS,
-    });
+      SYSTEM_ORDER_ACTOR,
+    );
+    const replacement = await svc.correctOrder(
+      ORG,
+      "rn_1",
+      original.id,
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "lab",
+        drafterDiscipline: "rn_case_manager",
+        data: {
+          testCodes: [{ system: "http://loinc.org", code: "718-7", display: "Hemoglobin" }],
+          fastingRequired: false,
+        },
+        priority: "routine",
+        orderingPhysicianMdmId: PHYS,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect(replacement.status).toBe("draft");
     expect(replacement.replacesOrderId).toBe(original.id);
     expect((await svc.getOrder(ORG, original.id)).status).toBe("discontinued");

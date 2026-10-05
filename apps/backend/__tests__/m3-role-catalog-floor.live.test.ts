@@ -241,7 +241,10 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
   // every tenant role that could edit payers able to, by copying the grant. Re-running the migration's
   // SQL over staged rows is the only way to exercise the backfill (a fresh replay finds no roles).
   it("GAP-017 migration 0325 copies patient.edit → patient.edit_payers for tenant roles only, idempotently", async () => {
-    const sql = readFileSync(join(MIGRATIONS_DIR, "0325_m5_patient_edit_payers_backfill.sql"), "utf8");
+    const sql = readFileSync(
+      join(MIGRATIONS_DIR, "0325_m5_patient_edit_payers_backfill.sql"),
+      "utf8",
+    );
     const editor = await seedRole("intake_editor", ["patient.edit", "patient.read"]);
     const readerOnly = await seedRole("chart_reader", ["patient.read"]);
     const already = await seedRole("billing_lead", ["patient.edit", "patient.edit_payers"]);

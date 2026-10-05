@@ -23,7 +23,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IsoInstant, OnCallActor, PortalTriageSummary } from "@wardenx/types";
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { seamOncallAbacPorts } from "../abac-predicates";
 import { readTriageMedicationContext } from "../clinical/medication-context";
 import { permittedDispositions } from "../lifecycle/disposition";
@@ -56,6 +56,7 @@ import type {
   TriageCallDetail,
   TriageCallFilters,
   TriageCallListItem,
+  TriageCallReadScope,
   TriageEscalationView,
   TriageProtocolView,
   TriageRedactedCategory,
@@ -216,8 +217,27 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
     resolvedByMembershipId: row.resolvedByMembershipId,
   });
 
+  /**
+   * GAP-059 — narrow the list IN SQL (RLS is org-only). Unrestricted scope adds nothing; otherwise a row
+   * passes if its patient is on the caseload OR the caller handled it (state-history actor). An empty
+   * caseload with no membership yields `false`, i.e. zero rows — fail closed.
+   */
+  const callScopeConditions = (scope: TriageCallReadScope): SQL[] => {
+    if (scope.patientIds === null) return [];
+    const arms: SQL[] = [];
+    if (scope.patientIds.length > 0) arms.push(inArray(CALL.patientId, [...scope.patientIds]));
+    if (scope.membershipId !== null) {
+      arms.push(sql`EXISTS (
+        SELECT 1 FROM ${HISTORY}
+        WHERE ${HISTORY.triageCallId} = ${CALL.id}
+          AND ${HISTORY.actorMembershipId} = ${scope.membershipId}
+      )`);
+    }
+    return [arms.length > 0 ? (or(...arms) as SQL) : sql`false`];
+  };
+
   return {
-    async listTriageCalls(actor, filters): Promise<CursorPage<TriageCallListItem>> {
+    async listTriageCalls(actor, filters, scope): Promise<CursorPage<TriageCallListItem>> {
       const limit = clampLimit(filters.limit, M19_PAGE_SIZES.triageCalls);
       const cursor = decodeCursor(actor.organizationId, filters.cursor);
       return withOrgContext(db, ctx(actor), async (tx) => {
@@ -251,6 +271,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
           .where(
             and(
               eq(CALL.organizationId, actor.organizationId),
+              ...callScopeConditions(scope),
               ...(filters.state ? [eq(CALL.state, filters.state)] : []),
               ...(filters.openOnly ? [inArray(CALL.state, [...OPEN_STATES])] : []),
               ...(filters.providerEntityId

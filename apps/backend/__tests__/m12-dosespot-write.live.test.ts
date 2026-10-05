@@ -244,11 +244,13 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
 
   it("F-058: requestSignature → pending_signature; sign → ACTIVE when nothing is e-prescribed", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
-    const pending = await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
+    const pending = await svc.requestSignature(ORG_A, draft.id, "hospice_physician", [
+      "hospice_physician",
+    ]);
     expect(pending.status).toBe("pending_signature");
     expect(await eventsFor(draft.id)).toContain("m12.medication_order.signature_requested");
     const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDiscipline: "hospice_physician",
+      signerDisciplines: ["hospice_physician"],
       signedAtClient: new Date().toISOString(),
     });
     // This used to assert `signed`, and `signed` is where the order then stayed forever: no transmission
@@ -270,14 +272,14 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
 
   it("F-058: an order that OWES a transmission stays signed on signature", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
-    await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
     // The e-prescribing path: this order has a NewRx queued, so it activates on the pharmacy
     // acknowledgment and not before. The `signed → active` arm is guarded on exactly this.
     await admin.query("UPDATE medication_order SET dosespot_send_state='queued' WHERE id=$1", [
       draft.id,
     ]);
     const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDiscipline: "hospice_physician",
+      signerDisciplines: ["hospice_physician"],
       signedAtClient: new Date().toISOString(),
     });
     expect(signed.status).toBe("signed");
@@ -287,30 +289,69 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   it("requestSignature by an ineligible discipline (MSW) → PRESCRIBER_NOT_ELIGIBLE", async () => {
     // rn_case_manager may draft-on-behalf for standard meds; a non-clinical discipline (msw) may not.
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
-    await expect(svc.requestSignature(ORG_A, draft.id, "msw")).rejects.toMatchObject({
+    await expect(svc.requestSignature(ORG_A, draft.id, "msw", ["msw"])).rejects.toMatchObject({
       code: "PRESCRIBER_NOT_ELIGIBLE",
     });
   });
 
   it("sign by an ineligible signer (RN) → SIGNER_NOT_ELIGIBLE", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
-    await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
     await expect(
       svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-        signerDiscipline: "rn_case_manager",
+        signerDisciplines: ["rn_case_manager"],
         signedAtClient: new Date().toISOString(),
       }),
     ).rejects.toMatchObject({ code: "SIGNER_NOT_ELIGIBLE" });
   });
 
+  it("GAP-035: another prescriber cannot sign a pending order they neither authored nor are named on", async () => {
+    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
+    await expect(
+      svc.signOrder(ORG_A, member2Of[ORG_A], draft.id, {
+        signerDisciplines: ["hospice_physician"],
+        signedAtClient: new Date().toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "SIGNER_NOT_ORDERING_PHYSICIAN" });
+    expect(await statusOf(draft.id)).toBe("pending_signature");
+  });
+
+  it("GAP-035: user B signing A's verbal order gets VERBAL_SIGNER_NOT_NAMED_PRESCRIBER and the status is unchanged", async () => {
+    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
+    // The named prescriber must be enrolled BEFORE the record step (NAMED_PRESCRIBER_NOT_ENROLLED).
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
+    await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
+      svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+        recorderDiscipline: "rn_case_manager",
+        recorderDisciplines: ["rn_case_manager"],
+        verbalAttestation: ATTESTATION,
+        receivedAt: new Date().toISOString(),
+        namedPrescriberMdmId: PHYSICIAN_MDM,
+      }),
+    );
+    // USER2 is a physician, but their roster row maps to a DIFFERENT physician.
+    await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], "77777777-7777-4777-8777-777777777777");
+    await expect(
+      svc.signOrder(ORG_A, member2Of[ORG_A], draft.id, {
+        signerDisciplines: ["hospice_physician"],
+        signedAtClient: new Date().toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "VERBAL_SIGNER_NOT_NAMED_PRESCRIBER" });
+    expect(await statusOf(draft.id)).toBe("verbal_pending");
+  });
+
   it("recordVerbal → verbal_pending; the named prescriber then signs → signed (viaVerbal)", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
-    await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
     // The route runs inside the request's ambient context; the M11 seam it writes through
     // (`withOrgContextFromRequest`) reads it, exactly as in production.
     const verbal = await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
       svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
         recorderDiscipline: "rn_case_manager",
+        recorderDisciplines: ["rn_case_manager"],
         verbalAttestation: ATTESTATION,
         receivedAt: new Date().toISOString(),
         namedPrescriberMdmId: PHYSICIAN_MDM,
@@ -318,10 +359,10 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     );
     expect(verbal.status).toBe("verbal_pending");
     expect(await eventsFor(draft.id)).toContain("m12.medication_order.verbal_received");
+    // GAP-035 — the named prescriber is an MDM id; the signer must be the roster member mapped to it.
     const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDiscipline: "hospice_physician",
+      signerDisciplines: ["hospice_physician"],
       signedAtClient: new Date().toISOString(),
-      signerIsOrderingPhysician: true,
     });
     // F-058 — the verbal follow-up signature activates too; the drug was already being given under the
     // verbal order (M12 §2.3: a verbal order "is active for clinical execution during this window").
@@ -336,13 +377,18 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     );
     expect(draft.isControlledSubstance).toBe(true);
     expect(draft.deaSchedule).toBe("II");
-    await expect(svc.requestSignature(ORG_A, draft.id, "hospice_physician")).rejects.toMatchObject({
+    await expect(
+      svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]),
+    ).rejects.toMatchObject({
       code: "EPCS_NOT_CERTIFIED",
     });
     // The EPCS gate already blocked pending_signature, so the order is still a draft: signControlledInitiate
     // is an ILLEGAL transition from draft (the controlled order can never reach the EPCS challenge, D18).
     await expect(
-      svc.signControlledInitiate(ORG_A, memberOf[ORG_A], draft.id, "II"),
+      svc.signControlledInitiate(ORG_A, memberOf[ORG_A], draft.id, "II", {
+        signerDiscipline: "hospice_physician",
+        signerDisciplines: ["hospice_physician"],
+      }),
     ).rejects.toMatchObject({
       code: "ILLEGAL_MEDICATION_ORDER_TRANSITION",
     });
@@ -397,6 +443,57 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(await eventsFor(refillB)).toContain("m12.refill_request_denied");
   });
 
+  it("GAP-035 follow-up: recordVerbal refuses a named prescriber with no active roster row (NAMED_PRESCRIBER_NOT_ENROLLED)", async () => {
+    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
+    await expect(
+      runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
+        svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+          recorderDiscipline: "rn_case_manager",
+          recorderDisciplines: ["rn_case_manager"],
+          verbalAttestation: ATTESTATION,
+          receivedAt: new Date().toISOString(),
+          namedPrescriberMdmId: "88888888-8888-4888-8888-888888888888",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "NAMED_PRESCRIBER_NOT_ENROLLED" });
+    expect(await statusOf(draft.id)).toBe("pending_signature");
+  });
+
+  it("GAP-035 follow-up: listNamedPrescribers returns only active rows that carry an MDM id", async () => {
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
+    const { prescribers } = await svc.listNamedPrescribers(ORG_A);
+    expect(prescribers).toContainEqual({
+      membershipId: memberOf[ORG_A],
+      externalPhysicianMdmId: PHYSICIAN_MDM,
+    });
+  });
+
+  it("GAP-035 follow-up: retransmit by a physician who is neither the author nor the named physician is refused", async () => {
+    const failedId = (
+      await admin.query(
+        `INSERT INTO medication_order (organization_id, provider_entity_id, location_id, patient_id,
+           admission_id, med_class, drug_name, strength, dose_form, route, data, prescriber_membership_id,
+           prescribing_physician_mdm_id, status)
+         VALUES ($1,$2,$3,$4,$5,'standard','Morphine','5 mg','tablet','oral','{}'::jsonb,$6,$7,'transmission_failed') RETURNING id`,
+        [
+          ORG_A,
+          providerOf[ORG_A],
+          locationOf[ORG_A],
+          PATIENT,
+          ADMISSION,
+          memberOf[ORG_A],
+          PHYSICIAN_MDM,
+        ],
+      )
+    ).rows[0].id as string;
+    await expect(
+      svc.retransmit(ORG_A, member2Of[ORG_A], failedId, {
+        signerDisciplines: ["hospice_physician"],
+      }),
+    ).rejects.toMatchObject({ code: "SIGNER_NOT_ORDERING_PHYSICIAN" });
+  });
+
   it("enrollPrescriber then revokePrescriber round-trips the roster + emits", async () => {
     const enrolled = await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], ["III", "IV"]);
     expect(enrolled.enrolled).toBe(true);
@@ -406,6 +503,46 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     const { prescribers } = await svc.listPrescribers(ORG_A);
     expect(prescribers.find((p) => p.membershipId === member2Of[ORG_A])?.enrolled).toBe(false);
     expect(await eventsFor(member2Of[ORG_A])).toContain("m12.prescriber_revoked");
+  });
+
+  it("MDM uniqueness: a second ACTIVE roster row on the same MDM id is refused 409 MDM_ID_ALREADY_ENROLLED", async () => {
+    const mdm = "88888888-8888-4888-8888-888888888888";
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], mdm);
+    await expect(svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], mdm)).rejects.toMatchObject({
+      code: "MDM_ID_ALREADY_ENROLLED",
+      statusCode: 409,
+    });
+    // revoking the holder frees the MDM id (the partial index only covers revoked_at IS NULL rows).
+    await svc.revokePrescriber(ORG_A, memberOf[ORG_A], "left the practice");
+    await expect(svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], mdm)).resolves.toMatchObject({
+      externalPhysicianMdmId: mdm,
+    });
+  });
+
+  it("verbal: an LPN recorder is refused VERBAL_RECORDER_NOT_ELIGIBLE and a claimed discipline the actor lacks is 422", async () => {
+    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
+    const args = {
+      verbalAttestation: ATTESTATION,
+      receivedAt: new Date().toISOString(),
+      namedPrescriberMdmId: PHYSICIAN_MDM,
+    };
+    await expect(
+      svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+        ...args,
+        recorderDiscipline: "lpn",
+        recorderDisciplines: ["lpn"],
+      }),
+    ).rejects.toMatchObject({ code: "VERBAL_RECORDER_NOT_ELIGIBLE" });
+    await expect(
+      svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+        ...args,
+        recorderDiscipline: "hospice_physician",
+        recorderDisciplines: ["lpn"],
+      }),
+    ).rejects.toMatchObject({ code: "DISCIPLINE_NOT_HELD" });
+    expect(await statusOf(draft.id)).toBe("pending_signature");
   });
 
   it("policy guards are tighten-only (controlled ≤ 5 refills; refill SLA ≤ floor)", async () => {
@@ -422,10 +559,10 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   it("RLS: org B cannot read or sign org A's order (404 under the wardenx_app policy)", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toMatchObject({ statusCode: 404 });
-    await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
     await expect(
       svc.signOrder(ORG_B, memberOf[ORG_B], draft.id, {
-        signerDiscipline: "hospice_physician",
+        signerDisciplines: ["hospice_physician"],
         signedAtClient: new Date().toISOString(),
       }),
     ).rejects.toMatchObject({ statusCode: 404 });

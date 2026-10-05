@@ -34,6 +34,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import {
   SchedulingRouteService,
   type SchedulingSeed,
@@ -118,6 +119,19 @@ function makeServer() {
   // A fresh predicate registry per server — same rationale as M11's orders-routes.test.ts: the shared registry
   // is single-owner/no-clear, so a fresh one per test isolates each test's seeded facts.
   const reg = createPredicateRegistry();
+  // GAP-053: the visit detail read binds the shared M7-owned `caseload_or_scope` by name; the caseload is
+  // permissive here (the real scoping is exercised in scheduling-caseload-scope.test.ts).
+  reg.register(
+    "caseload_or_scope",
+    buildCarePlanAbacPredicates({
+      resolver: {
+        loadPlan: async () => null,
+        loadProblem: async () => null,
+        loadVersion: async () => null,
+      },
+      isInCaseload: async () => true,
+    }).caseload_or_scope,
+  );
   for (const [name, predicate] of Object.entries(
     buildSchedulingAbacPredicates({ resolver: backend }),
   )) {
@@ -126,7 +140,7 @@ function makeServer() {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerSchedulingRoutes(app, { service: backend });
+  registerSchedulingRoutes(app, { service: backend, caseloadPatientIds: async () => [PATIENT] });
   return { app, backend };
 }
 

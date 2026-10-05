@@ -19,17 +19,27 @@ import {
 // the server's (§4.1 route 28). Reads GET /api/v1/admin/administration-policy via the typed client.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
 import { type AdministrationPolicyView, errorMessage, getPolicy, putPolicy } from "./emar-api";
+
+const POLICY_DRAFT_KEY = "emar-administration-policy";
 
 export function AdministrationPolicy(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Returning from /step-up: reopen the editor with the values the user had entered.
+  const [restored] = useState(() =>
+    takeStepUpDraft<{ grace: string; prn: string; pdf: boolean }>(POLICY_DRAFT_KEY),
+  );
   const [policy, setPolicy] = useState<AdministrationPolicyView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [grace, setGrace] = useState("");
-  const [prn, setPrn] = useState("");
-  const [pdf, setPdf] = useState(false);
+  const [editing, setEditing] = useState(restored !== null);
+  const [grace, setGrace] = useState(restored?.grace ?? "");
+  const [prn, setPrn] = useState(restored?.prn ?? "");
+  const [pdf, setPdf] = useState(restored?.pdf ?? false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -69,12 +79,18 @@ export function AdministrationPolicy(): JSX.Element {
     });
     setBusy(false);
     if (err) {
+      const stepUp = stepUpRedirectFor(err, `${location.pathname}${location.search}`);
+      if (stepUp) {
+        stashStepUpDraft(POLICY_DRAFT_KEY, { grace, prn, pdf });
+        navigate(stepUp);
+        return;
+      }
       setActionError(errorMessage(err, "The policy could not be updated."));
       return;
     }
     setEditing(false);
     void load();
-  }, [client, grace, prn, pdf, load]);
+  }, [client, grace, prn, pdf, load, navigate, location]);
 
   const savable =
     !busy &&

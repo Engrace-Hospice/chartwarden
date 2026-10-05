@@ -68,7 +68,12 @@ const PERMISSION_SEED = [
 ];
 
 function makeServer() {
-  const backend = createInMemoryOrderBackend({ now: () => NOW, timeZone: "America/New_York" });
+  const backend = createInMemoryOrderBackend({
+    now: () => NOW,
+    timeZone: "America/New_York",
+    // The service re-checks caseload itself (GAP-030): same single-patient caseload the route is given.
+    caseloadPatientIds: async () => [PATIENT],
+  });
 
   const grantStore = createInMemoryEffectivePermissionStore(
     PERMISSION_SEED.map((s) => ({
@@ -230,18 +235,20 @@ describe("M11-T06 — §2.2 lifecycle: request-signature → sign", () => {
 describe("M11-T06 — §2.5 LPN-drafted cosign axis", () => {
   it("an LPN-drafted lab order requires an RN cosignature before it can be signed (COSIGN_PENDING 412)", async () => {
     const { app } = makeServer();
+    // GAP-031 — the drafter discipline must be one the caller holds, so the LPN drafts as an LPN.
+    const LPN_DRAFTER = { ...RN, "x-test-roles": "lpn" };
     const draft = await app.inject({
       method: "POST",
       url: "/api/v1/orders",
-      headers: RN,
+      headers: LPN_DRAFTER,
       payload: labBody({ drafterDiscipline: "lpn" }),
     });
     const id = draft.json().id as string;
     const req = await app.inject({
       method: "POST",
       url: `/api/v1/orders/${id}/request-signature`,
-      headers: RN,
-      payload: { signerDiscipline: "rn_case_manager" },
+      headers: LPN_DRAFTER,
+      payload: { signerDiscipline: "lpn" },
     });
     expect(req.json().cosignRequired).toBe(true);
 

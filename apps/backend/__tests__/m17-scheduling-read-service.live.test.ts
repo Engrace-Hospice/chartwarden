@@ -166,6 +166,26 @@ describe.skipIf(!DB_URL)("M17 Drizzle read service — LIVE Postgres (M17L)", ()
     expect(visits[0].assignedMembershipId).toBe(seeded[ORG_A].membership);
   });
 
+  it("GAP-053: listVisits(scope) narrows by caseload / own assignment in SQL; empty scope reads nothing", async () => {
+    const { visit, membership } = seeded[ORG_A];
+    const any = await service.listVisits(ORG_A, {});
+    const patientId = any[0].patientId;
+    const OFF = "99999999-9999-4999-8999-999999999999";
+    const unrelated = { patientIds: [OFF] as readonly string[] };
+    expect(await service.listVisits(ORG_A, {}, unrelated)).toEqual([]);
+    expect(await service.listVisits(ORG_A, {}, { patientIds: [] })).toEqual([]);
+    const onCaseload = await service.listVisits(ORG_A, {}, { patientIds: [patientId] });
+    expect(onCaseload.map((v) => v.id)).toEqual([visit]);
+    const ownAssignment = await service.listVisits(
+      ORG_A,
+      {},
+      { patientIds: [], assignedMembershipId: membership },
+    );
+    expect(ownAssignment.map((v) => v.id)).toEqual([visit]);
+    expect(await service.listVisits(ORG_A, {}, { patientIds: null })).toHaveLength(1);
+    expect(await service.listProposals(ORG_A, {}, { patientIds: [] })).toEqual([]);
+  });
+
   it("getAvailability folds the weekday slots into one view; listTimeOff returns the seeded PTO", async () => {
     const avail = await service.getAvailability(ORG_A, seeded[ORG_A].membership);
     expect(avail).not.toBeNull();

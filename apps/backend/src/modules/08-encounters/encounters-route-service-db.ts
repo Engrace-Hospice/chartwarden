@@ -83,7 +83,7 @@ import {
   checkVersion,
   checkVocabVersion,
 } from "./lifecycle/validation";
-import { toVitalsView } from "./routes/service";
+import { assertNotAuthor, toVitalsView } from "./routes/service";
 import type {
   CarePlanLinkView,
   EncounterAbacFacts,
@@ -2053,10 +2053,11 @@ export function createDbEncounterRouteService(
     },
 
     // ── Cosignature-request chain (§2.4 D3) ────────────────────────────────────────────────────────────
-    async cosignAcknowledge(organizationId, encounterId, at) {
+    async cosignAcknowledge(organizationId, encounterId, actor, at) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const cr = await loadCosign(t, encounterId);
+        assertNotAuthor((await loadEnc(t, encounterId)).authoredByMembershipId, actor.membershipId);
         const trans = transitionCosignature(cr.status, { type: "acknowledge", at });
         await t
           .update(COSIGN)
@@ -2069,6 +2070,8 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const cr = await loadCosign(t, encounterId);
+        const enc = await loadEnc(t, encounterId);
+        assertNotAuthor(enc.authoredByMembershipId, actor.membershipId);
         const now = new Date();
         const provenance = await resolveSignatureProvenance(organizationId, actor.sessionId);
         const ct = transitionCosignature(cr.status, {
@@ -2081,7 +2084,6 @@ export function createDbEncounterRouteService(
           .update(COSIGN)
           .set({ status: ct.to, signedAt: now, updatedAt: now })
           .where(eq(COSIGN.id, cr.id));
-        const enc = await loadEnc(t, encounterId);
         const et = transitionEncounter(enc.status, { type: "recordCosignature", at: args.at });
         await t
           .update(ENC)

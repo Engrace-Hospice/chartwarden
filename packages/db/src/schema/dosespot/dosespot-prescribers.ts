@@ -47,6 +47,11 @@ export const dosespotPrescribers = pgTable(
       t.organizationId,
       t.membershipId,
     ),
+    // Mig 0326 — one ACTIVE roster row per external physician MDM id per tenant, so two users can never both
+    // be "the named prescriber" of a verbal order.
+    activeMdmUnique: uniqueIndex("dosespot_prescriber_active_mdm_unique")
+      .on(t.organizationId, t.externalPhysicianMdmId)
+      .where(sql`external_physician_mdm_id IS NOT NULL AND revoked_at IS NULL`),
     epcsConsistency: check(
       "dosespot_prescriber_epcs_consistency",
       sql`(epcs_enabled = true) <= (ial2_status = 'verified' AND dea IS NOT NULL AND array_length(dea_authorized_schedules, 1) > 0)`,

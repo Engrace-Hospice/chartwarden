@@ -14848,6 +14848,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/prescribing/named-prescribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Active prescribers with an MDM id — the valid namedPrescriberMdmId choices for recording a verbal order */
+        get: operations["getApiV1PrescribingNamedprescribers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/privacy/restricted-patients": {
         parameters: {
             query?: never;
@@ -23347,6 +23364,7 @@ export interface operations {
                             enrolled: boolean;
                             deaAuthorizedSchedules: ("II" | "III" | "IV" | "V")[];
                             ial2Status: string;
+                            externalPhysicianMdmId: string | null;
                         }[];
                     };
                 };
@@ -23368,6 +23386,8 @@ export interface operations {
             content: {
                 "application/json": {
                     deaAuthorizedSchedules?: ("II" | "III" | "IV" | "V")[];
+                    /** Format: uuid */
+                    externalPhysicianMdmId?: string;
                 };
             };
         };
@@ -53326,10 +53346,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    signerDiscipline: string;
                     /** Format: date-time */
                     signedAtClient: string;
-                    signerIsOrderingPhysician?: boolean;
                 };
             };
         };
@@ -61879,6 +61897,34 @@ export interface operations {
                         category: string;
                         items: {
                             [key: string]: unknown;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PrescribingNamedprescribers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        prescribers: {
+                            membershipId: string;
+                            /** Format: uuid */
+                            externalPhysicianMdmId: string;
                         }[];
                     };
                 };

@@ -26,7 +26,13 @@ export type {
 } from "./write-service";
 export { type M15ReadDeps, buildDrizzleM15ReadService } from "./read-service-drizzle";
 export { type M15WriteDeps, buildDrizzleM15WriteService } from "./write-service-drizzle";
-export { type M15ReadActor, type M15WriteActor, actorOf, writeActorOf } from "./actor";
+export {
+  type M15ReadActor,
+  type M15WriteActor,
+  actorOf,
+  systemM15Actor,
+  writeActorOf,
+} from "./actor";
 export {
   type CursorPage,
   M15_PAGE_SIZES,

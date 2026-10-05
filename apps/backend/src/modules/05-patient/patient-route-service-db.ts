@@ -6,11 +6,15 @@
 // only ssn/state_id/mbi are envelope-encrypted, on `patient_identifier`) — so no per-row decryption.
 //
 // All WRITES are real: admit (§7.1 matcher + patient/identifier insert), addAddress (§7.4), and the
-// amendment lifecycle (§7.7 submit/decide) run under withOrgContext/RLS. Remaining follow-ups: SSN +
-// name-alias storage on admit, soft_review match-review rows, and the real outbox cascade emission.
+// amendment lifecycle (§7.7 submit/decide) run under withOrgContext/RLS. Each write publishes its spec'd
+// `m5.patient.*` event (GAP-016) through the injected m5 outbox port ON THE SAME TRANSACTION, so a failed
+// publish rolls the write back. Remaining follow-ups: SSN + name-alias storage on admit, soft_review
+// match-review rows.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import { NotFoundError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import type { M5OutboxPort } from "./deceased-db";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
 import { type PrivacyFlag, isSudReadAllowed } from "./privacy/index";
@@ -97,7 +101,10 @@ function decode(cursor: string): [string, string, string] | null {
 }
 
 /** Build the production PatientRouteService — reads + writes are real Drizzle over the patient tables. */
-export function createDbPatientRouteService(db: DbClient): PatientRouteService {
+export function createDbPatientRouteService(
+  db: DbClient,
+  outbox: M5OutboxPort,
+): PatientRouteService {
   const list = async (
     organizationId: string,
     query: ListQuery,
@@ -285,6 +292,21 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
   // patient_identifier is the source of truth. SSN is NOT stored here (envelope-encrypted; a follow-up),
   // nor are name_alias / address / phone / email (also follow-ups). Returns the new patient id.
   type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+  const emitPatientEvent = (
+    tx: Tx,
+    organizationId: string,
+    patientId: string,
+    eventName: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> =>
+    outbox.publish(tx as unknown as DbClient, {
+      eventName,
+      payload: { patientId, organizationId, ...extra },
+      organizationId,
+      aggregateKind: "patient",
+      aggregateId: patientId,
+    });
+
   async function insertPatient(tx: Tx, organizationId: string, input: AdmitInput): Promise<string> {
     const mrn = `MRN-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
     const today = new Date().toISOString().slice(0, 10);
@@ -309,6 +331,7 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
         .insert(ID)
         .values({ patientId, organizationId, kind: "mbi", value: input.mbi, effectiveFrom: today });
     }
+    await emitPatientEvent(tx, organizationId, patientId, "m5.patient.created", { mrn });
     return patientId;
   }
 
@@ -544,6 +567,8 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
           throw new Error("patient payer insert failed");
         }
 
+        await emitPatientEvent(tx, organizationId, patientId, "m5.patient.payer_changed");
+
         return {
           id: inserted.id,
           payerId: inserted.payerId,
@@ -687,7 +712,22 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
   // §7.4 / D5: append a patient address (US addresses require a state — patient_address CHECK) + report
   // the address-change cascade event. An `isPrimary` add performs ATOMIC primary rotation in one tx:
   // close the prior current primary (set effective_to so the partial unique index frees up), then
-  // insert the new current primary. The real outbox emission is wired with M1 infra.
+  // insert the new current primary. `m5.patient.address_changed` is published in the same transaction, so
+  // `cascadeEmitted` is only returned when the event was really enqueued (a publish failure rolls back).
+  // A write keyed by a patient id must see that patient under the caller's org (RLS). The child tables'
+  // policies only compare their own organization_id, so without this a caller could attach a row — and
+  // publish an event — for another tenant's patient id.
+  const assertPatientVisible = async (tx: Tx, patientId: string): Promise<void> => {
+    const found = (await tx
+      .select({ id: P.id })
+      .from(P)
+      .where(eq(P.id, patientId))
+      .limit(1)) as Array<{
+      id: string;
+    }>;
+    if (!found[0]) throw new NotFoundError("patient");
+  };
+
   const addAddress = async (
     organizationId: string,
     patientId: string,
@@ -695,6 +735,7 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
     actorUserId: string,
   ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }> =>
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      await assertPatientVisible(tx, patientId);
       const today = new Date().toISOString().slice(0, 10);
       if (address.isPrimary) {
         await tx
@@ -719,7 +760,11 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
           effectiveFrom: today,
         })
         .returning({ addressId: ADDR.id })) as Array<{ addressId: string }>;
-      return { addressId: inserted[0]!.addressId, cascadeEmitted: "m5.patient.address_changed" };
+      const addressId = inserted[0]!.addressId;
+      await emitPatientEvent(tx, organizationId, patientId, "m5.patient.address_changed", {
+        addressId,
+      });
+      return { addressId, cascadeEmitted: "m5.patient.address_changed" };
     });
 
   // §7.7: open a record-amendment request; SLA due = received + 60 days. The §4.x body captures
@@ -731,6 +776,7 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
     actorUserId: string,
   ) =>
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      await assertPatientVisible(tx, patientId);
       const slaDueAt = new Date(Date.now() + SIXTY_DAYS_MS);
       const inserted = (await tx
         .insert(schema.patientAmendmentRequests)
@@ -748,6 +794,13 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
           id: schema.patientAmendmentRequests.id,
           slaDueAt: schema.patientAmendmentRequests.slaDueAt,
         })) as Array<{ id: string; slaDueAt: Date }>;
+      await emitPatientEvent(
+        tx,
+        organizationId,
+        patientId,
+        "m5.patient.amendment_request_received",
+        { amendmentId: inserted[0]!.id },
+      );
       return {
         id: inserted[0]!.id,
         patientId,
@@ -780,6 +833,10 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
         .update(schema.patientAmendmentRequests)
         .set({ status, denialReason: decision.denialReason ?? null })
         .where(eq(schema.patientAmendmentRequests.id, amendmentId));
+      await emitPatientEvent(tx, organizationId, row.patientId, "m5.patient.amendment_decided", {
+        amendmentId,
+        decision: status,
+      });
       return {
         id: amendmentId,
         patientId: row.patientId,

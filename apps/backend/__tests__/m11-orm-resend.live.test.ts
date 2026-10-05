@@ -46,6 +46,7 @@ import type {
 } from "../src/modules/29-external-interfaces/outbound/mllp-transport";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -171,12 +172,12 @@ describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres",
       drafterDiscipline: "rn_case_manager",
       data: over.data ?? LAB_DATA,
       orderingPhysicianMdmId: over.physician ?? PH_ACTIVE,
-    });
-    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
+    }, SYSTEM_ORDER_ACTOR);
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
     await svc.signOrder(ORG_A, member, draft.id, {
       signerDiscipline: "rn_case_manager",
       signedAtClient: new Date().toISOString(),
-    });
+    }, SYSTEM_ORDER_ACTOR);
     return draft.id;
   }
 

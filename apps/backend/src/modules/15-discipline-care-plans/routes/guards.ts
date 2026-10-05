@@ -8,14 +8,14 @@
 // M3 resolves the per-operation freshness policy (the plan-sign / assessment-sign / assessment-amend /
 // supervisory-sign routes).
 //
-// The §4.1 inventory's SHARED predicates (`caseload_or_scope`, `discipline_scope`, `sud_disclosure_allowed`,
-// `dpoa_active`, `signer_role_match`) are M7-owned and keyed on M7's own `planId`/`elementId` targets, which
-// an M15 plan id cannot satisfy — binding them by name here would deny every M15 route permanently. M15
-// enforces those gates in its own services over the same upstream facts (`./disclosure.ts` for the M39
-// consent gates + the M5 caseload check; `../lifecycle/validation` for the discipline-scope and
-// signer-role rules), which is the M9/M12/M13 posture. See `../abac-predicates.ts`.
+// The §4.1 `caseload_or_scope` column is bound on every plan-bearing WRITE route via `planCaseloadScope`
+// (GAP-046): `requirePermission` never reads `PermissionDef.abac`, so the route composes the shared
+// predicate itself over the plan's patient. M15's `:planId` is a DISCIPLINE plan id M7's own resolver cannot
+// resolve, hence the patient is resolved through the write service first. Reads narrow in the read service
+// (`./disclosure.ts` `actorMayReadPatient`); the discipline-scope and signer-role rules live in
+// `../lifecycle/validation`; the M39 consent gates in `./disclosure.ts`. See `../abac-predicates.ts`.
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import type { PreHandler } from "./actor";
+import { type M15ReadActor, type PreHandler, actorOf } from "./actor";
 
 type TargetRequest = {
   readonly params?: unknown;
@@ -34,6 +34,36 @@ const queryField = (request: TargetRequest, key: string): string => {
   return typeof value === "string" ? value : "";
 };
 
+/** Break-glass is read-only: every guard on a mutating route opts out of the emergency-grant bypass. */
+const WRITE_ONLY = { breakGlassBypassable: false } as const;
+
+/** Sentinel patient for a plan that cannot be resolved: it is on no caseload, so the scope guard denies. */
+const UNRESOLVED_PATIENT = "00000000-0000-0000-0000-000000000000";
+
+/** Resolves a plan's patient (org-scoped); `null` when the plan is absent / cross-tenant. */
+export type PlanPatientResolver = (actor: M15ReadActor, planId: string) => Promise<string | null>;
+
+/**
+ * GAP-046 — the shared `caseload_or_scope` gate over a plan-bearing WRITE route. `requireAbac`'s `getTarget`
+ * is synchronous, so a resolver guard first loads the `:planId`'s patient into a per-request slot, then the
+ * predicate runs over `{ patientId }` with `notFoundOnDeny` (off-caseload is indistinguishable from absent).
+ * Org-wide scope roles are exempt inside the predicate; an unknown plan resolves to a patient nobody covers
+ * (404, never an allow); break-glass never opens a write. Compose it right after the RBAC gate.
+ */
+export function planCaseloadScope(key: string, resolve: PlanPatientResolver): PreHandler[] {
+  const resolved = new WeakMap<object, string>();
+  const resolveGuard: PreHandler = async (request) => {
+    const patientId = await resolve(actorOf(request), param(request, "planId"));
+    resolved.set(request, patientId ?? UNRESOLVED_PATIENT);
+  };
+  const scopeGuard = requireAbac(key, "caseload_or_scope", {
+    getTarget: (request) => ({ patientId: resolved.get(request) ?? UNRESOLVED_PATIENT }),
+    notFoundOnDeny: true,
+    ...WRITE_ONLY,
+  }) as PreHandler;
+  return [resolveGuard, scopeGuard];
+}
+
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.4 key catalog M15 contributes). */
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 
@@ -46,6 +76,7 @@ export const ABAC_SUPERVISOR = (key: string): PreHandler =>
   requireAbac(key, "aide_supervisor_eligible", {
     getTarget: (r) => ({ planId: param(r, "planId") }),
     notFoundOnDeny: true,
+    ...WRITE_ONLY,
   }) as PreHandler;
 
 /** §4.5 `volunteer_compliance_active` over the body's `volunteerMembershipId` (route 17, §7.4). */
@@ -53,6 +84,7 @@ export const ABAC_VOLUNTEER_ACTIVE = (key: string): PreHandler =>
   requireAbac(key, "volunteer_compliance_active", {
     getTarget: (r) => ({ volunteerMembershipId: bodyField(r, "volunteerMembershipId") }),
     notFoundOnDeny: false,
+    ...WRITE_ONLY,
   }) as PreHandler;
 
 /** §4.5 `volunteer_coordinator_role` — no subject to resolve; the caller's role set decides. */
@@ -60,6 +92,7 @@ export const ABAC_COORDINATOR = (key: string): PreHandler =>
   requireAbac(key, "volunteer_coordinator_role", {
     getTarget: () => ({}),
     notFoundOnDeny: false,
+    ...WRITE_ONLY,
   }) as PreHandler;
 
 /**

@@ -30,7 +30,8 @@ import {
 // GET /api/v1/administrations/:id via the typed client.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
 import {
   type AdministrationView,
   acknowledgeCaregiver,
@@ -73,12 +74,16 @@ const ACT_COPY: Record<Exclude<DetailAct, null>, { title: string; label: string;
 export function AdministrationDetail(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const [row, setRow] = useState<AdministrationView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [act, setAct] = useState<DetailAct>(null);
-  const [reason, setReason] = useState("");
+  const draftKey = `emar-void:${id ?? ""}`;
+  // Returning from /step-up: reopen the void dialog with the reason the user had typed.
+  const [restored] = useState(() => takeStepUpDraft<{ reason: string }>(draftKey));
+  const [act, setAct] = useState<DetailAct>(restored ? "void" : null);
+  const [reason, setReason] = useState(restored?.reason ?? "");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -115,6 +120,15 @@ export function AdministrationDetail(): JSX.Element {
             : await disputeCaregiver(client, id, { disputeReason: text });
     setBusy(false);
     if (result.error) {
+      const stepUp =
+        act === "void"
+          ? stepUpRedirectFor(result.error, `${location.pathname}${location.search}`)
+          : null;
+      if (stepUp) {
+        stashStepUpDraft(draftKey, { reason: text });
+        navigate(stepUp);
+        return;
+      }
       setActionError(errorMessage(result.error, "The action could not be completed."));
       return;
     }
@@ -128,7 +142,7 @@ export function AdministrationDetail(): JSX.Element {
       return;
     }
     void load();
-  }, [act, client, id, navigate, reason, load]);
+  }, [act, client, draftKey, id, navigate, location, reason, load]);
 
   const needsReason = act === "correct" || act === "void" || act === "dispute";
   const commitReady = !busy && (!needsReason || reason.trim().length > 0);

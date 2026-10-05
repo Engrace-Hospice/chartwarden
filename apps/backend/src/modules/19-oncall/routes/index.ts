@@ -16,6 +16,7 @@ export type {
   TriageCallDetail,
   TriageCallFilters,
   TriageCallListItem,
+  TriageCallReadScope,
   TriageEscalationView,
   TriageProtocolQuestionView,
   TriageProtocolView,
@@ -91,6 +92,7 @@ export {
 } from "./guards";
 
 import type { M19ReadService } from "./read-service";
+import type { TriageCallRouteDeps } from "./triage-calls.routes";
 import type { VendorSessionBindReader } from "./vendor-sessions.routes";
 import type { M19WriteService } from "./write-service";
 
@@ -104,4 +106,6 @@ export interface M19RouteServices {
    * (the M25 `ingestService` precedent — absent, never a deny-stub 501 pretending the feature is there).
    */
   readonly vendorSessionBindReader?: VendorSessionBindReader;
+  /** GAP-059 — caseload resolver for the triage-call list; defaults to M5's `CaseloadProvider` seam. */
+  readonly caseloadPatientIds?: TriageCallRouteDeps["caseloadPatientIds"];
 }

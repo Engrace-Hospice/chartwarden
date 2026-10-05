@@ -68,7 +68,10 @@ function headerAuth(request: FastifyRequest): void {
   // The sign/cosign-sign routes' requireStepUp(...) gate + signingActorOf() both read these — reusing
   // the test user id as both the membership id and the M2 session id keeps it consistent with the
   // in-memory backend's `authoredByUserId` seed data (self-cosign checks key off the same identifier).
-  request.context.attributes.membershipId = user;
+  // GAP-029: a test may give the actor a membership id DISTINCT from the user id (the real-world shape).
+  const membership = request.headers["x-test-membership"];
+  request.context.attributes.membershipId =
+    typeof membership === "string" && membership.length > 0 ? membership : user;
   request.context.attributes.sessionId = user;
 }
 
@@ -99,6 +102,7 @@ const ALL_AUTHOR = [
 const PERMISSION_SEED = [
   { userId: "rn_1", permissions: ALL_AUTHOR },
   { userId: "rn_2", permissions: ALL_AUTHOR },
+  { userId: "user_of_rn_1", permissions: ALL_AUTHOR },
   { userId: "sup_1", permissions: ALL_AUTHOR },
   { userId: "lpn_cos", permissions: ["encounter.read", "encounter.cosign"] },
   { userId: "viewer_1", permissions: ["encounter.read"] },
@@ -978,6 +982,76 @@ describe("M8-T09 — §4.6 cosigner_role_match ABAC predicate", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("acknowledged");
+  });
+});
+
+describe("GAP-029 — no self-cosign compares membership to membership", () => {
+  // rn_1 is the AUTHOR MEMBERSHIP of ENC_BY_RN; this caller is that same membership under a different
+  // USER id (the real-world shape). The predicate used to compare the author membership with
+  // context.userId, so this self-cosign sailed through.
+  const AUTHOR_AS_COSIGNER = {
+    "x-test-user": "user_of_rn_1",
+    "x-test-membership": "rn_1",
+    "x-test-org": ORG,
+    "x-test-roles": "rn",
+  };
+
+  it("a physician role (hospice_physician) may author as md; an RN may not (403)", async () => {
+    const { app } = makeServer();
+    const post = (roles: string, discipline: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/encounters",
+        headers: { ...RN, "x-test-roles": roles },
+        payload: {
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          encounterType: "routine_visit",
+          discipline,
+          serviceDate: "2026-06-20",
+        },
+      });
+    expect((await post("hospice_physician", "md")).statusCode).not.toBe(403);
+    expect((await post("rn", "md")).statusCode).toBe(403);
+  });
+
+  it("the author cannot acknowledge their own encounter's cosignature (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC_BY_RN}/cosignature/acknowledge`,
+      headers: AUTHOR_AS_COSIGNER,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("the author cannot cosign-sign their own encounter (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC_BY_RN}/cosignature/sign`,
+      headers: AUTHOR_AS_COSIGNER,
+      payload: { attestationConfirmed: true },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("an RN cannot author an 'lpn' encounter — discipline comes from the caller's roles, not the body (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "lpn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });
 

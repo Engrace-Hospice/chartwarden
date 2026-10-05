@@ -10,6 +10,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { VOID_REASON_MIN_LENGTH } from "@wardenx/emar";
 import { ValidationError } from "@wardenx/types";
 import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
@@ -133,7 +134,8 @@ export const CorrectAdministrationRequest = Type.Object({
   notes: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 export const VoidAdministrationRequest = Type.Object({
-  voidReason: Type.String({ minLength: 1, maxLength: 1000 }),
+  // §2.2 — the lifecycle machine's floor (`VOID_REASON_MIN_LENGTH`), mirrored here so the wire contract says it.
+  voidReason: Type.String({ minLength: VOID_REASON_MIN_LENGTH, maxLength: 1000 }),
 });
 export const RecordRefusalRequest = Type.Object({
   patientId: Type.String({ format: "uuid" }),

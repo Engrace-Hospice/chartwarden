@@ -1425,7 +1425,7 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_or_scope",
   },
-  // Standard sign (→ signed; route ALSO requires M11 `signer_eligible[:medication_order]`).
+  // Standard sign (→ signed; route ALSO binds M12's `medication_signer_eligible` ABAC — GAP-035; `retransmit` reuses this key + the same ABAC).
   "prescribing.sign": {
     resource: "medication_order",
     action: "sign",
@@ -1595,7 +1595,8 @@ export const M13_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_or_scope",
   },
-  // Administrative hard-void (recorded in error) — step-up enforced at the route.
+  // Administrative hard-void (recorded in error) — step-up + supervisor floor are composed on the route
+  // (GAP-041); this def's `abac` is declarative only (`requirePermission` never reads it).
   "administration.void": {
     resource: "administration_record",
     action: "void",

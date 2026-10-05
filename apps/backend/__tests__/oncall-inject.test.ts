@@ -320,8 +320,10 @@ function createOncallTestBackend() {
     visitScheduledFirstLight: false,
   };
 
+  const listScopes: unknown[] = [];
   const readService: M19ReadService = {
-    async listTriageCalls() {
+    async listTriageCalls(_actor, _filters, scope) {
+      listScopes.push(scope);
       return page([...calls.values()]);
     },
     async getTriageCall(_actor, triageCallId) {
@@ -838,6 +840,7 @@ function createOncallTestBackend() {
     seedProtocolId,
     seedWorklistId,
     summaryRequests,
+    listScopes,
   };
 }
 
@@ -875,11 +878,18 @@ function headerAuth(request: FastifyRequest): void {
 
 const PERMISSION_SEED = [
   { userId: "super_1", permissions: [...M19_PERMISSION_KEY_LIST] as string[] },
+  { userId: "rn_1", permissions: [...M19_PERMISSION_KEY_LIST] as string[] },
   { userId: "nobody_1", permissions: [] as string[] },
   { userId: "portal_1", permissions: ["portal.triage.read_recent"] },
 ];
 
-function makeServer() {
+function makeServer(
+  routeDeps: {
+    caseloadPatientIds?: (q: { organizationId: string; userId: string }) => Promise<
+      readonly string[]
+    >;
+  } = {},
+) {
   const backend = createOncallTestBackend();
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -905,7 +915,11 @@ function makeServer() {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  mountM19Routes(app, { readService: backend.readService, writeService: backend.writeService });
+  mountM19Routes(app, {
+    readService: backend.readService,
+    writeService: backend.writeService,
+    ...routeDeps,
+  });
   return { app, backend };
 }
 
@@ -915,6 +929,12 @@ const SUPER = {
   "x-test-roles": "administrator",
   "x-test-membership": MEMBERSHIP,
   "x-test-step-up": "1",
+};
+const RN = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+  "x-test-membership": MEMBERSHIP,
 };
 const NOBODY = { "x-test-user": "nobody_1", "x-test-org": ORG };
 const PORTAL = {
@@ -1254,6 +1274,62 @@ describe("M19-T07 §4.1 route 2 — list triage calls", () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/triage-calls", headers: SUPER });
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.json().data)).toBe(true);
+    await app.close();
+  });
+});
+
+// GAP-059 — the list must be narrowed to the caller's caseload IN THE QUERY (the service receives the scope).
+describe("GAP-059 route 2 — list triage calls is caseload-scoped", () => {
+  const OTHER_PATIENT = "99999999-9999-4999-8999-999999999999";
+
+  it("hands a non-org-wide caller's caseload (and membership) to the read service", async () => {
+    const seen: unknown[] = [];
+    const { app, backend } = makeServer({
+      caseloadPatientIds: async (q) => {
+        seen.push(q);
+        return [PATIENT];
+      },
+    });
+    const res = await app.inject({ method: "GET", url: "/api/v1/triage-calls", headers: RN });
+    expect(res.statusCode).toBe(200);
+    expect(seen).toEqual([{ organizationId: ORG, userId: "rn_1" }]);
+    expect(backend.listScopes).toEqual([{ patientIds: [PATIENT], membershipId: MEMBERSHIP }]);
+    await app.close();
+  });
+
+  it("an empty caseload narrows to nothing (patientIds [], never null)", async () => {
+    const { app, backend } = makeServer({ caseloadPatientIds: async () => [] });
+    await app.inject({ method: "GET", url: "/api/v1/triage-calls", headers: RN });
+    expect(backend.listScopes).toEqual([{ patientIds: [], membershipId: MEMBERSHIP }]);
+    await app.close();
+  });
+
+  it("fails closed when the caseload seam throws", async () => {
+    const { app, backend } = makeServer({
+      caseloadPatientIds: async () => {
+        throw new Error("seam down");
+      },
+    });
+    await app.inject({ method: "GET", url: "/api/v1/triage-calls", headers: RN });
+    expect(backend.listScopes).toEqual([{ patientIds: [], membershipId: MEMBERSHIP }]);
+    await app.close();
+  });
+
+  it("an org-wide role is unrestricted (patientIds null) and never consults the caseload", async () => {
+    let consulted = false;
+    const { app, backend } = makeServer({
+      caseloadPatientIds: async () => {
+        consulted = true;
+        return [OTHER_PATIENT];
+      },
+    });
+    await app.inject({
+      method: "GET",
+      url: "/api/v1/triage-calls",
+      headers: { ...SUPER, "x-test-roles": "medical_director" },
+    });
+    expect(consulted).toBe(false);
+    expect(backend.listScopes).toEqual([{ patientIds: null, membershipId: MEMBERSHIP }]);
     await app.close();
   });
 });

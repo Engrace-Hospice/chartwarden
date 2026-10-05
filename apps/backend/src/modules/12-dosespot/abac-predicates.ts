@@ -17,14 +17,19 @@
 //        facts load through the resolver; the list route carries no id → allow (the service narrows the
 //        inbox to the caller's scope itself).
 //
+//   medication_signer_eligible  — GAP-035 / §4.6: does ANY of the caller's session-assembled disciplines
+//        satisfy the medication-order signer matrix (`signerEligibleFor`)? M12-owned and pure (no resolver
+//        read): M11's `signer_eligible` resolves against M11's order store, which has no row for a
+//        `medication_order` id, so M12 cannot bind it. The named-prescriber half needs the stored order +
+//        the signer's roster row and is decided in the service inside the sign transaction.
+//
 // The §4.7 `caseload_or_scope` predicate is SHARED (registered by M5/M6/M7) — M12 binds it by USING the name
-// at the route (it is each clinical key's default ABAC), not by re-registering it. The M11 seam predicates
-// (`signer_eligible` / `cosigner_role_match`) are owned by M11 and registered by 11-orders; M12's sign /
-// cosign routes reference them by name. Registration is idempotent: the shared registry is single-owner /
+// at the route (it is each clinical key's default ABAC), not by re-registering it. The M11 seam predicate
+// `cosigner_role_match` is owned by M11 (GAP-034 territory). Registration is idempotent: the shared registry is single-owner /
 // no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { MedClass } from "@wardenx/types";
-import { prescriberEligible } from "./prescriber-eligibility";
+import { prescriberEligible, signerEligibleFor } from "./prescriber-eligibility";
 import type { DoseSpotAbacActor, DoseSpotAbacResolver } from "./routes/service";
 
 /** The §4.7 predicate names M12 owns (registered into M3). Single-owner across the platform registry. */
@@ -32,6 +37,7 @@ export const M12_ABAC_PREDICATES = [
   "prescriber_eligible",
   "dea_schedule_authorized",
   "refill_inbox_scope",
+  "medication_signer_eligible",
 ] as const;
 
 /**
@@ -72,7 +78,7 @@ export interface DoseSpotAbacDeps {
 }
 
 /**
- * Build M12's three §4.7 predicate resolvers over injected deps (pure factory — unit-tested with a fresh
+ * Build M12's four §4.7 predicate resolvers over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers them via {@link registerDoseSpotAbacPredicates}). The draft route's
  * target carries the body's `medClass`; the controlled sign routes' target carries the body's `schedule`;
  * the refill routes' target carries the `:id` route param.
@@ -104,6 +110,8 @@ export function buildDoseSpotAbacPredicates(
       if (!authorized) return false; // no roster row (fail-closed)
       return authorized.includes(schedule);
     },
+    medication_signer_eligible: async (context) =>
+      signerEligibleFor(prescriberDisciplinesOf(context)),
     refill_inbox_scope: async (context, target) => {
       const id = targetStr(target, "id") ?? targetStr(target, "refillId");
       if (!id) return true; // list view — the service narrows the inbox to the caller's scope.
@@ -115,7 +123,7 @@ export function buildDoseSpotAbacPredicates(
 }
 
 /**
- * Register M12's three §4.7 ABAC predicate resolvers into M3's shared registry (M12-T08; idempotent). Call at
+ * Register M12's four §4.7 ABAC predicate resolvers into M3's shared registry (M12-T08; idempotent). Call at
  * boot after the medication-order route service is constructed (the resolver reads the same dataset). Re-boot
  * (tests) skips already-registered names (single-owner / no-clear).
  */

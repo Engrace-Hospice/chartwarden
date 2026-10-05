@@ -1,7 +1,7 @@
-// GAP-010 — M3 break-glass durable Compliance notification: catalog + M36 consumer (unit).
-import { describe, expect, it, vi } from "vitest";
 import { Value } from "@sinclair/typebox/value";
 import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
+// GAP-010 — M3 break-glass durable Compliance notification: catalog + M36 consumer (unit).
+import { describe, expect, it, vi } from "vitest";
 import { M3_OUTBOX_EVENTS } from "../src/modules/03-authorization/events-by-m3";
 import {
   M36_BREAKGLASS_ALERT_CONSUMER,
@@ -24,13 +24,15 @@ const event = (payload: unknown) => ({
 
 describe("M3_OUTBOX_EVENTS", () => {
   it("registers the five spec'd m3.* events, all owned by m3", () => {
-    expect(M3_OUTBOX_EVENTS.map((e) => e.eventName).sort()).toEqual([
-      "m3.breakglass.invoked",
-      "m3.breakglass.ended",
-      "m3.engagement.closed",
-      "m3.role.assigned",
-      "m3.role.revoked",
-    ].sort());
+    expect(M3_OUTBOX_EVENTS.map((e) => e.eventName).sort()).toEqual(
+      [
+        "m3.breakglass.invoked",
+        "m3.breakglass.ended",
+        "m3.engagement.closed",
+        "m3.role.assigned",
+        "m3.role.revoked",
+      ].sort(),
+    );
     for (const e of M3_OUTBOX_EVENTS) expect(e.moduleOwner).toBe("m3");
   });
 
@@ -41,11 +43,14 @@ describe("M3_OUTBOX_EVENTS", () => {
   });
 
   it("the invoked payload schema accepts the real shape and carries no free-text reason", () => {
-    const schema = M3_OUTBOX_EVENTS.find((e) => e.eventName === "m3.breakglass.invoked")!
-      .payloadSchema;
+    const schema = M3_OUTBOX_EVENTS.find(
+      (e) => e.eventName === "m3.breakglass.invoked",
+    )!.payloadSchema;
     expect(Value.Check(schema, invokedPayload)).toBe(true);
     expect(Value.Check(schema, { ...invokedPayload, breakGlassId: undefined })).toBe(false);
-    expect(Object.keys((schema as unknown as { properties: object }).properties)).not.toContain("reason");
+    expect(Object.keys((schema as unknown as { properties: object }).properties)).not.toContain(
+      "reason",
+    );
   });
 });
 

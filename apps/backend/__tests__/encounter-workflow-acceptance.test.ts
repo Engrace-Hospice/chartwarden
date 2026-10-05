@@ -1,3 +1,4 @@
+import { ForbiddenError } from "@wardenx/types";
 // apps/backend/__tests__/encounter-workflow-acceptance.test.ts — M8-T12 the §7 workflow-acceptance
 // suite. One scenario per §7 user story, exercised end-to-end over the in-memory EncounterRouteService
 // (the same backend the routes compose over). Deterministic: no infra, injected clock. The route-auth
@@ -19,6 +20,8 @@ const PAST = "2020-01-01"; // a non-future service date (createDraft rejects fut
 // The in-memory backend's sign/cosignSign/signAddendum ignore the actor's step-up state (no real
 // session infra in the slice — see routes/service.ts); the shape just needs to be well-formed.
 const ACTOR = { membershipId: "actor_1", sessionId: "sess_1" };
+/** A DIFFERENT membership — the RN cosigner (GAP-029: the author can never cosign their own note). */
+const COSIGNER = { membershipId: "cosigner_1", sessionId: "sess_2" };
 
 /**
  * Create a draft routine_visit for the given discipline and DOCUMENT it — one selection per required
@@ -69,10 +72,24 @@ describe("M8-T12 §7 workflow acceptance", () => {
     // §2.4 — routed to the patient's RN case manager, NOT to the LPN who just signed it (#124).
     expect(backend.inspect.cosignerOf(id)).toBe(SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID);
     expect(backend.inspect.cosignerOf(id)).not.toBe(ACTOR.membershipId);
-    expect((await svc.cosignAcknowledge(ORG, id, PAST)).status).toBe("acknowledged");
-    const cos = await svc.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST });
+    expect((await svc.cosignAcknowledge(ORG, id, COSIGNER, PAST)).status).toBe("acknowledged");
+    const cos = await svc.cosignSign(ORG, id, COSIGNER, { isQualifiedRn: true, at: PAST });
     expect(cos.status).toBe("cosigned");
     expect(cos.cosignedAt).not.toBeNull();
+  });
+
+  it("GAP-029 — the author cannot acknowledge or cosign their own note (service-level guard)", async () => {
+    const { svc, id } = await draft("lpn");
+    await svc.finalize(ORG, id, PAST);
+    await svc.sign(ORG, id, ACTOR, { at: PAST });
+    await expect(svc.cosignAcknowledge(ORG, id, ACTOR, PAST)).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    await expect(
+      svc.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    // …and the refusal left the cosignature workflow untouched.
+    expect((await svc.getCosignature(ORG, id)).status).toBe("routed");
   });
 
   it("§7.3 — 48h hard cap locks cosignature until a supervisor releases, then an RN signs", async () => {
@@ -93,7 +110,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
     const id = "e0000000-0000-4000-8000-0000000000aa";
     // A cosigner cannot sign while hard-capped — the encounter is locked.
     await expect(
-      backend.service.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST }),
+      backend.service.cosignSign(ORG, id, COSIGNER, { isQualifiedRn: true, at: PAST }),
     ).rejects.toThrow();
     const released = await backend.service.supervisorRelease(ORG, id, {
       isSupervisor: true,
@@ -101,7 +118,10 @@ describe("M8-T12 §7 workflow acceptance", () => {
       at: PAST,
     });
     expect(released.status).toBe("supervisor_released");
-    const cos = await backend.service.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST });
+    const cos = await backend.service.cosignSign(ORG, id, COSIGNER, {
+      isQualifiedRn: true,
+      at: PAST,
+    });
     expect(cos.status).toBe("cosigned");
   });
 

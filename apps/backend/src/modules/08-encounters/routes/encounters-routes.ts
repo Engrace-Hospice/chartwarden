@@ -13,7 +13,7 @@
 // freshness (≤ 5 min, §2.7 D13) is verified here and injected into the lifecycle machine
 // (STEP_UP_AUTH_REQUIRED → 412 when stale).
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
 import {
@@ -95,6 +95,28 @@ const isRn = (roles: readonly string[]): boolean =>
 const isSupervisor = (roles: readonly string[]): boolean =>
   roles.includes("clinical_supervisor") || roles.includes("don");
 
+/**
+ * The encounter disciplines the caller's ROLE KEYS entitle them to author as (GAP-029). The create body's
+ * `discipline` is a claim, not a fact: it routes the §2.4 LPN/CHHA cosignature and picks the template, so
+ * trusting it let an RN file an `lpn` note and then be the "RN" who cosigned it. Role keys are the
+ * platform's one derivation (see 07-care-plan/abac-predicates.ts); `rn_case_manager` is an RN.
+ */
+const AUTHORABLE_DISCIPLINE_ROLES: Readonly<Record<string, string>> = {
+  rn: "rn",
+  rn_case_manager: "rn",
+  lpn: "lpn",
+  chha: "chha",
+  msw: "msw",
+  chaplain: "chaplain",
+  volunteer: "volunteer",
+  md: "md",
+  hospice_physician: "md",
+  medical_director: "md",
+  np: "np",
+};
+const authorDisciplinesOf = (roles: readonly string[]): ReadonlySet<string> =>
+  new Set(roles.flatMap((r) => AUTHORABLE_DISCIPLINE_ROLES[r] ?? []));
+
 // Static permission guards (§4.5).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const READ = P("encounter.read");
@@ -151,8 +173,13 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
 
   // 1 — create draft encounter.
   app.post("/api/v1/encounters", { preHandler: [AUTHOR, SCOPE_CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
+    const { organizationId, userId, roles } = actorOf(request);
     const body = parse(CreateEncounterSchema, request.body);
+    if (!authorDisciplinesOf(roles).has(body.discipline)) {
+      throw new ForbiddenError(
+        `your roles do not entitle you to author a '${body.discipline}' note`,
+      );
+    }
     const res = await service.createDraft(organizationId, userId, {
       patientId: body.patientId,
       admissionId: body.admissionId,
@@ -623,7 +650,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     { preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign")] },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.cosignAcknowledge(organizationId, encounterIdOf(request), today());
+      return service.cosignAcknowledge(
+        organizationId,
+        encounterIdOf(request),
+        signingActorOf(request),
+        today(),
+      );
     },
   );
 

@@ -572,6 +572,7 @@ jobs:
           # GAP-015 — the §4.3 M5 care-team assignment routes (first production writer of
           # `patient_assignment`): assign/end through the route feeds the real CaseloadProvider store.
           - { name: "M5 assignment routes", scripts: "test:m5:assignment-routes:live" }
+          - { name: "M5 write outbox", scripts: "test:m5:write-outbox:live" }
           # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
           - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
           - {

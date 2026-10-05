@@ -14,7 +14,12 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
-import { ABAC_COORDINATOR, ABAC_VOLUNTEER_ACTIVE_UNLESS_OVERRIDE, P } from "./guards";
+import {
+  ABAC_COORDINATOR,
+  ABAC_VOLUNTEER_ACTIVE_UNLESS_OVERRIDE,
+  P,
+  planCaseloadScope,
+} from "./guards";
 import {
   AssignmentParams,
   CreateHourEntryBody,
@@ -43,6 +48,8 @@ const NO_OFFSET = rejectOffsetPagination();
 
 export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRouteDeps): void {
   const { readService, writeService } = deps;
+  const scope = (key: string) =>
+    planCaseloadScope(key, (actor, planId) => writeService.planPatientId(actor, planId));
 
   // 17 — create a volunteer assignment (the §7.4 418.78 gate check, with the §8.6 audited override).
   app.post(
@@ -50,6 +57,7 @@ export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRou
     {
       preHandler: [
         P("volunteer_assignment.author"),
+        ...scope("volunteer_assignment.author"),
         ABAC_COORDINATOR("volunteer_assignment.author"),
         ABAC_VOLUNTEER_ACTIVE_UNLESS_OVERRIDE("volunteer_assignment.author"),
         IDEMPOTENT,
@@ -73,6 +81,7 @@ export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRou
     {
       preHandler: [
         P("volunteer_assignment.author"),
+        ...scope("volunteer_assignment.author"),
         ABAC_COORDINATOR("volunteer_assignment.author"),
         IDEMPOTENT,
       ],

@@ -129,7 +129,6 @@ export function MedicationActionModal({
   const [reason, setReason] = useState<DiscontinueReason>(DISCONTINUE_REASONS[0]);
   const [notes, setNotes] = useState("");
   const [namedPrescriberMdmId, setNamedPrescriberMdmId] = useState("");
-  const [signerIsOrdering, setSignerIsOrdering] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -139,13 +138,12 @@ export function MedicationActionModal({
     setAttestation("");
     setNotes("");
     setNamedPrescriberMdmId("");
-    setSignerIsOrdering(true);
   }, [open, prescriberRoles]);
 
   if (!open) return null;
 
-  const needsDiscipline =
-    action === "request-signature" || action === "sign" || action === "verbal";
+  // GAP-035: sign no longer takes a discipline or an "ordering physician" claim; the server derives both.
+  const needsDiscipline = action === "request-signature" || action === "verbal";
   const needsAttestation = action === "cosign" || action === "verbal";
   const min = action === "verbal" ? VERBAL_ATTESTATION_MIN : ATTESTATION_MIN;
 
@@ -163,11 +161,8 @@ export function MedicationActionModal({
         res = await requestSignature(client, orderId, discipline);
         break;
       case "sign":
-        res = await signOrder(client, orderId, {
-          signerDiscipline: discipline,
-          signedAtClient: nowIso(),
-          signerIsOrderingPhysician: signerIsOrdering,
-        });
+        // GAP-035: the server derives the signer's discipline and standing from the session and the order.
+        res = await signOrder(client, orderId, { signedAtClient: nowIso() });
         break;
       case "cosign":
         res = await cosignOrder(client, orderId, { cosignerRole, attestationText: attestation });
@@ -221,13 +216,7 @@ export function MedicationActionModal({
             </p>
           ) : (
             <SelectField
-              label={
-                action === "verbal"
-                  ? "Recording as"
-                  : action === "sign"
-                    ? "Signing as"
-                    : "Send to discipline"
-              }
+              label={action === "verbal" ? "Recording as" : "Send to discipline"}
               value={discipline}
               onChange={(e) => setDiscipline(e.target.value)}
               options={[
@@ -236,17 +225,6 @@ export function MedicationActionModal({
               ]}
             />
           )
-        ) : null}
-
-        {action === "sign" ? (
-          <label style={checkboxRow}>
-            <input
-              type="checkbox"
-              checked={signerIsOrdering}
-              onChange={(e) => setSignerIsOrdering(e.target.checked)}
-            />
-            <span>I am the ordering physician for this medication</span>
-          </label>
         ) : null}
 
         {action === "cosign" ? (
@@ -332,9 +310,3 @@ export function MedicationActionModal({
 const title = { margin: 0, fontSize: "1.05rem", fontWeight: 600 } as const;
 const meta = { margin: 0, fontSize: "0.75rem", color: "var(--color-on-surface-variant)" } as const;
 const errorText = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" } as const;
-const checkboxRow = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  fontSize: "0.85rem",
-} as const;
