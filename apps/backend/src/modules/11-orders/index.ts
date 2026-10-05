@@ -137,6 +137,7 @@ export {
   type OrderAbacFacts,
   type OrderAbacResolver,
   type OrderMdmValidator,
+  type OrderDetailActor,
   type OrderRouteSeed,
   type OrderRouteService,
   type OrderTerminologyValidator,
@@ -144,6 +145,7 @@ export {
   type RecordedOrderEvent,
   type StandingOrderView,
   type VerbalPolicyView,
+  SYSTEM_ORDER_ACTOR,
   createInMemoryOrderBackend,
 } from "./routes/service";
 // M11-T07 — the §4.4 outbox contract (the full `m11.order.*` taxonomy; check-fitness-gaps.ts scans

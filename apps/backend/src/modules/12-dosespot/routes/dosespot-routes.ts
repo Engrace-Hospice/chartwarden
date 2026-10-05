@@ -13,12 +13,22 @@
 // `caseload_or_scope` with 404-on-deny — `:id` routes resolve the order/history row to its patient first
 // (unknown id = the same 404), including sign / sign-controlled / cosign / complete / retransmit. Every
 // non-GET guard sets `breakGlassBypassable: false` (an emergency read grant never authorises a write);
-// reads keep break-glass. `listOrders` takes a REQUIRED caseload scope. The §4.6 "via M11 seam" predicates (`signer_eligible` / `cosigner_role_match`) resolve against M11's
-// order store, not M12's medication_order — M12 enforces signer/cosigner eligibility in the service layer
-// (defense-in-depth) rather than re-binding those cross-store predicates at the route.
+// reads keep break-glass. `listOrders` takes a REQUIRED caseload scope.
+// GAP-035 follow-up: request-signature validates the body's `signerDiscipline` against the session roles
+// (422 DISCIPLINE_NOT_HELD, the M11 idiom); retransmit binds the same signer ABAC as sign and the service
+// applies the sign standing rule (authoring prescriber or named physician) — the spec's "the prescriber
+// retransmits, the prescriber re-signs". A verbal record needs an enrolled named prescriber
+// (422 NAMED_PRESCRIBER_NOT_ENROLLED); `GET /prescribing/named-prescribers` lists the valid choices.
+// GAP-035: the standard sign route binds M12's own `medication_signer_eligible`
+// (session disciplines, after `orderScope`); the named-prescriber / ordering-physician decision is made in the
+// service inside the sign transaction from the STORED order and the signer's roster row — no discipline or
+// ordering-physician flag is read from the body. M11's `signer_eligible` / `cosigner_role_match` resolve against
+// M11's order store (no row for a medication_order id) so they are not bound here; cosign is GAP-034.
 import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
 import { NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { prescriberDisciplinesOf } from "../abac-predicates";
+import { assertDisciplineHeld } from "../prescriber-eligibility";
 import {
   ApproveRefillRequest,
   CompleteRequest,
@@ -121,6 +131,11 @@ const ABAC_SIGN_CONTROLLED = requireAbac(
   "dea_schedule_authorized",
   { getTarget: scheduleTarget, breakGlassBypassable: false },
 ) as PreHandler;
+// GAP-035 — standard sign: the caller's SESSION disciplines must satisfy the signer matrix. Bound after
+// `orderScope` (scope before ABAC) and never break-glass-bypassable.
+const ABAC_SIGN_ELIGIBLE = requireAbac("prescribing.sign", "medication_signer_eligible", {
+  breakGlassBypassable: false,
+}) as PreHandler;
 const ABAC_REFILL_SCOPE = requireAbac("prescribing.read", "refill_inbox_scope") as PreHandler; // target = :id (or none → allow)
 const ABAC_REFILL_DECIDE = requireAbac(
   "prescribing.refill_decide",
@@ -276,22 +291,26 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       const { organizationId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(RequestSignatureRequest, request.body);
-      return service.requestSignature(organizationId, id, b.signerDiscipline);
+      // The body still names a discipline (the API contract) but it must be one the SESSION holds.
+      const held = prescriberDisciplinesOf(request.context);
+      assertDisciplineHeld(held, b.signerDiscipline);
+      return service.requestSignature(organizationId, id, b.signerDiscipline, held);
     },
   );
 
   // 6 — standard sign (→ signed).
   app.post(
     "/api/v1/medication-orders/:id/sign",
-    { preHandler: [SIGN, orderScope("prescribing.sign")] },
+    { preHandler: [SIGN, orderScope("prescribing.sign"), ABAC_SIGN_ELIGIBLE] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(SignMedicationOrderRequest, request.body);
+      // GAP-035 — discipline comes from the session, the ordering-physician standing from the stored
+      // order + roster inside the service; nothing about either is read off the body.
       return service.signOrder(organizationId, userId, id, {
-        signerDiscipline: b.signerDiscipline,
+        signerDisciplines: prescriberDisciplinesOf(request.context),
         signedAtClient: b.signedAtClient,
-        signerIsOrderingPhysician: b.signerIsOrderingPhysician,
       });
     },
   );
@@ -311,7 +330,12 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(SignControlledInitiateRequest, request.body);
-      return service.signControlledInitiate(organizationId, userId, id, b.schedule);
+      const held = prescriberDisciplinesOf(request.context);
+      assertDisciplineHeld(held, b.signerDiscipline);
+      return service.signControlledInitiate(organizationId, userId, id, b.schedule, {
+        signerDiscipline: b.signerDiscipline,
+        signerDisciplines: held,
+      });
     },
   );
 
@@ -335,8 +359,11 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(RecordVerbalRequest, request.body);
+      const held = prescriberDisciplinesOf(request.context);
+      assertDisciplineHeld(held, b.recorderDiscipline);
       return service.recordVerbal(organizationId, userId, id, {
         recorderDiscipline: b.recorderDiscipline,
+        recorderDisciplines: held,
         verbalAttestation: b.verbalAttestation,
         receivedAt: b.receivedAt,
         namedPrescriberMdmId: b.namedPrescriberMdmId,
@@ -437,11 +464,15 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 14 — retransmit a transmission_failed order (mints a corrected order).
   app.post(
     "/api/v1/medication-orders/:id/retransmit",
-    { preHandler: [SIGN, orderScope("prescribing.sign")] },
+    // scope first (404 off-caseload), then the signer ABAC (session disciplines); the service decides the
+    // authoring-prescriber / named-physician standing from the stored order + roster.
+    { preHandler: [SIGN, orderScope("prescribing.sign"), ABAC_SIGN_ELIGIBLE] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
-      const res = await service.retransmit(organizationId, userId, id);
+      const res = await service.retransmit(organizationId, userId, id, {
+        signerDisciplines: prescriberDisciplinesOf(request.context),
+      });
       return reply.code(201).send(res);
     },
   );
@@ -596,7 +627,24 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
     },
   );
 
-  // 26 — enroll a prescriber into DoseSpot.
+  // 25b — the verbal-record picker: ACTIVE prescribers with an MDM id (what `namedPrescriberMdmId` accepts).
+  // Gated by the verbal-record permission (a recording RN has no `prescribing.admin.roster`).
+  app.get(
+    "/api/v1/prescribing/named-prescribers",
+    {
+      preHandler: [VERBAL],
+      config: {
+        auditRead: { none: "prescriber roster ids (membership + MDM id); no patient data" },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listNamedPrescribers(organizationId);
+    },
+  );
+
+  // 26 — enroll a prescriber into DoseSpot. This is THE way `externalPhysicianMdmId` is set: it links the
+  // membership to the M40 ExternalPhysician a verbal order names (spec §2.2/§2.3, no on-behalf signing).
   app.post(
     "/api/v1/admin/dosespot-prescribers/:membershipId/enroll",
     { preHandler: [ROSTER] },
@@ -608,6 +656,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         organizationId,
         membershipId,
         b.deaAuthorizedSchedules ?? [],
+        b.externalPhysicianMdmId,
       );
       return reply.code(201).send(res);
     },

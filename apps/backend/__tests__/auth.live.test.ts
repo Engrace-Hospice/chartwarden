@@ -734,10 +734,9 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
       const inviter = (
-        await admin.query(
-          `INSERT INTO "user" (email,name) VALUES ($1,'Inviter') RETURNING id`,
-          [`gap009-inviter-${stamp}@example.test`],
-        )
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'Inviter') RETURNING id`, [
+          `gap009-inviter-${stamp}@example.test`,
+        ])
       ).rows[0].id as string;
       const hash = (t: string) => createHash("sha256").update(t).digest("hex");
       const invite = async (email: string, token: string, status: string, expires: string) =>
@@ -778,9 +777,11 @@ describe.skipIf(!DB_URL)(
       expect(await exists(good)).toBe(true);
       // Sign-up does not consume the one-time token: accept still can.
       expect(
-        (await admin.query(`SELECT status FROM organization_invitation WHERE token_hash=$1`, [
-          hash(`tok-good-${stamp}`),
-        ])).rows[0].status,
+        (
+          await admin.query(`SELECT status FROM organization_invitation WHERE token_hash=$1`, [
+            hash(`tok-good-${stamp}`),
+          ])
+        ).rows[0].status,
       ).toBe("pending");
 
       // Dev/test mode (flag off): the seeds' header-less sign-up keeps working.
@@ -1127,7 +1128,9 @@ describe.skipIf(!DB_URL)(
       const { createDbClient: mkDb9 } = await import("@wardenx/db");
       const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
       const handle9 = mkDb9({ connectionString: DB_URL as string });
-      const svc = createDbPatientRouteService(asTenantRole(handle9.db) as never);
+      const svc = createDbPatientRouteService(asTenantRole(handle9.db) as never, {
+        publish: async () => undefined,
+      });
 
       const org = (
         await admin.query(
@@ -1328,7 +1331,9 @@ describe.skipIf(!DB_URL)(
         buildBootOutboxCatalog([M5_OUTBOX_EVENTS]),
       );
       registerPatientRoutes(app, {
-        service: createDbPatientRouteService(asTenantRole(handle11.db) as never),
+        service: createDbPatientRouteService(asTenantRole(handle11.db) as never, {
+          publish: async () => undefined,
+        }),
         mergePatients: (input) =>
           _mergePatients(
             asTenantRole(handle11.db) as never,
@@ -1451,7 +1456,9 @@ describe.skipIf(!DB_URL)(
       const { createDbClient: mkDb10 } = await import("@wardenx/db");
       const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
       const handle10 = mkDb10({ connectionString: DB_URL as string });
-      const svc = createDbPatientRouteService(asTenantRole(handle10.db) as never);
+      const svc = createDbPatientRouteService(asTenantRole(handle10.db) as never, {
+        publish: async () => undefined,
+      });
       const org = (
         await admin.query(
           "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'AD','AD') RETURNING id",

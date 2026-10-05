@@ -70,6 +70,7 @@ import {
   planIvSegment,
   planReconciliationDecision,
   resolveLateEntryTier,
+  transitionAdministration,
   verifyWitnessAttestationToken,
   witnessTokenDigest,
 } from "@wardenx/emar";
@@ -1370,8 +1371,19 @@ export function createDbEmarBackend(
 
     async voidAdministration(orgId, userId, id, reason): Promise<AdministrationView> {
       return withOrg(orgId, async (tx) => {
-        await loadAdmin(tx, id);
-        await tx
+        const row = await loadAdmin(tx, id);
+        // GAP-041 — the §2.2 lifecycle machine decides (void only from a voidable state, reason >= 40
+        // chars; an illegal source state, including 'voided', is 409). The route's preHandlers hold the
+        // permission + step-up checks, so those two guard facts are true here.
+        transitionAdministration(row.status, {
+          type: "void",
+          hasVoidPermission: true,
+          stepUpCompleted: true,
+          reason,
+        });
+        // The status predicate makes the guard race-safe: a concurrent void/correct that won leaves zero rows
+        // here, and the first void's attribution (voidedAt/By/Reason) is never overwritten.
+        const updated = await tx
           .update(ADM)
           .set({
             status: "voided",
@@ -1380,7 +1392,14 @@ export function createDbEmarBackend(
             voidReason: reason,
             updatedAt: new Date(),
           })
-          .where(eq(ADM.id, id));
+          .where(and(eq(ADM.id, id), eq(ADM.status, row.status)))
+          .returning({ id: ADM.id });
+        if (updated.length === 0) {
+          throw new AdministrationStateError(
+            "ILLEGAL_ADMINISTRATION_TRANSITION",
+            "administration changed state concurrently and can no longer be voided",
+          );
+        }
         await emit(tx, orgId, "m13.administration.voided", "administration_record", id, {
           administrationRecordId: id,
           voidReason: reason,

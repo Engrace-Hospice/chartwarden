@@ -78,25 +78,30 @@ import {
   type VisitSetting,
   type VisitStatus,
 } from "@wardenx/types";
-import { type SQL, and, eq, gt, gte, isNull, lt, lte, or } from "drizzle-orm";
+import { type SQL, and, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
-import type {
-  AvailabilityView,
-  CreateRecurringInput,
-  CreateVisitInput,
-  EditVisitInput,
-  OptimizeDayInput,
-  ProposalView,
-  RecurringView,
-  RequestTimeOffInput,
-  RescheduleVisitInput,
-  SchedulingRouteService,
-  TimeOffView,
-  UpsertAvailabilityInput,
-  VisitView,
+import {
+  type AvailabilityView,
+  type CreateRecurringInput,
+  type CreateVisitInput,
+  type EditVisitInput,
+  type OptimizeDayInput,
+  type ProposalView,
+  type RecurringView,
+  type RequestTimeOffInput,
+  type RescheduleVisitInput,
+  type SchedulingRouteService,
+  type TimeOffView,
+  type UpsertAvailabilityInput,
+  VISIT_LIST_LIMIT,
+  type VisitReadScope,
+  type VisitView,
 } from "./routes/service";
 import { type CredentialRecord, createDrizzleCredentialStore } from "./seams/index";
+
+/** Safety cap on the internal (unscoped) visit read that metrics / portal / optimiser compose over. */
+const UNSCOPED_LIMIT = 50_000;
 
 const V = schema.visit;
 const VSH = schema.visitStateHistory;
@@ -858,9 +863,21 @@ export function createDbSchedulingBackend(
         to?: string;
         status?: string;
       },
+      scope?: VisitReadScope,
     ): Promise<VisitView[]> {
+      // GAP-053 — narrow to the caller's caseload (plus own assignments) in SQL; an empty scope reads nothing.
+      const patientIds = scope?.patientIds ?? null;
+      const assignee = scope?.assignedMembershipId;
+      if (scope && patientIds !== null && patientIds.length === 0 && !assignee) return [];
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const conds: SQL[] = [];
+        if (scope && patientIds !== null) {
+          const ownership = [
+            ...(patientIds.length ? [inArray(V.patientId, [...patientIds])] : []),
+            ...(assignee ? [eq(V.assignedMembershipId, assignee)] : []),
+          ];
+          conds.push(or(...ownership) as SQL);
+        }
         if (filters.clinician) conds.push(eq(V.assignedMembershipId, filters.clinician));
         if (filters.patient) conds.push(eq(V.patientId, filters.patient));
         if (filters.status) conds.push(eq(V.status, filters.status as VisitStatus));
@@ -870,7 +887,8 @@ export function createDbSchedulingBackend(
           .select(VISIT_COLS)
           .from(V)
           .where(conds.length ? and(...conds) : undefined)
-          .orderBy(V.scheduledStartedAt);
+          .orderBy(V.scheduledStartedAt)
+          .limit(scope ? VISIT_LIST_LIMIT : UNSCOPED_LIMIT);
         const timezone = await organizationTimezone(tx, orgId);
         return rows.map((r) => toVisitView(r as VisitRow, timezone));
       });
@@ -1296,9 +1314,16 @@ export function createDbSchedulingBackend(
     },
 
     // ── proposals ─────────────────────────────────────────────────────────────────────────────────────
-    async listProposals(orgId: string, filters: { patient?: string }): Promise<ProposalView[]> {
+    async listProposals(
+      orgId: string,
+      filters: { patient?: string },
+      scope?: VisitReadScope,
+    ): Promise<ProposalView[]> {
+      const patientIds = scope?.patientIds ?? null;
+      if (patientIds !== null && patientIds.length === 0) return [];
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const conds: SQL[] = [];
+        if (patientIds !== null) conds.push(inArray(VP.patientId, [...patientIds]));
         if (filters.patient) conds.push(eq(VP.patientId, filters.patient));
         const rows = await tx
           .select({
@@ -1311,7 +1336,8 @@ export function createDbSchedulingBackend(
           })
           .from(VP)
           .where(conds.length ? and(...conds) : undefined)
-          .orderBy(VP.proposedForDate);
+          .orderBy(VP.proposedForDate)
+          .limit(VISIT_LIST_LIMIT);
         return rows.map((r) => ({
           id: r.id,
           patientId: r.patientId,
@@ -2058,22 +2084,32 @@ export function createDbSchedulingBackend(
     },
 
     // ── derived views (compose over the real visit read) ─────────────────────────────────────────────────
-    async dayView(orgId: string, membershipId: string | undefined, date: string) {
-      const visits = (await backend.listVisits(orgId, { clinician: membershipId })).filter(
+    async dayView(
+      orgId: string,
+      membershipId: string | undefined,
+      date: string,
+      scope?: VisitReadScope,
+    ) {
+      const visits = (await backend.listVisits(orgId, { clinician: membershipId }, scope)).filter(
         (v) => v.serviceDate === date,
       );
       return { date, membershipId: membershipId ?? null, visits };
     },
 
-    async weekView(orgId: string, membershipId: string | undefined, weekStart: string) {
-      const visits = (await backend.listVisits(orgId, { clinician: membershipId })).filter(
+    async weekView(
+      orgId: string,
+      membershipId: string | undefined,
+      weekStart: string,
+      scope?: VisitReadScope,
+    ) {
+      const visits = (await backend.listVisits(orgId, { clinician: membershipId }, scope)).filter(
         (v) => v.serviceDate >= weekStart,
       );
       return { weekStart, membershipId: membershipId ?? null, visits };
     },
 
-    async mapView(orgId: string, membershipId: string, date: string) {
-      const stops = (await backend.listVisits(orgId, { clinician: membershipId })).filter(
+    async mapView(orgId: string, membershipId: string, date: string, scope?: VisitReadScope) {
+      const stops = (await backend.listVisits(orgId, { clinician: membershipId }, scope)).filter(
         (v) => v.serviceDate === date,
       );
       return { membershipId, date, stops };

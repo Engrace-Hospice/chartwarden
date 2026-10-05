@@ -9829,7 +9829,8 @@
                           "membershipId",
                           "enrolled",
                           "deaAuthorizedSchedules",
-                          "ial2Status"
+                          "ial2Status",
+                          "externalPhysicianMdmId"
                         ],
                         "properties": {
                           "membershipId": {
@@ -9863,6 +9864,17 @@
                           },
                           "ial2Status": {
                             "type": "string"
+                          },
+                          "externalPhysicianMdmId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -9938,6 +9950,10 @@
                         }
                       ]
                     }
+                  },
+                  "externalPhysicianMdmId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }
@@ -15771,7 +15787,7 @@
                 ],
                 "properties": {
                   "voidReason": {
-                    "minLength": 1,
+                    "minLength": 40,
                     "maxLength": 1000,
                     "type": "string"
                   }
@@ -126767,21 +126783,12 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "signerDiscipline",
                   "signedAtClient"
                 ],
                 "properties": {
-                  "signerDiscipline": {
-                    "minLength": 1,
-                    "maxLength": 64,
-                    "type": "string"
-                  },
                   "signedAtClient": {
                     "format": "date-time",
                     "type": "string"
-                  },
-                  "signerIsOrderingPhysician": {
-                    "type": "boolean"
                   }
                 }
               }
@@ -160020,6 +160027,58 @@
                         "type": "object",
                         "patternProperties": {
                           "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/prescribing/named-prescribers": {
+      "get": {
+        "operationId": "getApiV1PrescribingNamedprescribers",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "Active prescribers with an MDM id — the valid namedPrescriberMdmId choices for recording a verbal order",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "prescribers"
+                  ],
+                  "properties": {
+                    "prescribers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "externalPhysicianMdmId"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "externalPhysicianMdmId": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
                         }
                       }
                     }

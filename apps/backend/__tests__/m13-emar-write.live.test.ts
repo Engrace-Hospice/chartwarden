@@ -30,6 +30,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const VOID_REASON = "Recorded against the wrong patient chart in error; verified with the RN.";
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
@@ -771,14 +772,35 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     expect(await eventsFor(corrected.id)).toContain("m13.administration.corrected");
   });
 
+  it("GAP-041 — a repeat void is 409 and never overwrites the first void's attribution; a short reason is 422", async () => {
+    const rec = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
+    await expect(
+      svc.voidAdministration(ORG_A, memberOf[ORG_A], rec.id, "too short"),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    expect(await admStatus(rec.id)).toBe("committed");
+
+    await svc.voidAdministration(ORG_A, memberOf[ORG_A], rec.id, VOID_REASON);
+    await expect(
+      svc.voidAdministration(
+        ORG_A,
+        "00000000-0000-4000-8000-00000000dead",
+        rec.id,
+        `${VOID_REASON} (again)`,
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const { rows } = await admin.query(
+      "SELECT void_reason, voided_by FROM administration_record WHERE id=$1",
+      [rec.id],
+    );
+    expect(rows[0].void_reason).toBe(VOID_REASON);
+    expect(rows[0].voided_by).toBe(memberOf[ORG_A]);
+    const voidedEvents = (await eventsFor(rec.id)).filter((e) => e === "m13.administration.voided");
+    expect(voidedEvents).toHaveLength(1);
+  });
+
   it("voidAdministration voids the row; recordRefusal logs a declined dose", async () => {
     const rec = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
-    const voided = await svc.voidAdministration(
-      ORG_A,
-      memberOf[ORG_A],
-      rec.id,
-      "recorded in error",
-    );
+    const voided = await svc.voidAdministration(ORG_A, memberOf[ORG_A], rec.id, VOID_REASON);
     expect(voided.status).toBe("voided");
     expect(await eventsFor(rec.id)).toContain("m13.administration.voided");
 

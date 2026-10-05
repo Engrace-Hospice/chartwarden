@@ -156,8 +156,13 @@ export function buildEncounterAbacPredicates(
       if (!id) return false;
       const facts = await resolver.loadEncounter(context.organizationId, id);
       if (!facts) return false; // fail-closed (absent / cross-tenant)
-      // No self-cosign: the cosigner must not be the encounter's original author (§4.6).
-      return facts.authoredByUserId !== context.userId;
+      // No self-cosign (§4.6), MEMBERSHIP to MEMBERSHIP: `authoredByUserId` is
+      // `authored_by_membership_id`, and this compared it to `context.userId` (the Better Auth user id) —
+      // two id spaces that never meet, so the check could not fire. The route suites stayed green
+      // because their fixtures use one id for both (GAP-029; same defect class as M9/M10's fix).
+      const caller = membershipIdOf(context);
+      if (caller === null) return false; // no active membership → cannot be a cosigner
+      return facts.authoredByUserId !== caller;
     },
     "encounter.scope": async (context, target) => {
       const patientId = targetId(target, "patientId");

@@ -32,8 +32,12 @@ export { buildDrizzleVendorSessionBindReader } from "./vendor-session-reader-dri
 
 /** Mount every M19 §4.1 route plugin over the Drizzle-backed READ + WRITE services. */
 export function mountM19Routes(app: FastifyInstance, services: M19RouteServices): void {
-  const { readService, writeService } = services;
-  registerTriageCallRoutes(app, { readService, writeService });
+  const { readService, writeService, caseloadPatientIds } = services;
+  registerTriageCallRoutes(app, {
+    readService,
+    writeService,
+    ...(caseloadPatientIds ? { caseloadPatientIds } : {}),
+  });
   registerEscalationRoutes(app, { readService, writeService });
   registerShiftRoutes(app, { readService, writeService });
   registerProtocolRoutes(app, { readService, writeService });

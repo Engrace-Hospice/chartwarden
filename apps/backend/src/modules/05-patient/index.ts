@@ -357,7 +357,7 @@ export function mountPatientRoutes(
   privacy: PrivacyOfficerPorts,
 ): void {
   _registerPatientRoutes(app, {
-    service: _dbPatientService(db),
+    service: _dbPatientService(db, outbox),
     mergePatients: (input) => _mergePatients(db, outbox, input),
   });
   // GAP-015 — the §4.3 care-team assignment routes: the first production writer of `patient_assignment`.

@@ -430,15 +430,31 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // The cosignature queue surfaces it; the RN acknowledges then cosigns.
     const queue = await svc.cosignatureQueue(ORG_A);
     expect(queue.encounters.some((e) => e.id === id)).toBe(true);
-    const ack = await svc.cosignAcknowledge(ORG_A, id, SERVICE_DATE as never);
+    // GAP-029 — the cosigner is NOT the author: the case-manager membership cosigns (the author, ACTOR_A,
+    // is refused at the service level — see the next case).
+    const COSIGNER_A = { membershipId: CASE_MANAGER_MEMBERSHIP_ID, sessionId: SESSION_A };
+    const ack = await svc.cosignAcknowledge(ORG_A, id, COSIGNER_A, SERVICE_DATE as never);
     expect(ack.status).toBe("acknowledged");
-    const done = await svc.cosignSign(ORG_A, id, ACTOR_A, {
+    const done = await svc.cosignSign(ORG_A, id, COSIGNER_A, {
       isQualifiedRn: true,
       at: SERVICE_DATE as never,
     });
     expect(done.status).toBe("cosigned");
     expect(done.cosignedAt).toBeTruthy();
     expect(await eventsFor(id)).toContain("m8.encounter.cosigned");
+  });
+
+  it("GAP-029 — the author cannot acknowledge or cosign their own LPN note (403, workflow untouched)", async () => {
+    const id = await draft("routine_visit", "lpn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    await expect(
+      svc.cosignAcknowledge(ORG_A, id, ACTOR_A, SERVICE_DATE as never),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      svc.cosignSign(ORG_A, id, ACTOR_A, { isQualifiedRn: true, at: SERVICE_DATE as never }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect((await svc.getCosignature(ORG_A, id)).status).toBe("routed");
   });
 
   it("§7.4 D1 — an F2F encounter signs as one atomic unit (no cosign); a missing M6 id is 412", async () => {

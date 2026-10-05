@@ -57,6 +57,17 @@ import {
   checkVocabVersion,
 } from "../lifecycle/validation";
 
+/**
+ * GAP-029 / §4.6 — the service-level no-self-cosign guard, shared by the in-memory and Drizzle services so
+ * a caller that bypasses the route (a worker, a future route) cannot cosign what it authored. Both sides
+ * are MEMBERSHIP ids.
+ */
+export function assertNotAuthor(authorMembershipId: string, actorMembershipId: string): void {
+  if (authorMembershipId === actorMembershipId) {
+    throw new ForbiddenError("the author of an encounter cannot cosign it (no self-cosign)");
+  }
+}
+
 /** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — the acting membership +
  *  session id the CoP 418.104(c) provenance row (`encounter_signature`) is written under. Never the
  *  encounter's author; the caller may be a different clinician entirely (e.g. an RN cosigner). */
@@ -609,9 +620,11 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
   ): Promise<{ status: CosignatureState | null }>;
+  /** `actor` is the CALLER: it may never be the encounter's author (GAP-029 — ForbiddenError). */
   cosignAcknowledge(
     organizationId: string,
     encounterId: string,
+    actor: SigningActor,
     at: LocalDate,
   ): Promise<{ status: CosignatureState }>;
   cosignSign(
@@ -1311,14 +1324,16 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       return { status: r.cosignature };
     },
-    async cosignAcknowledge(organizationId, encounterId, at) {
+    async cosignAcknowledge(organizationId, encounterId, actor, at) {
       const r = load(organizationId, encounterId);
+      assertNotAuthor(r.authoredByUserId, actor.membershipId);
       const t = transitionCosignature(r.cosignature ?? "routed", { type: "acknowledge", at });
       r.cosignature = t.to;
       return { status: t.to };
     },
-    async cosignSign(organizationId, encounterId, _actor, args) {
+    async cosignSign(organizationId, encounterId, actor, args) {
       const r = load(organizationId, encounterId);
+      assertNotAuthor(r.authoredByUserId, actor.membershipId);
       const ct = transitionCosignature(r.cosignature ?? "routed", {
         type: "sign",
         isQualifiedRn: args.isQualifiedRn,

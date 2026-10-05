@@ -244,6 +244,10 @@ describe.skipIf(!DB_URL)(
 
       m11Backend = createDbOrderBackend(handle.db, bindM11 as never);
       m12Backend = createDbDoseSpotBackend(handle.db, bindM12 as never);
+      // GAP-035 follow-up — recordVerbal refuses a named prescriber with no active roster row
+      // (NAMED_PRESCRIBER_NOT_ENROLLED), so each org enrolls one prescriber for PHYSICIAN_MDM.
+      for (const org of [ORG_A, ORG_B])
+        await m12Backend.enrollPrescriber(org, memberOf[org] as string, [], PHYSICIAN_MDM);
 
       const orgs: ActiveOrgEnumerator = {
         listActiveOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }],
@@ -269,6 +273,7 @@ describe.skipIf(!DB_URL)(
       await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
         m12Backend.recordVerbal(ORG_A, memberOf[ORG_A], medId, {
           recorderDiscipline: "rn_case_manager",
+          recorderDisciplines: ["rn_case_manager"],
           namedPrescriberMdmId: PHYSICIAN_MDM,
           verbalAttestation: ATTESTATION,
           receivedAt,
@@ -304,6 +309,7 @@ describe.skipIf(!DB_URL)(
       await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
         m12Backend.recordVerbal(ORG_A, memberOf[ORG_A], medId, {
           recorderDiscipline: "rn_case_manager",
+          recorderDisciplines: ["rn_case_manager"],
           namedPrescriberMdmId: PHYSICIAN_MDM,
           verbalAttestation: ATTESTATION,
           receivedAt: medReceivedAt,
@@ -315,6 +321,7 @@ describe.skipIf(!DB_URL)(
       await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
         m12Backend.recordVerbal(ORG_A, memberOf[ORG_A], notDueMedId, {
           recorderDiscipline: "rn_case_manager",
+          recorderDisciplines: ["rn_case_manager"],
           namedPrescriberMdmId: PHYSICIAN_MDM,
           verbalAttestation: ATTESTATION,
           receivedAt: new Date().toISOString(), // received just now — 48h out, not overdue.
@@ -383,6 +390,7 @@ describe.skipIf(!DB_URL)(
       await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
         m12Backend.recordVerbal(ORG_A, memberOf[ORG_A], medId, {
           recorderDiscipline: "rn_case_manager",
+          recorderDisciplines: ["rn_case_manager"],
           namedPrescriberMdmId: PHYSICIAN_MDM,
           verbalAttestation: ATTESTATION,
           receivedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
@@ -418,6 +426,7 @@ describe.skipIf(!DB_URL)(
       await runWithRequestContext({ organizationId: ORG_B, userId: USER }, () =>
         m12Backend.recordVerbal(ORG_B, memberOf[ORG_B], medIdB, {
           recorderDiscipline: "rn_case_manager",
+          recorderDisciplines: ["rn_case_manager"],
           namedPrescriberMdmId: PHYSICIAN_MDM,
           verbalAttestation: ATTESTATION,
           receivedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),

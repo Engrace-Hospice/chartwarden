@@ -34,6 +34,7 @@ import {
   planIvSegment,
   planReconciliationDecision,
   resolveLateEntryTier,
+  transitionAdministration,
 } from "@wardenx/emar";
 import type {
   AdministrationActorKind,
@@ -1068,6 +1069,14 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     },
     async voidAdministration(orgId, userId, id, reason): Promise<AdministrationView> {
       const r = requireAdmin(orgId, id);
+      // GAP-041 — the §2.2 lifecycle machine decides (void only from a voidable state; 409 otherwise). The
+      // route's preHandlers hold the permission + step-up checks, so those two guard facts are true here.
+      transitionAdministration(r.status, {
+        type: "void",
+        hasVoidPermission: true,
+        stepUpCompleted: true,
+        reason,
+      });
       r.status = "voided";
       emit("m13.administration.voided", {
         administrationRecordId: id,

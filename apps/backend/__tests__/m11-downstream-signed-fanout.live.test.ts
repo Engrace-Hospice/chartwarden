@@ -27,6 +27,7 @@ import {
   createDbOrderBackend,
 } from "../src/modules/11-orders/orders-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -96,12 +97,12 @@ describe.skipIf(!DB_URL)("F-120 — M11 downstream signed fan-out, LIVE Postgres
       drafterDiscipline: signerDiscipline,
       data,
       orderingPhysicianMdmId: PHYSICIAN_MDM,
-    });
-    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline });
+    }, SYSTEM_ORDER_ACTOR);
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline }, SYSTEM_ORDER_ACTOR);
     await svc.signOrder(ORG_A, member, draft.id, {
       signerDiscipline,
       signedAtClient: new Date().toISOString(),
-    });
+    }, SYSTEM_ORDER_ACTOR);
     return draft.id;
   }
 

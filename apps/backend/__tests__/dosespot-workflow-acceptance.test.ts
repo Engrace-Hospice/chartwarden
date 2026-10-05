@@ -115,7 +115,9 @@ describe("M12-T10 §5 workflow acceptance", () => {
     expect(edited.refillsRemaining).toBe(1);
     expect(edited.version).toBe(2);
 
-    const pending = await svc.requestSignature(ORG, edited.id, "hospice_physician");
+    const pending = await svc.requestSignature(ORG, edited.id, "hospice_physician", [
+      "hospice_physician",
+    ]);
     expect(pending.status).toBe("pending_signature");
     expect(eventNames(svc.drainEvents())).toContain("m12.medication_order.signature_requested");
 
@@ -124,7 +126,7 @@ describe("M12-T10 §5 workflow acceptance", () => {
     // runs in the same tx. The in-mem slice lands the row on `signed`; the transmission chain below is the
     // §4.10 worker + the §2.2 webhook driving the pure machine to `active`.
     const signed = await svc.signOrder(ORG, PHYS, draft.id, {
-      signerDiscipline: "hospice_physician",
+      signerDisciplines: ["hospice_physician"],
       signedAtClient: NOW,
     });
     expect(signed.status).toBe("signed");
@@ -252,10 +254,10 @@ describe("M12-T10 §9.3 security & authorization (anti-escalation, EPCS gate D18
       prescribingPhysicianMdmId: PHYS,
       refillsAuthorized: 0,
     });
-    await svc.requestSignature(ORG, draft.id, "hospice_physician");
+    await svc.requestSignature(ORG, draft.id, "hospice_physician", ["hospice_physician"]);
     await expect(
       svc.signOrder(ORG, "rn_1", draft.id, {
-        signerDiscipline: "rn_case_manager",
+        signerDisciplines: ["rn_case_manager"],
         signedAtClient: NOW,
       }),
     ).rejects.toThrowError(
@@ -285,7 +287,9 @@ describe("M12-T10 §9.3 security & authorization (anti-escalation, EPCS gate D18
     expect(draft.isControlledSubstance).toBe(true);
     // EPCS is OFF in Phase 1 (epcs_certification_status='not_certified'); the D18 gate fires the moment the
     // controlled order is pushed toward signature — it never even reaches `pending_signature`.
-    await expect(svc.requestSignature(ORG, draft.id, "hospice_physician")).rejects.toThrowError(
+    await expect(
+      svc.requestSignature(ORG, draft.id, "hospice_physician", ["hospice_physician"]),
+    ).rejects.toThrowError(
       expect.objectContaining({ code: "EPCS_NOT_CERTIFIED", statusCode: 403 }),
     );
     // And a controlled order may NEVER ride the standard `sign` path (it routes to EPCS).

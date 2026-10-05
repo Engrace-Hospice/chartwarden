@@ -22,6 +22,13 @@ export interface M15ReadActor {
   /** M2 session class (`staff` unless a portal/collaborator/auditor session) — §7.9 gating input. */
   readonly sessionClass: string;
   readonly locationIds: readonly string[];
+  /**
+   * The SYSTEM-ACTOR marker — the one place it is defined. `"system"` exempts a caller from the write
+   * service's caseload gate (a worker / outbox consumer / seam acting for the platform has no caseload).
+   * It is NEVER derived from a request: {@link actorOf} / {@link writeActorOf} leave it unset, so only
+   * server-side code that calls {@link systemM15Actor} can mint one. Absent ⇒ a human actor, gated.
+   */
+  readonly kind?: "system";
 }
 
 const str = (value: unknown): string | null =>
@@ -79,5 +86,27 @@ export function requireSystemPrincipal(): PreHandler {
     if (typeof kind !== "string" || !kind.startsWith("system")) {
       throw new ForbiddenError("this seam route is reachable by system principals only (§4.1)");
     }
+  };
+}
+
+/**
+ * Mint the explicit system actor for non-request callers (workers, consumers, live-suite fixtures that
+ * drive the write service directly). It carries no roles and no locations — it is exempt from the caseload
+ * gate by `kind`, not by an org-wide role — and must name the org plus the user / membership the authored
+ * rows are attributed to. Never call this from a route handler.
+ */
+export function systemM15Actor(
+  organizationId: string,
+  attribution: { readonly userId: string; readonly membershipId: string },
+): M15WriteActor {
+  return {
+    kind: "system",
+    organizationId,
+    userId: attribution.userId,
+    membershipId: attribution.membershipId,
+    roles: [],
+    sessionClass: "staff",
+    locationIds: [],
+    stepUpRecent: false,
   };
 }

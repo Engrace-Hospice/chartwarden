@@ -9,7 +9,7 @@
 import type { FastifyInstance } from "fastify";
 import { writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
-import { ABAC_SUPERVISOR, P, STEP_UP } from "./guards";
+import { ABAC_SUPERVISOR, P, STEP_UP, planCaseloadScope } from "./guards";
 import {
   CreateSupervisoryVisitBody,
   PlanParams,
@@ -29,6 +29,8 @@ export function registerAideSupervisoryRoutes(
   deps: SupervisoryRouteDeps,
 ): void {
   const { writeService } = deps;
+  const scope = (key: string) =>
+    planCaseloadScope(key, (actor, planId) => writeService.planPatientId(actor, planId));
 
   // 15 — record a supervisory attestation. A phone-only supervision (null sourceEncounterId) is recorded
   // for survey discoverability but does NOT re-arm the 14-day clock (§2.2.4 D3).
@@ -37,6 +39,7 @@ export function registerAideSupervisoryRoutes(
     {
       preHandler: [
         P("aide_supervisory.author"),
+        ...scope("aide_supervisory.author"),
         ABAC_SUPERVISOR("aide_supervisory.author"),
         IDEMPOTENT,
       ],
@@ -59,6 +62,7 @@ export function registerAideSupervisoryRoutes(
     {
       preHandler: [
         P("aide_supervisory.sign"),
+        ...scope("aide_supervisory.sign"),
         ABAC_SUPERVISOR("aide_supervisory.sign"),
         STEP_UP("aide_supervisory.sign"),
         IDEMPOTENT,

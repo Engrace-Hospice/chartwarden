@@ -16,6 +16,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+import type { DbClient } from "@wardenx/db";
 import {
   RECORDS_REQUEST_ALPHABET,
   findRecordsRequestCodes,
@@ -24,7 +25,6 @@ import {
   normaliseRecordsRequestCode,
   recordsRequestCheckChar,
 } from "@wardenx/intake-extraction";
-import type { DbClient } from "@wardenx/db";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -560,7 +560,9 @@ describe("F-238 — records-request routes", () => {
         },
       }),
     };
-    const db = { transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) } as unknown as DbClient;
+    const db = {
+      transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
+    } as unknown as DbClient;
     const { app } = makeServer({ db });
     const a = (await create(app)).json();
     rows.length = 0;

@@ -70,6 +70,7 @@ function makeServer() {
   const backend = createInMemoryOrderBackend({
     now: () => NOW,
     timeZone: "America/New_York",
+    caseloadPatientIds: async ({ userId }) => CASELOAD[userId] ?? [],
   });
   const store = createInMemoryEffectivePermissionStore(
     Object.keys(CASELOAD).map((userId) => ({
@@ -475,7 +476,7 @@ describe("GAP-030 — sign / cosign / correct / transmission routes are scoped (
           method: "POST",
           url: "/api/v1/orders",
           headers: MD,
-          payload: labBody(PATIENT),
+          payload: { ...labBody(PATIENT), drafterDiscipline: "medical_director" },
         })
       ).statusCode,
     ).toBe(201);

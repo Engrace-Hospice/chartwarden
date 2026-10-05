@@ -52,6 +52,33 @@ export interface VisitView {
   readonly rescheduledIntoVisitId: string | null;
 }
 
+/**
+ * GAP-053 — the narrowing a visit / proposal read applies. `patientIds: null` is unrestricted (org-wide scope
+ * role or `visit.read_team`); otherwise only visits on those patients' caseload — plus, when
+ * `assignedMembershipId` is set, visits assigned to that membership — are visible. An empty set with no
+ * assignee reads nothing. Optional on every read so internal callers (metrics, portal) stay unscoped.
+ */
+export interface VisitReadScope {
+  readonly patientIds: readonly string[] | null;
+  readonly assignedMembershipId?: string;
+}
+
+/** Row cap on a caseload-scoped visit / proposal list. */
+export const VISIT_LIST_LIMIT = 1000;
+
+/** Whether a visit is visible under `scope` (absent scope = unrestricted). */
+export function visitInScope(
+  v: { patientId: string; assignedMembershipId: string },
+  scope: VisitReadScope | undefined,
+): boolean {
+  if (!scope || scope.patientIds === null) return true;
+  return (
+    scope.patientIds.includes(v.patientId) ||
+    (scope.assignedMembershipId !== undefined &&
+      v.assignedMembershipId === scope.assignedMembershipId)
+  );
+}
+
 export interface ProposalView {
   readonly id: string;
   readonly patientId: string;
@@ -236,9 +263,11 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   listVisits(
     orgId: string,
     filters: { clinician?: string; patient?: string; from?: string; to?: string; status?: string },
+    scope?: VisitReadScope,
   ): VisitView[] {
     return [...this.visits.values()]
       .filter((v) => v.organizationId === orgId)
+      .filter((v) => visitInScope(v, scope))
       .filter((v) => (filters.clinician ? v.assignedMembershipId === filters.clinician : true))
       .filter((v) => (filters.patient ? v.patientId === filters.patient : true))
       .filter((v) => (filters.status ? v.status === filters.status : true))
@@ -397,9 +426,14 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   }
 
   // ── proposals ───────────────────────────────────────────────────────────────────────────────────────
-  listProposals(orgId: string, filters: { patient?: string }): ProposalView[] {
+  listProposals(
+    orgId: string,
+    filters: { patient?: string },
+    scope?: VisitReadScope,
+  ): ProposalView[] {
     return [...this.proposals.values()]
       .filter((p) => p.organizationId === orgId)
+      .filter((p) => !scope || scope.patientIds === null || scope.patientIds.includes(p.patientId))
       .filter((p) => (filters.patient ? p.patientId === filters.patient : true))
       .map(stripOrg);
   }
@@ -544,8 +578,9 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     orgId: string,
     membershipId: string | undefined,
     date: string,
+    scope?: VisitReadScope,
   ): { date: string; membershipId: string | null; visits: VisitView[] } {
-    const visits = this.listVisits(orgId, { clinician: membershipId }).filter(
+    const visits = this.listVisits(orgId, { clinician: membershipId }, scope).filter(
       (v) => v.serviceDate === date,
     );
     return { date, membershipId: membershipId ?? null, visits };
@@ -555,8 +590,9 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     orgId: string,
     membershipId: string | undefined,
     weekStart: string,
+    scope?: VisitReadScope,
   ): { weekStart: string; membershipId: string | null; visits: VisitView[] } {
-    const visits = this.listVisits(orgId, { clinician: membershipId }).filter(
+    const visits = this.listVisits(orgId, { clinician: membershipId }, scope).filter(
       (v) => v.serviceDate >= weekStart,
     );
     return { weekStart, membershipId: membershipId ?? null, visits };
@@ -566,9 +602,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     orgId: string,
     membershipId: string,
     date: string,
+    scope?: VisitReadScope,
   ): { membershipId: string; date: string; stops: VisitView[] } {
     // §4.1 / D9 — polylines are coords-only; the in-mem slice returns the ordered stops (the route worker is T08).
-    const stops = this.listVisits(orgId, { clinician: membershipId }).filter(
+    const stops = this.listVisits(orgId, { clinician: membershipId }, scope).filter(
       (v) => v.serviceDate === date,
     );
     return { membershipId, date, stops };

@@ -1,3 +1,4 @@
+import { hasOrgWideScope } from "@wardenx/auth";
 // apps/backend/src/modules/15-discipline-care-plans/routes/write-service-drizzle.ts — the Drizzle-backed
 // M15 WRITE service (§4.1 routes 6–18, 20–22, 24).
 //
@@ -59,7 +60,7 @@ import {
   decideRevokeGate,
   deriveGateStatus,
 } from "../volunteer/index";
-import type { M15WriteActor } from "./actor";
+import type { M15ReadActor, M15WriteActor } from "./actor";
 import type {
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
@@ -105,6 +106,12 @@ const strArray = (value: unknown): string[] =>
 export interface M15WriteDeps {
   readonly outbox?: WriteOutboxPort;
   readonly now?: () => IsoInstant;
+  /** Is the patient on the user's caseload? Defaults to the M5 `CaseloadProvider` seam (fail-closed). */
+  readonly isInCaseload?: (query: {
+    organizationId: string;
+    userId: string;
+    patientId: string;
+  }) => Promise<boolean>;
   /** §2.3 — is an active `dpoa_healthcare` consent on file for this patient (the agent-stated goal gate)? */
   readonly dpoaConsentActive?: (input: {
     organizationId: string;
@@ -136,17 +143,47 @@ export function buildDrizzleM15WriteService(
   // it to an agent nobody authorized).
   const dpoaActive = deps.dpoaConsentActive ?? dpoaViaSeam;
 
-  const scope = (actor: M15WriteActor) => ({
+  const scope = (actor: M15ReadActor) => ({
     organizationId: actor.organizationId,
     userId: actor.userId,
   });
 
   type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-  /** Load the plan aggregate root, or 404 (an absent/cross-tenant plan is invisible under RLS). */
-  async function planOr404(tx: Tx, planId: string): Promise<typeof P.$inferSelect> {
+  const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
+
+  /**
+   * §4.1 `caseload_or_scope`, enforced INSIDE the service so no caller can bypass the route guard. Exempt:
+   * the explicit system actor (`kind === "system"`) and org-wide scope roles; everyone else must have the
+   * plan's patient on their caseload. Fail-CLOSED: a seam error is a deny. The seam opens its own
+   * `withOrgContext` on a separate connection (read-only), never a nested GUC on this tx.
+   */
+  async function actorMayWritePatient(actor: M15ReadActor, patientId: string): Promise<boolean> {
+    if (actor.kind === "system" || hasOrgWideScope(actor.roles)) return true;
+    try {
+      return await isInCaseload({
+        organizationId: actor.organizationId,
+        userId: actor.userId,
+        patientId,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Load the plan aggregate root, or 404 — absent, cross-tenant (RLS) and off-caseload are the SAME
+   * non-leaking NotFound.
+   */
+  async function planOr404(
+    tx: Tx,
+    actor: M15ReadActor,
+    planId: string,
+  ): Promise<typeof P.$inferSelect> {
     const [row] = await tx.select().from(P).where(eq(P.id, planId)).limit(1);
-    if (!row) throw new NotFoundError("discipline plan not found");
+    if (!row || !(await actorMayWritePatient(actor, row.patientId))) {
+      throw new NotFoundError("discipline plan not found");
+    }
     return row;
   }
 
@@ -295,10 +332,22 @@ export function buildDrizzleM15WriteService(
   });
 
   return {
+    // GAP-046 — plan → patient for the route-layer caseload gate (org-scoped, RLS-backstopped).
+    async planPatientId(actor, planId) {
+      return withOrgContext(db, scope(actor), async (tx) => {
+        const [row] = await tx
+          .select({ patientId: P.patientId })
+          .from(P)
+          .where(eq(P.id, planId))
+          .limit(1);
+        return row?.patientId ?? null;
+      });
+    },
+
     // ── 6 — finalize (`draft → in_review`; seals the snapshot + the D11 quorum) ──────────────────────
     async finalizeVersion(actor, planId, versionId, input: FinalizeVersionInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
+        const plan = await planOr404(tx, actor, planId);
         checkPlanWritable(plan.status);
         const [version] = await tx
           .select()
@@ -372,7 +421,7 @@ export function buildDrizzleM15WriteService(
     // ── 7 — sign one slot of the SEALED quorum (step-up route) ───────────────────────────────────────
     async signVersion(actor, planId, versionId, input: SignVersionInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
+        const plan = await planOr404(tx, actor, planId);
         checkPlanWritable(plan.status);
         const [version] = await tx
           .select()
@@ -491,7 +540,7 @@ export function buildDrizzleM15WriteService(
 
     // ── 8 — author a discipline goal (parent IPOC problem + DPOA consent resolved through seams) ─────
     async createGoal(actor, planId, input: CreateGoalInput) {
-      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, planId));
+      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
       checkPlanWritable(plan.status);
       checkAuthoringDiscipline(
         plan.kind as DisciplinePlanKind,
@@ -551,7 +600,7 @@ export function buildDrizzleM15WriteService(
     // ── 9 — edit a goal (status transition and/or the §2.3 revision fields) ──────────────────────────
     async updateGoal(actor, planId, goalId, input: UpdateGoalInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
+        const plan = await planOr404(tx, actor, planId);
         checkPlanWritable(plan.status);
         const [row] = await tx
           .select()
@@ -618,7 +667,7 @@ export function buildDrizzleM15WriteService(
 
     // ── 10 — author a discipline intervention ────────────────────────────────────────────────────────
     async createIntervention(actor, planId, input: CreateInterventionInput) {
-      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, planId));
+      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
       checkPlanWritable(plan.status);
       checkAuthoringDiscipline(
         plan.kind as DisciplinePlanKind,
@@ -656,7 +705,7 @@ export function buildDrizzleM15WriteService(
     // ── 11 — edit an intervention ────────────────────────────────────────────────────────────────────
     async updateIntervention(actor, planId, interventionId, input: UpdateInterventionInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
+        const plan = await planOr404(tx, actor, planId);
         checkPlanWritable(plan.status);
         const [row] = await tx
           .select()
@@ -713,7 +762,7 @@ export function buildDrizzleM15WriteService(
 
     // ── 12 — capture a discipline assessment (draft) ─────────────────────────────────────────────────
     async createAssessment(actor, planId, input: CreateAssessmentInput) {
-      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, planId));
+      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
       checkPlanWritable(plan.status);
       return withOrgContext(db, scope(actor), async (tx) => {
         const [row] = await tx
@@ -738,7 +787,7 @@ export function buildDrizzleM15WriteService(
 
     // ── 13 — sign an assessment (step-up; a signed INITIAL closes the D10 clock) ─────────────────────
     async signAssessment(actor, planId, assessmentId, input: SignAssessmentInput) {
-      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, planId));
+      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
       checkPlanWritable(plan.status);
       const existing = await withOrgContext(db, scope(actor), async (tx) => {
         const [row] = await tx
@@ -806,7 +855,7 @@ export function buildDrizzleM15WriteService(
     // ── 14 — amend a signed assessment (append-only correction of record, M9 D9) ─────────────────────
     async amendAssessment(actor, planId, assessmentId, input: AmendAssessmentInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
+        const plan = await planOr404(tx, actor, planId);
         checkPlanWritable(plan.status);
         const [original] = await tx
           .select()
@@ -881,7 +930,7 @@ export function buildDrizzleM15WriteService(
 
     // ── 15 — record a 418.76(h) supervisory attestation ──────────────────────────────────────────────
     async createSupervisoryVisit(actor, planId, input: CreateSupervisoryVisitInput) {
-      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, planId));
+      const plan = await withOrgContext(db, scope(actor), (tx) => planOr404(tx, actor, planId));
       checkPlanWritable(plan.status);
       // §2.3 — the referenced encounter must be the SUPERVISING RN's own signed visit on this patient.
       const encounterValid =
@@ -964,7 +1013,7 @@ export function buildDrizzleM15WriteService(
     // ── 16 — sign a supervisory attestation (step-up) ────────────────────────────────────────────────
     async signSupervisoryVisit(actor, planId, visitId, input: SignSupervisoryVisitInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        await planOr404(tx, planId);
+        await planOr404(tx, actor, planId);
         const [row] = await tx
           .select()
           .from(SV)
@@ -1002,7 +1051,7 @@ export function buildDrizzleM15WriteService(
     // ── 17 — create a volunteer assignment (the §7.4 418.78 gate check decides first) ────────────────
     async createVolunteerAssignment(actor, planId, input: CreateVolunteerAssignmentInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
+        const plan = await planOr404(tx, actor, planId);
         checkPlanWritable(plan.status);
         let gates: readonly VolunteerGateFacts[] | null = null;
         try {
@@ -1066,7 +1115,7 @@ export function buildDrizzleM15WriteService(
       input: UpdateVolunteerAssignmentInput,
     ) {
       return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
+        const plan = await planOr404(tx, actor, planId);
         checkPlanWritable(plan.status);
         const [row] = await tx
           .select()

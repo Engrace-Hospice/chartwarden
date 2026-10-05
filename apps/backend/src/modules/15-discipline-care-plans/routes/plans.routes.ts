@@ -14,7 +14,7 @@ import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
-import { P, STEP_UP } from "./guards";
+import { P, STEP_UP, planCaseloadScope } from "./guards";
 import {
   AmendAssessmentBody,
   AssessmentParams,
@@ -50,6 +50,9 @@ const PLAN_READ = { resourceKind: "discipline_care_plan", resourceIdParam: "plan
 
 export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRouteDeps): void {
   const { readService, writeService } = deps;
+  // GAP-046 — every plan write is caseload-scoped over the plan's patient (404 off-caseload / unknown plan).
+  const scope = (key: string) =>
+    planCaseloadScope(key, (actor, planId) => writeService.planPatientId(actor, planId));
 
   // 1 — plan worklist (cursor-paginated, §4.6.1).
   app.get(
@@ -118,7 +121,9 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
   // 6 — finalize a draft version (`draft → in_review`; seals the snapshot + the D11 quorum).
   app.post(
     "/api/v1/discipline-plans/:planId/versions/:versionId/finalize",
-    { preHandler: [P("discipline_plan.finalize"), IDEMPOTENT] },
+    {
+      preHandler: [P("discipline_plan.finalize"), ...scope("discipline_plan.finalize"), IDEMPOTENT],
+    },
     async (request) => {
       const { planId, versionId } = parse(VersionParams, request.params);
       const body = parse(FinalizeVersionBody, request.body);
@@ -134,7 +139,12 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
   app.post(
     "/api/v1/discipline-plans/:planId/versions/:versionId/sign",
     {
-      preHandler: [P("discipline_plan.sign"), STEP_UP("discipline_plan.sign"), IDEMPOTENT],
+      preHandler: [
+        P("discipline_plan.sign"),
+        ...scope("discipline_plan.sign"),
+        STEP_UP("discipline_plan.sign"),
+        IDEMPOTENT,
+      ],
     },
     async (request) => {
       const { planId, versionId } = parse(VersionParams, request.params);
@@ -151,7 +161,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
   // 8 — author a discipline goal under an IPOC problem.
   app.post(
     "/api/v1/discipline-plans/:planId/goals",
-    { preHandler: [P("discipline_plan.author"), IDEMPOTENT] },
+    { preHandler: [P("discipline_plan.author"), ...scope("discipline_plan.author"), IDEMPOTENT] },
     async (request, reply) => {
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CreateGoalBody, request.body);
@@ -163,7 +173,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
   // 9 — edit a goal (status event and/or refinement fields; `original_text` is immutable, §2.3).
   app.patch(
     "/api/v1/discipline-plans/:planId/goals/:goalId",
-    { preHandler: [P("discipline_plan.author"), IDEMPOTENT] },
+    { preHandler: [P("discipline_plan.author"), ...scope("discipline_plan.author"), IDEMPOTENT] },
     async (request) => {
       const { planId, goalId } = parse(GoalParams, request.params);
       const body = parse(UpdateGoalBody, request.body);
@@ -177,7 +187,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
   // 10 — author a discipline intervention.
   app.post(
     "/api/v1/discipline-plans/:planId/interventions",
-    { preHandler: [P("discipline_plan.author"), IDEMPOTENT] },
+    { preHandler: [P("discipline_plan.author"), ...scope("discipline_plan.author"), IDEMPOTENT] },
     async (request, reply) => {
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CreateInterventionBody, request.body);
@@ -189,7 +199,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
   // 11 — edit an intervention.
   app.patch(
     "/api/v1/discipline-plans/:planId/interventions/:interventionId",
-    { preHandler: [P("discipline_plan.author"), IDEMPOTENT] },
+    { preHandler: [P("discipline_plan.author"), ...scope("discipline_plan.author"), IDEMPOTENT] },
     async (request) => {
       const { planId, interventionId } = parse(InterventionParams, request.params);
       const body = parse(UpdateInterventionBody, request.body);
@@ -203,7 +213,13 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
   // 12 — capture a discipline assessment (draft).
   app.post(
     "/api/v1/discipline-plans/:planId/assessments",
-    { preHandler: [P("discipline_assessment.author"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("discipline_assessment.author"),
+        ...scope("discipline_assessment.author"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CreateAssessmentBody, request.body);
@@ -218,6 +234,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     {
       preHandler: [
         P("discipline_assessment.sign"),
+        ...scope("discipline_assessment.sign"),
         STEP_UP("discipline_assessment.sign"),
         IDEMPOTENT,
       ],
@@ -236,6 +253,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     {
       preHandler: [
         P("discipline_assessment.amend"),
+        ...scope("discipline_assessment.amend"),
         STEP_UP("discipline_assessment.amend"),
         IDEMPOTENT,
       ],

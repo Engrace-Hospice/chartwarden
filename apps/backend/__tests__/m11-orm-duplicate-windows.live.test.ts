@@ -43,6 +43,7 @@ import type {
 import { ormDispatchExistsForOrder } from "../src/modules/29-external-interfaces/outbound/order-dispatch-dedupe";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -147,8 +148,8 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
       drafterDiscipline: "rn_case_manager",
       data: { testCodes: LOINC, fastingRequired: false, routingLabId: FAC_ACTIVE },
       orderingPhysicianMdmId: PH_ACTIVE,
-    });
-    await service.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
+    }, SYSTEM_ORDER_ACTOR);
+    await service.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
     return draft.id;
   }
   const signArgs = () => ({
@@ -287,8 +288,8 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     await seedFeed(PORT_X, FAC_ACTIVE);
     const id = await draftAndRequest();
     const results = await Promise.allSettled([
-      svc.signOrder(ORG_A, member, id, signArgs()),
-      svc.signOrder(ORG_A, member, id, signArgs()),
+      svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR),
+      svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
@@ -307,8 +308,8 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
   it("W1b: a SEQUENTIAL second sign is refused by the state machine and adds no request", async () => {
     await seedFeed(PORT_X, FAC_ACTIVE);
     const id = await draftAndRequest();
-    await svc.signOrder(ORG_A, member, id, signArgs());
-    await expect(svc.signOrder(ORG_A, member, id, signArgs())).rejects.toBeTruthy();
+    await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
+    await expect(svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR)).rejects.toBeTruthy();
     expect(await requestEvents(id)).toBe(1);
     await settle();
     expect(sent).toHaveLength(1);
@@ -329,7 +330,7 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
       },
       ports,
     );
-    await expect(crashing.signOrder(ORG_A, member, id, signArgs())).rejects.toThrow(
+    await expect(crashing.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR)).rejects.toThrow(
       /simulated crash/,
     );
     expect((await orderRow(id)).status).toBe("pending_signature");
@@ -342,7 +343,7 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     ).toBe(0);
     expect(await count("SELECT count(*) n FROM order_signature WHERE target_id=$1", [id])).toBe(0);
 
-    await svc.signOrder(ORG_A, member, id, signArgs());
+    await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
     expect(await requestEvents(id)).toBe(1);
     await settle();
     expect(sent).toHaveLength(1);
@@ -352,7 +353,7 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
   it("W3: a redelivery after a lost receipt, routing UNCHANGED, sends nothing more (M29 idempotency)", async () => {
     await seedFeed(PORT_X, FAC_ACTIVE);
     const id = await draftAndRequest();
-    await svc.signOrder(ORG_A, member, id, signArgs());
+    await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
     await settle();
     expect(sent).toHaveLength(1);
     expect((await orderRow(id)).transmission_status).toBe("transmitted");
@@ -372,7 +373,7 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     const feedX = await seedFeed(PORT_X, FAC_ACTIVE);
     const feedY = await seedFeed(PORT_Y, null);
     const id = await draftAndRequest();
-    await svc.signOrder(ORG_A, member, id, signArgs());
+    await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
     await settle();
     expect(sent.map((s) => s.port)).toEqual([PORT_X]);
 
@@ -398,8 +399,8 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     const feedX = await seedFeed(PORT_X, FAC_ACTIVE);
     const id = await draftAndRequest();
     const other = await draftAndRequest();
-    await svc.signOrder(ORG_A, member, id, signArgs());
-    await svc.signOrder(ORG_A, member, other, signArgs());
+    await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
+    await svc.signOrder(ORG_A, member, other, signArgs(), SYSTEM_ORDER_ACTOR);
     const exists = (org: string, orderId: string) =>
       withOrgContext(handle.db, { organizationId: org, userId: "" }, (tx) =>
         ormDispatchExistsForOrder(tx as unknown as DbClient, org, orderId),
@@ -421,7 +422,7 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
   it("W5: an order whose request is already at M29 (pending) or delivered (transmitted) is not resendable and publishes nothing", async () => {
     await seedFeed(PORT_X, FAC_ACTIVE);
     const id = await draftAndRequest();
-    await svc.signOrder(ORG_A, member, id, signArgs());
+    await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
     // pending — the request is in the outbox / at M29, nothing has come back yet.
     expect((await orderRow(id)).transmission_status).toBe("pending");
     await expect(svc.resendLabTransmission(ORG_A, member, id)).rejects.toThrow(/not_failed/);
@@ -437,7 +438,7 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
   it("W5b: a late M29 transmission_failed never regresses an order the applier already marked transmitted", async () => {
     await seedFeed(PORT_X, FAC_ACTIVE);
     const id = await draftAndRequest();
-    await svc.signOrder(ORG_A, member, id, signArgs());
+    await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
     await settle();
     expect((await orderRow(id)).transmission_status).toBe("transmitted");
     // A stale/duplicate M29 failure for the same order arrives late: it must not flip a delivered order.

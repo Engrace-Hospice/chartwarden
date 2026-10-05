@@ -47,6 +47,13 @@ import {
   classifyOrmResend,
   classifyTransmissionRecovery,
 } from "../orm-request/orm-resend";
+import { deriveCosignFacts, isVerbalRecorderDiscipline } from "./server-derived-facts";
+import {
+  type OrderCaseloadResolver,
+  assertActorHoldsDiscipline,
+  assertPatientInActorScope,
+  seamCaseloadResolver,
+} from "./service-actor-guards";
 
 /** Minimal M40 `MdmEntityProvider` subset the order service binds (physician / DME-vendor resolution). */
 export interface OrderMdmValidator {
@@ -182,9 +189,34 @@ export interface OrderDetailActor {
   readonly roles: readonly string[];
   readonly disciplines: readonly string[];
   readonly permissions: ReadonlySet<string>;
+  /**
+   * `"system"` marks a NON-human caller (worker, outbox consumer, service-level suite): it is exempt from the
+   * service's claimed-discipline and caseload checks. Absent / `"user"` is a human session. Only
+   * `SYSTEM_ORDER_ACTOR` carries it — never build one from request data.
+   */
+  readonly kind?: "user" | "system";
+  /** The M2 USER id (what the caseload keys on); `membershipId` is a different id. */
+  readonly userId?: string;
+  /** `hasOrgWideScope(roles)` — an org-wide role needs no caseload membership. */
+  readonly orgWide?: boolean;
+  /** The one patient a pinned (collaborator / portal) session names. */
+  readonly sessionPatientId?: string | null;
 }
 
-/** Non-HTTP callers may omit a projection actor; this is deliberately unprivileged. */
+/**
+ * The explicit, narrow system-actor marker for workers / consumers / service-level suites. It skips only the
+ * service's claimed-discipline (GAP-031) and caseload (GAP-030) checks; the §2.2 state machine, the kind /
+ * signer eligibility floors and every other guard still apply to it.
+ */
+export const SYSTEM_ORDER_ACTOR: OrderDetailActor = Object.freeze({
+  kind: "system",
+  membershipId: "",
+  roles: [],
+  disciplines: [],
+  permissions: new Set<string>(),
+});
+
+/** Non-HTTP callers may omit a projection actor; this is deliberately unprivileged (NOT a system actor). */
 export const EMPTY_ORDER_DETAIL_ACTOR: OrderDetailActor = Object.freeze({
   membershipId: "",
   roles: [],
@@ -679,6 +711,8 @@ interface StandingRecord extends Mutable<StandingOrderView> {
 }
 
 export interface OrderRouteSeed {
+  /** The caseload resolver the write guards re-check through; defaults to M5's `CaseloadProvider` seam. */
+  readonly caseloadPatientIds?: OrderCaseloadResolver;
   readonly orders?: ReadonlyArray<
     Partial<OrderRecord> & {
       id: string;
@@ -751,6 +785,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
   const events: RecordedOrderEvent[] = [];
   const mdm = seed.mdm;
   const terminology = seed.terminology;
+  const caseloadPatientIds = seed.caseloadPatientIds ?? seamCaseloadResolver;
+  const assertInScope = (actor: OrderDetailActor, organizationId: string, patientId: string) =>
+    assertPatientInActorScope(actor, organizationId, patientId, caseloadPatientIds);
   let policy: VerbalPolicyView = {
     windowHours: 48,
     businessHoursOnly: false,
@@ -888,6 +925,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     },
 
     async createDraft(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.drafterDiscipline);
+      await assertInScope(actor, organizationId, args.patientId);
       // §2.1 / §4.7 author floor (defense-in-depth on top of the route's `discipline_can_order` ABAC).
       if (!disciplineCanOrder(args.drafterDiscipline, args.kind))
         throw new NotFoundError(
@@ -944,6 +983,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     },
 
     async createVerbalOrder(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.order.drafterDiscipline);
+      await assertInScope(actor, organizationId, args.order.patientId);
       if (!disciplineCanOrder(args.order.drafterDiscipline, args.order.kind))
         throw new NotFoundError(
           `discipline '${args.order.drafterDiscipline}' may not author a '${args.order.kind}' order`,
@@ -984,7 +1025,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         type: "recordVerbal",
         kind: args.order.kind,
         attestationRecorded: args.verbal.verbalAttestation.length >= 100,
-        recorderEligible: true,
+        recorderEligible: isVerbalRecorderDiscipline(args.order.drafterDiscipline),
       });
       const deadlineAt = computeVerbalDeadline(args.verbal.receivedAt, {
         windowHours: policy.windowHours,
@@ -1062,6 +1103,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async editDraft(organizationId, id, data, priority, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
+      await assertInScope(actor, organizationId, r.patientId);
       if (r.status !== "draft")
         throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
       r.data = data;
@@ -1071,7 +1113,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     },
 
     async requestSignature(organizationId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.signerDiscipline);
       const r = find(organizationId, id);
+      await assertInScope(actor, organizationId, r.patientId);
       const findings = validateOrderData(r.kind, r.kindVersion, r.data);
       if (findings.length)
         throw new ValidationError(
@@ -1085,8 +1129,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       const requirement = resolveCosignRequirement({
         kind: r.kind,
         drafterDiscipline: r.drafterDiscipline,
-        signerDiscipline: args.signerDiscipline,
-        levelChange: args.levelChange,
+        // GAP-031 — signer + level transition come from the stored order, never the request body.
+        ...deriveCosignFacts(r),
         policy: cosignPolicy(),
       });
       const t = transitionOrder(r.status, {
@@ -1143,7 +1187,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     },
 
     async recordVerbal(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.recorderDiscipline);
       const r = find(organizationId, id);
+      await assertInScope(actor, organizationId, r.patientId);
       // Mirrors `orders-route-service-db.ts`'s `recordVerbal` guard exactly.
       if (!args.readBackVerified)
         throw Object.assign(new Error("Verbal order must be read back and verified"), {
@@ -1154,7 +1200,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         type: "recordVerbal",
         kind: r.kind,
         attestationRecorded: args.verbalAttestation.length >= 100,
-        recorderEligible: true,
+        recorderEligible: isVerbalRecorderDiscipline(args.recorderDiscipline),
       });
       r.status = t.to;
       r.verbalDeadlineAt = computeVerbalDeadline(args.receivedAt, {
@@ -1185,6 +1231,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async cosignOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
+      await assertInScope(actor, organizationId, r.patientId);
       planCosignAttest({
         orderId: id,
         cosignRequired: r.cosignRequired,
@@ -1204,6 +1251,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async discontinueOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
+      await assertInScope(actor, organizationId, r.patientId);
       const t = transitionOrder(r.status, {
         type: "discontinue",
         kind: r.kind,
@@ -1227,7 +1275,11 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     },
 
     async correctOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.drafterDiscipline);
       const original = find(organizationId, id);
+      await assertInScope(actor, organizationId, original.patientId);
+      // The corrected draft may name a different patient: it must be in scope too.
+      await assertInScope(actor, organizationId, args.patientId);
       // Match the production supersede trigger: only a correctable active order may be replaced, and
       // the historical original is discontinued rather than edited or deleted.
       transitionOrder(original.status, {
@@ -1323,6 +1375,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
+      await assertInScope(actor, organizationId, r.patientId);
       const t = transitionOrder(r.status, {
         type: "complete",
         criterionMet: true,
@@ -1649,7 +1702,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
   };
 
   // ── shared sign path (§2.2 sign from pending_signature or verbal_pending) ──────────────────────────────
-  function signInternal(
+  async function signInternal(
     organizationId: string,
     userId: string,
     id: string,
@@ -1658,7 +1711,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     onBehalf: boolean,
     actor: OrderDetailActor,
   ): Promise<OrderDetailView> {
+    assertActorHoldsDiscipline(actor, signerDiscipline);
     const r = find(organizationId, id);
+    await assertInScope(actor, organizationId, r.patientId);
     if (!signerEligible(signerDiscipline, r.kind)) {
       // surfaced as the §4.7 ABAC floor at the route; defense-in-depth here.
       throw new NotFoundError(
@@ -1709,6 +1764,6 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       },
       `${id}:document_requested`,
     );
-    return Promise.resolve(detailView(r, actor));
+    return detailView(r, actor);
   }
 }

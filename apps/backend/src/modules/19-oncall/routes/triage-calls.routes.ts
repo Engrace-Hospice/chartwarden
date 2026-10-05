@@ -13,7 +13,9 @@
 // `triage.read`), the M2 step-up, and a per-access M4 audit row. §4.1's Notes name all three, and the
 // audit declaration below is an EMISSION config rather than a waiver precisely because §8.7.2 gives the
 // decrypt its own business-event row.
-import type { FastifyInstance } from "fastify";
+import { hasOrgWideScope } from "@wardenx/auth";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import {
@@ -42,12 +44,47 @@ import {
   parse,
   parseQuery,
 } from "./m19-typebox";
-import type { M19ReadService } from "./read-service";
+import type { M19ReadService, TriageCallReadScope } from "./read-service";
 import type { M19WriteService } from "./write-service";
 
 export interface TriageCallRouteDeps {
   readonly readService: M19ReadService;
   readonly writeService: M19WriteService;
+  /**
+   * GAP-059 — the patients on a clinician's caseload; defaults to M5's published `CaseloadProvider` seam.
+   * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
+   */
+  readonly caseloadPatientIds?: (q: {
+    organizationId: string;
+    userId: string;
+  }) => Promise<readonly string[]>;
+}
+
+const defaultCaseloadPatientIds: NonNullable<TriageCallRouteDeps["caseloadPatientIds"]> = (q) =>
+  getSeam("CaseloadProvider").caseloadPatientIds(q);
+
+/**
+ * The row scope of the list (GAP-059). Org-wide scope roles are unrestricted; everyone else is limited to
+ * their caseload (plus the calls they handled — the service adds that arm from `membershipId`).
+ * Fail-CLOSED: a caseload that cannot be resolved narrows to nothing rather than widening to the org.
+ */
+async function listScopeOf(
+  request: FastifyRequest,
+  caseloadPatientIds: NonNullable<TriageCallRouteDeps["caseloadPatientIds"]>,
+): Promise<TriageCallReadScope> {
+  const { organizationId, userId, roles, attributes } = request.context;
+  const membership = attributes?.membershipId;
+  const membershipId = typeof membership === "string" && membership.length > 0 ? membership : null;
+  if (hasOrgWideScope(roles)) return { patientIds: null, membershipId };
+  if (!userId) return { patientIds: [], membershipId };
+  try {
+    return {
+      patientIds: [...new Set(await caseloadPatientIds({ organizationId, userId }))],
+      membershipId,
+    };
+  } catch {
+    return { patientIds: [], membershipId };
+  }
 }
 
 const IDEMPOTENT = requireIdempotencyKey();
@@ -59,6 +96,7 @@ const CALL_READ = { resourceKind: "triage_call", resourceIdParam: "triageCallId"
 
 export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallRouteDeps): void {
   const { readService, writeService } = deps;
+  const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
 
   // 1 — open a new triage call. `oncall_eligible` gates it (§4.1 row 1); the covering shift and the
   //     `source` are BOTH resolved server-side (see m19-typebox's `OpenableSource`).
@@ -83,6 +121,7 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       readService.listTriageCalls(
         actorOf(request),
         parseQuery(ListTriageCallsQuery, request.query),
+        await listScopeOf(request, caseloadPatientIds),
       ),
   );
 

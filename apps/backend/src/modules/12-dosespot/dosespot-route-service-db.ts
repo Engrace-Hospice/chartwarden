@@ -38,16 +38,25 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeaSchedule, MedClass } from "@wardenx/types";
 import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
-import { type SQL, and, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { getOrderSignatureProvider } from "../11-orders";
-import { prescriberEligible } from "./prescriber-eligibility";
+import {
+  assertDisciplineHeld,
+  assertRetransmitStanding,
+  isVerbalRecorderDiscipline,
+  mdmIdAlreadyEnrolled,
+  namedPrescriberNotEnrolled,
+  prescriberEligible,
+  signerStanding,
+} from "./prescriber-eligibility";
 import type {
   ControlledSubstancePolicyView,
   CreateMedicationOrderArgs,
   DoseSpotAbacActor,
   MedicationOrderRouteService,
   MedicationOrderView,
+  NamedPrescriberView,
   PrescriberRosterView,
   RefillInboxPolicyView,
   RefillRequestView,
@@ -60,17 +69,43 @@ const RR = schema.refillRequests;
 const DP = schema.dosespotPrescribers;
 const MHR = schema.medicationHistoryRecords;
 
-const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
+/** ACTIVE roster rows that carry an MDM id (the valid verbal-order named prescribers). RLS scopes the org. */
+async function activeNamedPrescribers(tx: DbClient): Promise<NamedPrescriberView[]> {
+  const rows = await tx
+    .select({ membershipId: DP.membershipId, mdmId: DP.externalPhysicianMdmId })
+    .from(DP)
+    .where(
+      and(isNull(DP.revokedAt), isNotNull(DP.enrolledAt), isNotNull(DP.externalPhysicianMdmId)),
+    );
+  return rows.flatMap((r) =>
+    r.mdmId ? [{ membershipId: r.membershipId, externalPhysicianMdmId: r.mdmId }] : [],
+  );
+}
 
-/** The disciplines eligible to SIGN a medication order (§4.6 — prescriber-only; RN drafts, never signs). */
-const SIGNER_DISCIPLINES: ReadonlySet<string> = new Set([
-  "hospice_physician",
-  "medical_director",
-  "np",
-  "pa",
-]);
-const signerEligibleForMed = (discipline: string): boolean =>
-  SIGNER_DISCIPLINES.has(discipline.toLowerCase());
+/** The partial unique index (mig 0326) that keeps one ACTIVE roster row per MDM id per tenant. */
+const ACTIVE_MDM_UNIQUE_INDEX = "dosespot_prescriber_active_mdm_unique";
+const PG_UNIQUE_VIOLATION = "23505";
+
+/** True when `err` (or its `cause`, as drizzle wraps driver errors) is the active-MDM unique violation. */
+function isActiveMdmViolation(err: unknown): boolean {
+  for (let e: unknown = err, depth = 0; e && typeof e === "object" && depth < 3; depth++) {
+    const o = e as {
+      code?: unknown;
+      constraint_name?: unknown;
+      constraint?: unknown;
+      cause?: unknown;
+    };
+    if (
+      o.code === PG_UNIQUE_VIOLATION &&
+      (o.constraint_name === ACTIVE_MDM_UNIQUE_INDEX || o.constraint === ACTIVE_MDM_UNIQUE_INDEX)
+    )
+      return true;
+    e = o.cause;
+  }
+  return false;
+}
+
+const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 
 /** The transactional-outbox port (§4.4): the bound publisher validates every emit against the boot catalog
  * and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests commit
@@ -572,7 +607,8 @@ export function createDbDoseSpotBackend(
         return readOrder(tx, id);
       });
     },
-    async requestSignature(organizationId, id, signerDiscipline) {
+    async requestSignature(organizationId, id, signerDiscipline, heldDisciplines) {
+      assertDisciplineHeld(heldDisciplines, signerDiscipline);
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
         const findings = validateMedicationOrderData(r.medClass, undefined, r.data, true);
@@ -612,12 +648,24 @@ export function createDbDoseSpotBackend(
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
         const fromVerbal = r.status === "verbal_pending";
+        // GAP-035 — decided from the session actor + the stored order, never from the request body.
+        const [roster] = await tx
+          .select({ mdmId: DP.externalPhysicianMdmId })
+          .from(DP)
+          .where(and(eq(DP.membershipId, userId), isNull(DP.revokedAt)))
+          .limit(1);
         transitionMedicationOrder(r.status, {
           type: "sign",
           medClass: r.medClass,
           containsControlled: r.isControlledSubstance,
-          signerEligible: signerEligibleForMed(args.signerDiscipline),
-          signerIsOrderingPhysician: args.signerIsOrderingPhysician ?? !fromVerbal,
+          ...signerStanding({
+            disciplines: args.signerDisciplines,
+            signerMembershipId: userId,
+            signerMdmId: roster?.mdmId ?? null,
+            orderStatus: r.status,
+            orderPrescriberMembershipId: r.prescriberMembershipId,
+            orderPrescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
+          }),
         });
         const at = new Date();
         await tx
@@ -635,7 +683,8 @@ export function createDbDoseSpotBackend(
         return readOrder(tx, id);
       });
     },
-    async signControlledInitiate(organizationId, _userId, id, _schedule) {
+    async signControlledInitiate(organizationId, _userId, id, _schedule, args) {
+      assertDisciplineHeld(args.signerDisciplines, args.signerDiscipline);
       // EPCS is OFF in Phase 1 (D18): the machine guard refuses unless the tenant is certified — it throws
       // here and this never returns a challenge. No DB write.
       return withOrg(organizationId, async (tx) => {
@@ -679,6 +728,7 @@ export function createDbDoseSpotBackend(
       });
     },
     async recordVerbal(organizationId, userId, id, args) {
+      assertDisciplineHeld(args.recorderDisciplines, args.recorderDiscipline);
       // Pre-check (read-only) so a request against an order that cannot legally record a verbal order
       // (wrong status / med class / short attestation) never writes M11's polymorphic `verbal_order` row
       // at all — the real refusal still happens again under the write tx below (a concurrent transition in
@@ -688,10 +738,15 @@ export function createDbDoseSpotBackend(
         type: "recordVerbal",
         medClass: pre.medClass,
         containsControlled: pre.isControlledSubstance,
-        recorderEligible: true,
+        recorderEligible: isVerbalRecorderDiscipline(args.recorderDiscipline),
         namedPrescriberPresent: args.namedPrescriberMdmId.length > 0,
         attestationRecorded: args.verbalAttestation.length >= 100,
       });
+      // Refuse early when nobody could ever sign: no ACTIVE roster row maps to the named MDM id. Checked
+      // BEFORE the M11 seam write so no verbal_order row / deadline timer is created for an unsignable order.
+      const named = await withOrg(organizationId, activeNamedPrescribers);
+      if (!named.some((p) => p.externalPhysicianMdmId === args.namedPrescriberMdmId))
+        throw namedPrescriberNotEnrolled();
 
       // M11 owns `verbal_order` (§2.8 D14 — the polymorphic verbal-order receipt + 48h deadline timer;
       // `target_kind='medication_order'` for an M12 row). Write it through M11's published
@@ -728,7 +783,7 @@ export function createDbDoseSpotBackend(
           type: "recordVerbal",
           medClass: r.medClass,
           containsControlled: r.isControlledSubstance,
-          recorderEligible: true,
+          recorderEligible: isVerbalRecorderDiscipline(args.recorderDiscipline),
           namedPrescriberPresent: args.namedPrescriberMdmId.length > 0,
           attestationRecorded: args.verbalAttestation.length >= 100,
         });
@@ -855,13 +910,26 @@ export function createDbDoseSpotBackend(
         return { newOrderId: newId };
       });
     },
-    async retransmit(organizationId, userId, id) {
+    async retransmit(organizationId, userId, id, args) {
       return withOrg(organizationId, async (tx) => {
         const original = await loadOrder(tx, id);
         if (original.status !== "transmission_failed")
           throw new NotFoundError(
             `medication order ${id} is ${original.status}; only a transmission_failed order may be retransmitted`,
           );
+        // GAP-035 follow-up — the sign standing rule, from the session + the stored order + the roster.
+        const [roster] = await tx
+          .select({ mdmId: DP.externalPhysicianMdmId })
+          .from(DP)
+          .where(and(eq(DP.membershipId, userId), isNull(DP.revokedAt)))
+          .limit(1);
+        assertRetransmitStanding({
+          disciplines: args.signerDisciplines,
+          signerMembershipId: userId,
+          signerMdmId: roster?.mdmId ?? null,
+          orderPrescriberMembershipId: original.prescriberMembershipId,
+          orderPrescribingPhysicianMdmId: original.prescribingPhysicianMdmId,
+        });
         const newId = await insertDraft(tx, organizationId, userId, {
           patientId: original.patientId,
           admissionId: original.admissionId,
@@ -1080,48 +1148,84 @@ export function createDbDoseSpotBackend(
           enrolled: !!p.enrolledAt && !p.revokedAt,
           deaAuthorizedSchedules: (p.deaAuthorizedSchedules ?? []) as readonly DeaSchedule[],
           ial2Status: p.ial2VerifiedAt ? "verified" : "not_started",
+          externalPhysicianMdmId: p.externalPhysicianMdmId ?? null,
         }));
         return { prescribers };
       });
     },
-    async enrollPrescriber(organizationId, membershipId, deaAuthorizedSchedules) {
-      return withOrg(organizationId, async (tx) => {
-        const at = new Date();
-        const row = firstOrThrow(
-          await tx
-            .insert(DP)
-            .values({
-              organizationId,
-              membershipId,
-              deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
-              enrolledAt: at,
-            })
-            .onConflictDoUpdate({
-              target: [DP.organizationId, DP.membershipId],
-              set: {
+    async listNamedPrescribers(organizationId) {
+      return withOrg(organizationId, async (tx) => ({
+        prescribers: await activeNamedPrescribers(tx),
+      }));
+    },
+    async enrollPrescriber(
+      organizationId,
+      membershipId,
+      deaAuthorizedSchedules,
+      externalPhysicianMdmId,
+    ) {
+      if (externalPhysicianMdmId) {
+        const holder = await withOrg(organizationId, (tx) =>
+          tx
+            .select({ membershipId: DP.membershipId })
+            .from(DP)
+            .where(
+              and(eq(DP.externalPhysicianMdmId, externalPhysicianMdmId), isNull(DP.revokedAt)),
+            ),
+        );
+        if (holder.some((h) => h.membershipId !== membershipId)) throw mdmIdAlreadyEnrolled();
+      }
+      try {
+        return await withOrg(organizationId, async (tx) => {
+          const at = new Date();
+          const row = firstOrThrow(
+            await tx
+              .insert(DP)
+              .values({
+                organizationId,
+                membershipId,
                 deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
+                externalPhysicianMdmId: externalPhysicianMdmId ?? null,
                 enrolledAt: at,
-                revokedAt: null,
-                revocationReason: null,
-                updatedAt: at,
-              },
-            })
-            .returning({ id: DP.id }),
-          "dosespot_prescriber upsert returned no row",
-        );
-        await emit(
-          tx,
-          organizationId,
-          "m12.prescriber_enrolled",
-          "dosespot_prescriber",
-          membershipId,
-          {
+              })
+              .onConflictDoUpdate({
+                target: [DP.organizationId, DP.membershipId],
+                set: {
+                  deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
+                  ...(externalPhysicianMdmId ? { externalPhysicianMdmId } : {}),
+                  enrolledAt: at,
+                  revokedAt: null,
+                  revocationReason: null,
+                  updatedAt: at,
+                },
+              })
+              .returning({ id: DP.id }),
+            "dosespot_prescriber upsert returned no row",
+          );
+          await emit(
+            tx,
+            organizationId,
+            "m12.prescriber_enrolled",
+            "dosespot_prescriber",
             membershipId,
-            dosespotPrescriberId: row.id,
-          },
-        );
-        return { membershipId, enrolled: true, deaAuthorizedSchedules, ial2Status: "not_started" };
-      });
+            {
+              membershipId,
+              dosespotPrescriberId: row.id,
+            },
+          );
+          return {
+            membershipId,
+            enrolled: true,
+            deaAuthorizedSchedules,
+            ial2Status: "not_started",
+            externalPhysicianMdmId: externalPhysicianMdmId ?? null,
+          };
+        });
+      } catch (err) {
+        // A concurrent enroll that slipped past the pre-check still hits the unique index — same 409.
+        if (isActiveMdmViolation(err)) throw mdmIdAlreadyEnrolled();
+        throw err;
+      }
     },
     async revokePrescriber(organizationId, membershipId, reason) {
       return withOrg(organizationId, async (tx) => {

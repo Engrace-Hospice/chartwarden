@@ -478,6 +478,9 @@ function createM15Backend(): {
   };
 
   const writeService: M15WriteService = {
+    async planPatientId(_actor, planId) {
+      return plans.get(planId)?.patientId ?? null;
+    },
     async finalizeVersion(_actor, _planId, versionId, input) {
       const row = versions.get(versionId);
       if (!row) throw new NotFoundError("plan version not found");
@@ -845,6 +848,9 @@ function makeServer() {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
+  // GAP-046 — the plan-write routes bind the shared M7 `caseload_or_scope`; permissive here (the dedicated
+  // discipline-plans-caseload-scope.test.ts holds the real caseload semantics).
+  reg.register("caseload_or_scope", async () => true);
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });

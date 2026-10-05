@@ -58,6 +58,7 @@ import {
   VerbalTimerParamsSchema,
   parse,
 } from "./orders-typebox";
+import { assertDisciplineHeld } from "./server-derived-facts";
 import {
   type OrderDetailActor,
   type OrderReadScope,
@@ -121,6 +122,11 @@ function actorOf(request: FastifyRequest): {
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
+/** GAP-031 — refuse a body-supplied discipline the authenticated caller's session does not hold. */
+function requireHeld(request: FastifyRequest, claimed: string): void {
+  assertDisciplineHeld(request.context.roles, claimed);
+}
+
 /** Assemble the read-projection actor from the authenticated request context and M3's existing resolver. */
 async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor> {
   const { organizationId, userId: membershipId } = actorOf(request);
@@ -131,10 +137,16 @@ async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor>
   });
   // Clinical discipline derives from the session's role grants (#87): nothing produces a
   // `disciplines` context attribute, and a stray one must not widen the order-action floors.
+  // The same identity facts the route's own scope guards use, handed to the service so ITS caseload and
+  // discipline re-checks (GAP-030 / GAP-031) hold for every caller, not only this route.
+  const pinned = ctx.attributes.sessionPatientId;
   return {
     membershipId,
+    userId: ctx.userId,
     roles: ctx.roles,
     disciplines: ctx.roles,
+    orgWide: hasOrgWideScope(ctx.roles),
+    sessionPatientId: typeof pinned === "string" && pinned.length > 0 ? pinned : null,
     permissions: granted,
   };
 }
@@ -380,6 +392,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CreateOrderRequest, request.body);
+      requireHeld(request, body.drafterDiscipline);
       const res = await service.createDraft(
         organizationId,
         userId,
@@ -409,6 +422,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CreateVerbalOrderRequest, request.body);
+      requireHeld(request, body.order.drafterDiscipline);
       const res = await service.createVerbalOrder(
         organizationId,
         userId,
@@ -462,6 +476,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       const { organizationId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(RequestSignatureRequest, request.body);
+      requireHeld(request, body.signerDiscipline);
       return service.requestSignature(
         organizationId,
         id,
@@ -482,6 +497,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(SignOrderRequest, request.body);
+      requireHeld(request, body.signerDiscipline);
       return service.signOrder(
         organizationId,
         userId,
@@ -503,6 +519,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(SignOnBehalfRequest, request.body);
+      requireHeld(request, body.signerDiscipline);
       return service.signOnBehalf(
         organizationId,
         userId,
@@ -526,6 +543,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(RecordVerbalRequest, request.body);
+      requireHeld(request, body.recorderDiscipline);
       return service.recordVerbal(
         organizationId,
         userId,
@@ -601,6 +619,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const body = parse(CorrectOrderRequest, request.body);
+      requireHeld(request, body.drafterDiscipline);
       const res = await service.correctOrder(
         organizationId,
         userId,

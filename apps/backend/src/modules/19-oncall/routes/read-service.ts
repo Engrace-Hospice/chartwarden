@@ -353,12 +353,25 @@ export interface PortalRecentFilters {
   readonly sinceDays?: number;
 }
 
+/**
+ * GAP-059 — the row scope of the §4.1 row 2 list (M19 §4.7: "a clinician outside the patient's caseload
+ * sees zero rows"). `patientIds: null` is UNRESTRICTED (an org-wide scope role); an array is the caller's
+ * caseload, and `[]` means nothing. Beyond the caseload a caller always sees the calls they HANDLED
+ * (`membershipId` appears in the call's state history) — the only way an unidentified caller's call
+ * (patient_id NULL) is visible to a non-org-wide actor, mirroring the per-call predicate's on-call arm.
+ */
+export interface TriageCallReadScope {
+  readonly patientIds: readonly string[] | null;
+  readonly membershipId: string | null;
+}
+
 /** The §4.1 READ surface. */
 export interface M19ReadService {
   // §4.1 rows 2-3, 14 — triage calls
   listTriageCalls(
     actor: M19ReadActor,
     filters: TriageCallFilters,
+    scope: TriageCallReadScope,
   ): Promise<CursorPage<TriageCallListItem>>;
   /**
    * §4.1 row 3. Returns the STAFF projection or the VENDOR one depending on the actor's session class

@@ -37,6 +37,7 @@ import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/events-by-m11";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import {
   createDrizzleOrderSeamStore,
   registerOrderSeams,
@@ -217,6 +218,10 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
 
     orderService = createDbOrderBackend(handle.db, m11Outbox as never);
     medService = createDbDoseSpotBackend(handle.db, m12Outbox as never);
+    // GAP-035 follow-up — recordVerbal refuses a named prescriber with no active roster row
+    // (NAMED_PRESCRIBER_NOT_ENROLLED), so each org enrolls one prescriber for PHYSICIAN_MDM.
+    for (const org of [ORG_A, ORG_B])
+      await medService.enrollPrescriber(org, memberOf[org] as string, [], PHYSICIAN_MDM);
 
     const orgs: ActiveOrgEnumerator = {
       listActiveOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }],
@@ -242,6 +247,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     await runWithRequestContext({ organizationId: ORG_A, userId: "" }, () =>
       medService.recordVerbal(ORG_A, memberOf[ORG_A], orderId, {
         recorderDiscipline: "rn",
+        recorderDisciplines: ["rn"],
         verbalAttestation: "x".repeat(100),
         receivedAt,
         namedPrescriberMdmId: PHYSICIAN_MDM,
@@ -266,6 +272,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     await runWithRequestContext({ organizationId: ORG_A, userId: "" }, () =>
       medService.recordVerbal(ORG_A, memberOf[ORG_A], orderId, {
         recorderDiscipline: "rn",
+        recorderDisciplines: ["rn"],
         verbalAttestation: "x".repeat(100),
         receivedAt,
         namedPrescriberMdmId: PHYSICIAN_MDM,
@@ -280,14 +287,20 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
 
   it("expires M11's own verbal_pending order_record past its deadline (target_kind='order')", async () => {
     const orderId = await seedOrder(ORG_A);
-    await orderService.recordVerbal(ORG_A, memberOf[ORG_A], orderId, {
-      recorderDiscipline: "rn",
-      verbalAttestation: "x".repeat(100),
-      readBackVerified: true,
-      effectiveAt: RECEIVED_50H_AGO,
-      receivedAt: RECEIVED_50H_AGO,
-      orderingPhysicianMdmId: PHYSICIAN_MDM,
-    });
+    await orderService.recordVerbal(
+      ORG_A,
+      memberOf[ORG_A],
+      orderId,
+      {
+        recorderDiscipline: "rn",
+        verbalAttestation: "x".repeat(100),
+        readBackVerified: true,
+        effectiveAt: RECEIVED_50H_AGO,
+        receivedAt: RECEIVED_50H_AGO,
+        orderingPhysicianMdmId: PHYSICIAN_MDM,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect((await orderRow(orderId))?.status).toBe("verbal_pending");
 
     const { expiredVerbalOrderIds } = await orderService.expireOverdueVerbals(ORG_A);
@@ -313,6 +326,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     await runWithRequestContext({ organizationId: ORG_A, userId: "" }, () =>
       medService.recordVerbal(ORG_A, memberOf[ORG_A], orderId, {
         recorderDiscipline: "rn",
+        recorderDisciplines: ["rn"],
         verbalAttestation: "x".repeat(100),
         receivedAt: RECEIVED_50H_AGO,
         namedPrescriberMdmId: PHYSICIAN_MDM,
@@ -344,6 +358,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     await runWithRequestContext({ organizationId: ORG_A, userId: "" }, () =>
       medService.recordVerbal(ORG_A, memberOf[ORG_A], orderId, {
         recorderDiscipline: "rn",
+        recorderDisciplines: ["rn"],
         verbalAttestation: "x".repeat(100),
         receivedAt: RECEIVED_NOW, // deadline is ~48h in the future
         namedPrescriberMdmId: PHYSICIAN_MDM,
@@ -360,6 +375,7 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     await runWithRequestContext({ organizationId: ORG_B, userId: "" }, () =>
       medService.recordVerbal(ORG_B, memberOf[ORG_B], orderIdB, {
         recorderDiscipline: "rn",
+        recorderDisciplines: ["rn"],
         verbalAttestation: "x".repeat(100),
         receivedAt: RECEIVED_50H_AGO,
         namedPrescriberMdmId: PHYSICIAN_MDM,

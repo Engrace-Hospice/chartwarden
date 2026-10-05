@@ -97,6 +97,7 @@ import {
   classifyRecoveryContradiction,
   classifyTransmissionRecovery,
 } from "./orm-request/orm-resend";
+import { deriveCosignFacts, isVerbalRecorderDiscipline } from "./routes/server-derived-facts";
 import {
   EMPTY_ORDER_DETAIL_ACTOR,
   ORDER_LIST_LIMIT,
@@ -117,6 +118,12 @@ import type {
   TransmissionAttestationView,
   VerbalPolicyView,
 } from "./routes/service";
+import {
+  type OrderCaseloadResolver,
+  assertActorHoldsDiscipline,
+  assertPatientInActorScope,
+  seamCaseloadResolver,
+} from "./routes/service-actor-guards";
 
 const OR = schema.orderRecords;
 const SO = schema.standingOrders;
@@ -307,7 +314,11 @@ export function createDbOrderBackend(
    * alert port still files/co-signs/expires requests, it just raises no notification (unit tests, the workers).
    */
   recovery: RecoveryControls = {},
+  /** GAP-030 — the caseload the write guards re-check through; defaults to M5's `CaseloadProvider` seam. */
+  caseloadPatientIds: OrderCaseloadResolver = seamCaseloadResolver,
 ): OrderRouteService {
+  const assertInScope = (actor: OrderDetailActor, organizationId: string, patientId: string) =>
+    assertPatientInActorScope(actor, organizationId, patientId, caseloadPatientIds);
   const nowFn = recovery.now ?? (() => new Date());
   const recoveryTtlMs = recovery.ttlMs ?? RECOVERY_REQUEST_TTL_MS;
   const anomalyWindowMs = recovery.anomalyWindowMs ?? RECOVERY_ANOMALY_WINDOW_MS;
@@ -766,7 +777,9 @@ export function createDbOrderBackend(
     actor: OrderDetailActor,
     onBehalfArgs?: { onBehalfOf: string; reason: string },
   ): Promise<OrderDetailView> {
+    assertActorHoldsDiscipline(actor, signerDiscipline);
     const r = await loadOrderRow(tx, id);
+    await assertInScope(actor, organizationId, r.patientId);
     if (!signerEligible(signerDiscipline, r.kind))
       throw new NotFoundError(
         `discipline '${signerDiscipline}' is not eligible to sign a '${r.kind}' order`,
@@ -903,6 +916,8 @@ export function createDbOrderBackend(
 
     // ── Order writes (§2.2 lifecycle; the DB triggers do the state transitions) ──────────────────────
     async createDraft(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.drafterDiscipline);
+      await assertInScope(actor, organizationId, args.patientId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const id = await insertDraft(t, organizationId, userId, args, args.replacesOrderId ?? null);
@@ -911,6 +926,8 @@ export function createDbOrderBackend(
     },
 
     async createVerbalOrder(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.order.drafterDiscipline);
+      await assertInScope(actor, organizationId, args.order.patientId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const id = await insertDraft(t, organizationId, userId, args.order, null);
@@ -928,7 +945,7 @@ export function createDbOrderBackend(
         const requirement = resolveCosignRequirement({
           kind: r.kind as OrderKind,
           drafterDiscipline: r.drafterDiscipline,
-          signerDiscipline: args.order.drafterDiscipline,
+          ...deriveCosignFacts(r),
           policy: await cosignPolicyOf(t),
         });
         transitionOrder(r.status, {
@@ -967,7 +984,7 @@ export function createDbOrderBackend(
           type: "recordVerbal",
           kind: r.kind as OrderKind,
           attestationRecorded: args.verbal.verbalAttestation.length >= 100,
-          recorderEligible: true,
+          recorderEligible: isVerbalRecorderDiscipline(args.order.drafterDiscipline),
         });
         const policy = await verbalPolicyOf(t);
         const deadlineIso = computeVerbalDeadline(args.verbal.receivedAt, {
@@ -1017,6 +1034,7 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
+        await assertInScope(actor, organizationId, r.patientId);
         if (r.status !== "draft")
           throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
         await t
@@ -1033,9 +1051,11 @@ export function createDbOrderBackend(
     },
 
     async requestSignature(organizationId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.signerDiscipline);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
+        await assertInScope(actor, organizationId, r.patientId);
         const findings = validateOrderData(r.kind as OrderKind, r.kindVersion, r.data);
         if (findings.length)
           throw new ValidationError(
@@ -1049,8 +1069,8 @@ export function createDbOrderBackend(
         const requirement = resolveCosignRequirement({
           kind: r.kind as OrderKind,
           drafterDiscipline: r.drafterDiscipline,
-          signerDiscipline: args.signerDiscipline,
-          levelChange: args.levelChange,
+          // GAP-031 — signer + level transition come from the stored order, never the request body.
+          ...deriveCosignFacts(r),
           policy: await cosignPolicyOf(t),
         });
         // Validates ORDER_REQUIRED_FIELDS_INCOMPLETE / ILLEGAL_ORDER_TRANSITION.
@@ -1117,9 +1137,11 @@ export function createDbOrderBackend(
     },
 
     async recordVerbal(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.recorderDiscipline);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
+        await assertInScope(actor, organizationId, r.patientId);
         if (!args.readBackVerified) {
           throw Object.assign(new Error("Verbal order must be read back and verified"), {
             code: "VERBAL_READ_BACK_REQUIRED",
@@ -1131,7 +1153,7 @@ export function createDbOrderBackend(
           type: "recordVerbal",
           kind: r.kind as OrderKind,
           attestationRecorded: args.verbalAttestation.length >= 100,
-          recorderEligible: true,
+          recorderEligible: isVerbalRecorderDiscipline(args.recorderDiscipline),
         });
         const policy = await verbalPolicyOf(t);
         const deadlineIso = computeVerbalDeadline(args.receivedAt, {
@@ -1190,6 +1212,7 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
+        await assertInScope(actor, organizationId, r.patientId);
         // `order_record` carries no cosigner_role_needed column; re-derive it from the persisted facts:
         // the LPN axis (drafter+kind driven) demands an RN; the escalation-jump / NP axes both demand MD.
         const cosignerRoleNeeded = lpnCosignRequired(
@@ -1243,6 +1266,7 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
+        await assertInScope(actor, organizationId, r.patientId);
         // Validates ILLEGAL_ORDER_TRANSITION for a terminal order.
         transitionOrder(r.status, {
           type: "discontinue",
@@ -1285,9 +1309,13 @@ export function createDbOrderBackend(
     },
 
     async correctOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      assertActorHoldsDiscipline(actor, args.drafterDiscipline);
+      // The corrected draft may name a different patient than the original: both must be in scope.
+      await assertInScope(actor, organizationId, args.patientId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
+        const original = await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
+        await assertInScope(actor, organizationId, original.patientId);
         const findings = validateOrderData(
           args.kind,
           resolveOrderKindVersion(args.kind, args.kindVersion) ?? "unsupported",
@@ -2064,6 +2092,7 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
+        await assertInScope(actor, organizationId, r.patientId);
         transitionOrder(r.status, { type: "complete", criterionMet: true });
         const at = new Date();
         await t

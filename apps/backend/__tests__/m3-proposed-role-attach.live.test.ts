@@ -213,9 +213,10 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
 
   it("GAP-008 records the INVITER as granted_by, not the invitee", async () => {
     await attach(["clinical_rn"]);
-    const { rows } = await admin.query("SELECT granted_by FROM membership_role WHERE membership_id=$1", [
-      membershipA,
-    ]);
+    const { rows } = await admin.query(
+      "SELECT granted_by FROM membership_role WHERE membership_id=$1",
+      [membershipA],
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0].granted_by).toBe(INVITER);
   });
@@ -275,9 +276,10 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
       expect(result.attached).toEqual([]);
       expect(await grantsFor(membershipA)).toEqual([]);
     } finally {
-      await admin.query("DELETE FROM role_permission WHERE role_id=$1 AND permission_key='org.manage'", [
-        roleId,
-      ]);
+      await admin.query(
+        "DELETE FROM role_permission WHERE role_id=$1 AND permission_key='org.manage'",
+        [roleId],
+      );
     }
   });
 

@@ -17,9 +17,9 @@
 // administering clinician) — the service refuses a body patient the order is not for, and consumption on
 // the record route (itself caseload-scoped) re-verifies all three. The controlled-substance witness token
 // rides the `X-Witness-Attestation` header.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
+import { type AbacTarget, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import type { ReconciliationDecisionKind } from "@wardenx/types";
-import { UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AcknowledgeCaregiverRequest,
@@ -78,6 +78,22 @@ const CAREGIVER_ACK = P("administration.caregiver_acknowledge");
 const CAREGIVER_DISPUTE = P("administration.caregiver_dispute");
 const CORRECT = P("administration.correct");
 const VOID = P("administration.void");
+// GAP-041 — the hard-void is step-up gated (M3 `step_up_recent`, 403 STEP_UP_REQUIRED — the M11
+// `order.recover_transmission` idiom) AND floored to supervisor-or-above (§4.1 route 7 `clinical_supervisor_or_above`).
+// `requirePermission` never reads `PermissionDef.abac` and nothing upstream did either, so neither held before.
+const VOID_STEP_UP = requireStepUp("administration.void") as PreHandler;
+const VOID_SUPERVISOR_ROLES: ReadonlySet<string> = new Set([
+  "clinical_supervisor",
+  "medical_director",
+]);
+const VOID_SUPERVISOR_FLOOR: PreHandler = async (request) => {
+  const roles = request.context?.roles ?? [];
+  if (!roles.some((r) => VOID_SUPERVISOR_ROLES.has(r.trim().toLowerCase()))) {
+    throw new ForbiddenError(
+      "voiding an administration requires a clinical supervisor or medical director",
+    );
+  }
+};
 const RECORD_REFUSAL = P("administration.record_refusal");
 const RECORD_MISSED = P("administration.record_missed");
 const READ_MISSED = P("administration.read_missed");
@@ -89,6 +105,9 @@ const RECON_VOID = P("reconciliation.void");
 const KIT_READ = P("comfort_kit.read");
 const KIT_ACK_RETURN = P("comfort_kit.acknowledge_return");
 const POLICY = P("administration.admin.policy");
+// Spec §4.1 route 28 / §4.6: the policy WRITE is step-up gated. `requirePermission` never reads
+// `PermissionDef.abac` and nothing upstream enforced step-up, so it is composed here (M3 `step_up_recent`).
+const POLICY_STEP_UP = requireStepUp("administration.admin.policy") as PreHandler;
 
 // §4.7 — the ABAC predicates M13 owns. The record target lifts the body's `medicationOrderId` (the predicate
 // resolves the order's class); the witness-attest target lifts the body's `administeringClinicianMembershipId`;
@@ -331,10 +350,19 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
     },
   );
 
-  // 7 — administrative hard-void (recorded in error; step-up enforced upstream).
+  // 7 — administrative hard-void (recorded in error). Step-up (VOID_STEP_UP) and the supervisor floor are
+  // enforced HERE, in the preHandler chain; the service then runs the §2.2 lifecycle machine (committed →
+  // voided only, reason ≥ 40 chars) and answers 409 for a row that is not voidable (incl. already voided).
   app.post(
     "/api/v1/administrations/:id/void",
-    { preHandler: [VOID, SCOPE("administration.void", BY_ADMINISTRATION)] },
+    {
+      preHandler: [
+        VOID,
+        VOID_SUPERVISOR_FLOOR,
+        VOID_STEP_UP,
+        SCOPE("administration.void", BY_ADMINISTRATION),
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -711,14 +739,18 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
     },
   );
 
-  // 28 — update tenant administration policy (step-up enforced upstream).
-  app.put("/api/v1/admin/administration-policy", { preHandler: [POLICY] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const b = parse(AdministrationPolicyRequest, request.body);
-    return service.putPolicy(organizationId, {
-      graceWindowMinutes: b.graceWindowMinutes,
-      prnMinimumIntervalMinutes: b.prnMinimumIntervalMinutes,
-      emarPdfOnCommit: b.emarPdfOnCommit,
-    });
-  });
+  // 28 — update tenant administration policy (step-up: POLICY_STEP_UP; nothing upstream enforces it).
+  app.put(
+    "/api/v1/admin/administration-policy",
+    { preHandler: [POLICY, POLICY_STEP_UP] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const b = parse(AdministrationPolicyRequest, request.body);
+      return service.putPolicy(organizationId, {
+        graceWindowMinutes: b.graceWindowMinutes,
+        prnMinimumIntervalMinutes: b.prnMinimumIntervalMinutes,
+        emarPdfOnCommit: b.emarPdfOnCommit,
+      });
+    },
+  );
 }

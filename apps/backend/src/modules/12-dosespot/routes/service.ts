@@ -27,7 +27,15 @@ import type {
   RefillResponseChannel,
 } from "@wardenx/types";
 import { NotFoundError, ValidationError } from "@wardenx/types";
-import { prescriberEligible } from "../prescriber-eligibility";
+import {
+  assertDisciplineHeld,
+  assertRetransmitStanding,
+  isVerbalRecorderDiscipline,
+  mdmIdAlreadyEnrolled,
+  namedPrescriberNotEnrolled,
+  prescriberEligible,
+  signerStanding,
+} from "../prescriber-eligibility";
 
 // ── injected cross-module validators (narrowed seam subsets; absent ⇒ binding skipped) ──────────────────
 /** Minimal M38 `TerminologyProvider` subset the order service binds (RxNorm/NDC validity, as-of). */
@@ -109,6 +117,14 @@ export interface PrescriberRosterView {
   readonly enrolled: boolean;
   readonly deaAuthorizedSchedules: readonly DeaSchedule[];
   readonly ial2Status: string;
+  /** The M40 ExternalPhysician this membership IS (null until the enroll route sets it). */
+  readonly externalPhysicianMdmId: string | null;
+}
+
+/** An ACTIVE prescriber that carries an MDM id — a valid `namedPrescriberMdmId` for a verbal order. */
+export interface NamedPrescriberView {
+  readonly membershipId: string;
+  readonly externalPhysicianMdmId: string;
 }
 
 export interface RefillInboxPolicyView {
@@ -146,15 +162,26 @@ export interface CreateMedicationOrderArgs {
   readonly replacesMedicationOrderId?: string;
 }
 export interface SignArgs {
-  readonly signerDiscipline: string;
+  /** GAP-035 — the signer's disciplines as assembled from the SESSION (never the request body). */
+  readonly signerDisciplines: readonly string[];
   readonly signedAtClient: string;
-  readonly signerIsOrderingPhysician?: boolean;
+}
+export interface RetransmitArgs {
+  /** The caller's disciplines as assembled from the SESSION (never the request body). */
+  readonly signerDisciplines: readonly string[];
 }
 export interface RecordVerbalArgs {
   readonly recorderDiscipline: string;
+  /** The recorder's disciplines as assembled from the SESSION; `recorderDiscipline` must be one of them. */
+  readonly recorderDisciplines: readonly string[];
   readonly verbalAttestation: string;
   readonly receivedAt: string;
   readonly namedPrescriberMdmId: string;
+}
+export interface SignControlledInitiateArgs {
+  readonly signerDiscipline: string;
+  /** The signer's disciplines as assembled from the SESSION; `signerDiscipline` must be one of them. */
+  readonly signerDisciplines: readonly string[];
 }
 export interface CosignArgs {
   readonly cosignerRole: "rn_case_manager" | "clinical_supervisor" | "medical_director";
@@ -304,6 +331,8 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     organizationId: string,
     id: string,
     signerDiscipline: string,
+    /** The caller's session disciplines — `signerDiscipline` must be among them (422 DISCIPLINE_NOT_HELD). */
+    heldDisciplines: readonly string[],
   ): Promise<MedicationOrderView>;
   signOrder(
     organizationId: string,
@@ -316,6 +345,7 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     userId: string,
     id: string,
     schedule: DeaSchedule,
+    args: SignControlledInitiateArgs,
   ): Promise<{
     nonce: string;
     expiresAt: string;
@@ -365,7 +395,12 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     id: string,
     args: CreateMedicationOrderArgs,
   ): Promise<{ newOrderId: string }>;
-  retransmit(organizationId: string, userId: string, id: string): Promise<{ newOrderId: string }>;
+  retransmit(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: RetransmitArgs,
+  ): Promise<{ newOrderId: string }>;
   getTransmission(
     organizationId: string,
     id: string,
@@ -420,10 +455,14 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     rxnormRxcui: string,
   ): Promise<{ covered: boolean; copayCents: number | null }>;
   listPrescribers(organizationId: string): Promise<{ prescribers: PrescriberRosterView[] }>;
+  /** Active roster rows with an MDM id — the choices for a verbal order's `namedPrescriberMdmId`. */
+  listNamedPrescribers(organizationId: string): Promise<{ prescribers: NamedPrescriberView[] }>;
   enrollPrescriber(
     organizationId: string,
     membershipId: string,
     deaAuthorizedSchedules: readonly DeaSchedule[],
+    /** GAP-035 — the M40 ExternalPhysician this membership IS (the verbal named-prescriber mapping). */
+    externalPhysicianMdmId?: string,
   ): Promise<PrescriberRosterView>;
   revokePrescriber(
     organizationId: string,
@@ -478,6 +517,7 @@ export interface DoseSpotRouteSeed {
     membershipId: string;
     deaAuthorizedSchedules?: readonly DeaSchedule[];
     ial2Status?: string;
+    externalPhysicianMdmId?: string;
   }>;
   readonly caseloadPatientIds?: ReadonlyArray<{
     organizationId: string;
@@ -506,16 +546,6 @@ function nextId(): string {
   return `00000000-0000-4000-8000-${hex}`;
 }
 
-/** The disciplines eligible to SIGN a medication order (§4.6 — prescriber-only; RN drafts, never signs). */
-const SIGNER_DISCIPLINES: ReadonlySet<string> = new Set([
-  "hospice_physician",
-  "medical_director",
-  "np",
-  "pa",
-]);
-const signerEligibleForMed = (discipline: string): boolean =>
-  SIGNER_DISCIPLINES.has(discipline.toLowerCase());
-
 /** Whether `medClass` (+ runtime flag) routes through the EPCS controlled-substance branch (§2.4). */
 function isControlled(medClass: MedClass, containsControlled: boolean): boolean {
   return isEpcsRequired(medClass, containsControlled);
@@ -536,9 +566,16 @@ export function createInMemoryDoseSpotBackend(
       enrolled: boolean;
       deaAuthorizedSchedules: readonly DeaSchedule[];
       ial2Status: string;
+      externalPhysicianMdmId?: string;
     }
   >();
   const historyRecords = new Map((seed.historyRecords ?? []).map((h) => [h.id, h] as const));
+  const namedPrescribersOf = (organizationId: string): NamedPrescriberView[] =>
+    [...prescribers.values()].flatMap((p) =>
+      p.organizationId === organizationId && p.enrolled && p.externalPhysicianMdmId
+        ? [{ membershipId: p.membershipId, externalPhysicianMdmId: p.externalPhysicianMdmId }]
+        : [],
+    );
   const events: RecordedDoseSpotEvent[] = [];
   const { terminology, mdm, consent } = seed;
   const caseload = new Set<string>(
@@ -603,6 +640,7 @@ export function createInMemoryDoseSpotBackend(
       enrolled: true,
       deaAuthorizedSchedules: p.deaAuthorizedSchedules ?? [],
       ial2Status: p.ial2Status ?? "not_started",
+      externalPhysicianMdmId: p.externalPhysicianMdmId,
     });
 
   const emit = (
@@ -805,7 +843,8 @@ export function createInMemoryDoseSpotBackend(
       r.version += 1;
       return view(r);
     },
-    async requestSignature(organizationId, id, _signerDiscipline) {
+    async requestSignature(organizationId, id, signerDiscipline, heldDisciplines) {
+      assertDisciplineHeld(heldDisciplines, signerDiscipline);
       const r = find(organizationId, id);
       const findings = validateMedicationOrderData(r.medClass, undefined, r.data, true);
       if (findings.length)
@@ -826,12 +865,19 @@ export function createInMemoryDoseSpotBackend(
     },
     async signOrder(organizationId, userId, id, args) {
       const r = find(organizationId, id);
+      const rosterRow = prescribers.get(`${organizationId}:${userId}`);
       const t = transitionMedicationOrder(r.status, {
         type: "sign",
         medClass: r.medClass,
         containsControlled: r.isControlledSubstance,
-        signerEligible: signerEligibleForMed(args.signerDiscipline),
-        signerIsOrderingPhysician: args.signerIsOrderingPhysician ?? r.status !== "verbal_pending",
+        ...signerStanding({
+          disciplines: args.signerDisciplines,
+          signerMembershipId: userId,
+          signerMdmId: rosterRow?.enrolled ? (rosterRow.externalPhysicianMdmId ?? null) : null,
+          orderStatus: r.status,
+          orderPrescriberMembershipId: r.prescriberMembershipId,
+          orderPrescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
+        }),
       });
       r.status = t.to;
       r.signedAt = now();
@@ -844,7 +890,8 @@ export function createInMemoryDoseSpotBackend(
       });
       return view(r);
     },
-    async signControlledInitiate(organizationId, _userId, id, _schedule) {
+    async signControlledInitiate(organizationId, _userId, id, _schedule, args) {
+      assertDisciplineHeld(args.signerDisciplines, args.signerDiscipline);
       const r = find(organizationId, id);
       // EPCS is OFF in Phase 1 (D18): the machine guard refuses unless the tenant is certified.
       transitionMedicationOrder(r.status, {
@@ -878,15 +925,23 @@ export function createInMemoryDoseSpotBackend(
       return view(r);
     },
     async recordVerbal(organizationId, userId, id, args) {
+      assertDisciplineHeld(args.recorderDisciplines, args.recorderDiscipline);
       const r = find(organizationId, id);
       const t = transitionMedicationOrder(r.status, {
         type: "recordVerbal",
         medClass: r.medClass,
         containsControlled: r.isControlledSubstance,
-        recorderEligible: true,
+        recorderEligible: isVerbalRecorderDiscipline(args.recorderDiscipline),
         namedPrescriberPresent: args.namedPrescriberMdmId.length > 0,
         attestationRecorded: args.verbalAttestation.length >= 100,
       });
+      // Refuse early when nobody could ever sign: no ACTIVE roster row maps to the named MDM id.
+      if (
+        !namedPrescribersOf(organizationId).some(
+          (p) => p.externalPhysicianMdmId === args.namedPrescriberMdmId,
+        )
+      )
+        throw namedPrescriberNotEnrolled();
       r.status = t.to;
       r.prescribingPhysicianMdmId = args.namedPrescriberMdmId;
       emitEffects(t.effects, id, {
@@ -956,12 +1011,20 @@ export function createInMemoryDoseSpotBackend(
       original.version += 1;
       return { newOrderId: correction.id };
     },
-    async retransmit(organizationId, userId, id) {
+    async retransmit(organizationId, userId, id, args) {
       const original = find(organizationId, id);
       if (original.status !== "transmission_failed")
         throw new NotFoundError(
           `medication order ${id} is ${original.status}; only a transmission_failed order may be retransmitted`,
         );
+      const rosterRow = prescribers.get(`${organizationId}:${userId}`);
+      assertRetransmitStanding({
+        disciplines: args.signerDisciplines,
+        signerMembershipId: userId,
+        signerMdmId: rosterRow?.enrolled ? (rosterRow.externalPhysicianMdmId ?? null) : null,
+        orderPrescriberMembershipId: original.prescriberMembershipId,
+        orderPrescribingPhysicianMdmId: original.prescribingPhysicianMdmId,
+      });
       const correction = await createInternal(
         organizationId,
         userId,
@@ -1095,17 +1158,39 @@ export function createInMemoryDoseSpotBackend(
           enrolled: p.enrolled,
           deaAuthorizedSchedules: p.deaAuthorizedSchedules,
           ial2Status: p.ial2Status,
+          externalPhysicianMdmId: p.externalPhysicianMdmId ?? null,
         })),
       };
     },
-    async enrollPrescriber(organizationId, membershipId, deaAuthorizedSchedules) {
+    async listNamedPrescribers(organizationId) {
+      return { prescribers: namedPrescribersOf(organizationId) };
+    },
+    async enrollPrescriber(
+      organizationId,
+      membershipId,
+      deaAuthorizedSchedules,
+      externalPhysicianMdmId,
+    ) {
       const key = `${organizationId}:${membershipId}`;
+      // One ACTIVE roster row per external physician MDM id per tenant (mirrors the partial unique index).
+      if (
+        externalPhysicianMdmId &&
+        [...prescribers.values()].some(
+          (p) =>
+            p.organizationId === organizationId &&
+            p.enrolled &&
+            p.membershipId !== membershipId &&
+            p.externalPhysicianMdmId === externalPhysicianMdmId,
+        )
+      )
+        throw mdmIdAlreadyEnrolled();
       const row = {
         organizationId,
         membershipId,
         enrolled: true,
         deaAuthorizedSchedules,
         ial2Status: "not_started",
+        externalPhysicianMdmId,
       };
       prescribers.set(key, row);
       emit(
@@ -1113,7 +1198,13 @@ export function createInMemoryDoseSpotBackend(
         { membershipId, dosespotPrescriberId: nextId() },
         `${membershipId}:enrolled`,
       );
-      return { membershipId, enrolled: true, deaAuthorizedSchedules, ial2Status: row.ial2Status };
+      return {
+        membershipId,
+        enrolled: true,
+        deaAuthorizedSchedules,
+        ial2Status: row.ial2Status,
+        externalPhysicianMdmId: externalPhysicianMdmId ?? null,
+      };
     },
     async revokePrescriber(organizationId, membershipId, reason) {
       const key = `${organizationId}:${membershipId}`;

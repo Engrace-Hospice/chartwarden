@@ -84,11 +84,10 @@ export const RequestSignatureRequest = Type.Object({
   signerDiscipline: Type.String({ minLength: 1, maxLength: 64 }),
 });
 
+/** GAP-035 — the signer's discipline and ordering-physician standing are decided server-side (session roles +
+ * the stored order + the roster), so neither is a body field. */
 export const SignMedicationOrderRequest = Type.Object({
-  signerDiscipline: Type.String({ minLength: 1, maxLength: 64 }),
   signedAtClient: Type.String({ format: "date-time" }),
-  /** §2.3 — true when the signer is the named ordering prescriber (required for the verbal follow-up sign). */
-  signerIsOrderingPhysician: Type.Optional(Type.Boolean()),
 });
 
 export const SignControlledInitiateRequest = Type.Object({
@@ -175,6 +174,8 @@ export const ReconcileRequest = Type.Object({
 
 export const EnrollPrescriberRequest = Type.Object({
   deaAuthorizedSchedules: Type.Optional(Type.Array(DEA_SCHEDULE)),
+  /** GAP-035 — the M40 ExternalPhysician this membership IS; maps a verbal order's named prescriber to a signer. */
+  externalPhysicianMdmId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
 export const RevokePrescriberRequest = Type.Object({
@@ -315,6 +316,17 @@ export const PrescriberRosterResponseSchema = Type.Object({
   enrolled: Type.Boolean(),
   deaAuthorizedSchedules: Type.Array(DEA_SCHEDULE),
   ial2Status: Type.String(),
+  /** The M40 ExternalPhysician this membership IS (null until enrolled with one). */
+  externalPhysicianMdmId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+});
+/** `GET /prescribing/named-prescribers` — the choices for a verbal order's `namedPrescriberMdmId`. */
+export const NamedPrescriberListResponseSchema = Type.Object({
+  prescribers: Type.Array(
+    Type.Object({
+      membershipId: Type.String(),
+      externalPhysicianMdmId: Type.String({ format: "uuid" }),
+    }),
+  ),
 });
 /** The `{ prescribers }` envelope the roster list returns. */
 export const PrescriberRosterListResponseSchema = Type.Object({

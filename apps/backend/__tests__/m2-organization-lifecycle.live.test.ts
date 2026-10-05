@@ -27,13 +27,14 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
-import type { FastifyRequest } from "fastify";
 import { sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { userLifecyclePlatformOpsPredicate } from "../src/modules/02-identity/abac-predicates";
+import { auditMembershipAccepted } from "../src/modules/02-identity/audit/identity-audit";
 import {
   createContextActorResolver,
   createOrgScopedAuditExecutor,
@@ -44,7 +45,6 @@ import {
   createDbUserDirectory,
   createDbUserIdentityReader,
 } from "../src/modules/02-identity/identity-stores-db";
-import { auditMembershipAccepted } from "../src/modules/02-identity/audit/identity-audit";
 import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import {
   type OrganizationLifecycleOutboxPort,
@@ -455,9 +455,10 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
 
     it("the tenant path (deactivateFromOrg) revokes the sole membership too, as wardenx_app", async () => {
       const SOLE = "99999999-9999-4999-8999-9999f2050109";
-      await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'sole@f11d19.test','So Le')`, [
-        SOLE,
-      ]);
+      await admin.query(
+        `INSERT INTO "user" (id,email,name) VALUES ($1,'sole@f11d19.test','So Le')`,
+        [SOLE],
+      );
       await admin.query(
         `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')`,
         [SOLE, ORG_A],
@@ -468,7 +469,9 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
         reason: "left the agency",
       });
       expect(outcome).toBe("deactivated");
-      const u = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [SOLE]);
+      const u = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [
+        SOLE,
+      ]);
       expect(u.rows[0]?.status).toBe("deactivated");
       const m = await admin.query<{ status: string }>(
         `SELECT status FROM membership WHERE user_id=$1`,
@@ -510,7 +513,9 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
 
     it("the bare table read the old store did FAILS for wardenx_app with no org bound (why 0324 exists)", async () => {
       await expect(
-        handle.db.execute(sql`SELECT id FROM organization_invitation WHERE token_hash = ${hash(TOKEN)}`),
+        handle.db.execute(
+          sql`SELECT id FROM organization_invitation WHERE token_hash = ${hash(TOKEN)}`,
+        ),
       ).rejects.toThrow();
     });
 

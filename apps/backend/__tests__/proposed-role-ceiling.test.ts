@@ -8,7 +8,11 @@ import {
   createProposedRoleGuard,
 } from "../src/modules/03-authorization/proposed-role-ceiling";
 
-const role = (key: string, permissionKeys: string[], category = "clinical_staff"): ProposableRole => ({
+const role = (
+  key: string,
+  permissionKeys: string[],
+  category = "clinical_staff",
+): ProposableRole => ({
   id: key,
   key,
   category,

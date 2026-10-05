@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1363,
-    "coveredRoutes": 1363,
-    "directRoutesReferenced": 1316
+    "routes": 1364,
+    "coveredRoutes": 1364,
+    "directRoutesReferenced": 1319
   },
   "modules": [
     {
@@ -92,6 +92,7 @@
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
+        "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
@@ -101,7 +102,9 @@
         "apps/backend/__tests__/orders-routes.test.ts",
         "apps/backend/__tests__/orm-recovery.test.ts",
         "apps/backend/__tests__/orm-resend.test.ts",
-        "apps/backend/__tests__/patient-routes.test.ts"
+        "apps/backend/__tests__/patient-routes.test.ts",
+        "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
+        "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
       "directRoutesReferenced": 24
     },
@@ -140,6 +143,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
+        "apps/backend/__tests__/orders-discipline-held.test.ts",
         "apps/backend/__tests__/orders-routes.test.ts",
         "apps/backend/__tests__/orm-recovery.test.ts",
         "apps/backend/__tests__/orm-resend.test.ts",
@@ -149,7 +153,7 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 32,
+      "routes": 33,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/dosespot-routes.test.ts",
@@ -157,7 +161,7 @@
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
       ],
-      "directRoutesReferenced": 25
+      "directRoutesReferenced": 26
     },
     {
       "module": "13-emar",
@@ -167,7 +171,7 @@
         "apps/backend/__tests__/emar-caregiver-barcode.test.ts",
         "apps/backend/__tests__/emar-routes.test.ts"
       ],
-      "directRoutesReferenced": 20
+      "directRoutesReferenced": 22
     },
     {
       "module": "14-idg",
@@ -189,6 +193,7 @@
       "routes": 28,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
         "apps/backend/__tests__/discipline-plans-inject.test.ts"
       ],
       "directRoutesReferenced": 28
@@ -209,6 +214,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
+        "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
       "directRoutesReferenced": 33

@@ -17,8 +17,8 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import type { FastifyRequest } from "fastify";
 import { WardenXError } from "@wardenx/types";
+import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
@@ -175,9 +175,7 @@ function makeServer(
     ...(opts.proposedRoleGuard === null
       ? {}
       : { proposedRoleGuard: opts.proposedRoleGuard ?? defaultGuard }),
-    ...(opts.bindUserIdentity === false
-      ? {}
-      : { userIdentity: identity }),
+    ...(opts.bindUserIdentity === false ? {} : { userIdentity: identity }),
   };
   registerIdentityRoutes(app, deps);
   return {
@@ -547,7 +545,12 @@ describe("M2-T06 identity route inventory", () => {
       };
       const guard = createProposedRoleGuard({
         lookup: async () => [
-          { id: "r1", key: "org_admin", category: "administration", permissionKeys: ["org.manage"] },
+          {
+            id: "r1",
+            key: "org_admin",
+            category: "administration",
+            permissionKeys: ["org.manage"],
+          },
         ],
         effectivePermissions: ({ userId }) => new Set(held[userId] ?? []),
         audit: createInMemoryAuditExecutor().executor,
