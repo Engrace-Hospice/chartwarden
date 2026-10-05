@@ -24,6 +24,7 @@ import {
   normaliseRecordsRequestCode,
   recordsRequestCheckChar,
 } from "@wardenx/intake-extraction";
+import type { DbClient } from "@wardenx/db";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -342,7 +343,7 @@ const GRANTS: Record<string, string[]> = {
   nobody_1: [],
 };
 
-function makeServer(opts: { transport?: OutboundFaxTransport } = {}) {
+function makeServer(opts: { transport?: OutboundFaxTransport; db?: DbClient } = {}) {
   const grantStore = createInMemoryEffectivePermissionStore(
     Object.entries(GRANTS).flatMap(([userId, permissionKeys]) =>
       [ORG, ORG_B].map((orgId) => ({
@@ -375,7 +376,11 @@ function makeServer(opts: { transport?: OutboundFaxTransport } = {}) {
         : null;
     },
   };
-  const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const app = buildServer({
+    authenticate: headerAuth,
+    db: opts.db,
+    security: { rateLimitEnabled: false },
+  });
   const transport = opts.transport ?? createStubOutboundFaxTransport({ log: () => {} });
   const faxStore = createInMemoryRecordsRequestFaxStore({
     now: () => new Date("2026-10-04T12:00:00.000Z"),
@@ -543,6 +548,32 @@ describe("F-238 — records-request routes", () => {
     expect(mark.statusCode).toBe(200);
     expect(mark.json()).toMatchObject({ status: "partially_received" });
     expect(mark.json().receivedAt).toBeTruthy();
+  });
+
+  it("GAP-013: the Buffer cover sheet writes exactly one intake_records_request.viewed row, no bytes", async () => {
+    const rows: Array<Record<string, unknown>> = [];
+    const tx = {
+      execute: async () => undefined,
+      insert: () => ({
+        values: async (row: Record<string, unknown>) => {
+          rows.push(row);
+        },
+      }),
+    };
+    const db = { transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) } as unknown as DbClient;
+    const { app } = makeServer({ db });
+    const a = (await create(app)).json();
+    rows.length = 0;
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/referrals/${REFERRAL}/records-requests/${a.id}/cover-sheet`,
+      headers: H("reader_1"),
+    });
+    expect(res.statusCode).toBe(200);
+    const reads = rows.filter((r) => r.eventType === "intake_records_request.viewed");
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.resourceId).toBe(a.id);
+    expect(JSON.stringify(reads[0])).not.toContain("DOCLENS");
   });
 
   it("serves the cover sheet as a no-store PDF (inline, named after the code)", async () => {

@@ -107,6 +107,17 @@ describe("collectEnvProblems", () => {
     expect(problemFor("yes")).toBe("must be 'true' or 'false'");
   });
 
+  it("GAP-009: the sign-up invite flag is optional, but a set value must be exactly true/false", () => {
+    const problemFor = (v: string | undefined) =>
+      collectEnvProblems({ ...GOOD, WARDENX_SIGNUP_REQUIRES_INVITE: v }).find(
+        (p) => p.key === "WARDENX_SIGNUP_REQUIRES_INVITE",
+      )?.problem;
+    expect(problemFor(undefined)).toBeUndefined();
+    expect(problemFor("true")).toBeUndefined();
+    expect(problemFor("false")).toBeUndefined();
+    expect(problemFor("1")).toBe("must be 'true' or 'false'");
+  });
+
   it("flags a malformed platform KEK by shape, not just by absence (#105)", () => {
     const problemFor = (v: string) =>
       collectEnvProblems({ ...GOOD, M34_TENANT_KEK: v }).find((p) => p.key === "M34_TENANT_KEK")

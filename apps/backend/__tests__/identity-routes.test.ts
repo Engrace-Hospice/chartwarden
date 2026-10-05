@@ -18,6 +18,7 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import type { FastifyRequest } from "fastify";
+import { WardenXError } from "@wardenx/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
@@ -32,8 +33,10 @@ import {
   createInMemoryMembershipRepository,
   createInMemorySessionWriter,
   createInMemoryUserDirectory,
+  createInMemoryUserIdentityReader,
   registerIdentityRoutes,
 } from "../src/modules/02-identity/index";
+import { createProposedRoleGuard } from "../src/modules/03-authorization/proposed-role-ceiling";
 
 /** Test-only auth shim: populate request.context from headers (mirrors api.test.ts). */
 function headerAuth(request: FastifyRequest): void {
@@ -101,14 +104,35 @@ function makeServer(
     webAppBaseUrl?: string;
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
     dashboardSeeder?: IdentityRouteDeps["dashboardSeeder"];
+    /** GAP-008 — defaults to a recording stub that allows; `null` binds NO guard. */
+    proposedRoleGuard?: IdentityRouteDeps["proposedRoleGuard"] | null;
+    /** GAP-009 — userId → account email; defaults to the accepting users the cases below use. */
+    userEmails?: Record<string, string>;
+    /** GAP-009 — `null` binds NO identity reader (accept must then fail closed). */
+    bindUserIdentity?: boolean;
   } = {},
 ) {
+  const guardCalls: Array<{ inviterUserId: string; roleKeys: readonly string[] }> = [];
+  const defaultGuard: NonNullable<IdentityRouteDeps["proposedRoleGuard"]> = {
+    async assertProposable(input) {
+      guardCalls.push({ inviterUserId: input.inviterUserId, roleKeys: input.roleKeys });
+    },
+  };
   const memberships = createInMemoryMembershipRepository(opts.seed ?? [ADMIN_MEMBERSHIP]);
   const sessions = createInMemorySessionWriter();
   const invitations = createInMemoryInvitationStore();
   const collaborators = createInMemoryCollaboratorLinkStore();
   const users = createInMemoryUserDirectory(memberships.repo);
   const auditSink = createInMemoryAuditExecutor();
+  const identity = createInMemoryUserIdentityReader(
+    opts.userEmails ?? {
+      new_user: "new@example.com",
+      invitee_1: "roles@example.com",
+      invitee_dash: "dash@example.com",
+      accepted_user: "gone@example.com",
+      peek_user: "peek@example.com",
+    },
+  );
   const actors =
     opts.actors === undefined || opts.actors === "context"
       ? createContextActorResolver()
@@ -148,9 +172,25 @@ function makeServer(
     ...(opts.webAppBaseUrl ? { webAppBaseUrl: opts.webAppBaseUrl } : {}),
     ...(opts.roleAttacher ? { roleAttacher: opts.roleAttacher } : {}),
     ...(opts.dashboardSeeder ? { dashboardSeeder: opts.dashboardSeeder } : {}),
+    ...(opts.proposedRoleGuard === null
+      ? {}
+      : { proposedRoleGuard: opts.proposedRoleGuard ?? defaultGuard }),
+    ...(opts.bindUserIdentity === false
+      ? {}
+      : { userIdentity: identity }),
   };
   registerIdentityRoutes(app, deps);
-  return { app, memberships, sessions, invitations, collaborators, users, auditSink };
+  return {
+    app,
+    memberships,
+    sessions,
+    invitations,
+    collaborators,
+    users,
+    auditSink,
+    guardCalls,
+    identity,
+  };
 }
 
 const ADMIN = { "x-test-user": "admin_1", "x-test-org": "org_a", "x-test-roles": "org_admin" };
@@ -387,6 +427,177 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
+    // ── GAP-009(a): the token is redeemed by the account it was issued to ─────────────────────────
+    it("GAP-009 accept by an account whose email differs from the invitation → 403, token NOT burned", async () => {
+      const { app, invitations, identity } = makeServer({
+        userEmails: { intruder: "intruder@example.com", rightful: "Rightful@Example.com" },
+      });
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "rightful@example.com" },
+      });
+      const token = invitations.tokenFor("rightful@example.com");
+      const accept = (user: string) =>
+        app.inject({
+          method: "POST",
+          url: "/api/v1/invitations/accept",
+          headers: { "x-test-user": user },
+          payload: { token },
+        });
+
+      const wrong = await accept("intruder");
+      expect(wrong.statusCode).toBe(403);
+      expect(wrong.json().error.code).toBe("INVITATION_EMAIL_MISMATCH");
+
+      // A refused accept verifies nothing.
+      expect(identity.isVerified("intruder")).toBe(false);
+      expect(identity.isVerified("rightful")).toBe(false);
+
+      // The mismatch did not consume the one-time token; the case-insensitive rightful account can,
+      // and redeeming it marks that account's email verified.
+      const right = await accept("rightful");
+      expect(right.statusCode).toBe(200);
+      expect(identity.isVerified("rightful")).toBe(true);
+      expect(identity.isVerified("intruder")).toBe(false);
+      await app.close();
+    });
+
+    it("GAP-009 accept by an account with no email on file → 403", async () => {
+      const { app, invitations } = makeServer({ userEmails: {} });
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "someone@example.com" },
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/invitations/accept",
+        headers: { "x-test-user": "ghost" },
+        payload: { token: invitations.tokenFor("someone@example.com") },
+      });
+      expect(res.statusCode).toBe(403);
+      await app.close();
+    });
+
+    it("GAP-009 accept fails closed (503) when no identity reader is bound", async () => {
+      const { app, invitations } = makeServer({ bindUserIdentity: false });
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "someone@example.com" },
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/invitations/accept",
+        headers: { "x-test-user": "anyone" },
+        payload: { token: invitations.tokenFor("someone@example.com") },
+      });
+      expect(res.statusCode).toBe(503);
+      await app.close();
+    });
+
+    // ── GAP-008: proposed roles are bounded by the inviter ────────────────────────────────────────
+    it("GAP-008 an invitation proposing roles runs the guard with the INVITER and stores nothing when refused", async () => {
+      const refusing: NonNullable<IdentityRouteDeps["proposedRoleGuard"]> = {
+        async assertProposable() {
+          throw new WardenXError("ESCALATION_BLOCKED", "no", 403);
+        },
+      };
+      const { app, invitations } = makeServer({ proposedRoleGuard: refusing });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "esc@example.com", proposedRoleKeys: ["org_admin"] },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("ESCALATION_BLOCKED");
+      expect(invitations.tokenFor("esc@example.com")).toBeUndefined();
+      await app.close();
+    });
+
+    it("GAP-008 proposing roles with NO guard bound is refused (503), not stored unchecked", async () => {
+      const { app, invitations } = makeServer({ proposedRoleGuard: null });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "noguard@example.com", proposedRoleKeys: ["org_admin"] },
+      });
+      expect(res.statusCode).toBe(503);
+      expect(invitations.tokenFor("noguard@example.com")).toBeUndefined();
+      // …while an invitation proposing nothing still needs no guard.
+      const plain = await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "plain@example.com" },
+      });
+      expect(plain.statusCode).toBe(201);
+      await app.close();
+    });
+
+    it("GAP-008 the real M3 guard: member.invite alone proposing org_admin → 403 ESCALATION_BLOCKED (audited)", async () => {
+      const held: Record<string, string[]> = {
+        admin_1: ["member.invite"], // no role.assign, none of org_admin's permissions
+      };
+      const guard = createProposedRoleGuard({
+        lookup: async () => [
+          { id: "r1", key: "org_admin", category: "administration", permissionKeys: ["org.manage"] },
+        ],
+        effectivePermissions: ({ userId }) => new Set(held[userId] ?? []),
+        audit: createInMemoryAuditExecutor().executor,
+      });
+      const { app, invitations } = makeServer({ proposedRoleGuard: guard });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "boss@example.com", proposedRoleKeys: ["org_admin"] },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("ESCALATION_BLOCKED");
+      expect(invitations.tokenFor("boss@example.com")).toBeUndefined();
+      await app.close();
+    });
+
+    it("GAP-008 the real M3 guard: role.assign without the role's permissions → ESCALATION_BLOCKED; reserved → 422; within ceiling → 201", async () => {
+      const held = new Set(["member.invite", "role.assign", "patient.read"]);
+      const roles: Record<string, { category: string; permissionKeys: string[] }> = {
+        org_admin: { category: "administration", permissionKeys: ["org.manage"] },
+        platform_admin: { category: "administration", permissionKeys: [] },
+        reader: { category: "clinical_staff", permissionKeys: ["patient.read"] },
+      };
+      const guard = createProposedRoleGuard({
+        lookup: async (_org, keys) =>
+          keys
+            .filter((k) => roles[k])
+            .map((k) => ({ id: k, key: k, ...(roles[k] as (typeof roles)[string]) })),
+        effectivePermissions: () => held,
+        audit: createInMemoryAuditExecutor().executor,
+      });
+      const { app } = makeServer({ proposedRoleGuard: guard });
+      const propose = (email: string, key: string) =>
+        app.inject({
+          method: "POST",
+          url: "/api/v1/orgs/org_a/invitations",
+          headers: ADMIN,
+          payload: { email, proposedRoleKeys: [key] },
+        });
+      const escalated = await propose("a@example.com", "org_admin");
+      expect(escalated.statusCode).toBe(403);
+      expect(escalated.json().error.code).toBe("ESCALATION_BLOCKED");
+      const reserved = await propose("b@example.com", "platform_admin");
+      expect(reserved.statusCode).toBe(422);
+      expect(reserved.json().error.code).toBe("RESERVED_ROLE");
+      expect((await propose("c@example.com", "reader")).statusCode).toBe(201);
+      await app.close();
+    });
+
     // ── F-097: the §D3 M2→M3 role attach ─────────────────────────────────────────────────────────
     //
     // M2 §D3 records this as Decided — "M2 carries `proposedRoleKeys` … and creates the membership; M3
@@ -397,7 +608,11 @@ describe("M2-T06 identity route inventory", () => {
 
     /** A stand-in for M3's attacher: whatever role keys this org "has". */
     const attacherOver = (known: readonly string[]) => {
-      const calls: { membershipId: string; roleKeys: readonly string[] }[] = [];
+      const calls: {
+        membershipId: string;
+        roleKeys: readonly string[];
+        grantedByUserId: string | null;
+      }[] = [];
       return {
         calls,
         attacher: {
@@ -405,9 +620,13 @@ describe("M2-T06 identity route inventory", () => {
             organizationId: string;
             membershipId: string;
             roleKeys: readonly string[];
-            grantedByUserId: string;
+            grantedByUserId: string | null;
           }) {
-            calls.push({ membershipId: input.membershipId, roleKeys: input.roleKeys });
+            calls.push({
+              membershipId: input.membershipId,
+              roleKeys: input.roleKeys,
+              grantedByUserId: input.grantedByUserId,
+            });
             return {
               attached: input.roleKeys.filter((key) => known.includes(key)),
               unresolved: input.roleKeys.filter((key) => !known.includes(key)),
@@ -446,6 +665,8 @@ describe("M2-T06 identity route inventory", () => {
       expect(calls).toHaveLength(1);
       expect(calls[0]!.roleKeys).toEqual(["clinical_rn"]);
       expect(calls[0]!.membershipId).toBe(res.json().membershipId);
+      // GAP-008 — the attach is bounded by, and recorded against, the INVITER (admin_1), not the invitee.
+      expect(calls[0]!.grantedByUserId).toBe("admin_1");
       expect(res.json().rolesAttached).toEqual({ attached: ["clinical_rn"], unresolved: [] });
       await server.app.close();
     });

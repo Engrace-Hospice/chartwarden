@@ -50,6 +50,9 @@ const existing: PatientView & MatchCandidate = {
 const PERMISSION_SEED = [
   { userId: "admit_1", permissions: ["patient.create", "patient.read"] },
   { userId: "edit_1", permissions: ["patient.edit", "patient.read"] },
+  // GAP-017 — coverage writes are `patient.edit_payers` (caseload-scoped), not `patient.edit`.
+  { userId: "payer_1", permissions: ["patient.edit_payers", "patient.read"] },
+  { userId: "payer_off_1", permissions: ["patient.edit_payers", "patient.read"] },
   { userId: "amend_1", permissions: ["patient.amend_request_record", "patient.amend_review"] },
   { userId: "noperm_1", permissions: [] },
   // F-092 — holds `patient.read` and is on NO caseload. Before the ABAC guard this actor read every
@@ -63,6 +66,7 @@ const PERMISSION_SEED = [
 const CASELOAD = new Set([
   `${ORG}:edit_1:${EXISTING}`,
   `${ORG}:admit_1:${EXISTING}`,
+  `${ORG}:payer_1:${EXISTING}`,
   // §7.7 amendment INTAKE is caseload-scoped because the catalog declares
   // `patient.amend_request_record: abac: "caseload_or_scope"`. (Its sibling `patient.amend_review` is
   // `abac: "none"` — deciding an amendment is a records-management act, recording the patient's request
@@ -135,6 +139,19 @@ function makeServer() {
 const ADMIT = { "x-test-user": "admit_1", "x-test-org": ORG, "x-test-roles": "admissions" };
 const EDIT = { "x-test-user": "edit_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const AMEND = { "x-test-user": "amend_1", "x-test-org": ORG, "x-test-roles": "compliance" };
+const PAYER = { "x-test-user": "payer_1", "x-test-org": ORG, "x-test-roles": "billing" };
+const PAYER_OFF_CASELOAD = {
+  "x-test-user": "payer_off_1",
+  "x-test-org": ORG,
+  "x-test-roles": "billing",
+};
+const PAYER_BODY = {
+  payerId: "payer-1",
+  rank: 1,
+  coverageKind: "medicare_ffs",
+  subscriberId: "1EG4TE5MK73",
+  effectiveFrom: "2026-06-01",
+};
 const NOPERM = { "x-test-user": "noperm_1", "x-test-org": ORG, "x-test-roles": "intern" };
 const OFF_CASELOAD = { "x-test-user": "offcaseload_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const DON = { "x-test-user": "don_1", "x-test-org": ORG, "x-test-roles": "director_of_nursing" };
@@ -474,6 +491,42 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     // 404, not 403: a 403 on a chart id confirms the chart exists, which is the disclosure the guard
     // is here to prevent. This is what `notFoundOnDeny` buys.
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("GAP-017 POST payers needs patient.edit_payers: a patient.edit-only holder is a 403", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${EXISTING}/payers`,
+      headers: EDIT,
+      payload: PAYER_BODY,
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("GAP-017 POST payers refuses an off-caseload patient.edit_payers holder as a 404", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${EXISTING}/payers`,
+      headers: PAYER_OFF_CASELOAD,
+      payload: PAYER_BODY,
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("GAP-017 POST payers still works for an on-caseload patient.edit_payers holder", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${EXISTING}/payers`,
+      headers: PAYER,
+      payload: PAYER_BODY,
+    });
+    expect(res.statusCode).toBe(201);
     await app.close();
   });
 

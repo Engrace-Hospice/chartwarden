@@ -484,7 +484,11 @@ describe.skipIf(!DB_URL)(
 
       // M2→M3 invitation accept: a reserved tenant row is never attached; it is reported unresolved.
       const inviteeMembership = await newMembership(await newUser("g96-invitee"));
-      const attached = await createDbProposedRoleAttacher(db).attach({
+      // GAP-008: the inviter's ceiling is real — `userId` holds role.assign + the registered_nurse perm.
+      const attached = await createDbProposedRoleAttacher(
+        db,
+        () => new Set(["role.assign", "g96.real"]),
+      ).attach({
         organizationId: org,
         membershipId: inviteeMembership,
         roleKeys: ["ai_safety_owner", "platform_ops", "registered_nurse"],
@@ -710,6 +714,80 @@ describe.skipIf(!DB_URL)(
 
       await admin.query("DELETE FROM session WHERE id = 'gap002-live'");
       await handleT.close();
+    });
+
+    it("GAP-009: closed registration — sign-up needs an invite token that names a pending invitation for that email (as wardenx_app)", async () => {
+      const { createDbClient: mkDbS } = await import("@wardenx/db");
+      const { createIdentityAuth, INVITE_TOKEN_HEADER } = await import("@wardenx/auth");
+      const { createHash } = await import("node:crypto");
+      const handleS = mkDbS({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const strict = createIdentityAuth(handleS.db as never, { requireInviteForSignUp: true });
+      const open = createIdentityAuth(handleS.db as never, { requireInviteForSignUp: false });
+
+      const stamp = `${Date.now()}`;
+      const org = (
+        await admin.query(
+          "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'SU','SU') RETURNING id",
+          [`gap009-${stamp}`],
+        )
+      ).rows[0].id as string;
+      const inviter = (
+        await admin.query(
+          `INSERT INTO "user" (email,name) VALUES ($1,'Inviter') RETURNING id`,
+          [`gap009-inviter-${stamp}@example.test`],
+        )
+      ).rows[0].id as string;
+      const hash = (t: string) => createHash("sha256").update(t).digest("hex");
+      const invite = async (email: string, token: string, status: string, expires: string) =>
+        admin.query(
+          `INSERT INTO organization_invitation (organization_id,email,token_hash,status,inviter_id,expires_at)
+           VALUES ($1,$2,$3,$4,$5, now() + $6::interval)`,
+          [org, email, hash(token), status, inviter, expires],
+        );
+      const password = "correct-horse-battery-staple-9";
+      const signUp = (a: any, email: string, token?: string) =>
+        a.api.signUpEmail({
+          body: { email, password, name: "Invitee" },
+          headers: new Headers(token ? { [INVITE_TOKEN_HEADER]: token } : {}),
+        });
+      const exists = async (email: string) =>
+        (await admin.query(`SELECT 1 FROM "user" WHERE email=$1`, [email])).rowCount === 1;
+
+      const good = `gap009-good-${stamp}@example.test`;
+      await invite(good, `tok-good-${stamp}`, "pending", "1 day");
+      await invite(`gap009-used-${stamp}@example.test`, `tok-used-${stamp}`, "accepted", "1 day");
+      await invite(`gap009-old-${stamp}@example.test`, `tok-old-${stamp}`, "pending", "-1 hour");
+
+      // Refused, every way, with the SAME error (no oracle) and no user row created.
+      const refusals: [string, string, string | undefined][] = [
+        ["no token", `gap009-a-${stamp}@example.test`, undefined],
+        ["unknown token", `gap009-b-${stamp}@example.test`, "no-such-token"],
+        ["token issued to another email", `gap009-c-${stamp}@example.test`, `tok-good-${stamp}`],
+        ["accepted invitation", `gap009-used-${stamp}@example.test`, `tok-used-${stamp}`],
+        ["expired invitation", `gap009-old-${stamp}@example.test`, `tok-old-${stamp}`],
+      ];
+      for (const [label, email, token] of refusals) {
+        await expect(signUp(strict, email, token), label).rejects.toThrow(/INVITE_REQUIRED/);
+        expect(await exists(email), `${label}: no account`).toBe(false);
+      }
+
+      // The matching token (email compared case-insensitively) creates the account.
+      await signUp(strict, good.toUpperCase(), `tok-good-${stamp}`);
+      expect(await exists(good)).toBe(true);
+      // Sign-up does not consume the one-time token: accept still can.
+      expect(
+        (await admin.query(`SELECT status FROM organization_invitation WHERE token_hash=$1`, [
+          hash(`tok-good-${stamp}`),
+        ])).rows[0].status,
+      ).toBe("pending");
+
+      // Dev/test mode (flag off): the seeds' header-less sign-up keeps working.
+      const devEmail = `gap009-dev-${stamp}@example.test`;
+      await signUp(open, devEmail);
+      expect(await exists(devEmail)).toBe(true);
+      await handleS.close();
     });
 
     it("GAP-001: a deactivated or suspended user cannot sign in, and a surviving session is revoked on use", async () => {

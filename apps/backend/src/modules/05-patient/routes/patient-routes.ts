@@ -120,6 +120,7 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
 const READ = requirePermission("patient.read") as PreHandler;
 const CREATE = requirePermission("patient.create") as PreHandler;
 const EDIT = requirePermission("patient.edit") as PreHandler;
+const EDIT_PAYERS = requirePermission("patient.edit_payers") as PreHandler;
 const AMEND_RECORD = requirePermission("patient.amend_request_record") as PreHandler;
 const AMEND_REVIEW = requirePermission("patient.amend_review") as PreHandler;
 
@@ -140,6 +141,7 @@ const chartScope = (action: string): PreHandler =>
 
 const SCOPE_READ = chartScope("patient.read");
 const SCOPE_EDIT = chartScope("patient.edit");
+const SCOPE_EDIT_PAYERS = chartScope("patient.edit_payers");
 const SCOPE_AMEND_RECORD = chartScope("patient.amend_request_record");
 
 // --- §4.3 merge: `patient.merge` (step-up) + `caseload_or_scope` on BOTH source (:id) and target
@@ -307,7 +309,9 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   app.post(
     "/api/v1/patients/:id/payers",
     {
-      preHandler: [EDIT],
+      // GAP-017: coverage is billing-relevant, so it has its own key (not `patient.edit`) AND the
+      // §7.5 caseload scope — an off-caseload actor gets the same non-leaking 404 as every other tab.
+      preHandler: [EDIT_PAYERS, SCOPE_EDIT_PAYERS],
     },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);

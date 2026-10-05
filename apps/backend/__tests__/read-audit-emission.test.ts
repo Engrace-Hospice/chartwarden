@@ -222,3 +222,55 @@ describe("read-audit emission — patient attribution (GAP-079)", () => {
     expect(captured[0].resourceId).toBe("c1");
   });
 });
+
+/** GAP-013 — Fastify skips preSerialization for Buffer/string payloads; onSend must still audit them. */
+describe("read-audit emission for binary replies (GAP-013)", () => {
+  it("writes exactly one <kind>.viewed row for a Buffer reply and no payload bytes", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/:id/image",
+      { config: { auditRead: { resourceKind: "page_image", resourceIdParam: "id" } } },
+      async (_req, reply) =>
+        reply.header("content-type", "image/png").send(Buffer.from("SECRET-PHI-BYTES")),
+    );
+    const res = await app.inject({ method: "GET", url: "/api/v1/patients/up1/image" });
+    expect(res.statusCode).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].eventType).toBe("page_image.viewed");
+    expect(captured[0].resourceId).toBe("up1");
+    expect(JSON.stringify(captured[0])).not.toContain("SECRET-PHI-BYTES");
+  });
+
+  it("does not double-emit for a JSON reply", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/:id",
+      { config: { auditRead: { resourceKind: "patient", patientIdParam: "id" } } },
+      async () => ({ id: "p1" }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/p1" });
+    expect(captured).toHaveLength(1);
+  });
+
+  it("emits nothing for a non-2xx binary reply", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/:id/image",
+      { config: { auditRead: { resourceKind: "page_image", resourceIdParam: "id" } } },
+      async (_req, reply) => reply.code(404).send(Buffer.from("x")),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/up1/image" });
+    expect(captured).toHaveLength(0);
+  });
+
+  it("refuses to honor a list config on a binary reply (writes no misleading row)", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/export",
+      { config: { auditRead: { resourceKind: "patient", list: true } } },
+      async (_req, reply) => reply.send(Buffer.from("csv")),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/export" });
+    expect(captured).toHaveLength(0);
+  });
+});

@@ -220,6 +220,9 @@ export {
   createInMemoryMembershipRepository,
   createInMemorySessionWriter,
   createInMemoryUserDirectory,
+  createInMemoryUserIdentityReader,
+  type ProposedRoleGuard,
+  type UserIdentityReader,
 } from "./identity-ports";
 export {
   IDENTITY_AUDIT_EVENTS,
@@ -288,6 +291,7 @@ import {
 import {
   createDbInvitationStore as _dbInvitations,
   createDbUserDirectory as _dbUserDirectory,
+  createDbUserIdentityReader as _dbUserIdentity,
 } from "./identity-stores-db";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import {
@@ -368,6 +372,8 @@ export function mountIdentityRoutes(
     emailTransport?: IdentityRouteDeps["emailTransport"];
     webAppBaseUrl?: string;
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
+    /** GAP-008 — M3's invite-creation anti-escalation guard (same import-boundary reason). */
+    proposedRoleGuard?: IdentityRouteDeps["proposedRoleGuard"];
     /** #138/F-060/F-116 — threaded the same way as `roleAttacher`, for the same import-boundary reason
      *  (M33's implementation, M2 is `dependsOn: [1]`). Omitted → accept seeds no dashboards. */
     dashboardSeeder?: IdentityRouteDeps["dashboardSeeder"];
@@ -392,6 +398,9 @@ export function mountIdentityRoutes(
     ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
     ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
+    ...(invite?.proposedRoleGuard ? { proposedRoleGuard: invite.proposedRoleGuard } : {}),
+    // GAP-009 — always bound on a db mount: accept refuses without it (fail closed).
+    userIdentity: _dbUserIdentity(db),
     ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a

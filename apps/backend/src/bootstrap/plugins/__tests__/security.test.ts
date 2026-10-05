@@ -166,6 +166,8 @@ describe("applySecurityBaseline — CORS allow-list (ARCH-025)", () => {
     });
     expect(res.statusCode).toBe(204);
     expect(res.headers["access-control-allow-methods"]).toContain("POST");
+    // GAP-009: the invite page's sign-up carries the invitation token in this header cross-origin.
+    expect(res.headers["access-control-allow-headers"]).toContain("x-invite-token");
   });
 });
 

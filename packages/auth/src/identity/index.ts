@@ -3,8 +3,10 @@
 // the session-class taxonomy + lifecycle (M2-T03) in ./session-classes; the published
 // cross-module seams (M2-T07) in ./session-seam + ./auditor-session.
 export {
+  INVITE_TOKEN_HEADER,
   createIdentityAuth,
   resolvePasskeyOrigins,
+  resolveSignUpRequiresInvite,
   resolveTrustedOrigins,
   resolvePasskeyRpId,
   type IdentityAuth,

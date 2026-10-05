@@ -72,6 +72,17 @@ export {
   type ProposedRoleAttacher,
   createDbProposedRoleAttacher,
 } from "./proposed-role-attacher";
+// GAP-008 — the inviter-ceiling guard bound into M2's invite-create route by the composition root.
+export {
+  type OrgRoleLookup,
+  type ProposableRole,
+  type ProposedRoleGuard,
+  type RoleCeilingVerdict,
+  ROLE_ASSIGN_PERMISSION,
+  checkRoleCeiling,
+  createDbOrgRoleLookup,
+  createProposedRoleGuard,
+} from "./proposed-role-ceiling";
 export { createDbBreakGlassStore } from "./break-glass-store";
 
 import type { AuditExecutor, NewAuditEvent } from "@wardenx/audit";
@@ -100,7 +111,7 @@ import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/au
  * RLS (while the development BYPASSRLS role hides the defect).  Keep the route-facing AuditExecutor
  * shape, but establish tenant context from the immutable audit row before writing it.
  */
-function createTenantAuditExecutor(db: DbClient): AuditExecutor {
+export function createTenantAuditExecutor(db: DbClient): AuditExecutor {
   return {
     insert(table) {
       return {

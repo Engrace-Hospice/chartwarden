@@ -110,7 +110,21 @@ export function createOrgScopedAuditExecutor(db: DbClient): import("@wardenx/aud
   return {
     insert(table) {
       return {
-        values: (row) => withOrgContextFromRequest(db, (tx) => tx.insert(table).values(row)),
+        values: (row) => {
+          // `POST /invitations/accept` audits BEFORE any org is bound to the session (the invitee has
+          // none yet), so the ambient request context's organizationId is '' and `audit_event`'s policy
+          // cast failed (22P02, a 500 on every real accept). Use the ROW's own org ONLY when the request
+          // has none — the same rule `createOrgScopedIdentityOutbox` applies. A request already bound to
+          // another org keeps it, so a row for a different org still fails RLS closed.
+          const ambient = requireRequestContext();
+          const rowOrg = (row as { organizationId?: string | null }).organizationId;
+          if (ambient.organizationId || !rowOrg) {
+            return withOrgContextFromRequest(db, (tx) => tx.insert(table).values(row));
+          }
+          return withOrgContext(db, { organizationId: rowOrg, userId: ambient.userId }, (tx) =>
+            tx.insert(table).values(row),
+          );
+        },
       };
     },
   };
@@ -238,6 +252,8 @@ export interface InvitationDetail {
   readonly email: string;
   readonly proposedRoleKeys: readonly string[];
   readonly defaultLocationIds: readonly string[];
+  /** GAP-008 — who issued the invitation; `null` for a legacy row or a since-deleted inviter. */
+  readonly inviterId?: string | null;
 }
 
 /**
@@ -299,8 +315,23 @@ export interface ProposedRoleAttacher {
     readonly organizationId: string;
     readonly membershipId: string;
     readonly roleKeys: readonly string[];
-    readonly grantedByUserId: string;
+    /** GAP-008 — the INVITER; the attach is bounded by THEIR permissions. `null` ⇒ nothing attaches. */
+    readonly grantedByUserId: string | null;
   }): Promise<{ readonly attached: readonly string[]; readonly unresolved: readonly string[] }>;
+}
+
+/**
+ * GAP-008 — M3's invite-creation guard, declared locally like {@link ProposedRoleAttacher} (M2 is
+ * `dependsOn: [1]`). Throws 403 `ESCALATION_BLOCKED` / 422 `RESERVED_ROLE` when the inviter may not
+ * propose `roleKeys` (needs `role.assign` + every permission of every proposed role).
+ */
+export interface ProposedRoleGuard {
+  assertProposable(input: {
+    readonly organizationId: string;
+    readonly inviterUserId: string;
+    readonly roleKeys: readonly string[];
+    readonly auditContext: import("@wardenx/audit").AuditContext;
+  }): Promise<void>;
 }
 
 /**
@@ -338,6 +369,8 @@ export interface InvitationStore {
     proposedRoleKeys: string[];
     defaultLocationIds: string[];
     proposedProviderEntityId?: string;
+    /** GAP-008 — the inviting user, stored so accept can bound the attach by THEIR permissions. */
+    inviterId?: string;
   }): Promise<MintedInvitation> | MintedInvitation;
   /**
    * Regenerate the token + expiry on a still-pending invite (invalidates any prior link). Returns
@@ -393,6 +426,21 @@ export function decideOrgBoundedDeactivation(
   if (!live.some((m) => m.organizationId === organizationId)) return "not_member";
   if (live.some((m) => m.organizationId !== organizationId)) return "member_elsewhere";
   return "deactivated";
+}
+
+/**
+ * GAP-009 — reads the signed-in user's account email so accept can tie a token to the invitee. Declared
+ * as its own port (not on `UserDirectory`) so a deployment that forgets to bind it FAILS CLOSED at the
+ * accept route instead of silently skipping the comparison.
+ */
+export interface UserIdentityReader {
+  emailOf(userId: string): Promise<string | null> | string | null;
+  /**
+   * GAP-009 — record that `userId` proved control of their mailbox. Called on accept AFTER the
+   * invitation email matched the account's email: the one-time token only ever reached that address, so
+   * redeeming it IS the verification. Idempotent.
+   */
+  markEmailVerified(userId: string): Promise<void> | void;
 }
 
 /** Disables a user's credentials everywhere (full offboard §7.5). */
@@ -514,6 +562,13 @@ export interface IdentityRouteDeps {
    * conflating them is how the missing handshake stayed invisible for as long as it did.
    */
   roleAttacher?: ProposedRoleAttacher;
+  /**
+   * GAP-008 — the invite-creation anti-escalation guard. When an invitation proposes roles and no guard
+   * is bound the route REFUSES (503) rather than storing an unchecked proposal.
+   */
+  proposedRoleGuard?: ProposedRoleGuard;
+  /** GAP-009 — account email of the session user, for the invitee-binding check on accept. */
+  userIdentity?: UserIdentityReader;
   /**
    * #138/F-060/F-116 — the day-one dashboard seed. Optional for the same reason `roleAttacher` is: a
    * no-db slice boot has no M33 store to bind. When absent, accept simply does not seed dashboards
@@ -704,6 +759,7 @@ export function createInMemoryInvitationStore(
         email: input.email,
         proposedRoleKeys: input.proposedRoleKeys,
         defaultLocationIds: input.defaultLocationIds,
+        inviterId: input.inviterId ?? null,
         createdAtMs: now,
         expiresAtMs: now + INVITE_TTL_MS,
         status: "pending",
@@ -735,6 +791,7 @@ export function createInMemoryInvitationStore(
         email: p.email,
         proposedRoleKeys: p.proposedRoleKeys,
         defaultLocationIds: p.defaultLocationIds,
+        inviterId: p.inviterId ?? null,
       };
     },
     peek(token) {
@@ -750,6 +807,7 @@ export function createInMemoryInvitationStore(
         email: p.email,
         proposedRoleKeys: p.proposedRoleKeys,
         defaultLocationIds: p.defaultLocationIds,
+        inviterId: p.inviterId ?? null,
       };
     },
     rescind(invitationId) {
@@ -765,6 +823,20 @@ export function createInMemoryInvitationStore(
     store,
     tokenFor: (email) =>
       [...pending.values()].find((p) => p.email === email && p.status === "pending")?.token,
+  };
+}
+
+/** In-memory {@link UserIdentityReader} seeded with `userId → email` (slice/test). */
+export function createInMemoryUserIdentityReader(
+  emails: Readonly<Record<string, string>> = {},
+): UserIdentityReader & { isVerified(userId: string): boolean } {
+  const verified = new Set<string>();
+  return {
+    emailOf: (userId) => emails[userId] ?? null,
+    markEmailVerified: (userId) => {
+      verified.add(userId);
+    },
+    isVerified: (userId) => verified.has(userId),
   };
 }
 

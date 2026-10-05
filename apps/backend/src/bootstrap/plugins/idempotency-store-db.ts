@@ -9,10 +9,12 @@
 // The write surfaces that REQUIRE the header (M23 claim submit, M26 settlement finalize, M30) are the
 // ones where a duplicate is a duplicated claim or a duplicated settlement, not a cosmetic repeat.
 //
-// ATOMICITY is the whole contract: `putPending` must be set-if-absent so two concurrent duplicates
-// serialize. That is delegated to Postgres via the `idempotency_org_key_idx` UNIQUE index and
-// `ON CONFLICT DO NOTHING` — the loser inserts zero rows, re-reads, and sees the winner's `pending`
-// row, which `runIdempotent` turns into an in-flight 409. A read-then-write would let both through.
+// ATOMICITY is the whole contract: `putPending` is the claim and RETURNS whether it won, so two
+// concurrent duplicates serialize. That is delegated to Postgres via the `idempotency_org_key_idx`
+// UNIQUE index and `ON CONFLICT DO UPDATE ... WHERE expires_at <= now() RETURNING id` — the loser gets
+// zero rows back (GAP-007), reloads, and sees the winner's `pending` row (in-flight 409) or its
+// completed response (replay); an EXPIRED row is reclaimed in the same statement. A read-then-write
+// would let both through.
 //
 // RLS: every statement is org-scoped through `withOrgContext`, so a tenant can only ever see or claim
 // its own keys — the `idempotency_key_org` policy (0001) is a plain `app.org_id` match.
@@ -37,7 +39,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import type { IdempotencyRecord, IdempotencyStore, IdempotentResponse } from "@wardenx/shared";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 /** How long a cached response stays replayable (§3.10). */
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -83,12 +85,18 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
       });
     },
 
-    async putPending(organizationId, key, requestHash): Promise<void> {
-      await scoped(organizationId, async (tx) => {
-        // SET-IF-ABSENT. The unique index on (organization_id, key) makes this the serialization
-        // point for concurrent duplicates; DO NOTHING means the loser simply inserts nothing and the
-        // caller's next `load` observes the winner's pending row.
-        await tx
+    async putPending(organizationId, key, requestHash): Promise<boolean> {
+      return scoped(organizationId, async (tx) => {
+        // THE CLAIM (GAP-007). The unique index on (organization_id, key) is the serialization point:
+        //   * no row            -> INSERT wins, RETURNING yields the id           -> claimed.
+        //   * live row          -> conflict, the WHERE is false, no row returned  -> claim LOST.
+        //   * EXPIRED row       -> conflict, the WHERE holds, the row is reset to a fresh `pending`
+        //     claim (new hash and TTL, response cleared) and RETURNING yields the id -> claimed.
+        // Without the DO UPDATE an expired row stayed in place until a sweeper that does not exist,
+        // so every retry of an expired key looked "absent" and re-executed the handler.
+        // Postgres row-locks the conflicting row, so two racers on an expired key serialize: the
+        // second re-evaluates the WHERE against the first's fresh row and loses.
+        const claimed = await tx
           .insert(T)
           .values({
             organizationId,
@@ -99,7 +107,20 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             responseBody: null,
             expiresAt: new Date(Date.now() + TTL_MS),
           })
-          .onConflictDoNothing({ target: [T.organizationId, T.key] });
+          .onConflictDoUpdate({
+            target: [T.organizationId, T.key],
+            set: {
+              requestHash,
+              state: "pending",
+              responseStatus: null,
+              responseBody: null,
+              createdAt: sql`now()`,
+              expiresAt: new Date(Date.now() + TTL_MS),
+            },
+            setWhere: sql`${T.expiresAt} <= now()`,
+          })
+          .returning({ id: T.id });
+        return claimed.length > 0;
       });
     },
 

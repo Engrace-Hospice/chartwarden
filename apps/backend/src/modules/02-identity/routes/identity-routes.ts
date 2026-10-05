@@ -71,6 +71,13 @@ const organizationNotActive = () =>
   );
 const pendingInviteExists = () =>
   new WardenXError("PENDING_INVITE_EXISTS", "a pending invite already exists for this email", 409);
+const invitationEmailMismatch = () =>
+  new WardenXError(
+    "INVITATION_EMAIL_MISMATCH",
+    "this invitation was issued to a different email address than the signed-in account",
+    403,
+  );
+const unavailable = (code: string, message: string) => new WardenXError(code, message, 503);
 const lastAdminLockout = () =>
   new WardenXError(
     "LAST_ADMIN",
@@ -85,6 +92,8 @@ function linkErrorToHttp(err: LinkError): WardenXError {
     return new WardenXError("VERIFICATION_REQUIRED", err.message, 401);
   return new WardenXError("LINK_EXPIRED", err.message, 410);
 }
+
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
 /** Resolve the authenticated actor or fail closed (401 envelope). */
 async function resolveActor(deps: IdentityRouteDeps, request: FastifyRequest): Promise<Actor> {
@@ -306,6 +315,24 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     if (await deps.invitations.pendingExists(orgId, email)) throw pendingInviteExists();
 
+    // GAP-008 — a proposal is a deferred role grant: it needs `role.assign` and may not exceed the
+    // inviter's own permissions (anti-escalation §6), checked HERE and again when accept attaches it.
+    // No guard bound ⇒ refuse rather than store an unchecked proposal.
+    if (proposedRoleKeys.length > 0) {
+      if (!deps.proposedRoleGuard) {
+        throw unavailable(
+          "ROLE_PROPOSAL_UNAVAILABLE",
+          "this deployment cannot verify proposed roles; invite without proposedRoleKeys",
+        );
+      }
+      await deps.proposedRoleGuard.assertProposable({
+        organizationId: orgId,
+        inviterUserId: actor.userId,
+        roleKeys: proposedRoleKeys,
+        auditContext: auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
+      });
+    }
+
     const orgName = await organizationNameFor(deps, actor.userId, orgId);
     const created = await deps.invitations.create({
       organizationId: orgId,
@@ -313,6 +340,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       email,
       proposedRoleKeys,
       defaultLocationIds: proposedDefaultLocationIds,
+      inviterId: actor.userId,
       ...(typeof providerId === "string" ? { proposedProviderEntityId: providerId } : {}),
     });
 
@@ -401,6 +429,28 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const actor = await resolveActor(deps, request);
     const token = readString(request.body, "token");
 
+    // GAP-009 — the token must be redeemed by the account it was issued to. Compared BEFORE the atomic
+    // consume (via the non-consuming peek) so a wrong-account attempt does not burn the one-time token.
+    // Fail closed when no identity reader is bound. `email_verified` is not required to ARRIVE here (the
+    // invite sign-up creates unverified accounts); a successful accept is what verifies it, below.
+    if (!deps.userIdentity) {
+      throw unavailable(
+        "INVITATION_ACCEPT_UNAVAILABLE",
+        "this deployment cannot verify the invitee's email",
+      );
+    }
+    let peeked: InvitationDetail;
+    try {
+      peeked = await deps.invitations.peek(token);
+    } catch (err) {
+      if (err instanceof LinkError) throw linkErrorToHttp(err);
+      throw err;
+    }
+    const sessionEmail = await deps.userIdentity.emailOf(actor.userId);
+    if (!sessionEmail || normalizeEmail(sessionEmail) !== normalizeEmail(peeked.email)) {
+      throw invitationEmailMismatch();
+    }
+
     let detail: Awaited<ReturnType<typeof deps.invitations.consume>>;
     try {
       detail = await deps.invitations.consume(token); // atomic one-time consume (§7.12)
@@ -408,6 +458,10 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       if (err instanceof LinkError) throw linkErrorToHttp(err);
       throw err;
     }
+
+    // GAP-009 — the email matched and the one-time token (delivered only to that address) was redeemed:
+    // the invitee has proven control of the mailbox, so the account is verified from here on.
+    await deps.userIdentity.markEmailVerified(actor.userId);
 
     const membership = await deps.memberships.create({
       userId: actor.userId,
@@ -452,7 +506,9 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
           organizationId: detail.organizationId,
           membershipId: membership.membershipId,
           roleKeys: detail.proposedRoleKeys,
-          grantedByUserId: actor.userId,
+          // GAP-008 — the INVITER, not the invitee: the attach is bounded by their permissions and
+          // `membership_role.granted_by` records who conferred the role.
+          grantedByUserId: detail.inviterId ?? null,
         })
       : null;
 

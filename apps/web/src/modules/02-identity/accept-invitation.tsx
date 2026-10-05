@@ -18,9 +18,15 @@ type Phase =
   | "checking" // peeking the token + the current session
   | "invalid" // token missing/expired/used
   | "needs-account" // unauthenticated — show the create-account form
-  | "ready-to-accept" // already authenticated — one button, as before
+  | "ready-to-accept" // already authenticated as the invited address — one button
+  | "wrong-account" // authenticated as someone else: the server would refuse (403), so say so up front
   | "creating" // signUp + accept in flight
   | "accepted";
+
+/** Invitation addresses are matched case-insensitively and trimmed, exactly as the server does. */
+function sameEmail(a: string, b: string | undefined): boolean {
+  return a.trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+}
 
 export function AcceptInvitation(): JSX.Element {
   const client = useApiClient();
@@ -28,6 +34,7 @@ export function AcceptInvitation(): JSX.Element {
   const { token } = useParams<{ token: string }>();
   const [phase, setPhase] = useState<Phase>("checking");
   const [invite, setInvite] = useState<{ email: string; organizationName: string } | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -57,7 +64,10 @@ export function AcceptInvitation(): JSX.Element {
         email: peekRes.data?.email ?? "",
         organizationName: peekRes.data?.organizationName ?? "your organization",
       });
-      setPhase(sessionRes.data?.user ? "ready-to-accept" : "needs-account");
+      const signedInAs = sessionRes.data?.user?.email ?? null;
+      setSessionEmail(signedInAs);
+      if (!signedInAs) setPhase("needs-account");
+      else setPhase(sameEmail(signedInAs, peekRes.data?.email) ? "ready-to-accept" : "wrong-account");
     })();
     return () => {
       active = false;
@@ -67,6 +77,12 @@ export function AcceptInvitation(): JSX.Element {
   async function acceptInto(): Promise<void> {
     if (!token) return;
     const { error: err } = await client.POST("/api/v1/invitations/accept", { body: { token } });
+    // GAP-009: the server binds the token to the invited address. The invitation is still valid (the
+    // refusal does not burn it) — the fix is the right account, not "request a new one".
+    if ((err as { error?: { code?: string } } | undefined)?.error?.code === "INVITATION_EMAIL_MISMATCH") {
+      setPhase("wrong-account");
+      return;
+    }
     if (err) {
       setPhase("invalid");
       setError(
@@ -75,6 +91,11 @@ export function AcceptInvitation(): JSX.Element {
       return;
     }
     setPhase("accepted");
+  }
+
+  async function signOutAndReload(): Promise<void> {
+    await authClient.signOut();
+    window.location.reload();
   }
 
   async function acceptAlreadySignedIn(): Promise<void> {
@@ -95,10 +116,13 @@ export function AcceptInvitation(): JSX.Element {
     }
     setError(null);
     setPhase("creating");
+    // GAP-009 — registration is invite-gated server-side: the invitation token proves this sign-up is
+    // for the address that was invited.
     const { error: signUpErr } = await authClient.signUp.email({
       email: invite.email,
       password,
       name: name.trim(),
+      fetchOptions: { headers: { "x-invite-token": token ?? "" } },
     });
     if (signUpErr) {
       setPhase("needs-account");
@@ -140,13 +164,34 @@ export function AcceptInvitation(): JSX.Element {
     );
   }
 
+  if (phase === "wrong-account") {
+    return (
+      <CenteredCardLayout brand={<strong>WardenX</strong>}>
+        <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
+        <p style={{ color: "var(--color-on-surface-variant)" }}>
+          This invitation to <strong>{invite?.organizationName}</strong> was sent to{" "}
+          <strong>{invite?.email}</strong>
+          {sessionEmail ? (
+            <>
+              , but you’re signed in as <strong>{sessionEmail}</strong>
+            </>
+          ) : null}
+          . Sign out, then open the link again to continue as the invited address.
+        </p>
+        <button type="button" onClick={signOutAndReload} style={primaryBtn}>
+          Sign out
+        </button>
+      </CenteredCardLayout>
+    );
+  }
+
   if (phase === "ready-to-accept") {
     return (
       <CenteredCardLayout brand={<strong>WardenX</strong>}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
         <p style={{ color: "var(--color-on-surface-variant)" }}>
           Accept your invitation to <strong>{invite?.organizationName}</strong> with your current
-          account ({invite?.email}).
+          account ({sessionEmail ?? invite?.email}).
         </p>
         {error ? <p style={{ color: "var(--color-error)" }}>{error}</p> : null}
         <button type="button" onClick={acceptAlreadySignedIn} style={primaryBtn}>

@@ -27,6 +27,8 @@ import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
+import type { ActorPermissionResolver } from "./authz-ports";
+import { ROLE_ASSIGN_PERMISSION, createDbOrgRoleLookup } from "./proposed-role-ceiling";
 
 /** What attaching an invitation's proposed roles did. */
 export interface ProposedRoleAttachResult {
@@ -51,7 +53,12 @@ export interface ProposedRoleAttacher {
     organizationId: string;
     membershipId: string;
     roleKeys: readonly string[];
-    grantedByUserId: string;
+    /**
+     * The INVITER (GAP-008). The ceiling is theirs: a role is attached only if every permission it grants
+     * is one this user holds now, and they still hold `role.assign`. `null` (a legacy invitation row, or
+     * an inviter since deleted) has no ceiling to compute, so nothing is attached.
+     */
+    grantedByUserId: string | null;
   }): Promise<ProposedRoleAttachResult>;
 }
 
@@ -69,13 +76,30 @@ export interface ProposedRoleAttacher {
  * template row resolve here and be granted into a tenant that never created it — the predicate is what
  * keeps "this org's roles" meaning what it says.
  */
-export function createDbProposedRoleAttacher(db: DbClient): ProposedRoleAttacher {
+export function createDbProposedRoleAttacher(
+  db: DbClient,
+  /** Required, not optional: an attacher without the inviter's ceiling is the GAP-008 defect. */
+  effectivePermissions: ActorPermissionResolver,
+): ProposedRoleAttacher {
+  const lookup = createDbOrgRoleLookup(db);
   return {
     async attach({ organizationId, membershipId, roleKeys, grantedByUserId }) {
       const wanted = [...new Set(roleKeys)].filter((key) => key.length > 0);
       if (wanted.length === 0) return { attached: [], unresolved: [] };
 
-      return withOrgContext(db, { organizationId, userId: grantedByUserId }, async (tx) => {
+      // GAP-008 — the inviter's CURRENT ceiling, re-evaluated at accept: their permissions, or the
+      // role's, may have changed in the days between invite and accept. A key above the ceiling is
+      // reported `unresolved` (requested, not granted) exactly like a key the org has no role for.
+      // Fail closed: no inviter, or an inviter without `role.assign`, grants nothing.
+      const grantable = await resolveGrantable({
+        organizationId,
+        grantedByUserId,
+        wanted,
+        lookup,
+        effectivePermissions,
+      });
+
+      return withOrgContext(db, { organizationId, userId: grantedByUserId ?? "" }, async (tx) => {
         const candidates = await tx
           .select({ id: schema.roles.id, key: schema.roles.key, category: schema.roles.category })
           .from(schema.roles)
@@ -89,7 +113,9 @@ export function createDbProposedRoleAttacher(db: DbClient): ProposedRoleAttacher
         // GAP-003/GAP-096: a tenant-owned row carrying a reserved platform key/category confers nothing
         // and the M3 assign route refuses it (422 RESERVED_ROLE); accept must not be a way around that.
         // It is reported `unresolved`, like a key the org has no role for.
-        const rows = candidates.filter((row) => !isTenantRoleReserved(row));
+        const rows = candidates.filter(
+          (row) => !isTenantRoleReserved(row) && grantable.has(row.id),
+        );
         const byKey = new Map(rows.map((row) => [row.key, row.id]));
         if (rows.length > 0) {
           await tx
@@ -113,4 +139,24 @@ export function createDbProposedRoleAttacher(db: DbClient): ProposedRoleAttacher
       });
     },
   };
+}
+
+/** Role ids (of `wanted`) whose every permission the inviter holds, and only if they hold `role.assign`. */
+async function resolveGrantable(input: {
+  organizationId: string;
+  grantedByUserId: string | null;
+  wanted: readonly string[];
+  lookup: ReturnType<typeof createDbOrgRoleLookup>;
+  effectivePermissions: ActorPermissionResolver;
+}): Promise<ReadonlySet<string>> {
+  if (input.grantedByUserId === null) return new Set();
+  const held = await input.effectivePermissions({
+    organizationId: input.organizationId,
+    userId: input.grantedByUserId,
+  });
+  if (!held.has(ROLE_ASSIGN_PERMISSION)) return new Set();
+  const roles = await input.lookup(input.organizationId, input.wanted);
+  return new Set(
+    roles.filter((role) => role.permissionKeys.every((key) => held.has(key))).map((r) => r.id),
+  );
 }

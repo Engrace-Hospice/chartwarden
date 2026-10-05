@@ -428,6 +428,11 @@ jobs:
               name: "M1 idempotency — bodiless (204) responses",
               scripts: "test:f073:idempotency-bodiless:live",
             }
+          # GAP-007 — the claim is decided by the unique index + row locking; LIVE by necessity.
+          - {
+              name: "M1 idempotency — atomic claim and expiry reclaim",
+              scripts: "test:gap007:idempotency-claim:live",
+            }
           # F-035 (#95) — LIVE by necessity: the bearer lookup is decided by RLS, the two tenant
           # resolvers exist only as SECURITY DEFINER functions in migration 0233, and the disclosure
           # ledger's append-only posture is a GRANT. The in-memory store answers all of it happily,

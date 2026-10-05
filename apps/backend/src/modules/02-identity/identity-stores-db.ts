@@ -30,6 +30,7 @@ import {
   type MintedInvitation,
   type RevokedMembership,
   type UserDirectory,
+  type UserIdentityReader,
   decideOrgBoundedDeactivation,
   liveMembershipOrganizationIds,
 } from "./identity-ports";
@@ -38,6 +39,31 @@ import {
 const INVITE_TTL_MS = 72 * 3600 * 1000;
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+/** One row of `m2_find_invitation_by_token` (snake_case, as the function returns it). */
+interface InvitationLookupRow {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  email: string;
+  status: string;
+  proposed_role_keys: string[] | null;
+  proposed_default_location_ids: string[] | null;
+  inviter_id: string | null;
+  expires_at: string | Date;
+}
+
+interface InvitationRow {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  email: string;
+  status: string;
+  proposedRoleKeys: string[] | null;
+  proposedDefaultLocationIds: string[] | null;
+  inviterId: string | null;
+  expiresAt: Date;
+}
 
 /**
  * DB-backed invitations over the M2-owned `organization_invitation`.
@@ -53,6 +79,45 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
   // previously issued bare queries and therefore never set app.org_id for the RLS policy.
   const inOrganization = <T>(organizationId: string, fn: (tx: DbClient) => Promise<T>) =>
     withOrgContext<DbClient, T>(db, { organizationId, userId: "" }, fn);
+
+  /**
+   * The invitation a token hash names, through M2's `m2_find_invitation_by_token` SECURITY DEFINER read
+   * (migration 0324): the acceptor has no org bound, and the table's RLS keys on app.org_id.
+   */
+  const findByToken = async (token: string): Promise<InvitationRow> => {
+    const result = await db.execute(
+      sql`SELECT * FROM m2_find_invitation_by_token(${hashToken(token)})`,
+    );
+    const row = (result as unknown as { rows?: InvitationLookupRow[] }).rows?.[0];
+    // An unknown token and an expired one report the SAME thing on purpose: a distinct "no such
+    // invitation" would turn this endpoint into an oracle for which tokens ever existed.
+    if (!row) throw new LinkError("expired", "invitation token invalid or expired");
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      organizationName: row.organization_name,
+      email: row.email,
+      status: row.status,
+      proposedRoleKeys: row.proposed_role_keys,
+      proposedDefaultLocationIds: row.proposed_default_location_ids,
+      inviterId: row.inviter_id,
+      expiresAt: new Date(row.expires_at),
+    };
+  };
+  /** The state checks shared by peek and consume, then the view both return. */
+  const toDetail = (row: InvitationRow): InvitationDetail => {
+    if (row.status === "accepted") throw new LinkError("used", "invitation already accepted");
+    if (row.status !== "pending") throw new LinkError("expired", "invitation is no longer valid");
+    if (row.expiresAt.getTime() <= Date.now()) throw new LinkError("expired", "invitation expired");
+    return {
+      organizationId: row.organizationId,
+      organizationName: row.organizationName,
+      email: row.email,
+      proposedRoleKeys: (row.proposedRoleKeys ?? []) as readonly string[],
+      defaultLocationIds: (row.proposedDefaultLocationIds ?? []) as readonly string[],
+      inviterId: row.inviterId ?? null,
+    };
+  };
 
   return {
     async pendingExists(organizationId, email) {
@@ -118,6 +183,7 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
             tokenHash: hashToken(token),
             proposedRoleKeys: input.proposedRoleKeys,
             proposedDefaultLocationIds: input.defaultLocationIds,
+            ...(input.inviterId ? { inviterId: input.inviterId } : {}),
             ...(input.proposedProviderEntityId
               ? { proposedDefaultProviderEntityId: input.proposedProviderEntityId }
               : {}),
@@ -148,80 +214,27 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
     },
 
     async peek(token) {
-      const O = schema.organizations;
-      const rows = await db
-        .select({
-          organizationId: I.organizationId,
-          organizationName: O.displayName,
-          email: I.email,
-          status: I.status,
-          proposedRoleKeys: I.proposedRoleKeys,
-          proposedDefaultLocationIds: I.proposedDefaultLocationIds,
-          expiresAt: I.expiresAt,
-        })
-        .from(I)
-        .innerJoin(O, eq(O.id, I.organizationId))
-        .where(eq(I.tokenHash, hashToken(token)))
-        .limit(1);
-      const row = rows[0];
-      // Same unknown/expired collapse as `consume` — see its comment (no oracle for token existence).
-      if (!row) throw new LinkError("expired", "invitation token invalid or expired");
-      if (row.status === "accepted") throw new LinkError("used", "invitation already accepted");
-      if (row.status !== "pending") throw new LinkError("expired", "invitation is no longer valid");
-      if (row.expiresAt.getTime() <= Date.now())
-        throw new LinkError("expired", "invitation expired");
-      return {
-        organizationId: row.organizationId,
-        organizationName: row.organizationName,
-        email: row.email,
-        proposedRoleKeys: (row.proposedRoleKeys ?? []) as readonly string[],
-        defaultLocationIds: (row.proposedDefaultLocationIds ?? []) as readonly string[],
-      } satisfies InvitationDetail;
+      return toDetail(await findByToken(token));
     },
 
     async consume(token) {
-      const O = schema.organizations;
-      const rows = await db
-        .select({
-          id: I.id,
-          organizationId: I.organizationId,
-          organizationName: O.displayName,
-          email: I.email,
-          status: I.status,
-          proposedRoleKeys: I.proposedRoleKeys,
-          proposedDefaultLocationIds: I.proposedDefaultLocationIds,
-          expiresAt: I.expiresAt,
-        })
-        .from(I)
-        .innerJoin(O, eq(O.id, I.organizationId))
-        .where(eq(I.tokenHash, hashToken(token)))
-        .limit(1);
-      const row = rows[0];
-      // An unknown token and an expired one report the SAME thing on purpose: a distinct "no such
-      // invitation" would turn this endpoint into an oracle for which tokens ever existed.
-      if (!row) throw new LinkError("expired", "invitation token invalid or expired");
-      if (row.status === "accepted") throw new LinkError("used", "invitation already accepted");
-      if (row.status !== "pending") throw new LinkError("expired", "invitation is no longer valid");
-      if (row.expiresAt.getTime() <= Date.now())
-        throw new LinkError("expired", "invitation expired");
+      const row = await findByToken(token);
+      const detail = toDetail(row);
 
       // ATOMIC ONE-TIME CONSUMPTION (§7.12). The status predicate is part of the UPDATE, so two
       // concurrent accepts race in the database and exactly one updates a row — a read-then-write
       // would let both pass the check above and both accept. The loser is told "already accepted".
-      const claimed = await db
-        .update(I)
-        .set({ status: "accepted", acceptedAt: new Date() })
-        .where(and(eq(I.id, row.id), eq(I.status, "pending")))
-        .returning({ id: I.id });
+      // Runs under the INVITATION's org context (the acceptor has none bound yet), through the
+      // ordinary tenant policy: only the lookup above is a definer read.
+      const claimed = await inOrganization(row.organizationId, (tx) =>
+        tx
+          .update(I)
+          .set({ status: "accepted", acceptedAt: new Date() })
+          .where(and(eq(I.id, row.id), eq(I.status, "pending")))
+          .returning({ id: I.id }),
+      );
       if (claimed.length === 0) throw new LinkError("used", "invitation already accepted");
-
-      return {
-        organizationId: row.organizationId,
-        organizationName: row.organizationName,
-        email: row.email,
-        proposedRoleKeys: (row.proposedRoleKeys ?? []) as readonly string[],
-        defaultLocationIds: (row.proposedDefaultLocationIds ?? []) as readonly string[],
-      } satisfies InvitationDetail;
+      return detail;
     },
 
     async rescind(invitationId) {
@@ -236,6 +249,25 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
           .returning({ id: I.id });
         return rows.length > 0;
       });
+    },
+  };
+}
+
+/** GAP-009 — the session user's account email, and the verified flag (`user` is not org-scoped; no GUC needed). */
+export function createDbUserIdentityReader(db: DbClient): UserIdentityReader {
+  return {
+    async emailOf(userId) {
+      if (!UUID_RE.test(userId)) return null;
+      const [row] = await db
+        .select({ email: schema.users.email })
+        .from(schema.users)
+        .where(eq(schema.users.id, userId))
+        .limit(1);
+      return row?.email ?? null;
+    },
+    async markEmailVerified(userId) {
+      if (!UUID_RE.test(userId)) return;
+      await db.update(schema.users).set({ emailVerified: true }).where(eq(schema.users.id, userId));
     },
   };
 }

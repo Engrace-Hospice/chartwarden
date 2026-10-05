@@ -10,7 +10,7 @@
 //      route (a GET/HEAD under an enforced path prefix) that lacks `config.auditRead` — an emission
 //      config or a `{ none: <justification> }` waiver. The server cannot boot while a PHI read route
 //      is undeclared. Keyed off the actually-registered routes, so it can never drift from a stale list.
-//   2. EMISSION: a `preSerialization` hook writes the actual read event for every successful (2xx)
+//   2. EMISSION: a `preSerialization` hook (plus an `onSend` fallback for Buffer/stream/string replies) writes the actual read event for every successful (2xx)
 //      response whose route carries an EMISSION config — `auditPhiRead` for a single chart open or
 //      `auditListRead` (count + filter) for a list — through `withOrgContext` so the row is org-scoped
 //      under RLS, exactly like every other audit write. Emission is best-effort: a failure is logged,
@@ -28,7 +28,7 @@ import {
 } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -152,15 +152,34 @@ export function applyReadAuditCoverage(
   // EMISSION — write the actual read event on a successful response (needs a DB client to insert).
   const db = opts.db;
   if (!db) return;
-  app.addHook("preSerialization", async (request, reply, payload) => {
+  const emitted = new WeakSet<object>();
+  /**
+   * Write the read event for one successful response. `payload` is the parsed object when called from
+   * preSerialization; from onSend (binary/string replies, which Fastify never serializes — GAP-013) it
+   * is a Buffer/stream/string and is deliberately NOT inspected, so no PHI byte can reach the audit row.
+   */
+  const emit = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    payload: unknown,
+    binary: boolean,
+  ): Promise<void> => {
     try {
       const cfg = emissionConfig(request.routeOptions?.config?.auditRead);
-      if (!cfg) return payload; // non-PHI route, or a justified waiver → nothing to emit
-      if (reply.statusCode < 200 || reply.statusCode >= 300) return payload; // only successful reads
+      if (!cfg) return; // non-PHI route, or a justified waiver → nothing to emit
+      if (reply.statusCode < 200 || reply.statusCode >= 300) return; // only successful reads
       const ctx = request.context;
-      if (!ctx?.organizationId) return payload; // unauthenticated/no-org — the route denied anyway
+      if (!ctx?.organizationId) return; // unauthenticated/no-org — the route denied anyway
+      if (binary && (cfg.list || cfg.patientIdPayloadPath)) {
+        // A non-JSON body has no rows/fields to read: such a config on this route is a coding error.
+        request.log.error(
+          { url: request.routeOptions?.url },
+          "read-audit: list/patientIdPayloadPath config on a non-JSON response cannot be honored",
+        );
+        return;
+      }
       const params = (request.params ?? {}) as Record<string, string>;
-      const patientId = resolvePatientId(cfg, params, request.query, payload);
+      const patientId = resolvePatientId(cfg, params, request.query, binary ? undefined : payload);
       const auditCtx: AuditContext = {
         organizationId: ctx.organizationId,
         userId: ctx.userId || null,
@@ -197,6 +216,17 @@ export function applyReadAuditCoverage(
       // Best-effort: a read-audit write failure is logged, never fatal (a hiccup must not 500 a read).
       request.log.error({ err }, "read-audit emission failed");
     }
+  };
+
+  app.addHook("preSerialization", async (request, reply, payload) => {
+    emitted.add(request);
+    await emit(request, reply, payload, false);
+    return payload;
+  });
+  // GAP-013: Fastify skips preSerialization for Buffer/stream/string payloads, so those replies were
+  // never audited. onSend sees every reply; emit here only when preSerialization did not run.
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (!emitted.has(request)) await emit(request, reply, payload, true);
     return payload;
   });
 }
