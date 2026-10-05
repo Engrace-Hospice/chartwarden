@@ -16,9 +16,11 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { registerDbEffectivePermissionResolver } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createDbInvitationStore } from "../src/modules/02-identity/identity-stores-db";
 import { createDbProposedRoleAttacher } from "../src/modules/03-authorization/proposed-role-attacher";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -34,6 +36,9 @@ const ROLES = [
 const ORG_A = "aaaaaaaa-1111-4000-8000-00000000000a";
 const ORG_B = "bbbbbbbb-1111-4000-8000-00000000000b";
 const USER = "cccccccc-1111-4000-8000-00000000000c";
+// GAP-008 — the INVITER: holds role.assign + patient.read (and member.invite) but NOT org.manage.
+const INVITER = "dddddddd-1111-4000-8000-00000000000d";
+const NO_ASSIGN_INVITER = "eeeeeeee-1111-4000-8000-00000000000e";
 
 describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
   let admin: Client;
@@ -41,6 +46,7 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
   let attacher: ReturnType<typeof createDbProposedRoleAttacher>;
   let membershipA = "";
   let rnRoleA = "";
+  const roleIdsA = new Map<string, string>();
 
   const grantsFor = async (membershipId: string): Promise<string[]> => {
     const { rows } = await admin.query(
@@ -89,9 +95,31 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
     // Org A holds `clinical_rn` and `org_admin`; org B holds a role with the SAME key, which must not
     // be reachable. `survey_coordinator` is the org-NULL PLATFORM template row migration 0025's read
     // policy admits — it exists, it is readable, and it must not be grantable into a tenant.
+    // GAP-008: the roles carry real permissions so the inviter's ceiling means something. `org_admin`
+    // includes `org.manage`, which the inviter lacks.
+    for (const [key, resource, action] of [
+      ["role.assign", "role", "assign"],
+      ["member.invite", "member", "invite"],
+      ["patient.read", "patient", "read"],
+      ["org.manage", "org", "manage"],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO permission (key, resource, action, category) VALUES ($1,$2,$3,'admin')
+         ON CONFLICT (key) DO NOTHING`,
+        [key, resource, action],
+      );
+    }
+    const rolePerms: Record<string, string[]> = {
+      clinical_rn: ["patient.read"],
+      org_admin: ["role.assign", "patient.read", "org.manage"],
+      inviter_role: ["role.assign", "member.invite", "patient.read"],
+      invite_only_role: ["member.invite", "patient.read"],
+    };
     for (const [org, key] of [
       [ORG_A, "clinical_rn"],
       [ORG_A, "org_admin"],
+      [ORG_A, "inviter_role"],
+      [ORG_A, "invite_only_role"],
       [ORG_B, "clinical_rn"],
     ] as const) {
       const row = await admin.query(
@@ -99,7 +127,35 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
          VALUES ($1,$2,$2,'clinical_staff','organization',true,'f097') RETURNING id`,
         [org, key],
       );
-      if (org === ORG_A && key === "clinical_rn") rnRoleA = row.rows[0].id as string;
+      const id = row.rows[0].id as string;
+      if (org === ORG_A) {
+        roleIdsA.set(key, id);
+        if (key === "clinical_rn") rnRoleA = id;
+        for (const perm of rolePerms[key] ?? []) {
+          await admin.query(
+            "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
+            [ORG_A, id, perm],
+          );
+        }
+      }
+    }
+    // Inviters: real memberships holding real roles, so the REAL resolver computes their ceiling.
+    for (const [user, email, roleKey] of [
+      [INVITER, "inviter@f097.test", "inviter_role"],
+      [NO_ASSIGN_INVITER, "inviter2@f097.test", "invite_only_role"],
+    ] as const) {
+      await admin.query(
+        "INSERT INTO \"user\" (id, email, name, status) VALUES ($1,$2,'Inviter','active')",
+        [user, email],
+      );
+      const inviterMembership = await admin.query(
+        "INSERT INTO membership (organization_id, user_id, status) VALUES ($1,$2,'active') RETURNING id",
+        [ORG_A, user],
+      );
+      await admin.query(
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+        [ORG_A, inviterMembership.rows[0].id, roleIdsA.get(roleKey)],
+      );
     }
     await admin.query(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
@@ -115,7 +171,12 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    attacher = createDbProposedRoleAttacher(handle.db);
+    // The REAL effective-permission engine over the wardenx_app connection (the same resolver the
+    // composition root hands the attacher), not a stub: the ceiling is computed from real grants.
+    const rbac = registerDbEffectivePermissionResolver(handle.db);
+    attacher = createDbProposedRoleAttacher(handle.db, ({ organizationId, userId }) =>
+      rbac.resolver({ organizationId, userId } as Parameters<typeof rbac.resolver>[0]),
+    );
   }, 180_000);
 
   afterAll(async () => {
@@ -124,20 +185,100 @@ describe.skipIf(!DB_URL)("F-097 proposed-role attach — LIVE Postgres", () => {
   });
 
   beforeEach(async () => {
-    await admin.query("DELETE FROM membership_role");
+    // Only the invitee's grants: the inviters' own role grants are fixtures.
+    await admin.query("DELETE FROM membership_role WHERE membership_id = $1", [membershipA]);
   });
 
   const attach = (
     roleKeys: readonly string[],
     organizationId = ORG_A,
     membershipId = membershipA,
-  ) => attacher.attach({ organizationId, membershipId, roleKeys, grantedByUserId: USER });
+    grantedByUserId: string | null = INVITER,
+  ) => attacher.attach({ organizationId, membershipId, roleKeys, grantedByUserId });
 
   it("grants the org's roles for the keys it resolves", async () => {
-    const result = await attach(["clinical_rn", "org_admin"]);
-    expect([...result.attached].sort()).toEqual(["clinical_rn", "org_admin"]);
+    const result = await attach(["clinical_rn", "inviter_role"]);
+    expect([...result.attached].sort()).toEqual(["clinical_rn", "inviter_role"]);
     expect(result.unresolved).toEqual([]);
-    expect(await grantsFor(membershipA)).toEqual(["clinical_rn", "org_admin"]);
+    expect(await grantsFor(membershipA)).toEqual(["clinical_rn", "inviter_role"]);
+  });
+
+  // ── GAP-008: the attach is bounded by the INVITER's ceiling ────────────────────────────────────
+  it("GAP-008 does NOT attach a role above the inviter's ceiling (org_admin needs org.manage)", async () => {
+    const result = await attach(["clinical_rn", "org_admin"]);
+    expect(result.attached).toEqual(["clinical_rn"]);
+    expect(result.unresolved).toEqual(["org_admin"]);
+    expect(await grantsFor(membershipA)).toEqual(["clinical_rn"]);
+  });
+
+  it("GAP-008 records the INVITER as granted_by, not the invitee", async () => {
+    await attach(["clinical_rn"]);
+    const { rows } = await admin.query("SELECT granted_by FROM membership_role WHERE membership_id=$1", [
+      membershipA,
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].granted_by).toBe(INVITER);
+  });
+
+  it("GAP-008 an inviter who no longer holds role.assign attaches nothing", async () => {
+    const result = await attach(["clinical_rn"], ORG_A, membershipA, NO_ASSIGN_INVITER);
+    expect(result.attached).toEqual([]);
+    expect(result.unresolved).toEqual(["clinical_rn"]);
+    expect(await grantsFor(membershipA)).toEqual([]);
+  });
+
+  it("GAP-008 a legacy/deleted inviter (null) has no ceiling, so nothing attaches", async () => {
+    const result = await attach(["clinical_rn"], ORG_A, membershipA, null);
+    expect(result.attached).toEqual([]);
+    expect(result.unresolved).toEqual(["clinical_rn"]);
+    expect(await grantsFor(membershipA)).toEqual([]);
+  });
+
+  it("GAP-008 the invitation store persists the inviter and returns it on peek and consume", async () => {
+    const store = createDbInvitationStore(handle.db);
+    const minted = await store.create({
+      organizationId: ORG_A,
+      organizationName: "Org A",
+      email: "invitee-gap008@f097.test",
+      proposedRoleKeys: ["clinical_rn"],
+      defaultLocationIds: [],
+      inviterId: INVITER,
+    });
+    const stored = await admin.query("SELECT inviter_id FROM organization_invitation WHERE id=$1", [
+      minted.invitationId,
+    ]);
+    expect(stored.rows[0].inviter_id).toBe(INVITER);
+    // peek/consume read by token hash with no org GUC (a pre-existing property of those two reads, not
+    // of this change), so they are exercised over a privileged connection; `create` above ran under RLS.
+    let consumed: Awaited<ReturnType<typeof store.consume>>;
+    const privileged = createDbClient({ connectionString: DB_URL as string });
+    try {
+      const reader = createDbInvitationStore(privileged.db);
+      expect((await reader.peek(minted.token)).inviterId).toBe(INVITER);
+      consumed = await reader.consume(minted.token);
+    } finally {
+      await privileged.close();
+    }
+    expect(consumed.inviterId).toBe(INVITER);
+    expect(consumed.proposedRoleKeys).toEqual(["clinical_rn"]);
+  });
+
+  it("GAP-008 a role edited upward AFTER the invite is re-bounded at accept", async () => {
+    // clinical_rn gains org.manage between invite and accept; the inviter lacks it.
+    const roleId = roleIdsA.get("clinical_rn") as string;
+    await admin.query(
+      "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,'org.manage')",
+      [ORG_A, roleId],
+    );
+    try {
+      const result = await attach(["clinical_rn"]);
+      expect(result.attached).toEqual([]);
+      expect(await grantsFor(membershipA)).toEqual([]);
+    } finally {
+      await admin.query("DELETE FROM role_permission WHERE role_id=$1 AND permission_key='org.manage'", [
+        roleId,
+      ]);
+    }
   });
 
   it("reports a key the org has no role for, and grants the rest", async () => {

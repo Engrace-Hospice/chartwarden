@@ -4,7 +4,7 @@
 // password policy holds. Plugin RUNTIME (TOTP/passkey/magic-link flows) is verified in the AUTH-T06
 // live-PG lane.
 import { describe, expect, it } from "vitest";
-import { createIdentityAuth } from "../src/identity/auth";
+import { createIdentityAuth, resolveSignUpRequiresInvite } from "../src/identity/auth";
 
 // No DB query happens at construction; a stub satisfies the adapter for a shape assertion.
 const auth = createIdentityAuth({} as never);
@@ -29,5 +29,32 @@ describe("createIdentityAuth — plugin wiring (AUTH-T05)", () => {
   it("GAP-002: a fixed 72-h outer lifetime, never refreshed on use (SESSION_POLICY decides the rest)", () => {
     expect(auth.options.session?.expiresIn).toBe(72 * 60 * 60);
     expect(auth.options.session?.disableSessionRefresh).toBe(true);
+  });
+});
+
+describe("GAP-009 — closed registration (invite-token sign-up)", () => {
+  it("resolves strict in production, open elsewhere, and the env flag wins both ways", () => {
+    expect(resolveSignUpRequiresInvite({ NODE_ENV: "production" })).toBe(true);
+    expect(resolveSignUpRequiresInvite({ NODE_ENV: "development" })).toBe(false);
+    expect(resolveSignUpRequiresInvite({ NODE_ENV: "test" })).toBe(false);
+    expect(resolveSignUpRequiresInvite({})).toBe(false);
+    expect(
+      resolveSignUpRequiresInvite({ NODE_ENV: "development", WARDENX_SIGNUP_REQUIRES_INVITE: "true" }),
+    ).toBe(true);
+    expect(
+      resolveSignUpRequiresInvite({ NODE_ENV: "production", WARDENX_SIGNUP_REQUIRES_INVITE: "false" }),
+    ).toBe(false);
+  });
+
+  it("installs the before-hook always, and closes magic-link account creation only when strict", () => {
+    const strict = createIdentityAuth({} as never, { requireInviteForSignUp: true });
+    const open = createIdentityAuth({} as never, { requireInviteForSignUp: false });
+    const magic = (a: typeof strict) =>
+      (a.options.plugins ?? []).find((p) => p.id === "magic-link") as unknown as {
+        options?: { disableSignUp?: boolean };
+      };
+    expect(strict.options.hooks?.before).toBeTypeOf("function");
+    expect(magic(strict).options?.disableSignUp).toBe(true);
+    expect(magic(open).options?.disableSignUp).toBe(false);
   });
 });

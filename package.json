@@ -117,6 +117,7 @@
     "test:m20:consumers:live": "vitest run apps/backend/__tests__/m20-field-safety-consumers.live.test.ts",
     "test:m20:sos-sla-watchdog:live": "vitest run apps/backend/__tests__/m20-sos-sla-watchdog.live.test.ts",
     "test:f073:idempotency-bodiless:live": "vitest run apps/backend/__tests__/f-073-idempotency-bodiless-response.live.test.ts",
+    "test:gap007:idempotency-claim:live": "vitest run apps/backend/__tests__/gap-007-idempotency-claim.live.test.ts",
     "test:m28:fhir-gateway:live": "vitest run apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
     "test:m28:outbox-catalog:live": "vitest run apps/backend/__tests__/m28-outbox-catalog.live.test.ts",
     "test:m2:outbox-audit-rls:live": "vitest run apps/backend/__tests__/m2-outbox-audit-rls.live.test.ts",

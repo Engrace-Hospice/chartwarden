@@ -159,8 +159,12 @@ import {
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import {
+  type ActorPermissionResolver,
+  createDbOrgRoleLookup,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
+  createProposedRoleGuard,
+  createTenantAuditExecutor,
   membershipRoleKeysForOrg,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
@@ -3123,10 +3127,25 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // and returned, so every invitation the platform has ever issued produced a membership with no
           // role grants. M3 owns the grant, so M3's attacher is bound here rather than imported inside
           // M2 (which is `dependsOn: [1]`).
+          const rbacForProposals = liveRbacHandle;
+          const proposedRoleResolver: ActorPermissionResolver = rbacForProposals
+            ? ({ organizationId, userId }) =>
+                rbacForProposals.resolver({ organizationId, userId } as Parameters<
+                  RbacEngineHandle["resolver"]
+                >[0])
+            : () => new Set<string>();
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db), {
             emailTransport,
             webAppBaseUrl,
-            roleAttacher: createDbProposedRoleAttacher(dbHandle.db),
+            // GAP-008 — both halves share the LIVE rbac resolver (same §2.5 cache the routes use): the
+            // guard bounds a proposal at invite time, the attacher re-bounds it by the INVITER's
+            // permissions at accept. Without an engine handle the resolver is empty ⇒ fail closed.
+            roleAttacher: createDbProposedRoleAttacher(dbHandle.db, proposedRoleResolver),
+            proposedRoleGuard: createProposedRoleGuard({
+              lookup: createDbOrgRoleLookup(dbHandle.db),
+              effectivePermissions: proposedRoleResolver,
+              audit: createTenantAuditExecutor(dbHandle.db),
+            }),
             // #138/F-060/F-116 — the day-one dashboard seed, bound the same way as roleAttacher just
             // above and for the identical import-boundary reason (M33's implementation; M2 cannot
             // import it).

@@ -35,7 +35,8 @@
         "apps/backend/__tests__/auth.live.test.ts",
         "apps/backend/__tests__/authz-idor.test.ts",
         "apps/backend/__tests__/authz-routes.test.ts",
-        "apps/backend/__tests__/authz-validation.test.ts"
+        "apps/backend/__tests__/authz-validation.test.ts",
+        "apps/backend/__tests__/identity-routes.test.ts"
       ],
       "directRoutesReferenced": 16
     },

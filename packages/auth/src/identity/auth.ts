@@ -21,9 +21,10 @@ import { passkey } from "@better-auth/passkey";
 import { type DbClient, schema } from "@wardenx/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 import { SESSION_MAX_ABSOLUTE_SEC, isUserStatusBlocked } from "./session-timeout";
@@ -64,6 +65,50 @@ export interface IdentityAuthOptions {
    * console transport in dev and a provider adapter when credentials are present.
    */
   readonly emailTransport?: EmailTransport;
+  /**
+   * GAP-009 — when true, `POST /api/auth/sign-up/email` needs an `x-invite-token` header naming a pending,
+   * unexpired invitation issued to the SAME email, and magic-link sign-in may not create accounts. When
+   * omitted, {@link resolveSignUpRequiresInvite} decides from the environment.
+   */
+  readonly requireInviteForSignUp?: boolean;
+}
+
+/** The header the invitee's sign-up carries; its value is the one-time invitation token. */
+export const INVITE_TOKEN_HEADER = "x-invite-token";
+
+/**
+ * Whether open self-registration is closed. `WARDENX_SIGNUP_REQUIRES_INVITE` (`true`/`false`) wins;
+ * unset, it is STRICT in production and OPEN everywhere else — the dev seeds and the in-process suites
+ * create their users through the sign-up API and have no invitation to present.
+ */
+export function resolveSignUpRequiresInvite(env: {
+  readonly WARDENX_SIGNUP_REQUIRES_INVITE?: string | undefined;
+  readonly NODE_ENV?: string | undefined;
+}): boolean {
+  if (env.WARDENX_SIGNUP_REQUIRES_INVITE === "true") return true;
+  if (env.WARDENX_SIGNUP_REQUIRES_INVITE === "false") return false;
+  return env.NODE_ENV === "production";
+}
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+/**
+ * True when `token` names a pending, unexpired invitation issued to `email`. Reads through M2's
+ * `m2_find_invitation_by_token` SECURITY DEFINER function (migration 0324): the signer has no org bound
+ * and `organization_invitation` is RLS-scoped. Pure read — the one-time token is consumed later, by
+ * `POST /invitations/accept`, not here.
+ */
+async function inviteTokenMatchesEmail(db: DbClient, token: string, email: string): Promise<boolean> {
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const result = await db.execute(sql`SELECT * FROM m2_find_invitation_by_token(${tokenHash})`);
+  const row = (
+    result as unknown as {
+      rows?: { email: string; status: string; expires_at: string | Date }[];
+    }
+  ).rows?.[0];
+  if (!row || row.status !== "pending") return false;
+  if (new Date(row.expires_at).getTime() <= Date.now()) return false;
+  return normalizeEmail(row.email) === normalizeEmail(email);
 }
 
 /**
@@ -161,6 +206,7 @@ export function resolveTrustedOrigins(): string[] {
 export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOptions = {}) {
   // The delivery transport for reset + magic-link links (no-op unless the host injects one).
   const emailTransport = options.emailTransport ?? createNoopEmailTransport();
+  const requireInvite = options.requireInviteForSignUp ?? resolveSignUpRequiresInvite(process.env);
   return betterAuth({
     appName: "WardenX",
     secret: process.env.BETTER_AUTH_SECRET,
@@ -251,6 +297,8 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         schema: { passkey: { fields: { credentialID: "credentialId" } } },
       }),
       magicLink({
+        // Closed registration (GAP-009): a magic link may sign an EXISTING user in, never mint an account.
+        disableSignUp: requireInvite,
         // Auditor / external-collaborator / funeral-home magic-link classes. Token is generated
         // server-side; the link is delivered through M36's transactional email transport, bound to this
         // port at the composition root (FB-T14). Stamping the session CLASS on consume is the §3 follow-up.
@@ -269,6 +317,23 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         accessToken: "accessTokenEncrypted",
         refreshToken: "refreshTokenEncrypted",
       },
+    },
+    // GAP-009 — closed registration. Staff accounts are created through an invitation: the web accept page
+    // signs the invitee up with the invitation token in `x-invite-token`, and the token must match the
+    // sign-up email. Every refusal reads the same (no oracle for which tokens or emails exist).
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (!requireInvite || ctx.path !== "/sign-up/email") return;
+        const token = ctx.headers?.get(INVITE_TOKEN_HEADER);
+        const email = (ctx.body as { email?: unknown } | undefined)?.email;
+        const allowed =
+          typeof token === "string" &&
+          token.length > 0 &&
+          typeof email === "string" &&
+          (await inviteTokenMatchesEmail(db as unknown as DbClient, token, email));
+        if (!allowed)
+          throw new APIError("FORBIDDEN", { message: "INVITE_REQUIRED", code: "INVITE_REQUIRED" });
+      }),
     },
     // GAP-001 — M2 §6: a suspended/deactivated user cannot authenticate. Every sign-in path (password,
     // passkey, magic link, 2FA completion) ends in a session insert, so refusing it here covers them all;

@@ -15,6 +15,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m2:organization-lifecycle:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
  */
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import type { FastifyRequest } from "fastify";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -37,7 +39,12 @@ import {
   createOrgScopedAuditExecutor,
   createOrgScopedIdentityOutbox,
 } from "../src/modules/02-identity/identity-ports";
-import { createDbUserDirectory } from "../src/modules/02-identity/identity-stores-db";
+import {
+  createDbInvitationStore,
+  createDbUserDirectory,
+  createDbUserIdentityReader,
+} from "../src/modules/02-identity/identity-stores-db";
+import { auditMembershipAccepted } from "../src/modules/02-identity/audit/identity-audit";
 import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import {
   type OrganizationLifecycleOutboxPort,
@@ -480,6 +487,113 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
       });
       expect(res.statusCode).toBe(404);
       await app.close();
+    });
+  });
+
+  describe("invitation accept, pre-org (migration 0324 m2_find_invitation_by_token)", () => {
+    const INVITER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaf2050110";
+    const TOKEN = "f11d19-invite-token-0001";
+    const hash = (t: string) => createHash("sha256").update(t).digest("hex");
+
+    beforeAll(async () => {
+      await admin.query(
+        `INSERT INTO "user" (id,email,name) VALUES ($1,'inviter@f11d19.test','In Viter')`,
+        [INVITER],
+      );
+      await admin.query(
+        `INSERT INTO organization_invitation
+           (organization_id,email,token_hash,status,proposed_role_keys,inviter_id,expires_at)
+         VALUES ($1,'invitee@f11d19.test',$2,'pending','["clinician"]'::jsonb,$3, now() + interval '1 day')`,
+        [ORG_B, hash(TOKEN), INVITER],
+      );
+    });
+
+    it("the bare table read the old store did FAILS for wardenx_app with no org bound (why 0324 exists)", async () => {
+      await expect(
+        handle.db.execute(sql`SELECT id FROM organization_invitation WHERE token_hash = ${hash(TOKEN)}`),
+      ).rejects.toThrow();
+    });
+
+    it("peek resolves the invitation with no org context, as wardenx_app, and does not consume it", async () => {
+      const store = createDbInvitationStore(handle.db);
+      const detail = await store.peek(TOKEN);
+      expect(detail).toMatchObject({
+        organizationId: ORG_B,
+        organizationName: "Beta Hospice",
+        email: "invitee@f11d19.test",
+        proposedRoleKeys: ["clinician"],
+        inviterId: INVITER,
+      });
+      const again = await store.peek(TOKEN);
+      expect(again.email).toBe("invitee@f11d19.test");
+    });
+
+    it("an unknown token reads exactly like an expired one (no existence oracle)", async () => {
+      const store = createDbInvitationStore(handle.db);
+      await expect(store.peek("no-such-token")).rejects.toMatchObject({ kind: "expired" });
+    });
+
+    it("a pre-org audit write (acceptor has no org bound) lands under the row's own org, and a foreign-org row still fails closed", async () => {
+      const { runWithRequestContext } = await import("@wardenx/tenancy");
+      const executor = createOrgScopedAuditExecutor(handle.db);
+      const ctx = (organizationId: string | null) => ({
+        organizationId,
+        userId: INVITER,
+        actorKind: "user" as const,
+        correlationId: "corr-pre-org",
+        requestId: "req-pre-org",
+      });
+      const MEMBERSHIP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbf2050111";
+      const unbound = { organizationId: "", userId: INVITER } as never;
+      await runWithRequestContext(unbound, () =>
+        auditMembershipAccepted(executor, ctx(ORG_B), {
+          membershipId: MEMBERSHIP,
+          organizationId: ORG_B,
+          userId: INVITER,
+        }),
+      );
+      const row = await admin.query<{ organization_id: string }>(
+        `SELECT organization_id FROM audit_event WHERE resource_id=$1 AND event_type='m2.membership.accepted'`,
+        [MEMBERSHIP],
+      );
+      expect(row.rows.map((r) => r.organization_id)).toEqual([ORG_B]);
+
+      // A request that IS bound to ORG_A may not write an ORG_B audit row: RLS still refuses it.
+      const boundA = { organizationId: ORG_A, userId: INVITER } as never;
+      await expect(
+        runWithRequestContext(boundA, () =>
+          auditMembershipAccepted(executor, ctx(ORG_B), {
+            membershipId: "cccccccc-cccc-4ccc-8ccc-ccccf2050112",
+            organizationId: ORG_B,
+            userId: INVITER,
+          }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("markEmailVerified flips email_verified for the account, as wardenx_app, and only that account", async () => {
+      const reader = createDbUserIdentityReader(handle.db);
+      const flag = async (id: string) =>
+        (await admin.query(`SELECT email_verified FROM "user" WHERE id=$1`, [id])).rows[0]
+          .email_verified as boolean;
+      expect(await flag(INVITER)).toBe(false);
+      await reader.markEmailVerified(USER);
+      expect(await flag(USER)).toBe(true);
+      expect(await flag(INVITER)).toBe(false);
+      await reader.markEmailVerified("not-a-uuid"); // refused quietly, no query
+    });
+
+    it("consume claims it exactly once: a concurrent second accept is told 'used'", async () => {
+      const store = createDbInvitationStore(handle.db);
+      const results = await Promise.allSettled([store.consume(TOKEN), store.consume(TOKEN)]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      expect(lost.reason).toMatchObject({ kind: "used" });
+      const row = await admin.query<{ status: string }>(
+        `SELECT status FROM organization_invitation WHERE token_hash=$1`,
+        [hash(TOKEN)],
+      );
+      expect(row.rows[0]?.status).toBe("accepted");
     });
   });
 });

@@ -33,12 +33,15 @@ export type IdempotencyRecord =
     };
 
 /**
- * Storage port (Valkey / Postgres `idempotency_key`) injected at boot. Implementations
- * must make `putPending` atomic (set-if-absent) so concurrent duplicates serialize.
+ * Storage port (Valkey / Postgres `idempotency_key`) injected at boot. `putPending` is the
+ * atomic CLAIM: it resolves `true` when THIS caller now owns the key (no record existed, or the
+ * existing one had expired and was reclaimed) and `false` when another caller holds a live
+ * record. A caller that loses the claim must not run the handler; it reloads and replays or
+ * reports in-flight (GAP-007).
  */
 export interface IdempotencyStore {
   load(organizationId: string, key: string): Promise<IdempotencyRecord | null>;
-  putPending(organizationId: string, key: string, requestHash: string): Promise<void>;
+  putPending(organizationId: string, key: string, requestHash: string): Promise<boolean>;
   complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
 }
 
@@ -81,7 +84,13 @@ export async function runIdempotent(
     throw new IdempotencyInFlightError(key);
   }
 
-  await store.putPending(organizationId, key, requestHash);
+  if (!(await store.putPending(organizationId, key, requestHash))) {
+    // Lost the claim to a concurrent duplicate: never run the handler. Reload the winner's record.
+    const winner = await store.load(organizationId, key);
+    if (winner && winner.requestHash !== requestHash) throw new IdempotencyConflictError(key);
+    if (winner?.state === "complete") return winner.response;
+    throw new IdempotencyInFlightError(key);
+  }
   const response = await handler();
   await store.complete(organizationId, key, response);
   return response;

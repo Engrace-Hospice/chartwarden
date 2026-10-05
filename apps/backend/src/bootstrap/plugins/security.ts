@@ -79,7 +79,7 @@ export function applySecurityBaseline(app: FastifyInstance, opts: SecurityOption
       reply.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
       reply.header(
         "Access-Control-Allow-Headers",
-        "content-type,authorization,idempotency-key,x-correlation-id,x-csrf-token",
+        "content-type,authorization,idempotency-key,x-correlation-id,x-csrf-token,x-invite-token",
       );
     }
     if (request.method === "OPTIONS") {

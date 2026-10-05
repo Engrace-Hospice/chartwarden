@@ -21,7 +21,9 @@ function memoryStore(seed?: IdempotencyRecord): IdempotencyStore {
   return {
     load: async () => rec,
     putPending: async (_o, _k, requestHash) => {
+      if (rec) return false;
       rec = { state: "pending", requestHash };
+      return true;
     },
     complete: async (_o, _k, response) => {
       rec = rec ? { state: "complete", requestHash: rec.requestHash, response } : rec;
@@ -84,6 +86,38 @@ describe("runIdempotent", () => {
   it("throws IdempotencyInFlightError on a concurrent duplicate (pending) (F15)", async () => {
     const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
     const store = memoryStore({ state: "pending", requestHash: hash });
+    const handler = vi.fn(async () => ok);
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(
+      IdempotencyInFlightError,
+    );
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("never runs the handler when the claim is lost, and replays the winner's response (GAP-007)", async () => {
+    const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+    const loads: Array<IdempotencyRecord | null> = [
+      null,
+      { state: "complete", requestHash: hash, response: ok },
+    ];
+    const store: IdempotencyStore = {
+      load: async () => loads.shift() ?? null,
+      putPending: async () => false,
+      complete: vi.fn(async () => undefined),
+    };
+    const handler = vi.fn(async () => ({ status: "500", body: null }));
+    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).resolves.toEqual(ok);
+    expect(handler).not.toHaveBeenCalled();
+    expect(store.complete).not.toHaveBeenCalled();
+  });
+
+  it("reports in-flight when the claim is lost to a still-pending winner", async () => {
+    const hash = computeIdempotencyHash(ORG, "k1", { a: 1 });
+    const loads: Array<IdempotencyRecord | null> = [null, { state: "pending", requestHash: hash }];
+    const store: IdempotencyStore = {
+      load: async () => loads.shift() ?? null,
+      putPending: async () => false,
+      complete: async () => undefined,
+    };
     const handler = vi.fn(async () => ok);
     await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler)).rejects.toBeInstanceOf(
       IdempotencyInFlightError,

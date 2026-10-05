@@ -148,6 +148,13 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => env.WARDENX_SINGLE_TENANT_DEPLOYMENT !== undefined,
   },
   {
+    // GAP-009 — closed registration. `true`/`false` only (a typo must refuse the boot, not silently read as
+    // the default). Unset: strict in production, open in dev (the seeds sign users up without an invite).
+    key: "WARDENX_SIGNUP_REQUIRES_INVITE",
+    rule: (v) => (v === "true" || v === "false" ? null : "must be 'true' or 'false'"),
+    when: (env) => env.WARDENX_SIGNUP_REQUIRES_INVITE !== undefined,
+  },
+  {
     // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,
     // like DATABASE_URL: format is a connection string, not something to pattern-match here.
     key: "DATABASE_PLATFORM_URL",

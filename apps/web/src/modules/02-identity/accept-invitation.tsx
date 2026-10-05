@@ -95,10 +95,13 @@ export function AcceptInvitation(): JSX.Element {
     }
     setError(null);
     setPhase("creating");
+    // GAP-009 — registration is invite-gated server-side: the invitation token proves this sign-up is
+    // for the address that was invited.
     const { error: signUpErr } = await authClient.signUp.email({
       email: invite.email,
       password,
       name: name.trim(),
+      fetchOptions: { headers: { "x-invite-token": token ?? "" } },
     });
     if (signUpErr) {
       setPhase("needs-account");
