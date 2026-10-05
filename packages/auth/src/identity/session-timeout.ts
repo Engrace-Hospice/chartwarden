@@ -16,9 +16,9 @@
 // extend it (M31 §6.4: "8-hour hard cap since minted_at, idle or not").
 //
 // The M31 portal and M19 triage classes share this Better Auth instance and this hook (M31 binds its class
-// onto the Better-Auth-minted row, portal-session-binder.ts), but `SESSION_POLICY.byClass` (packages/types)
-// lists only M2's four classes. Their floors are declared here (`EXTENDED_CLASS_POLICY`), so no session
-// class is left without a server-side idle timeout; a class with no policy at all fails CLOSED.
+// onto the Better-Auth-minted row, portal-session-binder.ts); their floors live in the same
+// `SESSION_POLICY.byClass` table as M2's four, which is typed (and tested) to cover every `session_class`
+// member. A class with no policy at all still fails CLOSED.
 //
 // AUDITOR vs. THE OUTER CAP. M2 §2.2.4 bounds an auditor session "by engagement_end", and that is what
 // this decision enforces. Better Auth's fixed `expiresIn` (SESSION_MAX_ABSOLUTE_SEC, 72 h) is a second,
@@ -28,12 +28,23 @@
 // and engagement access is per-session (a new magic-link sign-in inside the window starts a new session,
 // §7.7), so an engagement longer than 72 h is served by several sessions, never cut short of its window.
 import { type DbClient, schema } from "@wardenx/db";
-import { SESSION_POLICY, type SessionClassName, type SessionClassTimeout } from "@wardenx/types";
+import { SESSION_POLICY, type SessionClassTimeout } from "@wardenx/types";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
-import { PORTAL_SESSION_CLASSES, VENDOR_SESSION_CLASSES } from "./session-classes";
+import type { SessionClass } from "./session-classes";
 
 /** `revoked`: the row vanished between the snapshot read and this check (sign-out, offboard). */
 export type SessionTimeoutState = "active" | "expired_idle" | "expired_absolute" | "revoked";
+
+/**
+ * GAP-001 — the user statuses that may hold no session (M2 §6: "a suspended/deactivated user cannot
+ * authenticate"). Deactivation revokes the user's sessions, but without this a deactivated user simply
+ * signed in again. `created` is not blocked: it is the pre-activation state the invite/accept flow uses.
+ */
+export const BLOCKED_USER_STATUSES: readonly string[] = ["suspended", "deactivated"];
+
+export function isUserStatusBlocked(status: string): boolean {
+  return BLOCKED_USER_STATUSES.includes(status);
+}
 
 /** The session-row facts the decision reads. */
 export interface SessionTimeoutFacts {
@@ -46,39 +57,16 @@ export interface SessionTimeoutFacts {
 }
 
 const SEC = 1000;
-const MIN_SEC = 60;
-const HR_SEC = 60 * MIN_SEC;
-
-/** M31 §6.4 / §8.1 D3 portal floor: 30-min idle, 8-h hard from mint (= M31 `PORTAL_SESSION_POLICY_FLOOR`). */
-const PORTAL_TIMEOUT: SessionClassTimeout = Object.freeze({
-  idleSec: 30 * MIN_SEC,
-  absoluteSec: 8 * HR_SEC,
-});
 
 /**
- * M19 answering-service sessions. The M19 spec names no timeout, so this takes the conservative floor:
- * Security Hardening §5.1.4's 15-min idle for clinical sessions, and its 8-h work session as a SINGLE
- * absolute (no step-up renewal toward the staff 24-h hard cap — an external operator gets the tighter rule).
+ * Compile-time exhaustiveness: the policy table must have an entry for every member of the
+ * `session_class` pgEnum (`SessionClass`). Adding an enum member without a policy fails typecheck here.
  */
-const VENDOR_TIMEOUT: SessionClassTimeout = Object.freeze({
-  idleSec: 15 * MIN_SEC,
-  absoluteSec: 8 * HR_SEC,
-});
-
-/** Floors for the session classes `SESSION_POLICY.byClass` does not list (see the header). */
-export const EXTENDED_CLASS_POLICY: Readonly<Record<string, SessionClassTimeout>> = Object.freeze(
-  Object.fromEntries([
-    ...PORTAL_SESSION_CLASSES.map((c) => [c, PORTAL_TIMEOUT] as const),
-    ...VENDOR_SESSION_CLASSES.map((c) => [c, VENDOR_TIMEOUT] as const),
-  ]),
-);
+const POLICY_BY_CLASS: Readonly<Record<SessionClass, SessionClassTimeout>> = SESSION_POLICY.byClass;
 
 function policyFor(sessionClass: string): SessionClassTimeout | null {
-  if (Object.hasOwn(SESSION_POLICY.byClass, sessionClass)) {
-    return SESSION_POLICY.byClass[sessionClass as SessionClassName];
-  }
-  return Object.hasOwn(EXTENDED_CLASS_POLICY, sessionClass)
-    ? (EXTENDED_CLASS_POLICY[sessionClass] ?? null)
+  return Object.hasOwn(POLICY_BY_CLASS, sessionClass)
+    ? POLICY_BY_CLASS[sessionClass as SessionClass]
     : null;
 }
 
@@ -118,8 +106,8 @@ export function evaluateSessionTimeout(facts: SessionTimeoutFacts, now: Date): S
  * Auditor (`absoluteSec: null`) contributes nothing; see the header for why the cap still bounds it.
  */
 export const SESSION_MAX_ABSOLUTE_SEC = Math.max(
-  ...[...Object.values(SESSION_POLICY.byClass), ...Object.values(EXTENDED_CLASS_POLICY)].flatMap(
-    (p) => [p.absoluteSec, p.absoluteHardSec].filter((v): v is number => typeof v === "number"),
+  ...Object.values(POLICY_BY_CLASS).flatMap((p) =>
+    [p.absoluteSec, p.absoluteHardSec].filter((v): v is number => typeof v === "number"),
   ),
 );
 
@@ -146,6 +134,7 @@ export interface SessionTimeoutEnforcer {
  */
 export function createDbSessionTimeoutEnforcer(db: DbClient): SessionTimeoutEnforcer {
   const S = schema.sessions;
+  const U = schema.users;
   return {
     async enforce(sessionId, { now = new Date(), recordActivity = true } = {}) {
       const [row] = await db
@@ -155,12 +144,18 @@ export function createDbSessionTimeoutEnforcer(db: DbClient): SessionTimeoutEnfo
           lastActivityAt: S.lastActivityAt,
           lastStepUpAt: S.lastStepUpAt,
           engagementEnd: S.engagementEnd,
+          userStatus: U.status,
         })
         .from(S)
+        .innerJoin(U, eq(U.id, S.userId))
         .where(eq(S.id, sessionId))
         .limit(1);
       if (!row) return "revoked";
-      const state = evaluateSessionTimeout(row, now);
+      // GAP-001 — a session that outlived its user's deactivation/suspension (or was minted by a path the
+      // sign-in refusal does not cover) is revoked here, on every request, Better Auth's own reads included.
+      const state = isUserStatusBlocked(row.userStatus)
+        ? "revoked"
+        : evaluateSessionTimeout(row, now);
       if (state !== "active") {
         await db.delete(S).where(eq(S.id, sessionId));
         return state;

@@ -18,13 +18,15 @@ import { passkey } from "@better-auth/passkey";
 // (password-policy), the org / two-factor / passkey / magic-link plugins (M2-T02+), the
 // explicit step-up route that writes the step-up fields (M2-T05), and the published
 // session seams (M2-T07) land in their own tasks.
-import { schema } from "@wardenx/db";
+import { type DbClient, schema } from "@wardenx/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
+import { eq } from "drizzle-orm";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { argon2idHash, argon2idVerify } from "./password-hash";
-import { SESSION_MAX_ABSOLUTE_SEC } from "./session-timeout";
+import { SESSION_MAX_ABSOLUTE_SEC, isUserStatusBlocked } from "./session-timeout";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
 import { loadTwoFactorKey } from "./two-factor-crypto";
 
@@ -266,6 +268,24 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         password: "passwordHash",
         accessToken: "accessTokenEncrypted",
         refreshToken: "refreshTokenEncrypted",
+      },
+    },
+    // GAP-001 — M2 §6: a suspended/deactivated user cannot authenticate. Every sign-in path (password,
+    // passkey, magic link, 2FA completion) ends in a session insert, so refusing it here covers them all;
+    // the authenticate hook's enforcer also revokes any such session on use.
+    databaseHooks: {
+      session: {
+        create: {
+          before: async (session: { userId: string }) => {
+            const [user] = await (db as unknown as DbClient)
+              .select({ status: schema.users.status })
+              .from(schema.users)
+              .where(eq(schema.users.id, session.userId))
+              .limit(1);
+            if (user && isUserStatusBlocked(user.status))
+              throw new APIError("FORBIDDEN", { message: "USER_INACTIVE", code: "USER_INACTIVE" });
+          },
+        },
       },
     },
     session: {

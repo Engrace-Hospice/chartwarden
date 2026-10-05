@@ -139,6 +139,15 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => integrationEnabled(env, FHIR_TOKEN_ENDPOINT_ENABLED_ENV),
   },
   {
+    // GAP-096 — declares a single-tenant deployment, where M32 lets a tenant `clinical_safety_lead` act as
+    // AI Safety Owner. Optional (unset = multi-tenant, the safe default); a SET value must be exactly
+    // `true`/`false`, so a typo such as `TRUE` or `yes` refuses the boot instead of silently reading as
+    // multi-tenant on a deployment that meant otherwise.
+    key: "WARDENX_SINGLE_TENANT_DEPLOYMENT",
+    rule: (v) => (v === "true" || v === "false" ? null : "must be 'true' or 'false'"),
+    when: (env) => env.WARDENX_SINGLE_TENANT_DEPLOYMENT !== undefined,
+  },
+  {
     // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,
     // like DATABASE_URL: format is a connection string, not something to pattern-match here.
     key: "DATABASE_PLATFORM_URL",

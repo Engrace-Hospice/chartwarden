@@ -193,11 +193,24 @@ export async function auditMembershipRevoked(
   });
 }
 
-/** Record a full user deactivation — credentials disabled everywhere (spec §7.5). */
+/**
+ * Record a full user deactivation — credentials disabled everywhere (spec §7.5).
+ *
+ * `scope: "platform"` marks the §4.7 cross-org offboard (`POST /api/v1/platform/users/:id/deactivate`):
+ * the row is written in the OPERATOR's bound org (the audit context), so it also names every org the user
+ * was still a live member of — otherwise nothing in those tenants' trail would say why the person lost
+ * access. The tenant route passes neither field and its rows are unchanged.
+ */
 export async function auditUserDeactivated(
   tx: AuditExecutor,
   ctx: AuditContext,
-  input: { userId: string; reason: string },
+  input: {
+    userId: string;
+    reason: string;
+    scope?: "platform";
+    memberOrganizationIds?: readonly string[];
+    revokedMembershipIds?: readonly string[];
+  },
 ): Promise<void> {
   await audit(tx, ctx, {
     eventType: IDENTITY_AUDIT_EVENTS.userDeactivated,
@@ -206,7 +219,16 @@ export async function auditUserDeactivated(
     outcome: "success",
     severity: "warn",
     retentionClass: "compliance",
-    context: { reason: input.reason },
+    context: {
+      reason: input.reason,
+      ...(input.scope ? { scope: input.scope } : {}),
+      ...(input.memberOrganizationIds
+        ? { memberOrganizationIds: [...input.memberOrganizationIds] }
+        : {}),
+      ...(input.revokedMembershipIds
+        ? { revokedMembershipIds: [...input.revokedMembershipIds] }
+        : {}),
+    },
   });
 }
 

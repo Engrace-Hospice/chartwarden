@@ -568,6 +568,17 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
           409,
         );
       }
+      // §2.2.2: `pending` leaves only by the invitation being accepted (→ active, POST
+      // /invitations/accept) or by revocation (DELETE). Suspension is for active members, and PATCH is
+      // not a second activation path that would skip the accept flow's credential/MFA onboarding.
+      // `pending` is a real `membership_status` value the port union omits, hence the string compare.
+      if ((membership.status as string) === "pending") {
+        throw new WardenXError(
+          "MEMBERSHIP_PENDING",
+          "a pending membership cannot be suspended or activated here; it becomes active when the invitation is accepted, or revoke it instead",
+          409,
+        );
+      }
       // Last-admin lockout guard: suspending the last active admin is refused (§6).
       if (nextStatus === "suspended" && membership.isAdmin) {
         const admins = await deps.memberships.activeAdminCount(orgId);
@@ -748,7 +759,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     // The spec's `platform_ops (any)` cross-org grant (§4.7) is NOT served here: a platform operator
     // still acts through an org-bound session (the GAP-003 org-NULL role is bound to a membership in
     // some org), and this route scopes to that org exactly as it does for an org_admin. Cross-org
-    // deactivation needs its own route that decides on the platform role, not on `user.deactivate`.
+    // deactivation is `POST /api/v1/platform/users/:id/deactivate` (platform-user-routes.ts), which
+    // decides on the platform-owned role, not on `user.deactivate` alone.
     await requirePermission("user.deactivate")(request);
     const userId = (request.params as { id: string }).id;
     const actor = await resolveActor(deps, request);

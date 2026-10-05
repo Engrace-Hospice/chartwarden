@@ -157,7 +157,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   // against. The distinction is the RELATIONSHIP, which is a durable fact of the grant, not of the
   // session: `patient_self` mints `patient_portal`, any delegated grant mints `caregiver_portal`, and
   // a grant in `bereaved_mode` mints `bereaved_portal`. All three share one policy — M31's §6.4 floor
-  // (30-min idle / 8-h hard), enforced server-side by `EXTENDED_CLASS_POLICY` in ./session-timeout — not
+  // (30-min idle / 8-h hard), enforced server-side from `SESSION_POLICY.byClass` (packages/types) by ./session-timeout — not
   // the staff screen-lock lifecycle.
   patient_portal: {
     requiresPortalAccount: true,

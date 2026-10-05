@@ -251,8 +251,17 @@ export {
   type OrganizationTransitionResult,
   createDrizzleOrganizationLifecycleWriter,
 } from "./organization-lifecycle";
-export { M2_ABAC_PREDICATES, registerM2AbacPredicates } from "./abac-predicates";
+export {
+  M2_ABAC_PREDICATES,
+  USER_LIFECYCLE_PLATFORM_ROLE_KEYS,
+  registerM2AbacPredicates,
+  userLifecyclePlatformOpsPredicate,
+} from "./abac-predicates";
 export { registerOrganizationLifecycleRoutes } from "./routes/organization-lifecycle-routes";
+export {
+  type PlatformUserRouteDeps,
+  registerPlatformUserRoutes,
+} from "./routes/platform-user-routes";
 
 import type { DbClient } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
@@ -288,6 +297,7 @@ import {
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { registerOrganizationLifecycleRoutes as _registerOrganizationLifecycleRoutes } from "./routes/organization-lifecycle-routes";
+import { registerPlatformUserRoutes as _registerPlatformUserRoutes } from "./routes/platform-user-routes";
 import { registerSessionStepUpRoutes as _registerSessionStepUpRoutes } from "./routes/session-step-up";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
 import {
@@ -389,6 +399,11 @@ export function mountIdentityRoutes(
     organizations: { getStatus: _organizationLifecycleWriter(db).getStatus },
   };
   _registerIdentityRoutes(app, deps);
+  // §4.7 `user.deactivate` "platform_ops (any)" — the cross-org offboard the org-bounded tenant route
+  // (GAP-001) no longer serves. Its ABAC predicate is registered here too (idempotent) so the route never
+  // depends on `mountOrganizationLifecycleRoutes` having run first.
+  _registerM2AbacPredicates();
+  _registerPlatformUserRoutes(app, deps);
 }
 
 /**

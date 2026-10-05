@@ -157392,6 +157392,85 @@
         }
       }
     },
+    "/api/v1/platform/users/{id}/deactivate": {
+      "post": {
+        "operationId": "postApiV1PlatformUsersByIdDeactivate",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Deactivate a user platform-wide, regardless of org (platform_ops/admin/owner + step-up, §4.7)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "deactivated",
+                    "alreadyDeactivated",
+                    "sessionsRevoked",
+                    "membershipsRevoked"
+                  ],
+                  "properties": {
+                    "deactivated": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "alreadyDeactivated": {
+                      "type": "boolean"
+                    },
+                    "sessionsRevoked": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "membershipsRevoked": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/portal/administrations/caregiver-attested": {
       "post": {
         "operationId": "postApiV1PortalAdministrationsCaregiverattested",

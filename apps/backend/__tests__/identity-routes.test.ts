@@ -951,6 +951,49 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
+    // §2.2.2: a `pending` membership leaves only by the invitation being ACCEPTED (→ active) or by the
+    // admin revoking it. Suspension is for active members; PATCH is not a second way to activate.
+    // (`pending` is a real DB enum value — packages/db/src/enums.ts — that the M2 port union omits.)
+    const PENDING = "pending" as MembershipRecord["status"];
+    for (const next of ["suspended", "active"] as const) {
+      it(`PATCH pending → ${next} → 409 MEMBERSHIP_PENDING, nothing changed`, async () => {
+        const { app, memberships, auditSink } = makeServer({
+          seed: [
+            ...seed(),
+            membership({ membershipId: "inv_1", userId: "inv_user", status: PENDING }),
+          ],
+        });
+        const res = await app.inject({
+          method: "PATCH",
+          url: "/api/v1/orgs/org_a/members/inv_1",
+          headers: ADMIN,
+          payload: { status: next },
+        });
+        expect(res.statusCode).toBe(409);
+        expect(res.json().error.code).toBe("MEMBERSHIP_PENDING");
+        expect(memberships.all().find((m) => m.membershipId === "inv_1")?.status).toBe(PENDING);
+        expect(auditSink.rows.some((r) => r.eventType.startsWith("m2.membership."))).toBe(false);
+        await app.close();
+      });
+    }
+
+    it("a pending membership can still be revoked (DELETE) → 200", async () => {
+      const { app, memberships } = makeServer({
+        seed: [
+          ...seed(),
+          membership({ membershipId: "inv_1", userId: "inv_user", status: PENDING }),
+        ],
+      });
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/v1/orgs/org_a/members/inv_1",
+        headers: ADMIN,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(memberships.all().find((m) => m.membershipId === "inv_1")?.status).toBe("revoked");
+      await app.close();
+    });
+
     it("DELETE revokes a membership → reaps its sessions + m2.membership.revoked audit", async () => {
       const { app, sessions, auditSink } = makeServer({ seed: seed() });
       const res = await app.inject({
@@ -979,8 +1022,8 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
-    it("deactivating a user disables creds everywhere + reaps all sessions", async () => {
-      const { app, users, sessions, auditSink } = makeServer({ seed: seed() });
+    it("deactivating a user disables creds everywhere, revokes the membership, reaps all sessions", async () => {
+      const { app, users, sessions, auditSink, memberships } = makeServer({ seed: seed() });
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/users/rn_user/deactivate",
@@ -989,6 +1032,10 @@ describe("M2-T06 identity route inventory", () => {
       });
       expect(res.statusCode).toBe(200);
       expect(users.isDeactivated("rn_user")).toBe(true);
+      // §2.2.1: "All memberships revoked".
+      const after = await memberships.repo.listForUser("rn_user");
+      expect(after.length).toBeGreaterThan(0);
+      expect(after.every((m) => m.status === "revoked")).toBe(true);
       expect(sessions.revokedUsers()).toContain("rn_user");
       expect(auditSink.rows.some((r) => r.eventType === "m2.user.deactivated")).toBe(true);
       await app.close();

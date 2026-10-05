@@ -117,11 +117,26 @@ describe("GAP-002 evaluateSessionTimeout", () => {
     );
   });
 
+  it("SESSION_POLICY.byClass covers exactly the session_class enum (no class without a policy, no stray entry)", () => {
+    expect(Object.keys(SESSION_POLICY.byClass).sort()).toEqual([...SESSION_CLASSES].sort());
+  });
+
+  it("only staff renews its work window by step-up (the only class with a separate hard cap)", () => {
+    const renewing = Object.entries(SESSION_POLICY.byClass)
+      .filter(([, p]) => p.absoluteHardSec !== undefined)
+      .map(([c]) => c);
+    expect(renewing).toEqual(["staff"]);
+  });
+
   it("a pre-deploy row (old 7-day expires_at, last_activity_at backfilled to now) is bounded from created_at", () => {
     // Migration 0319 backfilled last_activity_at = now(); the enforcer never reads expires_at, so a
     // session minted 9 h before deploy is past the 8-h work window however far Better Auth's expiry is.
     const preDeploy = staff({ lastActivityAt: at(9 * HR) });
     expect(evaluateSessionTimeout(preDeploy, at(9 * HR + MIN))).toBe("expired_absolute");
+  });
+
+  it("SESSION_MAX_ABSOLUTE_SEC stays 72 h: the portal/triage entries do not raise Better Auth's outer cap", () => {
+    expect(SESSION_MAX_ABSOLUTE_SEC).toBe(72 * 3600);
   });
 
   it("SESSION_MAX_ABSOLUTE_SEC (Better Auth's fixed expiry) covers every fixed absolute", () => {

@@ -9,7 +9,9 @@
 // validated request to M5's intake (`deps.amendmentIntake`, GAP-006) — synchronously, so the 202 means an M5
 // row exists and the §164.526 60-day clock has started. Its `targetRef` is verified to name the session
 // patient's own record first (`verifiedAmendmentTargetRef`), and a retry under the same Idempotency-Key is
-// replayed by the M1 idempotency middleware (bootstrap/plugins/idempotency.ts) rather than re-run. (This header used to say a `deps.outbox` publisher
+// replayed by the M1 idempotency middleware (bootstrap/plugins/idempotency.ts) rather than re-run. A resubmit
+// under a NEW key for a change the patient already has OPEN gets that open request back (same 202 shape) —
+// M5's intake dedupes on a content key behind a partial unique index (migration 0323). (This header used to say a `deps.outbox` publisher
 // emitted the plan's `m31.*` event; M31 has no outbox publisher, and the request was simply dropped.)
 // `portal.administration.attest` and `portal.amendment.submit` additionally carry TOTP step-up (M2),
 // composed in `./mount`.

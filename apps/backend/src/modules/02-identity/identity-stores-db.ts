@@ -19,7 +19,7 @@ import { createHash, randomUUID } from "node:crypto";
 // and (since no vendor sender is wired yet) to echo an admin-visible copyable link back to the inviter.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, ne, sql } from "drizzle-orm";
 import {
   type InvitationDetail,
   type InvitationListItem,
@@ -28,8 +28,10 @@ import {
   type MembershipStanding,
   type MembershipStatus,
   type MintedInvitation,
+  type RevokedMembership,
   type UserDirectory,
   decideOrgBoundedDeactivation,
+  liveMembershipOrganizationIds,
 } from "./identity-ports";
 
 /** 72h invite TTL — the same window the in-memory slice used (§7.11). */
@@ -260,23 +262,94 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 export function createDbUserDirectory(db: DbClient): UserDirectory {
   const U = schema.users;
+  const MB = schema.memberships;
+  /** Every membership of `userId`, in every org, through the M2 SECURITY DEFINER read (0231). */
+  const membershipsOf = async (tx: DbClient, userId: string): Promise<MembershipStanding[]> => {
+    const result = await tx.execute(
+      sql`SELECT organization_id, status FROM m2_list_own_memberships(${userId}::uuid)`,
+    );
+    return (
+      (result as unknown as { rows?: { organization_id: string; status: MembershipStatus }[] })
+        .rows ?? []
+    ).map((r): MembershipStanding => ({ organizationId: r.organization_id, status: r.status }));
+  };
+  /**
+   * §2.2.1 / §2.4 "all memberships revoked": revoke `userId`'s live membership(s) in each org, inside the
+   * caller's transaction. `membership` RLS keys on `app.org_id`, so the GUC is re-pointed per org
+   * (`set_config(_, _, true)` is transaction-local and may be set repeatedly); `app.user_id` gets the
+   * system sentinel the other M2 system writes use. Returns the revoked rows.
+   */
+  const revokeMembershipsIn = async (
+    tx: DbClient,
+    userId: string,
+    organizationIds: readonly string[],
+  ): Promise<RevokedMembership[]> => {
+    const revoked: RevokedMembership[] = [];
+    for (const organizationId of organizationIds) {
+      await tx.execute(sql`SELECT set_config('app.org_id', ${organizationId}, true)`);
+      await tx.execute(sql`SELECT set_config('app.user_id', '', true)`);
+      const rows = await tx
+        .update(MB)
+        .set({ status: "revoked" })
+        .where(
+          and(
+            eq(MB.userId, userId),
+            eq(MB.organizationId, organizationId),
+            ne(MB.status, "revoked"),
+          ),
+        )
+        .returning({ membershipId: MB.id, organizationId: MB.organizationId });
+      revoked.push(...rows);
+    }
+    return revoked;
+  };
   return {
     async deactivateFromOrg({ userId, organizationId }) {
       if (!UUID_RE.test(userId)) return "not_member";
       return db.transaction(async (tx) => {
         const locked = await tx.select({ id: U.id }).from(U).where(eq(U.id, userId)).for("update");
         if (locked.length === 0) return "not_member";
-        const result = await tx.execute(
-          sql`SELECT organization_id, status FROM m2_list_own_memberships(${userId}::uuid)`,
+        const outcome = decideOrgBoundedDeactivation(
+          await membershipsOf(tx, userId),
+          organizationId,
         );
-        const memberships = (
-          (result as unknown as { rows?: { organization_id: string; status: MembershipStatus }[] })
-            .rows ?? []
-        ).map((r): MembershipStanding => ({ organizationId: r.organization_id, status: r.status }));
-        const outcome = decideOrgBoundedDeactivation(memberships, organizationId);
         if (outcome !== "deactivated") return outcome;
         await tx.update(U).set({ status: "deactivated" }).where(eq(U.id, userId));
+        await revokeMembershipsIn(tx as unknown as DbClient, userId, [organizationId]);
         return outcome;
+      });
+    },
+
+    // §4.7 platform-wide offboard. `user` is NON_ORG_SCOPED (no RLS), so the lock + status flip need no
+    // org context; the cross-org membership READ goes through the same SECURITY DEFINER function as
+    // above, and each revoke WRITE runs with `app.org_id` pointed at that row's org (revokeMembershipsIn)
+    // — wardenx_app still cannot touch another org's `membership` rows without naming it. Same `FOR UPDATE` as `deactivateFromOrg`, so the two serialize.
+    async deactivateGlobally({ userId }) {
+      if (!UUID_RE.test(userId)) {
+        return { outcome: "not_found", memberOrganizationIds: [], revokedMemberships: [] };
+      }
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select({ status: U.status })
+          .from(U)
+          .where(eq(U.id, userId))
+          .for("update");
+        if (!row) return { outcome: "not_found", memberOrganizationIds: [], revokedMemberships: [] };
+        const memberOrganizationIds = liveMembershipOrganizationIds(
+          await membershipsOf(tx, userId),
+        );
+        // The sweep runs on a repeat call too: a user deactivated before memberships were revoked
+        // (or by the pre-§2.4 tenant route) is brought to the same end state.
+        const revokedMemberships = await revokeMembershipsIn(
+          tx as unknown as DbClient,
+          userId,
+          memberOrganizationIds,
+        );
+        if (row.status === "deactivated") {
+          return { outcome: "already_deactivated", memberOrganizationIds, revokedMemberships };
+        }
+        await tx.update(U).set({ status: "deactivated" }).where(eq(U.id, userId));
+        return { outcome: "deactivated", memberOrganizationIds, revokedMemberships };
       });
     },
   };

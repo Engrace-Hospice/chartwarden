@@ -712,6 +712,55 @@ describe.skipIf(!DB_URL)(
       await handleT.close();
     });
 
+    it("GAP-001: a deactivated or suspended user cannot sign in, and a surviving session is revoked on use", async () => {
+      const { createDbClient: mkDbD } = await import("@wardenx/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const handleD = mkDbD({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const enforcer = createDbSessionTimeoutEnforcer(handleD.db as never);
+      const email = `inactive${Date.now()}@example.test`;
+      const password = "correct-horse-battery-staple-9";
+      await auth.api.signUpEmail({ body: { email, password, name: "Inactive User" } });
+      const userId = (await admin.query(`SELECT id FROM "user" WHERE email=$1`, [email])).rows[0]
+        .id as string;
+      const sessionIdOf = async () =>
+        (
+          await admin.query(
+            "SELECT id FROM session WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1",
+            [userId],
+          )
+        ).rows[0]?.id as string | undefined;
+      const surviving = (await sessionIdOf()) as string;
+
+      for (const status of ["deactivated", "suspended"]) {
+        await admin.query(`UPDATE "user" SET status=$2 WHERE id=$1`, [userId, status]);
+        const before = Number(
+          (await admin.query("SELECT count(*) FROM session WHERE user_id=$1", [userId])).rows[0]
+            .count,
+        );
+        await expect(auth.api.signInEmail({ body: { email, password } })).rejects.toThrow(
+          /USER_INACTIVE/,
+        );
+        const after = Number(
+          (await admin.query("SELECT count(*) FROM session WHERE user_id=$1", [userId])).rows[0]
+            .count,
+        );
+        expect(after).toBe(before); // no session row was minted
+      }
+      // A session minted before the deactivation (here: the sign-up session) is revoked on its next use.
+      expect(await enforcer.enforce(surviving)).toBe("revoked");
+      expect((await admin.query("SELECT 1 FROM session WHERE id=$1", [surviving])).rowCount).toBe(
+        0,
+      );
+
+      // Reactivated, the same credentials work again.
+      await admin.query(`UPDATE "user" SET status='active' WHERE id=$1`, [userId]);
+      await expect(auth.api.signInEmail({ body: { email, password } })).resolves.toBeTruthy();
+      expect(await enforcer.enforce((await sessionIdOf()) as string)).toBe("active");
+      await handleD.close();
+    });
+
     it("M3 RBAC: the live RoleStore lists the org's catalog (templates + own roles) with permission keys", async () => {
       const { createDbClient: mkDb5 } = await import("@wardenx/db");
       const { createDbRoleStore } = await import("../src/modules/03-authorization/role-store");
@@ -1468,6 +1517,45 @@ describe.skipIf(!DB_URL)(
           requestedByUserId: crypto.randomUUID(),
         }),
       ).toEqual([]);
+
+      // GAP-006 dedupe (0323) — a resubmit under a new key returns the OPEN request, never a second one.
+      // Two CONCURRENT submits of the same change (whitespace differs) as wardenx_app → exactly one row.
+      const sameChange = {
+        organizationId: org,
+        patientId,
+        requestedByUserId: actor,
+        portalAccountId: crypto.randomUUID(),
+        targetKind: "patient_demographic" as const,
+        targetRef: "legalName",
+        requestedChange: "Legal name is Jane Q. Nguyen",
+      };
+      const [r1, r2] = await Promise.all([
+        intake.submit(sameChange),
+        intake.submit({ ...sameChange, requestedChange: "  Legal name is   Jane Q.\nNguyen " }),
+      ]);
+      expect(r2.id).toBe(r1.id);
+      const openDupRows = async () =>
+        (
+          await admin.query(
+            `SELECT id FROM patient_amendment_request
+              WHERE patient_id = $1 AND status = 'pending'
+                AND requested_changes ->> 'targetRef' = 'legalName'`,
+            [patientId],
+          )
+        ).rows;
+      expect(await openDupRows()).toHaveLength(1);
+      expect((await intake.submit(sameChange)).id).toBe(r1.id); // sequential resubmit too
+      // Different text is a different request.
+      const other = await intake.submit({
+        ...sameChange,
+        requestedChange: "Legal name is Jane R. Nguyen",
+      });
+      expect(other.id).not.toBe(r1.id);
+      // Once decided, the same change may be requested again.
+      await svc.decideAmendment(org, r1.id, { accept: true }, actor);
+      const reopened = await intake.submit(sameChange);
+      expect(reopened.id).not.toBe(r1.id);
+      expect(reopened.status).toBe("pending");
 
       await handle10.close();
     });

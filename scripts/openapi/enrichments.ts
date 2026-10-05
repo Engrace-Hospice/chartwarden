@@ -59,6 +59,8 @@ import {
   OrgInvitationCreateRequestSchema as M2OrgInvitationCreateRequestSchema,
   OrganizationTransitionRequestSchema as M2OrganizationTransitionRequestSchema,
   OrganizationTransitionResponseSchema as M2OrganizationTransitionResponseSchema,
+  PlatformUserDeactivateRequestSchema as M2PlatformUserDeactivateRequestSchema,
+  PlatformUserDeactivatedResponseSchema as M2PlatformUserDeactivatedResponseSchema,
   SelectOrganizationRequestSchema as M2SelectOrganizationRequestSchema,
   StepUpInitiateRequestSchema as M2StepUpInitiateRequestSchema,
   StepUpInitiateResponseSchema as M2StepUpInitiateResponseSchema,
@@ -5702,6 +5704,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Full offboard: disable credentials + reap all sessions (user.deactivate, §7.5)",
     body: M2UserDeactivateRequestSchema,
     response: M2UserDeactivatedResponseSchema,
+  },
+  "POST /api/v1/platform/users/:id/deactivate": {
+    summary:
+      "Deactivate a user platform-wide, regardless of org (platform_ops/admin/owner + step-up, §4.7)",
+    body: M2PlatformUserDeactivateRequestSchema,
+    response: M2PlatformUserDeactivatedResponseSchema,
   },
   "POST /api/v1/collaborators/invite": {
     summary: "Mint a per-patient magic-link (caseload_membership ABAC, §7.6)",

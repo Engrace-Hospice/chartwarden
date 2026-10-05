@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHopeSpecImport } from "../import-hope-spec";
+import { buildHopeSpecImport } from "../db/import-hope-spec";
 
 describe("HOPE spec importer mapping", () => {
   const built = buildHopeSpecImport();

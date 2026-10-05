@@ -17,9 +17,24 @@
 // Authority (M2 spec §2.2.4 table + D1): architecture §7's 15-min idle governs over
 // Security Hardening §5.1.4's 30-min; screen-lock (soft re-auth, session stays alive) and
 // idle (terminal) are distinct layers.
+//
+// `byClass` covers EVERY `session_class` member — M2's four plus the M31 portal and M19
+// triage classes that share the same Better Auth instance and the same server enforcer
+// (packages/auth `evaluateSessionTimeout`). A class missing here fails CLOSED there; the
+// `Record<SessionClassName, …>` type plus an exhaustiveness test against the pgEnum keep
+// the two in step.
 
-/** The four session classes — mirrors the `session_class` pgEnum / `SESSION_CLASSES`. */
-export type SessionClassName = "staff" | "auditor" | "external_collaborator" | "funeral_home";
+/** Every session class — mirrors the `session_class` pgEnum / `SESSION_CLASSES`. */
+export type SessionClassName =
+  | "staff"
+  | "auditor"
+  | "external_collaborator"
+  | "funeral_home"
+  | "patient_portal"
+  | "caregiver_portal"
+  | "bereaved_portal"
+  | "external_triage_vendor"
+  | "external_triage_operator";
 
 /** Per-class timeout floor. All values are seconds. */
 export interface SessionClassTimeout {
@@ -55,9 +70,30 @@ const MIN = 60;
 const HR = 60 * 60;
 
 /**
+ * M31 §6.4 / §8.1 D3 portal floor: 30-min idle, 8-h hard cap from mint — a step-up never
+ * extends it. One floor for all three portal classes (they differ by relationship, not policy).
+ */
+const PORTAL_TIMEOUT: SessionClassTimeout = Object.freeze({
+  idleSec: 30 * MIN,
+  absoluteSec: 8 * HR,
+});
+
+/**
+ * M19 answering-service sessions. The M19 spec names no timeout, so this takes the
+ * conservative floor: Security Hardening §5.1.4's 15-min idle for clinical sessions and
+ * its 8-h work session as a SINGLE absolute (no step-up renewal toward staff's 24-h hard
+ * cap — an external operator gets the tighter rule).
+ */
+const TRIAGE_TIMEOUT: SessionClassTimeout = Object.freeze({
+  idleSec: 15 * MIN,
+  absoluteSec: 8 * HR,
+});
+
+/**
  * The platform session-timeout floor (M2 spec §2.2.4 / D1). External-collaborator and
  * funeral-home absolutes are the documented defaults (per-tenant configurable above this
- * floor); auditor's absolute is bounded by its engagement window, hence `null`.
+ * floor); auditor's absolute is bounded by its engagement window, hence `null`. Only staff
+ * declares `absoluteHardSec`, so only staff renews its work window by re-authentication.
  */
 export const SESSION_POLICY: SessionPolicy = Object.freeze({
   screenLockSec: 5 * MIN,
@@ -67,5 +103,10 @@ export const SESSION_POLICY: SessionPolicy = Object.freeze({
     auditor: Object.freeze({ idleSec: 10 * MIN, absoluteSec: null }),
     external_collaborator: Object.freeze({ idleSec: 15 * MIN, absoluteSec: 8 * HR }),
     funeral_home: Object.freeze({ idleSec: 15 * MIN, absoluteSec: 72 * HR }),
+    patient_portal: PORTAL_TIMEOUT,
+    caregiver_portal: PORTAL_TIMEOUT,
+    bereaved_portal: PORTAL_TIMEOUT,
+    external_triage_vendor: TRIAGE_TIMEOUT,
+    external_triage_operator: TRIAGE_TIMEOUT,
   }),
 });
