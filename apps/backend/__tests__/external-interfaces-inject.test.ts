@@ -717,10 +717,22 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
     const res = await app.inject({
       method: "GET",
       url: "/api/clinical/labs/observations",
-      headers: SUPER,
+      headers: { ...SUPER, "x-test-roles": "administrator,medical_director" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().items.map((o: { id: string }) => o.id)).toContain(OBS_ABNORMAL);
+    await app.close();
+  });
+
+  it("route 28 — GAP-085: a non-org-wide role whose caseload cannot be resolved reads nothing (fails closed)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/clinical/labs/observations",
+      headers: SUPER,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toEqual([]);
     await app.close();
   });
 

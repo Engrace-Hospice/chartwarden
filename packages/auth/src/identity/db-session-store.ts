@@ -52,6 +52,8 @@ export interface SessionRow {
 
 /** The `device_attestation` columns the liveness decision needs. */
 export interface DeviceAttestationRow {
+  /** The `device_attestation` row id — the session-bound device identity M18 binds a capture to. */
+  readonly id?: string;
   readonly verdict: string;
   readonly verifiedAt: Date | null;
   readonly expiresAt: Date | null;
@@ -121,7 +123,11 @@ export function toSessionContextRecord(
 export function liveDeviceAttestation(
   row: DeviceAttestationRow | null | undefined,
   now: Date,
-): { readonly valid: boolean; readonly verifiedAt?: string } | null {
+): {
+  readonly valid: boolean;
+  readonly verifiedAt?: string;
+  readonly attestationId?: string;
+} | null {
   if (!row) return null;
   if (row.verdict !== "attested") return null;
   if (row.revokedAt !== null) return null;
@@ -129,6 +135,8 @@ export function liveDeviceAttestation(
   return {
     valid: true,
     ...(row.verifiedAt ? { verifiedAt: row.verifiedAt.toISOString() } : {}),
+    // The id comes off the JOINED row (the session's own pointer), never off the request.
+    ...(row.id ? { attestationId: row.id } : {}),
   };
 }
 
@@ -169,6 +177,7 @@ export function createDbSessionContextStore(
           scope: schema.sessions.scope,
           // SecHardening §12.4 — joined, not a second round trip: this runs on every authenticated
           // request. LEFT so a session with no device (every browser session) still resolves.
+          attId: schema.deviceAttestations.id,
           attVerdict: schema.deviceAttestations.verdict,
           attVerifiedAt: schema.deviceAttestations.verifiedAt,
           attExpiresAt: schema.deviceAttestations.expiresAt,
@@ -196,6 +205,7 @@ export function createDbSessionContextStore(
             row.attVerdict === null
               ? null
               : {
+                  ...(row.attId ? { id: row.attId } : {}),
                   verdict: row.attVerdict,
                   verifiedAt: row.attVerifiedAt,
                   expiresAt: row.attExpiresAt,

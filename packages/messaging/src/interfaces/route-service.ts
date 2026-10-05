@@ -15,6 +15,7 @@
 // is the backstop; the slice default (createInMemoryMessagingService) keeps it all in memory so
 // the route inventory is integration-testable with no live infra.
 
+import type { MemberAdminActor } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import type {
   AlertCategory,
@@ -172,13 +173,26 @@ export interface MessagingRouteService {
     userId: string,
     peerUserId: string,
   ): Promise<{ channelId: string; created: boolean }>;
-  /** Add a manual member (admin override on auto channels — audited) (§4.2). */
+  /** Add a manual member (admin override on auto channels — audited) (§4.2). The service itself
+   *  enforces `mayManageChannelMembers` for `input.actor` (FORBIDDEN otherwise) and records the
+   *  actor on the write-audit trail. */
   addMember(
     orgId: string,
-    input: { channelId: string; userId: string; role?: ChannelMemberRole },
+    input: {
+      channelId: string;
+      userId: string;
+      role?: ChannelMemberRole;
+      actor: MemberAdminActor;
+    },
   ): Promise<void>;
-  /** Remove a member (§4.2 DELETE /channels/:id/members/:userId). */
-  removeMember(orgId: string, input: { channelId: string; userId: string }): Promise<void>;
+  /** Remove a member (§4.2 DELETE /channels/:id/members/:userId); same actor rules as addMember. */
+  removeMember(
+    orgId: string,
+    input: { channelId: string; userId: string; actor: MemberAdminActor },
+  ): Promise<void>;
+  /** The `channel_member_admin` predicate's resolver (§4.5 `location_membership`): fail-closed
+   *  `false` for an unknown / cross-org channel. */
+  canManageMembers(orgId: string, actor: MemberAdminActor, channelId: string): Promise<boolean>;
   /** Post to the tenant `announcement` channel (org_admin) (§4.2 POST /announce). */
   announce(
     orgId: string,

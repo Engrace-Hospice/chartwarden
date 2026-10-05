@@ -45,6 +45,7 @@ import {
   type ProposalSnapshot,
   decideProposal,
 } from "../proposals/decision";
+import { decodeObservationCursor, encodeObservationCursor, isAfterCursor } from "./lab-list-scope";
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -942,28 +943,51 @@ export function createInMemoryM29Store(
     },
 
     async listObservations(orgId, filter) {
-      const items = [...observations.values()]
+      const cursor = decodeObservationCursor(filter.cursor);
+      const limit = filter.limit ?? 50;
+      const rows = [...observations.values()]
         .filter((o) => o.organizationId === orgId)
         .filter((o) => (filter.patientId ? o.patientId === filter.patientId : true))
         .filter((o) => (filter.loincCode ? o.loincCode === filter.loincCode : true))
         .filter((o) =>
+          filter.abnormalFlag ? o.values.some((v) => v.abnormalFlag === filter.abnormalFlag) : true,
+        )
+        .filter((o) =>
           filter.caseloadPatientIds ? filter.caseloadPatientIds.includes(o.patientId) : true,
         )
-        .map(
-          (o): LabObservationSummary => ({
-            id: o.id,
-            patientId: o.patientId,
-            orderId: o.orderId,
-            loincCode: o.loincCode,
-            loincDisplayText: o.loincDisplayText,
-            observationDate: o.observationDate,
-            resultStatus: o.resultStatus,
-            abnormalSummary: o.abnormalSummary,
-            attachedDocumentId: o.attachedDocumentId,
-            receivedAt: o.receivedAt,
-          }),
-        );
-      return page(items, filter.limit);
+        .sort((a, b) =>
+          Date.parse(a.observationDate) === Date.parse(b.observationDate)
+            ? a.id < b.id
+              ? 1
+              : -1
+            : Date.parse(b.observationDate) - Date.parse(a.observationDate),
+        )
+        .filter((o) => (cursor ? isAfterCursor(o.observationDate, o.id, cursor) : true));
+      const pageRows = rows.slice(0, limit);
+      const items = pageRows.map(
+        (o): LabObservationSummary => ({
+          id: o.id,
+          patientId: o.patientId,
+          orderId: o.orderId,
+          loincCode: o.loincCode,
+          loincDisplayText: o.loincDisplayText,
+          observationDate: o.observationDate,
+          resultStatus: o.resultStatus,
+          abnormalSummary: o.abnormalSummary,
+          attachedDocumentId: o.attachedDocumentId,
+          receivedAt: o.receivedAt,
+        }),
+      );
+      const last = pageRows[pageRows.length - 1];
+      return rows.length > limit && last
+        ? {
+            items,
+            nextCursor: encodeObservationCursor({
+              d: new Date(last.observationDate).toISOString(),
+              id: last.id,
+            }),
+          }
+        : { items };
     },
     async getObservation(orgId, observationId) {
       const o = observations.get(observationId);

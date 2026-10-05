@@ -97,6 +97,7 @@ import type {
   PatientMutator,
   PatientPrivacyFlagReader,
   PatientReader,
+  PatientSitingReader,
   PlanCatalogReader,
   PortalDocumentReader,
   PortalSessionBinder,
@@ -120,6 +121,7 @@ import type {
   SessionContextResolver,
   SignedEncountersReader,
   SubscriptionStateProvider,
+  SupervisorReader,
   SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
   SupplyCostProvider,
@@ -628,6 +630,26 @@ export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
   },
   getAdmissionSiting() {
     throw new NotImplementedError("AdmissionStatusReader");
+  },
+};
+
+/** M6 — patient siting (location ids of active admissions). Denies until M6 registers the real reader. */
+export const patientSitingReaderDenyStub: PatientSitingReader = {
+  getPatientLocationIds() {
+    throw new NotImplementedError("PatientSitingReader");
+  },
+};
+
+/** M3 — supervisor / membership location facts. Denies until M3 registers the real reader. */
+export const supervisorReaderDenyStub: SupervisorReader = {
+  resolveSupervisedMembershipIds() {
+    throw new NotImplementedError("SupervisorReader");
+  },
+  isSupervisorForLocation() {
+    throw new NotImplementedError("SupervisorReader");
+  },
+  membershipLocationIds() {
+    throw new NotImplementedError("SupervisorReader");
   },
 };
 

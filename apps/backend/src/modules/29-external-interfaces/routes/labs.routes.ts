@@ -12,8 +12,10 @@
 // step-up + actor chain each already walked is unchanged.
 import type { FastifyInstance } from "fastify";
 
+import { getSeam } from "../../../bootstrap/index";
 import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, ABAC_LAB_CASELOAD, P, STEP_UP } from "./guards";
+import { resolveLabListScope } from "./lab-list-scope";
 import {
   AttachPatientBody,
   DiscardObservationBody,
@@ -30,7 +32,7 @@ export interface LabRouteDeps {
 export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): void {
   const { store } = deps;
 
-  // GET /observations — list caseload lab observations (RLS-scoped; wide-scope roles read across the org).
+  // GET /observations — caseload-scoped lab observations (org-wide roles read across the org; failure fails closed).
   app.get(
     "/api/clinical/labs/observations",
     {
@@ -39,7 +41,10 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
     async (request) => {
       const actor = actorOf(request);
       const q = parseQuery(ObservationListQuery, request.query);
+      // GAP-085 — scope is server-derived: org-wide roles read the org; everyone else their caseload.
+      const scope = await resolveLabListScope(actor, getSeam("CaseloadProvider"));
       return store.listObservations(actor.organizationId, {
+        ...scope,
         patientId: q.patientId,
         loincCode: q.loincCode,
         abnormalFlag: q.abnormalFlag,

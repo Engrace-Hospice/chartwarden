@@ -137,6 +137,14 @@ export type {
   DeliveryEndpointInput,
   AlertInboxItem,
 } from "./interfaces/route-service";
+export {
+  CLINICAL_LEAD_ROLE,
+  ORG_ADMIN_ROLE,
+  mayManageChannelMembers,
+  mayManageChannelMembersResolved,
+  type PatientLocationResolver,
+  type MemberAdminActor,
+} from "./member-admin";
 export { createInMemoryMessagingService } from "./store/in-memory-service";
 export type {
   InMemoryMessagingSeed,

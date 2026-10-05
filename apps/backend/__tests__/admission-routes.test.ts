@@ -62,6 +62,10 @@ const LOCATION = "33333333-3333-4333-8333-333333333333";
 const OTHER_LOCATION = "44444444-4444-4444-8444-444444444444";
 // #50 — the activation-siting fixture: an admission whose elected provider entity has TWO active sites.
 const ADMISSION_READY = "adm_ready";
+// GAP-024 — child-resource binding fixtures: a period of ADMISSION (patient A) and one of another patient.
+const EP_OF_ADMISSION = "dddddddd-0000-4000-8000-000000000001";
+const EP_OF_OTHER_PATIENT = "dddddddd-0000-4000-8000-000000000002";
+const EP_UNKNOWN = "dddddddd-0000-4000-8000-0000000000ff";
 const PE_MANY = "pe_many";
 const PE_OTHER = "pe_other";
 // Uuid-shaped: the activate body validates `locationId` as a uuid at the route boundary, so a
@@ -104,6 +108,8 @@ const PERMISSION_SEED = [
   { userId: "co_1", permissions: ["compliance.read", "compliance.override"] },
   // GAP-022 — a scheduler (intake side): may schedule an F2F but is not the performer.
   { userId: "sched_1", permissions: ["f2f.schedule", "admission.read"] },
+  // GAP-024 — an election drafter.
+  { userId: "ed_1", permissions: ["election.draft", "admission.read"] },
   // #50 — an intake user who may activate, for the service-location siting tests below.
   { userId: "act_1", permissions: ["admission.read", "admission.activate"] },
 ];
@@ -191,6 +197,22 @@ function makeServer(
         admissionAt: "2026-06-02T00:00:00Z",
         providerEntityId: PE_MANY,
         locationId: LOC_MAIN,
+      },
+      {
+        id: EP_OF_ADMISSION,
+        organizationId: ORG,
+        kind: "election_period",
+        state: "active",
+        admissionId: ADMISSION,
+        sequence: 1,
+      },
+      {
+        id: EP_OF_OTHER_PATIENT,
+        organizationId: ORG,
+        kind: "election_period",
+        state: "active",
+        admissionId: ADMISSION_OTHER_PATIENT,
+        sequence: 1,
       },
       {
         id: "ep_ready",
@@ -859,7 +881,7 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       "x-test-roles": "intake_coordinator",
     };
     const body = (scheduledClinicianId: string, clinicianRole: string) => ({
-      electionPeriodId: "dddddddd-0000-4000-8000-000000000001",
+      electionPeriodId: EP_OF_ADMISSION,
       scheduledDate: "2026-06-25",
       windowStart: "2026-06-01",
       windowEnd: "2026-06-30",
@@ -913,6 +935,92 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
         url: `/api/v1/admissions/${ADMISSION}/face-to-face`,
         headers: SCHED,
         payload: body(CLINICIAN_NP, "hospice_np"),
+      });
+      expect(res.statusCode).toBe(201);
+      await app.close();
+    });
+  });
+
+  describe("GAP-024 child-resource binding — the election period must belong to the admission in the path", () => {
+    const CLINICIAN_NP = "cccccccc-0000-4000-8000-000000000002";
+    const SCHED = {
+      "x-test-user": "sched_1",
+      "x-test-org": ORG,
+      "x-test-roles": "intake_coordinator",
+    };
+    const DRAFTER = {
+      "x-test-user": "ed_1",
+      "x-test-org": ORG,
+      "x-test-roles": "intake_coordinator",
+    };
+    const f2fBody = (electionPeriodId: string) => ({
+      electionPeriodId,
+      scheduledDate: "2026-06-25",
+      windowStart: "2026-06-01",
+      windowEnd: "2026-06-30",
+      clinicianRole: "hospice_np",
+      scheduledClinicianId: CLINICIAN_NP,
+    });
+    const esBody = (electionPeriodId: string) => ({
+      electionPeriodId,
+      effectiveDate: "2026-06-01",
+      primaryDiagnosisIcd10: "C34.90",
+      electedProviderEntityId: PROVIDER_ENTITY,
+      waiverAcknowledged: true,
+    });
+    const roles = { [CLINICIAN_NP]: ["np"] };
+
+    it.each([
+      ["another admission's period", EP_OF_OTHER_PATIENT],
+      ["an unknown period", EP_UNKNOWN],
+    ])("f2f schedule against %s is 404 and nothing is written", async (_l, ep) => {
+      const { app, backend } = makeServer({ clinicianRoleKeys: roles });
+      const before = backend.events.length;
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/face-to-face`,
+        headers: SCHED,
+        payload: f2fBody(ep),
+      });
+      expect(res.statusCode).toBe(404);
+      expect(backend.events.length).toBe(before);
+      await app.close();
+    });
+
+    it("f2f schedule against the admission's own period schedules (201)", async () => {
+      const { app } = makeServer({ clinicianRoleKeys: roles });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/face-to-face`,
+        headers: SCHED,
+        payload: f2fBody(EP_OF_ADMISSION),
+      });
+      expect(res.statusCode).toBe(201);
+      await app.close();
+    });
+
+    it.each([
+      ["another admission's period", EP_OF_OTHER_PATIENT],
+      ["an unknown period", EP_UNKNOWN],
+    ])("election-statement draft against %s is 404", async (_l, ep) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/election-statements`,
+        headers: DRAFTER,
+        payload: esBody(ep),
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it("election-statement draft against the admission's own period passes the binding", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/election-statements`,
+        headers: DRAFTER,
+        payload: esBody(EP_OF_ADMISSION),
       });
       expect(res.statusCode).toBe(201);
       await app.close();

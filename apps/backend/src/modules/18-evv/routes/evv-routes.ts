@@ -10,10 +10,16 @@
 // correction-of-record route requires fresh M2 step-up (Clinical Supervisor+, §2.3); the supervisor-override
 // resolution route likewise. The portal arrival route runs under the portal session class (per-patient via M39
 // consent, not caseload).
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import {
+  type AbacTarget,
+  DEVICE_ATTESTATION_ATTRIBUTE,
+  requireAbac,
+  requirePermission,
+} from "@wardenx/auth";
+import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
+import { clinicianCapture } from "../capture-guards";
 import {
   AggregatorListQuery,
   CancelSubmissionRequest,
@@ -47,6 +53,13 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface EvvRouteDeps {
   service: EvvRoutePort;
+  /**
+   * GAP-055 follow-up (ADR-0035): apply the `device_attestation_valid` gate to check-in / check-out /
+   * offline-sync. Injected from validated server config (`EVV_DEVICE_ATTESTATION_ENFORCED`) — never from a
+   * request. Default OFF (no attested client exists yet); the assigned-clinician and visit-window gates
+   * apply either way. The service must be built with the same value.
+   */
+  deviceAttestationEnforced?: boolean;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -107,30 +120,66 @@ const captureGateTarget = (request: {
     target.membershipId = request.context.attributes.membershipId;
   return target;
 };
+// GAP-055 — break-glass proves an emergency, not that the caller is the assigned clinician, inside the visit
+// window, on an attested device; a capture is a mutating, attributable legal record, so no grant stands in.
+const CAPTURE_GATE_OPTIONS = { getTarget: captureGateTarget, breakGlassBypassable: false } as const;
 const CAPTURE_GATE = (permission: string, predicate: string): PreHandler =>
-  requireAbac(permission, predicate, { getTarget: captureGateTarget }) as PreHandler;
+  requireAbac(permission, predicate, CAPTURE_GATE_OPTIONS) as PreHandler;
+// §8.2 — the session-bound attestation verdict (the shared M3 predicate reads the server-stamped attribute).
+// Mounted only when `EVV_DEVICE_ATTESTATION_ENFORCED` is on (`deps.deviceAttestationEnforced`).
+const attestationGate = (permission: string): PreHandler =>
+  requireAbac(permission, "device_attestation_valid", {
+    breakGlassBypassable: false,
+  }) as PreHandler;
 const CHECK_IN_ASSIGNED = CAPTURE_GATE("evv.check_in", "assigned_clinician_for_visit");
 const CHECK_IN_WINDOW = CAPTURE_GATE("evv.check_in", "evv_within_visit_window");
+const CHECK_IN_ATTESTED = attestationGate("evv.check_in");
 const CHECK_OUT_ASSIGNED = CAPTURE_GATE("evv.check_out", "assigned_clinician_for_visit");
 const CHECK_OUT_WINDOW = CAPTURE_GATE("evv.check_out", "evv_within_visit_window");
+const CHECK_OUT_ATTESTED = attestationGate("evv.check_out");
+
+/** The service-layer authority for a capture: the SESSION's attestation verdict, never a body field. */
+const captureAuthorityOf = (request: FastifyRequest) =>
+  clinicianCapture(request.context?.attributes?.[DEVICE_ATTESTATION_ATTRIBUTE]);
+
+/** The M2 attestation id the SESSION is bound to (server-stamped), or null — never a body field. */
+const sessionAttestationIdOf = (request: FastifyRequest): string | null =>
+  captureAuthorityOf(request).deviceAttestation?.attestationId ?? null;
 
 export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): void {
   const { service } = deps;
+  const attested = deps.deviceAttestationEnforced === true;
+  /** The attestation preHandler for a route, present only when attestation is enforced. */
+  const attestationGates = (gate: PreHandler): PreHandler[] => (attested ? [gate] : []);
 
   // 1 — record a check-in (runs the two §4.7 capture predicates after RBAC).
   app.post(
     "/api/v1/evv/check-in",
-    { preHandler: [CHECK_IN, CHECK_IN_ASSIGNED, CHECK_IN_WINDOW] },
+    {
+      preHandler: [
+        CHECK_IN,
+        ...attestationGates(CHECK_IN_ATTESTED),
+        CHECK_IN_ASSIGNED,
+        CHECK_IN_WINDOW,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(CheckInRequest, request.body);
-      const res = await service.recordCapture(organizationId, userId, "check_in", {
-        visitId: b.visitId,
-        coords: b.coords,
-        accuracyM: b.accuracyM,
-        capturedAt: b.capturedAt,
-        gpsQualityAttested: b.gpsQualityAttested,
-      });
+      const res = await service.recordCapture(
+        organizationId,
+        userId,
+        "check_in",
+        {
+          visitId: b.visitId,
+          coords: b.coords,
+          accuracyM: b.accuracyM,
+          capturedAt: b.capturedAt,
+          gpsQualityAttested: b.gpsQualityAttested,
+          claimedDeviceId: b.evvDeviceId,
+        },
+        captureAuthorityOf(request),
+      );
       return reply.code(201).send(res);
     },
   );
@@ -138,38 +187,99 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 2 — record a check-out.
   app.post(
     "/api/v1/evv/check-out",
-    { preHandler: [CHECK_OUT, CHECK_OUT_ASSIGNED, CHECK_OUT_WINDOW] },
+    {
+      preHandler: [
+        CHECK_OUT,
+        ...attestationGates(CHECK_OUT_ATTESTED),
+        CHECK_OUT_ASSIGNED,
+        CHECK_OUT_WINDOW,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(CheckOutRequest, request.body);
-      const res = await service.recordCapture(organizationId, userId, "check_out", {
-        visitId: b.visitId,
-        coords: b.coords,
-        accuracyM: b.accuracyM,
-        capturedAt: b.capturedAt,
-        gpsQualityAttested: b.gpsQualityAttested,
-      });
+      const res = await service.recordCapture(
+        organizationId,
+        userId,
+        "check_out",
+        {
+          visitId: b.visitId,
+          coords: b.coords,
+          accuracyM: b.accuracyM,
+          capturedAt: b.capturedAt,
+          gpsQualityAttested: b.gpsQualityAttested,
+          claimedDeviceId: b.evvDeviceId,
+        },
+        captureAuthorityOf(request),
+      );
       return reply.code(201).send(res);
     },
   );
 
-  // 3 — batch offline-sync (idempotent on (deviceId, localId) in prod; the slice records each event).
+  // 3 — batch offline-sync. GAP-055: every event is held to the SAME guards as the single capture routes,
+  // derived server-side — the clinician is the session actor; the assignment and the window come from the
+  // stored visit; attestation is the session's. The per-event RBAC key follows the event's kind (a check-out
+  // needs `evv.check_out`, which the route-level `evv.check_in` does not imply). Every event is checked
+  // BEFORE any is written, so one guard failure refuses the whole batch (the module-wide offline-sync
+  // convention, cf. M13) — a denied event cannot slip through behind a "synced" ack. The writes themselves are
+  // independent transactions, so a runtime failure on event N can still leave events 1..N-1 committed.
   app.post("/api/v1/evv/offline-sync", { preHandler: [CHECK_IN] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const b = parse(OfflineSyncRequest, request.body);
-    // `Promise.all`, not a bare `.map` (F-068 §2). The production service is async, so the array this
-    // used to return held un-awaited promises and `JSON.stringify([Promise.resolve(x)])` is `[{}]` — the
-    // D5 offline batch acknowledged every event as an empty object. The in-memory slice is synchronous,
-    // so it serialized correctly and no test could see it.
+    const authority = captureAuthorityOf(request);
+    const checked = new Set<string>();
+    for (const e of b.events) {
+      const permission = e.kind === "check_out" ? "evv.check_out" : "evv.check_in";
+      const key = `${permission}|${e.visitId}|${e.capturedAt}`;
+      if (checked.has(key)) continue;
+      const target = captureGateTarget({
+        body: { visitId: e.visitId, capturedAt: e.capturedAt },
+        context: request.context,
+      });
+      await requirePermission(permission)(request);
+      if (attested)
+        await requireAbac(permission, "device_attestation_valid", {
+          breakGlassBypassable: false,
+        })(request);
+      await requireAbac(permission, "assigned_clinician_for_visit", {
+        getTarget: () => target,
+        breakGlassBypassable: false,
+      })(request);
+      await requireAbac(permission, "evv_within_visit_window", {
+        getTarget: () => target,
+        breakGlassBypassable: false,
+      })(request);
+      checked.add(key);
+    }
+    // The batch-level and per-event device claims must agree, and every claim must be acceptable for the
+    // session (the session-bound device when enforced; any approved device of the same membership when not) —
+    // checked for the whole batch before any event is written. A claim never widens past the clinician.
+    const claims = new Set<string>([b.evvDeviceId]);
+    for (const e of b.events) {
+      if (e.evvDeviceId !== b.evvDeviceId)
+        throw new ForbiddenError("an offline-sync event names a different device than the batch");
+      claims.add(e.evvDeviceId);
+    }
+    for (const claimed of claims)
+      await service.assertCaptureDevice(organizationId, userId, claimed, authority);
+    // `Promise.all`, not a bare `.map` (F-068 §2): the production service is async. The service re-asserts
+    // the same guards per event (defence in depth).
     return Promise.all(
       b.events.map((e) =>
-        service.recordCapture(organizationId, userId, e.kind, {
-          visitId: e.visitId,
-          coords: e.coords,
-          accuracyM: e.accuracyM,
-          capturedAt: e.capturedAt,
-          gpsQualityAttested: e.gpsQualityAttested,
-        }),
+        service.recordCapture(
+          organizationId,
+          userId,
+          e.kind,
+          {
+            visitId: e.visitId,
+            coords: e.coords,
+            accuracyM: e.accuracyM,
+            capturedAt: e.capturedAt,
+            gpsQualityAttested: e.gpsQualityAttested,
+            claimedDeviceId: e.evvDeviceId,
+          },
+          authority,
+        ),
       ),
     );
   });
@@ -275,12 +385,16 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(SelfRegisterDeviceRequest, request.body);
-      return reply.code(201).send(
-        await service.selfRegisterDevice(organizationId, userId, {
-          platform: b.platform,
-          modelDescription: b.modelDescription,
-        }),
-      );
+      return reply
+        .code(201)
+        .send(
+          await service.selfRegisterDevice(
+            organizationId,
+            userId,
+            { platform: b.platform, modelDescription: b.modelDescription },
+            sessionAttestationIdOf(request),
+          ),
+        );
     },
   );
 

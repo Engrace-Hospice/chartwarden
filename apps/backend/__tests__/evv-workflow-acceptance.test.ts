@@ -25,11 +25,13 @@ import {
 import {
   EvvRouteService,
   buildEvvAbacPredicates,
+  clinicianCapture,
   isAggregatorSubmissionCancellable,
   isAggregatorSubmissionResubmittable,
 } from "../src/modules/18-evv/index";
 
 const ORG = "org_a";
+const CLINICIAN_OK = clinicianCapture({ valid: true, attestationId: "att-mem-rn" });
 const ORG_B = "org_b";
 const MEM_RN = "mem_rn";
 const PATIENT = "22222222-2222-4222-8222-222222222222";
@@ -42,47 +44,59 @@ const SCHED_END = "2026-06-22T15:00:00.000Z";
 const IN_WINDOW = "2026-06-22T14:05:00.000Z";
 
 /** A service seeded with one org_a visit assigned to the RN, an open resolution, and two submissions. */
-function service(): EvvRouteService {
-  return new EvvRouteService({
-    visits: [
-      {
-        organizationId: ORG,
-        visitId: VISIT,
-        patientId: PATIENT,
-        assignedMembershipId: MEM_RN,
-        scheduledStartedAt: SCHED_START,
-        scheduledEndedAt: SCHED_END,
-      },
-    ],
-    resolutions: [
-      {
-        organizationId: ORG,
-        id: "mr-open",
-        visitId: VISIT,
-        kind: "missing_checkout",
-        status: "open",
-      },
-    ],
-    submissions: [
-      {
-        organizationId: ORG,
-        id: "sub-rejected",
-        visitId: VISIT,
-        stateCode: "TX",
-        aggregatorVendor: "sandata",
-        status: "rejected",
-      },
-      {
-        organizationId: ORG,
-        id: "sub-accepted",
-        visitId: VISIT,
-        stateCode: "TX",
-        aggregatorVendor: "sandata",
-        status: "accepted",
-        aggregatorTransactionId: "txn-1",
-      },
-    ],
-  });
+function service(deviceAttestationEnforced = true): EvvRouteService {
+  return new EvvRouteService(
+    {
+      devices: [
+        {
+          organizationId: ORG,
+          id: "55555555-5555-4555-8555-555555555555",
+          membershipId: MEM_RN,
+          status: "approved",
+          attestationId: "att-mem-rn",
+        },
+      ],
+      visits: [
+        {
+          organizationId: ORG,
+          visitId: VISIT,
+          patientId: PATIENT,
+          assignedMembershipId: MEM_RN,
+          scheduledStartedAt: SCHED_START,
+          scheduledEndedAt: SCHED_END,
+        },
+      ],
+      resolutions: [
+        {
+          organizationId: ORG,
+          id: "mr-open",
+          visitId: VISIT,
+          kind: "missing_checkout",
+          status: "open",
+        },
+      ],
+      submissions: [
+        {
+          organizationId: ORG,
+          id: "sub-rejected",
+          visitId: VISIT,
+          stateCode: "TX",
+          aggregatorVendor: "sandata",
+          status: "rejected",
+        },
+        {
+          organizationId: ORG,
+          id: "sub-accepted",
+          visitId: VISIT,
+          stateCode: "TX",
+          aggregatorVendor: "sandata",
+          status: "accepted",
+          aggregatorTransactionId: "txn-1",
+        },
+      ],
+    },
+    { deviceAttestationEnforced },
+  );
 }
 
 // ── §4.7 ABAC context helper (the server-assembled context a predicate evaluates against) ──────────────────
@@ -98,20 +112,32 @@ function ctx(organizationId: string = ORG) {
 }
 
 describe("M18-T08 §12 workflow acceptance", () => {
-  it("D2 — a check-in and a check-out are SEPARATE rows on one visit; the bracket reads `present`", () => {
+  it("D2 — a check-in and a check-out are SEPARATE rows on one visit; the bracket reads `present`", async () => {
     const svc = service();
-    const checkIn = svc.recordCapture(ORG, MEM_RN, "check_in", {
-      visitId: VISIT,
-      coords: { lat: 45.5, lng: -122.6 },
-      accuracyM: 8,
-      capturedAt: IN_WINDOW,
-    });
-    const checkOut = svc.recordCapture(ORG, MEM_RN, "check_out", {
-      visitId: VISIT,
-      coords: { lat: 45.5, lng: -122.6 },
-      accuracyM: 8,
-      capturedAt: SCHED_END,
-    });
+    const checkIn = await svc.recordCapture(
+      ORG,
+      MEM_RN,
+      "check_in",
+      {
+        visitId: VISIT,
+        coords: { lat: 45.5, lng: -122.6 },
+        accuracyM: 8,
+        capturedAt: IN_WINDOW,
+      },
+      CLINICIAN_OK,
+    );
+    const checkOut = await svc.recordCapture(
+      ORG,
+      MEM_RN,
+      "check_out",
+      {
+        visitId: VISIT,
+        coords: { lat: 45.5, lng: -122.6 },
+        accuracyM: 8,
+        capturedAt: SCHED_END,
+      },
+      CLINICIAN_OK,
+    );
     expect(checkIn.eventId).not.toBe(checkOut.eventId); // single-row-per-event (D2)
     expect(checkIn.kind).toBe("check_in");
     expect(checkOut.kind).toBe("check_out");
@@ -200,14 +226,20 @@ describe("M18-T08 §12 workflow acceptance", () => {
     ).toThrowError(expect.objectContaining({ code: "ILLEGAL_AGGREGATOR_SUBMISSION_TRANSITION" }));
   });
 
-  it("D10 — the portal arrival projection carries timestamps only; the team-location seam is the only coord-bearing read", () => {
+  it("D10 — the portal arrival projection carries timestamps only; the team-location seam is the only coord-bearing read", async () => {
     const svc = service();
-    svc.recordCapture(ORG, MEM_RN, "check_in", {
-      visitId: VISIT,
-      coords: { lat: 45.5, lng: -122.6 },
-      accuracyM: 8,
-      capturedAt: IN_WINDOW,
-    });
+    await svc.recordCapture(
+      ORG,
+      MEM_RN,
+      "check_in",
+      {
+        visitId: VISIT,
+        coords: { lat: 45.5, lng: -122.6 },
+        accuracyM: 8,
+        capturedAt: IN_WINDOW,
+      },
+      CLINICIAN_OK,
+    );
     const arrival = svc.portalArrival(ORG, VISIT);
     expect(arrival.arrivedAt).toBe(IN_WINDOW);
     // The DTO has NO coordinate fields (D10 — portal sessions never see clinician GPS).
@@ -221,14 +253,20 @@ describe("M18-T08 §12 workflow acceptance", () => {
 });
 
 describe("M18-T08 §9.3 / §9.4 layer-independence (org-pinned non-leak, ABAC fail-closed cross-tenant)", () => {
-  it("§9.4 a visit + its events in org_a are invisible to org_b (non-leaking NotFound / empty list)", () => {
+  it("§9.4 a visit + its events in org_a are invisible to org_b (non-leaking NotFound / empty list)", async () => {
     const svc = service();
-    svc.recordCapture(ORG, MEM_RN, "check_in", {
-      visitId: VISIT,
-      coords: { lat: 45.5, lng: -122.6 },
-      accuracyM: 8,
-      capturedAt: IN_WINDOW,
-    });
+    await svc.recordCapture(
+      ORG,
+      MEM_RN,
+      "check_in",
+      {
+        visitId: VISIT,
+        coords: { lat: 45.5, lng: -122.6 },
+        accuracyM: 8,
+        capturedAt: IN_WINDOW,
+      },
+      CLINICIAN_OK,
+    );
     // Org A reads its own bracket; Org B is denied with a non-leaking NotFound.
     expect(svc.bracketForVisit(ORG, VISIT).visitId).toBe(VISIT);
     expect(() => svc.bracketForVisit(ORG_B, VISIT)).toThrowError(
@@ -300,5 +338,36 @@ describe("M18-T08 §9.3 / §9.4 layer-independence (org-pinned non-leak, ABAC fa
         eventCapturedAt: IN_WINDOW,
       }),
     ).toBe(false);
+  });
+});
+
+describe("M18 §12 acceptance — device attestation NOT enforced (production default, ADR-0035)", () => {
+  const capture = (kind: "check_in" | "check_out", capturedAt: string, visitId = VISIT) => ({
+    kind,
+    input: { visitId, coords: { lat: 45.5, lng: -122.6 }, accuracyM: 8, capturedAt },
+  });
+
+  it("an un-attested clinician completes the check-in / check-out bracket on the visit", async () => {
+    const svc = service(false);
+    const unattested = clinicianCapture(undefined);
+    const a = capture("check_in", IN_WINDOW);
+    const b = capture("check_out", SCHED_END);
+    const checkIn = await svc.recordCapture(ORG, MEM_RN, a.kind, a.input, unattested);
+    const checkOut = await svc.recordCapture(ORG, MEM_RN, b.kind, b.input, unattested);
+    expect([checkIn.kind, checkOut.kind]).toEqual(["check_in", "check_out"]);
+  });
+
+  it("the same un-attested capture is refused when attestation IS enforced", async () => {
+    const a = capture("check_in", IN_WINDOW);
+    await expect(
+      service(true).recordCapture(ORG, MEM_RN, a.kind, a.input, clinicianCapture(undefined)),
+    ).rejects.toMatchObject({ name: "ForbiddenError" });
+  });
+
+  it("only the attestation is relaxed: a non-assigned clinician is still refused", async () => {
+    const a = capture("check_in", IN_WINDOW);
+    await expect(
+      service(false).recordCapture(ORG, "mem_other", a.kind, a.input, clinicianCapture(undefined)),
+    ).rejects.toMatchObject({ name: "ForbiddenError" });
   });
 });

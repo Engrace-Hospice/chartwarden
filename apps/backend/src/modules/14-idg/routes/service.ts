@@ -14,7 +14,8 @@ import {
   evaluateQuorum,
   planActionItemCreate,
   planDecisionRecord,
-  planDecisionSupersede,
+  planDecisionSupersedeInto,
+  planDecisionUpdate,
   planMeetingScheduled,
   planMinutesAmendmentRequest,
   transitionActionItem,
@@ -94,6 +95,8 @@ export interface DecisionView {
   readonly recordedByMembershipId: string;
   readonly recordedAt: string;
   readonly supersededByDecisionId: string | null;
+  /** Optimistic-concurrency token: the PATCH must echo it in `If-Match`; every edit bumps it. */
+  readonly version: number;
   /** F-234 — downstream "applied" acknowledgements (list read only). */
   readonly applications?: readonly DecisionApplicationView[];
 }
@@ -589,6 +592,13 @@ export interface RecordDecisionArgs {
   readonly decisionKind: IdgDecisionKind;
   readonly payload: IdgDecisionRecordedPayload;
 }
+export interface SupersedeDecisionArgs {
+  /** The subsequent (live) meeting the successor decision is recorded in. */
+  readonly meetingId: string;
+  /** The caller's location memberships. When given, the service refuses (404, no leak) a decision whose PRIOR meeting
+   * is at a location outside it — defence in depth behind the route's `idg_meeting_scope` gate on that meeting. */
+  readonly callerLocationIds?: readonly string[];
+}
 export interface CreateActionItemArgs {
   readonly decisionId?: string;
   readonly patientId: string | null;
@@ -711,8 +721,18 @@ export interface IdgRouteService {
     userId: string,
     id: string,
     payload: IdgDecisionRecordedPayload,
+    ifMatchVersion: number,
   ): Promise<DecisionView>;
-  supersedeDecision(orgId: string, userId: string, id: string): Promise<DecisionView>;
+  /**
+   * GAP-043 / §2.8: the successor is written into `args.meetingId` — a LATER, LIVE meeting — with the quorum
+   * computed from that meeting's stored attendance; `QUORUM_NOT_MET` (422) when it is not quorate.
+   */
+  supersedeDecision(
+    orgId: string,
+    userId: string,
+    id: string,
+    args: SupersedeDecisionArgs,
+  ): Promise<DecisionView>;
   /**
    * The meeting's decision ledger — metadata only, on the {@link PatientIdgHistoryView} precedent.
    *
@@ -781,6 +801,8 @@ export interface IdgRouteService {
   ): Promise<DisciplineNoteView>;
   /** The owning meeting id of a note (null when absent/cross-tenant) — for the route's per-meeting ABAC. */
   disciplineNoteMeetingId(orgId: string, id: string): Promise<string | null>;
+  /** The owning meeting id of a decision (null when absent/cross-tenant) — for the supersede route's prior-meeting ABAC. */
+  decisionMeetingId(orgId: string, id: string): Promise<string | null>;
   // minutes
   getMinutes(orgId: string, meetingId: string): Promise<MinutesView>;
   submitAmendment(
@@ -862,6 +884,7 @@ interface DecisionRow {
   wasQuorate: boolean;
   quorumSnapshot: QuorumSnapshot;
   supersededByDecisionId: string | null;
+  version: number;
 }
 interface ActionItemRow {
   id: string;
@@ -1427,6 +1450,7 @@ export function createInMemoryIdgBackend(
         wasQuorate: plan.wasQuorate,
         quorumSnapshot: plan.quorumSnapshot,
         supersededByDecisionId: null,
+        version: 0,
       };
       decisions.set(id, row);
       emit("m14.decision.recorded_open", {
@@ -1438,33 +1462,54 @@ export function createInMemoryIdgBackend(
       });
       return { ...row };
     },
-    async updateDecision(orgId, _userId, id, payload) {
+    async updateDecision(orgId, _userId, id, payload, ifMatchVersion) {
       const row = decisions.get(id);
       if (!row) throw new NotFoundError("idg_decision");
-      meetingOf(orgId, row.meetingId);
+      const m = meetingOf(orgId, row.meetingId);
+      // GAP-043: only an `open` decision in a live meeting is editable (§2.8).
+      planDecisionUpdate({ status: row.status, meetingIsLive: m.status === "live" });
+      assertNoteVersion(ifMatchVersion, row.version);
+      row.version += 1;
       row.decisionKind = payload.kind;
       row.payload = payload;
       return { ...row };
     },
-    async supersedeDecision(orgId, userId, id) {
+    async supersedeDecision(orgId, userId, id, args) {
       const prior = decisions.get(id);
       if (!prior) throw new NotFoundError("idg_decision");
-      const m = meetingOf(orgId, prior.meetingId);
-      // `planDecisionSupersede` raises DECISION_SUPERSEDED / DECISION_NOT_OPEN per §2.8.
-      planDecisionSupersede({ status: prior.status });
+      const priorMeeting = meetingOf(orgId, prior.meetingId);
+      if (args.callerLocationIds && !args.callerLocationIds.includes(priorMeeting.locationId)) {
+        throw new NotFoundError("idg_decision");
+      }
+      const target = meetingOf(orgId, args.meetingId);
+      // GAP-043: the successor lands in a LATER, LIVE, QUORATE meeting; the quorum is computed from the target
+      // meeting's stored attendance (never asserted, never copied from the prior row). Also raises
+      // DECISION_SUPERSEDED / DECISION_NOT_OPEN (only an `emitted` decision may be superseded, §2.8).
+      const plan = planDecisionSupersedeInto({
+        priorStatus: prior.status,
+        priorMeetingStart: priorMeeting.scheduledStart,
+        target: {
+          isLive: target.status === "live",
+          scheduledStart: target.scheduledStart,
+          patientIncluded:
+            prior.patientId === null || target.includedPatientIds.has(prior.patientId),
+          presentDisciplines: presentDisciplinesFor(target.id),
+        },
+      });
       const newId = nextId("idg-dec");
       decisions.set(newId, {
         id: newId,
-        meetingId: m.id,
+        meetingId: target.id,
         patientId: prior.patientId,
-        agendaItemId: prior.agendaItemId,
+        agendaItemId: null,
         recordedByMembershipId: userId,
         recordedAt: now(),
         decisionKind: prior.decisionKind,
         payload: prior.payload,
         status: "open",
-        wasQuorate: true,
-        quorumSnapshot: prior.quorumSnapshot,
+        version: 0,
+        wasQuorate: plan.wasQuorate,
+        quorumSnapshot: plan.quorumSnapshot,
         supersededByDecisionId: null,
       });
       prior.status = "superseded";
@@ -1488,6 +1533,7 @@ export function createInMemoryIdgBackend(
           recordedByMembershipId: d.recordedByMembershipId,
           recordedAt: d.recordedAt,
           supersededByDecisionId: d.supersededByDecisionId,
+          version: d.version,
         }));
     },
 
@@ -1654,6 +1700,12 @@ export function createInMemoryIdgBackend(
     },
     async disciplineNoteMeetingId(orgId, id) {
       const row = notes.get(id);
+      if (!row) return null;
+      const m = meetings.get(row.meetingId);
+      return m && m.organizationId === orgId ? row.meetingId : null;
+    },
+    async decisionMeetingId(orgId, id) {
+      const row = decisions.get(id);
       if (!row) return null;
       const m = meetings.get(row.meetingId);
       return m && m.organizationId === orgId ? row.meetingId : null;

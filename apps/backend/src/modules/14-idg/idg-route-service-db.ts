@@ -51,6 +51,8 @@ import {
   isActionableDecisionKind,
   planDecisionRecord,
   planDecisionSupersede,
+  planDecisionSupersedeInto,
+  planDecisionUpdate,
   planMinutesAmendmentRequest,
   transitionActionItem,
   transitionMeeting,
@@ -234,6 +236,55 @@ export function createDbIdgBackend(
     const [m] = await tx.select().from(MTG).where(eq(MTG.id, id)).limit(1);
     if (!m) throw new NotFoundError("idg_meeting");
     return m;
+  }
+  /** Load a meeting taking a row lock (`FOR UPDATE`) until the surrounding tx ends. `adjournMeeting` UPDATEs the
+   * meeting row before it reads the open decisions, so a decision write that holds this lock either commits first
+   * (and is emitted by the adjournment) or is serialised after it and re-reads a non-live meeting. */
+  async function lockMeeting(tx: DbClient, id: string): Promise<MeetingRow> {
+    const [m] = await tx.select().from(MTG).where(eq(MTG.id, id)).limit(1).for("update");
+    if (!m) throw new NotFoundError("idg_meeting");
+    return m;
+  }
+  /** Flip the prior `emitted` -> `superseded` FIRST (conditional on `status = 'emitted'`: of two concurrent
+   * supersedes only one matches the row, the loser is refused 409 before it can insert a second successor), then
+   * insert the `open` successor into the target meeting and link the two. Returns the successor id. */
+  async function flipAndInsertSuccessor(
+    tx: DbClient,
+    orgId: string,
+    userId: string,
+    prior: typeof DEC.$inferSelect,
+    targetMeetingId: string,
+    plan: ReturnType<typeof planDecisionSupersedeInto>,
+  ): Promise<string> {
+    const at = new Date();
+    const flipped = await tx
+      .update(DEC)
+      .set({ status: "superseded", supersededAt: at, updatedAt: at })
+      .where(and(eq(DEC.id, prior.id), eq(DEC.status, "emitted")))
+      .returning({ id: DEC.id });
+    if (flipped.length === 0) {
+      // Lost the race to a concurrent supersede/emit: re-derive the precise 409 from the row as it now is.
+      const [current] = await tx.select().from(DEC).where(eq(DEC.id, prior.id)).limit(1);
+      planDecisionSupersede({ status: current?.status ?? "superseded" });
+      throw new NotFoundError("idg_decision");
+    }
+    const [next] = await tx
+      .insert(DEC)
+      .values({
+        organizationId: orgId,
+        idgMeetingId: targetMeetingId,
+        patientId: prior.patientId,
+        carePlanId: prior.carePlanId, // the successor supersedes the SAME plan's decision (kind is copied verbatim)
+        decisionKind: prior.decisionKind,
+        payload: prior.payload,
+        wasQuorate: plan.wasQuorate,
+        quorumSnapshot: plan.quorumSnapshot,
+        recordedByMembershipId: userId,
+        status: "open",
+      })
+      .returning({ id: DEC.id });
+    await tx.update(DEC).set({ supersededByDecisionId: next!.id }).where(eq(DEC.id, prior.id));
+    return next!.id;
   }
   /** The disciplines PRESENT (not absent/excused) at a meeting — the quorum present-set. */
   async function presentDisciplines(tx: DbClient, meetingId: string): Promise<string[]> {
@@ -598,6 +649,7 @@ export function createDbIdgBackend(
     recordedByMembershipId: r.recordedByMembershipId,
     recordedAt: isoReq(r.recordedAt),
     supersededByDecisionId: r.supersededByDecisionId,
+    version: r.version,
   });
   const toAttendanceView = (r: typeof ATT.$inferSelect): AttendanceView => ({
     id: r.id,
@@ -1743,13 +1795,24 @@ export function createDbIdgBackend(
       });
     },
 
+    async decisionMeetingId(orgId, id): Promise<string | null> {
+      return withOrg(orgId, async (tx) => {
+        const [row] = await tx
+          .select({ meetingId: DEC.idgMeetingId })
+          .from(DEC)
+          .where(eq(DEC.id, id))
+          .limit(1);
+        return row?.meetingId ?? null;
+      });
+    },
+
     // ── decisions (writes) ─────────────────────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, meetingId, args): Promise<DecisionView> {
       // Resolved BEFORE the write tx: the seam read opens its own request-scoped tx, and nesting it
       // inside `withOrg` would re-enter the pool mid-transaction (the M11/M18 write-lifecycle gotcha).
       const carePlanId = await resolveCarePlanIdForDecision(args.patientId, args.decisionKind);
       return withOrg(orgId, async (tx) => {
-        const m = await loadMeeting(tx, meetingId);
+        const m = await lockMeeting(tx, meetingId); // serialise against a concurrent adjournment
         // `planDecisionRecord` enforces MEETING_NOT_LIVE + INCLUSION_CRITERIA_FAILED and stamps the quorum.
         const plan = planDecisionRecord({
           meetingIsLive: m.status === "live",
@@ -1794,12 +1857,14 @@ export function createDbIdgBackend(
         return toDecisionView(row!);
       });
     },
-    async updateDecision(orgId, _userId, id, payload): Promise<DecisionView> {
+    async updateDecision(orgId, _userId, id, payload, ifMatchVersion): Promise<DecisionView> {
       const prior = await withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(DEC).where(eq(DEC.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_decision");
         return row;
       });
+      // Fail fast before the seam read below (the authoritative re-check runs inside the write tx).
+      planDecisionUpdate({ status: prior.status, meetingIsLive: true });
       // The kind may flip into/out of `care_plan_update`: entering it resolves the (previously
       // unset) active-plan link — the seam read runs between the two txs, never inside one — and
       // leaving it CLEARS the link, so M30's latency measure never scores a decision that no longer
@@ -1810,48 +1875,70 @@ export function createDbIdgBackend(
             (await resolveCarePlanIdForDecision(prior.patientId, payload.kind)))
           : null;
       return withOrg(orgId, async (tx) => {
+        // GAP-043 / §2.8: re-read INSIDE the write tx (the row may have been emitted/superseded since the
+        // first read) and make the UPDATE itself conditional on `status = 'open'`, so an adjournment that
+        // slips in between cannot be overwritten (compare-and-set, like the note version CAS).
+        const [cur] = await tx.select().from(DEC).where(eq(DEC.id, id)).limit(1);
+        if (!cur) throw new NotFoundError("idg_decision");
+        // Lock the meeting so an adjournment cannot read this decision's pre-edit payload and emit it stale.
+        const m = await lockMeeting(tx, cur.idgMeetingId);
+        planDecisionUpdate({ status: cur.status, meetingIsLive: m.status === "live" });
+        assertNoteVersion(ifMatchVersion, cur.version);
+        // Optimistic concurrency (§7.7): compare-and-set on BOTH status and the version the caller read, so two
+        // concurrent edits of an open decision cannot silently overwrite each other (the loser gets a 412).
         const [updated] = await tx
           .update(DEC)
-          .set({ decisionKind: payload.kind, payload, carePlanId, updatedAt: new Date() })
-          .where(eq(DEC.id, id))
+          .set({
+            decisionKind: payload.kind,
+            payload,
+            carePlanId,
+            version: cur.version + 1,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(DEC.id, id), eq(DEC.status, "open"), eq(DEC.version, cur.version)))
           .returning();
-        if (!updated) throw new NotFoundError("idg_decision");
+        if (!updated) {
+          // Lost the race: re-derive the precise 409 (no longer open) or 412 (version moved) from the row now.
+          const [current] = await tx.select().from(DEC).where(eq(DEC.id, id)).limit(1);
+          if (!current) throw new NotFoundError("idg_decision");
+          planDecisionUpdate({ status: current.status, meetingIsLive: true });
+          assertNoteVersion(ifMatchVersion, current.version);
+          throw new NotFoundError("idg_decision");
+        }
         return toDecisionView(updated);
       });
     },
-    async supersedeDecision(orgId, userId, id): Promise<DecisionView> {
+    async supersedeDecision(orgId, userId, id, args): Promise<DecisionView> {
       return withOrg(orgId, async (tx) => {
         const [prior] = await tx.select().from(DEC).where(eq(DEC.id, id)).limit(1);
         if (!prior) throw new NotFoundError("idg_decision");
-        // `planDecisionSupersede` raises DECISION_SUPERSEDED / DECISION_NOT_OPEN (only an `emitted` decision
-        // may be superseded, §2.8).
-        planDecisionSupersede({ status: prior.status });
-        const [next] = await tx
-          .insert(DEC)
-          .values({
-            organizationId: orgId,
-            idgMeetingId: prior.idgMeetingId,
-            patientId: prior.patientId,
-            carePlanId: prior.carePlanId, // the successor supersedes the SAME plan's decision (kind is copied verbatim)
-            decisionKind: prior.decisionKind,
-            payload: prior.payload,
-            wasQuorate: true,
-            quorumSnapshot: prior.quorumSnapshot,
-            recordedByMembershipId: userId,
-            status: "open",
-          })
-          .returning({ id: DEC.id });
-        const at = new Date();
-        await tx
-          .update(DEC)
-          .set({
-            status: "superseded",
-            supersededByDecisionId: next!.id,
-            supersededAt: at,
-            updatedAt: at,
-          })
-          .where(eq(DEC.id, id));
-        return toDecisionView({ ...prior, status: "superseded", supersededByDecisionId: next!.id });
+        const priorMeeting = await loadMeeting(tx, prior.idgMeetingId);
+        // Defence in depth behind the route's scope gate: the caller must cover the PRIOR decision's meeting.
+        if (args.callerLocationIds && !args.callerLocationIds.includes(priorMeeting.locationId)) {
+          throw new NotFoundError("idg_decision");
+        }
+        // Lock the TARGET row, then judge it live: a concurrent adjournment either committed first (=> not live,
+        // refused) or waits for this tx and emits the successor with the rest of the meeting's open decisions.
+        const target = await lockMeeting(tx, args.meetingId);
+        // GAP-043 / §2.8 / §4.7: the successor lands in a LATER, LIVE, QUORATE meeting; the quorum is computed
+        // from the TARGET meeting's stored attendance (never asserted, never copied from the prior row).
+        // Also raises DECISION_SUPERSEDED / DECISION_NOT_OPEN (only an `emitted` decision may be superseded).
+        const plan = planDecisionSupersedeInto({
+          priorStatus: prior.status,
+          priorMeetingStart: priorMeeting.scheduledStart.toISOString(),
+          target: {
+            isLive: target.status === "live",
+            scheduledStart: target.scheduledStart.toISOString(),
+            patientIncluded: await patientIncluded(tx, target.id, prior.patientId),
+            presentDisciplines: await presentDisciplines(tx, target.id),
+          },
+        });
+        const successorId = await flipAndInsertSuccessor(tx, orgId, userId, prior, target.id, plan);
+        return toDecisionView({
+          ...prior,
+          status: "superseded",
+          supersededByDecisionId: successorId,
+        });
       });
     },
 

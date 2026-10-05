@@ -25,6 +25,34 @@ import type {
 import { ConsentRouteError } from "@wardenx/consent";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { ConsentAccessDeps, ConsentStaffActor } from "../access-scope";
+import { createScopedConsentRouteService } from "../scoped-consent-service";
+import { accessActorOf, createConsentGuards } from "./consent-guards";
+import {
+  ADMIN_RE_RENDER,
+  AUTHOR,
+  AUTHOR_STEP_UP,
+  BEREAVEMENT_AUTHOR,
+  BEREAVEMENT_STEP_UP,
+  CASCADE_ADMIN,
+  CASCADE_STEP_UP,
+  MANAGE_OVERLAY,
+  OVERLAY_STEP_UP,
+  READ,
+  READ_CATALOG,
+  READ_EVAL_AUDIT,
+  READ_HISTORY,
+  REVOKE,
+  REVOKE_STEP_UP,
+  RE_RENDER_STEP_UP,
+  SIGN,
+  SIGN_STEP_UP,
+  actorOf,
+  commandContextOf,
+  mapError,
+  nowIso,
+  scopedActorOf,
+} from "./consent-route-support";
 import {
   AddDpoaAgentBodySchema,
   AddRecipientBodySchema,
@@ -48,65 +76,15 @@ import {
   parse,
 } from "./consent-typebox";
 
-/** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface ConsentRouteDeps {
   service: ConsentRouteService;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
-
-/** Server-authenticated command provenance. Body fields can never forge these identifiers. */
-function commandContextOf(request: FastifyRequest): {
-  stepUpSessionId?: string;
-  membershipId?: string;
-} {
-  const attrs = request.context?.attributes ?? {};
-  return {
-    ...(typeof attrs.sessionId === "string" ? { stepUpSessionId: attrs.sessionId } : {}),
-    ...(typeof attrs.membershipId === "string" ? { membershipId: attrs.membershipId } : {}),
-  };
-}
-
-const READ_CATALOG = requirePermission("consent.read_catalog") as PreHandler;
-const READ = requirePermission("consent.read") as PreHandler;
-const READ_HISTORY = requirePermission("consent.read_history") as PreHandler;
-const READ_EVAL_AUDIT = requirePermission("consent.read_eval_audit") as PreHandler;
-const AUTHOR = requirePermission("consent.author") as PreHandler;
-const SIGN = requirePermission("consent.sign") as PreHandler;
-const REVOKE = requirePermission("consent.revoke") as PreHandler;
-const MANAGE_OVERLAY = requirePermission("consent.manage_overlay") as PreHandler;
-const ADMIN_RE_RENDER = requirePermission("consent.admin_re_render") as PreHandler;
-const CASCADE_ADMIN = requirePermission("consent.cascade_admin") as PreHandler;
-const BEREAVEMENT_AUTHOR = requirePermission("consent.bereavement_outreach_author") as PreHandler;
-const SIGN_STEP_UP = requireStepUp("consent.sign") as PreHandler;
-const REVOKE_STEP_UP = requireStepUp("consent.revoke") as PreHandler;
-const AUTHOR_STEP_UP = requireStepUp("consent.author") as PreHandler;
-const OVERLAY_STEP_UP = requireStepUp("consent.manage_overlay") as PreHandler;
-const RE_RENDER_STEP_UP = requireStepUp("consent.admin_re_render") as PreHandler;
-const CASCADE_STEP_UP = requireStepUp("consent.cascade_admin") as PreHandler;
-const BEREAVEMENT_STEP_UP = requireStepUp("consent.bereavement_outreach_author") as PreHandler;
-
-/** The wall clock every lifecycle write stamps with (one read per request, so a single handler's
- *  transitions share an instant — never two clocks inside one state change). */
-const nowIso = (): string => new Date().toISOString();
-
-function mapError(e: unknown): never {
-  if (e instanceof ConsentRouteError) {
-    if (e.code === "not_found") throw new WardenXError("NOT_FOUND", e.message, 404);
-    if (e.code === "validation") throw new WardenXError("VALIDATION_FAILED", e.message, 422);
-    throw new WardenXError("CONFLICT", e.message, 409);
-  }
-  throw e;
+  /** Ports the access rules consult (caseload seam, bereavement window). Production binds the seam. */
+  access?: ConsentAccessDeps;
 }
 
 export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDeps): void {
-  const { service } = deps;
+  const scoped = createScopedConsentRouteService(deps.service, deps.access);
+  const guards = createConsentGuards(deps.service);
 
   // 1. GET /api/v1/consent-types — catalog + applicable tenant overlay (every role).
   app.get(
@@ -121,7 +99,8 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return { data: await service.readCatalog(organizationId) };
+      const actor = scopedActorOf(request);
+      return { data: await scoped.readCatalog(actor, organizationId) };
     },
   );
 
@@ -129,12 +108,20 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // A loosen attempt is refused by the pure `validateConsentOverlay` and surfaces as a 422.
   app.post(
     "/api/v1/consent-types/overlay",
-    { preHandler: [MANAGE_OVERLAY, OVERLAY_STEP_UP] },
+    {
+      preHandler: [
+        MANAGE_OVERLAY,
+        ...guards.orgAdminOrCompliance("consent.manage_overlay"),
+        OVERLAY_STEP_UP,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const body = parse(UpsertOverlayBodySchema, request.body);
       try {
-        const overlay = await service.upsertTenantOverlay(
+        const overlay = await scoped.upsertTenantOverlay(
+          actor,
           organizationId,
           { ...body, publishedById: userId } as UpsertConsentOverlayInput,
           nowIso(),
@@ -151,13 +138,14 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/patients/:patientId/consents",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.patientScope("consent.read", "read", "consent_management")],
       config: { auditRead: { resourceKind: "consent", patientIdParam: "patientId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
-      return { data: await service.listConsentsForPatient(organizationId, patientId) };
+      return { data: await scoped.listConsentsForPatient(actor, organizationId, patientId) };
     },
   );
 
@@ -169,7 +157,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/:consentId",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.consentRead("consent.read", "consent_management")],
       config: {
         auditRead: {
           resourceKind: "consent",
@@ -181,8 +169,9 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
-      const record = await service.getConsent(organizationId, consentId);
+      const record = await scoped.getConsent(actor, organizationId, consentId);
       if (!record) throw new WardenXError("NOT_FOUND", "consent not found", 404);
       return { data: record };
     },
@@ -193,7 +182,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/:consentId/version-chain",
     {
-      preHandler: [READ_HISTORY],
+      preHandler: [READ_HISTORY, ...guards.consentRead("consent.read_history")],
       config: {
         auditRead: {
           resourceKind: "consent_version_chain",
@@ -206,9 +195,10 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       try {
-        return { data: await service.getVersionChain(organizationId, consentId) };
+        return { data: await scoped.getVersionChain(actor, organizationId, consentId) };
       } catch (e) {
         mapError(e);
       }
@@ -218,13 +208,14 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // 6. POST /api/v1/patients/:patientId/consents — create a DRAFT (no step-up; not yet signed).
   app.post(
     "/api/v1/patients/:patientId/consents",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, ...guards.patientScope("consent.author", "write")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
       const body = parse(CreateDraftBodySchema, request.body);
       try {
-        const draft = await service.createDraft(organizationId, {
+        const draft = await scoped.createDraft(actor, organizationId, {
           ...body,
           patientId,
           typeKey: body.typeKey,
@@ -244,30 +235,42 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
 
   // 7. PATCH /api/v1/consents/:consentId — edit a DRAFT only (D1: an edit to a signed consent is a
   // supersession, route 9 — the service refuses a non-draft with a 409).
-  app.patch("/api/v1/consents/:consentId", { preHandler: [AUTHOR] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    const body = parse(UpdateDraftBodySchema, request.body);
-    try {
-      return {
-        data: await service.updateDraft(organizationId, consentId, body as UpdateConsentDraftInput),
-      };
-    } catch (e) {
-      mapError(e);
-    }
-  });
+  app.patch(
+    "/api/v1/consents/:consentId",
+    { preHandler: [AUTHOR, ...guards.consentDrafter("consent.author")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
+      const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      const body = parse(UpdateDraftBodySchema, request.body);
+      try {
+        return {
+          data: await scoped.updateDraft(
+            actor,
+            organizationId,
+            consentId,
+            body as UpdateConsentDraftInput,
+          ),
+        };
+      } catch (e) {
+        mapError(e);
+      }
+    },
+  );
 
   // 8. POST /api/v1/consents/:consentId/sign — sign (consent.sign + STEP-UP, §4.1). Emits m39.consent.signed (T08).
   app.post(
     "/api/v1/consents/:consentId/sign",
-    { preHandler: [SIGN, SIGN_STEP_UP] },
+    { preHandler: [SIGN, ...guards.consentDrafterOrScope("consent.sign"), SIGN_STEP_UP] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const body = parse(SignConsentBodySchema, request.body);
       try {
         return {
-          data: await service.signConsent(
+          data: await scoped.signConsent(
+            actor,
             organizationId,
             consentId,
             userId,
@@ -286,13 +289,15 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // pointing at this one, which flips to `superseded`. Never an in-place mutation.
   app.post(
     "/api/v1/consents/:consentId/supersede",
-    { preHandler: [SIGN, SIGN_STEP_UP] },
+    { preHandler: [SIGN, ...guards.consentScope("consent.sign"), SIGN_STEP_UP] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const body = parse(SupersedeBodySchema, request.body);
       try {
-        const next = await service.supersedeConsent(
+        const next = await scoped.supersedeConsent(
+          actor,
           organizationId,
           consentId,
           { ...body, createdById: userId } as SupersedeConsentInput,
@@ -310,14 +315,16 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // 10. POST /api/v1/consents/:consentId/revoke — revoke (consent.revoke + STEP-UP for staff, §4.1).
   app.post(
     "/api/v1/consents/:consentId/revoke",
-    { preHandler: [REVOKE, REVOKE_STEP_UP] },
+    { preHandler: [REVOKE, ...guards.consentScope("consent.revoke"), REVOKE_STEP_UP] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const body = parse(RevokeBodySchema, request.body);
       try {
         return {
-          data: await service.revokeConsent(
+          data: await scoped.revokeConsent(
+            actor,
             organizationId,
             consentId,
             {
@@ -347,14 +354,15 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/:consentId/recipients",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.consentRead("consent.read", "consent_management")],
       config: { auditRead: { resourceKind: "consent_recipient", resourceIdParam: "consentId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       try {
-        return { data: await service.listRecipients(organizationId, consentId, nowIso()) };
+        return { data: await scoped.listRecipients(actor, organizationId, consentId, nowIso()) };
       } catch (e) {
         mapError(e);
       }
@@ -364,13 +372,15 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // 12. POST /api/v1/consents/:consentId/recipients — add a named recipient (STEP-UP).
   app.post(
     "/api/v1/consents/:consentId/recipients",
-    { preHandler: [AUTHOR, AUTHOR_STEP_UP] },
+    { preHandler: [AUTHOR, ...guards.consentScope("consent.author"), AUTHOR_STEP_UP] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const body = parse(AddRecipientBodySchema, request.body);
       try {
-        const row = await service.addRecipient(
+        const row = await scoped.addRecipient(
+          actor,
           organizationId,
           consentId,
           {
@@ -393,14 +403,16 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // The row is never deleted: a disclosure target that WAS authorized stays in the record.
   app.delete(
     "/api/v1/consents/:consentId/recipients/:recipientId",
-    { preHandler: [AUTHOR, AUTHOR_STEP_UP] },
+    { preHandler: [AUTHOR, ...guards.consentScope("consent.author"), AUTHOR_STEP_UP] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId, recipientId } = parse(RecipientIdParamsSchema, request.params);
       const body = parse(RemoveRecipientBodySchema, request.body);
       try {
         return {
-          data: await service.removeRecipient(
+          data: await scoped.removeRecipient(
+            actor,
             organizationId,
             consentId,
             recipientId,
@@ -420,7 +432,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/:consentId/dpoa-agents",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.consentRead("consent.read", "consent_management")],
       config: {
         auditRead: {
           resourceKind: "consent_dpoa_agent",
@@ -431,9 +443,10 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       try {
-        return { data: await service.listDpoaAgents(organizationId, consentId, nowIso()) };
+        return { data: await scoped.listDpoaAgents(actor, organizationId, consentId, nowIso()) };
       } catch (e) {
         mapError(e);
       }
@@ -443,13 +456,15 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // 15. POST /api/v1/consents/:consentId/dpoa-agents — name an agent (STEP-UP).
   app.post(
     "/api/v1/consents/:consentId/dpoa-agents",
-    { preHandler: [AUTHOR, AUTHOR_STEP_UP] },
+    { preHandler: [AUTHOR, ...guards.consentScope("consent.author"), AUTHOR_STEP_UP] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const body = parse(AddDpoaAgentBodySchema, request.body);
       try {
-        const row = await service.addDpoaAgent(
+        const row = await scoped.addDpoaAgent(
+          actor,
           organizationId,
           consentId,
           { ...body, addedById: userId } as AddDpoaAgentInput,
@@ -467,14 +482,16 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // or retire the agent (`remove: true`). STEP-UP: this changes who may decide for the patient.
   app.patch(
     "/api/v1/consents/:consentId/dpoa-agents/:agentId",
-    { preHandler: [AUTHOR, AUTHOR_STEP_UP] },
+    { preHandler: [AUTHOR, ...guards.consentScope("consent.author"), AUTHOR_STEP_UP] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId, agentId } = parse(DpoaAgentIdParamsSchema, request.params);
       const body = parse(UpdateDpoaAgentBodySchema, request.body);
       try {
         return {
-          data: await service.updateDpoaAgent(
+          data: await scoped.updateDpoaAgent(
+            actor,
             organizationId,
             consentId,
             agentId,
@@ -493,13 +510,14 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/patients/:patientId/dpoa/active-primary",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.patientScope("consent.read", "read", "dpoa_clinical")],
       config: { auditRead: { resourceKind: "consent", patientIdParam: "patientId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
-      return { data: await service.activePrimaryDpoa(organizationId, patientId, nowIso()) };
+      return { data: await scoped.activePrimaryDpoa(actor, organizationId, patientId, nowIso()) };
     },
   );
 
@@ -508,14 +526,16 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/patients/:patientId/expiring-consents",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.patientScope("consent.read", "read")],
       config: { auditRead: { resourceKind: "consent", patientIdParam: "patientId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
       const q = parse(ExpiringConsentsQuerySchema, request.query);
-      const page = await service.listExpiringConsents(
+      const page = await scoped.listExpiringConsents(
+        actor,
         organizationId,
         patientId,
         q.windowDays ?? 90,
@@ -530,7 +550,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/:consentId/renewal-cycle",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.consentRead("consent.read")],
       config: {
         auditRead: {
           resourceKind: "consent_renewal_cycle",
@@ -541,9 +561,10 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       try {
-        return { data: await service.listRenewalCycles(organizationId, consentId) };
+        return { data: await scoped.listRenewalCycles(actor, organizationId, consentId) };
       } catch (e) {
         mapError(e);
       }
@@ -554,13 +575,15 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // the prior row is expired/revoked, not active). Closes the open renewal cycle as `renewed`.
   app.post(
     "/api/v1/consents/:consentId/renew",
-    { preHandler: [SIGN, SIGN_STEP_UP] },
+    { preHandler: [SIGN, ...guards.consentScope("consent.sign"), SIGN_STEP_UP] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const body = parse(RenewBodySchema, request.body);
       try {
-        const next = await service.renewConsent(
+        const next = await scoped.renewConsent(
+          actor,
           organizationId,
           consentId,
           { ...body, createdById: userId } as RenewConsentInput,
@@ -580,13 +603,14 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/patients/:patientId/delegated-access",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.patientScope("consent.read", "read", "delegated_access")],
       config: { auditRead: { resourceKind: "consent", patientIdParam: "patientId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
-      return { data: await service.listDelegatedAccess(organizationId, patientId, nowIso()) };
+      return { data: await scoped.listDelegatedAccess(actor, organizationId, patientId, nowIso()) };
     },
   );
 
@@ -595,7 +619,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/:consentId/eval-audit",
     {
-      preHandler: [READ_EVAL_AUDIT],
+      preHandler: [READ_EVAL_AUDIT, ...guards.complianceOrPrivacy("consent.read_eval_audit")],
       config: {
         auditRead: {
           resourceKind: "consent_eval_audit",
@@ -607,9 +631,11 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       const q = parse(ConsentEvalAuditQuerySchema, request.query);
-      const page = await service.listEvalAudit(
+      const page = await scoped.listEvalAudit(
+        actor,
         organizationId,
         { consentId },
         { cursor: q.cursor, pageSize: q.pageSize ?? 50 },
@@ -623,7 +649,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/eval-audit/by-patient",
     {
-      preHandler: [READ_EVAL_AUDIT],
+      preHandler: [READ_EVAL_AUDIT, ...guards.complianceOrPrivacy("consent.read_eval_audit")],
       // This one names its patient in the QUERY, not the path.
       config: {
         auditRead: {
@@ -635,8 +661,10 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const q = parse(EvalAuditQuerySchema, request.query);
-      const page = await service.listEvalAudit(
+      const page = await scoped.listEvalAudit(
+        actor,
         organizationId,
         { patientId: q.patientId },
         { cursor: q.cursor, pageSize: q.pageSize ?? 50 },
@@ -650,12 +678,20 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // it republishes a signed consent document.
   app.post(
     "/api/v1/consents/:consentId/document/re-render",
-    { preHandler: [ADMIN_RE_RENDER, RE_RENDER_STEP_UP] },
+    {
+      preHandler: [
+        ADMIN_RE_RENDER,
+        ...guards.complianceOfficer("consent.admin_re_render"),
+        RE_RENDER_STEP_UP,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       try {
-        const receipt = await service.requestDocumentReRender(
+        const receipt = await scoped.requestDocumentReRender(
+          actor,
           organizationId,
           consentId,
           userId,
@@ -674,13 +710,14 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get(
     "/api/v1/consents/post-mortem-eligible/:patientId",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...guards.bereavementOrScopeRead("consent.read")],
       config: { auditRead: { resourceKind: "consent", patientIdParam: "patientId" } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
-      return { data: await service.listPostMortemEligible(organizationId, patientId) };
+      return { data: await scoped.listPostMortemEligible(actor, organizationId, patientId) };
     },
   );
 
@@ -689,12 +726,19 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // patient must actually be deceased — the pure validator refuses otherwise.
   app.post(
     "/api/v1/consents/bereavement-outreach",
-    { preHandler: [BEREAVEMENT_AUTHOR, BEREAVEMENT_STEP_UP] },
+    {
+      preHandler: [
+        BEREAVEMENT_AUTHOR,
+        ...guards.bereavementWrite("consent.bereavement_outreach_author"),
+        BEREAVEMENT_STEP_UP,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const body = parse(BereavementOutreachBodySchema, request.body);
       try {
-        const draft = await service.createBereavementOutreachDraft(organizationId, {
+        const draft = await scoped.createBereavementOutreachDraft(actor, organizationId, {
           patientId: body.patientId,
           grantorKind: body.grantorKind as ConsentGrantorKind,
           captureMethod: body.captureMethod as ConsentCaptureMethod,
@@ -714,12 +758,24 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // `partial_failed` state (which is what fires the M36 alert) and reports that honestly in the body.
   app.post(
     "/api/v1/consents/:consentId/cascade/retry",
-    { preHandler: [CASCADE_ADMIN, CASCADE_STEP_UP] },
+    {
+      preHandler: [
+        CASCADE_ADMIN,
+        ...guards.complianceOfficer("consent.cascade_admin"),
+        CASCADE_STEP_UP,
+      ],
+    },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
+      const actor = scopedActorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       try {
-        const result = await service.retryRevocationCascade(organizationId, consentId, nowIso());
+        const result = await scoped.retryRevocationCascade(
+          actor,
+          organizationId,
+          consentId,
+          nowIso(),
+        );
         reply.code(202);
         return { data: result };
       } catch (e) {

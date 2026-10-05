@@ -10,15 +10,21 @@
 // see and a dashboard the resolver cannot load are the same 404.
 //
 // The team/location reach is STILL fail-closed, and that is a declared absence rather than an oversight:
-// M2 publishes no `SupervisorReader` seam in this build (it is in no `SeamName`, no registry entry, no
-// deny-stub), so there is nothing to ask. With it unbound every actor without org-wide authority resolves
-// to `self` — the narrowest scope, which is the correct answer to "I cannot establish that you supervise
-// anyone". When M2 lands the seam, `supervised` becomes a `getSeam` call here and nothing else moves.
+// M3 now registers a `SupervisorReader` seam, but NO consumer reads it yet and this resolver does not either:
+// `resolveSupervisedMembershipIds` stays a deny-stub on purpose until the supervision definition is tightened
+// (the grant's scope is ignored, and locations come from the membership's default_location_ids). With it
+// unbound every actor without org-wide authority resolves to `self` — the narrowest scope, which is the
+// correct answer to "I cannot establish that you supervise anyone". Once the definition is tightened,
+// `supervised` becomes a `getSeam` call here and nothing else moves.
 import { schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
-import type { ReportViewFacts, ReportingAbacResolver } from "./abac-predicates";
+import type {
+  ReportScheduleFacts,
+  ReportViewFacts,
+  ReportingAbacResolver,
+} from "./abac-predicates";
 
 /**
  * Build the Drizzle-backed §4.7 resolver. Every read opens the caller's own `withOrgContext`, so RLS
@@ -51,7 +57,33 @@ export function buildDrizzleReportingAbacResolver(db: DbClient): ReportingAbacRe
       });
     },
 
-    // M2 publishes no SupervisorReader in this build — see the file header. Fail-closed: no supervised
+    async loadReportSchedule(
+      organizationId: string,
+      scheduleId: string,
+    ): Promise<ReportScheduleFacts | null> {
+      if (!organizationId || !scheduleId) return null;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.reportSchedule)
+          .where(
+            and(
+              eq(schema.reportSchedule.id, scheduleId),
+              eq(schema.reportSchedule.organizationId, organizationId),
+            ),
+          )
+          .limit(1);
+        if (!row) return null;
+        return {
+          scheduleId: row.id,
+          organizationId: row.organizationId,
+          ownerMembershipId: row.ownerMembershipId,
+          recipientMembershipIds: row.recipientMembershipIds ?? [],
+        };
+      });
+    },
+
+    // Deny-stub on purpose (M3's SupervisorReader is registered but unread) — see the file header. Fail-closed: no supervised
     // set, so the §4.7.1 ladder falls through to `self` rather than inventing a team.
     async resolveSupervisedMembershipIds() {
       return [];

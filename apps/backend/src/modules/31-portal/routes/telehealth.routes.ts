@@ -12,11 +12,19 @@ import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { ensureTelehealthRoomForVisit } from "../telehealth/room-mint";
 import { deriveEndReason, endStateFor, foldParticipantJoin } from "../telehealth/visit-lifecycle";
-import { actorOf } from "./actor";
+import { type M31Actor, actorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { ABAC_IN_ORG, ABAC_RECORDING_STATE, ABAC_TELEHEALTH_CONSENT, P, STEP_UP } from "./guards";
+import {
+  ABAC_GRANT,
+  ABAC_IN_ORG,
+  ABAC_RECORDING_STATE,
+  ABAC_TELEHEALTH_CONSENT,
+  P,
+  STEP_UP,
+} from "./guards";
 import type { PortalRouteDeps, TelehealthAdapterPort } from "./index";
 import { StartRecordingRequest, parse } from "./portal-typebox";
+import { assertStaffMayAccessVisit, staffVisitScopeGuard } from "./staff-visit-scope";
 
 const IDEMPOTENT = requireIdempotencyKey();
 
@@ -38,15 +46,50 @@ const NOOP_ADAPTER: TelehealthAdapterPort = {
   },
 };
 
+/**
+ * GAP-094 — a portal join/leave is authorized against the SESSION's granted patient, never the visit id on
+ * the wire: the visit's own patient must equal `actor.portalPatientId`, else 404 (the portal never discloses
+ * another patient's visit). Used by the route guard AND the handlers (defence in depth).
+ */
+function assertVisitIsSessionPatients(
+  actor: M31Actor,
+  visit: { readonly patientId: string } | null,
+): void {
+  if (!visit || actor.portalPatientId === null || visit.patientId !== actor.portalPatientId) {
+    throw new NotFoundError("telehealth visit not found");
+  }
+}
+
 export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRouteDeps): void {
   const { store } = deps;
   const adapter = deps.telehealth ?? NOOP_ADAPTER;
   const now = deps.now ?? (() => new Date());
+  const scopeDeps = { store, visitReader: deps.visitReader };
+  /** Staff route guard — the visit's stored patient must be the actor's (org-wide / assigned / caseload). */
+  const staffScope = staffVisitScopeGuard(scopeDeps);
+  /** The join is the one staff route whose id may be an M17 visit id (lazy mint), decided before any mint. */
+  const staffJoinScope = staffVisitScopeGuard(scopeDeps, { allowM17Fallback: true });
+  /** Handler backstop — the same rule, re-asserted before lifecycle or a token is touched. */
+  const reassertStaff = (
+    request: import("fastify").FastifyRequest,
+    opts?: { readonly allowM17Fallback?: boolean },
+  ) => {
+    const { visitId } = request.params as { visitId: string };
+    return assertStaffMayAccessVisit(scopeDeps, actorOf(request), visitId, opts);
+  };
+
+  /** Route-layer ownership guard for the portal-side routes (runs before the consent predicate). */
+  const portalVisitOwnership = async (request: import("fastify").FastifyRequest) => {
+    const actor = actorOf(request);
+    const { visitId } = request.params as { visitId: string };
+    assertVisitIsSessionPatients(actor, await store.telehealthById(actor.organizationId, visitId));
+  };
 
   const joinHandler =
     (who: "patient" | "clinician") => async (request: import("fastify").FastifyRequest) => {
       const actor = actorOf(request);
       const { visitId } = request.params as { visitId: string };
+      if (who === "clinician") await reassertStaff(request, { allowM17Fallback: true });
       let visit = await store.telehealthById(actor.organizationId, visitId);
       // F-220 (#248) — LAZY room mint. The staff join is the one path that can reach this point for an id that
       // is not yet a `telehealth_visit` id (the patient join is ABAC-gated on an existing row): treat the param
@@ -65,6 +108,7 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
         );
       }
       if (!visit) throw new NotFoundError("telehealth visit not found");
+      if (who === "patient") assertVisitIsSessionPatients(actor, visit);
       const telehealthVisitId = visit.telehealthVisitId;
       const nextState = foldParticipantJoin(visit.lifecycleState, who);
       if (nextState !== visit.lifecycleState) {
@@ -94,13 +138,16 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       };
     };
 
-  const leaveHandler = async (request: import("fastify").FastifyRequest) => {
-    const actor = actorOf(request);
-    const { visitId } = request.params as { visitId: string };
-    const visit = await store.telehealthById(actor.organizationId, visitId);
-    if (!visit) throw new NotFoundError("telehealth visit not found");
-    return { ok: true };
-  };
+  const leaveHandler =
+    (who: "patient" | "clinician") => async (request: import("fastify").FastifyRequest) => {
+      const actor = actorOf(request);
+      const { visitId } = request.params as { visitId: string };
+      if (who === "clinician") await reassertStaff(request);
+      const visit = await store.telehealthById(actor.organizationId, visitId);
+      if (!visit) throw new NotFoundError("telehealth visit not found");
+      if (who === "patient") assertVisitIsSessionPatients(actor, visit);
+      return { ok: true };
+    };
 
   // portal-side join / leave (patient or caregiver).
   app.post(
@@ -108,6 +155,8 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     {
       preHandler: [
         P("telehealth.join_patient_or_caregiver"),
+        ABAC_GRANT("telehealth.join_patient_or_caregiver"),
+        portalVisitOwnership,
         ABAC_TELEHEALTH_CONSENT("telehealth.join_patient_or_caregiver"),
         IDEMPOTENT,
       ],
@@ -119,11 +168,13 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     {
       preHandler: [
         P("telehealth.join_patient_or_caregiver"),
+        ABAC_GRANT("telehealth.join_patient_or_caregiver"),
+        portalVisitOwnership,
         ABAC_TELEHEALTH_CONSENT("telehealth.join_patient_or_caregiver"),
         IDEMPOTENT,
       ],
     },
-    leaveHandler,
+    leaveHandler("patient"),
   );
 
   // staff-side join / leave (clinician).
@@ -133,6 +184,7 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       preHandler: [
         P("telehealth.join_clinician"),
         ABAC_IN_ORG("telehealth.join_clinician"),
+        staffJoinScope,
         IDEMPOTENT,
       ],
     },
@@ -144,10 +196,11 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       preHandler: [
         P("telehealth.join_clinician"),
         ABAC_IN_ORG("telehealth.join_clinician"),
+        staffScope,
         IDEMPOTENT,
       ],
     },
-    leaveHandler,
+    leaveHandler("clinician"),
   );
 
   // start recording — D9-gated + step-up (composed in ./mount).
@@ -156,6 +209,7 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     {
       preHandler: [
         P("telehealth.record_start"),
+        staffScope,
         STEP_UP("telehealth.record_start"),
         ABAC_RECORDING_STATE("telehealth.record_start"),
         IDEMPOTENT,
@@ -164,6 +218,7 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const actor = actorOf(request);
       const { visitId } = request.params as { visitId: string };
+      await reassertStaff(request);
       parse(StartRecordingRequest, request.body);
       const visit = await store.telehealthById(actor.organizationId, visitId);
       if (!visit) throw new NotFoundError("telehealth visit not found");
@@ -180,11 +235,17 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   app.post(
     "/api/v1/telehealth/visits/:visitId/stop-recording",
     {
-      preHandler: [P("telehealth.record_stop"), ABAC_IN_ORG("telehealth.record_stop"), IDEMPOTENT],
+      preHandler: [
+        P("telehealth.record_stop"),
+        ABAC_IN_ORG("telehealth.record_stop"),
+        staffScope,
+        IDEMPOTENT,
+      ],
     },
     async (request) => {
       const actor = actorOf(request);
       const { visitId } = request.params as { visitId: string };
+      await reassertStaff(request);
       await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
         recordingEnabled: false,
       });
@@ -195,10 +256,18 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   // end visit — server-forced close.
   app.post(
     "/api/v1/telehealth/visits/:visitId/end",
-    { preHandler: [P("telehealth.end_visit"), ABAC_IN_ORG("telehealth.end_visit"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("telehealth.end_visit"),
+        ABAC_IN_ORG("telehealth.end_visit"),
+        staffScope,
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = actorOf(request);
       const { visitId } = request.params as { visitId: string };
+      await reassertStaff(request);
       const visit = await store.telehealthById(actor.organizationId, visitId);
       if (!visit) throw new NotFoundError("telehealth visit not found");
       const clean = visit.lifecycleState === "in_progress";

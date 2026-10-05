@@ -16,7 +16,10 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
-import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
+import {
+  ResourceNotFoundError,
+  SYSTEM_F2F_ACTOR,
+} from "../src/modules/06-admission/routes/service";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
@@ -195,9 +198,9 @@ describe.skipIf(!DB_URL)(
       new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
     it("F2F: schedule → complete (real date, in window) → attest (performer is the actor)", async () => {
-      const { periodId } = await pendingPeriodStartingSoon();
+      const { periodId, admissionId } = await pendingPeriodStartingSoon();
       const f2f = await svc.scheduleF2f(ORG_A, {
-        admissionId: "ignored",
+        admissionId,
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_md",
@@ -244,9 +247,9 @@ describe.skipIf(!DB_URL)(
       });
 
       it("derives hospice_np from the clinician's grants; refuses an RN performer and a claim not held", async () => {
-        const { periodId } = await pendingPeriodStartingSoon();
+        const { periodId, admissionId } = await pendingPeriodStartingSoon();
         const base = {
-          admissionId: "ignored",
+          admissionId,
           electionPeriodId: periodId,
           actor: { kind: "user", userId: MD } as const,
         };
@@ -277,10 +280,10 @@ describe.skipIf(!DB_URL)(
       });
 
       it("a human-driven schedule with no role source bound fails closed (503), never trusting the body", async () => {
-        const { periodId } = await pendingPeriodStartingSoon();
+        const { periodId, admissionId } = await pendingPeriodStartingSoon();
         await expect(
           svc.scheduleF2f(ORG_A, {
-            admissionId: "ignored",
+            admissionId,
             electionPeriodId: periodId,
             scheduledClinicianId: USER,
             clinicianRole: "hospice_md",
@@ -289,10 +292,36 @@ describe.skipIf(!DB_URL)(
         ).rejects.toMatchObject({ statusCode: 503 });
       });
 
+      it("GAP-024: a period of another admission is 404 for both F2F schedule and election-statement draft (nothing written)", async () => {
+        const mine = await pendingPeriodStartingSoon();
+        const other = await pendingPeriodStartingSoon();
+        const before = await admin.query(
+          "SELECT count(*)::int AS n FROM face_to_face_encounter WHERE election_period_id=$1",
+          [other.periodId],
+        );
+        await expect(
+          svc.scheduleF2f(ORG_A, {
+            admissionId: mine.admissionId,
+            electionPeriodId: other.periodId,
+            scheduledClinicianId: USER,
+            clinicianRole: "hospice_np",
+            actor: SYSTEM_F2F_ACTOR,
+          }),
+        ).rejects.toBeInstanceOf(ResourceNotFoundError);
+        await expect(
+          svc.draftElectionStatement(ORG_A, mine.admissionId, other.periodId, DRAFT),
+        ).rejects.toBeInstanceOf(ResourceNotFoundError);
+        const after = await admin.query(
+          "SELECT count(*)::int AS n FROM face_to_face_encounter WHERE election_period_id=$1",
+          [other.periodId],
+        );
+        expect(after.rows[0].n).toBe(before.rows[0].n);
+      });
+
       it("attest: a 20-char narrative is refused 422 (row stays completed); the real narrative is persisted", async () => {
-        const { periodId } = await pendingPeriodStartingSoon();
+        const { periodId, admissionId } = await pendingPeriodStartingSoon();
         const f2f = await svc.scheduleF2f(ORG_A, {
-          admissionId: "ignored",
+          admissionId,
           electionPeriodId: periodId,
           scheduledClinicianId: USER,
           clinicianRole: "hospice_np",
@@ -324,9 +353,9 @@ describe.skipIf(!DB_URL)(
     });
 
     it("F2F: complete → medical-director window override (stays completed)", async () => {
-      const { periodId } = await pendingPeriodStartingSoon();
+      const { periodId, admissionId } = await pendingPeriodStartingSoon();
       const f2f = await svc.scheduleF2f(ORG_A, {
-        admissionId: "x",
+        admissionId,
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_np",

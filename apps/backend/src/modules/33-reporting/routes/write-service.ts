@@ -20,6 +20,12 @@ import type { DbClient } from "@wardenx/db";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { M33WriteActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";
+import {
+  canMutateSchedule,
+  canReadSchedule,
+  isScheduleAdmin,
+  viewVisibleTo,
+} from "./schedule-authz";
 
 // ── §4.2 builder spec shape (mirrors the package-owned ReportDefinitionSpec; jsonb-stored) ────────────
 export interface ReportSpec {
@@ -466,9 +472,18 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       throw new NotFoundError("report definition");
     return d;
   };
-  const ownSchedule = (actor: M33WriteActor, schId: string): ScheduleView => {
+  /** GAP-097: resolve a schedule the actor may READ (owner / recipient / org_admin) or a non-leaking 404. */
+  const readableSchedule = (actor: M33WriteActor, schId: string): ScheduleView => {
     const s = schedules.get(schId);
-    if (!s || s.organizationId !== actor.organizationId) throw new NotFoundError("report schedule");
+    if (!s || s.organizationId !== actor.organizationId || !canReadSchedule(actor, s)) {
+      throw new NotFoundError("report schedule");
+    }
+    return s;
+  };
+  /** GAP-097: resolve a schedule the actor may MUTATE (owner / org_admin) or a non-leaking 404. */
+  const ownSchedule = (actor: M33WriteActor, schId: string): ScheduleView => {
+    const s = readableSchedule(actor, schId);
+    if (!canMutateSchedule(actor, s)) throw new NotFoundError("report schedule");
     return s;
   };
 
@@ -698,12 +713,17 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       const rows = desc(
         [...schedules.values()]
           .filter((s) => s.organizationId === actor.organizationId)
+          .filter((s) => canReadSchedule(actor, s))
           .filter((s) => (filter.status ? s.status === filter.status : true)),
       );
       return paginate(rows, cursor, limit);
     },
     async createSchedule(actor, args) {
-      ownView(actor, args.reportViewId); // the schedule targets the actor's own org view (404 otherwise)
+      // GAP-097: the schedule targets a view in the actor's org that the actor may SEE (§4.7.2 ladder).
+      const targetView = ownView(actor, args.reportViewId);
+      if (!viewVisibleTo({ ...targetView, shareRoleKeys: targetView.shareRoleKeys ?? [] }, actor)) {
+        throw new NotFoundError("report view");
+      }
       assertPdfRowLimit(args.format, undefined);
       const from = new Date(clock);
       const first = stubNextRun(from);
@@ -730,7 +750,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       return schedule;
     },
     async getSchedule(actor, schId) {
-      return ownSchedule(actor, schId);
+      return readableSchedule(actor, schId);
     },
     async updateSchedule(actor, schId, args) {
       const s = ownSchedule(actor, schId);
@@ -785,7 +805,8 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       return updated;
     },
     async deleteAllRuns(actor, schId) {
-      ownSchedule(actor, schId);
+      readableSchedule(actor, schId);
+      if (!isScheduleAdmin(actor.roles)) throw new NotFoundError("report schedule"); // org_admin_scope
       let deleted = 0;
       for (const [k, run] of runs) {
         if (run.scheduleId === schId) {
@@ -796,7 +817,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       return { scheduleId: schId, deleted };
     },
     async listScheduleRuns(actor, scheduleId, cursor, limit) {
-      ownSchedule(actor, scheduleId);
+      readableSchedule(actor, scheduleId);
       const rows = desc(
         [...runs.values()]
           .filter((r) => r.scheduleId === scheduleId)
@@ -810,6 +831,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       if (!run || run.organizationId !== actor.organizationId) {
         throw new NotFoundError("report schedule run");
       }
+      readableSchedule(actor, run.scheduleId);
       return run;
     },
   };

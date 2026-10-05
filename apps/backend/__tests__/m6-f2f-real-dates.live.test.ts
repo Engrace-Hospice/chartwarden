@@ -152,9 +152,12 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
 
   const setStart = (periodId: string, start: string | null) =>
     admin.query("UPDATE election_period SET expected_start = $2 WHERE id=$1", [periodId, start]);
-  const schedule = (periodId: string) =>
+  const schedule = async (periodId: string) =>
     svc.scheduleF2f(ORG_A, {
-      admissionId: "ignored",
+      // GAP-024 — the period must belong to the admission, so the real owner is looked up.
+      admissionId: (
+        await admin.query("SELECT admission_id FROM election_period WHERE id=$1", [periodId])
+      ).rows[0].admission_id,
       electionPeriodId: periodId,
       scheduledClinicianId: USER,
       clinicianRole: "hospice_md",

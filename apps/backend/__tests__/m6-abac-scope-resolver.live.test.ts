@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL)(
         USER,
       );
       const f2f = await svc.scheduleF2f(ORG_A, {
-        admissionId: "ignored-by-the-write-service",
+        admissionId,
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_md",

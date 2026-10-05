@@ -45826,6 +45826,7 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        version: number;
                         applications?: {
                             /** @constant */
                             module: "m15";
@@ -45854,6 +45855,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
+                    meetingId: string;
                     reason?: string;
                 };
             };
@@ -45884,6 +45887,7 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        version: number;
                         applications?: {
                             /** @constant */
                             module: "m15";
@@ -46399,6 +46403,7 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        version: number;
                         applications?: {
                             /** @constant */
                             module: "m15";
@@ -46607,6 +46612,7 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                        version: number;
                         applications?: {
                             /** @constant */
                             module: "m15";

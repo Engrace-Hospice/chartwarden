@@ -21,7 +21,27 @@ export {
 // (M39_CONTRIBUTED_PERMISSIONS in @wardenx/auth), plus the eleven §4.8 ABAC predicate resolvers M39
 // registers into M3's named-predicate registry (resolved through the ConsentEvaluator seam).
 export { type ConsentRouteDeps, registerConsentRoutes } from "./routes/consent-routes";
-export { M39_ABAC_PREDICATES, registerConsentAbacPredicates } from "./abac-predicates";
+export {
+  M39_ABAC_PREDICATES,
+  M39_ROUTE_ABAC_PREDICATES,
+  registerConsentAbacPredicates,
+} from "./abac-predicates";
+// GAP-109 — the §4.1 per-route access rules (route guards + the service-layer decorator share them).
+export {
+  CONSENT_SYSTEM_ACTOR,
+  type BereavementWindowPort,
+  type CaseloadPort,
+  type OnCallWindowPort,
+  type ConsentAccessActor,
+  type ConsentAccessDeps,
+  type ConsentDisciplineScope,
+  type ConsentStaffActor,
+  type ConsentSystemActor,
+} from "./access-scope";
+export {
+  type ScopedConsentRouteService,
+  createScopedConsentRouteService,
+} from "./scoped-consent-service";
 // M39-T08 — outbox catalog (§4.5), M36 alert payloads (§4.10), the §4.6 consumer bridges. The
 // events/alerts are published/registered now; consumer wiring (BullMQ/Valkey) lands with M1 infra.
 export { M39_OUTBOX_EVENTS } from "./events-by-m39";

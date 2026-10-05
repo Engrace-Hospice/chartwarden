@@ -136,3 +136,76 @@ export function planDecisionSupersede(prior: {
   );
   return [{ kind: "set_timestamp", field: "superseded_at" }, { kind: "audit" }];
 }
+
+/**
+ * GAP-043 / §2.8 — edit an `open` decision. Once `emitted` a decision is immutable (it is corrected by a
+ * supersede, never edited in place) and a `superseded` one is history. An `open` decision exists only in a
+ * `live` meeting (adjournment emits every open one), so a non-live meeting is refused too.
+ */
+export function planDecisionUpdate(input: {
+  readonly status: IdgDecisionStatus;
+  readonly meetingIsLive: boolean;
+}): void {
+  require_(
+    input.status !== "superseded",
+    "DECISION_SUPERSEDED",
+    "a superseded decision cannot be edited",
+  );
+  require_(
+    input.status === "open",
+    "DECISION_NOT_OPEN",
+    "an emitted decision is immutable; supersede it in a later meeting instead",
+  );
+  require_(
+    input.meetingIsLive,
+    "MEETING_NOT_LIVE",
+    "decisions may only be edited while the meeting is live",
+  );
+}
+
+/** The result of superseding into a later meeting: the successor's stamped quorum + the effect list. */
+export interface DecisionSupersedeIntoResult {
+  readonly wasQuorate: boolean;
+  readonly quorumSnapshot: QuorumSnapshot;
+  readonly effects: ReadonlyArray<IdgSideEffect>;
+}
+
+/**
+ * GAP-043 / §2.8 / §4.7 — supersede a prior `emitted` decision with a successor recorded in a SUBSEQUENT,
+ * `live`, QUORATE meeting (`quorate_decision`). The quorum is evaluated from the target meeting's stored
+ * present disciplines — never asserted by the caller and never copied from the prior row. Guard order:
+ * prior status (409) → target live / caseload (422, via {@link planDecisionRecord}) → strictly later (422)
+ * → quorum (422 `QUORUM_NOT_MET`).
+ */
+export function planDecisionSupersedeInto(input: {
+  readonly priorStatus: IdgDecisionStatus;
+  readonly priorMeetingStart: string;
+  readonly target: {
+    readonly isLive: boolean;
+    readonly scheduledStart: string;
+    readonly patientIncluded: boolean;
+    readonly presentDisciplines: readonly string[];
+  };
+}): DecisionSupersedeIntoResult {
+  const supersedeEffects = planDecisionSupersede({ status: input.priorStatus });
+  const record = planDecisionRecord({
+    meetingIsLive: input.target.isLive,
+    patientIncluded: input.target.patientIncluded,
+    presentDisciplines: input.target.presentDisciplines,
+  });
+  require_(
+    Date.parse(input.target.scheduledStart) > Date.parse(input.priorMeetingStart),
+    "SUPERSEDE_MEETING_NOT_SUBSEQUENT",
+    "a decision may only be superseded in a subsequent meeting",
+  );
+  require_(
+    decisionMeetsQuorum(record.quorumSnapshot),
+    "QUORUM_NOT_MET",
+    "the required IDG disciplines are not present at the superseding meeting",
+  );
+  return {
+    wasQuorate: record.wasQuorate,
+    quorumSnapshot: record.quorumSnapshot,
+    effects: [...supersedeEffects, ...record.effects],
+  };
+}

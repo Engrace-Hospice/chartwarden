@@ -86,13 +86,14 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     return rows[0]?.status as string;
   }
   /** Seed a meeting at a chosen lifecycle status (the in-mem "seed status to drive lifecycle" pattern). */
-  async function seedMeeting(org: string, status: string): Promise<string> {
+  async function seedMeeting(org: string, status: string, startOffset = "0 days"): Promise<string> {
     return (
       await admin.query(
         `INSERT INTO idg_meeting (organization_id, location_id, scheduled_start, scheduled_end, status,
            coordinator_membership_id, tenant_quorum_snapshot)
-         VALUES ($1,$2, now(), now() + interval '2 hours', $3, $4, '{}'::jsonb) RETURNING id`,
-        [org, locationOf[org], status, MEMBER],
+         VALUES ($1,$2, now() + $5::interval, now() + $5::interval + interval '2 hours', $3, $4, '{}'::jsonb)
+         RETURNING id`,
+        [org, locationOf[org], status, MEMBER, startOffset],
       )
     ).rows[0].id as string;
   }
@@ -305,6 +306,31 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     });
     expect(await eventsFor(note.id)).not.toContain("m14.decision.recorded_open");
 
+    // Optimistic concurrency: a fresh decision is version 0; an edit carrying it bumps the row to 1, and a
+    // second editor still holding 0 loses with 412 STALE_VERSION (the compare-and-set UPDATE, not just the read).
+    expect(note.version).toBe(0);
+    const edited = await svc.updateDecision(
+      ORG_A,
+      MEMBER,
+      note.id,
+      { kind: "team_note", noteText: "Team reviewed the caseload (edited)." },
+      0,
+    );
+    expect(edited.version).toBe(1);
+    await expect(
+      svc.updateDecision(
+        ORG_A,
+        MEMBER,
+        note.id,
+        { kind: "team_note", noteText: "stale overwrite" },
+        0,
+      ),
+    ).rejects.toMatchObject({ statusCode: 412, code: "STALE_VERSION" });
+    expect(
+      (await admin.query("SELECT version FROM idg_decision WHERE id=$1", [note.id])).rows[0]
+        .version,
+    ).toBe(1);
+
     const adjourned = await svc.adjournMeeting(ORG_A, MEMBER, m, true);
     expect(adjourned.status).toBe("adjourned");
     // Exactly the actionable, patient-scoped decision emits the cross-module seam; the team_note does not.
@@ -325,10 +351,60 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(minutes.decisionCount).toBe(2);
     expect(minutes.actionItemCount).toBe(0);
 
-    // supersede: the now-`emitted` decision may be superseded (new open row; prior → superseded).
-    const superseded = await svc.supersedeDecision(ORG_A, MEMBER, actionable.id);
+    // GAP-043 — an emitted decision is immutable: PATCH is refused 409 and the row is untouched.
+    await expect(
+      svc.updateDecision(
+        ORG_A,
+        MEMBER,
+        actionable.id,
+        {
+          kind: "team_note",
+          noteText: "rewrite after adjournment",
+        },
+        0,
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: "DECISION_NOT_OPEN" });
+    expect(
+      (await admin.query("SELECT decision_kind FROM idg_decision WHERE id=$1", [actionable.id]))
+        .rows[0].decision_kind,
+    ).toBe("care_plan_update");
+
+    // GAP-043 — supersede needs a LATER, LIVE, QUORATE meeting; the quorum is computed from ITS attendance.
+    const later = await seedMeeting(ORG_A, "live", "7 days");
+    await svc.addAgendaItem(ORG_A, MEMBER, later, { kind: "patient_review", patientId: PATIENT });
+    await expect(
+      svc.supersedeDecision(ORG_A, MEMBER, actionable.id, { meetingId: later }),
+    ).rejects.toMatchObject({ statusCode: 422, code: "QUORUM_NOT_MET" }); // no attendance yet
+    for (const discipline of ["hospice_physician", "rn_case_manager", "msw", "chaplain"]) {
+      await svc.recordAttendance(ORG_A, MEMBER, later, {
+        membershipId: await seedMembership(ORG_A, "active"),
+        discipline,
+      });
+    }
+    const superseded = await svc.supersedeDecision(ORG_A, MEMBER, actionable.id, {
+      meetingId: later,
+    });
     expect(superseded.status).toBe("superseded");
     expect(superseded.supersededByDecisionId).not.toBeNull();
+    const successor = (
+      await admin.query(
+        "SELECT idg_meeting_id, was_quorate, status FROM idg_decision WHERE id=$1",
+        [superseded.supersededByDecisionId],
+      )
+    ).rows[0];
+    expect(successor).toMatchObject({ idg_meeting_id: later, was_quorate: true, status: "open" });
+    await expect(
+      svc.updateDecision(
+        ORG_A,
+        MEMBER,
+        actionable.id,
+        {
+          kind: "team_note",
+          noteText: "rewrite superseded",
+        },
+        0,
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: "DECISION_SUPERSEDED" });
 
     // amendment: the final minutes accept an amendment; emits minutes.amended.
     const amd = await svc.submitAmendment(
@@ -409,6 +485,162 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         payload: { kind: "order_request", requestedOrders: [] },
       }),
     ).rejects.toMatchObject({ code: "INCLUSION_CRITERIA_FAILED" });
+  });
+
+  /** A LIVE meeting with the patient on its caseload and the four quorum disciplines present. */
+  async function seedQuorateLiveMeeting(startOffset: string): Promise<string> {
+    const m = await seedMeeting(ORG_A, "live", startOffset);
+    await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: PATIENT });
+    for (const discipline of ["hospice_physician", "rn_case_manager", "msw", "chaplain"]) {
+      await svc.recordAttendance(ORG_A, MEMBER, m, {
+        membershipId: await seedMembership(ORG_A, "active"),
+        discipline,
+      });
+    }
+    return m;
+  }
+  const OPEN_REFERRAL = {
+    kind: "referral",
+    referralKind: "social_services",
+    referralTargetMdmId: null,
+    rationaleText: "IDG requested a social-services referral.",
+  } as const;
+  async function openDecisionsIn(meetingId: string): Promise<number> {
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM idg_decision WHERE idg_meeting_id=$1 AND status='open'",
+      [meetingId],
+    );
+    return rows[0].n as number;
+  }
+
+  it("two concurrent supersedes of the same emitted decision: exactly one wins, the loser is 409, one successor row", async () => {
+    const m = await seedQuorateLiveMeeting("0 days");
+    const prior = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      decisionKind: "referral",
+      payload: OPEN_REFERRAL,
+    });
+    await svc.adjournMeeting(ORG_A, MEMBER, m, true);
+    const t1 = await seedQuorateLiveMeeting("7 days");
+    const t2 = await seedQuorateLiveMeeting("8 days");
+
+    const settled = await Promise.allSettled([
+      svc.supersedeDecision(ORG_A, MEMBER, prior.id, { meetingId: t1 }),
+      svc.supersedeDecision(ORG_A, MEMBER, prior.id, { meetingId: t2 }),
+    ]);
+
+    const won = settled.filter((r) => r.status === "fulfilled");
+    const lost = settled.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect(lost[0]!.reason).toMatchObject({ statusCode: 409, code: "DECISION_SUPERSEDED" });
+    const { rows: successors } = await admin.query(
+      "SELECT id, idg_meeting_id FROM idg_decision WHERE idg_meeting_id = ANY($1::uuid[])",
+      [[t1, t2]],
+    );
+    expect(successors).toHaveLength(1);
+    const priorRow = (
+      await admin.query("SELECT status, superseded_by_decision_id FROM idg_decision WHERE id=$1", [
+        prior.id,
+      ])
+    ).rows[0];
+    expect(priorRow.status).toBe("superseded");
+    expect(priorRow.superseded_by_decision_id).toBe(successors[0].id);
+  });
+
+  it("supersede racing an adjournment of the TARGET never leaves an open successor in an adjourned meeting", async () => {
+    const m = await seedQuorateLiveMeeting("0 days");
+    const prior = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      decisionKind: "referral",
+      payload: OPEN_REFERRAL,
+    });
+    await svc.adjournMeeting(ORG_A, MEMBER, m, true);
+    const target = await seedQuorateLiveMeeting("7 days");
+
+    const settled = await Promise.allSettled([
+      svc.supersedeDecision(ORG_A, MEMBER, prior.id, { meetingId: target }),
+      svc.adjournMeeting(ORG_A, MEMBER, target, true),
+    ]);
+
+    expect(settled[1]!.status).toBe("fulfilled");
+    expect(await meetingStatus(target)).toBe("adjourned");
+    expect(await openDecisionsIn(target)).toBe(0);
+    if (settled[0]!.status === "rejected") {
+      // The adjournment won the lock: the supersede was refused and wrote nothing (prior stays emitted).
+      expect(settled[0].reason).toMatchObject({ statusCode: 422, code: "MEETING_NOT_LIVE" });
+      expect(
+        (await admin.query("SELECT status FROM idg_decision WHERE id=$1", [prior.id])).rows[0]
+          .status,
+      ).toBe("emitted");
+    } else {
+      // The supersede committed first: its successor was emitted by the adjournment, not stranded open.
+      const succ = (
+        await admin.query("SELECT status FROM idg_decision WHERE idg_meeting_id=$1", [target])
+      ).rows;
+      expect(succ.map((r) => r.status)).toEqual(["emitted"]);
+    }
+  });
+
+  it("an edit racing an adjournment: no open row survives, and the emitted event carries the row's final kind", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: PATIENT });
+    const open = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      decisionKind: "referral",
+      payload: OPEN_REFERRAL,
+    });
+
+    const settled = await Promise.allSettled([
+      svc.updateDecision(
+        ORG_A,
+        MEMBER,
+        open.id,
+        { kind: "team_note", noteText: "Edited while the meeting adjourns." },
+        open.version,
+      ),
+      svc.adjournMeeting(ORG_A, MEMBER, m, true),
+    ]);
+
+    expect(settled[1]!.status).toBe("fulfilled");
+    expect(await meetingStatus(m)).toBe("adjourned");
+    expect(await openDecisionsIn(m)).toBe(0);
+    const row = (
+      await admin.query("SELECT status, decision_kind FROM idg_decision WHERE id=$1", [open.id])
+    ).rows[0];
+    expect(row.status).toBe("emitted");
+    if (settled[0]!.status === "rejected") {
+      expect(settled[0].reason).toMatchObject({ statusCode: expect.any(Number) });
+      expect(row.decision_kind).toBe("referral");
+    } else {
+      expect(row.decision_kind).toBe("team_note");
+    }
+    // Whatever the interleaving, the cross-module event must describe the row as stored (no stale payload).
+    const { rows: ev } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='idg.decision_recorded'",
+      [open.id],
+    );
+    for (const e of ev) expect(e.payload.decisionKind).toBe(row.decision_kind);
+  });
+
+  it("a decision recorded while the meeting adjourns is either emitted or refused, never stranded open", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: PATIENT });
+
+    const settled = await Promise.allSettled([
+      svc.recordDecision(ORG_A, MEMBER, m, {
+        patientId: PATIENT,
+        decisionKind: "referral",
+        payload: OPEN_REFERRAL,
+      }),
+      svc.adjournMeeting(ORG_A, MEMBER, m, true),
+    ]);
+
+    expect(settled[1]!.status).toBe("fulfilled");
+    expect(await openDecisionsIn(m)).toBe(0);
+    if (settled[0]!.status === "rejected") {
+      expect(settled[0].reason).toMatchObject({ code: "MEETING_NOT_LIVE" });
+    }
   });
 
   it("amendment before the minutes are final → MINUTES_NOT_IN_PROGRESS (409)", async () => {

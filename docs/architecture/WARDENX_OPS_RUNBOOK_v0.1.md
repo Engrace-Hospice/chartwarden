@@ -2098,6 +2098,19 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
 - Review platform-role holders in the §12.2 quarterly access review:
   `SELECT u.email, r.key FROM membership_role mr JOIN role r ON r.id = mr.role_id JOIN membership m ON m.id = mr.membership_id JOIN "user" u ON u.id = m.user_id WHERE r.organization_id IS NULL AND r.category = 'platform_staff'`.
 
+### 16.6 M18 EVV capture: device-attestation flag
+
+`EVV_DEVICE_ATTESTATION_ENFORCED` (`.env.production`; `true` or `false`, anything else refuses boot) controls whether EVV check-in, check-out and offline-sync require a valid session device attestation and bind to the session's device. **Default (unset) is OFF**, because no attested mobile client exists yet (ADR-0035); turning it on before one does makes every production capture return 403. Off: capture records the clinician's most-recently-approved device (ties broken by smallest device id), and a client-supplied `evvDeviceId` is accepted only when it is an approved device of that same clinician's membership (the event records against it); any other id returns 403. The assigned-clinician and visit-window guards, break-glass non-bypass and whole-batch offline-sync checks apply in both modes. The backend logs which mode EVV runs in at boot (`M18 EVV capture: ...`). Changing it needs a backend restart.
+
+> **WARNING: do NOT set `EVV_DEVICE_ATTESTATION_ENFORCED=true` yet.** The session-device binding compares the
+> session's attestation row id with `evv_device.m2_device_attestation_id`, which is written once at device
+> self-registration. Every re-attestation revokes the old attestation row and inserts a new id, so after the
+> first attestation expiry or re-attest no approved device matches the session and **every capture returns
+> 403**. Enabling the flag requires the binding to move to a stable identity (the device key fingerprint)
+> first; that is a tracked follow-up. While the flag is off, `capturedAt`, coordinates and accuracy are
+> client-asserted (the server checks the visit window and geofence against what the client sends, not against
+> a device-attested clock or fix), so treat EVV timestamps and positions as unattested until it is enabled.
+
 ---
 
 ## 17. Document Maintenance

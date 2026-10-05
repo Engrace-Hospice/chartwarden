@@ -130,6 +130,45 @@ const NOTE_WRITE: PreHandler = async (request) => {
     throw new ForbiddenError("requires permission 'idg.attend' or 'idg.coordinate'");
   }
 };
+/** GAP-043: supersede names the TARGET meeting in the body (`meetingId`); the `:id` param is the DECISION, so the
+ * meeting-scoped predicates must read the meeting from the body, not the params. A missing/non-string id yields
+ * no meeting → the predicate denies (fail-closed). */
+const supersedeTarget = (request: { readonly body?: unknown }): AbacTarget => {
+  const body = (request.body ?? {}) as { meetingId?: unknown };
+  return typeof body.meetingId === "string" ? { id: body.meetingId } : {};
+};
+/** Validate params + body BEFORE the body-derived ABAC target is read, so a malformed request is the honest 422
+ * rather than a misleading 403 from a predicate that saw no meeting id. */
+const SUPERSEDE_VALIDATE: PreHandler = async (request) => {
+  parse(IdParamsSchema, request.params);
+  parse(SupersedeDecisionRequest, request.body);
+};
+const SUPERSEDE_SCOPE = requireAbac("idg.decide", "idg_meeting_scope", {
+  getTarget: supersedeTarget,
+  notFoundOnDeny: true,
+}) as PreHandler;
+const SUPERSEDE_QUORATE = requireAbac("idg.decide", "quorate_decision", {
+  getTarget: supersedeTarget,
+}) as PreHandler;
+/** The PRIOR decision's own meeting must also be in the caller's scope (the target-meeting gate above does not cover
+ * it: a coordinator at location A could otherwise supersede a location-B decision by naming an A meeting). The
+ * decision id carries no meeting, so it is resolved first; unknown/cross-tenant decision and an out-of-scope
+ * meeting are both the non-leaking 404, and an active break-glass grant cannot stand in for this gate. */
+const SUPERSEDE_PRIOR_SCOPE = (service: IdgRouteService): PreHandler => {
+  return async (request, reply) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    const meetingId = await service.decisionMeetingId(organizationId, id);
+    if (meetingId === null) throw new NotFoundError("idg_decision");
+    await (
+      requireAbac("idg.decide", "idg_meeting_scope", {
+        getTarget: () => ({ meetingId }),
+        notFoundOnDeny: true,
+        breakGlassBypassable: false,
+      }) as PreHandler
+    )(request, reply);
+  };
+};
 const IF_MATCH = requireIfMatch();
 const IDEMPOTENCY_KEY = requireIdempotencyKey();
 const ABAC_QUORATE = requireAbac("idg.decide", "quorate_decision") as PreHandler;
@@ -600,22 +639,36 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   );
 
   // 19 — update an open decision (open status only; enforced in service).
-  app.patch("/api/v1/idg/decisions/:id", { preHandler: [DECIDE] }, async (request) => {
+  // `If-Match` carries the version the caller read (428 absent, 400 malformed, 412 STALE_VERSION when stale).
+  app.patch("/api/v1/idg/decisions/:id", { preHandler: [DECIDE, IF_MATCH] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     const b = parse(UpdateDecisionRequest, request.body);
-    return service.updateDecision(organizationId, userId, id, b.payload);
+    return service.updateDecision(organizationId, userId, id, b.payload, ifMatchVersionOf(request));
   });
 
   // 20 — supersede a prior decision (a new row in a later meeting; §2.8).
   app.post(
     "/api/v1/idg/decisions/:id/supersede",
-    { preHandler: [DECIDE] },
+    {
+      preHandler: [
+        DECIDE,
+        SUPERSEDE_VALIDATE,
+        SUPERSEDE_PRIOR_SCOPE(service),
+        SUPERSEDE_SCOPE,
+        SUPERSEDE_QUORATE,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      parse(SupersedeDecisionRequest, request.body);
-      const res = await service.supersedeDecision(organizationId, userId, id);
+      const b = parse(SupersedeDecisionRequest, request.body);
+      // GAP-043: the successor lands in `b.meetingId` (a later, live, quorate meeting). The route gates on the
+      // TARGET meeting's quorum (`quorate_decision`) and scope; the service re-derives both from stored facts.
+      const res = await service.supersedeDecision(organizationId, userId, id, {
+        meetingId: b.meetingId,
+        callerLocationIds: request.context?.locationIds ?? [],
+      });
       return reply.code(201).send(res);
     },
   );

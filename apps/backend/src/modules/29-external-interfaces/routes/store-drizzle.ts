@@ -21,7 +21,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@wardenx/types";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
 import {
@@ -35,6 +35,7 @@ import {
   type ProposalSnapshot,
   decideProposal,
 } from "../proposals/decision";
+import { decodeObservationCursor, encodeObservationCursor } from "./lab-list-scope";
 import { throwReviewRefusal } from "./store";
 import type {
   CredentialSummary,
@@ -852,20 +853,60 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
 
     async listObservations(orgId, filter) {
       return withOrgContext(db, ctx(orgId), async (tx): Promise<Page<LabObservationSummary>> => {
+        // GAP-085 — an explicit-but-empty caseload is "no patients", never "no restriction".
+        if (filter.caseloadPatientIds && filter.caseloadPatientIds.length === 0) {
+          return { items: [] };
+        }
+        const limit = filter.limit ?? 50;
+        const cursor = decodeObservationCursor(filter.cursor);
+        const conds = [eq(OBS.organizationId, orgId)];
+        if (filter.patientId) conds.push(eq(OBS.patientId, filter.patientId));
+        if (filter.loincCode) conds.push(eq(OBS.loincCode, filter.loincCode));
+        if (filter.caseloadPatientIds)
+          conds.push(inArray(OBS.patientId, [...filter.caseloadPatientIds]));
+        if (filter.abnormalFlag) {
+          conds.push(
+            exists(
+              tx
+                .select({ one: sql`1` })
+                .from(OBS_VALUE)
+                .where(
+                  and(
+                    eq(OBS_VALUE.observationId, OBS.id),
+                    eq(OBS_VALUE.organizationId, orgId),
+                    eq(OBS_VALUE.abnormalFlag, filter.abnormalFlag),
+                  ),
+                ),
+            ),
+          );
+        }
+        if (cursor) {
+          const d = new Date(cursor.d);
+          conds.push(
+            or(
+              lt(OBS.observationDate, d),
+              and(eq(OBS.observationDate, d), lt(OBS.id, cursor.id)),
+            ) ?? sql`true`,
+          );
+        }
         const rows = await tx
           .select()
           .from(OBS)
-          .where(eq(OBS.organizationId, orgId))
-          .orderBy(desc(OBS.observationDate))
-          .limit(filter.limit ?? 50);
-        const caseload = filter.caseloadPatientIds ? new Set(filter.caseloadPatientIds) : null;
-        return {
-          items: rows
-            .filter((r) => (filter.patientId ? r.patientId === filter.patientId : true))
-            .filter((r) => (filter.loincCode ? r.loincCode === filter.loincCode : true))
-            .filter((r) => (caseload ? caseload.has(r.patientId) : true))
-            .map(obsSummary),
-        };
+          .where(and(...conds))
+          .orderBy(desc(OBS.observationDate), desc(OBS.id))
+          .limit(limit + 1);
+        const pageRows = rows.slice(0, limit);
+        const last = pageRows[pageRows.length - 1];
+        const items = pageRows.map(obsSummary);
+        return rows.length > limit && last
+          ? {
+              items,
+              nextCursor: encodeObservationCursor({
+                d: last.observationDate.toISOString(),
+                id: last.id,
+              }),
+            }
+          : { items };
       });
     },
     async getObservation(orgId, observationId) {

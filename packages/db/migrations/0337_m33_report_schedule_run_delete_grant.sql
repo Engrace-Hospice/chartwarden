@@ -1,0 +1,12 @@
+-- M33 (GAP-097 follow-up) — let the tenant app role delete a schedule's run ledger.
+--
+-- `DELETE /reporting/schedules/:id/runs` (org_admin only, step-up gated) runs `tx.delete(report_schedule_run)`
+-- as `wardenx_app`. Migration 0058 granted that role only SELECT, INSERT, UPDATE on the table although its
+-- RLS policy is FOR ALL and the 0059 audit trigger already records DELETE, so the endpoint failed with
+-- "permission denied for table report_schedule_run" (42501) on every call.
+--
+-- This adds exactly the missing privilege. RLS still confines every delete to the caller's own org
+-- (report_schedule_run_org, USING organization_id = app.org_id), the route authorises the caller before it
+-- runs, and the audit trigger records each deleted row. Tenant erasure keeps its own grant on
+-- wardenx_destruction (0157); nothing is revoked. Idempotent: re-granting an held privilege is a no-op.
+GRANT DELETE ON "report_schedule_run" TO wardenx_app;

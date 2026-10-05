@@ -53,12 +53,24 @@ import {
   NotFoundError,
   ValidationError,
 } from "@wardenx/types";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   DEFAULT_EVV_WINDOW_AFTER_MS,
   DEFAULT_EVV_WINDOW_BEFORE_MS,
+  type EvvAbacResolver,
   type EvvCaptureWindow,
 } from "./abac-predicates";
+import {
+  type EvvCaptureAuthority,
+  assertCaptureAllowed,
+  selectBoundDevice,
+} from "./capture-guards";
+
+/** What binds a capture to the device that sent it (see `resolveCaptureDevice`). */
+interface CaptureBinding {
+  readonly authority: EvvCaptureAuthority;
+  readonly claimedDeviceId: string | undefined;
+}
 import { decodeStoredCoords, encodeStoredCoords } from "./coords";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
 import type { EvvSideEffect } from "./domain/effects";
@@ -165,7 +177,10 @@ const NOOP_OUTBOX: EvvWriteOutboxPort = { async publish() {} };
 export function createDbEvvBackend(
   db: DbClient,
   outbox: EvvWriteOutboxPort = NOOP_OUTBOX,
+  options: { readonly deviceAttestationEnforced?: boolean } = {},
 ): EvvRoutePort {
+  // GAP-055 follow-up: injected from validated server config (`EVV_DEVICE_ATTESTATION_ENFORCED`), default OFF.
+  const deviceAttestationEnforced = options.deviceAttestationEnforced ?? false;
   async function emit(
     tx: unknown,
     orgId: string,
@@ -207,7 +222,7 @@ export function createDbEvvBackend(
       .select({ id: DEVICE.id, attestation: DEVICE.m2DeviceAttestationId })
       .from(DEVICE)
       .where(and(eq(DEVICE.membershipId, membershipId), eq(DEVICE.status, "approved")))
-      .orderBy(desc(DEVICE.approvedAt))
+      .orderBy(sql`${DEVICE.approvedAt} DESC NULLS LAST`, asc(DEVICE.id))
       .limit(1);
     if (!d)
       throw new ValidationError(
@@ -215,6 +230,49 @@ export function createDbEvvBackend(
         [],
       );
     return d;
+  }
+
+  /**
+   * The capture's device. ENFORCED: a clinician capture is bound to the device that SENT the request (the
+   * approved device of the acting membership whose M2 attestation is the session's — `selectBoundDevice`);
+   * NOT enforced (default): a claimed device that is any approved device of the membership, else its
+   * most-recently-approved device. Either way a client claim never reaches beyond the membership's own devices. With no `binding` (the §7.7 correction path, which has no session attestation
+   * threaded) it is the membership's most-recent approved device, as before.
+   */
+  async function resolveCaptureDevice(
+    tx: DbClient,
+    membershipId: string,
+    binding: CaptureBinding | undefined,
+  ) {
+    if (!binding || binding.authority.kind === "system")
+      return resolveApprovedDevice(tx, membershipId);
+    const rows = await tx
+      .select({
+        id: DEVICE.id,
+        membershipId: DEVICE.membershipId,
+        status: DEVICE.status,
+        attestation: DEVICE.m2DeviceAttestationId,
+        approvedAt: DEVICE.approvedAt,
+      })
+      .from(DEVICE)
+      .where(and(eq(DEVICE.membershipId, membershipId), eq(DEVICE.status, "approved")));
+    const boundId = selectBoundDevice(
+      binding.authority,
+      membershipId,
+      binding.claimedDeviceId,
+      rows.map((r) => ({
+        id: r.id,
+        membershipId: r.membershipId,
+        status: r.status,
+        attestationId: r.attestation,
+        approvedAtMs: r.approvedAt?.getTime() ?? Number.NEGATIVE_INFINITY,
+      })),
+      deviceAttestationEnforced,
+    );
+    const bound = rows.find((r) => r.id === boundId);
+    if (!bound)
+      throw new ForbiddenError("the session device is not an approved device of the clinician");
+    return { id: bound.id, attestation: bound.attestation };
   }
 
   /** The effective geofence policy: the active tenant row, else the platform floor (compromise #3). */
@@ -297,9 +355,10 @@ export function createDbEvvBackend(
       replacesEventId?: string;
       correctionReason?: string;
     },
+    binding?: CaptureBinding,
   ): Promise<CheckResultView> {
     const visit = await resolveVisit(tx, input.visitId);
-    const device = await resolveApprovedDevice(tx, userId);
+    const device = await resolveCaptureDevice(tx, userId, binding);
     const policy = await effectivePolicy(tx);
 
     // gps-quality / geofence decision — the in-mem accuracy-band model (compromise #3).
@@ -454,7 +513,7 @@ export function createDbEvvBackend(
     };
   }
 
-  const backend = {
+  const resolver: EvvAbacResolver = {
     // ── EvvAbacResolver (§4.7) — reads the M17 visit aggregate, fail-closed to null ─────────────────────
     async assignedMembershipForVisit(orgId: string, visitId: string): Promise<string | null> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
@@ -482,6 +541,10 @@ export function createDbEvvBackend(
     async captureWindow(_orgId: string): Promise<EvvCaptureWindow> {
       return { beforeMs: DEFAULT_EVV_WINDOW_BEFORE_MS, afterMs: DEFAULT_EVV_WINDOW_AFTER_MS };
     },
+  };
+
+  const backend = {
+    ...resolver,
 
     // ── event reads (§4.1 routes 4–5) ──────────────────────────────────────────────────────────────────
     async listEvents(
@@ -522,10 +585,38 @@ export function createDbEvvBackend(
         accuracyM: number;
         capturedAt: string;
         gpsQualityAttested?: "degraded_attested";
+        /** The client's CLAIM of the posting device — only ever compared to the session-bound one. */
+        claimedDeviceId?: string;
       },
+      authority: EvvCaptureAuthority,
     ): Promise<CheckResultView> {
+      // GAP-055 — the §8.2 guards (assigned clinician, visit window, and — when enforced — device attestation), re-asserted at
+      // the service layer from the stored visit; only an explicit typed system marker is exempt.
+      await assertCaptureAllowed(
+        resolver,
+        orgId,
+        userId,
+        input,
+        authority,
+        deviceAttestationEnforced,
+      );
       return withOrgContext(db, { organizationId: orgId, userId: "" }, (txRaw) =>
-        captureInTx(txRaw as DbClient, orgId, userId, kind, input),
+        captureInTx(txRaw as DbClient, orgId, userId, kind, input, {
+          authority,
+          claimedDeviceId: input.claimedDeviceId,
+        }),
+      );
+    },
+
+    /** Pre-flight for a batch: refuse a claimed device that is not the session-bound one, before any write. */
+    async assertCaptureDevice(
+      orgId: string,
+      userId: string,
+      claimedDeviceId: string | undefined,
+      authority: EvvCaptureAuthority,
+    ): Promise<void> {
+      await withOrgContext(db, { organizationId: orgId, userId: "" }, (txRaw) =>
+        resolveCaptureDevice(txRaw as DbClient, userId, { authority, claimedDeviceId }),
       );
     },
 
@@ -724,6 +815,7 @@ export function createDbEvvBackend(
       orgId: string,
       userId: string,
       body: { platform: EvvDevicePlatform; modelDescription: string },
+      sessionAttestationId: string | null = null,
     ): Promise<DeviceView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
@@ -735,17 +827,12 @@ export function createDbEvvBackend(
             platform: body.platform,
             modelDescription: body.modelDescription,
             deviceKeyFingerprint: `sr-${randomUUID()}`,
-            // KNOWN GAP (F-068, stated rather than papered over). `m2_device_attestation_id` is the D8
-            // logical FK to M2's `device_attestation`, which migration 0222 finally created — but the
-            // attestation's ID is not reachable here: the authenticate hook stamps `{ valid, verifiedAt }`
-            // on the request and `ResolvedActor` carries no id, so binding it needs an M2 seam change.
-            // The route's `attestationId` body field was removed rather than threaded, because a
-            // client-supplied attestation id is the F-028 shape — an authorization-relevant fact taken
-            // unverified from the party being gated — and would be strictly worse than this placeholder.
-            // Requiring a live attestation today would refuse every caller: there is no attested mobile
-            // client to self-register from yet (ADR-0035), and a route that always denies is the same
-            // fail-closed invisibility F-068 is about.
-            m2DeviceAttestationId: randomUUID(),
+            // The M2 attestation the SESSION is bound to (server-stamped by the authenticate hook and
+            // threaded from the request context — never a body field, the F-028 shape). It is what a later
+            // capture's session binds to (`selectBoundDevice`). A session with no attested device (every
+            // browser session) registers with an unmatched placeholder, so such a device can never satisfy
+            // the capture binding — fail closed.
+            m2DeviceAttestationId: sessionAttestationId ?? randomUUID(),
             status: "pending_approval",
           })
           .returning();

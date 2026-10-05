@@ -25,7 +25,12 @@ import {
   M18_OUTBOX_EVENTS,
   buildM18VisitPublishedConsumer,
   createDbEvvBackend,
+  systemCapture,
 } from "../src/modules/18-evv/index";
+
+// GAP-055 — these fixtures drive M18 state through the service, not the capture guards (covered in
+// evv-capture-guards.test.ts / evv-inject.test.ts); the explicit typed system marker says so.
+const SYSTEM_FIXTURE = systemCapture("live-suite fixture");
 import { evvVisitProviderEntityForOrg } from "../src/modules/18-evv/seams/evv-visit-provider-entity-for-org";
 import { buildM30VisitVerifiedConsumer } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -206,18 +211,30 @@ describe.skipIf(!DB_URL)(
     it("in-geofence check-in then check-out emits visit_verified, and the real M30 consumer enqueues one hvldl recompute (redelivery does not duplicate it)", async () => {
       const { member, pe } = seeded[ORG_A];
       const visit = await seedVisit(ORG_A);
-      await svc.recordCapture(ORG_A, member, "check_in", {
-        visitId: visit,
-        coords: { lat: 45.523, lng: -122.6789 },
-        accuracyM: 4.5,
-        capturedAt: new Date().toISOString(),
-      });
-      const co = await svc.recordCapture(ORG_A, member, "check_out", {
-        visitId: visit,
-        coords: { lat: 45.523, lng: -122.6789 },
-        accuracyM: 6,
-        capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-      });
+      await svc.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        {
+          visitId: visit,
+          coords: { lat: 45.523, lng: -122.6789 },
+          accuracyM: 4.5,
+          capturedAt: new Date().toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      );
+      const co = await svc.recordCapture(
+        ORG_A,
+        member,
+        "check_out",
+        {
+          visitId: visit,
+          coords: { lat: 45.523, lng: -122.6789 },
+          accuracyM: 6,
+          capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      );
 
       const evts = await eventsFor(co.eventId);
       const verified = evts.find((e) => e.type === "m18.evv.visit_verified");
@@ -255,21 +272,33 @@ describe.skipIf(!DB_URL)(
     it("a geofence-breach (fail-accuracy) check-out does NOT emit visit_verified", async () => {
       const { member } = seeded[ORG_A];
       const visit = await seedVisit(ORG_A);
-      await svc.recordCapture(ORG_A, member, "check_in", {
-        visitId: visit,
-        coords: { lat: 45.523, lng: -122.6789 },
-        accuracyM: 4.5,
-        capturedAt: new Date().toISOString(),
-      });
+      await svc.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        {
+          visitId: visit,
+          coords: { lat: 45.523, lng: -122.6789 },
+          accuracyM: 4.5,
+          capturedAt: new Date().toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      );
       // The decision is accuracy-banded against the tenant's `maxAccuracyM` policy (50) — not derived from
       // `coords` at all (`captureInTx`'s own "in-mem accuracy-band model" comment) — so a breach needs a
       // GPS accuracy worse than the policy's ceiling, un-attested.
-      const co = await svc.recordCapture(ORG_A, member, "check_out", {
-        visitId: visit,
-        coords: { lat: 45.523, lng: -122.6789 },
-        accuracyM: 999,
-        capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-      });
+      const co = await svc.recordCapture(
+        ORG_A,
+        member,
+        "check_out",
+        {
+          visitId: visit,
+          coords: { lat: 45.523, lng: -122.6789 },
+          accuracyM: 999,
+          capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      );
       expect(co.geofenceDecision).not.toBe("pass");
       const evts = await eventsFor(co.eventId);
       expect(evts.some((e) => e.type === "m18.evv.visit_verified")).toBe(false);
@@ -279,19 +308,31 @@ describe.skipIf(!DB_URL)(
     it("an in-geofence check-out with a still-OPEN evv_missing_resolution on the visit does NOT emit visit_verified", async () => {
       const { member } = seeded[ORG_A];
       const visit = await seedVisit(ORG_A);
-      await svc.recordCapture(ORG_A, member, "check_in", {
-        visitId: visit,
-        coords: { lat: 45.523, lng: -122.6789 },
-        accuracyM: 4.5,
-        capturedAt: new Date().toISOString(),
-      });
+      await svc.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        {
+          visitId: visit,
+          coords: { lat: 45.523, lng: -122.6789 },
+          accuracyM: 4.5,
+          capturedAt: new Date().toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      );
       await seedOpenResolution(ORG_A, visit);
-      const co = await svc.recordCapture(ORG_A, member, "check_out", {
-        visitId: visit,
-        coords: { lat: 45.523, lng: -122.6789 },
-        accuracyM: 6,
-        capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-      });
+      const co = await svc.recordCapture(
+        ORG_A,
+        member,
+        "check_out",
+        {
+          visitId: visit,
+          coords: { lat: 45.523, lng: -122.6789 },
+          accuracyM: 6,
+          capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      );
       expect(co.geofenceDecision).toBe("pass");
       const evts = await eventsFor(co.eventId);
       expect(evts.some((e) => e.type === "m18.evv.visit_verified")).toBe(false);

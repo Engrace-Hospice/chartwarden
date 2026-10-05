@@ -125,6 +125,10 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof portalSession === "string" && portalSession.length > 0) {
     request.context.attributes.sessionId = portalSession;
   }
+  const membership = request.headers["x-test-membership"];
+  if (typeof membership === "string" && membership.length > 0) {
+    request.context.attributes.membershipId = membership;
+  }
   const portalPatient = request.headers["x-test-portal-patient"];
   if (typeof portalPatient === "string" && portalPatient.length > 0) {
     request.context.attributes.sessionPatientId = portalPatient;
@@ -407,6 +411,9 @@ function makeServer(
     readonly lazyMint?: { readonly visit: M17VisitForRoom | null; readonly vendorCanMint: boolean };
     /** GAP-006 — leave M5's amendment intake UNBOUND (submit/list must then refuse 503). */
     readonly amendmentIntakeUnbound?: boolean;
+    /** M31 staff-telehealth scope — what the M5 `CaseloadProvider` answers (`userId → patient ids`), or
+     *  `"throws"` for an unreadable seam. Default: `staff_user` carries `PATIENT` (the seeded visits' patient). */
+    readonly staffCaseload?: Readonly<Record<string, readonly string[]>> | "throws";
   } = {},
 ) {
   const backend = createFakePortalStore();
@@ -535,6 +542,17 @@ function makeServer(
     },
   };
   registerSeam("MessagingProvider", fakeMessagingProvider);
+  const staffCaseload = opts.staffCaseload ?? { staff_user: [PATIENT] };
+  registerSeam("CaseloadProvider", {
+    async isInCaseload(q: { userId: string; patientId: string }) {
+      if (staffCaseload === "throws") throw new Error("caseload seam unreadable");
+      return (staffCaseload[q.userId] ?? []).includes(q.patientId);
+    },
+    async caseloadPatientIds(q: { userId: string }) {
+      if (staffCaseload === "throws") throw new Error("caseload seam unreadable");
+      return staffCaseload[q.userId] ?? [];
+    },
+  });
   const fakeExternalGriefResourceReader: ExternalGriefResourceReader = {
     async resourcesForOrg(): Promise<readonly ExternalGriefResource[]> {
       return [];
@@ -649,7 +667,7 @@ function makeServer(
         }),
   };
   mountM31Routes(app, deps);
-  return { app, backend, messagingCalls, amendments };
+  return { app, backend, messagingCalls, amendments, mintedRooms };
 }
 
 const CAREGIVER = {
@@ -668,6 +686,7 @@ const CAREGIVER_NO_PATIENT_SELECTED = {
   "x-test-portal-account": ACCOUNT,
 };
 const STAFF = { "x-test-user": "staff_user", "x-test-org": ORG, "x-test-roles": "org_admin" };
+const STAFF_ORG_WIDE = { ...STAFF, "x-test-roles": "medical_director" };
 const NO_PERMS_CAREGIVER = {
   "x-test-user": "no_perms_user",
   "x-test-org": ORG,
@@ -1731,5 +1750,251 @@ describe("GAP-006 — portal §164.526 amendment submit reaches M5", () => {
     });
     expect(list.statusCode).toBe(503);
     await app.close();
+  });
+});
+
+// ── GAP-094: portal telehealth join/leave is bound to the SESSION's granted patient ─────────────────────────
+describe("M31 telehealth — portal join/leave authorization (GAP-094)", () => {
+  const OTHER_PATIENT = "33333333-3333-4333-8333-333333333333";
+  const OTHER_VISIT = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const seedOtherPatientVisit = (backend: ReturnType<typeof makeServer>["backend"]): void =>
+    backend.seedVisit({
+      telehealthVisitId: OTHER_VISIT,
+      m17VisitId: `${M17_VISIT_ID}-other`,
+      patientId: OTHER_PATIENT,
+      assignedMembershipId: CLINICIAN_MEMBERSHIP,
+      lifecycleState: "room_minted",
+      vendor: "daily_co",
+      scheduledVisitSetting: "patient_home_with_video",
+      audioOnlyFallbackActive: false,
+      visitStartedAt: null,
+      visitEndedAt: null,
+      totalDurationSec: null,
+      endReason: null,
+      linkedEncounterId: null,
+    });
+
+  it.each(["join", "leave"])(
+    "404s a portal %s of ANOTHER patient's visit in the same org and leaves its lifecycle untouched",
+    async (verb) => {
+      const { app, backend } = makeServer();
+      seedOtherPatientVisit(backend);
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/portal/telehealth/visits/${OTHER_VISIT}/${verb}`,
+        headers: { ...CAREGIVER, ...IDEMP(`k-094-${verb}`) },
+        payload: {},
+      });
+      expect(res.statusCode).toBe(404);
+      expect((await backend.store.telehealthById(ORG, OTHER_VISIT))?.lifecycleState).toBe(
+        "room_minted",
+      );
+      await app.close();
+    },
+  );
+
+  it.each(["join", "leave"])(
+    "refuses a portal %s when the session has no selected patient",
+    async (verb) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/portal/telehealth/visits/${VISIT_ROOM_MINTED}/${verb}`,
+        headers: { ...CAREGIVER_NO_PATIENT_SELECTED, ...IDEMP(`k-094-np-${verb}`) },
+        payload: {},
+      });
+      expect([403, 404]).toContain(res.statusCode);
+      await app.close();
+    },
+  );
+
+  it("refuses a portal join once the grant is revoked (ABAC_GRANT on the route)", async () => {
+    const { app, backend } = makeServer();
+    backend.seedGrant({
+      grantId: GRANT_ID,
+      portalAccountId: ACCOUNT,
+      patientId: PATIENT,
+      grantKind: "family_caregiver",
+      scopeSet: SCOPE_SET,
+      grantedAt: NOW,
+      revokedAt: NOW,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/portal/telehealth/visits/${VISIT_ROOM_MINTED}/join`,
+      headers: { ...CAREGIVER, ...IDEMP("k-094-revoked") },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+    expect((await backend.store.telehealthById(ORG, VISIT_ROOM_MINTED))?.lifecycleState).toBe(
+      "room_minted",
+    );
+    await app.close();
+  });
+
+  it("still lets the granted patient's own session join its own visit", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/portal/telehealth/visits/${VISIT_ROOM_MINTED}/join`,
+      headers: { ...CAREGIVER, ...IDEMP("k-094-own") },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+// ── M31 (adjacent to GAP-094): the STAFF telehealth routes are scoped to the visit's STORED patient ────────
+describe("M31 telehealth — staff join/leave/record/end authorization (caseload_or_scope)", () => {
+  const OTHER_PATIENT = "33333333-3333-4333-8333-333333333333";
+  const OTHER_VISIT = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const ABSENT_VISIT = "dddddddd-dddd-4ddd-8ddd-eeeeeeeeeeee";
+  const seedOtherPatientVisit = (backend: ReturnType<typeof makeServer>["backend"]): void =>
+    backend.seedVisit({
+      telehealthVisitId: OTHER_VISIT,
+      m17VisitId: `${M17_VISIT_ID}-other`,
+      patientId: OTHER_PATIENT,
+      assignedMembershipId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      lifecycleState: "room_minted",
+      vendor: "daily_co",
+      scheduledVisitSetting: "patient_home_with_video",
+      audioOnlyFallbackActive: false,
+      visitStartedAt: null,
+      visitEndedAt: null,
+      totalDurationSec: null,
+      endReason: null,
+      linkedEncounterId: null,
+    });
+  const post = (
+    app: ReturnType<typeof makeServer>["app"],
+    verb: string,
+    id: string,
+    key: string,
+    headers: Record<string, string> = STAFF,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${id}/${verb}`,
+      headers: { ...headers, ...IDEMP(key) },
+      payload:
+        verb === "start-recording"
+          ? { acknowledgesStateRules: true, acknowledgesPatientConsent: true }
+          : {},
+    });
+
+  it.each(["join", "leave", "stop-recording", "end"])(
+    "404s a staff %s of a visit whose patient is NOT on the caller's caseload, changing nothing",
+    async (verb) => {
+      const { app, backend } = makeServer();
+      seedOtherPatientVisit(backend);
+      const res = await post(app, verb, OTHER_VISIT, `k-staff-x-${verb}`);
+      expect(res.statusCode).toBe(404);
+      expect((await backend.store.telehealthById(ORG, OTHER_VISIT))?.lifecycleState).toBe(
+        "room_minted",
+      );
+      await app.close();
+    },
+  );
+
+  it("404s a staff start-recording of a cross-patient visit and starts no recording", async () => {
+    const { app, backend } = makeServer();
+    seedOtherPatientVisit(backend);
+    const res = await post(app, "start-recording", OTHER_VISIT, "k-staff-x-rec");
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("answers an ABSENT visit and a foreign one identically (404, same body shape)", async () => {
+    const { app, backend } = makeServer();
+    seedOtherPatientVisit(backend);
+    const absent = await post(app, "join", ABSENT_VISIT, "k-staff-absent");
+    const foreign = await post(app, "join", OTHER_VISIT, "k-staff-foreign");
+    expect(absent.statusCode).toBe(404);
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.json().error?.code).toBe(absent.json().error?.code);
+    await app.close();
+  });
+
+  it("lets a caseload clinician join and leave their OWN patient's visit", async () => {
+    const { app, backend } = makeServer();
+    const joined = await post(app, "join", VISIT_ROOM_MINTED, "k-staff-own-j");
+    expect(joined.statusCode).toBe(200);
+    expect((await backend.store.telehealthById(ORG, VISIT_ROOM_MINTED))?.lifecycleState).toBe(
+      "clinician_joined",
+    );
+    expect((await post(app, "leave", VISIT_ROOM_MINTED, "k-staff-own-l")).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("lets an org-wide role join a visit with no caseload lookup at all", async () => {
+    const { app, backend } = makeServer({ staffCaseload: "throws" });
+    seedOtherPatientVisit(backend);
+    const res = await post(app, "join", OTHER_VISIT, "k-staff-wide", STAFF_ORG_WIDE);
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("lets the visit's ASSIGNED clinician in without a caseload row", async () => {
+    const { app, backend } = makeServer({ staffCaseload: {} });
+    seedOtherPatientVisit(backend);
+    const res = await post(app, "join", OTHER_VISIT, "k-staff-assigned", {
+      ...STAFF,
+      "x-test-membership": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it.each(["join", "leave", "end", "stop-recording"])(
+    "fails CLOSED (404) on %s when the caseload seam throws",
+    async (verb) => {
+      const { app, backend } = makeServer({ staffCaseload: "throws" });
+      const res = await post(app, verb, VISIT_ROOM_MINTED, `k-staff-throw-${verb}`);
+      expect(res.statusCode).toBe(404);
+      expect((await backend.store.telehealthById(ORG, VISIT_ROOM_MINTED))?.lifecycleState).toBe(
+        "room_minted",
+      );
+      await app.close();
+    },
+  );
+
+  describe("lazy mint by M17 visit id", () => {
+    const M17_VISIT = "33333333-3333-4333-8333-333333333334";
+    const telephonic: M17VisitForRoom = {
+      id: M17_VISIT,
+      organizationId: ORG,
+      patientId: OTHER_PATIENT,
+      providerEntityId: "44444444-4444-4444-8444-444444444444",
+      locationId: null,
+      assignedMembershipId: "55555555-5555-4555-8555-555555555555",
+      visitSetting: "telephonic",
+      scheduledStartedAt: NOW,
+      status: "published",
+    };
+
+    it("mints NO room and writes NO row for an in-org visit of a patient outside the caller's caseload", async () => {
+      const { app, backend, mintedRooms } = makeServer({
+        lazyMint: { visit: telephonic, vendorCanMint: true },
+      });
+      const res = await post(app, "join", M17_VISIT, "k-staff-lazy-x");
+      expect(res.statusCode).toBe(404);
+      expect(mintedRooms).toHaveLength(0);
+      expect(
+        (await backend.store.telehealthList(ORG)).some((r) => r.m17VisitId === M17_VISIT),
+      ).toBe(false);
+      await app.close();
+    });
+
+    it("still mints for a caller whose caseload holds that visit's patient", async () => {
+      const { app, mintedRooms } = makeServer({
+        lazyMint: { visit: telephonic, vendorCanMint: true },
+        staffCaseload: { staff_user: [OTHER_PATIENT] },
+      });
+      const res = await post(app, "join", M17_VISIT, "k-staff-lazy-ok");
+      expect(res.statusCode).toBe(200);
+      expect(mintedRooms).toHaveLength(1);
+      await app.close();
+    });
   });
 });

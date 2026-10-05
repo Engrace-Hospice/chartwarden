@@ -34,6 +34,11 @@ import type {
   NotificationPreferencesInput,
   NotificationPreferencesView,
 } from "../interfaces/route-service";
+import {
+  type MemberAdminActor,
+  type PatientLocationResolver,
+  mayManageChannelMembersResolved,
+} from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import {
   PLATFORM_DEFAULT_ALERT_RULES,
@@ -143,6 +148,8 @@ export interface InMemoryMessagingServiceOptions {
   /** Injectable clock for deterministic timestamps (default: wall clock). */
   readonly now?: () => Date;
   readonly seed?: InMemoryMessagingSeed;
+  /** Patient → sited location ids, for care_team member administration (unset ⇒ clinical_lead denied). */
+  readonly resolvePatientLocationIds?: PatientLocationResolver;
 }
 
 const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
@@ -192,6 +199,25 @@ export function createInMemoryMessagingService(
     const ch = channels.get(channelId);
     if (!ch || ch.orgId !== orgId) throw new NotFoundError("channel", channelId);
     return ch;
+  };
+
+  const mayManage = (orgId: string, actor: MemberAdminActor, ch: ChannelRow): Promise<boolean> =>
+    mayManageChannelMembersResolved(
+      actor,
+      { kind: ch.kind, subjectId: ch.subjectId },
+      options.resolvePatientLocationIds
+        ? (patientId) => options.resolvePatientLocationIds!(orgId, patientId)
+        : undefined,
+    );
+
+  const assertMayManage = async (
+    orgId: string,
+    actor: MemberAdminActor,
+    ch: ChannelRow,
+  ): Promise<void> => {
+    if (!(await mayManage(orgId, actor, ch))) {
+      throw new ForbiddenError("not permitted to manage members of this channel");
+    }
   };
 
   const toSummary = (orgId: string, userId: string, ch: ChannelRow): ChannelSummary => {
@@ -337,13 +363,21 @@ export function createInMemoryMessagingService(
       return { channelId, created: true };
     },
 
+    async canManageMembers(orgId, actor, channelId) {
+      const ch = channels.get(channelId);
+      if (!ch || ch.orgId !== orgId) return false;
+      return mayManage(orgId, actor, ch);
+    },
+
     async addMember(orgId, input) {
       const ch = channelOr404(orgId, input.channelId);
+      await assertMayManage(orgId, input.actor, ch);
       ch.members.set(input.userId, { role: input.role ?? "member", source: "manual" });
     },
 
     async removeMember(orgId, input) {
       const ch = channelOr404(orgId, input.channelId);
+      await assertMayManage(orgId, input.actor, ch);
       if (!ch.members.delete(input.userId)) {
         throw new NotFoundError("channel member", input.userId);
       }

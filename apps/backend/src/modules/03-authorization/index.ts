@@ -65,6 +65,8 @@ export {
 export { registerAuthorizationRoutes } from "./routes/authz-routes";
 export { createDbRoleStore } from "./role-store";
 export { createDbMembershipRoleStore } from "./membership-role-store";
+export { registerAuthorizationSeams } from "./seams";
+export { SUPERVISORY_ROLE_KEYS, createSupervisorReader } from "./supervisor-reader";
 // F-097 — the M2 §D3 role attach on accept. Exported for the composition root, which binds it into
 // M2's identity routes (M2 is `dependsOn: [1]` and cannot import this module itself).
 export {
@@ -96,11 +98,11 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import {
   type AuthzRouteDeps,
+  type ComplianceNotifier,
+  type M3OutboxPublisher,
   createInMemoryAuditorSessionMinter as _auditorMinter,
   createInMemoryEngagementStore as _engagements,
   createFixedPermissionResolver as _fixedPerms,
-  type ComplianceNotifier,
-  type M3OutboxPublisher,
   createInMemoryComplianceNotifier as _notifier,
 } from "./authz-ports";
 import { createDbBreakGlassStore as _dbBreakGlass } from "./break-glass-store";

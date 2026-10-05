@@ -33,6 +33,11 @@ import {
   type EvvCaptureWindow,
 } from "../abac-predicates";
 import {
+  type EvvCaptureAuthority,
+  assertCaptureAllowed,
+  selectBoundDevice,
+} from "../capture-guards";
+import {
   type EvvAggregatorSubmissionEvent,
   transitionAggregatorSubmission,
 } from "../domain/aggregator-submission";
@@ -125,7 +130,15 @@ export interface EvvMissingResolutionSeed {
   readonly checkInAt?: string;
   readonly visitDate?: string;
 }
+export interface EvvDeviceSeed {
+  readonly organizationId: string;
+  readonly id: string;
+  readonly membershipId: string;
+  readonly status: EvvDeviceStatus;
+  readonly attestationId: string | null;
+}
 export interface EvvServiceSeed {
+  readonly devices?: readonly EvvDeviceSeed[];
   readonly visits?: readonly EvvVisitSeed[];
   readonly submissions?: readonly EvvAggregatorSubmissionSeed[];
   readonly resolutions?: readonly EvvMissingResolutionSeed[];
@@ -133,6 +146,8 @@ export interface EvvServiceSeed {
 
 interface DeviceRow extends DeviceView {
   readonly organizationId: string;
+  /** `evv_device.m2_device_attestation_id` — never part of the {@link DeviceView}. */
+  readonly attestationId: string | null;
 }
 interface SubmissionRow {
   organizationId: string;
@@ -198,8 +213,25 @@ export class EvvRouteService implements EvvAbacResolver {
   private readonly nextDeviceId = idMinter("evvdev");
   private readonly nextOverrideId = idMinter("evvovr");
 
-  constructor(seed: EvvServiceSeed = {}) {
+  /** GAP-055 follow-up: attestation + session-device binding enforced? Injected from server config; default off. */
+  private readonly deviceAttestationEnforced: boolean;
+
+  constructor(
+    seed: EvvServiceSeed = {},
+    options: { readonly deviceAttestationEnforced?: boolean } = {},
+  ) {
+    this.deviceAttestationEnforced = options.deviceAttestationEnforced ?? false;
     for (const v of seed.visits ?? []) this.visits.set(v.visitId, v);
+    for (const d of seed.devices ?? [])
+      this.devices.push({
+        organizationId: d.organizationId,
+        id: d.id,
+        membershipId: d.membershipId,
+        platform: "ios",
+        modelDescription: "seeded",
+        status: d.status,
+        attestationId: d.attestationId,
+      });
     for (const s of seed.submissions ?? []) {
       this.submissions.set(s.id, {
         organizationId: s.organizationId,
@@ -259,6 +291,74 @@ export class EvvRouteService implements EvvAbacResolver {
    * persists the event and computes the gps-quality / geofence verdict from the device accuracy + tenant
    * policy (the in-memory slice models the pass/fail boundary; the full haversine pipeline is the domain). */
   recordCapture(
+    orgId: string,
+    userId: string,
+    kind: EvvEventKind,
+    input: {
+      visitId: string;
+      coords: { lat: number; lng: number };
+      accuracyM: number;
+      capturedAt: string;
+      gpsQualityAttested?: "degraded_attested";
+      /** The client's CLAIM of the posting device — only ever compared to the session-bound device. */
+      claimedDeviceId?: string;
+    },
+    authority: EvvCaptureAuthority,
+  ): Promise<CheckResultView> {
+    return assertCaptureAllowed(
+      this,
+      orgId,
+      userId,
+      input,
+      authority,
+      this.deviceAttestationEnforced,
+    ).then(() => {
+      this.boundDeviceOf(orgId, userId, input.claimedDeviceId, authority);
+      return this.captureUnguarded(orgId, userId, kind, input);
+    });
+  }
+
+  /** Pre-flight for a batch: refuse a claimed device that is not the session-bound one, before any write. */
+  assertCaptureDevice(
+    orgId: string,
+    userId: string,
+    claimedDeviceId: string | undefined,
+    authority: EvvCaptureAuthority,
+  ): Promise<void> {
+    try {
+      this.boundDeviceOf(orgId, userId, claimedDeviceId, authority);
+      return Promise.resolve();
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+
+  private boundDeviceOf(
+    orgId: string,
+    userId: string,
+    claimedDeviceId: string | undefined,
+    authority: EvvCaptureAuthority,
+  ): string | null {
+    const candidates = this.devices
+      .filter((d) => d.organizationId === orgId)
+      .map((d, index) => ({
+        id: d.id,
+        membershipId: d.membershipId,
+        status: d.status,
+        attestationId: d.attestationId,
+        approvedAtMs: index, // the in-memory slice has no approval clock: later registration = more recent
+      }));
+    return selectBoundDevice(
+      authority,
+      userId,
+      claimedDeviceId,
+      candidates,
+      this.deviceAttestationEnforced,
+    );
+  }
+
+  /** The capture write with NO §8.2 guards — only `recordCapture` (guarded) and `correctEvent` reach it. */
+  private captureUnguarded(
     orgId: string,
     userId: string,
     kind: EvvEventKind,
@@ -376,7 +476,7 @@ export class EvvRouteService implements EvvAbacResolver {
     // Throws EVV_CORRECTION_STEP_UP_REQUIRED / _REASON_TOO_SHORT / EVV_EVENT_ALREADY_SUPERSEDED /
     // _KIND_MISMATCH — the four refusals the route never had.
     correctEvent(decision);
-    const result = this.recordCapture(orgId, userId, input.kind, {
+    const result = this.captureUnguarded(orgId, userId, input.kind, {
       visitId: input.visitId,
       coords: input.coords,
       accuracyM: input.accuracyM,
@@ -434,12 +534,13 @@ export class EvvRouteService implements EvvAbacResolver {
     return this.devices
       .filter((d) => d.organizationId === orgId)
       .filter((d) => (membership ? d.membershipId === membership : true))
-      .map(({ organizationId: _o, ...v }) => v);
+      .map(({ organizationId: _o, attestationId: _a, ...v }) => v);
   }
   selfRegisterDevice(
     orgId: string,
     userId: string,
     body: { platform: EvvDevicePlatform; modelDescription: string },
+    sessionAttestationId: string | null = null,
   ): DeviceView {
     const row: DeviceRow = {
       organizationId: orgId,
@@ -448,16 +549,17 @@ export class EvvRouteService implements EvvAbacResolver {
       platform: body.platform,
       modelDescription: body.modelDescription,
       status: "pending_approval",
+      attestationId: sessionAttestationId,
     };
     this.devices.push(row);
-    const { organizationId: _o, ...v } = row;
+    const { organizationId: _o, attestationId: _a, ...v } = row;
     return v;
   }
   private transitionDevice(orgId: string, id: string, status: EvvDeviceStatus): DeviceView {
     const d = this.devices.find((x) => x.organizationId === orgId && x.id === id);
     if (!d) throw new NotFoundError("evv_device", id);
     (d as { status: EvvDeviceStatus }).status = status;
-    const { organizationId: _o, ...v } = d;
+    const { organizationId: _o, attestationId: _a, ...v } = d;
     return v;
   }
   // The four device-lifecycle transitions take the ACTING membership and (where the schema has a column

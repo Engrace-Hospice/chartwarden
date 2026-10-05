@@ -107,6 +107,18 @@ describe("collectEnvProblems", () => {
     expect(problemFor("yes")).toBe("must be 'true' or 'false'");
   });
 
+  it("GAP-055: the EVV device-attestation flag is optional, but a set value must be exactly true/false", () => {
+    const problemFor = (v: string | undefined) =>
+      collectEnvProblems({ ...GOOD, EVV_DEVICE_ATTESTATION_ENFORCED: v }).find(
+        (p) => p.key === "EVV_DEVICE_ATTESTATION_ENFORCED",
+      )?.problem;
+    expect(problemFor(undefined)).toBeUndefined();
+    expect(problemFor("true")).toBeUndefined();
+    expect(problemFor("false")).toBeUndefined();
+    expect(problemFor("TRUE")).toBe("must be 'true' or 'false'");
+    expect(problemFor("1")).toBe("must be 'true' or 'false'");
+  });
+
   it("GAP-009: the sign-up invite flag is optional, but a set value must be exactly true/false", () => {
     const problemFor = (v: string | undefined) =>
       collectEnvProblems({ ...GOOD, WARDENX_SIGNUP_REQUIRES_INVITE: v }).find(
