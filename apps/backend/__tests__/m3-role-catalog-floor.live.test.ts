@@ -236,4 +236,24 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
       asActor(() => store.delete("99999999-9999-4999-8999-999999999999")),
     ).rejects.toThrow(/not found/);
   });
+
+  // GAP-017 — the payer write moved from `patient.edit` to `patient.edit_payers`. Migration 0325 keeps
+  // every tenant role that could edit payers able to, by copying the grant. Re-running the migration's
+  // SQL over staged rows is the only way to exercise the backfill (a fresh replay finds no roles).
+  it("GAP-017 migration 0325 copies patient.edit → patient.edit_payers for tenant roles only, idempotently", async () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0325_m5_patient_edit_payers_backfill.sql"), "utf8");
+    const editor = await seedRole("intake_editor", ["patient.edit", "patient.read"]);
+    const readerOnly = await seedRole("chart_reader", ["patient.read"]);
+    const already = await seedRole("billing_lead", ["patient.edit", "patient.edit_payers"]);
+    // A platform template (organization_id NULL) is not a tenant grant and is left alone.
+    const template = await seedRole("tmpl", ["patient.edit"], { organizationId: null });
+
+    await admin.query(sql);
+    await admin.query(sql); // idempotent: a second run adds nothing
+
+    expect(await grantsOf(editor)).toEqual(["patient.edit", "patient.edit_payers", "patient.read"]);
+    expect(await grantsOf(readerOnly)).toEqual(["patient.read"]);
+    expect(await grantsOf(already)).toEqual(["patient.edit", "patient.edit_payers"]);
+    expect(await grantsOf(template)).toEqual(["patient.edit"]);
+  });
 });
