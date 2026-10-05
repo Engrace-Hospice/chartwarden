@@ -1,14 +1,15 @@
 # ADR-0050 — Production moves from a single Compose VPS to Talos Linux / Kubernetes behind Pangolin, deployed by GitOps pull
 
-- **Status:** **Proposed** — draft for product-owner decision on D3 (database), D4 (GitOps tool),
-  D5 (secrets), D6 (storage) and the open questions. Each has a recommended option.
+- **Status:** **Proposed** — the product owner has decided D3 (CloudNativePG), D4 (Argo CD), D5
+  (External Secrets + OpenBao) and the D6 object store (Garage). It stays Proposed until the open
+  questions below are settled, cluster hosting first.
 - **Date:** 2026-10-05
 - **Phase:** production platform.
 - **Supersedes (when Accepted):** System Design §2.4 ("Why Not Kubernetes Initially"), and §2.2's VM
   allocation as the *runtime* layout. Proxmox remains the hypervisor.
 - **Amends (when Accepted):** Architecture §18 (the "Deploy" bullet: "Proxmox VMs pull via
-  systemd-managed compose"), §19, and the §14 "Encryption at rest" row; DR/BCP §4.1 (if D3 =
-  CloudNativePG); the Ops Runbook; `.github/workflows/deploy.yml`'s `deploy` job.
+  systemd-managed compose"), §19, and the §14 "Encryption at rest" row; DR/BCP §4.1 (pgBackRest → CloudNativePG) and §4.2
+  (MinIO → Garage); the Ops Runbook; `.github/workflows/deploy.yml`'s `deploy` job.
 - **Related:** [ADR-0049](ADR-0049-tenant-subdomains.md) (the Pangolin wildcard edge this platform sits
   behind), [ADR-0045](ADR-0045-platform-kek-custody.md) (the env-held platform KEK, which becomes a
   Kubernetes Secret here), [ADR-0010](ADR-0010-tenancy-rls-invariants.md) (the NOBYPASSRLS
@@ -63,8 +64,8 @@ OS with no SSH and no shell.
 - **Nodes:** three Talos nodes, each a control-plane node that also schedules workloads. etcd needs
   three members to survive losing one. Dedicated worker nodes join when load requires; the inference
   node with GPU passthrough is the first expected one.
-- **Configuration:** Talos machine config is declarative and lives (encrypted, D5) in the repo under
-  `deploy/talos/`. Nodes are managed only through `talosctl` with mTLS. There is no SSH, which removes
+- **Configuration:** Talos machine config is declarative. Its non-secret patches live in the repo
+  under `deploy/talos/`; the Talos secrets bundle never does (D5 bootstrap). Nodes are managed only through `talosctl` with mTLS. There is no SSH, which removes
   the deploy host's shell key from the threat model.
 - **Disk encryption:** Talos's LUKS2 disk encryption is enabled on the STATE and EPHEMERAL partitions.
   It replaces "LUKS on Proxmox volumes" in §14; application-layer envelope encryption (ADR-0038) is
@@ -96,48 +97,102 @@ OS with no SSH and no shell.
 - **Proxy trust:** `TRUSTED_PROXY_CIDRS` is set to the ingress pods' CIDR, so `X-Forwarded-*` is
   honoured only from the ingress.
 
-### D3 — PostgreSQL: CloudNativePG in-cluster *(recommended; needs decision)*
+### D3 — PostgreSQL: CloudNativePG in-cluster *(decided by the product owner, 2026-10-05)*
 
-| Option | For | Against |
-|---|---|---|
-| **A. CloudNativePG operator** *(recommended)* | Primary plus streaming replica with automated failover. Continuous WAL archiving and point-in-time recovery to off-site S3-compatible storage (barman-cloud), which finally makes the DR Tier-1 RPO real. The pgvector image is supported. Declarative, GitOps-managed. | Replaces DR/BCP's pgBackRest design. Database operations move into the cluster, so they need runbook coverage. |
-| B. Postgres on dedicated Talos-external VMs (pgBackRest, as DR/BCP describes) | Matches the existing DR doc; the database is isolated from cluster incidents. | Hand-built replication and failover; a second operational surface; no declarative state. |
+- **Topology:** the CloudNativePG operator runs a `Cluster` with one primary and two streaming
+  replicas (one per node) using the pgvector image, with automated failover.
+- **Backups:** continuous WAL archiving and scheduled base backups go through barman-cloud to an
+  off-site, encrypted S3-compatible target. The target is **not** the in-cluster Garage, so a
+  cluster loss cannot take its own backups with it. Point-in-time recovery makes DR Tier-1's 5-minute
+  RPO real.
+- **What it replaces:** DR/BCP §4.1's pgBackRest design. The VM-based alternative (dedicated Postgres
+  VMs with pgBackRest) was considered and rejected: hand-built failover, and a second operational
+  surface with no declarative state.
+- **Invariants preserved:**
+  - The app connects as NOBYPASSRLS `wardenx_app`, and boot still refuses a BYPASSRLS runtime role.
+  - Superuser credentials never reach app pods.
+  - `provision` creates the app, platform and destruction roles exactly as today.
+  - Migrations run through the `migrate` Job's own credential.
+- **Pooling:** connections go through CloudNativePG's `Pooler` (PgBouncer) in transaction mode, *only
+  after* the live suites prove the `app.org_id` GUC handling is transaction-scoped under it. Until
+  then the app connects to the `-rw` Service directly.
+- **Restore drill:** a restore is rehearsed quarterly into a scratch `Cluster` from the off-site
+  backups, and the RTO actually achieved is recorded per DR/BCP §3.3.
 
-Either way:
-
-- The live-RLS invariants are preserved. The app connects as NOBYPASSRLS `wardenx_app`, and boot still
-  refuses a BYPASSRLS runtime role.
-- Superuser credentials never reach app pods.
-- Migrations keep running through the `migrate` Job's own credential.
-
-### D4 — Deploys are GitOps pull: Flux CD *(recommended; needs decision)*
+### D4 — Deploys are GitOps pull: Argo CD *(decided by the product owner, 2026-10-05)*
 
 - **CI builds; the cluster pulls.** CI keeps building and signing images (`release` job unchanged).
   The `deploy` job no longer SSHes. It commits the new image **digest** to the environment overlay
-  (`deploy/k8s/overlays/production/`), and Flux in the cluster reconciles it. No inbound credential
-  to production exists anywhere in CI.
+  (`deploy/k8s/overlays/production/`), and Argo CD in the cluster syncs it. No inbound credential to
+  production exists anywhere in CI.
+- **Structure:** app-of-apps. One root `Application` per environment owns child `Application`s:
+  - platform: Cilium config, the CloudNativePG operator, External Secrets, OpenBao, Garage, the policy
+    controller, observability
+  - WardenX itself
+
+  Sync waves order them: CRDs and operators, then data services, then the app.
+- **Migration ordering:** `migrate` and `provision` are Argo CD **`PreSync` hook** Jobs
+  (`hook-delete-policy: BeforeHookCreation`). If either fails, the sync fails, the new ReplicaSets are
+  never created, and the current pods keep serving. That replaces `deploy.sh`'s manual image
+  rollback. The expand-only migration discipline still applies: the old code must run against the
+  new schema.
+- **Sync policy:** automated sync with `selfHeal` (a manual `kubectl` edit is reverted to Git). `prune`
+  is on for app resources, and **off** for data services (CloudNativePG `Cluster`, Garage, OpenBao), so
+  a bad commit can never delete a database.
 - **Signature verification moves into admission.** A policy controller (Kyverno, or Sigstore
   `policy-controller`) refuses any pod whose image lacks a keyless signature from **this repository's
   `deploy.yml` on `main`**. That is the same identity `deploy.sh` pins today, so the F-040 property is
   enforced for *every* pod, not just at deploy time.
-- **Ordering:** Flux `Kustomization` dependencies run `migrate` → `provision`, then roll out `api` /
-  `worker` / `web`. A failed Job halts the rollout. The previous ReplicaSet keeps serving, which
-  replaces `deploy.sh`'s manual rollback.
+- **Argo CD hardening:** Argo CD holds cluster-admin, so it is the most sensitive service in the
+  cluster.
+  - The local `admin` account is disabled after bootstrap. Sign-in is SSO only, with RBAC: owners can
+    sync, everyone else is read-only.
+  - The UI and API are internal only, reached through Pangolin with Pangolin's own authentication,
+    never a public tenant host.
+  - The repository credential is a read-only deploy key.
 - **CI minutes:** the `debounce` gate (#257) stays in front of `release`. The `deploy` job shrinks to
   one small commit, so Actions minutes drop.
-- **Alternative:** Argo CD (UI-centric, heavier) was considered. Flux is preferred for a small team,
-  because it is CLI- and Git-native and fits SOPS (D5).
+- **Alternative considered:** Flux CD (CLI- and Git-native, lighter). Argo CD was chosen for its
+  application view and sync and rollback UI.
 
-### D5 — Secrets: SOPS + age in Git *(recommended; needs decision)*
+### D5 — Secrets: External Secrets Operator + OpenBao *(decided by the product owner, 2026-10-05)*
 
-- **How:** every Secret, including the ADR-0045 platform KEK, `BETTER_AUTH_SECRET`, the DB role
-  passwords and integration credentials, is committed **encrypted** with SOPS (age recipients). Flux
-  decrypts it in-cluster. The decryption key exists only in the cluster and in the owner's offline
-  backup.
-- **What this fixes:** GAP-152's root cause. The full production key set becomes a reviewed,
-  versioned (encrypted) artefact instead of an untracked `.env.production`. Rotation is a commit.
-- **Alternative:** External Secrets + OpenBao/Vault. Dynamic DB credentials and audit trails, at the
-  cost of operating a secrets service. Revisit when the team grows.
+- **Source of truth:** OpenBao (the open-source Vault fork) runs in-cluster as a three-replica
+  integrated-storage (Raft) StatefulSet. It holds every production secret: the ADR-0045 platform KEK,
+  `BETTER_AUTH_SECRET`, `TWO_FACTOR_ENCRYPTION_KEY`, the DB role passwords, Garage keys and
+  integration credentials. Paths are per environment, for example
+  `kv/wardenx/production/<component>`.
+- **Delivery:** External Secrets Operator syncs them into Kubernetes Secrets.
+  - A `ClusterSecretStore` uses ESO's Vault provider, which is API-compatible with OpenBao, and
+    authenticates with OpenBao's Kubernetes auth method.
+  - Each workload has an `ExternalSecret` with a refresh interval.
+  - Pods read the Secrets as env vars, as today, so app code does not change, and ADR-0045's
+    env-held-KEK model holds.
+  - A rotated secret rolls the pods that use it (via a reloader).
+- **Audit:** OpenBao's audit device is enabled, so every secret read and write is logged and shipped
+  to Loki. That gives the secret-access trail HIPAA §164.312(b) expects, which a Git-held secret could
+  not.
+- **What this fixes:** GAP-152's root cause. The full production key set is enumerated as
+  `ExternalSecret` manifests in Git (names, never values) and held in one audited store, instead of an
+  untracked `.env.production`.
+- **Least privilege:** each workload's Kubernetes service account maps to an OpenBao policy that can
+  read only its own paths. App pods can never read the destruction credential, which only the
+  destruction worker's account can read, or the Talos and OpenBao root material.
+- **Bootstrap (the chicken-and-egg).** OpenBao lives inside the cluster it serves, so three things
+  live *outside* it:
+  1. **Talos secrets bundle:** generated once, never committed, kept in the owner's offline encrypted
+     backup. The repo holds only non-secret Talos config patches under `deploy/talos/`.
+  2. **OpenBao unseal:** auto-unseal from a key held outside the cluster, so a pod restart never
+     needs a human. Shamir manual unseal is rejected because a 3 a.m. node reboot would take every
+     secret, and so the app, offline until an operator arrives. The exact seal mechanism is an open
+     question.
+  3. **OpenBao recovery keys and root token:** the root token is revoked after setup. Recovery keys
+     are split between the owner's offline backup and one other trusted holder.
+- **Alternative considered:** SOPS + age (secrets encrypted in Git). It is simpler, but it has no
+  per-read audit trail and no path to dynamic credentials.
+- **Later, not in this ADR:** OpenBao's database secrets engine (dynamic, short-lived DB credentials)
+  and its Transit engine as ADR-0045's `kekUnwrap` binding. Both are possible next steps, each its
+  own ADR.
 
 ### D6 — Storage *(object store decided; volume provisioner recommended, needs decision)*
 
@@ -192,7 +247,7 @@ Either way:
 
 ## Migration plan
 
-1. **Stand up the cluster.** Talos, Cilium, Flux, the policy controller, storage, CloudNativePG, Valkey,
+1. **Stand up the cluster.** Talos, Cilium, Argo CD, OpenBao + External Secrets, the policy controller, storage, CloudNativePG, Valkey,
    Garage (with its bucket/key bootstrap Job), Newt.
 2. **Prove the app in staging.** Deploy it against an empty database and run the live suites (real
    `wardenx_app`, NOBYPASSRLS) and the smoke test (`deploy/production/smoke.sh`) against it.
@@ -212,8 +267,8 @@ Either way:
   - the production env-contract check → an init container
   - the cosign identity pin → admission policy
   - the migration-aware rollback → Job gating plus the expand-only discipline
-- DR/BCP §3 targets become achievable (replica + PITR). §4.1 is rewritten for CloudNativePG if D3 = A.
-- The Ops Runbook gains Talos, Flux and CloudNativePG procedures: node replacement, failover drill,
+- DR/BCP §3 targets become achievable (replica + PITR). §4.1 is rewritten for CloudNativePG.
+- The Ops Runbook gains Talos, Argo CD, OpenBao and CloudNativePG procedures: node replacement, failover drill, OpenBao unseal/recovery,
   restore drill, certificate and secret rotation.
 - New fitness work (follow-up issues, not this ADR):
   - Kubernetes manifests must pass the policy checks (image digest pinned, signature policy present,
@@ -225,10 +280,12 @@ Either way:
 1. **Where the cluster is hosted.** The architecture assumes Proxmox in the homelab, while production
    today is a Hostinger VPS. Talos can run on either. Homelab hardware must meet DR/BCP's off-site
    requirement separately.
-2. **D3:** CloudNativePG (recommended), or external Postgres VMs?
-3. **D4:** Flux (recommended), or Argo CD?
-4. **D5:** SOPS + age (recommended), or External Secrets + OpenBao?
-5. **Staging:** a separate small cluster, or a `staging` namespace in production? A separate cluster is
+2. **OpenBao auto-unseal mechanism (D5):** which key outside the cluster unseals it? Candidates: a
+   cloud KMS, an HSM / PKCS#11 device, or a second small OpenBao (transit seal) on separate hardware.
+   Confirm what the pinned OpenBao release supports.
+3. **Off-site backup target (D3):** which encrypted S3-compatible provider holds the CloudNativePG WAL
+   archive and base backups? It must be covered by a BAA if it is a third party.
+4. **Staging:** a separate small cluster, or a `staging` namespace in production? A separate cluster is
    recommended for a PHI system.
-6. **Garage off-site protection (D6):** a second Garage zone at another site, or a scheduled `rclone`
+5. **Garage off-site protection (D6):** a second Garage zone at another site, or a scheduled `rclone`
    copy to an encrypted off-site S3 target?
