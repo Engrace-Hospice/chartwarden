@@ -525,6 +525,81 @@ describe.skipIf(!DB_URL)(
       },
     );
 
+    // ── GAP-088 / 0335: the closure CHECK distinguishes an attested close from a nominee close ──────
+    // Runs on the superuser connection inside a transaction that is always rolled back (the CHECK is a
+    // table constraint, independent of RLS). Each case is one UPDATE of org A's seeded row.
+    describe.each([
+      {
+        table: "qapi_pip",
+        key: "qapiPip" as const,
+        slotA: "cosign_qapi_coordinator",
+        slotB: "cosign_medical_director",
+      },
+      {
+        table: "sra_cycle",
+        key: "sraCycle" as const,
+        slotA: "cosign_security_officer",
+        slotB: "cosign_compliance_officer",
+      },
+    ])("$table — closure nominee marker (0335)", ({ table, key, slotA, slotB }) => {
+      const M1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+      const M2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+      const closeWith = async (set: string): Promise<void> => {
+        await db.query("BEGIN");
+        try {
+          await db.query(`UPDATE "${table}" SET closed_at = now(), ${set} WHERE id = $1`, [a[key]]);
+        } finally {
+          await db.query("ROLLBACK");
+        }
+      };
+      const honest = (closer: string, nominee: string, closerSlot: string, nomineeSlot: string) =>
+        `${closerSlot}_membership_id = '${closer}', ${closerSlot}_at = now(), ` +
+        `${nomineeSlot}_membership_id = '${nominee}', ` +
+        `closure_cosign_attested = false, closure_closed_by_membership_id = '${closer}', ` +
+        `closure_nominee_membership_id = '${nominee}'`;
+
+      it("defaults closure_cosign_attested to true so pre-existing rows keep 'both signed'", async () => {
+        const { rows } = await db.query(
+          `SELECT closure_cosign_attested AS v FROM "${table}" WHERE id = $1`,
+          [a[key]],
+        );
+        expect(rows[0].v).toBe(true);
+      });
+
+      it("accepts an attested close with both slots stamped", async () => {
+        await closeWith(
+          `${slotA}_at = now(), ${slotA}_membership_id = '${M1}', ${slotB}_at = now(), ${slotB}_membership_id = '${M2}'`,
+        );
+      });
+
+      it("accepts a nominee close from either side (closer stamped, nominee _at NULL)", async () => {
+        await closeWith(honest(M1, M2, slotA, slotB));
+        await closeWith(honest(M2, M1, slotB, slotA));
+      });
+
+      it("rejects a nominee close whose nominee slot is stamped", async () => {
+        await expect(
+          closeWith(`${honest(M1, M2, slotA, slotB)}, ${slotB}_at = now()`),
+        ).rejects.toThrow(/check constraint/i);
+      });
+
+      it("rejects a nominee close whose closer slot is not stamped", async () => {
+        await expect(
+          closeWith(
+            `${slotA}_membership_id = '${M1}', ${slotB}_membership_id = '${M2}', ` +
+              `closure_cosign_attested = false, closure_closed_by_membership_id = '${M1}', ` +
+              `closure_nominee_membership_id = '${M2}'`,
+          ),
+        ).rejects.toThrow(/check constraint/i);
+      });
+
+      it("rejects an attested close with a missing slot stamp (old V-11/V-12 rule intact)", async () => {
+        await expect(
+          closeWith(`${slotA}_at = now(), ${slotA}_membership_id = '${M1}'`),
+        ).rejects.toThrow(/check constraint/i);
+      });
+    });
+
     // ── ADR-0010 mixed session variable — only `app.org_id` grants access ────────────────────────
     it("ADR-0010 a session that sets the legacy app.current_org_id (not app.org_id) sees NOTHING", async () => {
       // A FRESH connection where app.org_id was never set: current_setting('app.org_id', true)

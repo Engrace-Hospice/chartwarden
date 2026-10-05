@@ -28,6 +28,8 @@ import {
   PIP_CLOSE_ROLES,
   SRA_CLOSE_ROLES,
   buildCloseAttestation,
+  buildPipClosureColumns,
+  buildSraClosureColumns,
   resolveCloseCosigners,
 } from "../src/modules/30-quality/routes/close-cosign";
 import type { M30WriteRouteService } from "../src/modules/30-quality/routes/write-service";
@@ -41,6 +43,75 @@ const M_RANDOM = "55555555-5555-4555-8555-555555555555";
 const M_GHOST = "66666666-6666-4666-8666-666666666666";
 const PIP_ID = "77777777-7777-4777-8777-777777777777";
 const CYCLE_ID = "88888888-8888-4888-8888-888888888888";
+
+// ── persisted closure shape (GAP-088 follow-up: the row must not present the nominee as a signer) ─────────
+describe("persisted close columns (nominee-based one-step close)", () => {
+  const AT = new Date("2026-10-04T12:00:00.000Z");
+  const pipSigners = (callerRole: string, nomineeRole: string, first: string, second: string) => ({
+    first,
+    second,
+    callerRole,
+    nomineeRole,
+  });
+
+  it("PIP, QAPI Coordinator closer: QC slot stamped, MD slot holds the nominee id with a NULL _at", () => {
+    const cols = buildPipClosureColumns(
+      pipSigners("qapi_coordinator", "medical_director", M_QC, M_MD),
+      AT,
+    );
+    expect(cols).toEqual({
+      cosignQapiCoordinatorMembershipId: M_QC,
+      cosignQapiCoordinatorAt: AT,
+      cosignMedicalDirectorMembershipId: M_MD,
+      cosignMedicalDirectorAt: null,
+      closureClosedByMembershipId: M_QC,
+      closureNomineeMembershipId: M_MD,
+      closureCosignAttested: false,
+    });
+  });
+
+  it("PIP, Medical Director closer: MD slot stamped, QC slot is the un-attested nominee", () => {
+    const cols = buildPipClosureColumns(
+      pipSigners("medical_director", "qapi_coordinator", M_MD, M_QC),
+      AT,
+    );
+    expect(cols.cosignMedicalDirectorAt).toEqual(AT);
+    expect(cols.cosignQapiCoordinatorAt).toBeNull();
+    expect(cols.cosignMedicalDirectorMembershipId).toBe(M_MD);
+    expect(cols.cosignQapiCoordinatorMembershipId).toBe(M_QC);
+    expect(cols.closureClosedByMembershipId).toBe(M_MD);
+    expect(cols.closureNomineeMembershipId).toBe(M_QC);
+    expect(cols.closureCosignAttested).toBe(false);
+  });
+
+  it("SRA, Security Officer closer: SO slot stamped, CO slot nominee-only", () => {
+    const cols = buildSraClosureColumns(
+      pipSigners("hipaa_security_officer", "compliance_officer", M_SO, M_CO),
+      AT,
+    );
+    expect(cols).toEqual({
+      cosignSecurityOfficerMembershipId: M_SO,
+      cosignSecurityOfficerAt: AT,
+      cosignComplianceOfficerMembershipId: M_CO,
+      cosignComplianceOfficerAt: null,
+      closureClosedByMembershipId: M_SO,
+      closureNomineeMembershipId: M_CO,
+      closureCosignAttested: false,
+    });
+  });
+
+  it("SRA, Compliance Officer closer: CO slot stamped, SO slot nominee-only", () => {
+    const cols = buildSraClosureColumns(
+      pipSigners("compliance_officer", "hipaa_security_officer", M_CO, M_SO),
+      AT,
+    );
+    expect(cols.cosignComplianceOfficerAt).toEqual(AT);
+    expect(cols.cosignSecurityOfficerAt).toBeNull();
+    expect(cols.closureClosedByMembershipId).toBe(M_CO);
+    expect(cols.closureNomineeMembershipId).toBe(M_SO);
+    expect(cols.closureCosignAttested).toBe(false);
+  });
+});
 
 // ── pure service-layer guard ────────────────────────────────────────────────────────────────────────────
 describe("resolveCloseCosigners (service-layer, GAP-088)", () => {

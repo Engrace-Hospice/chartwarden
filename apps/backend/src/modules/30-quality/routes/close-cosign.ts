@@ -73,6 +73,48 @@ export function buildCloseAttestation(signers: CloseCosigners): CloseAttestation
   };
 }
 
+/** Marker columns shared by both closure tables (migration 0335): who closed, who was only named. */
+interface ClosureMarkerColumns {
+  readonly closureClosedByMembershipId: string;
+  readonly closureNomineeMembershipId: string;
+  readonly closureCosignAttested: false;
+}
+
+function closureMarkers(signers: CloseCosigners): ClosureMarkerColumns {
+  return {
+    closureClosedByMembershipId: signers.first,
+    closureNomineeMembershipId: signers.second,
+    closureCosignAttested: false,
+  };
+}
+
+/**
+ * The `qapi_pip` columns persisted by a nominee close (V-11 as relaxed by 0335): the closer's role slot is
+ * stamped at `at`; the nominee's slot carries only the id, its `_at` stays NULL (nomination ≠ attestation).
+ */
+export function buildPipClosureColumns(signers: CloseCosigners, at: Date) {
+  const callerIsCoordinator = signers.callerRole === ROLE_QAPI_COORDINATOR;
+  return {
+    cosignQapiCoordinatorMembershipId: callerIsCoordinator ? signers.first : signers.second,
+    cosignQapiCoordinatorAt: callerIsCoordinator ? at : null,
+    cosignMedicalDirectorMembershipId: callerIsCoordinator ? signers.second : signers.first,
+    cosignMedicalDirectorAt: callerIsCoordinator ? null : at,
+    ...closureMarkers(signers),
+  };
+}
+
+/** The `sra_cycle` counterpart of {@link buildPipClosureColumns} (V-12 as relaxed by 0335). */
+export function buildSraClosureColumns(signers: CloseCosigners, at: Date) {
+  const callerIsSecurityOfficer = signers.callerRole === ROLE_SECURITY_OFFICER;
+  return {
+    cosignSecurityOfficerMembershipId: callerIsSecurityOfficer ? signers.first : signers.second,
+    cosignSecurityOfficerAt: callerIsSecurityOfficer ? at : null,
+    cosignComplianceOfficerMembershipId: callerIsSecurityOfficer ? signers.second : signers.first,
+    cosignComplianceOfficerAt: callerIsSecurityOfficer ? null : at,
+    ...closureMarkers(signers),
+  };
+}
+
 /** Validate the two-person close; returns the two distinct, authorized signers or throws (403). */
 export function resolveCloseCosigners(input: CloseCosignInput): CloseCosigners {
   const { actorMembershipId, cosignerMembershipId, cosignerRoleKeys, roles } = input;

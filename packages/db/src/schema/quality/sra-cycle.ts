@@ -5,6 +5,7 @@
 // an M22 back-ref (logical). No PHI; no audit denylist.
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   integer,
   pgEnum,
@@ -41,6 +42,10 @@ export const sraCycle = pgTable(
     cosignSecurityOfficerMembershipId: uuid("cosign_security_officer_membership_id"),
     cosignComplianceOfficerAt: timestamp("cosign_compliance_officer_at", { withTimezone: true }),
     cosignComplianceOfficerMembershipId: uuid("cosign_compliance_officer_membership_id"),
+    // 0335 (GAP-088): nominee-based one-step close — see qapi_pip.
+    closureClosedByMembershipId: uuid("closure_closed_by_membership_id"),
+    closureNomineeMembershipId: uuid("closure_nominee_membership_id"),
+    closureCosignAttested: boolean("closure_cosign_attested").notNull().default(true),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     reopenedAt: timestamp("reopened_at", { withTimezone: true }),
     reopenReason: text("reopen_reason"), // ≥100 chars on reopen
@@ -54,7 +59,14 @@ export const sraCycle = pgTable(
     uniqYear: uniqueIndex("uq_sra_cycle_year").on(t.organizationId, t.cycleYear),
     closureGuard: check(
       "chk_sra_cycle_closure_cosign", // V-12
-      sql`(${t.closedAt} IS NULL) OR (${t.cosignSecurityOfficerAt} IS NOT NULL AND ${t.cosignComplianceOfficerAt} IS NOT NULL)`,
+      sql`(${t.closedAt} IS NULL)
+        OR (${t.closureCosignAttested} AND ${t.cosignSecurityOfficerAt} IS NOT NULL AND ${t.cosignComplianceOfficerAt} IS NOT NULL)
+        OR (NOT ${t.closureCosignAttested}
+          AND ${t.closureClosedByMembershipId} IS NOT NULL AND ${t.closureNomineeMembershipId} IS NOT NULL
+          AND ((${t.closureClosedByMembershipId} = ${t.cosignSecurityOfficerMembershipId} AND ${t.cosignSecurityOfficerAt} IS NOT NULL
+                AND ${t.closureNomineeMembershipId} = ${t.cosignComplianceOfficerMembershipId} AND ${t.cosignComplianceOfficerAt} IS NULL)
+            OR (${t.closureClosedByMembershipId} = ${t.cosignComplianceOfficerMembershipId} AND ${t.cosignComplianceOfficerAt} IS NOT NULL
+                AND ${t.closureNomineeMembershipId} = ${t.cosignSecurityOfficerMembershipId} AND ${t.cosignSecurityOfficerAt} IS NULL)))`,
     ),
   }),
 );

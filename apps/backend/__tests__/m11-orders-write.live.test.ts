@@ -24,7 +24,10 @@ import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
 } from "../src/modules/11-orders/orders-route-service-db";
-import { type OrderDetailActor, SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
+import {
+  type OrderDetailActor,
+  SYSTEM_ORDER_ACTOR,
+} from "../src/modules/11-orders/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -141,13 +144,7 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     expect(draft.status).toBe("draft");
     expect(draft.version).toBe(1);
     expect(await eventsFor(draft.id)).toContain("m11.order.draft_created");
-    const edited = await svc.editDraft(
-      ORG_A,
-      draft.id,
-      { hcpcs: "E0261" },
-      "stat",
-      SYSTEM_ORDER_ACTOR,
-    );
+    const edited = await svc.editDraft(ORG_A, draft.id, { hcpcs: "E0261" }, "stat", SYSTEM_ORDER_ACTOR);
     expect(edited.version).toBe(2);
     expect(edited.priority).toBe("stat");
   });
@@ -171,27 +168,16 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
 
   it("requestSignature → sign flips the order to active (apply-to-target trigger) and emits signed", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    const pending = await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      {
-        signerDiscipline: "rn_case_manager",
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    const pending = await svc.requestSignature(ORG_A, draft.id, {
+      signerDiscipline: "rn_case_manager",
+    }, SYSTEM_ORDER_ACTOR);
     expect(pending.status).toBe("pending_signature");
     expect(pending.cosignRequired).toBe(false);
     expect(await eventsFor(draft.id)).toContain("m11.order.signature_requested");
-    const signed = await svc.signOrder(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      {
-        signerDiscipline: "rn_case_manager",
-        signedAtClient: new Date().toISOString(),
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    }, SYSTEM_ORDER_ACTOR);
     expect(signed.status).toBe("active");
     expect(signed.signedBy).toBe(memberOf[ORG_A]);
     expect(await eventsFor(draft.id)).toContain("m11.order.signed");
@@ -201,107 +187,59 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     const draft = await svc.createDraft(
       ORG_A,
       memberOf[ORG_A],
-      draftArgs({ drafterDiscipline: "lpn" }),
-      SYSTEM_ORDER_ACTOR,
-    );
-    const pending = await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      {
-        signerDiscipline: "rn_case_manager",
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+      draftArgs({ drafterDiscipline: "lpn" }), SYSTEM_ORDER_ACTOR);
+    const pending = await svc.requestSignature(ORG_A, draft.id, {
+      signerDiscipline: "rn_case_manager",
+    }, SYSTEM_ORDER_ACTOR);
     expect(pending.cosignRequired).toBe(true);
     expect(pending.cosignStatus).toBe("pending");
     expect(await eventsFor(draft.id)).toContain("m11.order.cosign_requested");
     // Signing before cosign is attached is blocked by the pure machine (the DB apply-trigger is silent).
     await expect(
-      svc.signOrder(
-        ORG_A,
-        memberOf[ORG_A],
-        draft.id,
-        {
-          signerDiscipline: "rn_case_manager",
-          signedAtClient: new Date().toISOString(),
-        },
-        SYSTEM_ORDER_ACTOR,
-      ),
+      svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      }, SYSTEM_ORDER_ACTOR),
     ).rejects.toMatchObject({ code: "COSIGN_PENDING" });
     // The order's author may not cosign their own order (§7.3).
     await expect(
-      svc.cosignOrder(
-        ORG_A,
-        memberOf[ORG_A],
-        draft.id,
-        {
-          cosignerRole: "rn_case_manager",
-          attestationText: "x",
-        },
-        SYSTEM_ORDER_ACTOR,
-      ),
+      svc.cosignOrder(ORG_A, memberOf[ORG_A], draft.id, {
+        cosignerRole: "rn_case_manager",
+        attestationText: "x",
+      }, SYSTEM_ORDER_ACTOR),
     ).rejects.toMatchObject({ code: "COSIGNER_NOT_ELIGIBLE" });
     // A distinct RN cosigns → attached.
-    const cosigned = await svc.cosignOrder(
-      ORG_A,
-      member2Of[ORG_A],
-      draft.id,
-      {
-        cosignerRole: "rn_case_manager",
-        attestationText: "Reviewed and countersigned.",
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    const cosigned = await svc.cosignOrder(ORG_A, member2Of[ORG_A], draft.id, {
+      cosignerRole: "rn_case_manager",
+      attestationText: "Reviewed and countersigned.",
+    }, SYSTEM_ORDER_ACTOR);
     expect(cosigned.cosignStatus).toBe("attached");
     expect(await eventsFor(draft.id)).toContain("m11.order.cosigned");
-    const signed = await svc.signOrder(
-      ORG_A,
-      member2Of[ORG_A],
-      draft.id,
-      {
-        signerDiscipline: "rn_case_manager",
-        signedAtClient: new Date().toISOString(),
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    const signed = await svc.signOrder(ORG_A, member2Of[ORG_A], draft.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    }, SYSTEM_ORDER_ACTOR);
     expect(signed.status).toBe("active");
   });
 
   it("recordVerbal flips to verbal_pending (set-target-pending trigger); sign-in-time emits verbal_signed_in_time", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      { signerDiscipline: "rn_case_manager" },
-      SYSTEM_ORDER_ACTOR,
-    );
-    const verbal = await svc.recordVerbal(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      {
-        recorderDiscipline: "rn_case_manager",
-        verbalAttestation: ATTESTATION,
-        readBackVerified: true,
-        effectiveAt: new Date().toISOString(),
-        receivedAt: new Date().toISOString(),
-        orderingPhysicianMdmId: PHYSICIAN_MDM,
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
+    const verbal = await svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+      recorderDiscipline: "rn_case_manager",
+      verbalAttestation: ATTESTATION,
+      readBackVerified: true,
+      effectiveAt: new Date().toISOString(),
+      receivedAt: new Date().toISOString(),
+      orderingPhysicianMdmId: PHYSICIAN_MDM,
+    }, SYSTEM_ORDER_ACTOR);
     expect(verbal.status).toBe("verbal_pending");
     expect(verbal.verbalDeadlineAt).not.toBeNull();
     expect(await eventsFor(draft.id)).toContain("m11.order.verbal_received");
-    const signed = await svc.signOrder(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      {
-        signerDiscipline: "rn_case_manager",
-        signedAtClient: new Date().toISOString(),
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    }, SYSTEM_ORDER_ACTOR);
     expect(signed.status).toBe("active");
     expect(await eventsFor(draft.id)).toContain("m11.order.verbal_signed_in_time");
   });
@@ -319,78 +257,43 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
           effectiveAt: new Date().toISOString(),
           clinicalJustification: "Uncontrolled symptoms require inpatient symptom management.",
         },
-      }),
-      SYSTEM_ORDER_ACTOR,
-    );
+      }), SYSTEM_ORDER_ACTOR);
     // A lying body (medical_director signer, rhc -> chc) must not dodge the rhc -> gip escalation cosign.
-    const pending = await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      {
-        signerDiscipline: "medical_director",
-        levelChange: { fromLevel: "rhc", toLevel: "chc" },
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    const pending = await svc.requestSignature(ORG_A, draft.id, {
+      signerDiscipline: "medical_director",
+      levelChange: { fromLevel: "rhc", toLevel: "chc" },
+    }, SYSTEM_ORDER_ACTOR);
     expect(pending.cosignRequired).toBe(true);
     expect(pending.cosignStatus).toBe("pending");
   });
 
   it("GAP-031: recordVerbal refuses a recorder discipline that may not author the kind (VERBAL_RECORDER_NOT_ELIGIBLE)", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      { signerDiscipline: "rn_case_manager" },
-      SYSTEM_ORDER_ACTOR,
-    );
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
     await expect(
-      svc.recordVerbal(
-        ORG_A,
-        memberOf[ORG_A],
-        draft.id,
-        {
-          recorderDiscipline: "volunteer",
-          verbalAttestation: ATTESTATION,
-          readBackVerified: true,
-          effectiveAt: new Date().toISOString(),
-          receivedAt: new Date().toISOString(),
-          orderingPhysicianMdmId: PHYSICIAN_MDM,
-        },
-        SYSTEM_ORDER_ACTOR,
-      ),
+      svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+        recorderDiscipline: "volunteer",
+        verbalAttestation: ATTESTATION,
+        readBackVerified: true,
+        effectiveAt: new Date().toISOString(),
+        receivedAt: new Date().toISOString(),
+        orderingPhysicianMdmId: PHYSICIAN_MDM,
+      }, SYSTEM_ORDER_ACTOR),
     ).rejects.toMatchObject({ code: "VERBAL_RECORDER_NOT_ELIGIBLE" });
   });
 
   it("discontinueOrder writes an order_discontinuation ledger row and emits discontinued", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      { signerDiscipline: "rn_case_manager" },
-      SYSTEM_ORDER_ACTOR,
-    );
-    await svc.signOrder(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      {
-        signerDiscipline: "rn_case_manager",
-        signedAtClient: new Date().toISOString(),
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
-    const dc = await svc.discontinueOrder(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      {
-        reason: "clinical_judgement",
-        effectiveAt: new Date().toISOString(),
-        notes: "no longer needed",
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
+    await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    }, SYSTEM_ORDER_ACTOR);
+    const dc = await svc.discontinueOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      reason: "clinical_judgement",
+      effectiveAt: new Date().toISOString(),
+      notes: "no longer needed",
+    }, SYSTEM_ORDER_ACTOR);
     expect(dc.status).toBe("discontinued");
     const { rows } = await admin.query(
       "SELECT reason FROM order_discontinuation WHERE order_record_id=$1",
@@ -402,29 +305,16 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
 
   it("correctOrder inserts a replacement whose supersede trigger discontinues the original + writes its ledger", async () => {
     const orig = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await svc.requestSignature(
-      ORG_A,
-      orig.id,
-      { signerDiscipline: "rn_case_manager" },
-      SYSTEM_ORDER_ACTOR,
-    );
-    await svc.signOrder(
-      ORG_A,
-      memberOf[ORG_A],
-      orig.id,
-      {
-        signerDiscipline: "rn_case_manager",
-        signedAtClient: new Date().toISOString(),
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    await svc.requestSignature(ORG_A, orig.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
+    await svc.signOrder(ORG_A, memberOf[ORG_A], orig.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    }, SYSTEM_ORDER_ACTOR);
     const correction = await svc.correctOrder(
       ORG_A,
       memberOf[ORG_A],
       orig.id,
-      draftArgs({ data: { hcpcs: "E0265" } }),
-      SYSTEM_ORDER_ACTOR,
-    );
+      draftArgs({ data: { hcpcs: "E0265" } }), SYSTEM_ORDER_ACTOR);
     expect(correction.status).toBe("draft");
     expect(correction.replacesOrderId).toBe(orig.id);
     // The AFTER-INSERT supersede trigger discontinued the original + wrote its 'corrected_replacement' ledger.
@@ -441,29 +331,12 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
 
   it("completeOrder finishes an active order and emits completed", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      { signerDiscipline: "rn_case_manager" },
-      SYSTEM_ORDER_ACTOR,
-    );
-    await svc.signOrder(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      {
-        signerDiscipline: "rn_case_manager",
-        signedAtClient: new Date().toISOString(),
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
-    const done = await svc.completeOrder(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      "one-shot met",
-      SYSTEM_ORDER_ACTOR,
-    );
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
+    await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    }, SYSTEM_ORDER_ACTOR);
+    const done = await svc.completeOrder(ORG_A, memberOf[ORG_A], draft.id, "one-shot met", SYSTEM_ORDER_ACTOR);
     expect(done.status).toBe("completed");
     expect(done.completedAt).not.toBeNull();
     expect(await eventsFor(draft.id)).toContain("m11.order.completed");
@@ -512,26 +385,15 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     });
     // Regenerate the timer on a verbal_pending order.
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      { signerDiscipline: "rn_case_manager" },
-      SYSTEM_ORDER_ACTOR,
-    );
-    await svc.recordVerbal(
-      ORG_A,
-      memberOf[ORG_A],
-      draft.id,
-      {
-        recorderDiscipline: "rn_case_manager",
-        verbalAttestation: ATTESTATION,
-        readBackVerified: true,
-        effectiveAt: new Date().toISOString(),
-        receivedAt: new Date().toISOString(),
-        orderingPhysicianMdmId: PHYSICIAN_MDM,
-      },
-      SYSTEM_ORDER_ACTOR,
-    );
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
+    await svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
+      recorderDiscipline: "rn_case_manager",
+      verbalAttestation: ATTESTATION,
+      readBackVerified: true,
+      effectiveAt: new Date().toISOString(),
+      receivedAt: new Date().toISOString(),
+      orderingPhysicianMdmId: PHYSICIAN_MDM,
+    }, SYSTEM_ORDER_ACTOR);
     const regen = await svc.regenerateVerbalTimer(ORG_A, draft.id);
     expect(regen.status).toBe("verbal_pending");
     expect(regen.verbalDeadlineAt).not.toBeNull();
@@ -540,23 +402,12 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
   it("RLS: org B cannot read or sign org A's order (404 under the wardenx_app policy)", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toMatchObject({ statusCode: 404 });
-    await svc.requestSignature(
-      ORG_A,
-      draft.id,
-      { signerDiscipline: "rn_case_manager" },
-      SYSTEM_ORDER_ACTOR,
-    );
+    await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
     await expect(
-      svc.signOrder(
-        ORG_B,
-        memberOf[ORG_B],
-        draft.id,
-        {
-          signerDiscipline: "rn_case_manager",
-          signedAtClient: new Date().toISOString(),
-        },
-        SYSTEM_ORDER_ACTOR,
-      ),
+      svc.signOrder(ORG_B, memberOf[ORG_B], draft.id, {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      }, SYSTEM_ORDER_ACTOR),
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

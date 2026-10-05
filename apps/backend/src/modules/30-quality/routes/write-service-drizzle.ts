@@ -61,6 +61,8 @@ import {
   PIP_CLOSE_ROLES,
   SRA_CLOSE_ROLES,
   buildCloseAttestation,
+  buildPipClosureColumns,
+  buildSraClosureColumns,
   resolveCloseCosigners,
 } from "./close-cosign";
 import type {
@@ -1033,10 +1035,9 @@ export function buildDrizzleM30WriteService(
           recentStepUp: args.recentStepUp,
           roles: PIP_CLOSE_ROLES,
         });
-        // Nominee-based one-step close: the closer alone signs; the nominee is recorded un-attested in the
-        // event payload. The DB's V-11 CHECK (`chk_qapi_pip_closure_cosign`) forces BOTH slot timestamps, so
-        // the nominee's slot carries the nomination time — it is NOT an attestation (follow-up: pending-close
-        // + nominee confirmation, with a column that distinguishes the two).
+        // Nominee-based one-step close: the closer alone signs; the nominee is recorded un-attested both in the
+        // event payload and on the row (migration 0335: nominee slot `_at` NULL + `closure_cosign_attested`
+        // false; V-11 requires both `_at` only for attested closes).
         const attestation = buildCloseAttestation(signers);
         const callerIsCoordinator = signers.callerRole === ROLE_QAPI_COORDINATOR;
         const cosign: PipClosureCosign = {
@@ -1054,10 +1055,7 @@ export function buildDrizzleM30WriteService(
         const row = await repo.updatePip(pipId, {
           status,
           conclusionText: args.conclusionText,
-          cosignQapiCoordinatorMembershipId: cosign.qapiCoordinatorMembershipId,
-          cosignQapiCoordinatorAt: at,
-          cosignMedicalDirectorMembershipId: cosign.medicalDirectorMembershipId,
-          cosignMedicalDirectorAt: at,
+          ...buildPipClosureColumns(signers, at),
           closedAt: at,
           updatedAt: at,
           version: pip.version + 1,
@@ -1275,7 +1273,7 @@ export function buildDrizzleM30WriteService(
           recentStepUp: args.recentStepUp,
           roles: SRA_CLOSE_ROLES,
         });
-        // Nominee-based one-step close: see closeQapiPip — the closer alone signs, the nominee is un-attested.
+        // Nominee-based one-step close: see closeQapiPip — the closer alone signs, the nominee slot's `_at` stays NULL.
         const attestation = buildCloseAttestation(signers);
         const callerIsSecurityOfficer = signers.callerRole === ROLE_SECURITY_OFFICER;
         const cosign: SraClosureCosign = {
@@ -1291,10 +1289,7 @@ export function buildDrizzleM30WriteService(
         const at = now();
         const row = await repo.updateCycle(cycleId, {
           status,
-          cosignSecurityOfficerMembershipId: cosign.securityOfficerMembershipId,
-          cosignSecurityOfficerAt: at,
-          cosignComplianceOfficerMembershipId: cosign.complianceOfficerMembershipId,
-          cosignComplianceOfficerAt: at,
+          ...buildSraClosureColumns(signers, at),
           closedAt: at,
           updatedAt: at,
           version: cycle.version + 1,
