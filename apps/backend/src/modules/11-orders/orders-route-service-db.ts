@@ -75,7 +75,7 @@ import {
   type StandingOrderStatus,
 } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
-import { type SQL, and, asc, desc, eq, gt, gte, lte, ne, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, gt, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import {
   RECOVERY_ANOMALY_THRESHOLD,
   RECOVERY_ANOMALY_WINDOW_MS,
@@ -97,12 +97,17 @@ import {
   classifyRecoveryContradiction,
   classifyTransmissionRecovery,
 } from "./orm-request/orm-resend";
-import { EMPTY_ORDER_DETAIL_ACTOR, buildOrderWorkflowProjection } from "./routes/service";
+import {
+  EMPTY_ORDER_DETAIL_ACTOR,
+  ORDER_LIST_LIMIT,
+  buildOrderWorkflowProjection,
+} from "./routes/service";
 import type {
   CreateOrderArgs,
   OrderAbacFacts,
   OrderDetailActor,
   OrderDetailView,
+  OrderReadScope,
   OrderRouteService,
   OrderView,
   RecoverLabTransmissionResult,
@@ -445,14 +450,22 @@ export function createDbOrderBackend(
       .where(where)
       .orderBy(desc(OR.createdAt), desc(OR.id));
 
-  const listWhere = (
+  const listWhere = async (
     organizationId: string,
     extra: SQL | undefined,
-  ): Promise<{ orders: OrderView[] }> =>
-    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-      const rows = (await selectOrders(tx as DbClient, extra)) as unknown as OrderRow[];
+    scope?: OrderReadScope,
+  ): Promise<{ orders: OrderView[] }> => {
+    // GAP-030 — narrow to the caller's caseload in SQL; an empty caseload reads nothing (no query).
+    const patientIds = scope?.patientIds ?? null;
+    if (patientIds !== null && patientIds.length === 0) return { orders: [] };
+    const where = patientIds === null ? extra : and(extra, inArray(OR.patientId, [...patientIds]));
+    return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const rows = (await selectOrders(tx as DbClient, where).limit(
+        ORDER_LIST_LIMIT,
+      )) as unknown as OrderRow[];
       return { orders: rows.map(toOrderView) };
     });
+  };
 
   /** Re-read one order (post-write, RLS-scoped) as the joined view or a non-leaking 404. */
   async function readOrder(
@@ -854,32 +867,33 @@ export function createDbOrderBackend(
 
   return {
     // ── Order reads ────────────────────────────────────────────────────────────────────────────────
-    async listOrders(organizationId, filter) {
+    async listOrders(organizationId, filter, scope) {
       const conds: SQL[] = [];
       if (filter.patientId) conds.push(eq(OR.patientId, filter.patientId));
       if (filter.admissionId) conds.push(eq(OR.admissionId, filter.admissionId));
       if (filter.kind) conds.push(eq(OR.kind, filter.kind as OrderKind));
       if (filter.status) conds.push(eq(OR.status, filter.status as OrderStatus));
-      return listWhere(organizationId, conds.length ? and(...conds) : undefined);
+      return listWhere(organizationId, conds.length ? and(...conds) : undefined, scope);
     },
     async getOrder(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         return readOrder(tx as DbClient, id, actor);
       });
     },
-    async pendingSignature(organizationId) {
-      return listWhere(organizationId, eq(OR.status, "pending_signature"));
+    async pendingSignature(organizationId, scope) {
+      return listWhere(organizationId, eq(OR.status, "pending_signature"), scope);
     },
-    async verbalExpiring(organizationId) {
-      return listWhere(organizationId, eq(OR.status, "verbal_pending"));
+    async verbalExpiring(organizationId, scope) {
+      return listWhere(organizationId, eq(OR.status, "verbal_pending"), scope);
     },
-    async cosignPending(organizationId) {
-      return listWhere(organizationId, eq(OR.cosignStatus, "pending"));
+    async cosignPending(organizationId, scope) {
+      return listWhere(organizationId, eq(OR.cosignStatus, "pending"), scope);
     },
-    async resultsPendingReview(organizationId) {
+    async resultsPendingReview(organizationId, scope) {
       return listWhere(
         organizationId,
         and(eq(OR.kind, "lab"), eq(OR.resultsStatus, "results_received")),
+        scope,
       );
     },
     async suggestions(_organizationId, patientId) {
@@ -1474,7 +1488,10 @@ export function createDbOrderBackend(
             : null;
           const contradiction = classifyRecoveryContradiction(
             attestation,
-            { resultsStatus: r.resultsStatus, resultsFirstReceivedAt: r.resultsFirstReceivedAt },
+            {
+              resultsStatus: r.resultsStatus,
+              resultsFirstReceivedAt: r.resultsFirstReceivedAt,
+            },
             observed,
           );
           if (contradiction) {
@@ -1746,7 +1763,10 @@ export function createDbOrderBackend(
           : null;
         const contradiction = classifyRecoveryContradiction(
           "not_received_by_lab",
-          { resultsStatus: r.resultsStatus, resultsFirstReceivedAt: r.resultsFirstReceivedAt },
+          {
+            resultsStatus: r.resultsStatus,
+            resultsFirstReceivedAt: r.resultsFirstReceivedAt,
+          },
           observed,
         );
         if (contradiction) {
@@ -1945,7 +1965,10 @@ export function createDbOrderBackend(
           .returning();
         if (!cancelled) {
           const [q] = await t
-            .select({ status: REQ.status, supersededReason: REQ.supersededReason })
+            .select({
+              status: REQ.status,
+              supersededReason: REQ.supersededReason,
+            })
             .from(REQ)
             .where(
               and(
@@ -2434,7 +2457,11 @@ export function createDbOrderBackend(
               planVerbalExpiry(at, deadlineIso);
               const updatedOr = await t
                 .update(OR)
-                .set({ status: "expired_unsigned", version: r.version + 1, updatedAt: now })
+                .set({
+                  status: "expired_unsigned",
+                  version: r.version + 1,
+                  updatedAt: now,
+                })
                 .where(and(eq(OR.id, candidate.targetId), eq(OR.status, "verbal_pending")))
                 .returning({ id: OR.id });
               if (updatedOr.length === 0) return false; // lost the race
@@ -2586,6 +2613,7 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
           .select({
+            patientId: OR.patientId,
             kind: OR.kind,
             drafterMembershipId: OR.drafterMembershipId,
             drafterDiscipline: OR.drafterDiscipline,
@@ -2604,6 +2632,7 @@ export function createDbOrderBackend(
             : "medical_director"
           : null;
         return {
+          patientId: r.patientId,
           kind: r.kind as OrderKind,
           drafterMembershipId: r.drafterMembershipId,
           cosignerRoleNeeded,

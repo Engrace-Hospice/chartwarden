@@ -145157,6 +145157,375 @@
         }
       }
     },
+    "/api/v1/patients/{id}/assignments": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdAssignments",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient care-team assignments — open first, then ended (§4.3; patient.read + caseload_or_scope)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "assignments"
+                  ],
+                  "properties": {
+                    "assignments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "clinicianUserId",
+                          "role",
+                          "assignedAt",
+                          "unassignedAt",
+                          "reason",
+                          "current"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "clinicianUserId": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "assignedAt": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "unassignedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "current": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PatientsByIdAssignments",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Assign a clinician to a patient (§4.3; patient.assign) — 409 PRIMARY_RN_ALREADY_ASSIGNED / ASSIGNMENT_ALREADY_OPEN; emits m5.patient.assignment_created",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "clinicianUserId",
+                    "role",
+                    "assignedAt",
+                    "unassignedAt",
+                    "reason",
+                    "current"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "clinicianUserId": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "assignedAt": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "unassignedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "current": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "clinicianUserId",
+                  "role"
+                ],
+                "properties": {
+                  "clinicianUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "role": {
+                    "anyOf": [
+                      {
+                        "const": "primary_rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "attending_clinician",
+                        "type": "string"
+                      },
+                      {
+                        "const": "case_manager_msw",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chaplain",
+                        "type": "string"
+                      },
+                      {
+                        "const": "aide",
+                        "type": "string"
+                      },
+                      {
+                        "const": "np",
+                        "type": "string"
+                      },
+                      {
+                        "const": "md",
+                        "type": "string"
+                      },
+                      {
+                        "const": "volunteer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereavement",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "assignedAt": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/assignments/{assignmentId}/end": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdAssignmentsByAssignmentIdEnd",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "End an open assignment — sets unassignedAt (default today); 409 when already ended; emits m5.patient.assignment_ended (§4.3; patient.assign)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "clinicianUserId",
+                    "role",
+                    "assignedAt",
+                    "unassignedAt",
+                    "reason",
+                    "current"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "clinicianUserId": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "assignedAt": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "unassignedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "current": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "unassignedAt": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/patients/{id}/care-team": {
       "get": {
         "operationId": "getApiV1PatientsByIdCareteam",

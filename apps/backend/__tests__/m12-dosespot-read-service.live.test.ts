@@ -155,11 +155,26 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
   });
 
   it("listOrders returns the org's seeded medication order (RLS-scoped)", async () => {
-    const { orders } = await service.listOrders(ORG_A, {});
+    const { orders } = await service.listOrders(ORG_A, { scope: { orgWide: true, userId: "" } });
     expect(orders.length).toBe(1);
     expect(orders[0].id).toBe(seeded[ORG_A].medicationOrder);
     expect(orders[0].status).toBe("active");
     expect(orders[0].drugName).toBe("Morphine");
+  });
+
+  // GAP-033 — a non-org-wide scope narrows the list in the WHERE clause. No CaseloadProvider is registered
+  // in this suite, so the "on-caseload" arm is exercised via the session-pinned patient (the other
+  // legitimate non-org-wide arm); a stranger with neither gets an empty list.
+  it("listOrders: an off-caseload prescriber gets an empty list, a patient-pinned scope gets rows", async () => {
+    const off = await service.listOrders(ORG_A, {
+      scope: { orgWide: false, userId: STRANGER_USER, sessionPatientId: null },
+    });
+    expect(off.orders).toEqual([]);
+    expect(off.statusCounts).toEqual({});
+    const on = await service.listOrders(ORG_A, {
+      scope: { orgWide: false, userId: STRANGER_USER, sessionPatientId: PATIENT },
+    });
+    expect(on.orders.map((o) => o.id)).toEqual([seeded[ORG_A].medicationOrder]);
   });
 
   it("activeMedications returns the active order for the patient", async () => {
@@ -269,7 +284,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
   });
 
   it("RLS: org B cannot see org A's medication order or refill through the service", async () => {
-    const { orders } = await service.listOrders(ORG_B, {});
+    const { orders } = await service.listOrders(ORG_B, { scope: { orgWide: true, userId: "" } });
     expect(orders.every((o) => o.id !== seeded[ORG_A].medicationOrder)).toBe(true);
     await expect(service.getOrder(ORG_B, seeded[ORG_A].medicationOrder)).rejects.toMatchObject({
       statusCode: 404,

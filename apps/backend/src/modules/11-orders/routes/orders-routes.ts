@@ -4,13 +4,25 @@
 // (`request.context`, never the body). Handlers compose over the injected OrderRouteService (in-memory slice;
 // Drizzle in prod under `withOrgContext` so RLS backstops).
 //
+// GAP-030 — the §4.1 caseload column is NOT bound by default: `requirePermission` never reads
+// `PermissionDef.abac`, so EVERY patient-bearing route composes the shared `caseload_or_scope` predicate
+// itself: per-order routes resolve the order's patient (`orderScope`), standing-order :id routes the
+// template's patient (`standingScope`), create / verbal / correct / standing-create the body's patient
+// (`bodyPatientScope`), `suggestions/:patientId` the path patient — all with `notFoundOnDeny`, so a miss (or an
+// unknown id) is a 404 that never confirms the order exists. Org-wide scope roles are exempt. List / queue
+// reads cannot be gated by a guard, so they narrow to the caller's caseload (`readScopeOf`) and are LIMIT-capped.
+// Break-glass is READ-ONLY: every guard on a mutating route sets `breakGlassBypassable: false` (`WRITE_ONLY`),
+// so an emergency grant opens reads (GET) but never lets an off-caseload actor write an order.
+// Not changed here (GAP-031): signer-identity / cosign semantics.
+//
 // §4.7 wiring: the author routes (POST /orders, /orders/:id/correct) add `requireAbac('discipline_can_order')`
 // with the body's `kind` as the target; the sign routes (/orders/:id/sign, /sign-on-behalf) add
 // `requireAbac('signer_eligible')` (target = `:id`); the cosign route adds `requireAbac('m11.cosigner_role_match')`
 // (target = `:id`). The §4.1 caseload column maps to the shared `caseload_or_scope` predicate (registered by
-// M5/M6/M7) — bound by the §4.6 default ABAC on each clinical key, enforced by M3's authorization middleware.
+// M7, bound by name here — see the GAP-030 note above).
 import {
   type AbacTarget,
+  hasOrgWideScope,
   requireAbac,
   requirePermission,
   requireStepUp,
@@ -18,6 +30,7 @@ import {
 } from "@wardenx/auth";
 import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import {
   CompleteOrderRequest,
   CorrectOrderRequest,
@@ -45,13 +58,54 @@ import {
   VerbalTimerParamsSchema,
   parse,
 } from "./orders-typebox";
-import type { OrderDetailActor, OrderRouteService } from "./service";
+import {
+  type OrderDetailActor,
+  type OrderReadScope,
+  type OrderRouteService,
+  inReadScope,
+} from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OrderRouteDeps {
   service: OrderRouteService;
+  /**
+   * The patients on a clinician's caseload (GAP-030) — defaults to M5's published `CaseloadProvider` seam.
+   * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on), not a membership id.
+   */
+  caseloadPatientIds?: (q: {
+    organizationId: string;
+    userId: string;
+  }) => Promise<readonly string[]>;
+}
+
+const defaultCaseloadPatientIds: NonNullable<OrderRouteDeps["caseloadPatientIds"]> = (q) =>
+  getSeam("CaseloadProvider").caseloadPatientIds(q);
+
+/**
+ * The caseload narrowing a list / queue read applies. Org-wide scope roles are unrestricted; everyone else
+ * is limited to their caseload plus the one patient a pinned (collaborator / portal) session names.
+ * Fail-CLOSED: a caseload that cannot be resolved narrows to nothing rather than widening to the org.
+ */
+async function readScopeOf(
+  request: FastifyRequest,
+  caseloadPatientIds: NonNullable<OrderRouteDeps["caseloadPatientIds"]>,
+): Promise<OrderReadScope> {
+  const ctx = request.context;
+  if (hasOrgWideScope(ctx.roles)) return { patientIds: null };
+  const pinned = ctx.attributes.sessionPatientId;
+  const sessionIds = typeof pinned === "string" && pinned.length > 0 ? [pinned] : [];
+  if (!ctx.userId) return { patientIds: sessionIds };
+  try {
+    const caseload = await caseloadPatientIds({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+    return { patientIds: [...new Set([...caseload, ...sessionIds])] };
+  } catch {
+    return { patientIds: sessionIds };
+  }
 }
 
 function actorOf(request: FastifyRequest): {
@@ -71,10 +125,18 @@ function actorOf(request: FastifyRequest): {
 async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor> {
   const { organizationId, userId: membershipId } = actorOf(request);
   const ctx = request.context;
-  const granted = await resolveActorPermissions({ organizationId, userId: ctx.userId });
+  const granted = await resolveActorPermissions({
+    organizationId,
+    userId: ctx.userId,
+  });
   // Clinical discipline derives from the session's role grants (#87): nothing produces a
   // `disciplines` context attribute, and a stray one must not widen the order-action floors.
-  return { membershipId, roles: ctx.roles, disciplines: ctx.roles, permissions: granted };
+  return {
+    membershipId,
+    roles: ctx.roles,
+    disciplines: ctx.roles,
+    permissions: granted,
+  };
 }
 
 // Static permission guards (§4.6).
@@ -124,17 +186,101 @@ const kindTarget = (request: { readonly body?: unknown }): AbacTarget => {
   const kind = body?.kind ?? body?.order?.kind;
   return typeof kind === "string" ? { kind } : {};
 };
+// GAP-030 — every guard on a MUTATING route is non-bypassable: break-glass is read-only (a grant opens the
+// chart for reading, never for writing an order).
+const WRITE_ONLY = { breakGlassBypassable: false } as const;
 const ABAC_DRAFT = requireAbac("orders.draft", "discipline_can_order", {
   getTarget: kindTarget,
+  ...WRITE_ONLY,
 }) as PreHandler;
 const ABAC_AMEND = requireAbac("orders.amend", "discipline_can_order", {
   getTarget: kindTarget,
+  ...WRITE_ONLY,
 }) as PreHandler;
-const ABAC_SIGN = requireAbac("orders.sign", "signer_eligible") as PreHandler; // target = :id
-const ABAC_COSIGN = requireAbac("orders.cosign", "m11.cosigner_role_match") as PreHandler; // target = :id
+const ABAC_SIGN = requireAbac("orders.sign", "signer_eligible", WRITE_ONLY) as PreHandler; // target = :id
+const ABAC_COSIGN = requireAbac(
+  "orders.cosign",
+  "m11.cosigner_role_match",
+  WRITE_ONLY,
+) as PreHandler; // target = :id
+
+/** Sentinel patient for an order that cannot be resolved: it is on no caseload, so the scope guard denies. */
+const UNRESOLVED_PATIENT = "00000000-0000-0000-0000-000000000000";
 
 export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps): void {
   const { service } = deps;
+  const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
+  const readScope = (request: FastifyRequest) => readScopeOf(request, caseloadPatientIds);
+
+  // GAP-030 — per-order caseload scope. `requireAbac`'s `getTarget` is synchronous, so a resolver guard first
+  // loads the order's patient (org-scoped, RLS-backstopped) into a per-request slot, then the shared
+  // `caseload_or_scope` predicate runs over `{ patientId }`. An absent / cross-tenant order resolves to a
+  // patient nobody covers → 404, never an allow.
+  const resolvedPatient = new WeakMap<object, string>();
+  const RESOLVE_ORDER_PATIENT: PreHandler = async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(OrderParamsSchema, request.params);
+    const facts = await service.loadOrder(organizationId, id);
+    resolvedPatient.set(request, facts?.patientId ?? UNRESOLVED_PATIENT);
+  };
+  // Reads keep break-glass (an emergency grant may open the chart); every write is non-bypassable.
+  type Access = "read" | "write";
+  const bypass = (access: Access) => (access === "write" ? WRITE_ONLY : {});
+  const orderScope = (action: string, access: Access = "write"): PreHandler[] => [
+    RESOLVE_ORDER_PATIENT,
+    requireAbac(action, "caseload_or_scope", {
+      getTarget: (request) => ({
+        patientId: resolvedPatient.get(request) ?? UNRESOLVED_PATIENT,
+      }),
+      notFoundOnDeny: true,
+      ...bypass(access),
+    }) as PreHandler,
+  ];
+  const patientScope = (action: string, access: Access = "write"): PreHandler =>
+    requireAbac(action, "caseload_or_scope", {
+      getTarget: (request) => ({
+        patientId: (request.params as { patientId?: unknown } | undefined)?.patientId,
+      }),
+      notFoundOnDeny: true,
+      ...bypass(access),
+    }) as PreHandler;
+  // A patient named in the request body (create / verbal / correct / standing create). A body that names no
+  // patient is left to the handler's schema parse (400) rather than masked as a 404.
+  const bodyPatientOf = (request: { readonly body?: unknown }): string | undefined => {
+    const body = request.body as
+      | { patientId?: unknown; order?: { patientId?: unknown } }
+      | undefined;
+    const id = body?.patientId ?? body?.order?.patientId;
+    return typeof id === "string" && id.length > 0 ? id : undefined;
+  };
+  const bodyPatientScope = (action: string): PreHandler => {
+    const guard = requireAbac(action, "caseload_or_scope", {
+      getTarget: (request) => ({ patientId: bodyPatientOf(request) }),
+      notFoundOnDeny: true,
+      ...WRITE_ONLY,
+    }) as PreHandler;
+    return async (request, reply) => {
+      if (bodyPatientOf(request) === undefined) return;
+      await guard(request, reply);
+    };
+  };
+  // Standing orders: resolve the template's patient (an unknown / cross-tenant id is the service's 404).
+  const RESOLVE_STANDING_PATIENT: PreHandler = async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(StandingOrderParamsSchema, request.params);
+    const view = await service.getStandingOrder(organizationId, id);
+    resolvedPatient.set(request, view.patientId);
+  };
+  const standingScope = (action: string, access: Access = "write"): PreHandler[] => [
+    RESOLVE_STANDING_PATIENT,
+    requireAbac(action, "caseload_or_scope", {
+      getTarget: (request) => ({
+        patientId: resolvedPatient.get(request) ?? UNRESOLVED_PATIENT,
+      }),
+      notFoundOnDeny: true,
+      ...bypass(access),
+    }) as PreHandler,
+  ];
 
   // 1 — list orders by patient / admission / kind / status.
   app.get(
@@ -146,12 +292,16 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(OrderListQuerySchema, request.query);
-      return service.listOrders(organizationId, {
-        patientId: q.patientId,
-        admissionId: q.admissionId,
-        kind: q.kind,
-        status: q.status,
-      });
+      return service.listOrders(
+        organizationId,
+        {
+          patientId: q.patientId,
+          admissionId: q.admissionId,
+          kind: q.kind,
+          status: q.status,
+        },
+        await readScope(request),
+      );
     },
   );
 
@@ -165,7 +315,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.pendingSignature(organizationId);
+      return service.pendingSignature(organizationId, await readScope(request));
     },
   );
   // 14 — RN's verbal-expiring queue.
@@ -177,7 +327,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.verbalExpiring(organizationId);
+      return service.verbalExpiring(organizationId, await readScope(request));
     },
   );
   // 15 — RN's cosign-pending queue.
@@ -189,7 +339,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.cosignPending(organizationId);
+      return service.cosignPending(organizationId, await readScope(request));
     },
   );
   // 16 — lab orders with results awaiting clinician review (D17).
@@ -201,14 +351,14 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.resultsPendingReview(organizationId);
+      return service.resultsPendingReview(organizationId, await readScope(request));
     },
   );
   // 17 — derived suggestion banner state (D7).
   app.get(
     "/api/v1/orders/suggestions/:patientId",
     {
-      preHandler: [READ],
+      preHandler: [READ, patientScope("orders.read", "read")],
       config: {
         auditRead: {
           resourceKind: "order_suggestion",
@@ -224,34 +374,38 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   );
 
   // 3 — create a draft order (RN/LPN/MD etc. per `discipline_can_order`).
-  app.post("/api/v1/orders", { preHandler: [DRAFT, ABAC_DRAFT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CreateOrderRequest, request.body);
-    const res = await service.createDraft(
-      organizationId,
-      userId,
-      {
-        patientId: body.patientId,
-        admissionId: body.admissionId,
-        kind: body.kind,
-        drafterDiscipline: body.drafterDiscipline,
-        data: body.data,
-        priority: body.priority,
-        orderingPhysicianMdmId: body.orderingPhysicianMdmId,
-        sourceEncounterId: body.sourceEncounterId,
-        triggeringAssessmentId: body.triggeringAssessmentId,
-        triggeringHopeAssessmentId: body.triggeringHopeAssessmentId,
-        replacesOrderId: body.replacesOrderId,
-        kindVersion: body.kindVersion,
-      },
-      await detailActorOf(request),
-    );
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/orders",
+    { preHandler: [DRAFT, bodyPatientScope("orders.draft"), ABAC_DRAFT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CreateOrderRequest, request.body);
+      const res = await service.createDraft(
+        organizationId,
+        userId,
+        {
+          patientId: body.patientId,
+          admissionId: body.admissionId,
+          kind: body.kind,
+          drafterDiscipline: body.drafterDiscipline,
+          data: body.data,
+          priority: body.priority,
+          orderingPhysicianMdmId: body.orderingPhysicianMdmId,
+          sourceEncounterId: body.sourceEncounterId,
+          triggeringAssessmentId: body.triggeringAssessmentId,
+          triggeringHopeAssessmentId: body.triggeringHopeAssessmentId,
+          replacesOrderId: body.replacesOrderId,
+          kindVersion: body.kindVersion,
+        },
+        await detailActorOf(request),
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   app.post(
     "/api/v1/verbal-orders",
-    { preHandler: [DRAFT, ABAC_DRAFT, VERBAL] },
+    { preHandler: [DRAFT, bodyPatientScope("orders.draft"), ABAC_DRAFT, VERBAL] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CreateVerbalOrderRequest, request.body);
@@ -272,7 +426,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   app.get(
     "/api/v1/orders/:id",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...orderScope("orders.read", "read")],
       config: { auditRead: { resourceKind: "order", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -283,56 +437,68 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   );
 
   // 4 — edit a draft (status='draft' only).
-  app.patch("/api/v1/orders/:id", { preHandler: [DRAFT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(UpdateOrderRequest, request.body);
-    return service.editDraft(
-      organizationId,
-      id,
-      body.data,
-      body.priority,
-      await detailActorOf(request),
-    );
-  });
+  app.patch(
+    "/api/v1/orders/:id",
+    { preHandler: [DRAFT, ...orderScope("orders.draft")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(UpdateOrderRequest, request.body);
+      return service.editDraft(
+        organizationId,
+        id,
+        body.data,
+        body.priority,
+        await detailActorOf(request),
+      );
+    },
+  );
 
   // 5 — draft → pending_signature (resolves the §2.5 cosign requirement).
-  app.post("/api/v1/orders/:id/request-signature", { preHandler: [DRAFT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(RequestSignatureRequest, request.body);
-    return service.requestSignature(
-      organizationId,
-      id,
-      {
-        signerDiscipline: body.signerDiscipline,
-        levelChange: body.levelChange,
-      },
-      await detailActorOf(request),
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/request-signature",
+    { preHandler: [DRAFT, ...orderScope("orders.draft")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(RequestSignatureRequest, request.body);
+      return service.requestSignature(
+        organizationId,
+        id,
+        {
+          signerDiscipline: body.signerDiscipline,
+          levelChange: body.levelChange,
+        },
+        await detailActorOf(request),
+      );
+    },
+  );
 
   // 6 — sign (→ active); signer_eligible ABAC floor (§4.7).
-  app.post("/api/v1/orders/:id/sign", { preHandler: [SIGN, ABAC_SIGN] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(SignOrderRequest, request.body);
-    return service.signOrder(
-      organizationId,
-      userId,
-      id,
-      {
-        signerDiscipline: body.signerDiscipline,
-        signedAtClient: body.signedAtClient,
-      },
-      await detailActorOf(request),
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/sign",
+    { preHandler: [SIGN, ...orderScope("orders.sign"), ABAC_SIGN] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(SignOrderRequest, request.body);
+      return service.signOrder(
+        organizationId,
+        userId,
+        id,
+        {
+          signerDiscipline: body.signerDiscipline,
+          signedAtClient: body.signedAtClient,
+        },
+        await detailActorOf(request),
+      );
+    },
+  );
 
   // 7 — sign on behalf (medical_director only).
   app.post(
     "/api/v1/orders/:id/sign-on-behalf",
-    { preHandler: [SIGN_ON_BEHALF, ABAC_SIGN] },
+    { preHandler: [SIGN_ON_BEHALF, ...orderScope("orders.sign_on_behalf"), ABAC_SIGN] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -353,65 +519,84 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   );
 
   // 8 — record as verbal (→ verbal_pending; starts the 48h timer).
-  app.post("/api/v1/orders/:id/verbal", { preHandler: [VERBAL] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(RecordVerbalRequest, request.body);
-    return service.recordVerbal(
-      organizationId,
-      userId,
-      id,
-      {
-        recorderDiscipline: body.recorderDiscipline,
-        verbalAttestation: body.verbalAttestation,
-        readBackVerified: body.readBackVerified,
-        effectiveAt: body.effectiveAt,
-        receivedAt: body.receivedAt,
-        orderingPhysicianMdmId: body.orderingPhysicianMdmId,
-      },
-      await detailActorOf(request),
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/verbal",
+    { preHandler: [VERBAL, ...orderScope("orders.verbal.record")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(RecordVerbalRequest, request.body);
+      return service.recordVerbal(
+        organizationId,
+        userId,
+        id,
+        {
+          recorderDiscipline: body.recorderDiscipline,
+          verbalAttestation: body.verbalAttestation,
+          readBackVerified: body.readBackVerified,
+          effectiveAt: body.effectiveAt,
+          receivedAt: body.receivedAt,
+          orderingPhysicianMdmId: body.orderingPhysicianMdmId,
+        },
+        await detailActorOf(request),
+      );
+    },
+  );
 
   // 9 — attach a cosignature (m11.cosigner_role_match ABAC).
-  app.post("/api/v1/orders/:id/cosign", { preHandler: [COSIGN, ABAC_COSIGN] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(CosignRequest, request.body);
-    return service.cosignOrder(
-      organizationId,
-      userId,
-      id,
-      {
-        cosignerRole: body.cosignerRole,
-        attestationText: body.attestationText,
-      },
-      await detailActorOf(request),
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/cosign",
+    { preHandler: [COSIGN, ...orderScope("orders.cosign"), ABAC_COSIGN] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(CosignRequest, request.body);
+      return service.cosignOrder(
+        organizationId,
+        userId,
+        id,
+        {
+          cosignerRole: body.cosignerRole,
+          attestationText: body.attestationText,
+        },
+        await detailActorOf(request),
+      );
+    },
+  );
 
   // 10 — discontinue active / pending / verbal order.
-  app.post("/api/v1/orders/:id/discontinue", { preHandler: [DISCONTINUE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(DiscontinueRequest, request.body);
-    return service.discontinueOrder(
-      organizationId,
-      userId,
-      id,
-      {
-        reason: body.reason,
-        effectiveAt: body.effectiveAt,
-        notes: body.notes,
-      },
-      await detailActorOf(request),
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/discontinue",
+    { preHandler: [DISCONTINUE, ...orderScope("orders.discontinue")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(DiscontinueRequest, request.body);
+      return service.discontinueOrder(
+        organizationId,
+        userId,
+        id,
+        {
+          reason: body.reason,
+          effectiveAt: body.effectiveAt,
+          notes: body.notes,
+        },
+        await detailActorOf(request),
+      );
+    },
+  );
 
   // 11 — issue a corrected order (replaces_order_id); discipline_can_order ABAC on the new kind.
   app.post(
     "/api/v1/orders/:id/correct",
-    { preHandler: [AMEND, ABAC_AMEND] },
+    {
+      preHandler: [
+        AMEND,
+        ...orderScope("orders.amend"),
+        bodyPatientScope("orders.amend"),
+        ABAC_AMEND,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -440,18 +625,22 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   );
 
   // 12 — manual completion (incl. lab "Mark reviewed").
-  app.post("/api/v1/orders/:id/complete", { preHandler: [COMPLETE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const body = parse(CompleteOrderRequest, request.body);
-    return service.completeOrder(
-      organizationId,
-      userId,
-      id,
-      body.reason,
-      await detailActorOf(request),
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/complete",
+    { preHandler: [COMPLETE, ...orderScope("orders.complete")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(CompleteOrderRequest, request.body);
+      return service.completeOrder(
+        organizationId,
+        userId,
+        id,
+        body.reason,
+        await detailActorOf(request),
+      );
+    },
+  );
 
   // F-182 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose HL7 request was REFUSED at
   // sign time (`orm_refused:*`) after someone fixed the missing fact. `orders.amend` (RN Case Manager, MD/NP/PA,
@@ -459,17 +648,21 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // (the order was already signed for exactly this transmission — a resend discloses nothing new). There is no
   // body: the target is the order, the action is fixed. The audit actor is the Better Auth USER id (the M4
   // audit trigger's `actor_user_id` FKs `user`, unlike the membership id the rest of M11 passes).
-  app.post("/api/v1/orders/:id/resend-transmission", { preHandler: [RECOVER] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    return service.resendLabTransmission(
-      organizationId,
-      userId,
-      id,
-      await detailActorOf(request),
-      request.context?.userId ?? "",
-    );
-  });
+  app.post(
+    "/api/v1/orders/:id/resend-transmission",
+    { preHandler: [RECOVER, ...orderScope("orders.transmission.recover")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      return service.resendLabTransmission(
+        organizationId,
+        userId,
+        id,
+        await detailActorOf(request),
+        request.context?.userId ?? "",
+      );
+    },
+  );
 
   // F-187 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built (an M29
   // terminal failure: `dlq_exhausted`, incl. F-183's "held, delivery unverified", or `application_reject`) — the
@@ -484,7 +677,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // second-factor is required on top of `orders.amend`. The body also carries STRUCTURED lab-contact evidence.
   app.post(
     "/api/v1/orders/:id/recover-transmission",
-    { preHandler: [RECOVER, RECOVER_STEP_UP] },
+    { preHandler: [RECOVER, ...orderScope("orders.transmission.recover"), RECOVER_STEP_UP] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -509,7 +702,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // USER id (`request.context.userId`), not the membership id.
   app.post(
     "/api/v1/orders/:id/recover-transmission/:requestId/cosign",
-    { preHandler: [RECOVER_COSIGN, RECOVER_STEP_UP] },
+    { preHandler: [RECOVER_COSIGN, ...orderScope("orders.transmission.recover"), RECOVER_STEP_UP] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
@@ -528,7 +721,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // the lab DID have the order). `orders.amend` alone — cancelling sends nothing and can only prevent a re-dispatch.
   app.post(
     "/api/v1/orders/:id/recover-transmission/:requestId/cancel",
-    { preHandler: [RECOVER] },
+    { preHandler: [RECOVER, ...orderScope("orders.transmission.recover")] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
@@ -552,14 +745,16 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.listStandingOrders(organizationId);
+      const scope = await readScope(request);
+      const { standingOrders } = await service.listStandingOrders(organizationId);
+      return { standingOrders: standingOrders.filter((t) => inReadScope(scope, t.patientId)) };
     },
   );
   // 19 — standing-order template + spawn history.
   app.get(
     "/api/v1/standing-orders/:id",
     {
-      preHandler: [READ],
+      preHandler: [READ, ...standingScope("orders.read", "read")],
       config: {
         auditRead: { resourceKind: "standing_order", resourceIdParam: "id" },
       },
@@ -571,38 +766,46 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
   );
   // 20 — create template.
-  app.post("/api/v1/standing-orders", { preHandler: [STANDING_MANAGE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CreateStandingOrderRequest, request.body);
-    const res = await service.createStandingOrder(organizationId, userId, {
-      patientId: body.patientId,
-      admissionId: body.admissionId,
-      kind: body.kind,
-      signerDiscipline: body.signerDiscipline,
-      orderingPhysicianMdmId: body.orderingPhysicianMdmId,
-      cadence: body.cadence,
-      data: body.data,
-      effectiveFrom: body.effectiveFrom,
-      effectiveUntil: body.effectiveUntil,
-      maxSpawns: body.maxSpawns,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/standing-orders",
+    { preHandler: [STANDING_MANAGE, bodyPatientScope("orders.standing.manage")] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CreateStandingOrderRequest, request.body);
+      const res = await service.createStandingOrder(organizationId, userId, {
+        patientId: body.patientId,
+        admissionId: body.admissionId,
+        kind: body.kind,
+        signerDiscipline: body.signerDiscipline,
+        orderingPhysicianMdmId: body.orderingPhysicianMdmId,
+        cadence: body.cadence,
+        data: body.data,
+        effectiveFrom: body.effectiveFrom,
+        effectiveUntil: body.effectiveUntil,
+        maxSpawns: body.maxSpawns,
+      });
+      return reply.code(201).send(res);
+    },
+  );
   // 21 — edit (limited fields when active).
-  app.patch("/api/v1/standing-orders/:id", { preHandler: [STANDING_MANAGE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(StandingOrderParamsSchema, request.params);
-    const body = parse(UpdateStandingOrderRequest, request.body);
-    return service.editStandingOrder(organizationId, id, {
-      data: body.data,
-      effectiveUntil: body.effectiveUntil,
-      maxSpawns: body.maxSpawns,
-    });
-  });
+  app.patch(
+    "/api/v1/standing-orders/:id",
+    { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(StandingOrderParamsSchema, request.params);
+      const body = parse(UpdateStandingOrderRequest, request.body);
+      return service.editStandingOrder(organizationId, id, {
+        data: body.data,
+        effectiveUntil: body.effectiveUntil,
+        maxSpawns: body.maxSpawns,
+      });
+    },
+  );
   // 22 — pause (no new spawns).
   app.post(
     "/api/v1/standing-orders/:id/pause",
-    { preHandler: [STANDING_MANAGE] },
+    { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
@@ -612,7 +815,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 23 — resume.
   app.post(
     "/api/v1/standing-orders/:id/resume",
-    { preHandler: [STANDING_MANAGE] },
+    { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
@@ -622,7 +825,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 24 — discontinue template.
   app.post(
     "/api/v1/standing-orders/:id/discontinue",
-    { preHandler: [STANDING_MANAGE] },
+    { preHandler: [STANDING_MANAGE, ...standingScope("orders.standing.manage")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);
@@ -637,7 +840,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 25 — PRN manual spawn.
   app.post(
     "/api/v1/standing-orders/:id/spawn",
-    { preHandler: [STANDING_SPAWN] },
+    { preHandler: [STANDING_SPAWN, ...standingScope("orders.standing.spawn")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(StandingOrderParamsSchema, request.params);

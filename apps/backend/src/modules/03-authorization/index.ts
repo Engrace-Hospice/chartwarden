@@ -84,6 +84,8 @@ export {
   createProposedRoleGuard,
 } from "./proposed-role-ceiling";
 export { createDbBreakGlassStore } from "./break-glass-store";
+export { M3_OUTBOX_EVENTS } from "./events-by-m3";
+export type { M3OutboxPublisher } from "./authz-ports";
 
 import type { AuditExecutor, NewAuditEvent } from "@wardenx/audit";
 import type { RbacEngineHandle } from "@wardenx/auth";
@@ -97,6 +99,8 @@ import {
   createInMemoryAuditorSessionMinter as _auditorMinter,
   createInMemoryEngagementStore as _engagements,
   createFixedPermissionResolver as _fixedPerms,
+  type ComplianceNotifier,
+  type M3OutboxPublisher,
   createInMemoryComplianceNotifier as _notifier,
 } from "./authz-ports";
 import { createDbBreakGlassStore as _dbBreakGlass } from "./break-glass-store";
@@ -104,6 +108,9 @@ import { registerBreakGlassContract as _registerBreakGlass } from "./contract";
 import { createDbMembershipRoleStore as _dbMembershipRoles } from "./membership-role-store";
 import { createDbRoleStore as _dbRoleStore } from "./role-store";
 import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/authz-routes";
+
+/** Compliance is notified by the store's same-tx `m3.breakglass.invoked` outbox row; nothing left to do here. */
+const DURABLE_VIA_OUTBOX_NOTIFIER: ComplianceNotifier = { notify: () => undefined };
 
 /**
  * M3 lifecycle audits are emitted after the individual store transaction has completed.  A raw
@@ -155,18 +162,27 @@ export function mountAuthorizationRoutes(
    * in-memory ledger records the gap.
    */
   rbac?: RbacEngineHandle,
+  /**
+   * GAP-010 — the `m3.*` catalog-validating outbox publisher (`bindCallerModule(txOutboxPublisher, "m3")`).
+   * With it, break-glass invoke/revoke and role assign/revoke publish their events on the state change's own
+   * tx, and the Compliance notification is the DURABLE `m3.breakglass.invoked` row (M36 delivers it). Absent
+   * (slice/tests) the in-memory notifier stands and the composition root records the gap.
+   */
+  outbox?: M3OutboxPublisher,
 ): void {
-  const breakGlass = _dbBreakGlass(db);
+  const breakGlass = _dbBreakGlass(db, outbox);
   // §2.2 / §7.4 — wire the break-glass branch over the durable store; the per-access critical row is
   // written under withOrgContext (db) so RLS scopes it. Idempotent (sets the contract's seams).
   _registerBreakGlass({ store: breakGlass, db });
   const deps: AuthzRouteDeps = {
     roles: _dbRoleStore(db),
-    membershipRoles: _dbMembershipRoles(db),
+    membershipRoles: _dbMembershipRoles(db, outbox),
     breakGlass,
     engagements: _engagements().store,
     auditorSessions: _auditorMinter().minter,
-    notifier: _notifier().notifier,
+    // With an outbox the break-glass store has already published `m3.breakglass.invoked` in the invoke's tx, so
+    // the route-level notify must not notify a second time (the in-memory array nothing read was GAP-010).
+    notifier: outbox ? DURABLE_VIA_OUTBOX_NOTIFIER : _notifier().notifier,
     // TASK-004 — GET /me/permissions + the §6 anti-escalation check read the LIVE engine (the
     // resolver only consumes organizationId/userId from its context). Fixed-empty only when no
     // engine handle was passed (slice/tests) — never on the production mount.

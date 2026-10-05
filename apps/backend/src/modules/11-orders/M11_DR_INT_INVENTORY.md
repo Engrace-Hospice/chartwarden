@@ -77,8 +77,15 @@ Notes:
   append-only.
 - **Repudiation (R):** signatures are append-only; the M4 write-audit trigger captures actor + timestamp + IP;
   signatures cannot be deleted (only superseded via correction).
-- **Information disclosure (I):** RLS + ABAC `caseload_or_scope` server-side; a resource outside scope 404s,
-  never 403s (architecture §6.2); the §7.6 denylist scrubs every free-text field from audit payloads.
+- **Information disclosure (I):** RLS + ABAC `caseload_or_scope` server-side (GAP-030: composed explicitly on
+  every patient-bearing route — per-order GET/PATCH/request-signature/verbal/discontinue/complete/sign/
+  sign-on-behalf/cosign/correct/transmission resend + recovery routes, POST `/orders` and `/verbal-orders` (patient
+  in body), standing-order create and `:id` routes, and `suggestions/:patientId`; `requirePermission` never reads
+  `PermissionDef.abac`, so there is no implicit default binding; list and queue reads, including the standing-order
+  list, narrow to the caller's caseload via M5's `CaseloadProvider`, LIMIT-capped; org-wide scope roles are
+  exempt). A resource outside scope — or an unknown id — 404s, never 403s (architecture §6.2). Break-glass is
+  read-only: every mutating order route sets `breakGlassBypassable: false`, so an active grant opens GETs but never
+  writes. The §7.6 denylist scrubs every free-text field from audit payloads.
 - **Denial of service (D):** idempotency middleware on `POST /orders/:id/verbal` keyed on `(orderId,
   recordingMembershipId, receivedAt)`; the discharge-cascade + lab-event consumers are idempotent on
   `(eventId, m11ConsumerName)` / `sourceM29OutboundMessageId`; re-delivery is a no-op.

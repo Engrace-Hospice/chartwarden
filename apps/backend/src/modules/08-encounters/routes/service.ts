@@ -26,7 +26,7 @@ import type {
   EncounterType,
   LocalDate,
 } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import {
   type F2fAttestationWrite,
   type MileageInput,
@@ -77,6 +77,12 @@ export interface EncounterAbacFacts {
 /** Loads an encounter's org-scoped owner facts (in-memory in the slice; Drizzle in prod under RLS). */
 export interface EncounterAbacResolver {
   loadEncounter(organizationId: string, encounterId: string): Promise<EncounterAbacFacts | null>;
+  /** The membership that authored one addendum of `encounterId` (`null` when absent/cross-tenant). */
+  loadAddendumAuthor(
+    organizationId: string,
+    encounterId: string,
+    addendumId: string,
+  ): Promise<string | null>;
 }
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ────────────────────
@@ -622,7 +628,8 @@ export interface EncounterRouteService {
   createAddendum(
     organizationId: string,
     encounterId: string,
-    args: { reason: string },
+    /** `authorMembershipId` is the CALLER — the addendum's author, never the parent encounter's. */
+    args: { reason: string; authorMembershipId: string },
   ): Promise<{ id: string; status: "draft" }>;
   updateAddendumSelections(
     organizationId: string,
@@ -703,6 +710,8 @@ interface EncounterRecord {
       status: AddendumState;
       version: number;
       selections: readonly SelectionSectionInput[];
+      /** The membership that authored this addendum (the caller who created it). */
+      authoredByUserId: string;
       /** The narrative pinned at this addendum's finalize (#122). */
       pinnedNarrative?: string;
     }
@@ -1219,6 +1228,10 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
 
     async sign(organizationId, encounterId, actor, args) {
       const r = load(organizationId, encounterId);
+      // GAP-028 — defence in depth behind the route's `is_author` guard: only the author signs.
+      if (r.authoredByUserId !== actor.membershipId) {
+        throw new ForbiddenError("only the author of an encounter may sign it");
+      }
       // In-memory reference slice: no real session/step-up infra (not mounted in production — see the
       // module header), so step-up is always treated as fresh here. The production Drizzle backend
       // resolves this for real via M2's SessionContextResolver seam.
@@ -1342,7 +1355,13 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         );
       }
       const id = subId();
-      r.addenda.set(id, { id, status: "draft", version: 0, selections: [] });
+      r.addenda.set(id, {
+        id,
+        status: "draft",
+        version: 0,
+        selections: [],
+        authoredByUserId: args.authorMembershipId,
+      });
       return { id, status: "draft" };
     },
     async updateAddendumSelections(organizationId, encounterId, addendumId, input) {
@@ -1492,6 +1511,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         discipline: r.discipline,
         authoredByUserId: r.authoredByUserId,
       };
+    },
+    async loadAddendumAuthor(organizationId, encounterId, addendumId) {
+      const r = byId.get(encounterId);
+      if (!r || r.organizationId !== organizationId) return null;
+      return r.addenda.get(addendumId)?.authoredByUserId ?? null;
     },
   };
 

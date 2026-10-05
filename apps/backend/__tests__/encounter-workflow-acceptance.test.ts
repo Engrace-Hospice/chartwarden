@@ -31,7 +31,7 @@ async function draft(
   seed: Parameters<typeof createInMemoryEncounterBackend>[0] = {},
 ) {
   const backend = createInMemoryEncounterBackend(seed);
-  const created = await backend.service.createDraft(ORG, `${discipline}_1`, {
+  const created = await backend.service.createDraft(ORG, ACTOR.membershipId, {
     patientId: PATIENT,
     admissionId: ADMISSION,
     encounterType: "routine_visit",
@@ -129,7 +129,10 @@ describe("M8-T12 §7 workflow acceptance", () => {
     const { svc, id } = await draft("rn");
     await svc.finalize(ORG, id, PAST);
     await svc.sign(ORG, id, ACTOR, { at: PAST });
-    const add = await svc.createAddendum(ORG, id, { reason: "Correcting signed documentation." });
+    const add = await svc.createAddendum(ORG, id, {
+      reason: "Correcting signed documentation.",
+      authorMembershipId: ACTOR.membershipId,
+    });
     expect(add.status).toBe("draft");
     await svc.updateAddendumSelections(ORG, id, add.id, ADDENDUM_SELECTIONS);
     await svc.finalizeAddendum(ORG, id, add.id);
@@ -142,7 +145,10 @@ describe("M8-T12 §7 workflow acceptance", () => {
   it("§7.9 — addenda cannot be created on draft encounters", async () => {
     const { svc, id } = await draft("rn");
     await expect(
-      svc.createAddendum(ORG, id, { reason: "Trying to bypass normal draft editing." }),
+      svc.createAddendum(ORG, id, {
+        reason: "Trying to bypass normal draft editing.",
+        authorMembershipId: ACTOR.membershipId,
+      }),
     ).rejects.toThrow(/signed or cosigned/);
   });
 
@@ -164,6 +170,16 @@ describe("M8-T12 §7 workflow acceptance", () => {
     expect(new Set(details.map((d) => d.code))).toEqual(new Set(["MISSING_SECTION"]));
     // ... and the row is still a draft: a failed preview is the transition not happening (§2.3).
     expect((await svc.getEncounter(ORG, id)).status).toBe("draft");
+  });
+
+  it("GAP-028 — sign() refuses a caller who is not the encounter's author (403)", async () => {
+    const { svc, id } = await draft("rn");
+    await svc.finalize(ORG, id, PAST);
+    const other = { membershipId: "someone_else", sessionId: "sess_2" };
+    await expect(svc.sign(ORG, id, other, { at: PAST })).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    expect((await svc.getEncounter(ORG, id)).status).toBe("finalized");
   });
 
   it("§2.6 check 10 — an LPN note does not sign when the patient has no RN case manager", async () => {
@@ -198,7 +214,10 @@ describe("M8-T12 §7 workflow acceptance", () => {
     const { svc, id } = await draft("rn");
     await svc.finalize(ORG, id, PAST);
     await svc.sign(ORG, id, ACTOR, { at: PAST });
-    const add = await svc.createAddendum(ORG, id, { reason: "Correcting signed documentation." });
+    const add = await svc.createAddendum(ORG, id, {
+      reason: "Correcting signed documentation.",
+      authorMembershipId: ACTOR.membershipId,
+    });
     await expect(svc.finalizeAddendum(ORG, id, add.id)).rejects.toMatchObject({
       code: "COMPLIANCE_GATE_FAILED",
     });

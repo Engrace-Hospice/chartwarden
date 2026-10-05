@@ -52,6 +52,7 @@ import type {
   RefillInboxPolicyView,
   RefillRequestView,
 } from "./routes/service";
+import { MEDICATION_ORDER_LIST_LIMIT } from "./routes/service";
 
 const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
@@ -424,8 +425,20 @@ export function createDbDoseSpotBackend(
   return {
     // ── Medication-order reads ─────────────────────────────────────────────────────────────────────
     async listOrders(organizationId, filter) {
+      // GAP-033 — caseload narrowing is the WHERE clause (not a post-read filter). Resolved OUTSIDE
+      // `withOrg`: M5's CaseloadProvider opens its own `withOrgContext`. No caseload ⇒ empty, never an
+      // empty `inArray` (which folds to an unfiltered read).
+      const { scope } = filter;
+      let scopePred: SQL | undefined;
+      if (!scope.orgWide) {
+        const ids = new Set(await caseloadPatientIds(organizationId, scope.userId));
+        if (scope.sessionPatientId) ids.add(scope.sessionPatientId);
+        if (ids.size === 0) return { orders: [], statusCounts: {} };
+        scopePred = inArray(MO.patientId, [...ids]);
+      }
       return withOrg(organizationId, async (tx) => {
         const scopedPreds = [
+          scopePred,
           filter.patientId ? eq(MO.patientId, filter.patientId) : undefined,
           filter.prescriberId ? eq(MO.prescriberMembershipId, filter.prescriberId) : undefined,
           filter.medClass ? eq(MO.medClass, filter.medClass as MoRow["medClass"]) : undefined,
@@ -439,7 +452,8 @@ export function createDbDoseSpotBackend(
             .select()
             .from(MO)
             .where(preds.length ? and(...preds) : undefined)
-            .orderBy(desc(MO.createdAt), desc(MO.id)),
+            .orderBy(desc(MO.createdAt), desc(MO.id))
+            .limit(MEDICATION_ORDER_LIST_LIMIT),
           tx
             .select({ status: MO.status, count: sql<number>`count(*)` })
             .from(MO)
@@ -1192,6 +1206,26 @@ export function createDbDoseSpotBackend(
           .where(eq(DP.membershipId, userId))
           .limit(1);
         return row ? ((row.schedules ?? []) as readonly string[]) : null;
+      });
+    },
+    async loadOrderPatientId(organizationId, orderId) {
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ patientId: MO.patientId })
+          .from(MO)
+          .where(eq(MO.id, orderId))
+          .limit(1);
+        return row?.patientId ?? null;
+      });
+    },
+    async loadHistoryRecordPatientId(organizationId, recordId) {
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ patientId: MHR.patientId })
+          .from(MHR)
+          .where(eq(MHR.id, recordId))
+          .limit(1);
+        return row?.patientId ?? null;
       });
     },
     async loadRefillScope(organizationId, refillId, actor) {

@@ -160,7 +160,9 @@ import {
 } from "./modules/02-identity/index";
 import {
   type ActorPermissionResolver,
+  type M3OutboxPublisher,
   createDbOrgRoleLookup,
+  M3_OUTBOX_EVENTS,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
   createProposedRoleGuard,
@@ -991,6 +993,7 @@ import {
   buildIdgCarryForwardComplianceConsumer,
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
+  buildM36BreakGlassAlertConsumer,
   createDrizzleAlertEmitter,
   createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
@@ -2737,6 +2740,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // real org activate/suspend/close capability (organization-lifecycle.ts) and the select-organization
     // producer closed that gap in the same pass.
     M2_OUTBOX_EVENTS,
+    // GAP-010 — M3's five spec'd `m3.*` events (break-glass invoked/ended, role assigned/revoked,
+    // engagement closed). `m3.breakglass.invoked` declares m36, whose `buildM36BreakGlassAlertConsumer` is bound
+    // below; the break-glass store publishes it in the invoke's own tx.
+    M3_OUTBOX_EVENTS,
     // M36 (Messaging) had NO catalog contribution at all either — the third of the three (#205). The spec
     // declares exactly one cross-module event, `m36.notification.delivery_failed`; see events-by-m36.ts's
     // header for why it has no producer yet (the out-of-band dispatch pipeline is unbuilt) and why the
@@ -2815,6 +2822,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
   const m2OutboxPublisher = bindCallerModule(txOutboxPublisher, "m2");
+  const m3OutboxPublisher = bindCallerModule(txOutboxPublisher, "m3");
   // F-202/F-203 (#248) — M11's two-person lab-recovery control. Its compliance alerts are DURABLE (F-203): the service
   // publishes `m11.order.recovery_alert_requested` in the recovery's own transaction and
   // `buildM11RecoveryAlertConsumer` (registered with the outbox consumers below) delivers it to M36's AlertEmitter, so
@@ -3100,13 +3108,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M3 — role catalog + grants on real stores; TASK-004 threads the boot-registered RBAC
           // handle so /me/permissions + anti-escalation read the live engine and grant/revoke/edit
           // drop the §2.5 cache immediately.
-          mountAuthorizationRoutes(app, dbHandle.db, liveRbacHandle);
+          mountAuthorizationRoutes(app, dbHandle.db, liveRbacHandle, m3OutboxPublisher as M3OutboxPublisher);
           // TASK-001 ledger (ARCH-005) — three M3 route deps are still in-memory.
           noteInMemoryBinding({
             kind: "route-dep",
             label:
-              "M3 mountAuthorizationRoutes — engagements/auditorSessions/notifier in-memory (auditor-engagement console + compliance notifier are process-local)",
-            task: "M3 follow-up wiring (Drizzle engagement/auditor-session/notifier stores)",
+              "M3 mountAuthorizationRoutes — engagements/auditorSessions in-memory (auditor-engagement console is process-local; GAP-010 made the break-glass Compliance notification durable via the m3.breakglass.invoked outbox event)",
+            task: "GAP-011 (Drizzle engagement/auditor-session stores)",
           });
           if (!liveRbacHandle) {
             // Should be unreachable on a db boot (wireModuleSeams runs first inside buildServer) —
@@ -3140,7 +3148,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // GAP-008 — both halves share the LIVE rbac resolver (same §2.5 cache the routes use): the
             // guard bounds a proposal at invite time, the attacher re-bounds it by the INVITER's
             // permissions at accept. Without an engine handle the resolver is empty ⇒ fail closed.
-            roleAttacher: createDbProposedRoleAttacher(dbHandle.db, proposedRoleResolver),
+            roleAttacher: createDbProposedRoleAttacher(
+              dbHandle.db,
+              proposedRoleResolver,
+              m3OutboxPublisher as M3OutboxPublisher,
+            ),
             proposedRoleGuard: createProposedRoleGuard({
               lookup: createDbOrgRoleLookup(dbHandle.db),
               effectivePermissions: proposedRoleResolver,
@@ -6385,6 +6397,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // transaction publishes the intent, this hands it to M36, a failure is retried by the relay and the alert's
           // correlation id makes the redelivery idempotent.
           buildM11RecoveryAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
+          // GAP-010 (M3 §4.5) — break-glass Compliance notification, DURABLE: the invoke's own transaction publishes
+          // `m3.breakglass.invoked`, this hands it to M36's AlertEmitter (platform-default rule → compliance_officer).
+          buildM36BreakGlassAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
           // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never through M11's own
           // discharge cascade above, which already discontinues the order before asking M21) releases
           // the still-in-flight source order M11 never touched. Safe for the cascade-reply producer too

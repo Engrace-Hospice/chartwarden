@@ -9,16 +9,19 @@
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
+  hasOrgWideScope,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
+  setBreakGlassChecker,
 } from "@wardenx/auth";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  MEDICATION_ORDER_LIST_LIMIT,
   buildDoseSpotAbacPredicates,
   createInMemoryDoseSpotBackend,
   registerDoseSpotRoutes,
@@ -62,7 +65,25 @@ const WRITE = [
   "prescribing.discontinue",
   "prescribing.refill_decide",
 ];
+const HISTORY_RECORD = "00000000-0000-4000-8000-0000000000c1";
+// GAP-033 — the caseload axis is keyed by USER id (`patient_assignment.clinician_user_id` in prod).
+// `md_1` and `rn_1_user` are assigned PATIENT; `md_off` is not.
+const CASELOAD = [
+  { organizationId: ORG, userId: "md_1", patientId: PATIENT },
+  { organizationId: ORG, userId: "rn_1_user", patientId: PATIENT },
+];
 const PERMISSION_SEED = [
+  {
+    userId: "md_off",
+    permissions: [
+      ...READ,
+      ...WRITE,
+      "prescribing.history.read",
+      "prescribing.history.reconcile",
+      "prescribing.rx_benefit.lookup",
+    ],
+  },
+  { userId: "md_1_hist", permissions: [...READ, "prescribing.history.read"] },
   { userId: "md_1", permissions: [...READ, ...WRITE] },
   { userId: "rn_1", permissions: [...READ, "prescribing.draft", "prescribing.verbal.record"] },
   { userId: "chap_1", permissions: [...READ, "prescribing.draft"] },
@@ -105,7 +126,8 @@ function makeServer() {
     ],
     // GAP-026 — the caseload axis is keyed by USER id (`patient_assignment.clinician_user_id` in
     // prod), never by membership id. `rn_1` covers this patient while `md_1` is the named prescriber.
-    caseloadPatientIds: [{ organizationId: ORG, userId: "rn_1_user", patientId: PATIENT }],
+    caseloadPatientIds: CASELOAD,
+    historyRecords: [{ id: HISTORY_RECORD, organizationId: ORG, patientId: PATIENT }],
   });
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -124,6 +146,14 @@ function makeServer() {
   )) {
     reg.register(name, predicate);
   }
+  // GAP-033 — the shared `caseload_or_scope` (M7 registers it in prod): org-wide role OR caseload on the
+  // named patient. Stubbed over the same caseload seed so the route binding is what is under test.
+  reg.register("caseload_or_scope", async (context, target) => {
+    const patientId = target.patientId;
+    if (typeof patientId !== "string") return true;
+    if (hasOrgWideScope(context.roles)) return true;
+    return CASELOAD.some((c) => c.userId === context.userId && c.patientId === patientId);
+  });
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -407,6 +437,175 @@ describe("M12 GAP-026 — refill_inbox_scope resolves each axis in its own id sp
     });
     expect(theirs.statusCode).toBe(200);
     expect(theirs.json().refills).toEqual([]);
+    await app.close();
+  });
+});
+
+describe("GAP-033 — M12 order + history routes bind caseload_or_scope", () => {
+  const OFF = { "x-test-user": "md_off", "x-test-org": ORG, "x-test-roles": "hospice_physician" };
+  const get = async (url: string, headers: Record<string, string>) => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url, headers });
+    await app.close();
+    return res;
+  };
+
+  it("an off-caseload prescriber gets 404 on order detail and transmission", async () => {
+    expect((await get(`/api/v1/medication-orders/${SOURCE_ORDER}`, OFF)).statusCode).toBe(404);
+    expect(
+      (await get(`/api/v1/medication-orders/${SOURCE_ORDER}/transmission`, OFF)).statusCode,
+    ).toBe(404);
+  });
+
+  it("an on-caseload prescriber reads the same order (200)", async () => {
+    expect((await get(`/api/v1/medication-orders/${SOURCE_ORDER}`, MD)).statusCode).toBe(200);
+  });
+
+  it("an unknown order id is 404 for everyone (no existence oracle)", async () => {
+    const missing = "00000000-0000-4000-8000-0000000000ff";
+    expect((await get(`/api/v1/medication-orders/${missing}`, MD)).statusCode).toBe(404);
+  });
+
+  it("an off-caseload prescriber gets 404 on active medications and history", async () => {
+    expect((await get(`/api/v1/patients/${PATIENT}/medications/active`, OFF)).statusCode).toBe(404);
+    expect((await get(`/api/v1/patients/${PATIENT}/medications/history`, OFF)).statusCode).toBe(
+      404,
+    );
+    expect((await get(`/api/v1/patients/${PATIENT}/medications/active`, MD)).statusCode).toBe(200);
+  });
+
+  it("an off-caseload prescriber cannot discontinue, edit, refresh history or reconcile (404)", async () => {
+    const { app } = makeServer();
+    const calls = [
+      ["POST", `/api/v1/medication-orders/${SOURCE_ORDER}/discontinue`, { reason: "x" }],
+      ["PATCH", `/api/v1/medication-orders/${SOURCE_ORDER}`, { drugName: "x" }],
+      ["POST", `/api/v1/patients/${PATIENT}/medications/history/refresh`, {}],
+      [
+        "POST",
+        `/api/v1/medication-history-records/${HISTORY_RECORD}/reconcile`,
+        { decision: "document_only" },
+      ],
+      ["POST", "/api/v1/medication-orders", stdBody()],
+    ] as const;
+    for (const [method, url, payload] of calls) {
+      const res = await app.inject({ method, url, headers: OFF, payload });
+      expect(res.statusCode, `${method} ${url}`).toBe(404);
+    }
+    await app.close();
+  });
+
+  it("listOrders is narrowed to the caseload: off-caseload sees none, on-caseload sees the order", async () => {
+    const off = await get("/api/v1/medication-orders", OFF);
+    expect(off.statusCode).toBe(200);
+    expect(off.json().orders).toEqual([]);
+    const on = await get("/api/v1/medication-orders", MD);
+    expect(on.json().orders.map((o: { id: string }) => o.id)).toEqual([SOURCE_ORDER]);
+  });
+
+  it("an org-wide oversight role lists every order without a caseload row", async () => {
+    const director = {
+      "x-test-user": "md_off",
+      "x-test-org": ORG,
+      "x-test-roles": "medical_director",
+    };
+    const res = await get("/api/v1/medication-orders", director);
+    expect(res.json().orders).toHaveLength(1);
+  });
+
+  it("listOrders never returns more than MEDICATION_ORDER_LIST_LIMIT rows", async () => {
+    const many = Array.from({ length: MEDICATION_ORDER_LIST_LIMIT + 5 }, (_, i) => ({
+      id: `00000000-0000-4000-8000-${(0x5000 + i).toString(16).padStart(12, "0")}`,
+      organizationId: ORG,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      medClass: "standard" as const,
+    }));
+    const backend = createInMemoryDoseSpotBackend({ now: () => NOW, orders: many });
+    const { orders } = await backend.listOrders(ORG, { scope: { orgWide: true, userId: "" } });
+    expect(orders).toHaveLength(MEDICATION_ORDER_LIST_LIMIT);
+  });
+});
+
+describe("GAP-033 (round 2) — sign / cosign / complete / retransmit scope + mutating routes refuse break-glass", () => {
+  const OFF = { "x-test-user": "md_off", "x-test-org": ORG, "x-test-roles": "hospice_physician" };
+  const DIRECTOR = {
+    "x-test-user": "md_off",
+    "x-test-org": ORG,
+    "x-test-roles": "medical_director",
+  };
+  const MISSING = "00000000-0000-4000-8000-0000000000ff";
+  const o = (suffix: string, id = SOURCE_ORDER) => `/api/v1/medication-orders/${id}/${suffix}`;
+  const previously_unscoped = [
+    ["sign", { signerDiscipline: "hospice_physician" }],
+    ["sign-controlled/initiate", { schedule: "II" }],
+    ["sign-controlled/complete", { nonce: "123456" }],
+    ["cosign", { cosignerRole: "hospice_physician", attestationText: "x" }],
+    ["complete", { reason: "x" }],
+    ["retransmit", {}],
+  ] as const;
+
+  it("an off-caseload actor with the permission gets 404 on every previously-unscoped route", async () => {
+    const { app } = makeServer();
+    for (const [suffix, payload] of previously_unscoped) {
+      const res = await app.inject({ method: "POST", url: o(suffix), headers: OFF, payload });
+      expect(res.statusCode, suffix).toBe(404);
+    }
+    await app.close();
+  });
+
+  it("an unknown order id is 404 on every previously-unscoped route, even for an org-wide role", async () => {
+    const { app } = makeServer();
+    for (const [suffix, payload] of previously_unscoped) {
+      const res = await app.inject({
+        method: "POST",
+        url: o(suffix, MISSING),
+        headers: DIRECTOR,
+        payload,
+      });
+      expect(res.statusCode, suffix).toBe(404);
+    }
+    await app.close();
+  });
+
+  it("on-caseload and org-wide actors pass the scope gate (any non-404 from the service layer)", async () => {
+    const { app } = makeServer();
+    for (const headers of [MD, DIRECTOR]) {
+      // retransmit is excluded: the service itself 404s an order that is not transmission_failed.
+      for (const [suffix, payload] of previously_unscoped.filter(([s]) => s !== "retransmit")) {
+        const res = await app.inject({ method: "POST", url: o(suffix), headers, payload });
+        expect(res.statusCode, suffix).not.toBe(404);
+      }
+    }
+    await app.close();
+  });
+
+  it("an active break-glass grant does NOT open a mutating route to an off-caseload actor", async () => {
+    setBreakGlassChecker(() => ({ eventId: "bg_1" }));
+    const { app } = makeServer();
+    const calls = [
+      ...previously_unscoped.map(([s, p]) => ["POST", o(s), p] as const),
+      ["POST", o("discontinue"), { reason: "x" }],
+      ["PATCH", `/api/v1/medication-orders/${SOURCE_ORDER}`, { drugName: "x" }],
+      ["POST", `/api/v1/patients/${PATIENT}/medications/history/refresh`, {}],
+      ["POST", "/api/v1/medication-orders", stdBody()],
+      ["POST", "/api/v1/rx-benefit/lookup", { patientId: PATIENT, rxnormRxcui: "161" }],
+    ] as const;
+    for (const [method, url, payload] of calls) {
+      const res = await app.inject({ method, url, headers: OFF, payload });
+      expect(res.statusCode, `${method} ${url}`).toBe(404);
+    }
+    await app.close();
+  });
+
+  it("an active break-glass grant still opens READS for an off-caseload actor", async () => {
+    setBreakGlassChecker(() => ({ eventId: "bg_1" }));
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: o("transmission").replace(/\/transmission$/, ""),
+      headers: OFF,
+    });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 });

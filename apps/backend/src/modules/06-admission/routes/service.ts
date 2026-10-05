@@ -609,6 +609,14 @@ export interface ElectionSignInput {
   readonly signingRole: "patient" | "legal_representative" | "caregiver";
 }
 
+/**
+ * GAP-020 — the caseload narrowing the org-wide admission list applies. `undefined` / `patientIds: null`
+ * means org-wide (an org-wide scope role); an array restricts rows to those patients (empty = none).
+ */
+export interface AdmissionReadScope {
+  readonly patientIds: readonly string[] | null;
+}
+
 export interface AdmissionRouteService {
   // Referral (routes 1–7)
   createReferral(
@@ -756,6 +764,7 @@ export interface AdmissionRouteService {
       cursor?: string;
       limit?: number;
     },
+    scope?: AdmissionReadScope,
   ): Promise<Page<AdmissionSummary>>;
   getAdmission(organizationId: string, id: string): Promise<AdmissionDetail | null>;
   getAdmissionReadiness(
@@ -1763,8 +1772,11 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       });
       return summary(rec);
     },
-    async listAdmissions(organizationId, query) {
+    async listAdmissions(organizationId, query, scope) {
       let rows = listOfKind(organizationId, "admission");
+      // GAP-020 — narrow to the caller's caseload (in-memory mirror of the SQL `inArray`).
+      const ids = scope?.patientIds ?? null;
+      if (ids !== null) rows = rows.filter((r) => !!r.patientId && ids.includes(r.patientId));
       if (query.state) rows = rows.filter((r) => r.state === query.state);
       if (query.patientId) rows = rows.filter((r) => r.patientId === query.patientId);
       // F-195 (#248) — this in-memory slice's `holdAdmission`/`resumeAdmission` discard the reason and

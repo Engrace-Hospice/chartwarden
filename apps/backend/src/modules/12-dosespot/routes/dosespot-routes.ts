@@ -9,11 +9,15 @@
 // with the body's `schedule`; the refill routes add `requireAbac('refill_inbox_scope')` (target = :id; the list
 // route resolves to allow and the service narrows the inbox). The §4.1 caseload column maps to the shared
 // `caseload_or_scope` predicate (registered by M5/M6/M7) — bound by the §4.6 default ABAC on each clinical
-// key. The §4.6 "via M11 seam" predicates (`signer_eligible` / `cosigner_role_match`) resolve against M11's
+// key. GAP-033: every patient-bearing route except the refill routes (which keep `refill_inbox_scope`) is bound to
+// `caseload_or_scope` with 404-on-deny — `:id` routes resolve the order/history row to its patient first
+// (unknown id = the same 404), including sign / sign-controlled / cosign / complete / retransmit. Every
+// non-GET guard sets `breakGlassBypassable: false` (an emergency read grant never authorises a write);
+// reads keep break-glass. `listOrders` takes a REQUIRED caseload scope. The §4.6 "via M11 seam" predicates (`signer_eligible` / `cosigner_role_match`) resolve against M11's
 // order store, not M12's medication_order — M12 enforces signer/cosigner eligibility in the service layer
 // (defense-in-depth) rather than re-binding those cross-store predicates at the route.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
+import { NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   ApproveRefillRequest,
@@ -44,7 +48,7 @@ import {
   UpdateMedicationOrderRequest,
   parse,
 } from "./dosespot-typebox";
-import type { DoseSpotAbacActor, MedicationOrderRouteService } from "./service";
+import type { DoseSpotAbacActor, MedicationOrderRouteService, OrderListScope } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -110,11 +114,12 @@ const scheduleTarget = (request: { readonly body?: unknown }): AbacTarget => {
 };
 const ABAC_DRAFT = requireAbac("prescribing.draft", "prescriber_eligible", {
   getTarget: medClassTarget,
+  breakGlassBypassable: false, // a mutating route: break-glass never stands in for prescriber eligibility
 }) as PreHandler;
 const ABAC_SIGN_CONTROLLED = requireAbac(
   "prescribing.sign_controlled_substance",
   "dea_schedule_authorized",
-  { getTarget: scheduleTarget },
+  { getTarget: scheduleTarget, breakGlassBypassable: false },
 ) as PreHandler;
 const ABAC_REFILL_SCOPE = requireAbac("prescribing.read", "refill_inbox_scope") as PreHandler; // target = :id (or none → allow)
 const ABAC_REFILL_DECIDE = requireAbac(
@@ -122,8 +127,63 @@ const ABAC_REFILL_DECIDE = requireAbac(
   "refill_inbox_scope",
 ) as PreHandler;
 
+// GAP-033 — the shared `caseload_or_scope` predicate, bound by name (no import edge into M7), 404 on deny.
+// Its `patientId` arm allows an org-wide oversight role, a session pinned to the patient, or an open
+// `patient_assignment`.
+//
+// GAP-033 (round 2) — `mutating` guards (every non-GET route) set `breakGlassBypassable: false`: an
+// emergency read grant (§2.2) is proof of emergency, not licence to write to / transmit for a chart the
+// actor is not on. Reads keep break-glass.
+const chartScope = (
+  action: string,
+  patientIdOf: (request: { readonly params?: unknown; readonly body?: unknown }) => unknown,
+  mutating = false,
+): PreHandler =>
+  requireAbac(action, "caseload_or_scope", {
+    getTarget: (request) => ({ patientId: patientIdOf(request) }),
+    notFoundOnDeny: true,
+    breakGlassBypassable: !mutating,
+  }) as PreHandler;
+const paramPatientId = (request: { readonly params?: unknown }): unknown =>
+  (request.params as { patientId?: unknown } | undefined)?.patientId;
+const bodyPatientId = (request: { readonly body?: unknown }): unknown =>
+  (request.body as { patientId?: unknown } | null | undefined)?.patientId;
+
+/** The caller's list scope (GAP-033): org-wide role, a session-pinned patient, else their caseload. */
+function listScopeOf(request: FastifyRequest): OrderListScope {
+  const ctx = request.context;
+  const pinned = ctx?.attributes.sessionPatientId;
+  return {
+    orgWide: hasOrgWideScope(ctx?.roles ?? []),
+    userId: ctx?.userId ?? "",
+    sessionPatientId: typeof pinned === "string" && pinned.length > 0 ? pinned : null,
+  };
+}
+
 export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRouteDeps): void {
   const { service } = deps;
+
+  // GAP-033 — an `:id` route resolves the row to its patient (org-scoped, RLS-backstopped), then asks
+  // `caseload_or_scope` about THAT patient. An absent / cross-tenant id is the same 404 as a deny.
+  const resolvedScope =
+    (
+      action: string,
+      resolve: (organizationId: string, id: string) => Promise<string | null>,
+      mutating: boolean,
+    ) =>
+    async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+      const organizationId = request.context?.organizationId;
+      if (!organizationId) throw new UnauthorizedError();
+      const id = (request.params as { id?: unknown } | undefined)?.id;
+      const patientId = typeof id === "string" ? await resolve(organizationId, id) : null;
+      if (!patientId) throw new NotFoundError("resource");
+      await chartScope(action, () => patientId, mutating)(request, reply);
+    };
+  const orderScope = (action: string, mutating = true): PreHandler =>
+    resolvedScope(action, (org, id) => service.loadOrderPatientId(org, id), mutating);
+  const orderReadScope = (action: string): PreHandler => orderScope(action, false);
+  const historyRecordScope = (action: string): PreHandler =>
+    resolvedScope(action, (org, id) => service.loadHistoryRecordPatientId(org, id), true);
 
   // 1 — list medication orders.
   app.get(
@@ -140,6 +200,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         prescriberId: q.prescriberId,
         medClass: q.medClass,
         status: q.status,
+        scope: listScopeOf(request),
       });
     },
   );
@@ -147,7 +208,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 3 — create draft (prescriber_eligible ABAC floor on the body's medClass).
   app.post(
     "/api/v1/medication-orders",
-    { preHandler: [DRAFT, ABAC_DRAFT] },
+    { preHandler: [DRAFT, ABAC_DRAFT, chartScope("prescribing.draft", bodyPatientId, true)] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(CreateMedicationOrderRequest, request.body);
@@ -180,7 +241,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   app.get(
     "/api/v1/medication-orders/:id",
     {
-      preHandler: [READ],
+      preHandler: [READ, orderReadScope("prescribing.read")],
       config: { auditRead: { resourceKind: "medication_order", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -191,22 +252,26 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 4 — edit a draft.
-  app.patch("/api/v1/medication-orders/:id", { preHandler: [DRAFT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const b = parse(UpdateMedicationOrderRequest, request.body);
-    return service.editDraft(organizationId, id, {
-      data: b.data,
-      drugName: b.drugName,
-      strength: b.strength,
-      refillsAuthorized: b.refillsAuthorized,
-    });
-  });
+  app.patch(
+    "/api/v1/medication-orders/:id",
+    { preHandler: [DRAFT, orderScope("prescribing.draft")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const b = parse(UpdateMedicationOrderRequest, request.body);
+      return service.editDraft(organizationId, id, {
+        data: b.data,
+        drugName: b.drugName,
+        strength: b.strength,
+        refillsAuthorized: b.refillsAuthorized,
+      });
+    },
+  );
 
   // 5 — draft → pending_signature.
   app.post(
     "/api/v1/medication-orders/:id/request-signature",
-    { preHandler: [DRAFT] },
+    { preHandler: [DRAFT, orderScope("prescribing.draft")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -216,21 +281,32 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 6 — standard sign (→ signed).
-  app.post("/api/v1/medication-orders/:id/sign", { preHandler: [SIGN] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const b = parse(SignMedicationOrderRequest, request.body);
-    return service.signOrder(organizationId, userId, id, {
-      signerDiscipline: b.signerDiscipline,
-      signedAtClient: b.signedAtClient,
-      signerIsOrderingPhysician: b.signerIsOrderingPhysician,
-    });
-  });
+  app.post(
+    "/api/v1/medication-orders/:id/sign",
+    { preHandler: [SIGN, orderScope("prescribing.sign")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const b = parse(SignMedicationOrderRequest, request.body);
+      return service.signOrder(organizationId, userId, id, {
+        signerDiscipline: b.signerDiscipline,
+        signedAtClient: b.signedAtClient,
+        signerIsOrderingPhysician: b.signerIsOrderingPhysician,
+      });
+    },
+  );
 
   // 7 — controlled sign initiate (60s 2FA nonce; dea_schedule_authorized ABAC).
   app.post(
     "/api/v1/medication-orders/:id/sign-controlled/initiate",
-    { preHandler: [SIGN_CONTROLLED, ABAC_SIGN_CONTROLLED] },
+    {
+      // scope BEFORE the DEA ABAC so an off-caseload actor gets the same 404 as an unknown id.
+      preHandler: [
+        SIGN_CONTROLLED,
+        orderScope("prescribing.sign_controlled_substance"),
+        ABAC_SIGN_CONTROLLED,
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -242,7 +318,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 8 — controlled sign complete (2FA → signed).
   app.post(
     "/api/v1/medication-orders/:id/sign-controlled/complete",
-    { preHandler: [SIGN_CONTROLLED] },
+    { preHandler: [SIGN_CONTROLLED, orderScope("prescribing.sign_controlled_substance")] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -252,33 +328,41 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 9 — record as verbal (→ verbal_pending; controlled is Phase-1-OFF per D18).
-  app.post("/api/v1/medication-orders/:id/verbal", { preHandler: [VERBAL] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const b = parse(RecordVerbalRequest, request.body);
-    return service.recordVerbal(organizationId, userId, id, {
-      recorderDiscipline: b.recorderDiscipline,
-      verbalAttestation: b.verbalAttestation,
-      receivedAt: b.receivedAt,
-      namedPrescriberMdmId: b.namedPrescriberMdmId,
-    });
-  });
+  app.post(
+    "/api/v1/medication-orders/:id/verbal",
+    { preHandler: [VERBAL, orderScope("prescribing.verbal.record")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const b = parse(RecordVerbalRequest, request.body);
+      return service.recordVerbal(organizationId, userId, id, {
+        recorderDiscipline: b.recorderDiscipline,
+        verbalAttestation: b.verbalAttestation,
+        receivedAt: b.receivedAt,
+        namedPrescriberMdmId: b.namedPrescriberMdmId,
+      });
+    },
+  );
 
   // 10 — attach a cosignature (service enforces no-self-cosign).
-  app.post("/api/v1/medication-orders/:id/cosign", { preHandler: [COSIGN] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    const b = parse(CosignRequest, request.body);
-    return service.cosignOrder(organizationId, userId, id, {
-      cosignerRole: b.cosignerRole,
-      attestationText: b.attestationText,
-    });
-  });
+  app.post(
+    "/api/v1/medication-orders/:id/cosign",
+    { preHandler: [COSIGN, orderScope("prescribing.cosign")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const b = parse(CosignRequest, request.body);
+      return service.cosignOrder(organizationId, userId, id, {
+        cosignerRole: b.cosignerRole,
+        attestationText: b.attestationText,
+      });
+    },
+  );
 
   // 11 — discontinue.
   app.post(
     "/api/v1/medication-orders/:id/discontinue",
-    { preHandler: [DISCONTINUE] },
+    { preHandler: [DISCONTINUE, orderScope("prescribing.discontinue")] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -296,7 +380,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // M30's auto-incident-draft consumer.
   app.post(
     "/api/v1/medication-orders/:id/report-error",
-    { preHandler: [REPORT_ERROR] },
+    { preHandler: [REPORT_ERROR, orderScope("prescribing.report_error")] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -311,7 +395,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 12 — complete (one-shot / no-refills-no-renewal).
   app.post(
     "/api/v1/medication-orders/:id/complete",
-    { preHandler: [DISCONTINUE] },
+    { preHandler: [DISCONTINUE, orderScope("prescribing.discontinue")] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -323,7 +407,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 13 — corrected order (replaces_medication_order_id; prescriber_eligible ABAC).
   app.post(
     "/api/v1/medication-orders/:id/correct",
-    { preHandler: [DRAFT, ABAC_DRAFT] },
+    { preHandler: [DRAFT, ABAC_DRAFT, orderScope("prescribing.draft")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -353,7 +437,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 14 — retransmit a transmission_failed order (mints a corrected order).
   app.post(
     "/api/v1/medication-orders/:id/retransmit",
-    { preHandler: [SIGN] },
+    { preHandler: [SIGN, orderScope("prescribing.sign")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -366,7 +450,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   app.get(
     "/api/v1/medication-orders/:id/transmission",
     {
-      preHandler: [READ],
+      preHandler: [READ, orderReadScope("prescribing.read")],
       config: { auditRead: { resourceKind: "medication_order", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -380,7 +464,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   app.get(
     "/api/v1/patients/:patientId/medications/active",
     {
-      preHandler: [READ],
+      preHandler: [READ, chartScope("prescribing.read", paramPatientId)],
       config: { auditRead: { resourceKind: "medication_order", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -394,7 +478,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   app.get(
     "/api/v1/patients/:patientId/medications/history",
     {
-      preHandler: [HISTORY_READ],
+      preHandler: [HISTORY_READ, chartScope("prescribing.history.read", paramPatientId)],
       config: { auditRead: { resourceKind: "medication_order", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -407,7 +491,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 18 — enqueue a medication-history refresh (DoseSpot MedHx pull).
   app.post(
     "/api/v1/patients/:patientId/medications/history/refresh",
-    { preHandler: [HISTORY_READ] },
+    { preHandler: [HISTORY_READ, chartScope("prescribing.history.read", paramPatientId, true)] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
@@ -418,7 +502,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 19 — reconcile a medication-history record.
   app.post(
     "/api/v1/medication-history-records/:id/reconcile",
-    { preHandler: [HISTORY_RECONCILE] },
+    { preHandler: [HISTORY_RECONCILE, historyRecordScope("prescribing.history.reconcile")] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(HistoryRecordParamsSchema, request.params);
@@ -487,11 +571,15 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 24 — RxBenefit cached lookup.
-  app.post("/api/v1/rx-benefit/lookup", { preHandler: [RX_BENEFIT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const b = parse(RxBenefitLookupRequest, request.body);
-    return service.rxBenefitLookup(organizationId, b.patientId, b.rxnormRxcui);
-  });
+  app.post(
+    "/api/v1/rx-benefit/lookup",
+    { preHandler: [RX_BENEFIT, chartScope("prescribing.rx_benefit.lookup", bodyPatientId, true)] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const b = parse(RxBenefitLookupRequest, request.body);
+      return service.rxBenefitLookup(organizationId, b.patientId, b.rxnormRxcui);
+    },
+  );
 
   // 25 — per-tenant prescriber roster.
   app.get(

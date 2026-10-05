@@ -16,6 +16,7 @@ import {
   type BreakGlassStatus,
   type BreakGlassStore,
   type BreakGlassView,
+  type M3OutboxPublisher,
 } from "./authz-ports";
 
 const COLUMNS = {
@@ -57,7 +58,7 @@ function toView(r: Row): BreakGlassView {
 }
 
 /** Build the live BreakGlassStore over the pooled Drizzle client (org-scoped under RLS). */
-export function createDbBreakGlassStore(db: DbClient): BreakGlassStore {
+export function createDbBreakGlassStore(db: DbClient, outbox?: M3OutboxPublisher): BreakGlassStore {
   return {
     async invoke(input): Promise<BreakGlassView> {
       // The invoker IS the org-bound actor; org + user drive the RLS context for the INSERT (WITH CHECK).
@@ -78,7 +79,24 @@ export function createDbBreakGlassStore(db: DbClient): BreakGlassStore {
               expiresAt,
             })
             .returning(COLUMNS)) as Row[];
-          return toView(inserted[0]!);
+          const view = toView(inserted[0]!);
+          // GAP-010 — the §7.4 "Compliance notified" guarantee: `m3.breakglass.invoked` is published on THIS
+          // tx, so the notification commits or rolls back with the grant (M36's consumer delivers the alert).
+          await outbox?.publish(tx as never, {
+            eventName: "m3.breakglass.invoked",
+            payload: {
+              breakGlassId: view.eventId,
+              organizationId: view.organizationId,
+              actorUserId: view.actorUserId,
+              targetPatientId: view.targetPatientId,
+              expiresAt: view.expiresAt,
+              cosignRequired: view.cosignRequired,
+            },
+            organizationId: view.organizationId,
+            aggregateKind: "break_glass_event",
+            aggregateId: view.eventId,
+          });
+          return view;
         },
       );
     },
@@ -144,7 +162,19 @@ export function createDbBreakGlassStore(db: DbClient): BreakGlassStore {
           .where(eq(schema.breakGlassEvents.id, eventId))
           .returning(COLUMNS)) as Row[];
         if (!updated[0]) throw new Error(`unknown break-glass event ${eventId}`);
-        return toView(updated[0]);
+        const view = toView(updated[0]);
+        await outbox?.publish(tx as never, {
+          eventName: "m3.breakglass.ended",
+          payload: {
+            breakGlassId: view.eventId,
+            organizationId: view.organizationId,
+            outcome: "revoked",
+          },
+          organizationId: view.organizationId,
+          aggregateKind: "break_glass_event",
+          aggregateId: view.eventId,
+        });
+        return view;
       });
     },
 

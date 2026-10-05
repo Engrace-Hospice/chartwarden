@@ -1775,6 +1775,10 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        // GAP-028 — defence in depth behind the route's `is_author` guard: only the author signs.
+        if (r.authoredByMembershipId !== actor.membershipId) {
+          throw new ForbiddenError("only the author of an encounter may sign it");
+        }
         const now = new Date();
         const admission = await admissionSummaryFor(organizationId, r.admissionId);
         validateAdmissionForService(
@@ -2156,7 +2160,8 @@ export function createDbEncounterRouteService(
             .values({
               organizationId,
               encounterId,
-              authoredByMembershipId: r.authoredByMembershipId,
+              // GAP-028 — the CALLER authors the addendum, not the parent encounter's author.
+              authoredByMembershipId: args.authorMembershipId,
               providerEntityId: r.providerEntityId,
               locationId: r.locationId,
               reason: args.reason,
@@ -2363,6 +2368,16 @@ export function createDbEncounterAbacResolver(db: DbClient): EncounterAbacResolv
               authoredByUserId: r.authoredByMembershipId,
             }
           : null;
+      });
+    },
+    async loadAddendumAuthor(organizationId, encounterId, addendumId): Promise<string | null> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ authoredByMembershipId: ADDENDUM.authoredByMembershipId })
+          .from(ADDENDUM)
+          .where(and(eq(ADDENDUM.id, addendumId), eq(ADDENDUM.encounterId, encounterId)))
+          .limit(1);
+        return r?.authoredByMembershipId ?? null;
       });
     },
   };

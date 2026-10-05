@@ -129,6 +129,16 @@ const SCOPE_CREATE = requireAbac("encounter.author", "encounter.scope", {
   }),
 }) as PreHandler;
 
+// GAP-028 — author ownership guards (spec §4.1 route table). Each reads `encounterId` (and `addendumId`)
+// from `request.params` — the predicates' default target — and resolves the author server-side. Denied
+// as 403 (the caller can already see the encounter via SCOPE_*, which runs first and 404s outside the
+// caseload, so a 403 here discloses nothing new).
+const IS_AUTHOR = (action: string): PreHandler => requireAbac(action, "is_author") as PreHandler;
+const IS_AUTHOR_OR_SUPERVISOR = (action: string): PreHandler =>
+  requireAbac(action, "is_author_or_supervisor") as PreHandler;
+const IS_ADDENDUM_AUTHOR = (action: string): PreHandler =>
+  requireAbac(action, "is_addendum_author") as PreHandler;
+
 // §2.7 D13 / CoP 418.104(c) — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate
 // (real, server-verified freshness; replaces the removed client-timestamp-trusting check).
 const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
@@ -225,7 +235,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // HearthNote arrived, the version bumped, a 200 came back, and nothing was written (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/selections",
-    { preHandler: [AUTHOR, SCOPE_FOR("encounter.author"), IF_MATCH] },
+    {
+      preHandler: [
+        AUTHOR,
+        SCOPE_FOR("encounter.author"),
+        IS_AUTHOR_OR_SUPERVISOR("encounter.author"),
+        IF_MATCH,
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       parse(EncounterParamsSchema, request.params);
@@ -288,7 +305,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 4 — capture vitals.
   app.post(
     "/api/v1/encounters/:encounterId/vitals",
-    { preHandler: [VITALS] },
+    { preHandler: [VITALS, SCOPE_FOR("vitals.author"), IS_AUTHOR_OR_SUPERVISOR("vitals.author")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CaptureVitalsSchema, request.body);
@@ -300,7 +317,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 5 — edit vitals.
   app.patch(
     "/api/v1/encounters/:encounterId/vitals/:vitalId",
-    { preHandler: [VITALS, IF_MATCH] },
+    {
+      preHandler: [
+        VITALS,
+        SCOPE_FOR("vitals.author"),
+        IS_AUTHOR_OR_SUPERVISOR("vitals.author"),
+        IF_MATCH,
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, vitalId } = parse(VitalParamsSchema, request.params);
@@ -349,7 +373,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 6 — capture mileage.
   app.post(
     "/api/v1/encounters/:encounterId/mileage",
-    { preHandler: [MILEAGE] },
+    {
+      preHandler: [MILEAGE, SCOPE_FOR("mileage.author"), IS_AUTHOR_OR_SUPERVISOR("mileage.author")],
+    },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CaptureMileageSchema, request.body);
@@ -361,7 +387,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 7 — edit mileage.
   app.patch(
     "/api/v1/encounters/:encounterId/mileage",
-    { preHandler: [MILEAGE, IF_MATCH] },
+    {
+      preHandler: [
+        MILEAGE,
+        SCOPE_FOR("mileage.author"),
+        IS_AUTHOR_OR_SUPERVISOR("mileage.author"),
+        IF_MATCH,
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(CaptureMileageSchema, request.body);
@@ -433,7 +466,13 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 204 was indistinguishable from a working delete.
   app.delete(
     "/api/v1/encounters/:encounterId/care-plan-links/:linkId",
-    { preHandler: [AUTHOR] },
+    {
+      preHandler: [
+        AUTHOR,
+        SCOPE_FOR("encounter.author"),
+        IS_AUTHOR_OR_SUPERVISOR("encounter.author"),
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { encounterId, linkId } = parse(CarePlanLinkParamsSchema, request.params);
@@ -445,7 +484,13 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 10 — document EVV-missing reason (D9 fallback).
   app.post(
     "/api/v1/encounters/:encounterId/evv-reconcile",
-    { preHandler: [AUTHOR] },
+    {
+      preHandler: [
+        AUTHOR,
+        SCOPE_FOR("encounter.author"),
+        IS_AUTHOR_OR_SUPERVISOR("encounter.author"),
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(EvvReconcileSchema, request.body);
@@ -460,7 +505,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 11 — finalize (Layer-3 gate preview).
   app.post(
     "/api/v1/encounters/:encounterId/finalize",
-    { preHandler: [FINALIZE] },
+    { preHandler: [FINALIZE, SCOPE_FOR("encounter.finalize"), IS_AUTHOR("encounter.finalize")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.finalize(organizationId, encounterIdOf(request), today());
@@ -474,7 +519,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // simply switched off. The refusal is in the BODY, where a UI can render it.
   app.post(
     "/api/v1/encounters/:encounterId/hearthnote/enhance",
-    { preHandler: [FINALIZE] },
+    { preHandler: [FINALIZE, SCOPE_FOR("encounter.finalize"), IS_AUTHOR("encounter.finalize")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       parse(HearthnoteEnhanceSchema, request.body);
@@ -485,7 +530,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 13 — record per-passage accept/edit/reject.
   app.patch(
     "/api/v1/encounters/:encounterId/hearthnote/modifications/:modId/decisions",
-    { preHandler: [FINALIZE] },
+    { preHandler: [FINALIZE, SCOPE_FOR("encounter.finalize"), IS_AUTHOR("encounter.finalize")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, modId } = parse(ModificationParamsSchema, request.params);
@@ -497,7 +542,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 14 — sign (Layer-3 gate enforced; D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/sign",
-    { preHandler: [SIGN, STEP_UP("encounter.sign")] },
+    {
+      preHandler: [
+        SIGN,
+        SCOPE_FOR("encounter.sign"),
+        IS_AUTHOR("encounter.sign"),
+        STEP_UP("encounter.sign"),
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
@@ -611,10 +663,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/addenda",
     { preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const body = parse(CreateAddendumSchema, request.body);
+      // GAP-028 — `userId` here is the caller's membership id: the addendum is THEIRS, not the parent's.
       const res = await service.createAddendum(organizationId, encounterIdOf(request), {
         reason: body.reason,
+        authorMembershipId: userId,
       });
       return reply.code(201).send(res);
     },
@@ -623,7 +677,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 23 — update addendum selections (§7.7 If-Match). Same discard as route 3, same fix (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/selections",
-    { preHandler: [ADDENDUM_AUTHOR, IF_MATCH] },
+    {
+      preHandler: [
+        ADDENDUM_AUTHOR,
+        SCOPE_FOR("encounter.addendum_author"),
+        IS_ADDENDUM_AUTHOR("encounter.addendum_author"),
+        IF_MATCH,
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
@@ -655,7 +716,13 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 24 — finalize addendum.
   app.post(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/finalize",
-    { preHandler: [ADDENDUM_AUTHOR] },
+    {
+      preHandler: [
+        ADDENDUM_AUTHOR,
+        SCOPE_FOR("encounter.addendum_author"),
+        IS_ADDENDUM_AUTHOR("encounter.addendum_author"),
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
@@ -666,7 +733,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 25 — sign addendum (D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/sign",
-    { preHandler: [ADDENDUM_SIGN, STEP_UP("encounter.addendum.sign")] },
+    {
+      preHandler: [
+        ADDENDUM_SIGN,
+        SCOPE_FOR("encounter.addendum_sign"),
+        IS_ADDENDUM_AUTHOR("encounter.addendum_sign"),
+        STEP_UP("encounter.addendum.sign"),
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
