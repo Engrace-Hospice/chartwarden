@@ -28,8 +28,11 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError, ValidationError } from "@wardenx/types";
 import {
+  assertCosignSatisfied,
+  assertCosignStanding,
   assertDisciplineHeld,
   assertRetransmitStanding,
+  cosignRequiredFor,
   isVerbalRecorderDiscipline,
   mdmIdAlreadyEnrolled,
   namedPrescriberNotEnrolled,
@@ -184,8 +187,11 @@ export interface SignControlledInitiateArgs {
   readonly signerDisciplines: readonly string[];
 }
 export interface CosignArgs {
+  /** A CLAIM from the body; refused (422 DISCIPLINE_NOT_HELD) unless the session holds it. */
   readonly cosignerRole: "rn_case_manager" | "clinical_supervisor" | "medical_director";
   readonly attestationText: string;
+  /** GAP-034 — the cosigner's roles/disciplines as assembled from the SESSION. */
+  readonly cosignerDisciplines: readonly string[];
 }
 export interface DiscontinueArgs {
   readonly reason: "clinical_judgement" | "patient_request" | "adverse_event";
@@ -860,11 +866,15 @@ export function createInMemoryDoseSpotBackend(
         tenantEpcsCertified: csPolicy.epcsCertificationStatus === "certified",
       });
       r.status = t.to;
+      // GAP-034 — the cosign axis is decided from the stored drafter discipline, never from the body.
+      r.cosignRequired = cosignRequiredFor(r.prescriberDiscipline);
+      r.cosignStatus = r.cosignRequired ? "pending" : null;
       emitEffects(t.effects, id, { patientId: r.patientId });
       return view(r);
     },
     async signOrder(organizationId, userId, id, args) {
       const r = find(organizationId, id);
+      assertCosignSatisfied(r);
       const rosterRow = prescribers.get(`${organizationId}:${userId}`);
       const t = transitionMedicationOrder(r.status, {
         type: "sign",
@@ -906,6 +916,7 @@ export function createInMemoryDoseSpotBackend(
     },
     async signControlledComplete(organizationId, userId, id) {
       const r = find(organizationId, id);
+      assertCosignSatisfied(r); // an owed cosign gates EPCS completion exactly as it gates signOrder.
       // Phase-1 deny-stub: completing requires the order to be in epcs_identity_pending, only reachable when
       // EPCS is certified (OFF in Phase 1) — the machine refuses the transition otherwise.
       const t = transitionMedicationOrder(r.status, {
@@ -951,13 +962,28 @@ export function createInMemoryDoseSpotBackend(
       });
       return view(r);
     },
-    async cosignOrder(organizationId, userId, id, _args) {
+    async cosignOrder(organizationId, userId, id, args) {
       const r = find(organizationId, id);
-      if (r.prescriberMembershipId === userId)
-        throw new NotFoundError("a medication order may not be cosigned by its own drafter (§7.3)");
+      const signer = [...prescribers.values()].find(
+        (p) =>
+          p.organizationId === organizationId &&
+          p.enrolled &&
+          p.externalPhysicianMdmId === r.prescribingPhysicianMdmId,
+      );
+      assertCosignStanding({
+        orderStatus: r.status,
+        cosignRequired: r.cosignRequired,
+        cosignStatus: r.cosignStatus,
+        claimedRole: args.cosignerRole,
+        heldRoles: args.cosignerDisciplines,
+        cosignerMembershipId: userId,
+        drafterMembershipId: r.prescriberMembershipId,
+        signerMembershipId: signer?.membershipId ?? null,
+      });
       // The cosignature primitive is M11's `OrderSignatureProvider` (signature_kind='cosignature'); the in-mem
       // slice records the attach locally. No M12-owned outbox event (M12 does not own a cosign event).
       r.cosignStatus = "attached";
+      r.version += 1;
       return view(r);
     },
     async discontinueOrder(organizationId, userId, id, args) {

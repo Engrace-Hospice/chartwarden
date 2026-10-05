@@ -16,10 +16,13 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
+const F2F_ATTESTATION_NARRATIVE =
+  "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -198,6 +201,7 @@ describe.skipIf(!DB_URL)(
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_md",
+        actor: SYSTEM_F2F_ACTOR,
       });
       expect(f2f.state).toBe("scheduled");
       const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, daysFromNow(-1));
@@ -208,11 +212,115 @@ describe.skipIf(!DB_URL)(
       );
       expect(row.rows[0]).toEqual({ d: daysFromNow(-1), within_window: true });
       // The attesting user must be the performer — a stranger is rejected (F2F_INVALID_PERFORMER → 422).
-      await expect(svc.attestF2f(ORG_A, f2f.id, done.version, OTHER)).rejects.toMatchObject({
+      await expect(
+        svc.attestF2f(ORG_A, f2f.id, done.version, OTHER, F2F_ATTESTATION_NARRATIVE),
+      ).rejects.toMatchObject({
         statusCode: 422,
       });
-      const attested = await svc.attestF2f(ORG_A, f2f.id, done.version, USER);
+      const attested = await svc.attestF2f(
+        ORG_A,
+        f2f.id,
+        done.version,
+        USER,
+        F2F_ATTESTATION_NARRATIVE,
+      );
       expect(attested.state).toBe("attested");
+    });
+
+    describe("GAP-022 — F2F performer role + attestation narrative are server-enforced (real DB)", () => {
+      /** A role port standing in for the M3 grants: USER holds `np`, OTHER holds only RN roles. */
+      const roleKeys: Record<string, readonly string[]> = { [USER]: ["np"], [OTHER]: ["rn"] };
+      let guarded: ReturnType<typeof createDbAdmissionRouteService>;
+      beforeAll(() => {
+        guarded = createDbAdmissionRouteService(
+          handle.db,
+          validatingM6Outbox(),
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { roleKeysForUser: async (_org, userId) => roleKeys[userId] ?? null },
+        );
+      });
+
+      it("derives hospice_np from the clinician's grants; refuses an RN performer and a claim not held", async () => {
+        const { periodId } = await pendingPeriodStartingSoon();
+        const base = {
+          admissionId: "ignored",
+          electionPeriodId: periodId,
+          actor: { kind: "user", userId: MD } as const,
+        };
+        await expect(
+          guarded.scheduleF2f(ORG_A, {
+            ...base,
+            scheduledClinicianId: OTHER,
+            clinicianRole: "hospice_md",
+          }),
+        ).rejects.toMatchObject({ code: "F2F_INVALID_PERFORMER", statusCode: 422 });
+        await expect(
+          guarded.scheduleF2f(ORG_A, {
+            ...base,
+            scheduledClinicianId: USER,
+            clinicianRole: "hospice_md",
+          }),
+        ).rejects.toMatchObject({ code: "F2F_INVALID_PERFORMER", statusCode: 422 });
+        const ok = await guarded.scheduleF2f(ORG_A, {
+          ...base,
+          scheduledClinicianId: USER,
+          clinicianRole: "hospice_np",
+        });
+        const row = await admin.query(
+          "SELECT performer_role FROM face_to_face_encounter WHERE id=$1",
+          [ok.id],
+        );
+        expect(row.rows[0].performer_role).toBe("hospice_np");
+      });
+
+      it("a human-driven schedule with no role source bound fails closed (503), never trusting the body", async () => {
+        const { periodId } = await pendingPeriodStartingSoon();
+        await expect(
+          svc.scheduleF2f(ORG_A, {
+            admissionId: "ignored",
+            electionPeriodId: periodId,
+            scheduledClinicianId: USER,
+            clinicianRole: "hospice_md",
+            actor: { kind: "user", userId: MD },
+          }),
+        ).rejects.toMatchObject({ statusCode: 503 });
+      });
+
+      it("attest: a 20-char narrative is refused 422 (row stays completed); the real narrative is persisted", async () => {
+        const { periodId } = await pendingPeriodStartingSoon();
+        const f2f = await svc.scheduleF2f(ORG_A, {
+          admissionId: "ignored",
+          electionPeriodId: periodId,
+          scheduledClinicianId: USER,
+          clinicianRole: "hospice_np",
+          actor: SYSTEM_F2F_ACTOR,
+        });
+        const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, daysFromNow(-1));
+        await expect(
+          svc.attestF2f(ORG_A, f2f.id, done.version, USER, "x".repeat(20)),
+        ).rejects.toMatchObject({ code: "F2F_ATTESTATION_TOO_SHORT", statusCode: 422 });
+        // An empty actor id is not a bypass of the performer check.
+        await expect(
+          svc.attestF2f(ORG_A, f2f.id, done.version, "", F2F_ATTESTATION_NARRATIVE),
+        ).rejects.toMatchObject({ code: "F2F_INVALID_PERFORMER", statusCode: 422 });
+        const pending = await admin.query(
+          "SELECT status, attestation_narrative FROM face_to_face_encounter WHERE id=$1",
+          [f2f.id],
+        );
+        expect(pending.rows[0]).toEqual({ status: "completed", attestation_narrative: null });
+        await svc.attestF2f(ORG_A, f2f.id, done.version, USER, F2F_ATTESTATION_NARRATIVE);
+        const after = await admin.query(
+          "SELECT status, attestation_narrative FROM face_to_face_encounter WHERE id=$1",
+          [f2f.id],
+        );
+        expect(after.rows[0]).toEqual({
+          status: "attested",
+          attestation_narrative: F2F_ATTESTATION_NARRATIVE,
+        });
+      });
     });
 
     it("F2F: complete → medical-director window override (stays completed)", async () => {
@@ -222,6 +330,7 @@ describe.skipIf(!DB_URL)(
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_np",
+        actor: SYSTEM_F2F_ACTOR,
       });
       const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, daysFromNow(-1));
       const over = await svc.overrideF2fWindow(

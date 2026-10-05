@@ -336,6 +336,29 @@ describe("boot wiring (registerOrderSeams)", () => {
     expect(signed.orderStatusAfter).toBe("active");
   });
 
+  it("threads the cosign attestationText through the seam to the store (M12 medication_order cosign)", async () => {
+    const base = createInMemoryOrderSeamStore(seed()).store;
+    const seen: Array<Parameters<typeof base.insertCosignature>[0]> = [];
+    const store = {
+      ...base,
+      insertCosignature: (input: Parameters<typeof base.insertCosignature>[0]) => {
+        seen.push(input);
+        return base.insertCosignature(input);
+      },
+    };
+    const attestationText = "I have reviewed this medication order and concur with it as written.";
+    await createOrderSignatureProvider(store).cosignOrder({
+      organizationId: "org-1",
+      targetKind: "medication_order",
+      targetId: "med-1",
+      cosignerMembershipId: "mem-sup",
+      cosignerRole: "clinical_supervisor",
+      attestationText,
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ targetKind: "medication_order", attestationText });
+  });
+
   it("falls back to fail-closed deny-stubs when M11 does not register", () => {
     validateSeams();
     expect(() => getSeam("OrderProvider").listByPatient({ patientId: PAT })).toThrow(

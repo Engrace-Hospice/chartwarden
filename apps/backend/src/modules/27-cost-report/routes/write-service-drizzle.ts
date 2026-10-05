@@ -14,9 +14,10 @@
 // {@link WriteOutboxPort} in the SAME unit of work as the mutation (transactional outbox); the §4.8 worker
 // jobs through the injected {@link RecomputeEnqueuePort}. M27 carries NO PHI (D18); money is INTEGER CENTS.
 //
-// FROZEN-SCHEMA NOTE: the two-person control (approver ≠ submitter) has no dedicated approver column on
-// `cost_report`; the route resolves the approver from the approval event and passes it on `SubmitArgs`,
-// and this service refuses `submit` when it equals the acting membership. Documented as a deviation.
+// TWO-PERSON CONTROL (GAP-081): `approveForSubmit` stores the approver (`approved_by_membership_id`,
+// `approved_at`, migration 0331) from the authenticated actor; `submit` ALWAYS compares it to the submitting
+// actor (403 TWO_PERSON_CONTROL_VIOLATION on equal, 409 APPROVER_NOT_RECORDED on NULL). The attester is the
+// actor too — nothing identity-bearing is read from the request body.
 import { randomUUID } from "node:crypto";
 import { Value } from "@sinclair/typebox/value";
 import {
@@ -82,7 +83,6 @@ import type {
   ReopenArgs,
   ResetMappingArgs,
   StatisticsRefreshAcceptedView,
-  SubmitArgs,
   SubmitPastDeadlineArgs,
   UpdateBadDebtArgs,
   UpdateValidationRuleArgs,
@@ -340,6 +340,28 @@ export function buildDrizzleM27WriteService(
       throw new ConflictError(`cannot '${event}' a cost report in state '${from}'`);
     }
     return applyTransition(from, event, ctx);
+  };
+
+  /**
+   * GAP-081 two-person control, ALWAYS enforced (no optional body field): the membership that approved the
+   * report (stored server-side at approveForSubmit) must differ from the submitting actor. A report with no
+   * stored approver (approved before migration 0331) is refused — it must be returned to draft and re-approved.
+   */
+  const assertTwoPersonControl = (report: schema.CostReport, actor: M27WriteActor): void => {
+    if (!report.approvedByMembershipId) {
+      throw new WardenXError(
+        "APPROVER_NOT_RECORDED",
+        "this cost report has no recorded approver; return it to draft and approve it again before submitting",
+        409,
+      );
+    }
+    if (report.approvedByMembershipId === actor.membershipId) {
+      throw new WardenXError(
+        "TWO_PERSON_CONTROL_VIOLATION",
+        "the membership that approved this cost report cannot also submit it",
+        403,
+      );
+    }
   };
 
   /** Apply a versioned `cost_report` update, surfacing the §2.5 VERSION_CONFLICT as a 409. */
@@ -1092,6 +1114,8 @@ export function buildDrizzleM27WriteService(
         const report = await loadReport(tx, actor, costReportId);
         const updated = await updateReport(tx, report.id, report.version, {
           state: nextState(report.state, "return_to_draft"),
+          approvedByMembershipId: null,
+          approvedAt: null,
         });
         await emit(tx, {
           eventName: "m27.cost_report.returned_to_draft",
@@ -1113,12 +1137,15 @@ export function buildDrizzleM27WriteService(
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
         const blocking = await unresolvedBlockingFailures(tx, actor, costReportId);
+        const at = now();
+        // GAP-081: the approver is the authenticated actor, stored server-side for the submit-time compare.
         const updated = await updateReport(tx, report.id, report.version, {
           state: nextState(report.state, "approve_for_submit", {
             unresolvedBlockingFailures: blocking,
           }),
+          approvedByMembershipId: actor.membershipId,
+          approvedAt: at,
         });
-        const at = now();
         await emit(tx, {
           eventName: "m27.cost_report.approved_for_submit",
           organizationId: actor.organizationId,
@@ -1134,9 +1161,9 @@ export function buildDrizzleM27WriteService(
       });
     },
 
-    async submit(actor, costReportId, args: SubmitArgs): Promise<CostReportDetailView> {
+    async submit(actor, costReportId): Promise<CostReportDetailView> {
       requireStepUp(actor);
-      return this.submitPastDeadline(actor, costReportId, { ...args, reason: "" });
+      return this.submitPastDeadline(actor, costReportId, { reason: "" });
     },
 
     async submitPastDeadline(
@@ -1147,15 +1174,8 @@ export function buildDrizzleM27WriteService(
       requireStepUp(actor);
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
-        // Two-person control: the approver cannot also be the submitter (the route resolves the approver).
-        if (args.approvedByMembershipId && args.approvedByMembershipId === actor.membershipId) {
-          throw new WardenXError(
-            "TWO_PERSON_CONTROL_VIOLATION",
-            "the membership that approved this cost report cannot also submit it",
-            403,
-          );
-        }
         const toState = nextState(report.state, "submit");
+        assertTwoPersonControl(report, actor);
         // Build the content-hashed snapshot over the materialized inputs + worksheet state (D10).
         const worksheets = await new CostReportWorksheetRepository(tx).listByReport(
           actor.organizationId,
@@ -1226,8 +1246,8 @@ export function buildDrizzleM27WriteService(
             snapshotContentHash: contentHash,
             submittedByMembershipId: actor.membershipId,
             attestation: {
-              attestedByMembershipId: args.attestedByMembershipId,
-              attestedAt: args.attestedAt,
+              attestedByMembershipId: actor.membershipId,
+              attestedAt: now().toISOString(),
             },
           },
         });
@@ -1325,6 +1345,8 @@ export function buildDrizzleM27WriteService(
         const updated = await updateReport(tx, report.id, report.version, {
           state: draft,
           reopenCount: report.reopenCount + 1,
+          approvedByMembershipId: null,
+          approvedAt: null,
         });
         await emit(tx, {
           eventName: "m27.cost_report.reopened",

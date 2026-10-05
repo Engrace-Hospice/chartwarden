@@ -89,6 +89,7 @@ const ORG = "org_a";
 const NOW = "2026-06-08T12:00:00.000Z";
 const PROVIDER = "11111111-1111-4111-8111-111111111111";
 const LOC_A = "22222222-2222-4222-8222-222222222222";
+const LOC_B = "33333333-3333-4333-8333-333333333333";
 
 const COORD_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const DISPATCHER_ID = "44444444-4444-4444-8444-444444444444";
@@ -325,6 +326,11 @@ interface ParStockRecord {
 
 function createFakeBackend() {
   const requests = new Map<string, RequestRecord>();
+  const admissionLocations = new Map<string, string>();
+  /** GAP-064 — admissions M6 holds no siting for (the resolver answers null). */
+  const unsitedAdmissions = new Set<string>();
+  /** GAP-064 — admissions whose siting read errors (the resolver throws: a transient seam failure). */
+  const seamErrorAdmissions = new Set<string>();
   const supplyItems = new Map<string, SupplyItemRecord>();
   const templates = new Map<string, TemplateRecord>();
   const dispatches = new Map<string, DispatchRecord>();
@@ -1259,9 +1265,24 @@ function createFakeBackend() {
     async locationIdsOf(_orgId, membershipId) {
       return membershipId === DISPATCHER_ID ? [LOC_A] : [];
     },
+    // GAP-064 — the admission's siting. Registered permissively: every admission is sited at LOC_A unless a
+    // test overrides it through `admissionLocations`.
+    async loadAdmissionLocation(_orgId, admissionId) {
+      if (seamErrorAdmissions.has(admissionId)) throw new Error("admission seam unavailable");
+      if (unsitedAdmissions.has(admissionId)) return null;
+      return admissionLocations.get(admissionId) ?? LOC_A;
+    },
   };
 
-  return { readService, writeService, resolver, seedParStock };
+  return {
+    readService,
+    writeService,
+    resolver,
+    seedParStock,
+    admissionLocations,
+    unsitedAdmissions,
+    seamErrorAdmissions,
+  };
 }
 
 type FakeBackend = ReturnType<typeof createFakeBackend>;
@@ -1966,6 +1987,144 @@ describe("M21 §4.1 rows 20-30 — comfort-kit dispatch through reconciliation a
 });
 
 // ── §4.1 rows 31-37 — vendor routing + par stock (agency operations, no PHI) ────────────────────────────
+
+// ── GAP-064 — the dispatcher ABAC Location is a SERVER fact ────────────────────────────────────────────
+// A supply_coordinator assigned ONLY to LOC_A (no cross-location designation) naming LOC_A in the body for
+// a patient served out of LOC_B must be refused on both create routes.
+const LOC_A_ONLY_COORD = {
+  "x-test-user": `user_${DISPATCHER_ID}`,
+  "x-test-org": ORG,
+  "x-test-roles": "supply_coordinator",
+  "x-test-membership": DISPATCHER_ID,
+};
+
+describe("GAP-064 — controlled-substance dispatcher Location is server-resolved", () => {
+  const kitBody = (admissionId: string, locationId: string) => ({
+    patientId: fakeId(),
+    admissionId,
+    locationId,
+    deliveryAddress: ADDRESS,
+    kindPayload: { kind: "comfort_kit_deploy" },
+  });
+
+  it("refuses a kit request whose body Location is the actor's but whose admission is sited elsewhere", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.admissionLocations.set(admissionId, LOC_B);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...LOC_A_ONLY_COORD, "idempotency-key": "gap064-req-1" },
+      payload: kitBody(admissionId, LOC_A),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("still admits the same actor when the admission really is sited at their Location", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.admissionLocations.set(admissionId, LOC_A);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...LOC_A_ONLY_COORD, "idempotency-key": "gap064-req-2" },
+      payload: kitBody(admissionId, LOC_A),
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  // ── the §4.1 row-1 cell is CONDITIONAL: a non-controlled kind never needs the admission's siting at the
+  // route; the write service verifies the Location (unsited-admission fallback included).
+  const wound = (admissionId: string, locationId: string) => ({
+    patientId: fakeId(),
+    admissionId,
+    locationId,
+    deliveryAddress: ADDRESS,
+    kindPayload: { kind: "dme" },
+  });
+  const post = (
+    app: ReturnType<typeof makeServer>["app"],
+    key: string,
+    payload: ReturnType<typeof kitBody>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...LOC_A_ONLY_COORD, "idempotency-key": key },
+      payload,
+    });
+
+  it("admits a NON-controlled request on an unsited admission (the service verifies the Location)", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.unsitedAdmissions.add(admissionId);
+    expect((await post(app, "gap064-unsited-1", wound(admissionId, LOC_A))).statusCode).toBe(201);
+  });
+
+  it("admits a NON-controlled request when the admission seam errors (the service verifies)", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.seamErrorAdmissions.add(admissionId);
+    expect((await post(app, "gap064-seam-1", wound(admissionId, LOC_A))).statusCode).toBe(201);
+  });
+
+  it("admits a controlled request on an unsited admission only for an actor assigned to the claimed Location", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.unsitedAdmissions.add(admissionId);
+    expect((await post(app, "gap064-unsited-2", kitBody(admissionId, LOC_A))).statusCode).toBe(201);
+  });
+
+  it("refuses a controlled request on an unsited admission when the actor lacks the claimed Location", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.unsitedAdmissions.add(admissionId);
+    expect((await post(app, "gap064-unsited-3", kitBody(admissionId, LOC_B))).statusCode).toBe(403);
+  });
+
+  it("refuses a controlled request when the admission seam errors (fails closed)", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.seamErrorAdmissions.add(admissionId);
+    expect((await post(app, "gap064-seam-2", kitBody(admissionId, LOC_A))).statusCode).toBe(403);
+  });
+
+  it("refuses a dispatch whose body Location is the actor's but whose request is stored at another Location", async () => {
+    const { app, backend } = makeServer();
+    const admissionId = fakeId();
+    backend.admissionLocations.set(admissionId, LOC_B);
+    // the cross-location pharmacist legitimately files the LOC_B request
+    const req = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...DISPATCHER, "idempotency-key": "gap064-req-3" },
+      payload: kitBody(admissionId, LOC_B),
+    });
+    expect(req.statusCode).toBe(201);
+    const dispatch = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/comfort-kit-dispatches",
+      headers: { ...LOC_A_ONLY_COORD, "idempotency-key": "gap064-disp-1" },
+      payload: {
+        supplyRequestId: req.json().supplyRequestId,
+        comfortKitTemplateId: fakeId(),
+        locationId: LOC_A,
+        deploymentSite: "home",
+        dispatchSource: "supply_hub",
+        pharmacyDispatchMode: "supply_hub_dispatch",
+        kitSerialNumber: "KIT-GAP064",
+        contents: [
+          {
+            comfortKitTemplateMedicationId: fakeId(),
+            dispatchedQuantity: "1",
+            dispatchedUnit: "tablet",
+          },
+        ],
+      },
+    });
+    expect(dispatch.statusCode).toBe(403);
+  });
+});
 
 describe("M21 §4.1 rows 31-37 — the D4 vendor-routing ladder and the D5 par-stock shelf", () => {
   it("routing-rule CRUD (create, list, edit, retire) and par-stock edit + observation", async () => {

@@ -16,6 +16,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -23,6 +24,7 @@ import {
   buildM30HopeSubmissionAcceptedConsumer,
   buildM30RestraintAppliedConsumer,
 } from "../src/modules/30-quality/index";
+import { selectActiveMemberRoleKeys } from "../src/modules/30-quality/member-roles";
 import { restraintAdmissionSitingForOrg } from "../src/modules/37-ipu/seams/restraint-admission-siting-for-org";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -263,5 +265,94 @@ describe.skipIf(!DB_URL)("M30 upstream-event consumers — enqueueRecompute — 
       [ORG_B],
     );
     expect(rows.rows[0].n).toBe(0);
+  });
+});
+
+// GAP-088 — the second co-signer of a PIP / SRA close must be a real ACTIVE member of the CALLER'S org with
+// live roles. Proven as the real NOBYPASSRLS `wardenx_app` role (a superuser read would prove nothing about
+// the cross-tenant case). Seeds its own users/memberships/roles on top of the suite's two orgs.
+describe.skipIf(!DB_URL)("GAP-088 selectActiveMemberRoleKeys (live, wardenx_app)", () => {
+  let admin: Client;
+  let handle: ReturnType<typeof createDbClient>;
+  const ids: Record<"active" | "suspended" | "expired" | "otherOrg" | "disabledRole", string> = {
+    active: "",
+    disabledRole: "",
+    suspended: "",
+    expired: "",
+    otherOrg: "",
+  };
+
+  beforeAll(async () => {
+    admin = new Client({ connectionString: DB_URL });
+    await admin.connect();
+    const mk = async (email: string, org: string, status: string): Promise<string> => {
+      const user = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [email])
+      ).rows[0].id as string;
+      return (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,$3::membership_status) RETURNING id`,
+          [user, org, status],
+        )
+      ).rows[0].id as string;
+    };
+    ids.active = await mk("g088-active@x.test", ORG_A, "active");
+    ids.suspended = await mk("g088-susp@x.test", ORG_A, "suspended");
+    ids.expired = await mk("g088-exp@x.test", ORG_A, "active");
+    ids.otherOrg = await mk("g088-other@x.test", ORG_B, "active");
+    ids.disabledRole = await mk("g088-disabled@x.test", ORG_A, "active");
+    const roleId = async (org: string, key: string): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'clinical_leadership') RETURNING id`,
+          [org, key],
+        )
+      ).rows[0].id as string;
+    const mdA = await roleId(ORG_A, "medical_director");
+    // A DISABLED tenant role must confer nothing (same authority as request.context.roles). A tenant row with a
+    // reserved platform key cannot be seeded here (migration 0318 backstop) — that arm is unit-tested in
+    // m30-close-cosign.test.ts.
+    const disabledRole = await roleId(ORG_A, "compliance_officer");
+    await admin.query(`UPDATE role SET enabled = false WHERE id = $1`, [disabledRole]);
+    const mdB = await roleId(ORG_B, "medical_director");
+    const grant = (org: string, membership: string, role: string, expires: string) =>
+      admin.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,${expires})`,
+        [org, membership, role],
+      );
+    await grant(ORG_A, ids.active, mdA, "NULL");
+    await grant(ORG_A, ids.suspended, mdA, "NULL");
+    await grant(ORG_A, ids.disabledRole, disabledRole, "NULL");
+    await grant(ORG_A, ids.expired, mdA, "now() - interval '1 day'");
+    await grant(ORG_B, ids.otherOrg, mdB, "NULL");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+  }, 120_000);
+
+  afterAll(async () => {
+    await handle?.close();
+    if (admin) await admin.end();
+  });
+
+  const lookup = (org: string, membershipId: string) =>
+    withOrgContext(handle.db, { organizationId: org, userId: "" }, (tx) =>
+      selectActiveMemberRoleKeys(tx, org, membershipId),
+    );
+
+  it("returns the live roles of an active member of the caller's org", async () => {
+    await expect(lookup(ORG_A, ids.active)).resolves.toEqual(["medical_director"]);
+  });
+
+  it("returns null for a suspended membership and for a membership of ANOTHER org", async () => {
+    await expect(lookup(ORG_A, ids.suspended)).resolves.toBeNull();
+    await expect(lookup(ORG_A, ids.otherOrg)).resolves.toBeNull();
+  });
+
+  it("does not count an expired role grant", async () => {
+    await expect(lookup(ORG_A, ids.expired)).resolves.toEqual([]);
+  });
+
+  it("does not count a DISABLED role (roles.enabled = false)", async () => {
+    await expect(lookup(ORG_A, ids.disabledRole)).resolves.toEqual([]);
   });
 });

@@ -12,6 +12,16 @@ export {
   type AlertRuleSeedViolation,
 } from "./alert-rules";
 
+// GAP-102 — the tighten-only floor of a `system_locked` platform rule (spec §7.4, D11).
+export {
+  ALERT_SEVERITY_RANK,
+  assertLockedRulePatchAllowed,
+  isSystemLockedEventType,
+  selectEffectiveAlertRules,
+  type LockedRulePatch,
+  type EffectiveRuleRow,
+} from "./locked-rule-floor";
+
 // M36-T09 — the six §3.13 platform-floor notification templates (ADR-0024, moved from M14) the
 // boot slice UPSERTs into `notification_template`, plus the §3.13 seed invariant validators.
 export {

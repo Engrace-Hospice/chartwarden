@@ -325,6 +325,30 @@ describe.skipIf(!DB_URL)(
       expect(check.rows[0].measurable_outcome).toBeNull();
     });
 
+    it("GAP-045 (0329): one membership cannot fill a second signer slot of the same version", async () => {
+      const { rows } = await db.query<{ provider_entity_id: string; location_id: string }>(
+        "SELECT provider_entity_id, location_id FROM discipline_care_plan_signature WHERE id=$1",
+        [a.signature],
+      );
+      const insertSecondSlot = (membership: string) =>
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO discipline_care_plan_signature (organization_id, provider_entity_id, location_id,
+             version_id, signer_membership_id, signer_role, attestation_text)
+             SELECT organization_id, $2, $3, version_id, $4, 'msw', 'second slot'
+               FROM discipline_care_plan_signature WHERE id=$1`,
+            [a.signature, rows[0].provider_entity_id, rows[0].location_id, membership],
+          ),
+        );
+      // the same membership as the seeded rn_case_manager signature, claiming a DIFFERENT role: refused.
+      await expect(insertSecondSlot(MEMBERSHIP)).rejects.toMatchObject({
+        code: "23505",
+        constraint: "discipline_care_plan_signature_version_membership_uq",
+      });
+      // a different membership may fill the other slot.
+      await expect(insertSecondSlot("99999999-9999-4999-8999-999999999999")).resolves.toBeDefined();
+    });
+
     it("a WITH CHECK refuses an INSERT into another tenant's scope", async () => {
       await expect(
         withOrg(ORG_B, () =>

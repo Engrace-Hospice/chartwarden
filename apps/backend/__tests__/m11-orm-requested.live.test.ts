@@ -38,6 +38,7 @@ import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { buildM11OrmRequestedPorts } from "../src/modules/11-orders/orm-request/ports";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
 import { parseMshEnvelope } from "../src/modules/29-external-interfaces/listener/mllp-framing";
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
@@ -49,7 +50,6 @@ import type {
 } from "../src/modules/29-external-interfaces/outbound/mllp-transport";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -187,24 +187,40 @@ describe.skipIf(!DB_URL)(
       } = {},
     ): Promise<string> {
       const s = over.service ?? svc;
-      const draft = await s.createDraft(ORG_A, member, {
-        patientId: over.patientId ?? P_OK,
-        admissionId: ADMISSION,
-        kind: (over.kind ?? "lab") as never,
-        drafterDiscipline: "rn_case_manager",
-        data: over.data ?? {
-          testCodes: LOINC,
-          fastingRequired: true,
-          collectionInstructions: "Draw before 8am",
-          routingLabId: FAC_ACTIVE,
+      const draft = await s.createDraft(
+        ORG_A,
+        member,
+        {
+          patientId: over.patientId ?? P_OK,
+          admissionId: ADMISSION,
+          kind: (over.kind ?? "lab") as never,
+          drafterDiscipline: "rn_case_manager",
+          data: over.data ?? {
+            testCodes: LOINC,
+            fastingRequired: true,
+            collectionInstructions: "Draw before 8am",
+            routingLabId: FAC_ACTIVE,
+          },
+          orderingPhysicianMdmId: over.physician ?? PH_ACTIVE,
         },
-        orderingPhysicianMdmId: over.physician ?? PH_ACTIVE,
-      }, SYSTEM_ORDER_ACTOR);
-      await s.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
-      await s.signOrder(ORG_A, member, draft.id, {
-        signerDiscipline: "rn_case_manager",
-        signedAtClient: new Date().toISOString(),
-      }, SYSTEM_ORDER_ACTOR);
+        SYSTEM_ORDER_ACTOR,
+      );
+      await s.requestSignature(
+        ORG_A,
+        draft.id,
+        { signerDiscipline: "rn_case_manager" },
+        SYSTEM_ORDER_ACTOR,
+      );
+      await s.signOrder(
+        ORG_A,
+        member,
+        draft.id,
+        {
+          signerDiscipline: "rn_case_manager",
+          signedAtClient: new Date().toISOString(),
+        },
+        SYSTEM_ORDER_ACTOR,
+      );
       return draft.id;
     }
 

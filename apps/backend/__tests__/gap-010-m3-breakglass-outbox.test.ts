@@ -99,7 +99,7 @@ describe("M36 break-glass alert consumer", () => {
     expect(rule!.severityFloor).toBe("critical");
     expect(rule!.recipientResolver).toBe("role_set");
     expect(rule!.resolverArgs).toEqual({ roleKeys: ["compliance_officer", "org_admin"] });
-    expect(rule!.systemLocked).toBe(false);
+    expect(rule!.systemLocked).toBe(true);
     expect(rule!.enabled).toBe(true);
   });
 });

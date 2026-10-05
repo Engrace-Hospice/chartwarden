@@ -109,14 +109,9 @@ const CapActionSchema = Type.Object({
   ownerMembershipId: uuid(),
   dueAt: isoDate(),
 });
-const PipCosignSchema = Type.Object({
-  qapiCoordinatorMembershipId: uuid(),
-  medicalDirectorMembershipId: uuid(),
-});
-const SraCosignSchema = Type.Object({
-  securityOfficerMembershipId: uuid(),
-  complianceOfficerMembershipId: uuid(),
-});
+// GAP-088: the wire carries ONLY the NOMINATED co-signer (nominee-based one-step close; never an attester). The first signer is the authenticated caller
+// (session membership); which role each signs under is derived server-side from the roles they hold.
+const CloseCosignerSchema = Type.Object({ cosignerMembershipId: uuid() });
 const DimensionPayload = Type.Record(Type.String(), Type.Unknown());
 
 // ── cursor / keyset page query (§4.1.2 — opaque cursor + clamp-to-100 limit) ───────────────────────────
@@ -306,7 +301,7 @@ export const AddQapiPipBodySchema = Type.Object({
 export const CloseQapiPipBodySchema = Type.Object({
   conclusionText: Type.String({ minLength: 1, maxLength: 8000 }),
   outcome: Type.String({ minLength: 1, maxLength: 500 }),
-  cosign: PipCosignSchema,
+  cosignerMembershipId: uuid(),
 });
 export const RecordQapiGovernanceBodySchema = Type.Object({
   qapiProgramId: uuid(),
@@ -341,9 +336,7 @@ export const UpdateSraRemediationBodySchema = Type.Object({
   status: Type.Optional(lit(SRA_REMEDIATION_STATUS)),
   dueAt: Type.Optional(isoDate()),
 });
-export const CloseSraCycleBodySchema = Type.Object({
-  cosign: SraCosignSchema,
-});
+export const CloseSraCycleBodySchema = CloseCosignerSchema;
 
 // Incidents (R-51, R-53, R-55, R-56, R-57, R-58, R-60)
 export const CreateIncidentBodySchema = Type.Object({

@@ -117,6 +117,9 @@ export const M21_ERROR_STATUS = {
   /** §7.1 — no serving Location resolved for the cascade. `supply_request.location_id` is NOT NULL and it
    *  drives par-stock decrement and controlled-substance custody, so a guess is worse than a retry. */
   M21_SERVING_LOCATION_UNRESOLVED: 422,
+  /** GAP-064 — the request body named a Location that is not the one the SERVER holds for the admission
+   *  (create) or the stored supply request (dispatch). A body Location is a claim, never a fact. */
+  M21_LOCATION_MISMATCH: 422,
   /** §2.5 / §2.6 — an inbound `m13.comfort_kit.*` referenced a deployment M21 has no dispatch for. */
   M21_DISPATCH_NOT_FOUND: 422,
   /** §2.8 / §3.1 — a replenish request has no M11 order behind it, so the outbox event id is its ONLY

@@ -748,6 +748,51 @@ describe("GAP-096 — a platform-scope kill switch from a tenant-side actor is 4
   });
 });
 
+describe("GAP-096 — a tenant-scope kill switch is confined to the session's own org", () => {
+  // The tenant arm may be driven by a tenant admin / clinical_safety_lead, but the org is taken from the
+  // SESSION: a body that names another org (or a spoofed `organizationId`) never reaches the write.
+  const TENANT_ADMIN = { ...SUPER, "x-test-roles": "org_admin" };
+
+  it("writes the row for the caller's own org and ignores a body-supplied organizationId", async () => {
+    const { app, capA } = makeServer();
+    const url = `/api/v1/ai/capabilities/${capA.id}/kill-switch`;
+    const res = await app.inject({
+      method: "POST",
+      url,
+      headers: TENANT_ADMIN,
+      payload: {
+        scope: "tenant",
+        organizationId: "99999999-9999-4999-8999-999999999999",
+        reason: "manual_safety_pause",
+        actorKind: "ai_safety_owner",
+        activationMessage: "tenant admin pausing for their own agency",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().scope).toBe("tenant");
+    expect(res.json().row.organizationId).not.toBeNull();
+    expect(res.json().row.organizationId).not.toBe("99999999-9999-4999-8999-999999999999");
+    expect(res.json().usedPlatformCredential).toBe(false);
+    await app.close();
+  });
+
+  it("refuses the tenant admin the platform scope on the lift as well (403)", async () => {
+    const { app, capA } = makeServer();
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/ai/capabilities/${capA.id}/kill-switch`,
+      headers: TENANT_ADMIN,
+      payload: {
+        scope: "platform",
+        actorKind: "ai_safety_owner",
+        resolutionNarrative: "tenant tries to lift the platform stop",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
 // ── R10-R12 — the tenant opt-in (needs a PILOT capability — capB, walked by R4 above in a fresh server) ─
 describe("M32-ai-platform-inject — R10-R12: tenant opt-in", () => {
   async function walkToPilot(

@@ -523,6 +523,68 @@ describe("M36-T07 messaging route inventory", () => {
       await app.close();
     });
 
+    it("GAP-102: refuses a severity downgrade on a system_locked rule → 422, nothing cloned", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/alert-rules/platform:field_safety.sos",
+        headers: ADMIN,
+        payload: { severityFloor: "info" },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("LOCKED_RULE_SEVERITY_DOWNGRADE");
+      const list = await app.inject({ method: "GET", url: "/api/v1/alert-rules", headers: RN1 });
+      const sos = list
+        .json()
+        .rules.find((r: { eventType: string }) => r.eventType === "field_safety.sos");
+      expect(sos.severityFloor).toBe("critical");
+      expect(sos.organizationId).toBeNull();
+      await app.close();
+    });
+
+    it("GAP-102: refuses a resolver change on a system_locked rule → 422", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/alert-rules/platform:system.backup_failure",
+        headers: ADMIN,
+        payload: { recipientResolver: "broadcast" },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("LOCKED_RULE_RESOLVER_IMMUTABLE");
+      await app.close();
+    });
+
+    it("GAP-102: a tightening/no-op edit of a locked rule clones it and the clone stays editable", async () => {
+      const { app } = makeServer();
+      const first = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/alert-rules/platform:field_safety.sos",
+        headers: ADMIN,
+        payload: { severityFloor: "critical" },
+      });
+      expect(first.statusCode).toBe(200);
+      const cloneId = first.json().ruleId;
+      expect(first.json().systemLocked).toBe(true);
+      const again = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/alert-rules/${cloneId}`,
+        headers: ADMIN,
+        payload: { severityFloor: "critical" },
+      });
+      expect(again.statusCode).toBe(200);
+      // and the clone cannot be used to weaken it either
+      const weaken = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/alert-rules/${cloneId}`,
+        headers: ADMIN,
+        payload: { severityFloor: "warn" },
+      });
+      expect(weaken.statusCode).toBe(422);
+      expect(weaken.json().error.code).toBe("LOCKED_RULE_SEVERITY_DOWNGRADE");
+      await app.close();
+    });
+
     it("clones a platform default into an org-scoped override on first edit (200)", async () => {
       const { app } = makeServer();
       const res = await app.inject({

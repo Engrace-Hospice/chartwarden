@@ -104,6 +104,7 @@ export function createOrderSignatureProvider(
         targetId: input.targetId,
         cosignerMembershipId: input.cosignerMembershipId,
         cosignerRole: input.cosignerRole,
+        attestationText: input.attestationText,
       });
       return { cosignatureId };
     },

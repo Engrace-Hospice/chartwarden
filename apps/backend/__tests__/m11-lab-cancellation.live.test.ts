@@ -39,6 +39,7 @@ import {
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { buildM11OrmRequestedPorts } from "../src/modules/11-orders/orm-request/ports";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
 import { parseMshEnvelope } from "../src/modules/29-external-interfaces/listener/mllp-framing";
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
@@ -50,7 +51,6 @@ import type {
 } from "../src/modules/29-external-interfaces/outbound/mllp-transport";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -165,23 +165,39 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
   }
 
   async function draftLab(patientId: string): Promise<string> {
-    const draft = await svc.createDraft(ORG_A, member, {
-      patientId,
-      admissionId: ADMISSION,
-      kind: "lab" as never,
-      drafterDiscipline: "rn_case_manager",
-      data: LAB_DATA,
-      orderingPhysicianMdmId: PH_ACTIVE,
-    }, SYSTEM_ORDER_ACTOR);
+    const draft = await svc.createDraft(
+      ORG_A,
+      member,
+      {
+        patientId,
+        admissionId: ADMISSION,
+        kind: "lab" as never,
+        drafterDiscipline: "rn_case_manager",
+        data: LAB_DATA,
+        orderingPhysicianMdmId: PH_ACTIVE,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     return draft.id;
   }
   async function signedLab(patientId: string): Promise<string> {
     const id = await draftLab(patientId);
-    await svc.requestSignature(ORG_A, id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
-    await svc.signOrder(ORG_A, member, id, {
-      signerDiscipline: "rn_case_manager",
-      signedAtClient: new Date().toISOString(),
-    }, SYSTEM_ORDER_ACTOR);
+    await svc.requestSignature(
+      ORG_A,
+      id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.signOrder(
+      ORG_A,
+      member,
+      id,
+      {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     return id;
   }
 
@@ -208,10 +224,16 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
   }
 
   const discontinue = (id: string) =>
-    svc.discontinueOrder(ORG_A, member, id, {
-      ...DISCONTINUE,
-      effectiveAt: new Date().toISOString(),
-    }, SYSTEM_ORDER_ACTOR);
+    svc.discontinueOrder(
+      ORG_A,
+      member,
+      id,
+      {
+        ...DISCONTINUE,
+        effectiveAt: new Date().toISOString(),
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
   const alertsFor = (orderId: string) => alerts.filter((a) => a.payload.orderId === orderId);
 
   beforeAll(async () => {
@@ -378,15 +400,26 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
     const patientId = randomUUID();
     await seedPatient(patientId, ORG_A, `MRN-${patientId.slice(0, 6)}`);
     const id = await draftLab(patientId);
-    await svc.requestSignature(ORG_A, id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR); // pending_signature, never signed
-    const replacement = await svc.correctOrder(ORG_A, member, id, {
-      patientId,
-      admissionId: ADMISSION,
-      kind: "lab" as never,
-      drafterDiscipline: "rn_case_manager",
-      data: LAB_DATA,
-      orderingPhysicianMdmId: PH_ACTIVE,
-    }, SYSTEM_ORDER_ACTOR);
+    await svc.requestSignature(
+      ORG_A,
+      id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    ); // pending_signature, never signed
+    const replacement = await svc.correctOrder(
+      ORG_A,
+      member,
+      id,
+      {
+        patientId,
+        admissionId: ADMISSION,
+        kind: "lab" as never,
+        drafterDiscipline: "rn_case_manager",
+        data: LAB_DATA,
+        orderingPhysicianMdmId: PH_ACTIVE,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     await settle();
     // The correction really happened (so this is not vacuous). The trap this pins: `insertDraft` writes
     // transmission_status='pending' on EVERY lab draft, so `pending` alone must NOT read as "an ORM is in flight" —
@@ -437,14 +470,20 @@ describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres"
 
   it("correcting a TRANSMITTED lab order alerts about the ORIGINAL and links the replacement", async () => {
     const { id, patientId } = await transmittedOrder();
-    const replacement = await svc.correctOrder(ORG_A, member, id, {
-      patientId,
-      admissionId: ADMISSION,
-      kind: "lab" as never,
-      drafterDiscipline: "rn_case_manager",
-      data: { ...LAB_DATA, fastingRequired: true },
-      orderingPhysicianMdmId: PH_ACTIVE,
-    }, SYSTEM_ORDER_ACTOR);
+    const replacement = await svc.correctOrder(
+      ORG_A,
+      member,
+      id,
+      {
+        patientId,
+        admissionId: ADMISSION,
+        kind: "lab" as never,
+        drafterDiscipline: "rn_case_manager",
+        data: { ...LAB_DATA, fastingRequired: true },
+        orderingPhysicianMdmId: PH_ACTIVE,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     await settle();
 
     // The supersede trigger discontinued the original silently and linked the pair.

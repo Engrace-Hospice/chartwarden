@@ -20,8 +20,8 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
-import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -199,14 +199,19 @@ describe.skipIf(!DB_URL)("M11 Drizzle read service — LIVE Postgres (M11L)", ()
     const membershipA = (
       await admin.query("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
     ).rows[0].id as string;
-    const draft = await service.createDraft(ORG_A, membershipA, {
-      patientId: PATIENT,
-      admissionId: ADMISSION,
-      kind: "dme",
-      drafterDiscipline: "rn_case_manager",
-      data: { hcpcs: "E0260" },
-      orderingPhysicianMdmId: PHYSICIAN_MDM,
-    }, SYSTEM_ORDER_ACTOR);
+    const draft = await service.createDraft(
+      ORG_A,
+      membershipA,
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "dme",
+        drafterDiscipline: "rn_case_manager",
+        data: { hcpcs: "E0260" },
+        orderingPhysicianMdmId: PHYSICIAN_MDM,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     expect(draft.status).toBe("draft");
     const readBack = await service.getOrder(ORG_A, draft.id);
     expect(readBack.id).toBe(draft.id);

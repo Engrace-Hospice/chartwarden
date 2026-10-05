@@ -152,16 +152,12 @@ export interface ApproveForSubmitArgs {
   /** The validation run whose zero-unresolved-blocking-failures gate authorizes approval (§2.3). */
   readonly validationId?: string;
 }
-export interface SubmitArgs {
-  readonly attestedByMembershipId: string;
-  readonly attestedAt: string;
-  /**
-   * The membership that approved this report (resolved from the approval event at the route). The
-   * two-person control refuses `submit` when this equals the submitting actor (§WF two-person control).
-   */
-  readonly approvedByMembershipId?: string;
-}
-export interface SubmitPastDeadlineArgs extends SubmitArgs {
+/**
+ * Submit takes NO identity from the client: the attester is the authenticated actor and the approver is the
+ * one stored server-side at `approveForSubmit` (GAP-081). Legacy body fields are ignored at the route.
+ */
+export type SubmitArgs = Record<string, never>;
+export interface SubmitPastDeadlineArgs {
   readonly reason: string;
 }
 
@@ -303,11 +299,7 @@ export interface M27WriteRouteService {
     costReportId: string,
     args: ApproveForSubmitArgs,
   ): Promise<CostReportDetailView>;
-  submit(
-    actor: M27WriteActor,
-    costReportId: string,
-    args: SubmitArgs,
-  ): Promise<CostReportDetailView>;
+  submit(actor: M27WriteActor, costReportId: string): Promise<CostReportDetailView>;
   submitPastDeadline(
     actor: M27WriteActor,
     costReportId: string,

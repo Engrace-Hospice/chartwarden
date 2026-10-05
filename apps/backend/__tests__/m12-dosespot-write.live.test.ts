@@ -305,6 +305,171 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     ).rejects.toMatchObject({ code: "SIGNER_NOT_ELIGIBLE" });
   });
 
+  describe("GAP-034 — cosignature (status guard, session role, separation of duties, M11 seam record)", () => {
+    const COSIGN_ATTESTATION =
+      "I have reviewed this medication order drafted on behalf of the prescriber and concur with it.";
+    const cosignArgs = (over: Record<string, unknown> = {}) => ({
+      cosignerRole: "clinical_supervisor" as const,
+      attestationText: COSIGN_ATTESTATION,
+      cosignerDisciplines: ["clinical_supervisor"],
+      ...over,
+    });
+    const cosignAs = (userId: string, id: string, args: ReturnType<typeof cosignArgs>) =>
+      runWithRequestContext({ organizationId: ORG_A, userId: USER2 }, () =>
+        svc.cosignOrder(ORG_A, userId, id, args),
+      );
+    const cosignRows = async (id: string) =>
+      (
+        await admin.query(
+          "SELECT signature_kind, target_kind, cosigner_role, signer_membership_id, attestation_text FROM order_signature WHERE target_id=$1 AND signature_kind='cosignature'",
+          [id],
+        )
+      ).rows;
+    /** An RN-drafted order owing a cosign: drafted by USER's membership, signature requested as an RN. */
+    async function rnDraftedPending() {
+      const draft = await svc.createDraft(
+        ORG_A,
+        memberOf[ORG_A],
+        draftArgs({ prescriberDiscipline: "rn_case_manager" }),
+      );
+      return svc.requestSignature(ORG_A, draft.id, "rn_case_manager", ["rn_case_manager"]);
+    }
+
+    it("requestSignature by an RN sets cosign_required + 'pending'; a physician's does not; sign is blocked until attached", async () => {
+      const pending = await rnDraftedPending();
+      expect(pending).toMatchObject({ cosignRequired: true, cosignStatus: "pending" });
+      await expect(
+        svc.signOrder(ORG_A, memberOf[ORG_A], pending.id, {
+          signerDisciplines: ["hospice_physician"],
+          signedAtClient: new Date().toISOString(),
+        }),
+      ).rejects.toMatchObject({ code: "COSIGN_REQUIRED" });
+      const md = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      const mdPending = await svc.requestSignature(ORG_A, md.id, "hospice_physician", [
+        "hospice_physician",
+      ]);
+      expect(mdPending).toMatchObject({ cosignRequired: false, cosignStatus: null });
+    });
+
+    it("GAP-034 follow-up — an RN-drafted order submitted for signature by a PHYSICIAN still owes the cosign (drafter discipline persisted)", async () => {
+      const draft = await svc.createDraft(
+        ORG_A,
+        memberOf[ORG_A],
+        draftArgs({ prescriberDiscipline: "rn_case_manager" }),
+      );
+      const stored = await admin.query(
+        "SELECT drafted_by_discipline FROM medication_order WHERE id=$1",
+        [draft.id],
+      );
+      expect(stored.rows[0].drafted_by_discipline).toBe("rn_case_manager");
+      // A physician (not the RN) requests signature: the requirement still comes from the STORED drafter.
+      const pending = await svc.requestSignature(ORG_A, draft.id, "hospice_physician", [
+        "hospice_physician",
+      ]);
+      expect(pending).toMatchObject({ cosignRequired: true, cosignStatus: "pending" });
+      await expect(
+        svc.signOrder(ORG_A, memberOf[ORG_A], pending.id, {
+          signerDisciplines: ["hospice_physician"],
+          signedAtClient: new Date().toISOString(),
+        }),
+      ).rejects.toMatchObject({ code: "COSIGN_REQUIRED" });
+    });
+
+    it("GAP-034 follow-up — a legacy row with NULL drafted_by_discipline falls back to the requesting discipline", async () => {
+      const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      await admin.query("UPDATE medication_order SET drafted_by_discipline=NULL WHERE id=$1", [
+        draft.id,
+      ]);
+      const pending = await svc.requestSignature(ORG_A, draft.id, "rn_case_manager", [
+        "rn_case_manager",
+      ]);
+      expect(pending).toMatchObject({ cosignRequired: true, cosignStatus: "pending" });
+    });
+
+    it("a valid cosign writes an M11 order_signature cosignature row (target_kind='medication_order') and attaches", async () => {
+      const pending = await rnDraftedPending();
+      const out = await cosignAs(member2Of[ORG_A], pending.id, cosignArgs());
+      expect(out.cosignStatus).toBe("attached");
+      const rows = await cosignRows(pending.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        signature_kind: "cosignature",
+        target_kind: "medication_order",
+        cosigner_role: "clinical_supervisor",
+        signer_membership_id: member2Of[ORG_A],
+        // GAP-034 follow-up — the attestation travels through the M11 seam and is persisted.
+        attestation_text: COSIGN_ATTESTATION,
+      });
+      await expect(cosignAs(member2Of[ORG_A], pending.id, cosignArgs())).rejects.toMatchObject({
+        code: "ALREADY_COSIGNED",
+      });
+    });
+
+    it("two concurrent cosigns write exactly ONE order_signature cosignature row (per-order row lock)", async () => {
+      const pending = await rnDraftedPending();
+      const results = await Promise.allSettled([
+        cosignAs(member2Of[ORG_A], pending.id, cosignArgs()),
+        cosignAs(member2Of[ORG_A], pending.id, cosignArgs()),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      expect(lost.reason).toMatchObject({ code: "ALREADY_COSIGNED" });
+      expect(await cosignRows(pending.id)).toHaveLength(1);
+    });
+
+    it("refusals write NO order_signature row: role not held, role too low, drafter, wrong status, not required", async () => {
+      const pending = await rnDraftedPending();
+      await expect(
+        cosignAs(
+          member2Of[ORG_A],
+          pending.id,
+          cosignArgs({ cosignerDisciplines: ["rn_case_manager"] }),
+        ),
+      ).rejects.toMatchObject({ code: "DISCIPLINE_NOT_HELD" });
+      await expect(
+        cosignAs(
+          member2Of[ORG_A],
+          pending.id,
+          cosignArgs({ cosignerRole: "rn_case_manager", cosignerDisciplines: ["rn_case_manager"] }),
+        ),
+      ).rejects.toMatchObject({ code: "COSIGNER_ROLE_MISMATCH" });
+      await expect(cosignAs(memberOf[ORG_A], pending.id, cosignArgs())).rejects.toMatchObject({
+        code: "COSIGN_SELF",
+      });
+      const draft = await svc.createDraft(
+        ORG_A,
+        memberOf[ORG_A],
+        draftArgs({ prescriberDiscipline: "rn_case_manager" }),
+      );
+      await expect(cosignAs(member2Of[ORG_A], draft.id, cosignArgs())).rejects.toMatchObject({
+        code: "COSIGN_NOT_ALLOWED_IN_STATUS",
+      });
+      const md = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      await svc.requestSignature(ORG_A, md.id, "hospice_physician", ["hospice_physician"]);
+      await expect(cosignAs(member2Of[ORG_A], md.id, cosignArgs())).rejects.toMatchObject({
+        code: "COSIGN_NOT_REQUIRED",
+      });
+      for (const id of [pending.id, draft.id, md.id]) expect(await cosignRows(id)).toHaveLength(0);
+      expect(await statusOf(pending.id)).toBe("pending_signature");
+    });
+
+    it("the named physician who will sign may not cosign the same order", async () => {
+      const pending = await rnDraftedPending();
+      await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], PHYSICIAN_MDM);
+      await expect(
+        cosignAs(
+          member2Of[ORG_A],
+          pending.id,
+          cosignArgs({
+            cosignerRole: "medical_director",
+            cosignerDisciplines: ["medical_director"],
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "COSIGN_SELF" });
+      await svc.revokePrescriber(ORG_A, member2Of[ORG_A], "test cleanup");
+    });
+  });
+
   it("GAP-035: another prescriber cannot sign a pending order they neither authored nor are named on", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);

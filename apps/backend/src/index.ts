@@ -39,6 +39,7 @@ import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
+import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
   createDrizzleFeatureFlagAdmin,
   createDrizzleFeatureFlagReader,
@@ -161,8 +162,8 @@ import {
 import {
   type ActorPermissionResolver,
   type M3OutboxPublisher,
-  createDbOrgRoleLookup,
   M3_OUTBOX_EVENTS,
+  createDbOrgRoleLookup,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
   createProposedRoleGuard,
@@ -991,9 +992,9 @@ import {
   M36_OUTBOX_EVENTS,
   buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
+  buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
-  buildM36BreakGlassAlertConsumer,
   createDrizzleAlertEmitter,
   createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
@@ -3108,7 +3109,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M3 — role catalog + grants on real stores; TASK-004 threads the boot-registered RBAC
           // handle so /me/permissions + anti-escalation read the live engine and grant/revoke/edit
           // drop the §2.5 cache immediately.
-          mountAuthorizationRoutes(app, dbHandle.db, liveRbacHandle, m3OutboxPublisher as M3OutboxPublisher);
+          mountAuthorizationRoutes(
+            app,
+            dbHandle.db,
+            liveRbacHandle,
+            m3OutboxPublisher as M3OutboxPublisher,
+          );
           // TASK-001 ledger (ARCH-005) — three M3 route deps are still in-memory.
           noteInMemoryBinding({
             kind: "route-dep",
@@ -3246,6 +3252,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // was never written by any code path, so every admission was unsited at the location level
             // and M10 refused to create its NOT NULL-sited HOPE timepoint windows.
             { activeLocationsFor: buildProviderEntityLocationLister(dbHandle.db) },
+            // GAP-022 — the F2F performer role is derived from the clinician's real role grants.
+            buildF2fClinicianRoleReader(dbHandle.db),
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write

@@ -120,7 +120,12 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
 describe("M36-T05 §7.4 system_locked floors", () => {
   it("SOS, NOE late-risk, and backup-failure are the system_locked set, all enabled", () => {
     expect([...SYSTEM_LOCKED_EVENT_TYPES].sort()).toEqual(
-      ["field_safety.sos", "noe.late_risk", "system.backup_failure"].sort(),
+      [
+        "field_safety.sos",
+        "m3.breakglass.invoked",
+        "noe.late_risk",
+        "system.backup_failure",
+      ].sort(),
     );
     for (const eventType of SYSTEM_LOCKED_EVENT_TYPES) {
       const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);

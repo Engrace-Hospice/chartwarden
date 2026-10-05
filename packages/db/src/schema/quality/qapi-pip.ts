@@ -5,7 +5,16 @@
 // app.org_id RLS). The RCA / intervention / conclusion narratives may name staff/patients →
 // audit-denylisted (§3.6). document_id is an M22 back-ref (logical).
 import { sql } from "drizzle-orm";
-import { check, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { qapiProgram } from "./qapi-program";
 import { qapiProject } from "./qapi-project";
@@ -41,6 +50,11 @@ export const qapiPip = pgTable(
     cosignQapiCoordinatorMembershipId: uuid("cosign_qapi_coordinator_membership_id"),
     cosignMedicalDirectorAt: timestamp("cosign_medical_director_at", { withTimezone: true }),
     cosignMedicalDirectorMembershipId: uuid("cosign_medical_director_membership_id"),
+    // 0335 (GAP-088): nominee-based one-step close. attested=true (default; every pre-0335 row) = both slots
+    // signed; false = only `closure_closed_by` signed, the nominee's slot `_at` is NULL.
+    closureClosedByMembershipId: uuid("closure_closed_by_membership_id"),
+    closureNomineeMembershipId: uuid("closure_nominee_membership_id"),
+    closureCosignAttested: boolean("closure_cosign_attested").notNull().default(true),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     suspendReason: text("suspend_reason"), // ≥60 chars if status=suspended
     documentId: uuid("document_id"), // populated by M22 back-ref
@@ -51,7 +65,14 @@ export const qapiPip = pgTable(
   (t) => ({
     closureGuard: check(
       "chk_qapi_pip_closure_cosign", // V-11
-      sql`(${t.closedAt} IS NULL) OR (${t.cosignQapiCoordinatorAt} IS NOT NULL AND ${t.cosignMedicalDirectorAt} IS NOT NULL)`,
+      sql`(${t.closedAt} IS NULL)
+        OR (${t.closureCosignAttested} AND ${t.cosignQapiCoordinatorAt} IS NOT NULL AND ${t.cosignMedicalDirectorAt} IS NOT NULL)
+        OR (NOT ${t.closureCosignAttested}
+          AND ${t.closureClosedByMembershipId} IS NOT NULL AND ${t.closureNomineeMembershipId} IS NOT NULL
+          AND ((${t.closureClosedByMembershipId} = ${t.cosignQapiCoordinatorMembershipId} AND ${t.cosignQapiCoordinatorAt} IS NOT NULL
+                AND ${t.closureNomineeMembershipId} = ${t.cosignMedicalDirectorMembershipId} AND ${t.cosignMedicalDirectorAt} IS NULL)
+            OR (${t.closureClosedByMembershipId} = ${t.cosignMedicalDirectorMembershipId} AND ${t.cosignMedicalDirectorAt} IS NOT NULL
+                AND ${t.closureNomineeMembershipId} = ${t.cosignQapiCoordinatorMembershipId} AND ${t.cosignQapiCoordinatorAt} IS NULL)))`,
     ),
   }),
 );

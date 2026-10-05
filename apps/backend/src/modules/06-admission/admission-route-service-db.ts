@@ -58,6 +58,7 @@ import {
   evaluatePeriodAdequacy,
   summarizeAdequacy,
 } from "./certification/adequacy";
+import { type F2fPerformerRole, resolveF2fPerformerRole } from "./certification/f2f-performer";
 import {
   assertPlausibleEncounterDate,
   expectedStartFromPriorEnd,
@@ -86,6 +87,7 @@ import type {
   CtiDraftInput,
   DischargeInput,
   DischargeResult,
+  F2fScheduleInput,
   ReferralActivityView,
   ReferralNoteView,
   ReferralReadView,
@@ -194,6 +196,16 @@ export interface ProviderEntityOrgCheckPort {
  */
 export interface ProviderEntityLocationPort {
   activeLocationsFor(organizationId: string, providerEntityId: string): Promise<readonly string[]>;
+}
+
+/**
+ * GAP-022 — the role keys a user ACTUALLY holds in this org (enabled roles on unexpired assignments), the
+ * authority the F2F performer role is derived from. Memberships / roles are M3's tables, so the lookup is
+ * injected from the composition root. `null` = the user has no live membership in the org. An absent
+ * binding fails a human-driven schedule CLOSED (503) rather than trusting the request body's role.
+ */
+export interface F2fClinicianRolePort {
+  roleKeysForUser(organizationId: string, userId: string): Promise<readonly string[] | null>;
 }
 
 /**
@@ -498,6 +510,7 @@ export function createDbAdmissionRouteService(
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
   providerEntityLocations?: ProviderEntityLocationPort,
   dpoaConsent?: DpoaConsentCheckPort,
+  f2fClinicianRoles?: F2fClinicianRolePort,
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -4544,6 +4557,35 @@ export function createDbAdmissionRouteService(
     },
     // ── M6L-T04: face-to-face encounter (§2.3.4) ──────────────────────────────────────────────────
     async scheduleF2f(organizationId, input): Promise<MutationResult> {
+      const derivePerformerRole = async (i: F2fScheduleInput): Promise<F2fPerformerRole> => {
+        if (i.actor.kind === "system") {
+          // Trusted non-request caller: its role is already server-decided, but still must be eligible.
+          return resolveF2fPerformerRole(
+            i.clinicianRole === "hospice_np"
+              ? ["np"]
+              : i.clinicianRole === "hospice_md"
+                ? ["md"]
+                : [],
+            i.clinicianRole,
+          );
+        }
+        if (!f2fClinicianRoles)
+          throw new WardenXError(
+            "F2F_ROLE_SOURCE_UNAVAILABLE",
+            "the clinician role source is not bound; refusing to trust a client-supplied performer role",
+            503,
+          );
+        return resolveF2fPerformerRole(
+          await f2fClinicianRoles.roleKeysForUser(organizationId, i.scheduledClinicianId),
+          i.clinicianRole,
+        );
+      };
+      // GAP-022 — the performer role is DERIVED from the scheduled clinician's real role grants (or,
+      // for the explicit `system` actor only, the caller's server-decided role); the body's
+      // `clinicianRole` is a claim that must be backed by a grant. RN / PA / attending never qualify.
+      // Resolved BEFORE the outer transaction: the role port opens its own `withOrgContext`, so calling it
+      // inside would hold two pool connections per request.
+      const role = await derivePerformerRole(input);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [period] = await tx
           .select({ id: EP.id })
@@ -4551,9 +4593,6 @@ export function createDbAdmissionRouteService(
           .where(eq(EP.id, input.electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(input.electionPeriodId);
-        // The DB `f2f_performer_role` enum admits only hospice_md / hospice_np (§3.2); anything else
-        // (e.g. an attending) defaults to hospice_md — the performer identity is captured separately.
-        const role = input.clinicianRole === "hospice_np" ? "hospice_np" : "hospice_md";
         const f2f = firstOrThrow(
           await tx
             .insert(F2F)
@@ -4670,7 +4709,13 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async attestF2f(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+    async attestF2f(
+      organizationId,
+      id,
+      ifVersion,
+      actorUserId,
+      attestationNarrative,
+    ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4684,24 +4729,20 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
-        if (cur.status !== "completed")
-          throw new AdmissionStateError(
-            "ILLEGAL_TRANSITION",
-            `F2F cannot attest from '${cur.status}'`,
-          );
-        // §2.3.4 R-F2F-04 — the attesting user must be the performer. (The attestation narrative gate
-        // binds when the attest route captures a narrative; it is not in this signature.)
-        if (actorUserId && cur.performer !== actorUserId)
-          throw new AdmissionStateError(
-            "F2F_INVALID_PERFORMER",
-            "attesting user must be the performer",
-          );
+        // GAP-022 / R-F2F-04 — run the real machine: narrative >= 100 chars and the attester IS the
+        // performer. No falsy-actor bypass: an empty actor id never equals the stored performer.
+        transitionFaceToFace(cur.status as FaceToFaceState, {
+          type: "attest",
+          narrative: attestationNarrative,
+          performerIsActor: actorUserId !== "" && cur.performer === actorUserId,
+        });
         const attestedAt = now();
         const r = firstOrThrow(
           await tx
             .update(F2F)
             .set({
               status: "attested",
+              attestationNarrative: attestationNarrative.trim(),
               attestationSignedAt: attestedAt,
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),

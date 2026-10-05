@@ -49,7 +49,12 @@ import type {
   ResolvedMessage,
   RoutingMap,
 } from "@wardenx/messaging";
-import { rollUpAlertOutcome } from "@wardenx/messaging";
+import {
+  PLATFORM_DEFAULT_ALERT_RULES,
+  assertLockedRulePatchAllowed,
+  isSystemLockedEventType,
+  rollUpAlertOutcome,
+} from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -979,30 +984,42 @@ export function createDbMessagingRouteService(
           .limit(1)) as Array<typeof AR.$inferSelect>;
         const base = baseRows[0];
         if (!base) throw new NotFoundError("alert rule", input.ruleId);
-        if (base.systemLocked && input.patch.enabled === false) {
-          throw new WardenXError("SYSTEM_LOCKED", "system_locked rules cannot be disabled", 403);
-        }
+        // GAP-102: a system_locked rule may only be tightened (spec §7.4 / D11) — refused here with a
+        // named 4xx before any row is written; migration 0334's trigger is the DB backstop.
+        assertLockedRulePatchAllowed(base.eventType, input.patch);
 
         const severityFloor = input.patch.severityFloor ?? (base.severityFloor as AlertSeverity);
         const recipientResolver =
           input.patch.recipientResolver ?? (base.recipientResolver as AlertRecipientResolver);
         const enabled = input.patch.enabled ?? base.enabled;
+        // Migration 0334's trigger rejects an UNLOCKED tenant row for an event whose platform rule is
+        // locked, so a legacy clone (written before the event was locked, e.g. m3.breakglass.invoked) is
+        // promoted on edit — judged against the platform seed, never the clone's own flag.
+        const systemLocked = base.systemLocked || isSystemLockedEventType(base.eventType);
 
         // One override per (org, event_type): update the existing org row if present, else clone the
         // base into a new org-scoped row. (When `base` is already the org row, this updates it.)
         const ownRows = (await tx
-          .select({ id: AR.id })
+          .select({ id: AR.id, channelsOverride: AR.channelsOverride })
           .from(AR)
           .where(and(eq(AR.organizationId, orgId), eq(AR.eventType, base.eventType)))
-          .limit(1)) as Array<{ id: string }>;
+          .limit(1)) as Array<{ id: string; channelsOverride: string[] | null }>;
         let row: typeof AR.$inferSelect;
         if (ownRows[0]) {
+          // A weak legacy clone (reduced/NULL channels, different resolver_args) is not touched by the
+          // patch fields yet still trips migration 0334's trigger on any UPDATE — so a locked event's
+          // update also restores resolver_args and a channels superset of the platform floor.
+          const lockedFloor = systemLocked
+            ? await loadLockedFloor(tx, base.eventType, ownRows[0].channelsOverride)
+            : {};
           const updated = (await tx
             .update(AR)
             .set({
               severityFloor,
               recipientResolver,
               enabled,
+              systemLocked,
+              ...lockedFloor,
               updatedAt: new Date(),
             })
             .where(eq(AR.id, ownRows[0].id))
@@ -1019,7 +1036,7 @@ export function createDbMessagingRouteService(
               recipientResolver,
               resolverArgs: base.resolverArgs,
               channelsOverride: base.channelsOverride,
-              systemLocked: base.systemLocked,
+              systemLocked,
               enabled,
             })
             .returning()) as Array<typeof AR.$inferSelect>;
@@ -1029,4 +1046,29 @@ export function createDbMessagingRouteService(
       });
     },
   };
+}
+
+/**
+ * For a system_locked event type: the `resolverArgs` + `channelsOverride` an org row must carry to satisfy
+ * migration 0334 — the platform row's resolver_args and a SUPERSET of its channels (the clone's extra
+ * channels are kept; a NULL clone takes the platform list). Reads the platform floor row the way the
+ * emitter does, falling back to the seed if the row is absent. Empty object when there is no floor.
+ */
+async function loadLockedFloor(
+  tx: Pick<DbClient, "select">,
+  eventType: string,
+  cloneChannels: readonly string[] | null,
+): Promise<{ resolverArgs?: unknown; channelsOverride?: string[] | null }> {
+  const rows = (await tx
+    .select()
+    .from(AR)
+    .where(and(isNull(AR.organizationId), eq(AR.eventType, eventType), eq(AR.systemLocked, true)))
+    .limit(1)) as Array<typeof AR.$inferSelect>;
+  const seed = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+  const floor = rows[0] ?? seed;
+  if (!floor) return {};
+  const platformChannels = (floor.channelsOverride ?? null) as readonly string[] | null;
+  if (platformChannels === null) return { resolverArgs: floor.resolverArgs };
+  const merged = [...new Set([...(cloneChannels ?? []), ...platformChannels])];
+  return { resolverArgs: floor.resolverArgs, channelsOverride: merged };
 }

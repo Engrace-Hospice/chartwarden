@@ -26,6 +26,7 @@ import type {
   SuppliesAbacResolver,
   SupplyDispatchAbacFacts,
 } from "./abac-predicates";
+import { getAdmissionStatusReader } from "./seams/index";
 
 /** The M3 role-grant read `roleKeysOf` derives from — structurally typed (no M3 schema import). */
 export interface SuppliesRoleGrantReader {
@@ -220,6 +221,18 @@ export function buildDrizzleSuppliesAbacResolver(
       } catch {
         return null;
       }
+    },
+
+    // null = absent / unsited / cross-tenant. A seam ERROR is deliberately NOT swallowed to null: null means
+    // "unsited" (the predicate falls back to the actor's own Locations), so an unreadable siting must reach
+    // the predicate as a throw and deny a controlled request.
+    async loadAdmissionLocation(orgId, admissionId) {
+      const siting = await getAdmissionStatusReader().getAdmissionSiting(
+        orgId,
+        admissionId as never,
+      );
+      const locationId = siting?.locationId;
+      return typeof locationId === "string" && locationId.length > 0 ? locationId : null;
     },
 
     async locationIdsOf(orgId, membershipId) {

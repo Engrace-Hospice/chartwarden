@@ -11,6 +11,7 @@ import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predi
 import {
   type AdmissionWriteOutboxPort,
   type DpoaConsentCheckPort,
+  type F2fClinicianRolePort,
   type IpuBedAssignmentReaderPort,
   type ProviderEntityLocationPort,
   type ProviderEntityOrgCheckPort,
@@ -21,6 +22,7 @@ import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission
 
 export * from "./state-machines";
 export * from "./admission-evidence-service";
+export * from "./certification/f2f-performer";
 export * from "./admission-uploaded-evidence";
 
 /**
@@ -37,6 +39,7 @@ export function mountAdmissionRoutes(
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
   providerEntityLocations?: ProviderEntityLocationPort,
+  f2fClinicianRoles?: F2fClinicianRolePort,
 ): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
   _registerM6Routes(app, {
@@ -47,6 +50,7 @@ export function mountAdmissionRoutes(
       providerEntityOrgCheck,
       providerEntityLocations,
       dpoaConsentCheck(),
+      f2fClinicianRoles,
     ),
   });
 }

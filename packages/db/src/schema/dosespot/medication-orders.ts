@@ -103,6 +103,9 @@ export const medicationOrders = pgTable(
     // Cosign control.
     cosignRequired: boolean("cosign_required").notNull().default(false),
     cosignStatus: text("cosign_status"), // null when !cosignRequired
+    // GAP-034 follow-up (mig 0328) — the SESSION-held discipline that drafted the order (never a body claim);
+    // the cosign axis reads it at requestSignature. NULL = unknown/legacy => the requester's discipline is used.
+    draftedByDiscipline: text("drafted_by_discipline"),
 
     // Document backref (M22 outbox handshake; null until rendered).
     documentId: uuid("document_id"),

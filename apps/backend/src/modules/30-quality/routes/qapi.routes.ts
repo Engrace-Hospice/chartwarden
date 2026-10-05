@@ -17,8 +17,9 @@
 // (presence guard; the M1 `applyIdempotency` middleware does the 24h replay caching). READS disclose the
 // actor's own-org QAPI rows (aggregate; no PHI) cursor-paginated per §4.1.2. Org/actor/owner binding is
 // ALWAYS server-side (`request.context`, never the body). Mirrors M33 routes/definitions.routes.ts.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
+import { requestStepUpFresh } from "../../../bootstrap/index";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import {
@@ -43,7 +44,7 @@ import {
   parse,
 } from "./quality-typebox";
 import type { M30ReadRouteService } from "./read-service";
-import type { CloseQapiPipArgs, M30WriteRouteService } from "./write-service";
+import type { M30WriteRouteService } from "./write-service";
 
 export interface QapiRouteDeps {
   /** The combined M30 route service (read + write); the P2c Drizzle backend implements both interfaces. */
@@ -59,6 +60,18 @@ const QAPI_READ = P("qapi.read");
 const QAPI_WRITE = P("qapi.write");
 const QAPI_ADMIN = P("qapi.admin");
 const QAPI_CLOSE = P("qapi.close");
+// GAP-088 — the two-person close: `qapiCloseAuthority` (caller ∈ {QAPI Coordinator, Medical Director} AND
+// the body's co-signer is a distinct person holding the OTHER role), keyed on the body co-signer. Break-glass
+// must not stand in for a second human signer, so it cannot substitute here. The close also needs a recent
+// step-up (spec line 3804; operation key `qapi.close`).
+const QAPI_CLOSE_AUTHORITY = requireAbac("qapi.close", "qapiCloseAuthority", {
+  getTarget: (request) => ({
+    cosignerMembershipId: (request.body as { cosignerMembershipId?: unknown } | null)
+      ?.cosignerMembershipId,
+  }),
+  breakGlassBypassable: false,
+}) as PreHandler;
+const QAPI_CLOSE_STEPUP = requireStepUp("qapi.close") as PreHandler;
 const QAPI_PROJECT_OWN = OWNS_PROJECT("qapi.write");
 const IDEMPOTENT = requireIdempotencyKey();
 
@@ -241,12 +254,15 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
     },
   );
 
-  // R-31 — close a PIP (TWO-PERSON co-sign, V-11). RBAC gates `qapi.close`; the route passes the cosigner +
+  // R-31 — close a PIP. NOMINEE-BASED ONE-STEP close: the caller is the only signer; `cosignerMembershipId`
+  // is validated as an eligible QAPI Coordinator/Medical Director but is recorded as a NOMINATED co-signer
+  // (`cosignerAttested: false`), never as an attester. Pending-close + nominee confirmation is the logged
+  // follow-up. (V-11.) RBAC gates `qapi.close`; the route passes the cosigner +
   // actor to the write service, where `assertPipCloseSplitActor` enforces the split-actor invariant against
   // the service-injected (persisted) charterer — the closer ≠ charterer SoD is never read off the wire. §4.1.
   app.post(
     "/api/v1/quality/qapi/pips/:pipId/close",
-    { preHandler: [QAPI_CLOSE, IDEMPOTENT] },
+    { preHandler: [QAPI_CLOSE, QAPI_CLOSE_STEPUP, QAPI_CLOSE_AUTHORITY, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { pipId } = parse(PipIdParamsSchema, request.params);
@@ -254,11 +270,11 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
       const res = await service.closeQapiPip(actor, pipId, {
         conclusionText: body.conclusionText,
         outcome: body.outcome,
-        // The wire carries only the two role ids (`PipCosignSchema`); `charteredByMembershipId` is
-        // injected by the write service from the persisted PIP row before `assertPipCloseSplitActor`
-        // (closer ≠ charterer SoD, V-11) — NEVER read off the body. The scaffolding Arg types `cosign`
-        // as the full `PipClosureCosign`, so this narrow cast bridges the documented service-injection gap.
-        cosign: body.cosign as CloseQapiPipArgs["cosign"],
+        // GAP-088: the wire carries ONLY the second co-signer; the first is `actor.membershipId` (session).
+        // `charteredByMembershipId` is injected by the service from the persisted PIP row (V-11 SoD).
+        cosignerMembershipId: body.cosignerMembershipId,
+        // Real freshness from the server-assembled session — never a body field or a constant.
+        recentStepUp: await requestStepUpFresh(request, "qapi.close"),
       });
       return reply.code(200).send(res);
     },

@@ -147,14 +147,18 @@ export const ApproveForSubmitBodySchema = Type.Object({
 });
 
 export const SubmitBodySchema = Type.Object({
-  attestedByMembershipId: uuid(),
-  attestedAt: isoInstant(),
+  // Legacy client fields (GAP-081): accepted for back-compat, IGNORED. The attester is the authenticated
+  // actor, the attestation time is server time, the approver is stored server-side at approve-for-submit.
+  attestedByMembershipId: Type.Optional(uuid()),
+  attestedAt: Type.Optional(isoInstant()),
   approvedByMembershipId: Type.Optional(uuid()),
 });
 
 export const SubmitPastDeadlineBodySchema = Type.Object({
-  attestedByMembershipId: uuid(),
-  attestedAt: isoInstant(),
+  // Legacy client fields (GAP-081): accepted for back-compat, IGNORED. The attester is the authenticated
+  // actor, the attestation time is server time, the approver is stored server-side at approve-for-submit.
+  attestedByMembershipId: Type.Optional(uuid()),
+  attestedAt: Type.Optional(isoInstant()),
   approvedByMembershipId: Type.Optional(uuid()),
   reason: Type.String({ minLength: 20, maxLength: 1000 }),
 });

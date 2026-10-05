@@ -98,6 +98,8 @@ export class CostReportRepository {
         | "wageSource"
         | "deadlineExtensionUntilDate"
         | "closedAt"
+        | "approvedByMembershipId"
+        | "approvedAt"
       >
     >,
   ): Promise<VersionedUpdateResult<schema.CostReport>> {

@@ -34,6 +34,7 @@ import {
   M6_OUTBOX_EVENTS,
   buildM6DocumentBackrefConsumer,
 } from "../src/modules/06-admission/index";
+import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
@@ -74,6 +75,8 @@ import {
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+const F2F_ATTESTATION_NARRATIVE =
+  "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -387,6 +390,7 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
       electionPeriodId: periodId,
       scheduledClinicianId: MD,
       clinicianRole: "hospice_md",
+      actor: SYSTEM_F2F_ACTOR,
       scheduledDate: new Date().toISOString().slice(0, 10) as never,
     });
     const done = await svc.completeF2f(
@@ -395,7 +399,13 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
       f2f.version,
       new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
     );
-    const attested = await svc.attestF2f(ORG_A, f2f.id, done.version, MD);
+    const attested = await svc.attestF2f(
+      ORG_A,
+      f2f.id,
+      done.version,
+      MD,
+      F2F_ATTESTATION_NARRATIVE,
+    );
     expect(attested.state).toBe("attested");
 
     await settle();

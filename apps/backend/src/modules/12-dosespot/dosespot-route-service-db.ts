@@ -24,7 +24,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // siting is null (mig 0132); (3) medication_order has NO prescriber_discipline / signed_by / discontinuation_
 // reason column, so requestSignature's eligibility reads the threaded `signerDiscipline` arg and the read view
 // surfaces the stable defaults; (4) the M11 `OrderSignatureProvider` sign seam is not threaded — signing
-// UPDATEs the order status directly (no order_signature row); the medication-history read + reconcile are
+// UPDATEs the order status directly (no order_signature row; COSIGN goes through the seam, GAP-034); the medication-history read + reconcile are
 // real since F-238 (`medication_history_record`, DoseSpot + DocLens rows) but reconcile NEVER mints an order
 // (`resultingOrderId` is always null — D12 for DocLens rows, the D10 carry-forward draft is unbuilt); (5) the refill-SLA / controlled-substance policies have no
 // table in Phase 1 — the put* routes apply their tighten-only guards and return the computed view without
@@ -42,8 +42,12 @@ import { type SQL, and, desc, eq, exists, inArray, isNotNull, isNull, or, sql } 
 import { getSeam } from "../../bootstrap/index";
 import { getOrderSignatureProvider } from "../11-orders";
 import {
+  assertCosignSatisfied,
+  assertCosignStanding,
   assertDisciplineHeld,
   assertRetransmitStanding,
+  cosignDraftingDiscipline,
+  cosignRequiredFor,
   isVerbalRecorderDiscipline,
   mdmIdAlreadyEnrolled,
   namedPrescriberNotEnrolled,
@@ -388,6 +392,12 @@ export function createDbDoseSpotBackend(
     if (!r) throw new NotFoundError(`medication order ${id} not found`);
     return r;
   }
+  /** Load an order taking a row lock (`FOR UPDATE`) until the surrounding tx ends — serialises writers per order. */
+  async function lockOrder(tx: DbClient, id: string): Promise<MoRow> {
+    const [r] = await tx.select().from(MO).where(eq(MO.id, id)).limit(1).for("update");
+    if (!r) throw new NotFoundError(`medication order ${id} not found`);
+    return r;
+  }
   /** Re-read one order (post-write) as the wire view. */
   async function readOrder(tx: DbClient, id: string): Promise<MedicationOrderView> {
     return toOrderView(await loadOrder(tx, id));
@@ -430,6 +440,9 @@ export function createDbDoseSpotBackend(
           route: args.route,
           data: args.data ?? {},
           prescriberMembershipId: userId,
+          // GAP-034 follow-up — the drafting discipline, held-checked against the SESSION by the route
+          // (never trusted from the body alone); read back by requestSignature for the cosign axis.
+          draftedByDiscipline: args.prescriberDiscipline.trim() || null,
           prescribingPhysicianMdmId: args.prescribingPhysicianMdmId,
           dispensingPharmacyMdmId: args.dispensingPharmacyMdmId ?? null,
           refillsAuthorized: args.refillsAuthorized,
@@ -625,9 +638,20 @@ export function createDbDoseSpotBackend(
           sudConsentSatisfied: true, // M39 consent unbound in the DB backend → allowed (§7.13)
           tenantEpcsCertified: DEFAULT_CS_POLICY.epcsCertificationStatus === "certified", // false (D18)
         });
+        // GAP-034 — the cosign axis from the drafting/requesting session discipline (held, asserted above),
+        // never a body field: an RN-tier drafter's order owes a supervising cosign before it can be signed.
+        const cosignRequired = cosignRequiredFor(
+          cosignDraftingDiscipline(r.draftedByDiscipline, signerDiscipline),
+        );
         await tx
           .update(MO)
-          .set({ status: "pending_signature", version: r.version + 1, updatedAt: new Date() })
+          .set({
+            status: "pending_signature",
+            cosignRequired,
+            cosignStatus: cosignRequired ? "pending" : null,
+            version: r.version + 1,
+            updatedAt: new Date(),
+          })
           .where(eq(MO.id, id));
         await emit(
           tx,
@@ -647,6 +671,7 @@ export function createDbDoseSpotBackend(
     async signOrder(organizationId, userId, id, args) {
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
+        assertCosignSatisfied(r);
         const fromVerbal = r.status === "verbal_pending";
         // GAP-035 — decided from the session actor + the stored order, never from the request body.
         const [roster] = await tx
@@ -705,6 +730,7 @@ export function createDbDoseSpotBackend(
       // (OFF) — the machine refuses the transition otherwise. No DB write on the (unreachable) success path.
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
+        assertCosignSatisfied(r); // an owed cosign gates EPCS completion exactly as it gates signOrder.
         transitionMedicationOrder(r.status, {
           type: "completeSecondFactor",
           challengeCompletedInTime: true,
@@ -811,18 +837,53 @@ export function createDbDoseSpotBackend(
         return readOrder(tx, id);
       });
     },
-    async cosignOrder(organizationId, userId, id, _args) {
-      return withOrg(organizationId, async (tx) => {
-        const r = await loadOrder(tx, id);
-        if (r.prescriberMembershipId === userId)
-          throw new NotFoundError(
-            "a medication order may not be cosigned by its own drafter (§7.3)",
+    async cosignOrder(organizationId, userId, id, args) {
+      // GAP-034 — decided from the SESSION roles + the STORED order; `args.cosignerRole` is only a claim.
+      const standing = (tx: DbClient, r: MoRow) =>
+        tx
+          .select({ membershipId: DP.membershipId })
+          .from(DP)
+          .where(
+            and(eq(DP.externalPhysicianMdmId, r.prescribingPhysicianMdmId), isNull(DP.revokedAt)),
+          )
+          .limit(1)
+          .then(([signer]) =>
+            assertCosignStanding({
+              orderStatus: r.status,
+              cosignRequired: r.cosignRequired,
+              cosignStatus: r.cosignStatus,
+              claimedRole: args.cosignerRole,
+              heldRoles: args.cosignerDisciplines,
+              cosignerMembershipId: userId,
+              drafterMembershipId: r.prescriberMembershipId,
+              signerMembershipId: signer?.membershipId ?? null,
+            }),
           );
-        // The cosignature primitive is M11's `OrderSignatureProvider`; the DB backend records the attach
-        // locally (no M12-owned cosign event, mirroring the in-mem slice).
+      // GAP-034 follow-up — SERIALISED per order. The old shape (read-only pre-check, then the M11 seam write
+      // in its own committed tx, then a second tx) let two concurrent cosigns both pass the pre-check and
+      // both commit an immutable cosignature ledger row before one lost with ALREADY_COSIGNED.
+      // Now the whole sequence runs in ONE tx that holds `SELECT ... FOR UPDATE` on the medication_order row:
+      // the second cosign blocks on the row lock until the first commits, then re-reads `cosign_status =
+      // 'attached'` and is refused by `standing` BEFORE it ever reaches the seam, so at most one row is written.
+      // The M11 seam cannot join this tx (it opens its own request-scoped tx via withOrgContextFromRequest and
+      // joining would cross the module boundary), but it never touches the medication_order row — M12 owns it
+      // and the seam only inserts into the M11 signature ledger — so the held lock cannot deadlock against it.
+      // M11 owns the signature ledger (spec §1 / D3: M12 never writes it): the cosignature is recorded through
+      // the published OrderSignatureProvider seam (signature_kind='cosignature', target_kind='medication_order').
+      return withOrg(organizationId, async (tx) => {
+        const r = await lockOrder(tx, id);
+        await standing(tx, r); // refusals (incl. a concurrent cosign that already attached) write no ledger row.
+        await getOrderSignatureProvider().cosignOrder({
+          organizationId,
+          targetKind: "medication_order",
+          targetId: id,
+          cosignerMembershipId: userId,
+          cosignerRole: args.cosignerRole,
+          attestationText: args.attestationText,
+        });
         await tx
           .update(MO)
-          .set({ cosignStatus: "attached", updatedAt: new Date() })
+          .set({ cosignStatus: "attached", version: r.version + 1, updatedAt: new Date() })
           .where(eq(MO.id, id));
         return readOrder(tx, id);
       });

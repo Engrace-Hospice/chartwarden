@@ -41,6 +41,7 @@ import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
 } from "../src/modules/11-orders/index";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import { createOrderProvider } from "../src/modules/11-orders/seams/index";
 import { createDrizzleOrderSeamStore } from "../src/modules/11-orders/seams/index";
 import {
@@ -50,7 +51,6 @@ import {
 } from "../src/modules/21-supplies/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { seedM5Patient } from "./_m6-admit";
-import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -130,20 +130,36 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
     kindVersion?: string,
   ): Promise<string> {
     const discipline = "rn_case_manager";
-    const draft = await orderSvc.createDraft(ORG_A, memberId, {
-      patientId,
-      admissionId,
-      kind: kind as never,
-      drafterDiscipline: discipline,
-      data,
-      orderingPhysicianMdmId: PHYSICIAN_MDM,
-      ...(kindVersion ? { kindVersion } : {}),
-    }, SYSTEM_ORDER_ACTOR);
-    await orderSvc.requestSignature(ORG_A, draft.id, { signerDiscipline: discipline }, SYSTEM_ORDER_ACTOR);
-    await orderSvc.signOrder(ORG_A, memberId, draft.id, {
-      signerDiscipline: discipline,
-      signedAtClient: new Date().toISOString(),
-    }, SYSTEM_ORDER_ACTOR);
+    const draft = await orderSvc.createDraft(
+      ORG_A,
+      memberId,
+      {
+        patientId,
+        admissionId,
+        kind: kind as never,
+        drafterDiscipline: discipline,
+        data,
+        orderingPhysicianMdmId: PHYSICIAN_MDM,
+        ...(kindVersion ? { kindVersion } : {}),
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await orderSvc.requestSignature(
+      ORG_A,
+      draft.id,
+      { signerDiscipline: discipline },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await orderSvc.signOrder(
+      ORG_A,
+      memberId,
+      draft.id,
+      {
+        signerDiscipline: discipline,
+        signedAtClient: new Date().toISOString(),
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     return draft.id;
   }
 
@@ -551,55 +567,80 @@ describe.skipIf(!DB_URL)("F-232 — M21 supply-fulfillment intake, LIVE Postgres
 
   it("older order kinds keep validating: an order created with NO kindVersion stays dme.v1, and an unsupported version is refused", async () => {
     const { patientId, admissionId } = await seedPatientAdmission({});
-    const v1 = await orderSvc.createDraft(ORG_A, memberId, {
-      patientId,
-      admissionId,
-      kind: "dme" as never,
-      drafterDiscipline: "rn_case_manager",
-      data: { anything: { goes: true } },
-      orderingPhysicianMdmId: PHYSICIAN_MDM,
-    }, SYSTEM_ORDER_ACTOR);
+    const v1 = await orderSvc.createDraft(
+      ORG_A,
+      memberId,
+      {
+        patientId,
+        admissionId,
+        kind: "dme" as never,
+        drafterDiscipline: "rn_case_manager",
+        data: { anything: { goes: true } },
+        orderingPhysicianMdmId: PHYSICIAN_MDM,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     const { rows } = await admin.query("SELECT kind_version FROM order_record WHERE id=$1", [
       v1.id,
     ]);
     expect(rows[0].kind_version).toBe("dme.v1");
     await expect(
-      orderSvc.createDraft(ORG_A, memberId, {
-        patientId,
-        admissionId,
-        kind: "dme" as never,
-        drafterDiscipline: "rn_case_manager",
-        data: {},
-        orderingPhysicianMdmId: PHYSICIAN_MDM,
-        kindVersion: "dme.v9",
-      }, SYSTEM_ORDER_ACTOR),
+      orderSvc.createDraft(
+        ORG_A,
+        memberId,
+        {
+          patientId,
+          admissionId,
+          kind: "dme" as never,
+          drafterDiscipline: "rn_case_manager",
+          data: {},
+          orderingPhysicianMdmId: PHYSICIAN_MDM,
+          kindVersion: "dme.v9",
+        },
+        SYSTEM_ORDER_ACTOR,
+      ),
     ).rejects.toThrow(/Unsupported order payload version/);
     await expect(
-      orderSvc.createDraft(ORG_A, memberId, {
-        patientId,
-        admissionId,
-        kind: "comfort_kit" as never,
-        drafterDiscipline: "rn_case_manager",
-        data: {},
-        orderingPhysicianMdmId: PHYSICIAN_MDM,
-        kindVersion: "comfort_kit.v2",
-      }, SYSTEM_ORDER_ACTOR),
+      orderSvc.createDraft(
+        ORG_A,
+        memberId,
+        {
+          patientId,
+          admissionId,
+          kind: "comfort_kit" as never,
+          drafterDiscipline: "rn_case_manager",
+          data: {},
+          orderingPhysicianMdmId: PHYSICIAN_MDM,
+          kindVersion: "comfort_kit.v2",
+        },
+        SYSTEM_ORDER_ACTOR,
+      ),
     ).rejects.toThrow(/Unsupported order payload version/);
   });
 
   it("a dme.v2 order that violates the contract cannot be signed (skuId/quantity required; no address may ride it)", async () => {
     const { patientId, admissionId } = await seedPatientAdmission({});
-    const draft = await orderSvc.createDraft(ORG_A, memberId, {
-      patientId,
-      admissionId,
-      kind: "dme" as never,
-      drafterDiscipline: "rn_case_manager",
-      data: { skuId: hcpcsSku, quantity: 1, deliveryAddress: { line1: STREET } },
-      orderingPhysicianMdmId: PHYSICIAN_MDM,
-      kindVersion: "dme.v2",
-    }, SYSTEM_ORDER_ACTOR);
+    const draft = await orderSvc.createDraft(
+      ORG_A,
+      memberId,
+      {
+        patientId,
+        admissionId,
+        kind: "dme" as never,
+        drafterDiscipline: "rn_case_manager",
+        data: { skuId: hcpcsSku, quantity: 1, deliveryAddress: { line1: STREET } },
+        orderingPhysicianMdmId: PHYSICIAN_MDM,
+        kindVersion: "dme.v2",
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     await expect(
-      orderSvc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR),
+      orderSvc.requestSignature(
+        ORG_A,
+        draft.id,
+        { signerDiscipline: "rn_case_manager" },
+        SYSTEM_ORDER_ACTOR,
+      ),
     ).rejects.toThrow();
   });
 });

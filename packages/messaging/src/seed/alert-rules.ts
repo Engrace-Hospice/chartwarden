@@ -3,7 +3,7 @@
 // The platform-floor routing layer: `alert_rule` rows with a NULL organization_id every tenant
 // inherits unless it clones + overrides (§3.10). Three are `system_locked` — SOS (life-safety),
 // NOE late-risk (revenue-critical), and backup-failure (data-safety) — and tenants CANNOT disable
-// them (§7.4, enforced at the DB by the M36-T03 RLS `WITH CHECK system_locked = false`; this seed
+// them (§7.4, enforced in the service + the migration-0334 trigger (GAP-102, tighten-only); this seed
 // is the source of which rules carry the flag). Kept as typed, pure data (the same place the
 // resolution engine lives, M36-T04) so the §7.4 invariants are unit-assertable without live infra
 // and the boot slice can UPSERT it. The `severityFloor` here is the legacy `alert_severity`
@@ -398,9 +398,9 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // ── M3 break-glass (GAP-010; M3 spec §4.5/§7.4) ────────────────────────────────────────────────────────────────────
   // `m3.breakglass.invoked` is published in the invoke's own transaction and delivered by M36's
   // `breakglass-alert` outbox consumer. Critical, to the Compliance Officer with `org_admin` as the backstop for a
-  // tenant that has no compliance-officer role assigned. Not `system_locked` (the seed's locked set is the three
-  // life/revenue/data-safety floors); the consumer emits at `critical` so a tenant override cannot quietly lower it
-  // below this floor.
+  // tenant that has no compliance-officer role assigned. `system_locked` (§7.4): a break-glass invocation is the
+  // audit-critical override of access control, so a tenant may tighten this rule but never disable, downgrade or
+  // re-route it (GAP-102 tighten-only floor).
   {
     eventType: "m3.breakglass.invoked",
     category: "administrative",
@@ -408,7 +408,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
     channelsOverride: null,
-    systemLocked: false,
+    systemLocked: true,
     enabled: true,
   },
   // ── M11 stuck lab-order recovery (F-201, #248) ─────────────────────────────────────────────────────────────────────
@@ -578,12 +578,13 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   },
 ];
 
-/** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a
- *  tenant can neither disable nor loosen: SOS, NOE late-risk, backup-failure. */
+/** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a
+ *  tenant can neither disable nor loosen: SOS, NOE late-risk, backup-failure, M3 break-glass. */
 export const SYSTEM_LOCKED_EVENT_TYPES = [
   "field_safety.sos",
   "noe.late_risk",
   "system.backup_failure",
+  "m3.breakglass.invoked",
 ] as const;
 
 /** Row shape the boot slice UPSERTs into `alert_rule` (mirrors the Drizzle columns, §3.6).

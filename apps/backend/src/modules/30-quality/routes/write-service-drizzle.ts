@@ -34,6 +34,7 @@ import {
   QapiRepository,
   type QualityDb,
   QualityMeasureValueRepository,
+  type SraClosureCosign,
   SraRepository,
   computeNextReviewDueAt,
   detectOutbreakClusters,
@@ -53,7 +54,17 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import { eq } from "drizzle-orm";
+import { ROLE_QAPI_COORDINATOR, ROLE_SECURITY_OFFICER } from "../abac-predicates";
+import { selectActiveMemberRoleKeys } from "../member-roles";
 import type { M30WriteActor } from "./actor";
+import {
+  PIP_CLOSE_ROLES,
+  SRA_CLOSE_ROLES,
+  buildCloseAttestation,
+  buildPipClosureColumns,
+  buildSraClosureColumns,
+  resolveCloseCosigners,
+} from "./close-cosign";
 import type {
   CahpsDecedentView,
   CahpsExportJobView,
@@ -1010,9 +1021,28 @@ export function buildDrizzleM30WriteService(
           ? await repo.findProjectById(pip.linkedProjectId)
           : null;
         const charteredByMembershipId = project?.ownerMembershipId ?? "";
+        // GAP-088: signer = the authenticated caller; the nominated co-signer is validated (active, distinct,
+        // complementary role, fresh step-up) against facts loaded in THIS tx — never trusted off the wire.
+        const signers = resolveCloseCosigners({
+          actorMembershipId: actor.membershipId,
+          actorRoles: actor.roles,
+          cosignerMembershipId: args.cosignerMembershipId,
+          cosignerRoleKeys: await selectActiveMemberRoleKeys(
+            tx,
+            actor.organizationId,
+            args.cosignerMembershipId,
+          ),
+          recentStepUp: args.recentStepUp,
+          roles: PIP_CLOSE_ROLES,
+        });
+        // Nominee-based one-step close: the closer alone signs; the nominee is recorded un-attested both in the
+        // event payload and on the row (migration 0335: nominee slot `_at` NULL + `closure_cosign_attested`
+        // false; V-11 requires both `_at` only for attested closes).
+        const attestation = buildCloseAttestation(signers);
+        const callerIsCoordinator = signers.callerRole === ROLE_QAPI_COORDINATOR;
         const cosign: PipClosureCosign = {
-          qapiCoordinatorMembershipId: args.cosign.qapiCoordinatorMembershipId,
-          medicalDirectorMembershipId: args.cosign.medicalDirectorMembershipId,
+          qapiCoordinatorMembershipId: callerIsCoordinator ? signers.first : signers.second,
+          medicalDirectorMembershipId: callerIsCoordinator ? signers.second : signers.first,
           charteredByMembershipId,
         };
         // The pure PIP machine enforces the V-11 two-person split + closer-≠-charterer SoD via the cosign.
@@ -1025,10 +1055,7 @@ export function buildDrizzleM30WriteService(
         const row = await repo.updatePip(pipId, {
           status,
           conclusionText: args.conclusionText,
-          cosignQapiCoordinatorMembershipId: cosign.qapiCoordinatorMembershipId,
-          cosignQapiCoordinatorAt: at,
-          cosignMedicalDirectorMembershipId: cosign.medicalDirectorMembershipId,
-          cosignMedicalDirectorAt: at,
+          ...buildPipClosureColumns(signers, at),
           closedAt: at,
           updatedAt: at,
           version: pip.version + 1,
@@ -1044,6 +1071,7 @@ export function buildDrizzleM30WriteService(
             pipId,
             outcome: args.outcome,
             closedAt: at.toISOString(),
+            ...attestation,
           },
         });
         return mapPip(row, charteredByMembershipId);
@@ -1231,19 +1259,37 @@ export function buildDrizzleM30WriteService(
         const cycle = await repo.findCycleById(cycleId);
         if (!cycle || cycle.organizationId !== actor.organizationId)
           throw new NotFoundError("sra cycle");
-        // The pure SRA machine enforces the V-12 two-person split; the route enforces the recent step-up.
+        // GAP-088: signer = the authenticated caller; the nominated co-signer is validated (active, distinct,
+        // complementary role, fresh step-up) against facts loaded in THIS tx — never trusted off the wire.
+        const signers = resolveCloseCosigners({
+          actorMembershipId: actor.membershipId,
+          actorRoles: actor.roles,
+          cosignerMembershipId: args.cosignerMembershipId,
+          cosignerRoleKeys: await selectActiveMemberRoleKeys(
+            tx,
+            actor.organizationId,
+            args.cosignerMembershipId,
+          ),
+          recentStepUp: args.recentStepUp,
+          roles: SRA_CLOSE_ROLES,
+        });
+        // Nominee-based one-step close: see closeQapiPip — the closer alone signs, the nominee slot's `_at` stays NULL.
+        const attestation = buildCloseAttestation(signers);
+        const callerIsSecurityOfficer = signers.callerRole === ROLE_SECURITY_OFFICER;
+        const cosign: SraClosureCosign = {
+          securityOfficerMembershipId: callerIsSecurityOfficer ? signers.first : signers.second,
+          complianceOfficerMembershipId: callerIsSecurityOfficer ? signers.second : signers.first,
+        };
+        // The pure SRA machine re-asserts the V-12 split; the step-up is the REAL freshness, not a constant.
         const status = transitionSraCycle(cycle.status, {
           type: "close",
-          cosign: args.cosign,
-          recentStepUp: true,
+          cosign,
+          recentStepUp: args.recentStepUp,
         });
         const at = now();
         const row = await repo.updateCycle(cycleId, {
           status,
-          cosignSecurityOfficerMembershipId: args.cosign.securityOfficerMembershipId,
-          cosignSecurityOfficerAt: at,
-          cosignComplianceOfficerMembershipId: args.cosign.complianceOfficerMembershipId,
-          cosignComplianceOfficerAt: at,
+          ...buildSraClosureColumns(signers, at),
           closedAt: at,
           updatedAt: at,
           version: cycle.version + 1,
@@ -1261,6 +1307,7 @@ export function buildDrizzleM30WriteService(
             cycleId,
             closedAt: at.toISOString(),
             openFindingsAtClose: open,
+            ...attestation,
           },
         });
         return mapCycle(row);

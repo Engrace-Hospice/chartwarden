@@ -173,12 +173,9 @@ export function registerCostReportRoutes(app: FastifyInstance, deps: CostReportR
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(CostReportIdParamsSchema, request.params);
-      const body = parse(SubmitBodySchema, request.body);
-      const res = await writeService.submit(actor, id, {
-        attestedByMembershipId: body.attestedByMembershipId,
-        attestedAt: body.attestedAt,
-        approvedByMembershipId: body.approvedByMembershipId,
-      });
+      parse(SubmitBodySchema, request.body);
+      // GAP-081: attester + approver are server-derived; the legacy body fields are ignored, never trusted.
+      const res = await writeService.submit(actor, id);
       return reply.code(200).send(res);
     },
   );
@@ -192,9 +189,6 @@ export function registerCostReportRoutes(app: FastifyInstance, deps: CostReportR
       const { id } = parse(CostReportIdParamsSchema, request.params);
       const body = parse(SubmitPastDeadlineBodySchema, request.body);
       const res = await writeService.submitPastDeadline(actor, id, {
-        attestedByMembershipId: body.attestedByMembershipId,
-        attestedAt: body.attestedAt,
-        approvedByMembershipId: body.approvedByMembershipId,
         reason: body.reason,
       });
       return reply.code(200).send(res);

@@ -21,6 +21,8 @@ const PROJECT = "b0000000-0000-4000-8000-000000000001";
 const INDICATOR = "b1000000-0000-4000-8000-000000000001";
 const PIP = "b2000000-0000-4000-8000-000000000001";
 const CYCLE = "c0000000-0000-4000-8000-000000000001";
+const ACTOR = "d0000000-0000-4000-8000-000000000001";
+const NOMINEE = "d0000000-0000-4000-8000-000000000002";
 const FINDING = "c1000000-0000-4000-8000-000000000001";
 const REVIEW = "d0000000-0000-4000-8000-000000000001";
 const CITATION = "e0000000-0000-4000-8000-000000000001";
@@ -97,6 +99,9 @@ describe("M30 write-service outbox payloads conform to the registered §4.10 cat
         pipId: PIP,
         outcome: "target_met",
         closedAt: AT,
+        closedBy: { membershipId: ACTOR, role: "qapi_coordinator" },
+        nominatedCosigner: { membershipId: NOMINEE, role: "medical_director" },
+        cosignerAttested: false,
       }),
     ).toBe(true);
     // a PIP need not hang off a project — the nullable FK is emitted as `null`, not an empty id.
@@ -107,6 +112,9 @@ describe("M30 write-service outbox payloads conform to the registered §4.10 cat
         pipId: PIP,
         outcome: "target_met",
         closedAt: AT,
+        closedBy: { membershipId: ACTOR, role: "qapi_coordinator" },
+        nominatedCosigner: { membershipId: NOMINEE, role: "medical_director" },
+        cosignerAttested: false,
       }),
     ).toBe(true);
   });
@@ -141,8 +149,26 @@ describe("M30 write-service outbox payloads conform to the registered §4.10 cat
         cycleId: CYCLE,
         closedAt: AT,
         openFindingsAtClose: 2,
+        closedBy: { membershipId: ACTOR, role: "hipaa_security_officer" },
+        nominatedCosigner: { membershipId: NOMINEE, role: "compliance_officer" },
+        cosignerAttested: false,
       }),
     ).toBe(true);
+    // the nominee never attested: a payload claiming attestation, or lacking the nominee, is refused
+    const base = {
+      orgId: ORG,
+      cycleId: CYCLE,
+      closedAt: AT,
+      openFindingsAtClose: 2,
+      closedBy: { membershipId: ACTOR, role: "hipaa_security_officer" },
+      nominatedCosigner: { membershipId: NOMINEE, role: "compliance_officer" },
+    };
+    expect(
+      Value.Check(schemaFor("m30.sra.cycle_closed"), { ...base, cosignerAttested: true }),
+    ).toBe(false);
+    expect(
+      Value.Check(schemaFor("m30.sra.cycle_closed"), { ...base, nominatedCosigner: undefined }),
+    ).toBe(false);
   });
 
   it("m30.mortality.review_completed — the completeMortalityReview payload Value.Checks true", () => {

@@ -136,6 +136,13 @@ export interface SuppliesAbacResolver {
    * subject who does NOT hold a cross-location designation; `null` denies.
    */
   locationIdsOf(orgId: string, subjectId: string): Promise<readonly string[] | null>;
+  /**
+   * GAP-064 — the serving Location M6 holds for an admission, or null when absent / unsited / cross-tenant.
+   * The create-path guard evaluates a controlled request against THIS, never the body's Location. `null`
+   * means UNSITED (the predicate then requires the claimed Location to be the actor's own); an unreadable
+   * siting must THROW, which denies.
+   */
+  loadAdmissionLocation(orgId: string, admissionId: string): Promise<string | null>;
 }
 
 /** A resolver that denies everything — the shape a boot-without-DB path binds (fail-closed, never open). */
@@ -153,6 +160,9 @@ export const denyStubSuppliesAbacResolver: SuppliesAbacResolver = {
     return null;
   },
   async locationIdsOf() {
+    return null;
+  },
+  async loadAdmissionLocation() {
     return null;
   },
 };
@@ -258,29 +268,65 @@ export function buildSuppliesAbacPredicates(
             ? await resolver.loadRequest(context.organizationId, requestId)
             : null;
 
+      // GAP-064 — a target that NAMES a row (dispatch / supply request) that cannot be resolved denies:
+      // falling through to the body-declared Location would evaluate eligibility against a client claim.
+      if (facts === null && (dispatchId !== null || requestId !== null)) return false;
+
       if (facts === null) {
-        // No row yet (the create path). The guard must still bind, so decide over the target's declared
-        // Location + kind. A target that declares NEITHER resolves to nothing and denies — a route that
-        // forgot its `getTarget` fails closed rather than being evaluated against no subject.
-        const locationId = targetStr(target, "locationId");
-        if (locationId === null) return false;
+        // No row yet (the supply-request create path). A target that declares NEITHER an admission nor a
+        // Location denies — a route that forgot its `getTarget` fails closed rather than being evaluated
+        // against no subject.
+        const admissionId = targetStr(target, "admissionId");
+        const claimedLocationId = targetStr(target, "locationId");
+        if (admissionId === null && claimedLocationId === null) return false;
+        // §4.1 row 1 is CONDITIONAL: a request that moves nothing scheduled is not gated here, and must NOT
+        // depend on the admission's siting — the write service verifies the Location (including its
+        // unsited-admission fallback), so a seam hiccup cannot 403 a wound-supply request at the route.
         if (!targetBool(target, "involvesControlledSubstance")) return true;
+
+        // Controlled: the Location is the ADMISSION's siting (GAP-064), never the body's claim. An
+        // unresolvable read (the resolver throws) denies. An UNSITED admission offers no server fact, so —
+        // exactly as the service's `verifyRequestServingLocation` — the claimed Location is honoured only
+        // when it is one the actor is assigned to; the dispatcher rule is then evaluated over it.
+        let locationId: string | null;
+        try {
+          locationId =
+            admissionId !== null
+              ? await resolver.loadAdmissionLocation(context.organizationId, admissionId)
+              : claimedLocationId;
+        } catch {
+          return false;
+        }
+        const subject = await subjectOf(resolver, context);
+        if (locationId === null) {
+          if (claimedLocationId === null) return false;
+          if (subject.locationIds === null || !subject.locationIds.includes(claimedLocationId)) {
+            return false;
+          }
+          locationId = claimedLocationId;
+        }
         return decideDispatcherEligible(
           {
             organizationId: context.organizationId,
-            targetId: requestId ?? "",
+            targetId: "",
             locationId,
             involvesControlledSubstance: true,
           },
-          await subjectOf(resolver, context),
+          subject,
         );
       }
+
+      // A route that binds the predicate over a row but declares the movement controlled (dispatch
+      // creation: every kit dispatch is a custody record) overrides the row's kind-derived answer.
+      const effective = targetBool(target, "involvesControlledSubstance")
+        ? { ...facts, involvesControlledSubstance: true }
+        : facts;
 
       // An existing row that moves nothing scheduled is not gated by this predicate (§4.1's cell is
       // explicitly conditional). Returning true here is NOT a widening: RBAC already passed, and the
       // narrower gate simply does not apply to a wound-care delivery.
-      if (!facts.involvesControlledSubstance) return true;
-      return decideDispatcherEligible(facts, await subjectOf(resolver, context));
+      if (!effective.involvesControlledSubstance) return true;
+      return decideDispatcherEligible(effective, await subjectOf(resolver, context));
     },
 
     comfort_kit_return_reconciler_eligible: async (context, target) => {

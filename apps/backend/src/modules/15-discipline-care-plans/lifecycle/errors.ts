@@ -24,6 +24,8 @@ export const M15_ERROR_STATUS = {
   INSUFFICIENT_SIGNERS: 412,
   SIGNER_ROLE_MISMATCH: 403,
   DUPLICATE_SIGNER_ROLE: 409,
+  /** GAP-045 — one membership may fill at most ONE signer slot per version. */
+  SIGNER_ALREADY_SIGNED: 409,
   // Element authoring invariants (§2.2.3 / §2.3)
   GOAL_TEXT_IMMUTABLE: 422,
   DPOA_CONSENT_REQUIRED: 422,

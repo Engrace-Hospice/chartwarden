@@ -63,7 +63,12 @@ export const ABAC_DISPATCHER_ON_KIND = (key: string): PreHandler =>
       const body = bodyObject(r);
       const payload = (body.kindPayload ?? {}) as Record<string, unknown>;
       const kind = typeof payload.kind === "string" ? payload.kind : "";
+      // GAP-064: the Location is resolved SERVER-side off the admission by the predicate; the body's
+      // `locationId` is a claim the write service verifies. The predicate only consults it for a
+      // controlled kind on an UNSITED admission, and only if the actor is assigned to it (the same rule
+      // the service applies), so route and service agree.
       return {
+        admissionId: bodyField(r, "admissionId"),
         locationId: bodyField(r, "locationId"),
         involvesControlledSubstance: KIT_KINDS.has(kind),
       };
@@ -73,14 +78,15 @@ export const ABAC_DISPATCHER_ON_KIND = (key: string): PreHandler =>
 
 /**
  * §4.1 row 20 — `controlled_substance_dispatcher_eligible` on dispatch CREATION. There is no dispatch row
- * yet, so the target names the Location off the body and declares the movement controlled unconditionally:
- * every `comfort_kit_dispatch` is a controlled-substance custody record by construction (§3.1.9's CHECK
- * makes lot + expiration mandatory on the scheduled lines), so there is no kind to branch on here.
+ * yet, so the target names the SUPPLY REQUEST being dispatched (GAP-064: the Location is that row's stored
+ * one, never the body's) and declares the movement controlled unconditionally: every `comfort_kit_dispatch`
+ * is a controlled-substance custody record by construction (§3.1.9's CHECK makes lot + expiration
+ * mandatory on the scheduled lines), so there is no kind to branch on here.
  */
 export const ABAC_DISPATCHER_ON_CREATE = (key: string): PreHandler =>
   requireAbac(key, "controlled_substance_dispatcher_eligible", {
     getTarget: (r) => ({
-      locationId: bodyField(r, "locationId"),
+      supplyRequestId: bodyField(r, "supplyRequestId"),
       involvesControlledSubstance: true,
     }),
     notFoundOnDeny: false,

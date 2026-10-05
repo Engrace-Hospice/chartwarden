@@ -24,6 +24,10 @@
 // binding them here by name would deny every M15 route permanently. M15 therefore enforces the equivalent
 // gates in its own read/write services over the SAME upstream facts (the M5 `CaseloadProvider` +
 // M39 `ConsentEvaluator` seams — see `routes/disclosure.ts`), which is the M9/M12/M13 posture.
+// `signer_role_match` is enforced by `signVersion` (GAP-045): the claimed `signerRole` must be in the
+// authenticated actor's roles and one membership fills at most one slot per version (service check +
+// the `discipline_care_plan_signature_version_membership_uq` index). `PermissionDef.abac` is only a
+// declaration — `requirePermission` never evaluates it.
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.

@@ -23,12 +23,12 @@
 // (session disciplines, after `orderScope`); the named-prescriber / ordering-physician decision is made in the
 // service inside the sign transaction from the STORED order and the signer's roster row — no discipline or
 // ordering-physician flag is read from the body. M11's `signer_eligible` / `cosigner_role_match` resolve against
-// M11's order store (no row for a medication_order id) so they are not bound here; cosign is GAP-034.
+// M11's order store (no row for a medication_order id) so they are not bound here; cosign (GAP-034) is enforced in the service from the session + stored order.
 import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
 import { NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { prescriberDisciplinesOf } from "../abac-predicates";
-import { assertDisciplineHeld } from "../prescriber-eligibility";
+import { assertDisciplineHeld, resolveDraftingDiscipline } from "../prescriber-eligibility";
 import {
   ApproveRefillRequest,
   CompleteRequest,
@@ -227,6 +227,12 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(CreateMedicationOrderRequest, request.body);
+      // GAP-034 follow-up — the drafting discipline is persisted and later decides the cosign requirement, so it
+      // is resolved from the SESSION (an RN who claims "physician" is recorded as the RN and owes the cosign).
+      const draftingDiscipline = resolveDraftingDiscipline(
+        prescriberDisciplinesOf(request.context),
+        b.prescriberDiscipline,
+      );
       const res = await service.createDraft(organizationId, userId, {
         patientId: b.patientId,
         admissionId: b.admissionId,
@@ -238,7 +244,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         doseForm: b.doseForm,
         route: b.route,
         data: b.data,
-        prescriberDiscipline: b.prescriberDiscipline,
+        prescriberDiscipline: draftingDiscipline,
         prescribingPhysicianMdmId: b.prescribingPhysicianMdmId,
         dispensingPharmacyMdmId: b.dispensingPharmacyMdmId,
         deaSchedule:
@@ -371,7 +377,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
     },
   );
 
-  // 10 — attach a cosignature (service enforces no-self-cosign).
+  // 10 — attach a cosignature (service enforces status, session role, no self-cosign, M11 seam record).
   app.post(
     "/api/v1/medication-orders/:id/cosign",
     { preHandler: [COSIGN, orderScope("prescribing.cosign")] },
@@ -382,6 +388,8 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       return service.cosignOrder(organizationId, userId, id, {
         cosignerRole: b.cosignerRole,
         attestationText: b.attestationText,
+        // GAP-034 — the roles the SESSION holds; the service refuses a claimed `cosignerRole` outside them.
+        cosignerDisciplines: prescriberDisciplinesOf(request.context),
       });
     },
   );
@@ -439,6 +447,10 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(CorrectMedicationOrderRequest, request.body);
+      const draftingDiscipline = resolveDraftingDiscipline(
+        prescriberDisciplinesOf(request.context),
+        b.prescriberDiscipline,
+      ); // persisted → resolved from the session
       const res = await service.correctOrder(organizationId, userId, id, {
         patientId: b.patientId,
         admissionId: b.admissionId,
@@ -450,7 +462,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         doseForm: b.doseForm,
         route: b.route,
         data: b.data,
-        prescriberDiscipline: b.prescriberDiscipline,
+        prescriberDiscipline: draftingDiscipline,
         prescribingPhysicianMdmId: b.prescribingPhysicianMdmId,
         dispensingPharmacyMdmId: b.dispensingPharmacyMdmId,
         deaSchedule: b.deaSchedule,

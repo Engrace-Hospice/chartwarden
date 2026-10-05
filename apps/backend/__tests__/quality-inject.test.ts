@@ -14,12 +14,9 @@
 // eight §4.7 ABAC predicates M30's routes actually COMPOSE (`incidentVisibility`, `ownsIncident`,
 // `assignedToIncident`, `capVerifyAuthority`, `abuseAllegationAccess`, `assignedToMortality`,
 // `ownsQapiProject`, `ownsSraCycle`) are built with `buildM30AbacPredicates` over a resolver closed on this
-// same in-memory store. `qapiCloseAuthority` / `sraCloseAuthority` are NOT wired as route preHandlers today
-// (verified by reading `qapi.routes.ts`/`sra.routes.ts`: R-31/R-47 gate on RBAC alone — the two-person split
-// is enforced in the SERVICE via `assertPipCloseSplitActor`/`assertSraCloseSplitActor`, which this file's
-// hand-rolled write service does not re-derive, mirroring how `cost-report-inject.test.ts` skips the
-// lifecycle state machine), so this file does not need caller/cosigner role gymnastics to reach those two
-// routes' handlers. `part2Redisclosure` is likewise never composed at a route (it is a row-level redaction
+// same in-memory store. `qapiCloseAuthority` / `sraCloseAuthority` ARE composed on R-31/R-47 (GAP-088) but registered
+// PERMISSIVELY in this file's registry (no QC/MD/SO/CO fixtures here); their real behaviour is covered by
+// m30-close-cosign.test.ts. `part2Redisclosure` is likewise never composed at a route (it is a row-level redaction
 // filter, not a route gate) so it is out of scope here. A permissive `step_up_recent` stub is registered
 // alongside the real predicates (this file's own fresh predicate registry, never the shared boot one) so
 // R-47's `requireStepUp` gate is exercised as PASSING at least once.
@@ -1235,7 +1232,11 @@ function makeServer() {
   for (const [name, predicate] of Object.entries(
     buildM30AbacPredicates({ resolver: backend.abacResolver }),
   )) {
-    reg.register(name, predicate);
+    // GAP-088: R-31/R-47 now compose the two-person close predicates. This smoke file's hand-rolled
+    // service has no QC/MD/SO/CO role fixtures, so they are registered permissively HERE; the real
+    // predicates + service guard are proven in m30-close-cosign.test.ts.
+    const isCloseAuthority = name === "qapiCloseAuthority" || name === "sraCloseAuthority";
+    reg.register(name, isCloseAuthority ? async () => true : predicate);
   }
   reg.register("step_up_recent", async () => true);
   registerAbacRegistry(reg);
@@ -1538,7 +1539,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: {
       conclusionText: "Conclusion narrative summarizing the outcome.",
       outcome: "Target achieved.",
-      cosign: { qapiCoordinatorMembershipId: M_SUPER, medicalDirectorMembershipId: M_VERIFIER },
+      cosignerMembershipId: M_VERIFIER,
     },
     expectStatus: 200,
   },
@@ -1634,9 +1635,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/quality/sra/cycles/${SRA_CYCLE_ID}/close`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k37") },
-    payload: {
-      cosign: { securityOfficerMembershipId: M_SUPER, complianceOfficerMembershipId: M_VERIFIER },
-    },
+    payload: { cosignerMembershipId: M_VERIFIER },
     expectStatus: 200,
   },
 

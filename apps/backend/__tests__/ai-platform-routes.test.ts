@@ -41,6 +41,7 @@ import {
   M32_ABAC_PREDICATES,
   buildAiPlatformAbacPredicates,
   denyStubAiPlatformAbacResolver,
+  hasPlatformKillSwitchAuthority,
   isSingleTenantDeployment,
 } from "../src/modules/32-ai-platform/abac-predicates";
 import {
@@ -218,6 +219,17 @@ describe("M32-T07 §4.7 — the six registered predicates", () => {
       await expect(
         viaSession.ai_safety_owner(contextOf({ roles: ["ai_safety_owner"] }), {}),
       ).resolves.toBe(true);
+    });
+
+    it("GAP-096 — platform kill-switch authority is the safety-owner role set, tenant designee only single-tenant", () => {
+      // The route derives the SERVICE-layer caller kind from this: a role set with no platform authority
+      // is a tenant caller, whatever scope the body claims.
+      expect(hasPlatformKillSwitchAuthority(["ai_safety_owner"], false)).toBe(true);
+      expect(hasPlatformKillSwitchAuthority(["platform_ops"], false)).toBe(true);
+      expect(hasPlatformKillSwitchAuthority(["clinical_safety_lead"], false)).toBe(false);
+      expect(hasPlatformKillSwitchAuthority(["clinical_safety_lead"], true)).toBe(true);
+      expect(hasPlatformKillSwitchAuthority(["org_admin", "tenant_admin"], true)).toBe(false);
+      expect(hasPlatformKillSwitchAuthority([], true)).toBe(false);
     });
 
     it("reads the single-tenant flag from WARDENX_SINGLE_TENANT_DEPLOYMENT, default off", () => {

@@ -30,6 +30,9 @@ import {
   isWrittenCertOverdue,
   registerAdmissionRoutes,
 } from "../src/modules/06-admission/index";
+import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
+const F2F_ATTESTATION_NARRATIVE =
+  "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -239,6 +242,7 @@ describe("M6-T08 — §7.4 slice: F2F schedule is gated by the recert window", (
       electionPeriodId: PERIOD,
       scheduledClinicianId: CLINICIAN,
       clinicianRole: "hospice_np",
+      actor: SYSTEM_F2F_ACTOR,
       scheduledDate: "2026-09-15",
     });
     expect(ok.state).toBe("scheduled");
@@ -250,6 +254,7 @@ describe("M6-T08 — §7.4 slice: F2F schedule is gated by the recert window", (
         electionPeriodId: PERIOD,
         scheduledClinicianId: CLINICIAN,
         clinicianRole: "hospice_np",
+        actor: SYSTEM_F2F_ACTOR,
         scheduledDate: "2026-08-01", // before period_start − 30
       }),
     ).rejects.toMatchObject({ code: "F2F_OUTSIDE_WINDOW", statusCode: 422 });
@@ -356,6 +361,7 @@ describe("M6-T08 — route layer", () => {
         windowStart: "2026-08-31",
         windowEnd: "2026-09-29",
         clinicianRole: "hospice_np",
+        actor: SYSTEM_F2F_ACTOR,
         scheduledClinicianId: CLINICIAN,
       },
     });

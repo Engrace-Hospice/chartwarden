@@ -33,10 +33,10 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 24-billing-medicaid | 39 | ✅ | 39/39 | apps/backend/__tests__/billing-medicaid-inject.test.ts |
 | 25-remittance | 32 | ✅ | 31/32 | apps/backend/__tests__/remittance-inject.test.ts |
 | 26-cap | 27 | ✅ | 27/27 | apps/backend/__tests__/cap-inject.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts |
-| 27-cost-report | 45 | ✅ | 45/45 | apps/backend/__tests__/cost-report-inject.test.ts |
+| 27-cost-report | 45 | ✅ | 45/45 | apps/backend/__tests__/cost-report-inject.test.ts, apps/backend/__tests__/m27-two-person-control-routes.test.ts |
 | 28-fhir | 35 | ✅ | 35/35 | apps/backend/__tests__/fhir-inject.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts |
 | 29-external-interfaces | 33 | ✅ | 33/33 | apps/backend/__tests__/external-interfaces-inject.test.ts |
-| 30-quality | 60 | ✅ | 60/60 | apps/backend/__tests__/quality-inject.test.ts |
+| 30-quality | 60 | ✅ | 60/60 | apps/backend/__tests__/m30-close-cosign.test.ts, apps/backend/__tests__/quality-inject.test.ts |
 | 31-portal | 53 | ✅ | 53/53 | apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/portal-inject.test.ts |
 | 32-ai-platform | 32 | ✅ | 32/32 | apps/backend/__tests__/ai-platform-inject.test.ts, apps/backend/__tests__/auth.live.test.ts |
 | 33-reporting | 42 | ✅ | 42/42 | apps/backend/__tests__/reporting-inject.test.ts |

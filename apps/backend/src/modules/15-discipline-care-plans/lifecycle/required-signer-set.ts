@@ -119,3 +119,17 @@ export function checkQuorumSatisfied(
     "the version's sealed required-signer set is not yet satisfied",
   );
 }
+
+/** The M3 role key a signer slot is held by — identity, except the aide's acknowledgment slot (`chha`). */
+const SIGNER_ROLE_KEY_ALIASES: Readonly<Record<string, string>> = {
+  chha_acknowledgment: "chha",
+};
+
+/** GAP-045 — whether the authenticated actor's `roles` include the role the claimed signer slot needs. */
+export function actorHoldsSignerRole(
+  actorRoles: ReadonlyArray<string>,
+  signerRole: string,
+): boolean {
+  const key = SIGNER_ROLE_KEY_ALIASES[signerRole] ?? signerRole;
+  return actorRoles.includes(key);
+}

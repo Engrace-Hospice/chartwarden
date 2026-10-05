@@ -223,7 +223,10 @@ export interface AddQapiPipArgs {
 export interface CloseQapiPipArgs {
   readonly conclusionText: string;
   readonly outcome: string;
-  readonly cosign: PipClosureCosign;
+  /** GAP-088 — the NOMINATED co-signer (body); recorded un-attested. The only signer is `actor.membershipId` (session). */
+  readonly cosignerMembershipId: string;
+  /** Real step-up freshness for `qapi.close`, derived from `request.context` by the route. */
+  readonly recentStepUp: boolean;
 }
 export interface RecordQapiGovernanceArgs {
   readonly qapiProgramId: string;
@@ -260,7 +263,10 @@ export interface UpdateSraRemediationArgs {
 }
 /** R-47 — close an SRA cycle (two-person co-sign; V-12). The route enforces a recent step-up. */
 export interface CloseSraCycleArgs {
-  readonly cosign: SraClosureCosign;
+  /** GAP-088 — the NOMINATED co-signer (body); recorded un-attested. The only signer is `actor.membershipId` (session). */
+  readonly cosignerMembershipId: string;
+  /** Real step-up freshness for `sra.close`, derived from `request.context` by the route. */
+  readonly recentStepUp: boolean;
 }
 
 // Incidents (R-51, R-53, R-55, R-56, R-57, R-58, R-60)
