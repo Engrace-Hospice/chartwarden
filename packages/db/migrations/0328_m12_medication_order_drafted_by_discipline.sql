@@ -14,13 +14,16 @@
 -- id there). A row is touched ONLY when ALL hold:
 --   * drafted_by_discipline IS NULL and status IN ('draft','pending_signature') — terminal / signed / verbal /
 --     EPCS / transmission states are never touched;
---   * the drafter's membership (same organization, not revoked) holds an ACTIVE grant — membership_role unexpired
---     (expires_at NULL or in the future) on an ENABLED role (the membershipRoleKeysForOrg semantic; the role is
---     org-owned in the same org or a platform template, and never a reserved platform_* key) — on
---     `rn_case_manager` or `clinical_supervisor` (DRAFT_ON_BEHALF_DISCIPLINES); rn_case_manager wins when both;
---   * the drafter holds NO active prescriber-tier grant (md, np, pa, physician, hospice_physician,
---     medical_director): a dual-role user may have drafted as the prescriber, so we never guess against them.
--- Undeterminable drafters (membership gone / revoked / no live RN-tier grant) are left NULL. For rows already
+--   * the drafter's membership still exists in the same organization (ANY status, revoked included) and holds
+--     a COUNTING grant on `rn_case_manager` or `clinical_supervisor` (DRAFT_ON_BEHALF_DISCIPLINES;
+--     rn_case_manager wins when both). A grant counts when its role is ENABLED (org-owned in the same org or a
+--     platform template, never a reserved platform_* key) AND either the membership is REVOKED (revocation may
+--     have expired the grants, so every grant ever held is considered, expired or not) or the grant is unexpired
+--     (expires_at NULL or in the future — the membershipRoleKeysForOrg semantic, kept strict for live members);
+--   * the drafter has NO counting prescriber-tier grant (md, np, pa, physician, hospice_physician,
+--     medical_director), by the same counting rule: a dual-role user (or a revoked one who ever held a
+--     prescriber role) may have drafted as the prescriber, so we never guess against them.
+-- Undeterminable drafters (membership row gone / no counting RN-tier grant) are left NULL. For rows already
 -- `pending_signature` (request-signature ran with no cosign requirement) cosign_required is also set true and
 -- cosign_status 'pending' (only where cosign_required is not already true), so the existing
 -- sign-blocked-until-cosigned guard applies. Nothing is deleted; re-running changes nothing (the NULL filter).
@@ -38,11 +41,10 @@ WITH rn_drafter AS (
     JOIN "membership" m
       ON m.id = mo.prescriber_membership_id
      AND m.organization_id = mo.organization_id
-     AND m.status <> 'revoked'
     JOIN "membership_role" mr
       ON mr.membership_id = m.id
      AND mr.organization_id = mo.organization_id
-     AND (mr.expires_at IS NULL OR mr.expires_at > now())
+     AND (m.status = 'revoked' OR mr.expires_at IS NULL OR mr.expires_at > now())
     JOIN "role" r
       ON r.id = mr.role_id
      AND r.enabled
@@ -60,7 +62,7 @@ WITH rn_drafter AS (
           AND (pr.organization_id IS NULL OR pr.organization_id = mo.organization_id)
         WHERE pmr.membership_id = m.id
           AND pmr.organization_id = mo.organization_id
-          AND (pmr.expires_at IS NULL OR pmr.expires_at > now())
+          AND (m.status = 'revoked' OR pmr.expires_at IS NULL OR pmr.expires_at > now())
           AND pr.key IN ('md', 'np', 'pa', 'physician', 'hospice_physician', 'medical_director')
      )
    GROUP BY mo.id, mo.created_at
