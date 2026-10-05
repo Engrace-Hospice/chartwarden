@@ -71,7 +71,7 @@ OS with no SSH and no shell.
   unchanged.
 - **Networking:** Cilium is the CNI and is enforced with a **default-deny** NetworkPolicy per
   namespace. Only the flows the app needs are opened: ingress → api/web, api/worker →
-  postgres/valkey/minio, worker → docling, and egress to named integration endpoints.
+  postgres/valkey/garage, worker → docling, and egress to named integration endpoints.
 
 ### D2 — Workloads map one-to-one from Compose
 
@@ -84,7 +84,7 @@ OS with no SSH and no shell.
 | `provision` | Job | Creates the NOBYPASSRLS `wardenx_app`, platform and destruction roles; idempotent |
 | `postgres` | see D3 | |
 | `valkey` | StatefulSet, 1 replica, persistent volume | Cache and queues only; rebuildable. Use `valkey/valkey:8` |
-| `minio` | see D6 | |
+| `minio` | **Garage** StatefulSet (D6) | Production only; local development keeps MinIO |
 | docling sidecar | Deployment (CPU) | Already a separate service per ADR-0048 |
 | local inference (Ollama) | Deployment on the GPU node when present | Optional, as today |
 
@@ -139,16 +139,46 @@ Either way:
 - **Alternative:** External Secrets + OpenBao/Vault. Dynamic DB credentials and audit trails, at the
   cost of operating a secrets service. Revisit when the team grows.
 
-### D6 — Storage *(recommended; needs decision)*
+### D6 — Storage *(object store decided; volume provisioner recommended, needs decision)*
 
 - **Databases:** CloudNativePG and Valkey use node-local persistent volumes (OpenEBS LocalPV or Talos
   local-path). The database replicates at the application layer, so network block storage under it
   would only add latency.
-- **Object storage:** MinIO runs as its own distributed deployment across the three nodes, with
-  erasure coding, on local volumes.
-  - **Pin it.** The image is pinned by digest, not `latest` as today. MinIO's community distribution
-    has changed; confirm a supported image or move to a compatible store before cutover.
-  - **Replicate off-site** for DR/BCP §4.2.
+- **Object storage: Garage in production, MinIO in local development** *(decided by the product owner,
+  2026-10-05)*.
+  - **Production:** Garage (Deuxfleurs) runs as a StatefulSet across the three nodes with
+    `replication_factor = 3` on local volumes. It replaces MinIO, whose community distribution has
+    changed.
+  - **Local development:** the Docker Compose stack keeps MinIO. No developer workflow changes.
+  - **Why the app does not care which one runs:** the backend talks to object storage only through
+    M22's zero-dependency SigV4 adapter (`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`).
+    It uses only:
+    - path-style `GET` / `PUT` / `HEAD` / `DELETE`
+    - SigV4 query-string presigned URLs
+    - `x-amz-checksum-sha256` on `PUT`, read back with `x-amz-checksum-mode: ENABLED`
+
+    It uses no bucket versioning, object lock, bucket policies, lifecycle rules or vendor admin API.
+    App-level document "versions" are separate keys.
+  - **Garage requirements that follow from that:**
+    1. **Pin a Garage release that stores and returns `x-amz-checksum-sha256`** with checksum mode
+       enabled. Pin the image by digest. The checksum read-back is the adapter's integrity check, so
+       an unsupported release would fail every download.
+    2. **Region:** Garage's SigV4 region (`s3_region`) defaults to `garage`. Set `MINIO_REGION` to the
+       same value, or set `s3_region = "us-east-1"`. A mismatch fails every signature.
+    3. **Buckets and keys** are created with Garage's admin API or CLI, not S3 `CreateBucket`. A
+       bootstrap Job does it, alongside `provision`. Access keys get per-bucket read/write grants;
+       Garage has no bucket policies.
+    4. **Keep the env names.** `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` /
+       `MINIO_REGION` keep their names: they are the adapter's S3 contract, not a MinIO dependency. A
+       rename to `S3_*` is optional follow-up churn, not part of this ADR.
+  - **Proof before cutover:** a live suite runs the real adapter against Garage: put with checksum,
+    get and head with checksum mode, presigned GET and PUT, delete, and the M22 erase path. It runs in
+    CI on a Garage container, as a `package.json` script plus a `ci.yml` job (the standing live-suite
+    rule).
+  - **Off-site copy** for DR/BCP §4.2: Garage has no MinIO-style bucket replication. Off-site
+    protection is either a second Garage zone at another site (Garage places replicas across zones),
+    or a scheduled `rclone sync` to an encrypted off-site S3 target. The choice is made in the
+    DR/BCP §4.2 rewrite.
 - **No Longhorn / Rook-Ceph initially.** Neither is needed while every stateful service replicates
   itself.
 
@@ -163,11 +193,12 @@ Either way:
 ## Migration plan
 
 1. **Stand up the cluster.** Talos, Cilium, Flux, the policy controller, storage, CloudNativePG, Valkey,
-   MinIO, Newt.
+   Garage (with its bucket/key bootstrap Job), Newt.
 2. **Prove the app in staging.** Deploy it against an empty database and run the live suites (real
    `wardenx_app`, NOBYPASSRLS) and the smoke test (`deploy/production/smoke.sh`) against it.
-3. **Rehearse the cutover.** `pg_dump` → restore into CloudNativePG, timed; mirror MinIO; verify
-   checksums and row counts.
+3. **Rehearse the cutover.** `pg_dump` → restore into CloudNativePG, timed. Copy every bucket from the
+   VPS MinIO into Garage with `rclone sync --checksum`, keeping keys and bucket names identical.
+   Verify object counts and SHA-256s, and row counts.
 4. **Cut over.** In a maintenance window: freeze writes on the VPS, take the final dump and restore,
    then point the Pangolin resource at the cluster. The VPS stays warm and read-only for 14 days as
    the rollback path.
@@ -199,4 +230,5 @@ Either way:
 4. **D5:** SOPS + age (recommended), or External Secrets + OpenBao?
 5. **Staging:** a separate small cluster, or a `staging` namespace in production? A separate cluster is
    recommended for a PHI system.
-6. **MinIO licensing and image:** confirm the supported distribution before cutover (D6).
+6. **Garage off-site protection (D6):** a second Garage zone at another site, or a scheduled `rclone`
+   copy to an encrypted off-site S3 target?
