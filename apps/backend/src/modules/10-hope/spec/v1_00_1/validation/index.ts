@@ -139,6 +139,20 @@ function activeAssessmentItems(ctx: HopeValidationContext): readonly string[] {
   return ctx.activeItems.filter((item) => item.kind === "assessment").map((item) => item.itemCode);
 }
 
+/**
+ * CMS consistency edits apply only to the members that are active for the
+ * record's ISC.  In particular, the demographic checklist items are HA-only;
+ * evaluating their edit against a HUV/HD record would require fields that the
+ * CMS item set correctly omits from that record.
+ */
+function activeChecklistItems(
+  ctx: HopeValidationContext,
+  itemCodes: readonly string[],
+): readonly string[] {
+  const active = new Set(activeAssessmentItems(ctx));
+  return itemCodes.filter((itemCode) => active.has(itemCode));
+}
+
 function checked(ctx: HopeValidationContext, itemCode: string): boolean {
   return answerValue(ctx.answers, itemCode) === "1";
 }
@@ -274,9 +288,14 @@ const skipStateRule: HopeValidationRule = {
   id: "hope-v1.00.1-skip-state-consistency",
   evaluate(ctx) {
     const out: HopeRuleFinding[] = [];
+    const ethnicityItems = activeChecklistItems(ctx, [
+      ...ETHNICITY_POSITIVE,
+      ...ETHNICITY_EXCLUSIVE,
+    ]);
     if (
       ctx.mode === "final" &&
-      [...ETHNICITY_POSITIVE, ...ETHNICITY_EXCLUSIVE].every((code) => !checked(ctx, code))
+      ethnicityItems.length > 0 &&
+      ethnicityItems.every((code) => !checked(ctx, code))
     ) {
       out.push(
         finding({
@@ -384,9 +403,14 @@ const sectionARule: HopeValidationRule = {
         }),
       );
     }
+    const ethnicityPositive = activeChecklistItems(ctx, ETHNICITY_POSITIVE);
+    const ethnicityExclusive = activeChecklistItems(ctx, ETHNICITY_EXCLUSIVE);
+    const racePositive = activeChecklistItems(ctx, RACE_POSITIVE);
+    const raceExclusive = activeChecklistItems(ctx, RACE_EXCLUSIVE);
+    const payerItems = activeChecklistItems(ctx, PAYER_ITEMS);
     if (
-      ETHNICITY_EXCLUSIVE.some((code) => checked(ctx, code)) &&
-      ETHNICITY_POSITIVE.some((code) => checked(ctx, code))
+      ethnicityExclusive.some((code) => checked(ctx, code)) &&
+      ethnicityPositive.some((code) => checked(ctx, code))
     ) {
       out.push(
         finding({
@@ -402,7 +426,8 @@ const sectionARule: HopeValidationRule = {
     }
     if (
       ctx.mode === "final" &&
-      [...RACE_POSITIVE, ...RACE_EXCLUSIVE].every((code) => !checked(ctx, code))
+      racePositive.length + raceExclusive.length > 0 &&
+      [...racePositive, ...raceExclusive].every((code) => !checked(ctx, code))
     ) {
       out.push(
         finding({
@@ -416,8 +441,8 @@ const sectionARule: HopeValidationRule = {
       );
     }
     if (
-      RACE_EXCLUSIVE.some((code) => checked(ctx, code)) &&
-      RACE_POSITIVE.some((code) => checked(ctx, code))
+      raceExclusive.some((code) => checked(ctx, code)) &&
+      racePositive.some((code) => checked(ctx, code))
     ) {
       out.push(
         finding({
@@ -430,7 +455,11 @@ const sectionARule: HopeValidationRule = {
         }),
       );
     }
-    if (ctx.mode === "final" && PAYER_ITEMS.every((code) => !checked(ctx, code))) {
+    if (
+      ctx.mode === "final" &&
+      payerItems.length > 0 &&
+      payerItems.every((code) => !checked(ctx, code))
+    ) {
       out.push(
         finding({
           ruleId: "-3081",
@@ -442,7 +471,12 @@ const sectionARule: HopeValidationRule = {
         }),
       );
     }
-    if (checked(ctx, "A1400A") && checked(ctx, "A1400B")) {
+    if (
+      payerItems.includes("A1400A") &&
+      payerItems.includes("A1400B") &&
+      checked(ctx, "A1400A") &&
+      checked(ctx, "A1400B")
+    ) {
       out.push(
         finding({
           ruleId: "-3083",
@@ -454,7 +488,12 @@ const sectionARule: HopeValidationRule = {
         }),
       );
     }
-    if (checked(ctx, "A1400C") && checked(ctx, "A1400D")) {
+    if (
+      payerItems.includes("A1400C") &&
+      payerItems.includes("A1400D") &&
+      checked(ctx, "A1400C") &&
+      checked(ctx, "A1400D")
+    ) {
       out.push(
         finding({
           ruleId: "-3084",

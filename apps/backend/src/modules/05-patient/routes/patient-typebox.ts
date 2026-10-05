@@ -75,6 +75,17 @@ export const AdmitBodySchema = Type.Object({
 // POST /api/v1/patients/:id/addresses (§4.2; §7.4 cascade)
 export const AddressBodySchema = AddressSchema;
 
+const ASSIGNMENT_ROLES = ["primary_rn", "attending_clinician", "case_manager_msw", "chaplain", "aide", "np", "md", "volunteer", "bereavement"] as const;
+export const AssignmentBodySchema = Type.Object({
+  clinicianMembershipId: Type.String({ minLength: 1, maxLength: 64 }),
+  role: Type.Union(ASSIGNMENT_ROLES.map((role) => Type.Literal(role))),
+  assignedAt: Type.Optional(Type.String({ format: "date" })),
+});
+export const AssignmentParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 64 }),
+  assignmentId: Type.String({ minLength: 1, maxLength: 64 }),
+});
+
 // POST /api/v1/patients/:id/amendments (§4.2; §7.7)
 export const AmendmentBodySchema = Type.Object({
   scope: Type.Union([
@@ -168,6 +179,23 @@ export const PatientDemographicsSchema = Type.Object({
   ethnicityCodes: Type.Array(Type.String()),
   preferredLanguageCode: Type.Union([Type.String(), Type.Null()]),
   aliases: Type.Array(NameAliasSchema),
+});
+
+/** Editable, non-identifier patient demographics. MRN and lifecycle are deliberately absent. */
+export const UpdatePatientDemographicsBodySchema = Type.Object({
+  legalFirstName: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
+  legalMiddleName: Type.Optional(Type.Union([Type.String({ maxLength: 120 }), Type.Null()])),
+  legalLastName: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
+  legalNameSuffix: Type.Optional(Type.Union([Type.String({ maxLength: 32 }), Type.Null()])),
+  dob: Type.Optional(Type.String({ format: "date" })),
+  sexAssignedAtBirth: Type.Optional(Type.String({ minLength: 1, maxLength: 32 })),
+  genderIdentityCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+  sexualOrientationCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+  pronounsCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+  maritalStatusCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+  raceCodes: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 20 })),
+  ethnicityCodes: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 20 })),
+  preferredLanguageCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
 });
 
 // GET /api/v1/patients/:id/identifiers (§3.3/§2.2) — ssn/state_id are `sensitive`: `value` is null,

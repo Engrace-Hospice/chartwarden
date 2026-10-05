@@ -63,6 +63,8 @@ import {
 } from "../merges-db";
 import {
   AddPatientPayerBodySchema,
+  AssignmentBodySchema,
+  AssignmentParamsSchema,
   AddressBodySchema,
   AdmitBodySchema,
   AmendmentBodySchema,
@@ -70,6 +72,7 @@ import {
   LooseIdParamsSchema,
   MergeBodySchema,
   PatientListQuerySchema,
+  UpdatePatientDemographicsBodySchema,
   parse,
 } from "./patient-typebox";
 import type { PatientRouteService } from "./service";
@@ -223,6 +226,35 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       return service.list(organizationId, query, await censusScope(request));
     },
   );
+
+  app.put(
+    "/api/v1/patients/:id/demographics",
+    { preHandler: [EDIT, SCOPE_EDIT] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const updated = await service.updateDemographics(
+        organizationId,
+        id,
+        parse(UpdatePatientDemographicsBodySchema, request.body),
+        userId,
+      );
+      if (updated === null) throw notFound("patient");
+      return updated;
+    },
+  );
+
+  app.post("/api/v1/patients/:id/assignments", { preHandler: [EDIT] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const assignment = await service.createAssignment(organizationId, id, parse(AssignmentBodySchema, request.body), userId);
+    return reply.code(201).send(assignment);
+  });
+  app.post("/api/v1/patients/:id/assignments/:assignmentId/end", { preHandler: [EDIT] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id, assignmentId } = parse(AssignmentParamsSchema, request.params);
+    return service.endAssignment(organizationId, id, assignmentId, userId);
+  });
 
   // --- §4.2 census KPI metrics (active count + per-status breakdown; static path beats /:id) ------
   app.get(

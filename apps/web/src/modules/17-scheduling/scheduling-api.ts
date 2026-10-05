@@ -26,11 +26,14 @@
 //   • The §7.x conflict rules — double-booking, availability, approved time off. A reschedule that
 //     collides is refused with a 409 and the message names what it collided with.
 import type { ApiClient, operations } from "@wardenx/ui";
+import { mapSchedulingApiError } from "./scheduling-errors";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
 /** The `application/json` payload of an openapi-fetch response/request-body slot. */
-type Json<T> = T extends { content: { "application/json": infer B } } ? B : never;
+type Json<T> = T extends { content: { "application/json": infer B } }
+  ? B
+  : never;
 /** The success body of operation `Op` — 200 or 201, whichever the route actually sends. */
 type Ok<Op> = Op extends { responses: { 200: infer R } }
   ? Json<R>
@@ -45,13 +48,23 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 export type VisitView = Ok<operations["getApiV1VisitsByVisitId"]>;
 export type CreateVisitBody = ReqBody<operations["postApiV1Visits"]>;
 export type PatchVisitBody = ReqBody<operations["patchApiV1VisitsByVisitId"]>;
-export type RescheduleBody = ReqBody<operations["postApiV1VisitsByVisitIdReschedule"]>;
-export type ReassignBody = ReqBody<operations["postApiV1VisitsByVisitIdReassign"]>;
-export type CancelVisitBody = ReqBody<operations["postApiV1VisitsByVisitIdCancel"]>;
+export type RescheduleBody = ReqBody<
+  operations["postApiV1VisitsByVisitIdReschedule"]
+>;
+export type ReassignBody = ReqBody<
+  operations["postApiV1VisitsByVisitIdReassign"]
+>;
+export type CancelVisitBody = ReqBody<
+  operations["postApiV1VisitsByVisitIdCancel"]
+>;
 export type NoShowBody = ReqBody<operations["postApiV1VisitsByVisitIdNoshow"]>;
-export type CreateRecurringBody = ReqBody<operations["postApiV1Recurringvisits"]>;
+export type CreateRecurringBody = ReqBody<
+  operations["postApiV1Recurringvisits"]
+>;
 export type CreateTimeOffBody = ReqBody<operations["postApiV1Timeoff"]>;
-export type AvailabilityBody = ReqBody<operations["putApiV1AvailabilityByMembershipId"]>;
+export type AvailabilityBody = ReqBody<
+  operations["putApiV1AvailabilityByMembershipId"]
+>;
 
 /** The §2.1 visit purposes the server accepts. Derived, so a vocabulary change is a compile error. */
 export type VisitPurpose = CreateVisitBody["visitPurpose"];
@@ -64,11 +77,6 @@ export type TimeOffKind = CreateTimeOffBody["kind"];
 
 /** One of the patient's addresses — where a `patient_home` visit is scheduled to. */
 export interface PatientAddressOption {
-  readonly id: string;
-  readonly label: string;
-}
-/** One of the org's memberships — who a visit is assigned to. */
-export interface MembershipOption {
   readonly id: string;
   readonly label: string;
 }
@@ -91,33 +99,18 @@ export type WriteResult<T> =
  * shown a generic error will try the same assignment again. 409 is the conflict rules — double-booking,
  * availability, approved time off — and the server's message names what it collided with.
  */
-function failure(status: number | undefined, body: unknown): WriteResult<never> {
+function failure(
+  status: number | undefined,
+  body: unknown,
+): WriteResult<never> {
   const httpStatus = typeof status === "number" ? status : null;
-  const err =
-    body && typeof body === "object" && "error" in body
-      ? (body as { error?: { code?: unknown; message?: unknown } }).error
-      : undefined;
-  const detail = typeof err?.message === "string" ? err.message : null;
-  const code = typeof err?.code === "string" ? err.code : null;
-  const message =
-    code === "DISCIPLINE_NOT_ELIGIBLE" || code === "PRE_SCHEDULE_DENIED"
-      ? // The platform copy LEADS here rather than deferring to `detail`, unlike every other branch: the
-        // server's message for this one is a bare refusal ("not eligible"), and a scheduler needs to know
-        // that the fix is a different clinician — not a retry. The server's words follow it.
-        `That clinician's discipline or active licence does not cover this visit purpose (§4.7 D8).${
-          detail ? ` ${detail}` : ""
-        }`
-      : httpStatus === 403
-        ? (detail ?? "Your role is not permitted to take this action on this visit.")
-        : httpStatus === 409
-          ? (detail ??
-            "That change conflicts with an existing visit, availability or approved time off.")
-          : httpStatus === 404
-            ? "That visit is no longer available to you."
-            : httpStatus === 422
-              ? (detail ?? "The server rejected the details supplied.")
-              : (detail ?? "The action could not be completed.");
-  return { ok: false, status: httpStatus, code, message };
+  const mapped = mapSchedulingApiError(body, httpStatus);
+  return {
+    ok: false,
+    status: httpStatus,
+    code: mapped.code ?? null,
+    message: mapped.message,
+  };
 }
 
 const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });
@@ -143,31 +136,10 @@ export async function loadPatientAddresses(
   }[];
   return rows.map((a) => ({
     id: a.id,
-    label: [a.line1, a.city].filter(Boolean).join(", ") || (a.kind ?? a.id.slice(0, 8)),
+    label:
+      [a.line1, a.city].filter(Boolean).join(", ") ||
+      (a.kind ?? a.id.slice(0, 8)),
   }));
-}
-
-/**
- * The org's memberships — who a visit can be assigned to. This is a ROSTER, not an eligibility list: the
- * §4.7 D8 gate decides whether the chosen clinician may take this visit purpose, and it decides that
- * from their role grants and the currency of their licence. Filtering here would be a second, divergent
- * implementation of that rule.
- */
-export async function loadMemberships(
-  client: ApiClient,
-  orgId: string,
-): Promise<MembershipOption[]> {
-  const { data } = await client.GET("/api/v1/orgs/{id}/members", {
-    params: { path: { id: orgId } },
-  });
-  const rows = data?.members ?? [];
-  return (
-    rows
-      // A revoked or suspended membership is not someone a visit can be assigned to. The server would
-      // refuse it anyway; offering it would be offering a choice that is certain to fail.
-      .filter((m) => m.status === "active")
-      .map((m) => ({ id: m.membershipId, label: m.displayName ?? m.membershipId.slice(0, 8) }))
-  );
 }
 
 /** Search the org's patients — who a visit is being scheduled for. */
@@ -179,7 +151,10 @@ export async function searchPatients(
     params: { query: q.trim() ? { q: q.trim(), limit: 20 } : { limit: 20 } },
   });
   const rows = data?.items ?? [];
-  return rows.map((r) => ({ id: r.id, label: `${r.lastName}, ${r.firstName} · ${r.mrn}` }));
+  return rows.map((r) => ({
+    id: r.id,
+    label: `${r.lastName}, ${r.firstName} · ${r.mrn}`,
+  }));
 }
 
 /** The patient's admissions, newest first (F-065) — the admission a visit is scheduled under (#161). */
@@ -190,7 +165,11 @@ export async function loadPatientAdmissions(
   const { data } = await client.GET("/api/v1/patients/{patientId}/admissions", {
     params: { path: { patientId } },
   });
-  return (data?.items ?? []) as { id: string; state: string; dischargedAt: string | null }[];
+  return (data?.items ?? []) as {
+    id: string;
+    state: string;
+    dischargedAt: string | null;
+  }[];
 }
 
 // ── §2.2 visit lifecycle ───────────────────────────────────────────────────────────────────────────────
@@ -200,7 +179,9 @@ export async function createVisit(
   client: ApiClient,
   body: CreateVisitBody,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST("/api/v1/visits", { body });
+  const { data, error, response } = await client.POST("/api/v1/visits", {
+    body,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -218,10 +199,13 @@ export async function rescheduleVisit(
   visitId: string,
   body: RescheduleBody,
 ): Promise<WriteResult<{ original: VisitView; created: VisitView }>> {
-  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/reschedule", {
-    params: { path: { visitId } },
-    body,
-  });
+  const { data, error, response } = await client.POST(
+    "/api/v1/visits/{visitId}/reschedule",
+    {
+      params: { path: { visitId } },
+      body,
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as { original: VisitView; created: VisitView });
 }
@@ -232,10 +216,13 @@ export async function reassignVisit(
   visitId: string,
   newAssignedMembershipId: string,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/reassign", {
-    params: { path: { visitId } },
-    body: { newAssignedMembershipId } as ReassignBody,
-  });
+  const { data, error, response } = await client.POST(
+    "/api/v1/visits/{visitId}/reassign",
+    {
+      params: { path: { visitId } },
+      body: { newAssignedMembershipId } as ReassignBody,
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -246,10 +233,13 @@ export async function cancelVisit(
   visitId: string,
   body: CancelVisitBody,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/cancel", {
-    params: { path: { visitId } },
-    body,
-  });
+  const { data, error, response } = await client.POST(
+    "/api/v1/visits/{visitId}/cancel",
+    {
+      params: { path: { visitId } },
+      body,
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -264,10 +254,13 @@ export async function markNoShow(
   visitId: string,
   body: NoShowBody,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/no-show", {
-    params: { path: { visitId } },
-    body,
-  });
+  const { data, error, response } = await client.POST(
+    "/api/v1/visits/{visitId}/no-show",
+    {
+      params: { path: { visitId } },
+      body,
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -282,10 +275,13 @@ export async function startVisit(
   visitId: string,
   evvMissingReason: string,
 ): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/start", {
-    params: { path: { visitId } },
-    body: { evvMissingReason },
-  });
+  const { data, error, response } = await client.POST(
+    "/api/v1/visits/{visitId}/start",
+    {
+      params: { path: { visitId } },
+      body: evvMissingReason ? { evvMissingReason } : {},
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data as VisitView);
 }
@@ -331,7 +327,10 @@ export async function createRecurring(
   client: ApiClient,
   body: CreateRecurringBody,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/recurring-visits", { body });
+  const { data, error, response } = await client.POST(
+    "/api/v1/recurring-visits",
+    { body },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
@@ -342,10 +341,13 @@ export async function discontinueRecurring(
   id: string,
   reason: string,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/recurring-visits/{id}/discontinue", {
-    params: { path: { id } },
-    body: { reason },
-  });
+  const { data, error, response } = await client.POST(
+    "/api/v1/recurring-visits/{id}/discontinue",
+    {
+      params: { path: { id } },
+      body: { reason },
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
@@ -357,17 +359,25 @@ export async function requestTimeOff(
   client: ApiClient,
   body: CreateTimeOffBody,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/time-off", { body });
+  const { data, error, response } = await client.POST("/api/v1/time-off", {
+    body,
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
 
 /** Approve a time-off request — the action the approval queue exists for. */
-export async function approveTimeOff(client: ApiClient, id: string): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/time-off/{id}/approve", {
-    params: { path: { id } },
-    body: {},
-  });
+export async function approveTimeOff(
+  client: ApiClient,
+  id: string,
+): Promise<WriteResult<unknown>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/time-off/{id}/approve",
+    {
+      params: { path: { id } },
+      body: {},
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
@@ -378,20 +388,29 @@ export async function denyTimeOff(
   id: string,
   reason: string,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/time-off/{id}/deny", {
-    params: { path: { id } },
-    body: { reason },
-  });
+  const { data, error, response } = await client.POST(
+    "/api/v1/time-off/{id}/deny",
+    {
+      params: { path: { id } },
+      body: { reason },
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }
 
 /** Withdraw one's own request. */
-export async function cancelTimeOff(client: ApiClient, id: string): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/time-off/{id}/cancel", {
-    params: { path: { id } },
-    body: {},
-  });
+export async function cancelTimeOff(
+  client: ApiClient,
+  id: string,
+): Promise<WriteResult<unknown>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/time-off/{id}/cancel",
+    {
+      params: { path: { id } },
+      body: {},
+    },
+  );
   if (error || !data) return failure(response?.status, error);
   return ok(data);
 }

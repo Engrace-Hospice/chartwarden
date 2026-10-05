@@ -167,7 +167,9 @@ export interface PatientChartData {
 
 type Client = ReturnType<typeof useApiClient>;
 
-async function settle<T>(p: Promise<{ data?: unknown; error?: unknown }>): Promise<T | undefined> {
+async function settle<T>(
+  p: Promise<{ data?: unknown; error?: unknown }>,
+): Promise<T | undefined> {
   try {
     const r = await p;
     return r.error ? undefined : (r.data as T);
@@ -257,7 +259,9 @@ export function usePatientChartData(patient: PatientSummary): PatientChartData {
       merge({
         visits: (Array.isArray(r) ? r : [])
           .filter((v) => v.status !== "cancelled")
-          .sort((a, b) => a.scheduledStartedAt.localeCompare(b.scheduledStartedAt))
+          .sort((a, b) =>
+            a.scheduledStartedAt.localeCompare(b.scheduledStartedAt),
+          )
           .slice(0, 4),
       }),
     );
@@ -369,7 +373,12 @@ export function memberName(data: PatientChartData, id: string): string | null {
 
 function currentAddress(addresses: Address[] | undefined): Address | null {
   const list = (addresses ?? []).filter((a) => a.current);
-  return list.find((a) => a.isPrimary) ?? list.find((a) => a.kind === "home") ?? list[0] ?? null;
+  return (
+    list.find((a) => a.isPrimary) ??
+    list.find((a) => a.kind === "home") ??
+    list[0] ??
+    null
+  );
 }
 
 function mbi(identifiers: Identifier[] | undefined): Identifier | null {
@@ -380,7 +389,9 @@ function mbi(identifiers: Identifier[] | undefined): Identifier | null {
   );
 }
 
-export function activePeriod(election: Election | null | undefined): Period | null {
+export function activePeriod(
+  election: Election | null | undefined,
+): Period | null {
   const periods = election?.periods ?? [];
   return (
     periods.find((p) => p.status === "active") ??
@@ -452,7 +463,12 @@ export function PatientChartHeader({
         sex: sexLabel(data.demographics?.sexAssignedAtBirth),
         medicare: medicareTail(data.identifiers),
       }}
-      actions={<ChartActions patientId={patient.id} admission={data.election?.admission ?? null} />}
+      actions={
+        <ChartActions
+          patientId={patient.id}
+          admission={data.election?.admission ?? null}
+        />
+      }
     />
   );
 }
@@ -476,7 +492,12 @@ function ChartActions({
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
   const hopeAvailable = admission?.state === "active";
-  const items: { label: string; to: string; disabled?: boolean; hint?: string }[] = [
+  const items: {
+    label: string;
+    to: string;
+    disabled?: boolean;
+    hint?: string;
+  }[] = [
     ...(admission
       ? [
           {
@@ -531,7 +552,11 @@ function ChartActions({
           <Glyph name="chevron-down" size={16} />
         </Button>
         {open ? (
-          <div className="wx-actor-menu" role="menu" style={{ minWidth: "15rem" }}>
+          <div
+            className="wx-actor-menu"
+            role="menu"
+            style={{ minWidth: "15rem" }}
+          >
             {items.map((it) =>
               it.disabled ? (
                 <span
@@ -583,8 +608,16 @@ export function OverviewTab({
       <ClinicalSnapshotPanel data={data} className="wx-c8" />
       <CareTeamPanel patientId={patient.id} data={data} className="wx-c7" />
       <DiagnosesPanel patientId={patient.id} data={data} className="wx-c13" />
-      <RecentActivityPanel patientId={patient.id} data={data} className="wx-c11" />
-      <UpcomingVisitsPanel patientId={patient.id} data={data} className="wx-c13" />
+      <RecentActivityPanel
+        patientId={patient.id}
+        data={data}
+        className="wx-c11"
+      />
+      <UpcomingVisitsPanel
+        patientId={patient.id}
+        data={data}
+        className="wx-c13"
+      />
       <DocumentsPanel patientId={patient.id} data={data} className="wx-c11" />
       {SHOWS_INTAKE_SUMMARIES.has(patient.status) ? (
         <PatientIntakeSummaries patientId={patient.id} className="wx-c24" />
@@ -606,7 +639,9 @@ function PatientInfoPanel({
   const addr = currentAddress(data.addresses);
   const medicare = mbi(data.identifiers);
   const phone = data.careTeam?.emergencyContacts
-    ? [...data.careTeam.emergencyContacts].sort((a, b) => a.priority - b.priority)[0]
+    ? [...data.careTeam.emergencyContacts].sort(
+        (a, b) => a.priority - b.priority,
+      )[0]
     : undefined;
   return (
     <Panel
@@ -689,13 +724,22 @@ function ClinicalSnapshotPanel({
   data: PatientChartData;
   className?: string;
 }): JSX.Element {
-  const terminal = data.problems?.find((p) => p.kind === "terminal") ?? data.problems?.[0] ?? null;
+  const terminal =
+    data.problems?.find((p) => p.kind === "terminal") ??
+    data.problems?.[0] ??
+    null;
   const period = activePeriod(data.election);
-  const attending = data.careTeam?.assignments.find((a) => a.role === "attending_clinician");
+  const attending = data.careTeam?.assignments.find(
+    (a) => a.role === "attending_clinician",
+  );
   const md = data.careTeam?.assignments.find((a) => a.role === "md");
   const flags = data.privacy?.flags ?? [];
   return (
-    <Panel title="Clinical Snapshot" icon="clipboard-check" className={className}>
+    <Panel
+      title="Clinical Snapshot"
+      icon="clipboard-check"
+      className={className}
+    >
       <div
         style={{
           display: "flex",
@@ -729,7 +773,11 @@ function ClinicalSnapshotPanel({
         rows={[
           {
             label: "Primary diagnosis",
-            value: terminal ? (terminal.icd10Code ?? "—") : data.problems ? "Not recorded" : "…",
+            value: terminal
+              ? (terminal.icd10Code ?? "—")
+              : data.problems
+                ? "Not recorded"
+                : "…",
             hint: terminal?.description,
           },
           {
@@ -761,11 +809,15 @@ function ClinicalSnapshotPanel({
           },
           {
             label: "Attending physician",
-            value: attending ? (memberName(data, attending.clinicianUserId) ?? "Assigned") : "—",
+            value: attending
+              ? (memberName(data, attending.clinicianUserId) ?? "Assigned")
+              : "—",
           },
           {
             label: "Medical director",
-            value: md ? (memberName(data, md.clinicianUserId) ?? "Assigned") : "—",
+            value: md
+              ? (memberName(data, md.clinicianUserId) ?? "Assigned")
+              : "—",
           },
         ]}
       />
@@ -788,7 +840,11 @@ function CareTeamPanel({
       title="Care Team"
       icon="users"
       className={className}
-      action={<PanelLink to={`/patients/${patientId}?view=care-team`}>Manage</PanelLink>}
+      action={
+        <PanelLink to={`/patients/${patientId}?view=care-team`}>
+          Manage
+        </PanelLink>
+      }
     >
       {team === undefined ? (
         <Loading />
@@ -831,16 +887,26 @@ function CareTeamPanel({
                     {name ?? roleLabel(a.role)}
                   </div>
                   <div style={muted}>
-                    {name ? roleLabel(a.role) : `Assigned ${fmtDate(a.assignedAt)}`}
+                    {name
+                      ? roleLabel(a.role)
+                      : `Assigned ${fmtDate(a.assignedAt)}`}
                   </div>
                 </div>
-                <span style={{ display: "flex", gap: "0.625rem", color: t.primary }}>
+                <span
+                  style={{ display: "flex", gap: "0.625rem", color: t.primary }}
+                >
                   {m?.email ? (
-                    <a href={`mailto:${m.email}`} aria-label={`Email ${name ?? roleLabel(a.role)}`}>
+                    <a
+                      href={`mailto:${m.email}`}
+                      aria-label={`Email ${name ?? roleLabel(a.role)}`}
+                    >
                       <Glyph name="mail" size={16} strokeWidth={1.75} />
                     </a>
                   ) : null}
-                  <Link to="/messaging" aria-label={`Message ${name ?? roleLabel(a.role)}`}>
+                  <Link
+                    to="/messaging"
+                    aria-label={`Message ${name ?? roleLabel(a.role)}`}
+                  >
                     <Glyph name="message-square" size={16} strokeWidth={1.75} />
                   </Link>
                 </span>
@@ -924,7 +990,9 @@ function DiagnosesPanel({
                     {p.kind === "terminal" ? "Primary" : titleCase(p.kind)}
                   </span>
                 </td>
-                <td className="wx-nums">{p.onsetAt ? p.onsetAt.slice(0, 10) : "—"}</td>
+                <td className="wx-nums">
+                  {p.onsetAt ? p.onsetAt.slice(0, 10) : "—"}
+                </td>
                 <td>
                   <StatusPill label="Active" tone="success" />
                 </td>
@@ -955,14 +1023,18 @@ function RecentActivityPanel({
   className?: string;
 }): JSX.Element {
   const list = data.encounters
-    ? [...data.encounters].sort((a, b) => b.serviceDate.localeCompare(a.serviceDate)).slice(0, 5)
+    ? [...data.encounters]
+        .sort((a, b) => b.serviceDate.localeCompare(a.serviceDate))
+        .slice(0, 5)
     : undefined;
   return (
     <Panel
       title="Recent Activity"
       icon="file-text"
       className={className}
-      action={<PanelLink to={`/patients/${patientId}/encounters`}>View all</PanelLink>}
+      action={
+        <PanelLink to={`/patients/${patientId}/encounters`}>View all</PanelLink>
+      }
     >
       {list === undefined ? (
         <Loading />
@@ -980,11 +1052,19 @@ function RecentActivityPanel({
               .join(" ");
             return (
               <li key={e.id}>
-                <span className="wx-timeline-date wx-nums">{fmtDate(e.serviceDate)}</span>
-                <span className="wx-timeline-icon">
-                  <Glyph name={ENCOUNTER_ICON[e.encounterType ?? ""] ?? "file-text"} size={15} />
+                <span className="wx-timeline-date wx-nums">
+                  {fmtDate(e.serviceDate)}
                 </span>
-                <Link to={`/patients/${patientId}/encounters/${e.id}`} className="wx-timeline-text">
+                <span className="wx-timeline-icon">
+                  <Glyph
+                    name={ENCOUNTER_ICON[e.encounterType ?? ""] ?? "file-text"}
+                    size={15}
+                  />
+                </span>
+                <Link
+                  to={`/patients/${patientId}/encounters/${e.id}`}
+                  className="wx-timeline-text"
+                >
                   {what} {e.signedAt ? "signed" : "documented"}
                   {who ? <span style={muted}> by {who}</span> : null}
                 </Link>
@@ -1022,7 +1102,10 @@ function UpcomingVisitsPanel({
       flush
       className={className}
       action={
-        <Link to="/calendar" className="wx-btn-primary wx-btn-sm">
+        <Link
+          to={`/calendar?patient=${encodeURIComponent(patientId)}&newVisit=1`}
+          className="wx-btn-primary wx-btn-sm"
+        >
           <Glyph name="plus" size={14} /> Schedule Visit
         </Link>
       }
@@ -1052,7 +1135,9 @@ function UpcomingVisitsPanel({
                 <td className="wx-nums">{fmtDate(v.scheduledStartedAt)}</td>
                 <td className="wx-nums">{fmtTime(v.scheduledStartedAt)}</td>
                 <td>{v.visitPurpose ? titleCase(v.visitPurpose) : "Visit"}</td>
-                <td>{memberName(data, v.assignedMembershipId) ?? "Unassigned"}</td>
+                <td>
+                  {memberName(data, v.assignedMembershipId) ?? "Unassigned"}
+                </td>
                 <td>
                   <StatusPill
                     label={titleCase(v.status ?? "scheduled")}
@@ -1084,7 +1169,9 @@ function DocumentsPanel({
       icon="file-text"
       flush
       className={className}
-      action={<PanelLink to={`/patients/${patientId}/documents`}>View all</PanelLink>}
+      action={
+        <PanelLink to={`/patients/${patientId}/documents`}>View all</PanelLink>
+      }
     >
       {docs === undefined ? (
         <div style={{ padding: "0 1.125rem" }}>
@@ -1149,7 +1236,9 @@ export function OverviewRail({
   patientId: string;
   data: PatientChartData;
 }): JSX.Element {
-  const windows = (data.election?.complianceWindows ?? []).filter((w) => w.status === "open");
+  const windows = (data.election?.complianceWindows ?? []).filter(
+    (w) => w.status === "open",
+  );
   const flags = data.privacy?.flags ?? [];
   const alertCount = windows.length + (data.privacy?.sudRestricted ? 1 : 0);
   // A privacy officer (`privacy.admin`, M5 §5.1) lands on the officer view; everyone else on the chart tab.
@@ -1163,7 +1252,11 @@ export function OverviewRail({
       icon: "file-check",
       to: `/patients/${patientId}/election-certification`,
     },
-    { label: "Schedule Visit", icon: "calendar", to: "/calendar" },
+    {
+      label: "Schedule Visit",
+      icon: "calendar",
+      to: `/calendar?patient=${encodeURIComponent(patientId)}&newVisit=1`,
+    },
     {
       label: "Create Order",
       icon: "clipboard-list",
@@ -1202,7 +1295,8 @@ export function OverviewRail({
               gap: "0.5rem",
             }}
           >
-            Alerts &amp; Safety {alertCount > 0 ? <CountBadge count={alertCount} /> : null}
+            Alerts &amp; Safety{" "}
+            {alertCount > 0 ? <CountBadge count={alertCount} /> : null}
           </span>
         }
         icon="alert"
@@ -1222,7 +1316,11 @@ export function OverviewRail({
             {windows.map((w) => (
               <li key={w.id}>
                 <RailAlert
-                  tone={w.severity === "critical" || w.severity === "high" ? "danger" : "warning"}
+                  tone={
+                    w.severity === "critical" || w.severity === "high"
+                      ? "danger"
+                      : "warning"
+                  }
                   title={WINDOW_LABEL[w.windowKind] ?? titleCase(w.windowKind)}
                   detail={`Due ${fmtDate(w.mustCompleteBy)}`}
                   to={`/patients/${patientId}/election-certification`}
@@ -1282,7 +1380,12 @@ export function RailAlert({
   detail: string;
   to: string;
 }): JSX.Element {
-  const color = tone === "danger" ? t.error : tone === "warning" ? t.warning : t.onSurfaceVariant;
+  const color =
+    tone === "danger"
+      ? t.error
+      : tone === "warning"
+        ? t.warning
+        : t.onSurfaceVariant;
   return (
     <Link to={to} className="wx-rail-alert">
       <span
@@ -1299,7 +1402,10 @@ export function RailAlert({
           flexShrink: 0,
         }}
       >
-        <Glyph name={tone === "neutral" ? "shield" : "alert-circle"} size={16} />
+        <Glyph
+          name={tone === "neutral" ? "shield" : "alert-circle"}
+          size={16}
+        />
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span

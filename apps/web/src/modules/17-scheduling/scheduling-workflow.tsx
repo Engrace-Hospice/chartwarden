@@ -6,7 +6,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AdmissionLookupField,
   MdmEntityLookupField,
-  MembershipLookupField,
   PatientLookupField,
 } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
@@ -49,7 +48,39 @@ export interface EncounterLink {
   cosignedAt: string | null;
 }
 
-type VisitAction = "start" | "arrive" | "reassign" | "reschedule" | "cancel" | "no-show";
+type VisitAction =
+  | "start"
+  | "arrive"
+  | "reassign"
+  | "reschedule"
+  | "cancel"
+  | "no-show";
+
+type EligibleClinician = {
+  membershipId: string;
+  displayName: string;
+  disciplines: string[];
+  eligible: boolean;
+  reasonCodes: string[];
+};
+const eligibilityApi = (client: unknown) =>
+  client as {
+    GET: (
+      path: string,
+      options: unknown,
+    ) => Promise<{ data?: unknown; error?: unknown }>;
+  };
+const eligibilityReason = (reasons: readonly string[]): string => {
+  if (reasons.includes("CLINICIAN_CREDENTIAL_MISSING"))
+    return "No active credential for the selected date.";
+  if (reasons.includes("CLINICIAN_DISCIPLINE_NOT_ALLOWED"))
+    return "This discipline cannot perform the selected visit type.";
+  if (reasons.includes("CLINICIAN_ON_PTO"))
+    return "Unavailable during the selected time.";
+  if (reasons.includes("CLINICIAN_NOT_IN_CASELOAD"))
+    return "Not currently assigned to this patient's care team.";
+  return "Not eligible for this visit.";
+};
 
 const VISIT_PURPOSES = [
   "routine_visit",
@@ -68,44 +99,18 @@ const VISIT_PURPOSES = [
   "discharge_visit",
 ] as const;
 
-const VISIT_SETTINGS = ["patient_home", "facility", "inpatient_unit", "telephonic"] as const;
+const VISIT_SETTINGS = [
+  "patient_home",
+  "facility",
+  "inpatient_unit",
+  "telephonic",
+] as const;
 
-export function hasPermission(permissions: readonly string[] | undefined, key: string): boolean {
+export function hasPermission(
+  permissions: readonly string[] | undefined,
+  key: string,
+): boolean {
   return permissions?.includes(key) ?? false;
-}
-
-export function apiErrorMessage(error: unknown, fallback: string): string {
-  const body = error as {
-    message?: string;
-    title?: string;
-    detail?: string;
-    code?: string;
-    error?: { message?: string; title?: string; detail?: string; code?: string };
-    issues?: Array<{ message?: string }>;
-  } | null;
-  const nested = body?.error;
-  // §4.7 D8 — the pre-schedule gate refuses as `VISIT_PRE_SCHEDULE_GATE_UNMET` on create/publish and as
-  // a 403 whose message is the bare constant `PRE_SCHEDULE_GATE_FAILED` on reassign/reschedule. Neither
-  // is copy a scheduler can act on; the fix is a different clinician, not a retry, so say so.
-  const d8Signal = [nested?.code, nested?.message, body?.code, body?.message];
-  if (
-    d8Signal.includes("VISIT_PRE_SCHEDULE_GATE_UNMET") ||
-    d8Signal.includes("PRE_SCHEDULE_GATE_FAILED")
-  )
-    return "That clinician's discipline, active licence, caseload or approved time off does not allow this visit (§4.7 pre-schedule check). Choose a different clinician or time.";
-  if (body?.issues?.length)
-    return body.issues
-      .map((i) => i.message)
-      .filter(Boolean)
-      .join("; ");
-  if (body?.detail) return body.detail;
-  if (body?.message) return body.message;
-  if (body?.title) return body.title;
-  if (nested?.detail) return nested.detail;
-  if (nested?.message) return nested.message;
-  if (nested?.title) return nested.title;
-  if (nested?.code === "STEP_UP_REQUIRED") return "A fresh step-up is required for this action.";
-  return fallback;
 }
 
 function toLocalInput(value: Date): string {
@@ -138,7 +143,11 @@ export function shortId(id: string | null | undefined): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
 
-export function SchedulingNav({ onNewVisit }: { onNewVisit?: () => void }): JSX.Element {
+export function SchedulingNav({
+  onNewVisit,
+}: {
+  onNewVisit?: () => void;
+}): JSX.Element {
   const location = useLocation();
   const session = useSession();
   const permissions = session?.permissions;
@@ -147,18 +156,36 @@ export function SchedulingNav({ onNewVisit }: { onNewVisit?: () => void }): JSX.
     { href: "/scheduling/day", label: "Day", permission: "visit.read_team" },
     { href: "/scheduling/week", label: "Week", permission: "visit.read_team" },
     { href: "/me/visits", label: "My Visits", permission: "visit.read" },
-    { href: "/scheduling/recurring", label: "Recurring", permission: "recurring_visit.read" },
-    { href: "/scheduling/proposals", label: "Proposals", permission: "visit.proposal.read" },
-    { href: "/scheduling/time-off", label: "Time Off", permission: "time_off.read_team" },
+    {
+      href: "/scheduling/recurring",
+      label: "Recurring",
+      permission: "recurring_visit.read",
+    },
+    {
+      href: "/scheduling/proposals",
+      label: "Proposals",
+      permission: "visit.proposal.read",
+    },
+    {
+      href: "/scheduling/time-off",
+      label: "Time Off",
+      permission: "time_off.read_team",
+    },
   ] as const;
-  const visibleTabs = tabs.filter((tab) => hasPermission(permissions, tab.permission));
+  const visibleTabs = tabs.filter((tab) =>
+    hasPermission(permissions, tab.permission),
+  );
   return (
     <div style={navShell}>
       <nav aria-label="Scheduling sections" style={navTabs}>
         {visibleTabs.map(({ href, label }) => {
           const active = location.pathname === href;
           return (
-            <Link key={href} to={href} style={{ ...navLink, ...(active ? navLinkActive : null) }}>
+            <Link
+              key={href}
+              to={href}
+              style={{ ...navLink, ...(active ? navLinkActive : null) }}
+            >
               {label}
             </Link>
           );
@@ -177,10 +204,12 @@ export function NewVisitModal({
   open,
   onClose,
   onCreated,
+  initialPatient,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (visit: VisitView) => void;
+  initialPatient?: { id: string; label: string } | null;
 }): JSX.Element | null {
   const client = useApiClient();
   const [patientId, setPatientId] = useState("");
@@ -191,13 +220,47 @@ export function NewVisitModal({
   const [visitPurpose, setVisitPurpose] = useState("routine_visit");
   const [visitSetting, setVisitSetting] = useState("patient_home");
   const [addressId, setAddressId] = useState("");
+  const [addresses, setAddresses] = useState<
+    Array<{ id: string; label: string; isPrimary: boolean; current: boolean }>
+  >([]);
   const [facilityId, setFacilityId] = useState("");
-  const [start, setStart] = useState(() => toLocalInput(new Date(Date.now() + 60 * 60 * 1000)));
-  const [end, setEnd] = useState(() => toLocalInput(new Date(Date.now() + 2 * 60 * 60 * 1000)));
+  const [start, setStart] = useState(() =>
+    toLocalInput(new Date(Date.now() + 60 * 60 * 1000)),
+  );
+  const [end, setEnd] = useState(() =>
+    toLocalInput(new Date(Date.now() + 2 * 60 * 60 * 1000)),
+  );
   const [notes, setNotes] = useState("");
   const [reminder, setReminder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [eligibleClinicians, setEligibleClinicians] = useState<
+    EligibleClinician[]
+  >([]);
+  const [eligibilityState, setEligibilityState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [eligibilityHint, setEligibilityHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !initialPatient) return;
+    setPatientId(initialPatient.id);
+    setPatientLabel(initialPatient.label);
+  }, [open, initialPatient]);
+
+  useEffect(() => {
+    if (!open || !patientId || admissionId) return;
+    void client
+      .GET("/api/v1/patients/{patientId}/admissions", {
+        params: { path: { patientId } },
+      })
+      .then((result) => {
+        const active = (
+          (result.data?.items ?? []) as Array<{ id: string; state: string }>
+        ).filter((admission) => admission.state === "active");
+        if (active.length === 1) setAdmissionId(active[0]!.id);
+      });
+  }, [admissionId, client, open, patientId]);
 
   function reset(): void {
     setPatientId("");
@@ -208,11 +271,128 @@ export function NewVisitModal({
     setVisitPurpose("routine_visit");
     setVisitSetting("patient_home");
     setAddressId("");
+    setAddresses([]);
     setFacilityId("");
     setNotes("");
     setReminder(false);
     setError(null);
+    setEligibleClinicians([]);
+    setEligibilityState("idle");
+    setEligibilityHint(null);
   }
+
+  // Patient addresses are M5-owned.  Once a patient is chosen, select their current primary address
+  // automatically; the select below deliberately remains editable for a temporary/facility address.
+  useEffect(() => {
+    let cancelled = false;
+    if (!patientId) {
+      setAddresses([]);
+      setAddressId("");
+      return;
+    }
+    void (async () => {
+      const { data, error: addressError } = await client.GET(
+        "/api/v1/patients/{id}/addresses",
+        {
+          params: { path: { id: patientId } },
+        },
+      );
+      if (cancelled || addressError) return;
+      const rows = (
+        (data?.addresses ?? []) as Array<{
+          id: string;
+          line1: string;
+          line2?: string | null;
+          city: string;
+          state?: string | null;
+          postalCode?: string | null;
+          isPrimary: boolean;
+          current: boolean;
+        }>
+      ).map((address) => ({
+        id: address.id,
+        label: [
+          address.line1,
+          address.line2,
+          address.city,
+          address.state,
+          address.postalCode,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        isPrimary: address.isPrimary,
+        current: address.current,
+      }));
+      setAddresses(rows);
+      const primary =
+        rows.find((address) => address.current && address.isPrimary) ??
+        rows.find((address) => address.current);
+      setAddressId(primary?.id ?? "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, patientId]);
+
+  // The backend evaluates the same M17 facts as POST /visits. Never derive a second discipline or
+  // credential policy in the browser; this only makes known-invalid choices unavailable sooner.
+  useEffect(() => {
+    let cancelled = false;
+    const validWindow =
+      Date.parse(isoFromLocal(start)) < Date.parse(isoFromLocal(end));
+    if (!patientId || !validWindow) {
+      setEligibleClinicians([]);
+      setEligibilityState("idle");
+      return;
+    }
+    setEligibilityState("loading");
+    setEligibilityHint(null);
+    void (async () => {
+      const result = await eligibilityApi(client).GET(
+        "/api/v1/scheduling/eligible-clinicians",
+        {
+          params: {
+            query: {
+              patientId,
+              visitPurpose,
+              scheduledStartedAt: isoFromLocal(start),
+              scheduledEndedAt: isoFromLocal(end),
+            },
+          },
+        },
+      );
+      if (cancelled) return;
+      if (result.error) {
+        setEligibleClinicians([]);
+        setEligibilityState("error");
+        return;
+      }
+      const rows = (result.data ?? []) as EligibleClinician[];
+      setEligibleClinicians(rows);
+      setEligibilityState("ready");
+      if (
+        clinicianId &&
+        !rows.some(
+          (clinician) =>
+            clinician.membershipId === clinicianId && clinician.eligible,
+        )
+      ) {
+        const selected = rows.find(
+          (clinician) => clinician.membershipId === clinicianId,
+        );
+        setClinicianId("");
+        setClinicianLabel("");
+        setEligibilityHint(
+          selected
+            ? `Selected clinician removed: ${eligibilityReason(selected.reasonCodes)}`
+            : "Selected clinician is no longer eligible for this visit.",
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, patientId, visitPurpose, start, end, clinicianId]);
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -236,14 +416,15 @@ export function NewVisitModal({
         scheduledStartedAt: isoFromLocal(start),
         scheduledEndedAt: isoFromLocal(end),
         patientAddressId: addressId || null,
-        externalFacilityId: visitSetting === "facility" ? facilityId || null : null,
+        externalFacilityId:
+          visitSetting === "facility" ? facilityId || null : null,
         ...(notes.trim() ? { schedulerInternalNotes: notes.trim() } : {}),
         caregiverReminderOptIn: reminder,
       },
     } as never);
     setSubmitting(false);
     if (err || !data) {
-      setError(apiErrorMessage(err, "The visit could not be created."));
+      setError(mapSchedulingApiError(err).message);
       return;
     }
     reset();
@@ -263,10 +444,16 @@ export function NewVisitModal({
           <div>
             <h2 style={modalTitle}>New Visit</h2>
             <p style={muted}>
-              Schedule ownership stays in M17; Encounter draft seeding is backend-owned.
+              Schedule ownership stays in M17; Encounter draft seeding is
+              backend-owned.
             </p>
           </div>
-          <button type="button" onClick={onClose} disabled={submitting} style={iconButton}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            style={iconButton}
+          >
             <Glyph name="close" size={16} label="Close" />
           </button>
         </div>
@@ -284,6 +471,9 @@ export function NewVisitModal({
               setPatientId(value);
               setPatientLabel(option?.searchLabel ?? "");
               setAdmissionId("");
+              setAddressId("");
+              setClinicianId("");
+              setClinicianLabel("");
             }}
             required
           />
@@ -342,16 +532,59 @@ export function NewVisitModal({
               style={input}
             />
           </label>
-          <MembershipLookupField
-            label="Assigned clinician"
-            value={clinicianId}
-            valueLabel={clinicianLabel}
-            onChange={(value, option) => {
-              setClinicianId(value);
-              setClinicianLabel(option?.searchLabel ?? "");
-            }}
-            required
-          />
+          <label style={field}>
+            <span style={label}>Assigned clinician *</span>
+            <select
+              value={clinicianId}
+              onChange={(e) => {
+                const selected = eligibleClinicians.find(
+                  (clinician) => clinician.membershipId === e.target.value,
+                );
+                setClinicianId(e.target.value);
+                setClinicianLabel(selected?.displayName ?? "");
+              }}
+              style={input}
+              disabled={eligibilityState !== "ready"}
+            >
+              <option value="">
+                {eligibilityState === "loading"
+                  ? "Checking eligible clinicians…"
+                  : "Select an eligible clinician…"}
+              </option>
+              {eligibleClinicians
+                .filter((clinician) => clinician.eligible)
+                .map((clinician) => (
+                  <option
+                    key={clinician.membershipId}
+                    value={clinician.membershipId}
+                  >
+                    {clinician.displayName} ·{" "}
+                    {clinician.disciplines
+                      .map((discipline) => discipline.toUpperCase())
+                      .join(" / ")}
+                  </option>
+                ))}
+            </select>
+            {eligibilityState === "ready" &&
+            eligibleClinicians.filter((clinician) => clinician.eligible)
+              .length === 0 ? (
+              <small style={muted}>
+                No eligible clinicians for this patient and visit context.
+                Review the care team, credentials, or selected time.
+              </small>
+            ) : null}
+            {eligibilityState === "error" ? (
+              <small style={muted}>
+                Eligible clinicians could not be checked. Try again before
+                creating the visit.
+              </small>
+            ) : null}
+            {eligibilityHint ? (
+              <small role="status" style={muted}>
+                {eligibilityHint}
+              </small>
+            ) : null}
+          </label>
           {visitSetting === "facility" ? (
             <MdmEntityLookupField
               kind="facility"
@@ -362,11 +595,22 @@ export function NewVisitModal({
           ) : (
             <label style={field}>
               <span style={label}>Patient address</span>
-              <input
+              <select
                 value={addressId}
                 onChange={(e) => setAddressId(e.target.value)}
                 style={input}
-              />
+                disabled={!patientId}
+              >
+                <option value="">
+                  {patientId ? "No address selected" : "Select a patient first"}
+                </option>
+                {addresses.map((address) => (
+                  <option key={address.id} value={address.id}>
+                    {address.label}
+                    {address.current && address.isPrimary ? " (primary)" : ""}
+                  </option>
+                ))}
+              </select>
             </label>
           )}
         </div>
@@ -422,11 +666,90 @@ export function VisitActionPanel({
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState("patient_request");
   const [clinicianId, setClinicianId] = useState("");
-  const [start, setStart] = useState(toLocalInput(new Date(visit.scheduledStartedAt)));
-  const [end, setEnd] = useState(toLocalInput(new Date(visit.scheduledEndedAt)));
-  const [evvReason, setEvvReason] = useState(restored?.evvReason ?? "");
+  const [start, setStart] = useState(
+    toLocalInput(new Date(visit.scheduledStartedAt)),
+  );
+  const [end, setEnd] = useState(
+    toLocalInput(new Date(visit.scheduledEndedAt)),
+  );
+  const [evvReason, setEvvReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [actionEligibleClinicians, setActionEligibleClinicians] = useState<
+    EligibleClinician[]
+  >([]);
+  const [actionEligibilityState, setActionEligibilityState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [actionEligibilityHint, setActionEligibilityHint] = useState<
+    string | null
+  >(null);
+  const [eligibilityRefresh, setEligibilityRefresh] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      (action !== "reassign" && action !== "reschedule") ||
+      Date.parse(isoFromLocal(start)) >= Date.parse(isoFromLocal(end))
+    ) {
+      setActionEligibleClinicians([]);
+      setActionEligibilityState("idle");
+      return;
+    }
+    setActionEligibilityState("loading");
+    setActionEligibilityHint(null);
+    void (async () => {
+      const result = await eligibilityApi(client).GET(
+        "/api/v1/scheduling/eligible-clinicians",
+        {
+          params: {
+            query: {
+              patientId: visit.patientId,
+              visitPurpose: visit.visitPurpose,
+              scheduledStartedAt: isoFromLocal(start),
+              scheduledEndedAt: isoFromLocal(end),
+            },
+          },
+        },
+      );
+      if (cancelled) return;
+      if (result.error) {
+        setActionEligibleClinicians([]);
+        setActionEligibilityState("error");
+        return;
+      }
+      const rows = (result.data ?? []) as EligibleClinician[];
+      setActionEligibleClinicians(rows);
+      setActionEligibilityState("ready");
+      setClinicianId((previous) => {
+        const candidateId =
+          previous ||
+          (action === "reschedule" ? visit.assignedMembershipId : "");
+        if (!candidateId) return previous;
+        const candidate = rows.find(
+          (clinician) => clinician.membershipId === candidateId,
+        );
+        if (candidate?.eligible) return candidateId;
+        setActionEligibilityHint(
+          `${candidate?.displayName ?? "The current clinician"} is no longer available: ${eligibilityReason(candidate?.reasonCodes ?? [])}`,
+        );
+        return "";
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    action,
+    client,
+    eligibilityRefresh,
+    end,
+    start,
+    visit.assignedMembershipId,
+    visit.patientId,
+    visit.visitPurpose,
+  ]);
 
   const permissions = session?.permissions;
   const buttons = useMemo(() => {
@@ -436,24 +759,56 @@ export function VisitActionPanel({
       tone?: "primary" | "secondary" | "danger";
       icon: "clock" | "check" | "users" | "calendar" | "block" | "alert";
     }> = [];
-    if (visit.status === "published" && hasPermission(permissions, "visit.start"))
+    if (
+      visit.status === "published" &&
+      hasPermission(permissions, "visit.start")
+    )
       out.push({ action: "start", label: "Start", icon: "clock" });
-    if (visit.status === "en_route" && hasPermission(permissions, "visit.start"))
+    if (
+      visit.status === "en_route" &&
+      hasPermission(permissions, "visit.start")
+    )
       out.push({ action: "arrive", label: "Check in", icon: "check" });
     if (
       ["published", "en_route"].includes(visit.status) &&
       hasPermission(permissions, "visit.reassign")
     )
-      out.push({ action: "reassign", label: "Reassign", tone: "secondary", icon: "users" });
-    if (visit.status === "published" && hasPermission(permissions, "visit.reschedule"))
-      out.push({ action: "reschedule", label: "Reschedule", tone: "secondary", icon: "calendar" });
+      out.push({
+        action: "reassign",
+        label: "Reassign",
+        tone: "secondary",
+        icon: "users",
+      });
+    if (
+      visit.status === "published" &&
+      hasPermission(permissions, "visit.reschedule")
+    )
+      out.push({
+        action: "reschedule",
+        label: "Reschedule",
+        tone: "secondary",
+        icon: "calendar",
+      });
     if (
       ["published", "en_route", "in_visit"].includes(visit.status) &&
       hasPermission(permissions, "visit.cancel")
     )
-      out.push({ action: "cancel", label: "Cancel", tone: "danger", icon: "block" });
-    if (visit.status === "published" && hasPermission(permissions, "visit.mark_no_show"))
-      out.push({ action: "no-show", label: "No-show", tone: "danger", icon: "alert" });
+      out.push({
+        action: "cancel",
+        label: "Cancel",
+        tone: "danger",
+        icon: "block",
+      });
+    if (
+      visit.status === "published" &&
+      hasPermission(permissions, "visit.mark_no_show")
+    )
+      out.push({
+        action: "no-show",
+        label: "No-show",
+        tone: "danger",
+        icon: "alert",
+      });
     return out;
   }, [permissions, visit.status]);
 
@@ -468,6 +823,35 @@ export function VisitActionPanel({
     }
     setBusy(true);
     setError(null);
+    setFieldErrors({});
+    const reasonRequired = action === "reschedule" || action === "cancel";
+    if (reasonRequired && reason.trim().length < 20) {
+      setFieldErrors({ reason: "Please enter at least 20 characters." });
+      setBusy(false);
+      return;
+    }
+    if (
+      action === "reschedule" &&
+      Date.parse(isoFromLocal(end)) <= Date.parse(isoFromLocal(start))
+    ) {
+      setFieldErrors({
+        scheduledEndedAt:
+          "The visit end time must be later than the start time.",
+      });
+      setBusy(false);
+      return;
+    }
+    if (
+      (action === "start" || action === "arrive") &&
+      evvReason.trim() &&
+      evvReason.trim().length < 40
+    ) {
+      setFieldErrors({
+        evvMissingReason: "Please enter at least 40 characters.",
+      });
+      setBusy(false);
+      return;
+    }
     let result:
       | { data?: unknown; error?: unknown }
       | { data?: { original: VisitView; created: VisitView }; error?: unknown };
@@ -553,7 +937,13 @@ export function VisitActionPanel({
               key={b.action}
               tone={b.tone ?? "primary"}
               size="sm"
-              onClick={() => setAction(b.action)}
+              onClick={() => {
+                setError(null);
+                setFieldErrors({});
+                setActionEligibilityHint(null);
+                setClinicianId("");
+                setAction(b.action);
+              }}
             >
               <Glyph name={b.icon} size={14} /> {b.label}
             </Button>
@@ -563,7 +953,9 @@ export function VisitActionPanel({
             tone="secondary"
             onClick={() =>
               encounter
-                ? navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)
+                ? navigate(
+                    `/patients/${encounter.patientId}/encounters/${encounter.id}`,
+                  )
                 : void onChanged()
             }
           >
@@ -573,12 +965,13 @@ export function VisitActionPanel({
         </div>
         {!encounter ? (
           <p style={muted}>
-            Draft Encounter is created asynchronously after publish. Refresh if it is still
-            processing.
+            Draft Encounter is created asynchronously after publish. Refresh if
+            it is still processing.
           </p>
         ) : (
           <p style={muted}>
-            Linked Encounter: <StatusPill label={stateLabel(encounter.status)} tone="neutral" />
+            Linked Encounter:{" "}
+            <StatusPill label={stateLabel(encounter.status)} tone="neutral" />
           </p>
         )}
       </div>
@@ -590,7 +983,9 @@ export function VisitActionPanel({
       >
         <div style={modalBody}>
           <div style={modalHeader}>
-            <h2 style={modalTitle}>{action ? actionTitle(action) : "Visit action"}</h2>
+            <h2 style={modalTitle}>
+              {action ? actionTitle(action) : "Visit action"}
+            </h2>
             <button
               type="button"
               onClick={() => setAction(null)}
@@ -606,15 +1001,83 @@ export function VisitActionPanel({
             </div>
           ) : null}
           {action === "start" || action === "arrive" ? (
-            <EvvReasonField value={evvReason} onChange={setEvvReason} disabled={busy} />
+            <label style={field}>
+              <span style={label}>EVV missing reason</span>
+              <textarea
+                value={evvReason}
+                onChange={(e) => setEvvReason(e.target.value)}
+                rows={3}
+                style={textarea}
+                aria-invalid={Boolean(fieldErrors.evvMissingReason)}
+              />
+              {fieldErrors.evvMissingReason ? (
+                <small role="alert" style={{ color: "var(--color-error)" }}>
+                  {fieldErrors.evvMissingReason}
+                </small>
+              ) : null}
+            </label>
           ) : null}
           {action === "reassign" || action === "reschedule" ? (
-            <MembershipLookupField
-              label={action === "reassign" ? "New clinician" : "New clinician"}
-              value={clinicianId}
-              onChange={(value) => setClinicianId(value)}
-              required={action === "reassign"}
-            />
+            <label style={field}>
+              <span style={label}>
+                {action === "reassign" ? "New clinician *" : "Clinician"}
+              </span>
+              {actionEligibilityState === "loading" ? (
+                <small style={muted}>Checking clinician availability…</small>
+              ) : null}
+              <select
+                value={clinicianId}
+                onChange={(event) => setClinicianId(event.target.value)}
+                style={input}
+                disabled={actionEligibilityState !== "ready"}
+              >
+                <option value="">
+                  {action === "reschedule"
+                    ? "Select an eligible clinician…"
+                    : "Select a new clinician…"}
+                </option>
+                {actionEligibleClinicians
+                  .filter(
+                    (clinician) =>
+                      clinician.eligible &&
+                      (action !== "reassign" ||
+                        clinician.membershipId !== visit.assignedMembershipId),
+                  )
+                  .map((clinician) => (
+                    <option
+                      key={clinician.membershipId}
+                      value={clinician.membershipId}
+                    >
+                      {clinician.displayName} ·{" "}
+                      {clinician.disciplines
+                        .map((discipline) => discipline.toUpperCase())
+                        .join(" / ")}
+                    </option>
+                  ))}
+              </select>
+              {actionEligibilityState === "ready" &&
+              actionEligibleClinicians.filter(
+                (clinician) =>
+                  clinician.eligible &&
+                  (action !== "reassign" ||
+                    clinician.membershipId !== visit.assignedMembershipId),
+              ).length === 0 ? (
+                <small style={muted}>
+                  No eligible clinicians available. No other clinician currently
+                  meets the requirements for this patient, visit type, and time.
+                </small>
+              ) : null}
+              {actionEligibilityState === "error" ? (
+                <small style={muted}>
+                  Clinician availability could not be checked. Please try again.
+                </small>
+              ) : null}
+              {actionEligibilityHint ? (
+                <small role="status" style={muted}>
+                  {actionEligibilityHint}
+                </small>
+              ) : null}
+            </label>
           ) : null}
           {action === "reschedule" ? (
             <div style={grid2}>
@@ -625,6 +1088,7 @@ export function VisitActionPanel({
                   value={start}
                   onChange={(e) => setStart(e.target.value)}
                   style={input}
+                  aria-invalid={Boolean(fieldErrors.scheduledEndedAt)}
                 />
               </label>
               <label style={field}>
@@ -637,6 +1101,11 @@ export function VisitActionPanel({
                 />
               </label>
             </div>
+          ) : null}
+          {fieldErrors.scheduledEndedAt ? (
+            <small role="alert" style={{ color: "var(--color-error)" }}>
+              {fieldErrors.scheduledEndedAt}
+            </small>
           ) : null}
           {action === "cancel" ? (
             <label style={field}>
@@ -653,30 +1122,72 @@ export function VisitActionPanel({
               </select>
             </label>
           ) : null}
-          {action && ["reassign", "reschedule", "cancel", "no-show"].includes(action) ? (
+          {action &&
+          ["reassign", "reschedule", "cancel", "no-show"].includes(action) ? (
             <label style={field}>
-              <span style={label}>Reason</span>
+              <span style={label}>
+                {action === "reschedule"
+                  ? "Reason for rescheduling *"
+                  : action === "cancel"
+                    ? "Reason for cancellation *"
+                    : "Reason"}
+              </span>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 rows={3}
                 style={textarea}
+                aria-invalid={Boolean(fieldErrors.reason)}
               />
+              {action === "reschedule" || action === "cancel" ? (
+                <small style={muted}>
+                  {reason.trim().length < 20
+                    ? `${reason.trim().length} / 20 minimum`
+                    : `${reason.trim().length} characters`}{" "}
+                  · Please provide enough context for the care team.
+                </small>
+              ) : null}
+              {fieldErrors.reason ? (
+                <small role="alert" style={{ color: "var(--color-error)" }}>
+                  {fieldErrors.reason}
+                </small>
+              ) : null}
             </label>
           ) : null}
           {action === "reschedule" ? (
             <p style={muted}>
-              This preserves lineage: the original Visit becomes rescheduled and a new Visit is
-              published.
+              This preserves lineage: the original Visit becomes rescheduled and
+              a new Visit is published.
             </p>
           ) : null}
           <div style={actions}>
-            <Button tone="tertiary" onClick={() => setAction(null)} disabled={busy}>
+            <Button
+              tone="tertiary"
+              onClick={() => setAction(null)}
+              disabled={busy}
+            >
               Cancel
             </Button>
             <Button
-              tone={action === "cancel" || action === "no-show" ? "danger" : "primary"}
+              tone={
+                action === "cancel" || action === "no-show"
+                  ? "danger"
+                  : "primary"
+              }
               loading={busy}
+              disabled={
+                busy ||
+                ((action === "reassign" || action === "reschedule") &&
+                  (!clinicianId || actionEligibilityState !== "ready")) ||
+                ((action === "reschedule" || action === "cancel") &&
+                  reason.trim().length < 20) ||
+                (action === "reschedule" &&
+                  Date.parse(isoFromLocal(end)) <=
+                    Date.parse(isoFromLocal(start))) ||
+                ((action === "start" || action === "arrive") &&
+                  evvReason.trim().length > 0 &&
+                  evvReason.trim().length < 40)
+              }
               onClick={() => void mutate()}
             >
               Confirm
@@ -701,8 +1212,8 @@ export async function findLinkedEncounter(
       },
     },
   } as never);
-  const encounters = ((data as { encounters?: EncounterLink[] } | undefined)?.encounters ??
-    []) as EncounterLink[];
+  const encounters = ((data as { encounters?: EncounterLink[] } | undefined)
+    ?.encounters ?? []) as EncounterLink[];
   return encounters.find((encounter) => encounter.visitId === visit.id) ?? null;
 }
 
@@ -718,7 +1229,10 @@ function actionTitle(action: VisitAction): string {
 export function FieldValue({
   label,
   children,
-}: { label: string; children: ReactNode }): JSX.Element {
+}: {
+  label: string;
+  children: ReactNode;
+}): JSX.Element {
   return (
     <div style={fieldValue}>
       <span style={fieldValueLabel}>{label}</span>
@@ -735,7 +1249,11 @@ const navShell: CSSProperties = {
   padding: "0 1.5rem 0.75rem",
   flexWrap: "wrap",
 };
-const navTabs: CSSProperties = { display: "flex", gap: "0.35rem", flexWrap: "wrap" };
+const navTabs: CSSProperties = {
+  display: "flex",
+  gap: "0.35rem",
+  flexWrap: "wrap",
+};
 const navLink: CSSProperties = {
   padding: "0.4rem 0.75rem",
   borderRadius: "9999px",
@@ -744,7 +1262,10 @@ const navLink: CSSProperties = {
   fontSize: "0.8rem",
   fontWeight: 650,
 };
-const navLinkActive: CSSProperties = { background: t.primaryTint, color: t.primary };
+const navLinkActive: CSSProperties = {
+  background: t.primaryTint,
+  color: t.primary,
+};
 const modalBody: CSSProperties = {
   padding: "1.25rem",
   display: "flex",
@@ -768,8 +1289,16 @@ const grid2: CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(15rem, 1fr))",
   gap: "0.85rem",
 };
-const field: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.4rem" };
-const label: CSSProperties = { fontSize: "0.8125rem", fontWeight: 650, color: t.onSurface };
+const field: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+};
+const label: CSSProperties = {
+  fontSize: "0.8125rem",
+  fontWeight: 650,
+  color: t.onSurface,
+};
 const input: CSSProperties = {
   minHeight: "2.5rem",
   borderRadius: t.radiusMd,
@@ -778,7 +1307,11 @@ const input: CSSProperties = {
   color: t.onSurface,
   padding: "0.45rem 0.65rem",
 };
-const textarea: CSSProperties = { ...input, resize: "vertical", fontFamily: t.fontSans };
+const textarea: CSSProperties = {
+  ...input,
+  resize: "vertical",
+  fontFamily: t.fontSans,
+};
 const checkRow: CSSProperties = {
   display: "flex",
   gap: "0.5rem",
@@ -792,7 +1325,11 @@ const actions: CSSProperties = {
   gap: "0.6rem",
   flexWrap: "wrap",
 };
-const muted: CSSProperties = { margin: 0, color: t.onSurfaceVariant, fontSize: "0.8rem" };
+const muted: CSSProperties = {
+  margin: 0,
+  color: t.onSurfaceVariant,
+  fontSize: "0.8rem",
+};
 const errorBanner: CSSProperties = {
   padding: "0.7rem 0.85rem",
   borderRadius: t.radiusMd,
@@ -825,11 +1362,22 @@ const panelTitle: CSSProperties = {
   color: t.onSurface,
   fontWeight: 700,
 };
-const actionGrid: CSSProperties = { display: "flex", flexWrap: "wrap", gap: "0.5rem" };
-const fieldValue: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.1rem" };
+const actionGrid: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.5rem",
+};
+const fieldValue: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.1rem",
+};
 const fieldValueLabel: CSSProperties = {
   fontSize: "0.72rem",
   color: t.onSurfaceVariant,
   fontWeight: 650,
 };
-const fieldValueText: CSSProperties = { fontSize: "0.88rem", color: t.onSurface };
+const fieldValueText: CSSProperties = {
+  fontSize: "0.88rem",
+  color: t.onSurface,
+};
