@@ -29,7 +29,11 @@ import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { MembershipRepository } from "../src/modules/02-identity/identity-ports";
+import type {
+  MembershipRepository,
+  UserDirectory,
+} from "../src/modules/02-identity/identity-ports";
+import { createDbUserDirectory } from "../src/modules/02-identity/identity-stores-db";
 import { createDbMembershipRepository } from "../src/modules/02-identity/membership-repository";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -49,6 +53,7 @@ describe.skipIf(!DB_URL)("F-001 pre-org membership picker — LIVE Postgres", ()
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let repo: MembershipRepository;
+  let users: UserDirectory;
 
   async function applyMigrations() {
     const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
@@ -95,6 +100,7 @@ describe.skipIf(!DB_URL)("F-001 pre-org membership picker — LIVE Postgres", ()
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     repo = createDbMembershipRepository(handle.db, createDbAdminMembershipReader(handle.db));
+    users = createDbUserDirectory(handle.db);
   }, 180_000);
 
   afterAll(async () => {
@@ -170,5 +176,97 @@ describe.skipIf(!DB_URL)("F-001 pre-org membership picker — LIVE Postgres", ()
       },
     );
     expect(visible).toBe(0);
+  });
+  describe("GAP-001 createDbUserDirectory.deactivateFromOrg (as wardenx_app)", () => {
+    async function seedUser(id: string, email: string, memberships: [string, string][]) {
+      await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,$2,'Gap One')`, [id, email]);
+      for (const [org, status] of memberships) {
+        await admin.query(
+          `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,$3)`,
+          [id, org, status],
+        );
+      }
+    }
+    async function statusOf(id: string): Promise<string | undefined> {
+      const r = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [
+        id,
+      ]);
+      return r.rows[0]?.status;
+    }
+
+    it("deactivates a user whose only live membership is in the caller's org", async () => {
+      const id = "77777777-7777-4777-8777-7777f0010001";
+      await seedUser(id, "sole@f001.test", [
+        [ORG_A, "active"],
+        [ORG_B, "revoked"],
+      ]);
+      expect(
+        await users.deactivateFromOrg({ userId: id, organizationId: ORG_A, reason: "x" }),
+      ).toBe("deactivated");
+      expect(await statusOf(id)).toBe("deactivated");
+    });
+
+    it("a former member (revoked in the caller's org, nothing live) is not_member — status untouched", async () => {
+      const id = "77777777-7777-4777-8777-7777f0010002";
+      await seedUser(id, "former@f001.test", [[ORG_A, "revoked"]]);
+      expect(
+        await users.deactivateFromOrg({ userId: id, organizationId: ORG_A, reason: "x" }),
+      ).toBe("not_member");
+      expect(await statusOf(id)).toBe("active");
+    });
+
+    it("a live member of another org is member_elsewhere — status untouched", async () => {
+      const id = "77777777-7777-4777-8777-7777f0010003";
+      await seedUser(id, "multi@f001.test", [
+        [ORG_A, "active"],
+        [ORG_B, "suspended"],
+      ]);
+      expect(
+        await users.deactivateFromOrg({ userId: id, organizationId: ORG_A, reason: "x" }),
+      ).toBe("member_elsewhere");
+      expect(await statusOf(id)).toBe("active");
+    });
+
+    it("a non-UUID or unknown id is not_member (no 500 on the ::uuid cast)", async () => {
+      expect(
+        await users.deactivateFromOrg({ userId: "not-a-uuid", organizationId: ORG_A, reason: "x" }),
+      ).toBe("not_member");
+      expect(
+        await users.deactivateFromOrg({
+          userId: "77777777-7777-4777-8777-7777f00100ff",
+          organizationId: ORG_A,
+          reason: "x",
+        }),
+      ).toBe("not_member");
+    });
+
+    it("TOCTOU: a membership insert in another org that is in flight is waited for, then refuses (409 path)", async () => {
+      const id = "77777777-7777-4777-8777-7777f0010004";
+      await seedUser(id, "race@f001.test", [[ORG_A, "active"]]);
+      // A concurrent invite-accept in ORG_B: inserted but not yet committed. Its FK check holds
+      // FOR KEY SHARE on the user row, so the directory's FOR UPDATE must wait for it.
+      const accept = new Client({ connectionString: DB_URL });
+      await accept.connect();
+      try {
+        await accept.query("BEGIN");
+        await accept.query(
+          `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')`,
+          [id, ORG_B],
+        );
+        let settled = false;
+        const pending = Promise.resolve(
+          users.deactivateFromOrg({ userId: id, organizationId: ORG_A, reason: "x" }),
+        ).finally(() => {
+          settled = true;
+        });
+        await new Promise((r) => setTimeout(r, 300));
+        expect(settled).toBe(false); // blocked on the accept's lock, not deciding on a stale read
+        await accept.query("COMMIT");
+        expect(await pending).toBe("member_elsewhere");
+        expect(await statusOf(id)).toBe("active");
+      } finally {
+        await accept.end();
+      }
+    });
   });
 });

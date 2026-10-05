@@ -302,9 +302,17 @@ function policiesFor(table: string): string[] {
 describe("§8.1 T1/T12/T13 — the kill switch is not reachable by a tenant-side actor", () => {
   it("T1 — `ai_safety_owner` admits only the platform-issued roles §4.7 names", async () => {
     const predicates = buildAiPlatformAbacPredicates({ resolver: abacResolver() });
-    // The two populations §4.7's definition names, and nothing else.
+    // The two populations §4.7's definition names, and nothing else: the platform operator always, the
+    // tenant clinical safety lead only "in single-tenant deployments" (GAP-096).
     await expect(predicates.ai_safety_owner(session(["platform_ops"]), {})).resolves.toBe(true);
     await expect(predicates.ai_safety_owner(session(["clinical_safety_lead"]), {})).resolves.toBe(
+      false,
+    );
+    const singleTenant = buildAiPlatformAbacPredicates({
+      resolver: abacResolver(),
+      singleTenantDeployment: true,
+    });
+    await expect(singleTenant.ai_safety_owner(session(["clinical_safety_lead"]), {})).resolves.toBe(
       true,
     );
     // A tenant admin is the T1 attacker: the highest role an agency can grant ITSELF.

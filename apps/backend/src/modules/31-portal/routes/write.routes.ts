@@ -7,7 +7,9 @@
 // §7.6 post-discharge read-only gate, the §7.7 attestation window, the §7.8 MIME/size cap, the §164.526
 // amendment shape — which THROWS a `PortalWriteError` on any violation. The amendment submit then hands the
 // validated request to M5's intake (`deps.amendmentIntake`, GAP-006) — synchronously, so the 202 means an M5
-// row exists and the §164.526 60-day clock has started. (This header used to say a `deps.outbox` publisher
+// row exists and the §164.526 60-day clock has started. Its `targetRef` is verified to name the session
+// patient's own record first (`verifiedAmendmentTargetRef`), and a retry under the same Idempotency-Key is
+// replayed by the M1 idempotency middleware (bootstrap/plugins/idempotency.ts) rather than re-run. (This header used to say a `deps.outbox` publisher
 // emitted the plan's `m31.*` event; M31 has no outbox publisher, and the request was simply dropped.)
 // `portal.administration.attest` and `portal.amendment.submit` additionally carry TOTP step-up (M2),
 // composed in `./mount`.
@@ -18,6 +20,7 @@ import { getSeam } from "../../../bootstrap/index";
 import { planAmendmentRequest } from "../write-paths/amendment-request";
 import { planCaregiverAttestation } from "../write-paths/caregiver-attestation";
 import { PORTAL_UPLOAD_MIME_ALLOWLIST, planDocumentUpload } from "../write-paths/document-upload";
+import { requirePortalWrite } from "../write-paths/errors";
 import { actorOf, portalAccountIdOf, portalPatientIdOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import {
@@ -50,6 +53,68 @@ function amendmentIntakeOf(deps: PortalRouteDeps) {
     );
   }
   return deps.amendmentIntake;
+}
+
+/** The slice of M8's `SignedEncountersReader` the amendment target check reads. */
+interface SignedEncounterArm {
+  signedEncountersForPatientSince(
+    organizationId: string,
+    patientId: string,
+    since: string,
+  ): Promise<ReadonlyArray<{ readonly encounterId: string; readonly patientId: string }>>;
+}
+
+/** Every signed encounter the patient has — the narrative an amendment can name is any of them. */
+const ALL_TIME = "1970-01-01T00:00:00.000Z";
+
+/**
+ * GAP-006 — resolve the amendment's `targetRef` to a record of the SESSION's patient, or refuse. Staff act
+ * on this ref, so it must never be a caller-chosen id pointing at someone else's chart:
+ *   `patient_demographic` — the target IS the patient; an absent ref resolves to the session patient and
+ *                           any other id is refused.
+ *   `encounter_narrative` — a NAMED ref must be one of this patient's signed encounters, read through M8's
+ *                           published reader in the session's org (RLS-scoped there). Unreadable → 503
+ *                           (never store an unverified ref, never tell the patient a real visit is not theirs).
+ *                           No ref named (the shipped portal form has no visit picker) resolves to the
+ *                           session patient: the request is about this patient's chart, and staff find the
+ *                           visit from the free-text change.
+ * So a stored ref is always either the session patient or one of their encounters. A refusal does not say
+ * whether the id exists elsewhere — the same 422 either way.
+ */
+async function verifiedAmendmentTargetRef(
+  organizationId: string,
+  patientId: string,
+  body: { targetKind: "patient_demographic" | "encounter_narrative"; targetRef?: string },
+): Promise<string> {
+  const invalid = "Please choose the record you are asking us to correct.";
+  if (body.targetKind === "patient_demographic") {
+    requirePortalWrite(
+      body.targetRef === undefined || body.targetRef === patientId,
+      "AMENDMENT_TARGET_INVALID",
+      invalid,
+    );
+    return patientId;
+  }
+  const encounterId = body.targetRef;
+  if (encounterId === undefined) return patientId;
+  let encounters: Awaited<ReturnType<SignedEncounterArm["signedEncountersForPatientSince"]>>;
+  try {
+    encounters = await arm<SignedEncounterArm>(
+      "SignedEncountersReader",
+    ).signedEncountersForPatientSince(organizationId, patientId, ALL_TIME);
+  } catch {
+    throw new WardenXError(
+      "AMENDMENT_TARGET_UNVERIFIABLE",
+      "We cannot check that visit right now. Please try again later or contact your care team.",
+      503,
+    );
+  }
+  requirePortalWrite(
+    encounters.some((e) => e.encounterId === encounterId && e.patientId === patientId),
+    "AMENDMENT_TARGET_INVALID",
+    invalid,
+  );
+  return encounterId;
 }
 
 interface AdmissionArm {
@@ -209,17 +274,19 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         patientId,
         portalAccountId,
         targetKind: body.targetKind,
-        targetRef: body.targetRef ?? body.targetKind,
+        targetRef: body.targetRef ?? patientId,
         requestedChange: body.requestedChange,
         patientDischargedReadOnly: await dischargedReadOnly(actor.organizationId, patientId),
       });
+      // After the plan, so its guard order (discharged-read-only first) is unchanged.
+      const targetRef = await verifiedAmendmentTargetRef(actor.organizationId, patientId, body);
       const created = await amendmentIntakeOf(deps).submit({
         organizationId: payload.orgId,
         patientId: payload.patientId,
         requestedByUserId: actor.userId,
         portalAccountId: payload.originatingPortalAccountId,
         targetKind: payload.targetKind,
-        targetRef: payload.targetRef,
+        targetRef,
         requestedChange: payload.requestedChange,
       });
       return reply.code(202).send({ amendmentRequestRefId: created.id, status: created.status });

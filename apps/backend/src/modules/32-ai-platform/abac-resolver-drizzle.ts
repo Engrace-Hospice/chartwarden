@@ -92,12 +92,16 @@ export function buildDrizzleAiPlatformAbacResolver(
     async roleKeysOf(orgId, membershipId) {
       if (deps.roleGrants === undefined) return null;
       try {
-        // Membership → user, because M3's grant store is keyed on USER id (see the header).
-        const [member] = await db
-          .select({ userId: MEMBERSHIP.userId })
-          .from(MEMBERSHIP)
-          .where(and(eq(MEMBERSHIP.id, membershipId), eq(MEMBERSHIP.organizationId, orgId)))
-          .limit(1);
+        // Membership → user, because M3's grant store is keyed on USER id (see the header). Inside
+        // `withOrgContext`: `membership` is RLS-scoped, so a bare read as the NOBYPASSRLS `wardenx_app`
+        // role sees no row at all and this fallback answered `null` for everyone (GAP-096 live test).
+        const [member] = await withOrgContext(db, ctx(orgId), (tx) =>
+          (tx as DbClient)
+            .select({ userId: MEMBERSHIP.userId })
+            .from(MEMBERSHIP)
+            .where(and(eq(MEMBERSHIP.id, membershipId), eq(MEMBERSHIP.organizationId, orgId)))
+            .limit(1),
+        );
         if (!member) return null;
         const grants = await deps.roleGrants.loadGrants(orgId, member.userId);
         return grants.filter((g) => g.enabled).map((g) => g.roleKey);

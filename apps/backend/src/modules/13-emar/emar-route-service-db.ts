@@ -81,6 +81,7 @@ import type {
   EmarScopeRefKind,
   WitnessAbacFacts,
 } from "./abac-predicates";
+import { assertMedClassAgrees, assertOrderPatient, unresolvedOrder } from "./order-consistency";
 import type {
   AdministrationPolicyView,
   AdministrationView,
@@ -98,7 +99,7 @@ import type {
   WorksheetView,
 } from "./routes/service";
 
-/** Sentinel patient/admission anchors when no scheduled dose supplies them (the in-mem `findPatient` values). */
+/** Sentinel patient/admission anchors (historical: the order now resolves the patient; see compromise #2). */
 const PATIENT_SENTINEL = "00000000-0000-4000-8000-0000000000aa";
 const ADMISSION_SENTINEL = "00000000-0000-4000-8000-0000000000bb";
 /**
@@ -200,30 +201,6 @@ export interface EmarMedicationOrderPort {
     readonly medClass: MedClass;
     readonly isControlledSubstance: boolean;
   } | null>;
-}
-
-/** GAP-005 — the order decides; a body `medClass` may only agree with it. */
-function assertMedClassAgrees(bodyMedClass: string | undefined, orderMedClass: MedClass): void {
-  if (bodyMedClass === undefined || bodyMedClass === orderMedClass) return;
-  throw new ValidationError("medClass does not match the medication order", [
-    {
-      field: "medClass",
-      code: "MED_CLASS_MISMATCH",
-      message: `the order is ${orderMedClass}; the administration cannot be recorded as ${bodyMedClass}`,
-    },
-  ]);
-}
-
-/** The order must resolve for M13 to know whether the D7 witness applies — unknown is refused, not assumed. */
-function unresolvedOrder(): ValidationError {
-  return new ValidationError("the medication order for this administration is unresolvable", [
-    {
-      field: "medicationOrderId",
-      code: "MEDICATION_ORDER_UNRESOLVED",
-      message:
-        "the medication order could not be read, so neither the patient nor whether a witness is required is known",
-    },
-  ]);
 }
 
 /**
@@ -818,6 +795,27 @@ export function createDbEmarBackend(
             "ADMINISTRATION_BLOCKED",
             `the medication order is not administrable: ${identity.blockedReasons.join(", ") || "not_active"}`,
           );
+        if (sched)
+          assertOrderPatient(
+            "scheduledDoseId",
+            sched.patientId,
+            identity.patientId,
+            "the scheduled dose belongs to a different patient than the order",
+          );
+        if (args.comfortKitDeploymentId) {
+          const [kit] = await tx
+            .select({ patientId: CKD.patientId })
+            .from(CKD)
+            .where(eq(CKD.id, args.comfortKitDeploymentId))
+            .limit(1);
+          if (!kit) throw new NotFoundError("comfort kit deployment not found");
+          assertOrderPatient(
+            "comfortKitDeploymentId",
+            kit.patientId,
+            identity.patientId,
+            "the comfort kit was deployed for a different patient than the order",
+          );
+        }
         const patientId = sched?.patientId ?? identity?.patientId ?? PATIENT_SENTINEL;
         const admissionId = sched?.admissionId ?? identity?.admissionId ?? ADMISSION_SENTINEL;
 
@@ -871,21 +869,27 @@ export function createDbEmarBackend(
           // session state was a coin flip, and `composeIvSession` could refuse a perfectly good session
           // for "not beginning with a start". When two segments share an instant, the order they were
           // RECORDED in is the only evidence of sequence there is.
-          const priorSegments: IvSegment[] = args.ivSessionId
-            ? (
-                await tx
-                  .select()
-                  .from(ADM)
-                  .where(and(eq(ADM.ivSessionId, args.ivSessionId), ne(ADM.status, "voided")))
-                  .orderBy(asc(ADM.administeredAt), asc(ADM.id))
-              ).map((r) => ({
-                mode: r.mode as IvSegmentMode,
-                administeredAt: iso(r.administeredAt) as string,
-                ...ivRateOf(r.data),
-              }))
+          const priorRows = args.ivSessionId
+            ? await tx
+                .select()
+                .from(ADM)
+                .where(and(eq(ADM.ivSessionId, args.ivSessionId), ne(ADM.status, "voided")))
+                .orderBy(asc(ADM.administeredAt), asc(ADM.id))
             : [];
-          if (args.ivSessionId && priorSegments.length === 0)
+          if (args.ivSessionId && priorRows.length === 0)
             throw new NotFoundError("iv session not found");
+          for (const r of priorRows)
+            assertOrderPatient(
+              "ivSessionId",
+              r.patientId,
+              identity.patientId,
+              "the IV session belongs to a different patient than the order",
+            );
+          const priorSegments: IvSegment[] = priorRows.map((r) => ({
+            mode: r.mode as IvSegmentMode,
+            administeredAt: iso(r.administeredAt) as string,
+            ...ivRateOf(r.data),
+          }));
           const body = ivBodyOf(args.data);
           ivPlan = planIvSegment(deriveIvSessionState(priorSegments), {
             mode: ivMode,
@@ -1159,7 +1163,25 @@ export function createDbEmarBackend(
       args: WitnessAttestArgs,
     ): Promise<{ token: string; expiresInSeconds: number }> {
       // Stateless HMAC token (compromise #5): mint + verify share the process-fixed secret; the witness's
-      // membership is the passed `userId`. No DB write (the single-use Valkey burn is deferred).
+      // membership is the passed `userId`. No DB write here — the single-use burn is the
+      // `administration_witness` digest index, enforced when the token is consumed (TASK-008).
+      //
+      // GAP-004 — the body's `patientId` is a claim, so it is checked against the ORDER before it is
+      // signed. Consumption would never honour a mismatched token anyway (`recordAdministration` verifies
+      // the scope against the order's resolved patient, the order id and the acting clinician), but a
+      // witness should be told now, at the bedside, rather than the administering clinician discovering a
+      // dead token at commit time — and an attestation naming a patient the order is not for is never minted.
+      const identity = await medOrder().administrationIdentity({
+        organizationId: orgId,
+        medicationOrderId: args.medicationOrderId,
+      });
+      if (identity === null) throw unresolvedOrder();
+      assertOrderPatient(
+        "patientId",
+        args.patientId,
+        identity.patientId,
+        "the witness attestation names a different patient than the order",
+      );
       const token = buildWitnessAttestationToken(
         {
           patientId: args.patientId,
@@ -1182,6 +1204,18 @@ export function createDbEmarBackend(
       // witness rule does not apply and encounter_id stays null (D9). The M12 five-rights gate is skipped
       // (compromise #3, no order projection threaded).
       return withOrg(orgId, async (tx) => {
+        // GAP-004 — the caregiver names the patient; the order must be that patient's own.
+        const identity = await medOrder().administrationIdentity({
+          organizationId: orgId,
+          medicationOrderId: args.medicationOrderId,
+        });
+        if (identity === null) throw unresolvedOrder();
+        assertOrderPatient(
+          "patientId",
+          args.patientId,
+          identity.patientId,
+          "the caregiver attestation names a different patient than the order",
+        );
         const inserted = (
           await tx
             .insert(ADM)
@@ -1369,15 +1403,12 @@ export function createDbEmarBackend(
         // order's own patient (a body patientId naming someone else is refused, not trusted).
         if (identity === null) throw unresolvedOrder();
         assertMedClassAgrees(args.medClass, identity.medClass);
-        if (identity.patientId !== args.patientId) {
-          throw new ValidationError("patientId does not match the medication order", [
-            {
-              field: "patientId",
-              code: "PATIENT_ORDER_MISMATCH",
-              message: "the refusal names a different patient than the order it refuses",
-            },
-          ]);
-        }
+        assertOrderPatient(
+          "patientId",
+          args.patientId,
+          identity.patientId,
+          "the refusal names a different patient than the order it refuses",
+        );
         const inserted = (
           await tx
             .insert(ADM)

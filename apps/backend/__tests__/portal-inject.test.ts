@@ -1594,6 +1594,126 @@ describe("GAP-006 — portal §164.526 amendment submit reaches M5", () => {
     await app.close();
   });
 
+  it("a retried submit under the same Idempotency-Key replays the first answer — one M5 row, not two", async () => {
+    const { app, amendments } = makeServer();
+    const send = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/portal/amendments/submit",
+        headers: { ...CAREGIVER, ...IDEMP("gap006-retry") },
+        payload: submit,
+      });
+    const first = await send();
+    const retry = await send();
+    expect(first.statusCode).toBe(202);
+    expect(retry.statusCode).toBe(202);
+    expect(retry.json()).toEqual(first.json());
+    expect(amendments).toHaveLength(1);
+    await app.close();
+  });
+
+  it("a demographic amendment targets the SESSION patient — another id in targetRef → 422, nothing stored", async () => {
+    const { app, amendments } = makeServer();
+    const foreign = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/amendments/submit",
+      headers: { ...CAREGIVER, ...IDEMP("gap006-demo-foreign") },
+      payload: { ...submit, targetRef: "99999999-9999-4999-8999-999999999999" },
+    });
+    expect(foreign.statusCode).toBe(422);
+    expect(foreign.json().error.code).toBe("AMENDMENT_TARGET_INVALID");
+    expect(amendments).toHaveLength(0);
+
+    const own = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/amendments/submit",
+      headers: { ...CAREGIVER, ...IDEMP("gap006-demo-own") },
+      payload: submit,
+    });
+    expect(own.statusCode).toBe(202);
+    expect(amendments[0]?.targetRef).toBe(PATIENT); // a verified ref, not a free-form label
+    await app.close();
+  });
+
+  describe("encounter_narrative — targetRef must be one of the session patient's signed encounters (M8)", () => {
+    const OWN_ENCOUNTER = "33333333-3333-4333-8333-333333333301";
+    const OTHER_PATIENTS_ENCOUNTER = "33333333-3333-4333-8333-333333333302";
+    const narrative = (targetRef?: string) => ({
+      targetKind: "encounter_narrative",
+      requestedChange: "The visit note says I fell; I did not fall.",
+      ...(targetRef ? { targetRef } : {}),
+    });
+    const bindEncounterReader = () =>
+      registerSeam("SignedEncountersReader", {
+        async signedEncountersForPatientSince(_org: string, patientId: string) {
+          // Only the session patient's encounters come back; the other id belongs to someone else.
+          return patientId === PATIENT ? [{ encounterId: OWN_ENCOUNTER, patientId: PATIENT }] : [];
+        },
+      } as never);
+
+    it("the session patient's own encounter → 202, stored as the verified targetRef", async () => {
+      const { app, amendments } = makeServer();
+      bindEncounterReader();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/portal/amendments/submit",
+        headers: { ...CAREGIVER, ...IDEMP("gap006-n-own") },
+        payload: narrative(OWN_ENCOUNTER),
+      });
+      expect(res.statusCode).toBe(202);
+      expect(amendments[0]).toMatchObject({
+        targetKind: "encounter_narrative",
+        targetRef: OWN_ENCOUNTER,
+      });
+      await app.close();
+    });
+
+    it("another patient's encounter → 422, nothing stored", async () => {
+      const { app, amendments } = makeServer();
+      bindEncounterReader();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/portal/amendments/submit",
+        headers: { ...CAREGIVER, ...IDEMP("gap006-n-foreign") },
+        payload: narrative(OTHER_PATIENTS_ENCOUNTER),
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("AMENDMENT_TARGET_INVALID");
+      expect(amendments).toHaveLength(0);
+      await app.close();
+    });
+
+    it("no visit named (the portal form has no picker) → stored against the session patient, not unverified", async () => {
+      const { app, amendments } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/portal/amendments/submit",
+        headers: { ...CAREGIVER, ...IDEMP("gap006-n-none") },
+        payload: narrative(),
+      });
+      expect(res.statusCode).toBe(202);
+      expect(amendments[0]).toMatchObject({
+        targetKind: "encounter_narrative",
+        targetRef: PATIENT,
+      });
+      await app.close();
+    });
+
+    it("M8's reader unavailable → 503, never an unverified row", async () => {
+      const { app, amendments } = makeServer(); // no SignedEncountersReader bound → deny-stub throws
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/portal/amendments/submit",
+        headers: { ...CAREGIVER, ...IDEMP("gap006-n-down") },
+        payload: narrative(OWN_ENCOUNTER),
+      });
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error.code).toBe("AMENDMENT_TARGET_UNVERIFIABLE");
+      expect(amendments).toHaveLength(0);
+      await app.close();
+    });
+  });
+
   it("with no M5 intake bound, submit and list refuse 503 — never a fake 'submitted'", async () => {
     const { app } = makeServer({ amendmentIntakeUnbound: true });
     const res = await app.inject({

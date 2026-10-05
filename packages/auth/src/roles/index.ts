@@ -27,8 +27,12 @@ export {
 export { ORG_WIDE_SCOPE_ROLES, hasOrgWideScope } from "./org-wide-scope";
 export { LAB_RECOVERY_DEFAULT_GRANTS, LAB_RECOVERY_KEYS } from "./lab-recovery-grants";
 export {
+  PLATFORM_GRANTABLE_ROLE_KEYS,
+  type PlatformGrantableRoleKey,
   RESERVED_PLATFORM_ROLE_CATEGORY,
+  RESERVED_PLATFORM_ROLE_KEYS,
   RESERVED_PLATFORM_ROLE_PREFIX,
+  isPlatformGrantableRoleKey,
   isReservedPlatformRoleKey,
   isTenantRoleReserved,
   roleConfersKey,

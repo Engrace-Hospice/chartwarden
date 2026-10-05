@@ -5,7 +5,7 @@
  * server code read them: Better Auth's 7-day rolling default was the only bound. These tests pin the
  * pure decision the authenticate hook now enforces, driven by `SESSION_POLICY.byClass` alone.
  */
-import { evaluateSessionTimeout } from "@wardenx/auth";
+import { SESSION_CLASSES, SESSION_MAX_ABSOLUTE_SEC, evaluateSessionTimeout } from "@wardenx/auth";
 import { SESSION_POLICY } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 
@@ -32,9 +32,9 @@ describe("GAP-002 evaluateSessionTimeout", () => {
 
   it("staff: 16 idle minutes → expired_idle (no activity recorded falls back to createdAt)", () => {
     expect(evaluateSessionTimeout(staff(), at(16 * MIN))).toBe("expired_idle");
-    expect(evaluateSessionTimeout(staff({ lastActivityAt: at(2 * HR) }), at(2 * HR + 16 * MIN))).toBe(
-      "expired_idle",
-    );
+    expect(
+      evaluateSessionTimeout(staff({ lastActivityAt: at(2 * HR) }), at(2 * HR + 16 * MIN)),
+    ).toBe("expired_idle");
   });
 
   it("staff: continuous activity past the 8-h work window → expired_absolute", () => {
@@ -70,10 +70,63 @@ describe("GAP-002 evaluateSessionTimeout", () => {
     expect(evaluateSessionTimeout(funeral, at(72 * HR + MIN))).toBe("expired_absolute");
   });
 
-  it("classes outside SESSION_POLICY.byClass are left to their own module's policy", () => {
-    expect(evaluateSessionTimeout(staff({ sessionClass: "patient_portal" }), at(20 * HR))).toBe(
-      "active",
+  it("M31 portal classes: 30-min idle / 8-h hard (M31 §6.4 / D3), not left unbounded", () => {
+    for (const sessionClass of ["patient_portal", "caregiver_portal", "bereaved_portal"]) {
+      const portal = staff({ sessionClass });
+      expect(evaluateSessionTimeout({ ...portal, lastActivityAt: at(HR) }, at(HR + 29 * MIN))).toBe(
+        "active",
+      );
+      expect(evaluateSessionTimeout({ ...portal, lastActivityAt: at(HR) }, at(HR + 31 * MIN))).toBe(
+        "expired_idle",
+      );
+      expect(
+        evaluateSessionTimeout({ ...portal, lastActivityAt: at(8 * HR) }, at(8 * HR + MIN)),
+      ).toBe("expired_absolute");
+      // A step-up does not extend a portal session: the hard cap runs from creation.
+      expect(
+        evaluateSessionTimeout(
+          { ...portal, lastActivityAt: at(8 * HR), lastStepUpAt: at(7 * HR) },
+          at(8 * HR + MIN),
+        ),
+      ).toBe("expired_absolute");
+    }
+  });
+
+  it("M19 triage classes: 15-min idle / 8-h absolute (spec silent — the clinical-session floor)", () => {
+    for (const sessionClass of ["external_triage_vendor", "external_triage_operator"]) {
+      const vendor = staff({ sessionClass });
+      expect(evaluateSessionTimeout(vendor, at(16 * MIN))).toBe("expired_idle");
+      expect(
+        evaluateSessionTimeout(
+          { ...vendor, lastActivityAt: at(8 * HR), lastStepUpAt: at(7 * HR) },
+          at(8 * HR + MIN),
+        ),
+      ).toBe("expired_absolute");
+    }
+  });
+
+  it("every session_class has a timeout policy; an unknown class fails closed", () => {
+    for (const sessionClass of SESSION_CLASSES) {
+      // (auditor needs its engagement window — without one it fails closed by design, tested above)
+      expect(
+        evaluateSessionTimeout({ ...staff({ sessionClass }), engagementEnd: at(HR) }, at(MIN)),
+      ).toBe("active");
+    }
+    expect(evaluateSessionTimeout(staff({ sessionClass: "mystery" }), at(MIN))).toBe(
+      "expired_absolute",
     );
+  });
+
+  it("a pre-deploy row (old 7-day expires_at, last_activity_at backfilled to now) is bounded from created_at", () => {
+    // Migration 0319 backfilled last_activity_at = now(); the enforcer never reads expires_at, so a
+    // session minted 9 h before deploy is past the 8-h work window however far Better Auth's expiry is.
+    const preDeploy = staff({ lastActivityAt: at(9 * HR) });
+    expect(evaluateSessionTimeout(preDeploy, at(9 * HR + MIN))).toBe("expired_absolute");
+  });
+
+  it("SESSION_MAX_ABSOLUTE_SEC (Better Auth's fixed expiry) covers every fixed absolute", () => {
+    const fixed = [8 * 3600, 24 * 3600, 72 * 3600]; // portal/triage/collab 8 h, staff hard 24 h, funeral 72 h
+    for (const sec of fixed) expect(SESSION_MAX_ABSOLUTE_SEC).toBeGreaterThanOrEqual(sec);
   });
 
   it("reads its numbers from SESSION_POLICY (single source, D1)", () => {

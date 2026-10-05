@@ -372,9 +372,41 @@ export interface CollaboratorLinkStore {
   consume(token: string): Promise<CollaboratorScope> | CollaboratorScope;
 }
 
+/**
+ * Outcome of an org-bounded global deactivation (GAP-001):
+ *   `deactivated`      — the user's only live membership is in the caller's org; credentials disabled.
+ *   `not_member`       — no NON-revoked membership in the caller's org (a former member is not the org's
+ *                        to offboard globally) — the route answers 404, no existence oracle.
+ *   `member_elsewhere` — still a non-revoked member of another org — the route answers 409.
+ */
+export type OrgBoundedDeactivation = "deactivated" | "not_member" | "member_elsewhere";
+
+/** The membership facts the GAP-001 decision reads. */
+export type MembershipStanding = Pick<MembershipRecord, "organizationId" | "status">;
+
+/** The GAP-001 decision, pure — shared by the DB and in-memory directories so they cannot drift. */
+export function decideOrgBoundedDeactivation(
+  memberships: readonly MembershipStanding[],
+  organizationId: string,
+): OrgBoundedDeactivation {
+  const live = memberships.filter((m) => m.status !== "revoked");
+  if (!live.some((m) => m.organizationId === organizationId)) return "not_member";
+  if (live.some((m) => m.organizationId !== organizationId)) return "member_elsewhere";
+  return "deactivated";
+}
+
 /** Disables a user's credentials everywhere (full offboard §7.5). */
 export interface UserDirectory {
-  deactivate(userId: string, reason: string): Promise<void> | void;
+  /**
+   * GAP-001 — deactivate `userId` only when their sole live membership is in `organizationId`. The
+   * membership check and the status flip are ONE atomic step, so an invite accepted in another org
+   * concurrently cannot slip between the check and the write.
+   */
+  deactivateFromOrg(input: {
+    userId: string;
+    organizationId: string;
+    reason: string;
+  }): Promise<OrgBoundedDeactivation> | OrgBoundedDeactivation;
 }
 
 /**
@@ -739,16 +771,26 @@ export function createInMemoryCollaboratorLinkStore(): {
   };
 }
 
-/** In-memory user directory exposing deactivated ids for assertions. */
-export function createInMemoryUserDirectory(): {
+/**
+ * In-memory user directory exposing deactivated ids for assertions. It reads memberships from the
+ * same repository the routes use (single-threaded, so the check-then-write is trivially atomic).
+ */
+export function createInMemoryUserDirectory(
+  memberships: Pick<MembershipRepository, "listForUser">,
+): {
   directory: UserDirectory;
   isDeactivated(userId: string): boolean;
 } {
   const deactivated = new Set<string>();
   return {
     directory: {
-      deactivate(userId) {
-        deactivated.add(userId);
+      async deactivateFromOrg({ userId, organizationId }) {
+        const outcome = decideOrgBoundedDeactivation(
+          await memberships.listForUser(userId),
+          organizationId,
+        );
+        if (outcome === "deactivated") deactivated.add(userId);
+        return outcome;
       },
     },
     isDeactivated: (userId) => deactivated.has(userId),

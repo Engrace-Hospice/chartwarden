@@ -6,7 +6,9 @@
  * These tests pin the single rule the enrichment reader, the role-create route and the DB backstop share.
  */
 import {
+  PLATFORM_GRANTABLE_ROLE_KEYS,
   PLATFORM_OPS_ROLE_KEYS,
+  isPlatformGrantableRoleKey,
   isReservedPlatformRoleKey,
   isTenantRoleReserved,
   roleConfersKey,
@@ -40,5 +42,41 @@ describe("GAP-003 reserved platform role keys", () => {
     expect(roleConfersKey({ organizationId: "org_a", key: "rn", category: "clinical_staff" })).toBe(
       true,
     );
+  });
+});
+
+describe("GAP-096 — ai_safety_owner is platform authority without the platform_ prefix", () => {
+  it("reserves ai_safety_owner by exact key, not as a prefix", () => {
+    expect(isReservedPlatformRoleKey("ai_safety_owner")).toBe(true);
+    expect(isReservedPlatformRoleKey("ai_safety_owner_deputy")).toBe(false);
+    // The single-tenant designee is a tenant role (gated in M32, not reserved here).
+    expect(isReservedPlatformRoleKey("clinical_safety_lead")).toBe(false);
+  });
+
+  it("a tenant-owned ai_safety_owner row is refused at create and confers nothing", () => {
+    expect(isTenantRoleReserved({ key: "ai_safety_owner", category: "clinical_staff" })).toBe(true);
+    expect(
+      roleConfersKey({ organizationId: "org_a", key: "ai_safety_owner", category: "operations" }),
+    ).toBe(false);
+    expect(
+      roleConfersKey({ organizationId: null, key: "ai_safety_owner", category: "platform_staff" }),
+    ).toBe(true);
+  });
+});
+
+describe("platform-role CLI allowlist", () => {
+  it("is exactly the platform keys a predicate reads, every one reserved", () => {
+    expect([...PLATFORM_GRANTABLE_ROLE_KEYS].sort()).toEqual(
+      [...PLATFORM_OPS_ROLE_KEYS, "platform_security_owner", "ai_safety_owner"].sort(),
+    );
+    for (const key of PLATFORM_GRANTABLE_ROLE_KEYS)
+      expect(isReservedPlatformRoleKey(key)).toBe(true);
+  });
+
+  it("refuses unknown and tenant keys", () => {
+    for (const key of ["platform_superuser", "org_admin", "clinical_safety_lead", ""]) {
+      expect(isPlatformGrantableRoleKey(key)).toBe(false);
+    }
+    expect(isPlatformGrantableRoleKey("platform_ops")).toBe(true);
   });
 });

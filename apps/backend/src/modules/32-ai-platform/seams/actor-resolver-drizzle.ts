@@ -10,6 +10,7 @@
 // membership with no default provider entity ⇒ `null` ⇒ the seam refuses. It never picks "some" entity of
 // the org — a §164.528 accounting naming the wrong certified provider is worse than none. `actorUserId:
 // null` (the ambient-context arm the M19 pair uses) is not resolved here: refuse.
+import { roleConfersKey } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, asc, eq } from "drizzle-orm";
@@ -41,14 +42,18 @@ export function createDrizzleAiSeamActorResolver(db: DbClient): AiSeamActorResol
           )
           .limit(1);
         if (!m || !m.providerEntityId) return null;
-        const [role] = await tx
-          .select({ key: R.key })
+        // GAP-096: `actor_role` is recorded on the §164.528 disclosure ledger, so it must name a role the
+        // actor actually holds. A tenant-owned row carrying a reserved platform key (`platform_*`,
+        // `ai_safety_owner`) confers nothing (`roleConfersKey`, as the enrichment reader) and is skipped;
+        // the first conferring key in key order is recorded.
+        const roles = await tx
+          .select({ key: R.key, organizationId: R.organizationId, category: R.category })
           .from(MR)
           .innerJoin(R, eq(R.id, MR.roleId))
           .where(eq(MR.membershipId, m.id))
-          .orderBy(asc(R.key))
-          .limit(1);
-        if (!role) return null; // a membership with no role has no `actor_role` to record
+          .orderBy(asc(R.key));
+        const role = roles.find(roleConfersKey);
+        if (!role) return null; // a membership with no conferring role has no `actor_role` to record
         const locations = Array.isArray(m.locationIds) ? (m.locationIds as unknown[]) : [];
         const locationId = typeof locations[0] === "string" ? (locations[0] as string) : null;
         return {

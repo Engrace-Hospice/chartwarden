@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1359,
     "coveredRoutes": 1359,
-    "directRoutesReferenced": 1306
+    "directRoutesReferenced": 1307
   },
   "modules": [
     {
@@ -154,7 +154,7 @@
         "apps/backend/__tests__/emar-caregiver-barcode.test.ts",
         "apps/backend/__tests__/emar-routes.test.ts"
       ],
-      "directRoutesReferenced": 19
+      "directRoutesReferenced": 20
     },
     {
       "module": "14-idg",
@@ -345,7 +345,8 @@
       "routes": 32,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/ai-platform-inject.test.ts"
+        "apps/backend/__tests__/ai-platform-inject.test.ts",
+        "apps/backend/__tests__/auth.live.test.ts"
       ],
       "directRoutesReferenced": 32
     },

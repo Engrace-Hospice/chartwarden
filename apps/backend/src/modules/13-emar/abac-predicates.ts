@@ -29,6 +29,8 @@
 //        same org-wide-role ∨ session-pinned-patient ∨ caseload composition the shared `caseload_or_scope`
 //        uses. Every id the target names must resolve and be in scope (a refusal naming patient A and an
 //        order for patient B is refused). Nothing named, or anything unresolvable → deny (fail-closed).
+//        The one unscoped M13 write is the witness-attest mint (see emar-routes.ts route 2): it touches no
+//        row, and the token it signs is only honoured on the scoped record route for the order's patient.
 //        The header used to claim `caseload_or_scope` was "bound by the §4.6 default ABAC" — it was not:
 //        `requirePermission` never reads `PermissionDef.abac`, so no M13 route had any patient scope.
 //

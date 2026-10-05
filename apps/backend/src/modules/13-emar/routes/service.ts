@@ -9,7 +9,10 @@
 // (seams/index.ts); when absent (the in-mem slice default) the auto-link is skipped so the administration
 // write path never blocks on an external dependency (the M10 §7.13 fail-open convention). The bidirectional
 // M12 consistency check (D6) is the `MedicationOrderProvider.getAdministrationContext` consult M13 owns; the
-// in-mem slice treats every seeded order as administerable.
+// in-mem slice answers it from its seeded orders. Like the DB backend it FAILS CLOSED: an order that is not
+// seeded for the caller's org resolves to nothing — the §4.7 resolvers return null (deny) and the writes
+// refuse it (422 MEDICATION_ORDER_UNRESOLVED) — and every patient-bearing id on a write must belong to the
+// order's patient (422 PATIENT_ORDER_MISMATCH), via the same `order-consistency` helpers production uses.
 //
 // This service ALSO implements {@link EmarAbacResolver} so the §4.7 predicates resolve over the same dataset
 // (M12-T08 precedent: the backend is both the route service and the ABAC resolver).
@@ -43,12 +46,13 @@ import type {
   ScheduledDoseStatus,
   SignedEncountersReader,
 } from "@wardenx/types";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { type MedClass, NotFoundError, ValidationError } from "@wardenx/types";
 import type {
   CaregiverReviewAbacFacts,
   EmarAbacResolver,
   WitnessAbacFacts,
 } from "../abac-predicates";
+import { assertMedClassAgrees, assertOrderPatient, unresolvedOrder } from "../order-consistency";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope) ────────────────────
 export interface RecordedEmarEvent {
@@ -362,14 +366,16 @@ export interface EmarDeploymentSeed {
   readonly disposalStatus?: string;
 }
 /** A seeded M12 order projection (the slice's `MedicationOrderProvider.getAdministrationContext` D6 + the
- * §5.11 five-rights order context + the §2.9 BCMA drug identity). Absent → the slice treats the order as freely
- * administerable and skips the order-context gates (the existing in-mem default). */
+ * §5.11 five-rights order context + the §2.9 BCMA drug identity). An order that is not seeded — or is seeded
+ * for another org — does not resolve, exactly as M12 answers null to the DB backend: the §4.7 resolvers deny
+ * and every write naming it is refused. */
 export interface EmarOrderSeed {
   readonly medicationOrderId: string;
+  /** The tenant the order belongs to (M12's RLS scope); another org's caller resolves nothing. */
+  readonly organizationId: string;
   readonly patientId: string;
-  /** GAP-005 — the order's class. The DB backend always has it (M12); absent here, the slice falls back to
-   *  the body's claim so older fixtures keep working — production never does. */
-  readonly medClass?: "standard" | "controlled_substance" | "compounded";
+  /** GAP-005 — the order's class, the ONLY source of "is this controlled" (never the request body). */
+  readonly medClass: MedClass;
   readonly route: string;
   readonly doseAmount?: number | null;
   readonly doseUnit?: string | null;
@@ -596,12 +602,22 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     return within.length > 0 ? within[within.length - 1]!.encounterId : null;
   }
 
-  // D6 — the bidirectional-consistency consult against M12's `getAdministrationContext`. The slice resolves the
-  // order from its seed; an unseeded order is treated as freely administerable (the in-mem default). A seeded
-  // order with `administerable=false` blocks the write with 422 ADMINISTRATION_BLOCKED, echoing the reasons.
-  function assertAdministerable(medicationOrderId: string): void {
+  // The slice's `getAdministrationContext`: the seeded order, only for its own org (null otherwise).
+  function resolveOrder(orgId: string, medicationOrderId: string): EmarOrderSeed | null {
     const o = orders.get(medicationOrderId);
-    if (o && o.administerable === false) {
+    return o && o.organizationId === orgId ? o : null;
+  }
+  // Every write needs the order (its patient, its class): an unresolvable one is refused, never assumed.
+  function requireOrder(orgId: string, medicationOrderId: string): EmarOrderSeed {
+    const o = resolveOrder(orgId, medicationOrderId);
+    if (!o) throw unresolvedOrder();
+    return o;
+  }
+
+  // D6 — the bidirectional-consistency consult against M12's `getAdministrationContext`. A seeded order with
+  // `administerable=false` blocks the write with 422 ADMINISTRATION_BLOCKED, echoing the reasons.
+  function assertAdministerable(o: EmarOrderSeed): void {
+    if (o.administerable === false) {
       const reasons =
         o.blockedReasons && o.blockedReasons.length > 0
           ? o.blockedReasons.join(", ")
@@ -725,44 +741,48 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         case "deploymentId":
           return inOrg(deployments.get(id));
         case "medicationOrderId":
-          // The slice's orders carry no org; an unseeded order is the slice's permissive default.
-          return orders.get(id)?.patientId ?? null;
+          return resolveOrder(orgId, id)?.patientId ?? null;
       }
     },
-    async loadOrderMedClass(_orgId, medicationOrderId): Promise<string | null> {
-      // Slice default: an unseeded or class-less order is `standard` (the DB backend has no default).
-      return orders.get(medicationOrderId)?.medClass ?? "standard";
+    async loadOrderMedClass(orgId, medicationOrderId): Promise<string | null> {
+      // Fail-closed like the DB backend: an unseeded / other-org order has no class, so the floor denies.
+      return resolveOrder(orgId, medicationOrderId)?.medClass ?? null;
     },
 
     // ── §4.1 routes ──────────────────────────────────────────────────────────────────────────────────────
     async recordAdministration(orgId, userId, args): Promise<AdministrationView> {
       const m = memberships.get(userId);
+      const actingMembershipId = m?.membershipId ?? userId;
       const recordedAt = args.offlineCapture ? now() : now();
       const lateEntryTier = resolveLateEntryTier(args.administeredAt, recordedAt);
-      const orderClass = orders.get(args.medicationOrderId)?.medClass;
-      if (orderClass && args.medClass !== undefined && args.medClass !== orderClass)
-        throw new ValidationError("medClass does not match the medication order", [
-          { field: "medClass", code: "MED_CLASS_MISMATCH", message: `the order is ${orderClass}` },
-        ]);
-      const isControlled = (orderClass ?? args.medClass) === "controlled_substance";
-      let witnessMembershipId: string | null = null;
-      if (isControlled) {
-        // D7 — controlled administration requires a consumed witness-attestation token.
-        const claim = args.witnessToken ? witnessTokens.get(args.witnessToken) : undefined;
-        if (!claim || claim.expiresAt < Date.parse(now()))
-          throw new ValidationError(
-            "a controlled-substance administration requires a witness attestation",
-            [
-              {
-                field: "X-Witness-Attestation",
-                code: "WITNESS_REQUIRED",
-                message: "witness attestation missing or expired",
-              },
-            ],
-          );
-        witnessMembershipId = claim.witnessMembershipId;
-        witnessTokens.delete(args.witnessToken!); // single-use, burned on consume
+      // The ORDER answers patient + class (GAP-005); unresolvable → refused, as the DB backend does.
+      const order = requireOrder(orgId, args.medicationOrderId);
+      assertMedClassAgrees(args.medClass, order.medClass);
+      const isControlled = order.medClass === "controlled_substance";
+      // D6 — the order-context gate runs before anything else is read or burned.
+      assertAdministerable(order);
+      // GAP-004 — every patient-bearing id must belong to the order's patient (the DB backend's checks).
+      const named = args.scheduledDoseId ? scheduled.get(args.scheduledDoseId) : undefined;
+      const sched = named?.organizationId === orgId ? named : undefined;
+      if (sched)
+        assertOrderPatient(
+          "scheduledDoseId",
+          sched.patientId,
+          order.patientId,
+          "the scheduled dose belongs to a different patient than the order",
+        );
+      if (args.comfortKitDeploymentId) {
+        const kit = deployments.get(args.comfortKitDeploymentId);
+        if (!kit || kit.organizationId !== orgId)
+          throw new NotFoundError("comfort kit deployment not found");
+        assertOrderPatient(
+          "comfortKitDeploymentId",
+          kit.patientId,
+          order.patientId,
+          "the comfort kit was deployed for a different patient than the order",
+        );
       }
+      const patientId = order.patientId;
       const isComfortKitDrawdown = Boolean(args.comfortKitDeploymentId);
       // §2.11 D11 — the slice runs the SAME pure core the Drizzle path does (F-031/#134), so a boot-
       // without-DB run refuses an out-of-sequence segment and an out-of-bounds titration identically.
@@ -787,7 +807,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
             },
           ]);
         }
-        const prior: IvSegment[] = args.ivSessionId
+        const priorRows = args.ivSessionId
           ? [...admins.values()]
               .filter(
                 (r) =>
@@ -800,30 +820,61 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
                   Date.parse(a.administeredAt) - Date.parse(b.administeredAt) ||
                   Date.parse(a.recordedAt) - Date.parse(b.recordedAt),
               )
-              .map((r) => ({
-                mode: r.mode as IvSegmentMode,
-                administeredAt: r.administeredAt,
-                ...sliceIvRateOf(r.data),
-              }))
           : [];
-        if (args.ivSessionId && prior.length === 0) throw new NotFoundError("iv session not found");
+        if (args.ivSessionId && priorRows.length === 0)
+          throw new NotFoundError("iv session not found");
+        for (const r of priorRows)
+          assertOrderPatient(
+            "ivSessionId",
+            r.patientId,
+            order.patientId,
+            "the IV session belongs to a different patient than the order",
+          );
+        const prior: IvSegment[] = priorRows.map((r) => ({
+          mode: r.mode as IvSegmentMode,
+          administeredAt: r.administeredAt,
+          ...sliceIvRateOf(r.data),
+        }));
         const body = (args.data ?? {}) as { newRate?: unknown; wastageAmount?: unknown };
         const plan = planIvSegment(deriveIvSessionState(prior), {
           mode: args.mode as IvSegmentMode,
           isControlled,
           newRate: typeof body.newRate === "number" ? body.newRate : null,
-          policy: sliceIvPolicyOf(orders.get(args.medicationOrderId)),
+          policy: sliceIvPolicyOf(order),
           wastageAmount: typeof body.wastageAmount === "number" ? body.wastageAmount : null,
         });
         ivSessionId = plan.mintsSession ? nextId("ivs") : (args.ivSessionId ?? null);
       }
+      // D7 — a controlled administration requires a witness token whose scope is THIS order, the order's
+      // patient and the acting clinician (the DB verifier's `expectedScope`). It is burned only once every
+      // gate below has passed, as the DB backend's burn rolls back with a refused write.
+      let witnessMembershipId: string | null = null;
+      if (isControlled) {
+        const claim = args.witnessToken ? witnessTokens.get(args.witnessToken) : undefined;
+        const reason = !claim
+          ? "WITNESS_TOKEN_INVALID"
+          : claim.expiresAt < Date.parse(now())
+            ? "WITNESS_TOKEN_EXPIRED"
+            : claim.patientId !== patientId ||
+                claim.medicationOrderId !== args.medicationOrderId ||
+                claim.administeringMembershipId !== actingMembershipId
+              ? "WITNESS_TOKEN_SCOPE_MISMATCH"
+              : null;
+        if (reason)
+          throw new ValidationError(
+            "a controlled-substance administration requires a witness attestation",
+            [
+              {
+                field: "X-Witness-Attestation",
+                code: "WITNESS_REQUIRED",
+                message: `witness attestation ${reason}`,
+              },
+            ],
+          );
+        witnessMembershipId = claim!.witnessMembershipId;
+      }
       const id = nextId("adm");
-      // The patient/admission are resolved from M12 in prod; the slice derives from the scheduled dose or seed.
-      const sched = args.scheduledDoseId ? scheduled.get(args.scheduledDoseId) : undefined;
-      const patientId =
-        sched?.patientId ?? orders.get(args.medicationOrderId)?.patientId ?? findPatient(args);
-      // D6 + §5.11 + §2.9 BCMA — the order-context gates run before any state mutation.
-      assertAdministerable(args.medicationOrderId);
+      // §5.11 + §2.9 BCMA — the remaining order-context gates run before any state mutation.
       assertFiveRightsForOrder(args.medicationOrderId, patientId, args, args.administeredAt);
       const barcodeMatchResult = evaluateBarcode(
         args.medicationOrderId,
@@ -846,7 +897,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         administeredAt: args.administeredAt,
         recordedAt,
         lateEntryTier,
-        administeringClinicianMembershipId: m?.membershipId ?? userId,
+        administeringClinicianMembershipId: actingMembershipId,
         witnessMembershipId,
         encounterId,
         scheduledDoseId: args.scheduledDoseId ?? null,
@@ -859,6 +910,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         barcodeMatchResult,
         data: args.data,
       };
+      if (isControlled && args.witnessToken) witnessTokens.delete(args.witnessToken); // single-use burn
       admins.set(id, row);
       if (sched) sched.status = "administered";
       emit("m13.administration.recorded", {
@@ -897,6 +949,14 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       userId,
       args,
     ): Promise<{ token: string; expiresInSeconds: number }> {
+      // GAP-004 — the body's patient is a claim; the order decides (the DB backend's mint refusal).
+      const order = requireOrder(orgId, args.medicationOrderId);
+      assertOrderPatient(
+        "patientId",
+        args.patientId,
+        order.patientId,
+        "the witness attestation names a different patient than the order",
+      );
       const m = memberships.get(userId);
       const token = `${witnessSecret}.${nextId("wt")}`;
       witnessTokens.set(token, {
@@ -914,7 +974,15 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       // five-rights validation runs against the order; a caregiver-reported dose the order does not authorize
       // is echoed back through M31 as 422 FIVE_RIGHTS_VIOLATION. The controlled-substance double-witness rule
       // does NOT apply (a caregiver is one person); encounter_id stays nullable (D9).
-      assertAdministerable(args.medicationOrderId);
+      // GAP-004 — the caregiver names the patient; the order must be that patient's own.
+      const order = requireOrder(orgId, args.medicationOrderId);
+      assertOrderPatient(
+        "patientId",
+        args.patientId,
+        order.patientId,
+        "the caregiver attestation names a different patient than the order",
+      );
+      assertAdministerable(order);
       assertFiveRightsForOrder(args.medicationOrderId, args.patientId, args, args.administeredAt);
       const barcodeMatchResult = evaluateBarcode(
         args.medicationOrderId,
@@ -1050,6 +1118,15 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       };
     },
     async recordRefusal(orgId, userId, args): Promise<AdministrationView> {
+      // GAP-005/GAP-004 — the refused order's class and patient decide, never the body's.
+      const order = requireOrder(orgId, args.medicationOrderId);
+      assertMedClassAgrees(args.medClass, order.medClass);
+      assertOrderPatient(
+        "patientId",
+        args.patientId,
+        order.patientId,
+        "the refusal names a different patient than the order it refuses",
+      );
       const id = nextId("adm");
       const row: AdminRow = {
         id,
@@ -1069,9 +1146,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         scheduledDoseId: args.scheduledDoseId ?? null,
         comfortKitDeploymentId: null,
         ivSessionId: null,
-        isControlledSubstance:
-          (orders.get(args.medicationOrderId)?.medClass ?? args.medClass) ===
-          "controlled_substance",
+        isControlledSubstance: order.medClass === "controlled_substance",
         isComfortKitDrawdown: false,
         requiresRnReview: false,
         supersededById: null,
@@ -1314,9 +1389,4 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       return events.splice(0, events.length);
     },
   };
-}
-
-/** Resolve the patient anchor for an administration in the slice (M12 supplies it in prod). */
-function findPatient(args: RecordAdministrationArgs): string {
-  return "00000000-0000-4000-8000-0000000000aa";
 }

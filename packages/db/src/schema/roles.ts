@@ -38,11 +38,15 @@ export const roles = pgTable(
   },
   (t) => ({
     orgKeyUnique: uniqueIndex("role_org_key_idx").on(t.organizationId, t.key),
+    // 0320 — NULLs are distinct above, so platform-owned keys need their own uniqueness.
+    platformKeyUnique: uniqueIndex("role_platform_key_idx")
+      .on(t.key)
+      .where(sql`${t.organizationId} IS NULL`),
     orgIdx: index("role_org_idx").on(t.organizationId),
-    // GAP-003 (0318, NOT VALID): platform authority lives only on platform-owned rows.
+    // GAP-003 (0318, widened by 0321; NOT VALID): platform authority lives only on platform-owned rows.
     platformAuthorityPlatformOwned: check(
       "role_platform_authority_platform_owned",
-      sql`${t.organizationId} IS NULL OR (${t.key} NOT LIKE 'platform\\_%' AND ${t.category} <> 'platform_staff')`,
+      sql`${t.organizationId} IS NULL OR (${t.key} NOT LIKE 'platform\\_%' AND ${t.key} <> 'ai_safety_owner' AND ${t.category} <> 'platform_staff')`,
     ),
   }),
 );

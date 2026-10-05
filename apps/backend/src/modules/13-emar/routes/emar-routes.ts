@@ -12,7 +12,11 @@
 // the M13-owned `emar.scope` predicate (GAP-004), bound explicitly on every row that names it with
 // `notFoundOnDeny` — an off-caseload caller learns nothing, not even that the row exists. (It used to be
 // "bound by the §4.6 default ABAC", which does not exist: `requirePermission` never reads `abac`.) The
-// controlled-substance witness token rides the `X-Witness-Attestation` header.
+// one deliberate exception is the witness-attest mint (route 2): the witness is usually NOT on the patient's
+// caseload, it reads and writes no row, and the token it returns is bound to (order, order's patient,
+// administering clinician) — the service refuses a body patient the order is not for, and consumption on
+// the record route (itself caseload-scoped) re-verifies all three. The controlled-substance witness token
+// rides the `X-Witness-Attestation` header.
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import type { ReconciliationDecisionKind } from "@wardenx/types";
 import { UnauthorizedError } from "@wardenx/types";
@@ -143,15 +147,28 @@ const fromPatientQuery: TargetOf = (request) => {
   const patientId = str((request.query as { patient?: unknown } | undefined)?.patient);
   return patientId ? { patientId } : {};
 };
-const fromBody: TargetOf = (request) => {
-  const b = (request.body ?? {}) as Record<string, unknown>;
+/**
+ * Every patient-bearing id a write body can name, keyed by the `emar.scope` ref kind it resolves as. An
+ * IV session or comfort-kit deployment belongs to a patient too: leaving them out let a caller name their
+ * own patient's order and append to another patient's session or draw down another patient's kit.
+ */
+const BODY_SCOPE_FIELDS: readonly (readonly [bodyField: string, refKind: string])[] = [
+  ["patientId", "patientId"],
+  ["medicationOrderId", "medicationOrderId"],
+  ["scheduledDoseId", "scheduledDoseId"],
+  ["ivSessionId", "ivSessionId"],
+  ["comfortKitDeploymentId", "deploymentId"],
+];
+const scopeTargetOf = (b: Record<string, unknown>): Record<string, string> => {
   const target: Record<string, string> = {};
-  for (const field of ["patientId", "medicationOrderId", "scheduledDoseId"]) {
+  for (const [field, kind] of BODY_SCOPE_FIELDS) {
     const v = str(b[field]);
-    if (v) target[field] = v;
+    if (v) target[kind] = v;
   }
   return target;
 };
+const fromBody: TargetOf = (request) =>
+  scopeTargetOf((request.body ?? {}) as Record<string, unknown>);
 const BY_ADMINISTRATION = fromParam("administrationId");
 const BY_WORKSHEET = fromParam("worksheetId");
 const BY_DEPLOYMENT = fromParam("deploymentId");
@@ -220,6 +237,13 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   );
 
   // 2 — mint a witness-attestation token (separate-device flow; controlled_substance_witness_eligible ABAC).
+  // Deliberately NOT `emar.scope`d (GAP-004): the second clinician witnessing a controlled dose is rarely on
+  // that patient's caseload, and requiring it would make D7 unsatisfiable for most visits. Nothing PHI-
+  // bearing is read or written here — the response is an opaque, 60-second, single-use HMAC token. What
+  // keeps it harmless: the service refuses a `patientId` that is not the order's (422
+  // PATIENT_ORDER_MISMATCH) or an order that does not resolve, and `recordAdministration` only accepts it
+  // when its scope equals (the order's resolved patient, that order, the ACTING clinician) on a route that
+  // is itself caseload-scoped.
   app.post(
     "/api/v1/administrations/witness-attest",
     { preHandler: [WITNESS_ATTEST, ABAC_WITNESS] },
@@ -238,7 +262,9 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   // 3 — caregiver-attested administration via M31 portal (portal-session gated).
   app.post(
     "/api/v1/administrations/caregiver-attested",
-    { preHandler: [CAREGIVER_RECORD] },
+    // GAP-004 — the body's patient must be the portal session's own (`sessionPatientId`) or on the
+    // caller's caseload; the service then refuses an order that belongs to someone else.
+    { preHandler: [CAREGIVER_RECORD, SCOPE("administration.caregiver_record", fromBody)] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(RecordCaregiverAttestedRequest, request.body);
@@ -387,7 +413,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
     },
   );
 
-  // 12 — bulk offline-queue sync from device (per-row administering_clinician_eligible enforced in service).
+  // 12 — bulk offline-queue sync from device (per-row ABAC, enforced here once per distinct target).
   app.post(
     "/api/v1/administrations/offline-sync",
     { preHandler: [RECORD] },
@@ -397,18 +423,32 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
       // Per row, the same two gates the single-record route applies: the ORDER's class must admit the
       // caller's discipline (GAP-005) and the row's patient must be in scope (GAP-004). Checked for every
       // row before any is written, so a batch is refused whole rather than half-applied.
+      //
+      // Each verdict is a pure function of its target (the clinician floor reads only the order; the scope
+      // predicate reads only the ids `scopeTargetOf` lifts), and a target that already PASSED in this
+      // batch passes again — so each distinct target is evaluated once. A device queue is typically dozens
+      // of doses against a handful of orders; re-asking M12 per row made a 500-row sync ~2,000 resolver
+      // reads. Rows are still walked in order, so the first refusing row decides the status (403 vs 404)
+      // exactly as before.
+      const clinicianChecked = new Set<string>();
+      const scopeChecked = new Set<string>();
       for (const r of b.rows) {
-        const rowTarget = () => ({
-          medicationOrderId: r.medicationOrderId,
-          ...(r.scheduledDoseId ? { scheduledDoseId: r.scheduledDoseId } : {}),
-        });
-        await requireAbac("administration.record", "administering_clinician_eligible", {
-          getTarget: rowTarget,
-        })(request);
-        await requireAbac("administration.record", "emar.scope", {
-          notFoundOnDeny: true,
-          getTarget: rowTarget,
-        })(request);
+        if (!clinicianChecked.has(r.medicationOrderId)) {
+          await requireAbac("administration.record", "administering_clinician_eligible", {
+            getTarget: () => ({ medicationOrderId: r.medicationOrderId }),
+          })(request);
+          clinicianChecked.add(r.medicationOrderId);
+        }
+        const target = scopeTargetOf(r);
+        // `scopeTargetOf` fills keys in BODY_SCOPE_FIELDS order, so equal targets serialize equally.
+        const scopeKey = JSON.stringify(target);
+        if (!scopeChecked.has(scopeKey)) {
+          await requireAbac("administration.record", "emar.scope", {
+            notFoundOnDeny: true,
+            getTarget: () => target,
+          })(request);
+          scopeChecked.add(scopeKey);
+        }
       }
       const res = await service.offlineSync(
         organizationId,

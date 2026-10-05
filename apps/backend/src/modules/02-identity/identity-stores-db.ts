@@ -19,14 +19,17 @@ import { createHash, randomUUID } from "node:crypto";
 // and (since no vendor sender is wired yet) to echo an admin-visible copyable link back to the inviter.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import {
   type InvitationDetail,
   type InvitationListItem,
   type InvitationStore,
   LinkError,
+  type MembershipStanding,
+  type MembershipStatus,
   type MintedInvitation,
   type UserDirectory,
+  decideOrgBoundedDeactivation,
 } from "./identity-ports";
 
 /** 72h invite TTL — the same window the in-memory slice used (§7.11). */
@@ -235,18 +238,46 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
   };
 }
 
+/** A canonical UUID — anything else cannot name a `user` row (and would 500 on the ::uuid cast). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * DB-backed §7.5 offboard: flip `users.status` to `deactivated`.
+ * DB-backed §7.5 offboard: flip `users.status` to `deactivated`, bounded to one org (GAP-001).
  *
  * `reason` is deliberately NOT written to a column — `users` has none for it, and inventing one here
  * would put a free-text field that can name a person onto the identity row. The reason belongs in the
  * audit event the calling route already emits (`m2.user.deactivated`), which is redacted and retained.
+ *
+ * ATOMICITY. The cross-org membership check and the status flip run in ONE transaction that first takes
+ * a row lock on the target `user` (`FOR UPDATE`). Every membership INSERT (invite accept, in any org)
+ * runs the `membership.user_id` foreign-key check, which takes `FOR KEY SHARE` on that same user row —
+ * a lock `FOR UPDATE` conflicts with. So an accept racing this call either committed before the lock
+ * was granted (and the membership read below, a fresh READ COMMITTED snapshot, sees it → 409) or waits
+ * until this transaction commits. Membership STATUS changes do not touch the FK; the only one that could
+ * revive a membership is a PATCH out of `revoked`, which the route refuses (revocation is terminal).
+ * The cross-org read is M2's `m2_list_own_memberships` SECURITY DEFINER function (migration 0231) —
+ * `membership` RLS keys only on app.org_id, so wardenx_app cannot see other orgs' rows directly.
  */
 export function createDbUserDirectory(db: DbClient): UserDirectory {
   const U = schema.users;
   return {
-    async deactivate(userId, _reason) {
-      await db.update(U).set({ status: "deactivated" }).where(eq(U.id, userId));
+    async deactivateFromOrg({ userId, organizationId }) {
+      if (!UUID_RE.test(userId)) return "not_member";
+      return db.transaction(async (tx) => {
+        const locked = await tx.select({ id: U.id }).from(U).where(eq(U.id, userId)).for("update");
+        if (locked.length === 0) return "not_member";
+        const result = await tx.execute(
+          sql`SELECT organization_id, status FROM m2_list_own_memberships(${userId}::uuid)`,
+        );
+        const memberships = (
+          (result as unknown as { rows?: { organization_id: string; status: MembershipStatus }[] })
+            .rows ?? []
+        ).map((r): MembershipStanding => ({ organizationId: r.organization_id, status: r.status }));
+        const outcome = decideOrgBoundedDeactivation(memberships, organizationId);
+        if (outcome !== "deactivated") return outcome;
+        await tx.update(U).set({ status: "deactivated" }).where(eq(U.id, userId));
+        return outcome;
+      });
     },
   };
 }

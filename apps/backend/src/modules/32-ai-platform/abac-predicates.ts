@@ -96,6 +96,37 @@ export const AI_SAFETY_OWNER_ROLE_KEYS = [
 ] as const;
 
 /**
+ * GAP-096 — the population §4.7 restricts to SINGLE-TENANT deployments.
+ *
+ * `clinical_safety_lead` is a tenant role: any tenant admin can create and assign it. On a shared
+ * deployment the safety owner's write surface reaches every tenant (a `platform`-scoped kill switch writes
+ * the NULL-org row that stops the capability for all of them), so this key confers the safety-owner
+ * authority only when the deployment declares itself single-tenant. The other two keys are reserved
+ * platform keys (`@wardenx/auth` `isReservedPlatformRoleKey`): the enrichment reader and the
+ * effective-permission store drop them unless they come from a platform-owned role row.
+ */
+export const AI_SAFETY_OWNER_SINGLE_TENANT_ROLE_KEYS: readonly string[] = ["clinical_safety_lead"];
+
+/** The env flag that declares a single-tenant deployment (§4.7's second clause). Default: multi-tenant. */
+export const SINGLE_TENANT_DEPLOYMENT_ENV = "WARDENX_SINGLE_TENANT_DEPLOYMENT";
+
+/** True only for an explicit `WARDENX_SINGLE_TENANT_DEPLOYMENT=true` — anything else is multi-tenant. */
+export function isSingleTenantDeployment(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): boolean {
+  return env[SINGLE_TENANT_DEPLOYMENT_ENV] === "true";
+}
+
+/** The safety-owner keys in force for a deployment shape. */
+function safetyOwnerRoleKeys(singleTenantDeployment: boolean): readonly string[] {
+  return singleTenantDeployment
+    ? AI_SAFETY_OWNER_ROLE_KEYS
+    : AI_SAFETY_OWNER_ROLE_KEYS.filter(
+        (key) => !AI_SAFETY_OWNER_SINGLE_TENANT_ROLE_KEYS.includes(key),
+      );
+}
+
+/**
  * §4.1 R9/R16 — the roles whose read arm is ORed beside the safety owner's.
  *
  * Kept as its own list rather than merged into {@link AI_SAFETY_OWNER_ROLE_KEYS} for the reason stated
@@ -189,6 +220,12 @@ export const denyStubAiPlatformAbacResolver: AiPlatformAbacResolver = {
 
 export interface AiPlatformAbacDeps {
   readonly resolver: AiPlatformAbacResolver;
+  /**
+   * GAP-096 — whether this deployment serves a single tenant, which is the only shape in which §4.7 lets
+   * a tenant `clinical_safety_lead` act as the AI Safety Owner. Defaults to
+   * {@link isSingleTenantDeployment} (the `WARDENX_SINGLE_TENANT_DEPLOYMENT` env flag, off by default).
+   */
+  readonly singleTenantDeployment?: boolean;
 }
 
 // ── target/context extraction (server-side only) ─────────────────────────────────────────────────────
@@ -218,13 +255,14 @@ function membershipIdOf(context: AbacContext): string | null {
 async function isAiSafetyOwner(
   resolver: AiPlatformAbacResolver,
   context: AbacContext,
+  ownerKeys: readonly string[],
 ): Promise<boolean> {
-  if (context.roles.some((role) => AI_SAFETY_OWNER_ROLE_KEYS.includes(role as never))) return true;
+  if (context.roles.some((role) => ownerKeys.includes(role))) return true;
   const membershipId = membershipIdOf(context);
   if (membershipId === null || !context.organizationId) return false;
   const roles = await resolver.roleKeysOf(context.organizationId, membershipId).catch(() => null);
   if (roles === null) return false;
-  return roles.some((role) => AI_SAFETY_OWNER_ROLE_KEYS.includes(role as never));
+  return roles.some((role) => ownerKeys.includes(role));
 }
 
 /** Whether the SESSION holds a compliance-side read role (the R9/R16 second arm — see the role lists). */
@@ -242,6 +280,7 @@ export function buildAiPlatformAbacPredicates(
   (context: AbacContext, target: AbacTarget) => Promise<boolean>
 > {
   const { resolver } = deps;
+  const ownerKeys = safetyOwnerRoleKeys(deps.singleTenantDeployment ?? isSingleTenantDeployment());
 
   /** The capability a target names — by id (`capabilityId`) or by key (`capabilityKey`), resolved. */
   const capabilityOf = async (target: AbacTarget): Promise<string | null> => {
@@ -252,7 +291,7 @@ export function buildAiPlatformAbacPredicates(
 
   return {
     /** §4.7 — the cross-tenant platform operator (R1, R4, R5, R6, R7, R19, R20, R26-R32). */
-    ai_safety_owner: async (context) => isAiSafetyOwner(resolver, context),
+    ai_safety_owner: async (context) => isAiSafetyOwner(resolver, context, ownerKeys),
 
     /** §4.7 / §5.3 — an ACTIVE `ai_tenant_opt_in_record` for (org, capability). */
     ai_capability_tenant_opted_in: async (context, target) => {
@@ -305,7 +344,7 @@ export function buildAiPlatformAbacPredicates(
 
     /** §4.7 — R17's object-level check: same org, OR the cross-tenant safety owner. */
     ai_invocation_same_org_or_safety_owner: async (context, target) => {
-      if (await isAiSafetyOwner(resolver, context)) return true;
+      if (await isAiSafetyOwner(resolver, context, ownerKeys)) return true;
       if (!context.organizationId) return false;
       const invocationId = targetStr(target, "invocationId", "id");
       if (invocationId === null) return false;

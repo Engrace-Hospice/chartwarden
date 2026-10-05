@@ -41,6 +41,9 @@ const MED_ORDER = "66666666-6666-6666-6666-666666666666";
 const CONTROLLED_MED_ORDER = "6c6c6c6c-6c6c-4c6c-8c6c-6c6c6c6c6c6c";
 /** An order M12's D6 verdict refuses — resolvable, but discontinued (F-058). */
 const BLOCKED_MED_ORDER = "6b6b6b6b-6b6b-4b6b-8b6b-6b6b6b6b6b6b";
+/** GAP-004 — a second patient on the same tenant, with an order of its own. */
+const OTHER_PATIENT = "4e4e4e4e-4e4e-4e4e-8e4e-4e4e4e4e4e4e";
+const OTHER_MED_ORDER = "6e6e6e6e-6e6e-4e6e-8e6e-6e6e6e6e6e6e";
 
 describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", () => {
   let admin: Client;
@@ -88,14 +91,14 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     return rows[0]?.status as string;
   }
   /** Seed a pending `scheduled_dose` (its siting is what recordAdministration copies) as superuser. */
-  async function seedScheduledDose(org: string): Promise<string> {
+  async function seedScheduledDose(org: string, patientId = PATIENT): Promise<string> {
     return (
       await admin.query(
         `INSERT INTO scheduled_dose (organization_id, provider_entity_id, location_id, patient_id,
            admission_id, medication_order_id, due_at, grace_window_minutes, expected_dose_amount,
            expected_dose_unit, expected_route, materialization_sequence)
          VALUES ($1,$2,$3,$4,$5,$6, now(), 60, 5.0000, 'mg', 'oral', 1) RETURNING id`,
-        [org, providerOf[org], locationOf[org], PATIENT, ADMISSION, MED_ORDER],
+        [org, providerOf[org], locationOf[org], patientId, ADMISSION, MED_ORDER],
       )
     ).rows[0].id as string;
   }
@@ -120,13 +123,13 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       )
     ).rows[0].id as string;
   }
-  async function seedDeployment(org: string): Promise<string> {
+  async function seedDeployment(org: string, patientId = PATIENT): Promise<string> {
     return (
       await admin.query(
         `INSERT INTO comfort_kit_deployment (organization_id, provider_entity_id, location_id, patient_id,
            admission_id, deployed_at)
          VALUES ($1,$2,$3,$4,$5, now()) RETURNING id`,
-        [org, providerOf[org], locationOf[org], PATIENT, ADMISSION],
+        [org, providerOf[org], locationOf[org], patientId, ADMISSION],
       )
     ).rows[0].id as string;
   }
@@ -217,11 +220,11 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
             medClass: "standard",
             isControlledSubstance: false,
           };
-        if (medicationOrderId !== MED_ORDER && medicationOrderId !== CONTROLLED_MED_ORDER)
-          return null;
+        const known = [MED_ORDER, CONTROLLED_MED_ORDER, OTHER_MED_ORDER];
+        if (!known.includes(medicationOrderId)) return null;
         const controlled = medicationOrderId === CONTROLLED_MED_ORDER;
         return {
-          patientId: PATIENT,
+          patientId: medicationOrderId === OTHER_MED_ORDER ? OTHER_PATIENT : PATIENT,
           admissionId: ADMISSION,
           drugName: "Morphine Sulfate Oral Solution",
           route: "oral",
@@ -387,6 +390,99 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
         refusedAt: new Date().toISOString(),
       } as never),
     ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  // GAP-004 — `emar.scope` proves each named id is in the caller's scope, not that they name ONE patient.
+  // A clinician with both patients on caseload passes the gate, so the service is what keeps a row whole.
+  it("GAP-004: a dose, IV session or comfort kit of another patient is refused against this order", async () => {
+    const mismatch = { statusCode: 422, details: [{ code: "PATIENT_ORDER_MISMATCH" }] };
+    const before = Number(
+      (await admin.query("SELECT count(*) FROM administration_record")).rows[0].count,
+    );
+
+    const otherDose = await seedScheduledDose(ORG_A, OTHER_PATIENT);
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ scheduledDoseId: otherDose })),
+    ).rejects.toMatchObject(mismatch);
+
+    const otherKit = await seedDeployment(ORG_A, OTHER_PATIENT);
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ comfortKitDeploymentId: otherKit }),
+      ),
+    ).rejects.toMatchObject(mismatch);
+
+    const otherStart = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ mode: "iv_continuous_start", medicationOrderId: OTHER_MED_ORDER }),
+      data: { infusionRate: 4, rateUnit: "mg/hr", infusionDilution: "morphine 1mg/mL in NS" },
+    });
+    expect(otherStart.patientId).toBe(OTHER_PATIENT);
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs({ mode: "iv_continuous_pause", ivSessionId: otherStart.ivSessionId }),
+        data: {},
+      }),
+    ).rejects.toMatchObject(mismatch);
+
+    // Only the other patient's own IV start was written; every mismatched row was refused whole.
+    const after = Number(
+      (await admin.query("SELECT count(*) FROM administration_record")).rows[0].count,
+    );
+    expect(after - before).toBe(1);
+  });
+
+  it("GAP-004: a caregiver attestation naming a patient the order does not belong to is refused", async () => {
+    await expect(
+      svc.recordCaregiverAttested(ORG_A, {
+        patientId: OTHER_PATIENT,
+        medicationOrderId: MED_ORDER,
+        administeredAt: new Date().toISOString(),
+        caregiverSessionId: "77777777-7777-4777-8777-777777777777",
+        route: "oral",
+        doseAmount: 5,
+        doseUnit: "mg",
+      }),
+    ).rejects.toMatchObject({ statusCode: 422, details: [{ code: "PATIENT_ORDER_MISMATCH" }] });
+  });
+
+  // GAP-004 — witness-attest is deliberately NOT caseload-scoped (the witness is rarely on the patient's
+  // caseload), so the mint itself must not sign a patient the order is not for. Consumption would never
+  // honour such a token anyway; this proves the mint refuses it up front and that a token for another
+  // patient's order cannot be spent against this one.
+  it("GAP-004: the witness mint refuses a patient the order is not for, and an unresolvable order", async () => {
+    await expect(
+      svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
+        patientId: OTHER_PATIENT,
+        medicationOrderId: CONTROLLED_MED_ORDER,
+        administeringClinicianMembershipId: memberOf[ORG_A],
+      }),
+    ).rejects.toMatchObject({ statusCode: 422, details: [{ code: "PATIENT_ORDER_MISMATCH" }] });
+    await expect(
+      svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
+        patientId: PATIENT,
+        medicationOrderId: "77777777-7777-4777-8777-777777777777",
+        administeringClinicianMembershipId: memberOf[ORG_A],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 422,
+      details: [{ code: "MEDICATION_ORDER_UNRESOLVED" }],
+    });
+    // A well-formed token for ANOTHER order (and its patient) is refused at consumption: the verifier binds
+    // the order and the order's resolved patient, not whatever the witness was told.
+    const { token } = await svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
+      patientId: OTHER_PATIENT,
+      medicationOrderId: OTHER_MED_ORDER,
+      administeringClinicianMembershipId: memberOf[ORG_A],
+    });
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ medClass: "controlled_substance", witnessToken: token }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 422, details: [{ code: "WITNESS_REQUIRED" }] });
   });
 
   it("F-031: an ad-hoc administration is filed under the ORDER's patient, not a sentinel", async () => {
