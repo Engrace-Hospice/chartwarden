@@ -50,7 +50,11 @@ export interface SessionContextRecord {
    * fixture keep their current shape and resolve to null — which is what a session with no device
    * should say, and what the gate must read as deny.
    */
-  readonly deviceAttestation?: { readonly valid: boolean; readonly verifiedAt?: string } | null;
+  readonly deviceAttestation?: {
+    readonly valid: boolean;
+    readonly verifiedAt?: string;
+    readonly attestationId?: string;
+  } | null;
   /** The vendor an M19 answering-service session acts for; null on every other class (F-030). */
   readonly externalActorId?: string | null;
 }

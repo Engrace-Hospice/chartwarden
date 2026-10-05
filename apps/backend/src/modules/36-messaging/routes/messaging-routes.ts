@@ -20,8 +20,14 @@
 // whose mutations run inside `withOrgContext` so RLS on `app.org_id` is the backstop and whose
 // `sendMessage` envelope-encrypts the body under the tenant DEK (§3.4). Org/actor binding is always
 // server-side: the org/user come from `request.context`, never the body.
-import { abacRegistry, registerPredicate, requireAbac, requirePermission } from "@wardenx/auth";
-import type { MessagingRouteService } from "@wardenx/messaging";
+import {
+  type AbacContext,
+  abacRegistry,
+  registerPredicate,
+  requireAbac,
+  requirePermission,
+} from "@wardenx/auth";
+import type { MemberAdminActor, MessagingRouteService } from "@wardenx/messaging";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -51,6 +57,10 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 /** The named ABAC predicate the channel-scoped routes gate on (§4.5). */
 export const CHANNEL_VISIBILITY_PREDICATE = "channel_visibility";
 
+/** The §4.5 `location_membership` predicate for `messaging.manage_members` (GAP-103): org_admin, or
+ *  clinical_lead on a location channel of their own location. */
+export const CHANNEL_MEMBER_ADMIN_PREDICATE = "channel_member_admin";
+
 /** The injection surface for the messaging routes (mirrors M38's `TerminologyRouteDeps`). */
 export interface MessagingRouteDeps {
   /** The §4.1–4.2 application service (in-memory in the slice; Drizzle/Valkey in prod). */
@@ -68,12 +78,42 @@ export interface MessagingRouteDeps {
  */
 export function registerMessagingAbacPredicates(service: MessagingRouteService): void {
   // Single-owner registry; re-boot (tests) re-points safely (mirrors M39's abac-predicates guard).
-  if (abacRegistry.has(CHANNEL_VISIBILITY_PREDICATE)) return;
+  if (!abacRegistry.has(CHANNEL_VISIBILITY_PREDICATE)) registerChannelVisibility(service);
+  if (!abacRegistry.has(CHANNEL_MEMBER_ADMIN_PREDICATE)) {
+    registerPredicate(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
+  }
+}
+
+function registerChannelVisibility(service: MessagingRouteService): void {
   registerPredicate(CHANNEL_VISIBILITY_PREDICATE, async (context, target) => {
     const channelId = typeof target.id === "string" ? target.id : null;
     if (!channelId || !context.organizationId || !context.userId) return false;
     return service.canViewChannel(context.organizationId, context.userId, channelId);
   });
+}
+
+/** The `channel_member_admin` predicate body — server-derived roles/locations, fail-closed. */
+export function channelMemberAdminPredicate(
+  service: MessagingRouteService,
+): (context: AbacContext, target: Record<string, unknown>) => Promise<boolean> {
+  return async (context, target) => {
+    const channelId = typeof target.id === "string" ? target.id : null;
+    if (!channelId || !context.organizationId || !context.userId) return false;
+    return service.canManageMembers(context.organizationId, memberAdminActorOf(context), channelId);
+  };
+}
+
+function memberAdminActorOf(source: {
+  userId: string;
+  roles: readonly string[];
+  locationIds: readonly string[];
+}): MemberAdminActor {
+  return {
+    kind: "user",
+    userId: source.userId,
+    roles: [...source.roles],
+    locationIds: [...source.locationIds],
+  };
 }
 
 /** The org-scoped actor (org binding is server-side: the context, never the body). */
@@ -87,6 +127,12 @@ const READ = requirePermission("messaging.read") as PreHandler;
 const SEND = requirePermission("messaging.send") as PreHandler;
 const DM = requirePermission("messaging.dm") as PreHandler;
 const MANAGE_MEMBERS = requirePermission("messaging.manage_members") as PreHandler;
+// Break-glass is read-only: it must never open a member write (a PHI grant path).
+const MANAGE_CHANNEL_MEMBERS = requireAbac(
+  "messaging.manage_members",
+  CHANNEL_MEMBER_ADMIN_PREDICATE,
+  { breakGlassBypassable: false },
+) as PreHandler;
 const ANNOUNCE = requirePermission("messaging.announce") as PreHandler;
 const PREFS = requirePermission("notifications.preferences.manage") as PreHandler;
 const ENDPOINT = requirePermission("notifications.endpoint.manage") as PreHandler;
@@ -199,7 +245,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- add a manual member (admin override on auto channels — audited) -----------------------
   app.post(
     "/api/v1/messaging/channels/:id/members",
-    { preHandler: [MANAGE_MEMBERS] },
+    { preHandler: [MANAGE_MEMBERS, MANAGE_CHANNEL_MEMBERS] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
@@ -208,6 +254,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         channelId: id,
         userId: body.userId,
         role: body.role,
+        actor: memberAdminActorOf(request.context),
       });
       return reply.code(204).send();
     },
@@ -216,11 +263,15 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- remove a member -----------------------------------------------------------------------
   app.delete(
     "/api/v1/messaging/channels/:id/members/:userId",
-    { preHandler: [MANAGE_MEMBERS] },
+    { preHandler: [MANAGE_MEMBERS, MANAGE_CHANNEL_MEMBERS] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const { id, userId } = parse(MemberParamsSchema, request.params);
-      await service.removeMember(organizationId, { channelId: id, userId });
+      await service.removeMember(organizationId, {
+        channelId: id,
+        userId,
+        actor: memberAdminActorOf(request.context),
+      });
       return reply.code(204).send();
     },
   );

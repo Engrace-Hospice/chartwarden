@@ -77,7 +77,11 @@ export const ABAC_BEREAVED = (action: string): PreHandler =>
 /** §4.7 `telehealth_consent_active` — the join gate; patient resolved from the visit's own row. */
 export const ABAC_TELEHEALTH_CONSENT = (action: string, idParam = "visitId"): PreHandler =>
   requireAbac(action, "telehealth_consent_active", {
-    getTarget: ((r: TargetRequest) => ({ telehealthVisitId: param(r, idParam) })) as never,
+    getTarget: ((r: TargetRequest & FastifyRequest) => ({
+      telehealthVisitId: param(r, idParam),
+      // GAP-094: the SESSION's patient, so a portal caller can never pass for another patient's visit.
+      sessionPatientId: sessionAttr(r, "sessionPatientId"),
+    })) as never,
     notFoundOnDeny: false,
   }) as PreHandler;
 

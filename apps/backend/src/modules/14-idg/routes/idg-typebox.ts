@@ -210,6 +210,8 @@ export const UpdateDecisionRequest = Type.Object({
   payload: IDG_DECISION_PAYLOAD_SCHEMA,
 });
 export const SupersedeDecisionRequest = Type.Object({
+  /** GAP-043 / §2.8: the SUBSEQUENT live meeting the successor decision is recorded in (quorum is computed there). */
+  meetingId: Type.String({ format: "uuid" }),
   reason: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 
@@ -660,6 +662,8 @@ export const DecisionViewSchema = Type.Object({
   recordedByMembershipId: Type.String({ format: "uuid" }),
   recordedAt: Type.String({ format: "date-time" }),
   supersededByDecisionId: Nullable(Type.String({ format: "uuid" })),
+  /** Optimistic-concurrency token — send it back as `If-Match` on `PATCH /idg/decisions/:id`. */
+  version: Type.Integer({ minimum: 0 }),
   applications: Type.Optional(Type.Array(DecisionApplicationViewSchema)),
 });
 export const DecisionListResponseSchema = Type.Array(DecisionViewSchema);

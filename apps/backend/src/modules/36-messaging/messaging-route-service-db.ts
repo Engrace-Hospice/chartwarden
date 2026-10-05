@@ -50,14 +50,18 @@ import type {
   RoutingMap,
 } from "@wardenx/messaging";
 import {
+  type MemberAdminActor,
   PLATFORM_DEFAULT_ALERT_RULES,
+  type PatientLocationResolver,
   assertLockedRulePatchAllowed,
   isSystemLockedEventType,
+  mayManageChannelMembersResolved,
   rollUpAlertOutcome,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import {
   type MessageBodyCipher,
   channelOr404,
@@ -189,10 +193,56 @@ function toRuleView(r: typeof AR.$inferSelect): AlertRuleView {
  * Drizzle (org-scoped inside `withOrgContext`); message bodies are envelope-encrypted under the
  * per-tenant DEK via the shared {@link MessageBodyCipher}. `opts.kek` is injectable for tests.
  */
+/** The audit context for a member write: the real user, or "" only for the explicit system actor. */
+function memberAdminContext(orgId: string, actor: MemberAdminActor) {
+  return { organizationId: orgId, userId: actor.kind === "user" ? actor.userId : "" };
+}
+
+async function memberAdminChannel(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  channelId: string,
+): Promise<{ kind: string; subjectId: string | null } | null> {
+  const rows = (await tx
+    .select({ kind: CH.channelKind, subjectId: CH.subjectId })
+    .from(CH)
+    .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
+    .limit(1)) as Array<{ kind: string; subjectId: string | null }>;
+  return rows[0] ?? null;
+}
+
+/** Service-layer enforcement of the §4.5 `location_membership` rule (NOT_FOUND → FORBIDDEN). */
+async function assertMayManageMembers(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  channelId: string,
+  actor: MemberAdminActor,
+  resolveSiting: PatientLocationResolver,
+): Promise<void> {
+  const ch = await memberAdminChannel(tx, orgId, channelId);
+  if (!ch) throw new NotFoundError("channel", channelId);
+  if (
+    !(await mayManageChannelMembersResolved(actor, ch, (patientId) =>
+      resolveSiting(orgId, patientId),
+    ))
+  ) {
+    throw new ForbiddenError("not permitted to manage members of this channel");
+  }
+}
+
+/** Default siting resolver: M6's siting seam via `getSeam` (an unbound deny-stub throws ⇒ deny). */
+const seamPatientLocationIds: PatientLocationResolver = (organizationId, patientId) =>
+  getSeam("PatientSitingReader").getPatientLocationIds({ organizationId, patientId });
+
 export function createDbMessagingRouteService(
   db: DbClient,
-  opts: { kek?: Buffer; cipher?: MessageBodyCipher } = {},
+  opts: {
+    kek?: Buffer;
+    cipher?: MessageBodyCipher;
+    resolvePatientLocationIds?: PatientLocationResolver;
+  } = {},
 ): MessagingRouteService {
+  const resolveSiting = opts.resolvePatientLocationIds ?? seamPatientLocationIds;
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
   return {
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
@@ -508,10 +558,27 @@ export function createDbMessagingRouteService(
       });
     },
 
+    async canManageMembers(orgId, actor, channelId): Promise<boolean> {
+      try {
+        return await withOrgContext(db, memberAdminContext(orgId, actor), async (tx) => {
+          const ch = await memberAdminChannel(tx, orgId, channelId);
+          return (
+            !!ch &&
+            (await mayManageChannelMembersResolved(actor, ch, (patientId) =>
+              resolveSiting(orgId, patientId),
+            ))
+          );
+        });
+      } catch {
+        return false; // fail closed: a lookup failure never grants member administration
+      }
+    },
+
     // --- add a manual member (admin override; audited) — re-activates a removed row idempotently -
+    // The real actor rides withOrgContext so the write-audit trigger records WHO (GAP-103).
     async addMember(orgId, input) {
-      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
-        await channelOr404(tx, orgId, input.channelId);
+      return withOrgContext(db, memberAdminContext(orgId, input.actor), async (tx) => {
+        await assertMayManageMembers(tx, orgId, input.channelId, input.actor, resolveSiting);
         const active = (await tx
           .select({ id: CM.id })
           .from(CM)
@@ -537,7 +604,8 @@ export function createDbMessagingRouteService(
 
     // --- remove a member (soft-delete: set removed_at) -----------------------------------------
     async removeMember(orgId, input) {
-      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+      return withOrgContext(db, memberAdminContext(orgId, input.actor), async (tx) => {
+        await assertMayManageMembers(tx, orgId, input.channelId, input.actor, resolveSiting);
         const updated = (await tx
           .update(CM)
           .set({ removedAt: new Date() })

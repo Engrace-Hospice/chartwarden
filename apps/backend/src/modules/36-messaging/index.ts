@@ -56,6 +56,7 @@ export { M36_OUTBOX_EVENTS } from "./events-by-m36";
 // predicate (§4.5) the channel-scoped routes gate on.
 export {
   type MessagingRouteDeps,
+  CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
   registerMessagingAbacPredicates,
   registerMessagingRoutes,

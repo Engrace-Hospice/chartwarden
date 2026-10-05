@@ -24,8 +24,14 @@ import {
   type EvvWriteOutboxPort,
   M18_OUTBOX_EVENTS,
   buildM18VisitPublishedConsumer,
+  clinicianCapture,
   createDbEvvBackend,
+  systemCapture,
 } from "../src/modules/18-evv/index";
+
+// GAP-055 — these fixtures drive M18 state through the service, not the capture guards (covered in
+// evv-capture-guards.test.ts / evv-inject.test.ts); the explicit typed system marker says so.
+const SYSTEM_FIXTURE = systemCapture("live-suite fixture");
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -42,6 +48,8 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEvvBackend>;
+  // Same DB, default (OFF) device-attestation flag — the production configuration.
+  let svcAttestationOff: ReturnType<typeof createDbEvvBackend>;
   const seeded: Record<string, Seed> = {};
 
   async function resetSchema() {
@@ -201,7 +209,9 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     const outbox: EvvWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m18" }),
     };
-    svc = createDbEvvBackend(handle.db, outbox);
+    // The enforced contract (attestation + session-device binding) is what most of this suite proves.
+    svc = createDbEvvBackend(handle.db, outbox, { deviceAttestationEnforced: true });
+    svcAttestationOff = createDbEvvBackend(handle.db, outbox);
   }, 180_000);
 
   afterAll(async () => {
@@ -225,12 +235,18 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   it("capture check-in (in-geofence) then check-out completes the bracket; emits check_*_recorded", async () => {
     const { member } = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);
-    const ci = await svc.recordCapture(ORG_A, member, "check_in", {
-      visitId: visit,
-      coords: { lat: 45.523, lng: -122.6789 },
-      accuracyM: 4.5,
-      capturedAt: new Date().toISOString(),
-    });
+    const ci = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      {
+        visitId: visit,
+        coords: { lat: 45.523, lng: -122.6789 },
+        accuracyM: 4.5,
+        capturedAt: new Date().toISOString(),
+      },
+      SYSTEM_FIXTURE,
+    );
     expect(ci.geofenceDecision).toBe("pass");
     expect(ci.gpsQuality).toBe("high");
     expect(ci.visitStateAfterEvent).toBe("in_visit");
@@ -238,12 +254,18 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(ciEvts).toContain("m18.evv.check_in_recorded");
     expect(ciEvts).toContain("m18.evv.at_patient_address");
 
-    const co = await svc.recordCapture(ORG_A, member, "check_out", {
-      visitId: visit,
-      coords: { lat: 45.523, lng: -122.6789 },
-      accuracyM: 6,
-      capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-    });
+    const co = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_out",
+      {
+        visitId: visit,
+        coords: { lat: 45.523, lng: -122.6789 },
+        accuracyM: 6,
+        capturedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      },
+      SYSTEM_FIXTURE,
+    );
     expect(co.visitStateAfterEvent).toBe("completed");
     expect(await eventsFor(co.eventId)).toContain("m18.evv.check_out_recorded");
 
@@ -315,12 +337,18 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   it("capture with accuracy beyond the policy (unattested) is an outside-geofence breach", async () => {
     const { member } = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);
-    const ci = await svc.recordCapture(ORG_A, member, "check_in", {
-      visitId: visit,
-      coords: { lat: 45.5, lng: -122.6 },
-      accuracyM: 80, // > max_accuracy_m 50
-      capturedAt: new Date().toISOString(),
-    });
+    const ci = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      {
+        visitId: visit,
+        coords: { lat: 45.5, lng: -122.6 },
+        accuracyM: 80, // > max_accuracy_m 50
+        capturedAt: new Date().toISOString(),
+      },
+      SYSTEM_FIXTURE,
+    );
     expect(ci.geofenceDecision).toBe("fail_accuracy");
     expect(ci.gpsQuality).toBe("outside_geofence");
     expect(await eventsFor(ci.eventId)).toContain("m18.evv.geofence_breach_recorded");
@@ -340,13 +368,141 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       )
     ).rows[0].id as string;
     await expect(
-      svc.recordCapture(ORG_A, bare, "check_in", {
-        visitId: visit,
-        coords: { lat: 45.5, lng: -122.6 },
-        accuracyM: 4.5,
-        capturedAt: new Date().toISOString(),
-      }),
+      svc.recordCapture(
+        ORG_A,
+        bare,
+        "check_in",
+        {
+          visitId: visit,
+          coords: { lat: 45.5, lng: -122.6 },
+          accuracyM: 4.5,
+          capturedAt: new Date().toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      ),
     ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  // GAP-055 — a clinician capture is bound to the device the SESSION is attested for: the acting
+  // membership's approved evv_device whose m2_device_attestation_id equals the session's attestation id.
+  const SEEDED_ATTESTATION_ID = "66666666-6666-6666-6666-666666666666";
+  const clinicianInput = (visitId: string) => ({
+    visitId,
+    coords: { lat: 45.523, lng: -122.6789 },
+    accuracyM: 4.5,
+    capturedAt: new Date().toISOString(),
+  });
+
+  it("clinician capture binds to the session-attested device and records it on the event", async () => {
+    const { member, device } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const ci = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      clinicianInput(visit),
+      clinicianCapture({ valid: true, attestationId: SEEDED_ATTESTATION_ID }),
+    );
+    const row = await admin.query("SELECT evv_device_id FROM evv_event WHERE id=$1", [ci.eventId]);
+    expect(row.rows[0].evv_device_id).toBe(device);
+  });
+
+  it("clinician capture from a session whose attestation matches no approved device is refused (403)", async () => {
+    const { member } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    await expect(
+      svc.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        clinicianInput(visit),
+        clinicianCapture({ valid: true, attestationId: "77777777-7777-7777-7777-777777777777" }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    const rows = await admin.query("SELECT 1 FROM evv_event WHERE visit_id=$1", [visit]);
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it("a claimed evvDeviceId that is not the session-bound device is refused (403), even if approved", async () => {
+    const { member, device } = seeded[ORG_A];
+    const other = (
+      await admin.query(
+        `INSERT INTO evv_device (organization_id, membership_id, platform, device_key_fingerprint,
+           m2_device_attestation_id, status, approved_at)
+         VALUES ($1,$2,'android',$3,$4,'approved', now()) RETURNING id`,
+        [ORG_A, member, `fp-M18W-claim-${Date.now()}`, "88888888-8888-8888-8888-888888888888"],
+      )
+    ).rows[0].id as string;
+    expect(other).not.toBe(device);
+    const visit = await seedVisit(ORG_A);
+    await expect(
+      svc.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        { ...clinicianInput(visit), claimedDeviceId: other },
+        clinicianCapture({ valid: true, attestationId: SEEDED_ATTESTATION_ID }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it("flag OFF (default): an un-attested capture resolves the most-recently-approved device; a claim may name any approved device of the same membership", async () => {
+    const { member } = seeded[ORG_A];
+    // A SECOND approved device, approved later than the seeded one, with an attestation the session never carries.
+    const newest = (
+      await admin.query(
+        `INSERT INTO evv_device (organization_id, membership_id, platform, device_key_fingerprint,
+           m2_device_attestation_id, status, approved_at)
+         VALUES ($1,$2,'android',$3,$4,'approved', now() + interval '1 hour') RETURNING id`,
+        [ORG_A, member, `fp-M18W-off-${Date.now()}`, "99999999-9999-4999-8999-999999999999"],
+      )
+    ).rows[0].id as string;
+    const visit = await seedVisit(ORG_A);
+    const ci = await svcAttestationOff.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      clinicianInput(visit),
+      clinicianCapture(undefined), // no session attestation at all
+    );
+    const row = await admin.query("SELECT evv_device_id FROM evv_event WHERE id=$1", [ci.eventId]);
+    expect(row.rows[0].evv_device_id).toBe(newest);
+
+    // A claim naming the OLDER approved device of the SAME membership is accepted and recorded against it.
+    const visit2 = await seedVisit(ORG_A);
+    const older = await svcAttestationOff.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      { ...clinicianInput(visit2), claimedDeviceId: seeded[ORG_A].device },
+      clinicianCapture(undefined),
+    );
+    const olderRow = await admin.query("SELECT evv_device_id FROM evv_event WHERE id=$1", [
+      older.eventId,
+    ]);
+    expect(olderRow.rows[0].evv_device_id).toBe(seeded[ORG_A].device);
+
+    // A claim that is not an approved device of this membership (another org's device) is refused (never widens).
+    const visit3 = await seedVisit(ORG_A);
+    await expect(
+      svcAttestationOff.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        { ...clinicianInput(visit3), claimedDeviceId: seeded[ORG_B].device },
+        clinicianCapture(undefined),
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    // The enforced backend still refuses the same un-attested session.
+    await expect(
+      svc.recordCapture(
+        ORG_A,
+        member,
+        "check_in",
+        clinicianInput(visit3),
+        clinicianCapture(undefined),
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it("missing-resolution clinician-attest closes the open row; emits late_check_resolved", async () => {
@@ -432,12 +588,18 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   it("correction-of-record: supersedes the original, links back, and records why", async () => {
     const { member } = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);
-    const original = await svc.recordCapture(ORG_A, member, "check_in", {
-      visitId: visit,
-      coords: { lat: 45.523, lng: -122.6789 },
-      accuracyM: 4.5,
-      capturedAt: new Date().toISOString(),
-    });
+    const original = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      {
+        visitId: visit,
+        coords: { lat: 45.523, lng: -122.6789 },
+        accuracyM: 4.5,
+        capturedAt: new Date().toISOString(),
+      },
+      SYSTEM_FIXTURE,
+    );
 
     const reason =
       "the handset clock was 40 minutes fast; corrected to the visit note arrival time";
@@ -497,12 +659,18 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   it("§3.2/D2 the active-pair backstop still refuses a second ACTIVE event on the same visit+kind", async () => {
     const { member, pe, location, device } = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);
-    const first = await svc.recordCapture(ORG_A, member, "check_in", {
-      visitId: visit,
-      coords: { lat: 45.523, lng: -122.6789 },
-      accuracyM: 4.5,
-      capturedAt: new Date().toISOString(),
-    });
+    const first = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      {
+        visitId: visit,
+        coords: { lat: 45.523, lng: -122.6789 },
+        accuracyM: 4.5,
+        capturedAt: new Date().toISOString(),
+      },
+      SYSTEM_FIXTURE,
+    );
     const { rows: seed } = await admin.query(
       `SELECT event_at, coords_cipher, coords_dek_version, device_attestation_id_at_record,
               service_type_code, posting_discipline_at_recording
@@ -539,12 +707,18 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   it("correction-of-record: refuses a stale step-up, an already-corrected target, and a kind swap", async () => {
     const { member } = seeded[ORG_A];
     const visit = await seedVisit(ORG_A);
-    const original = await svc.recordCapture(ORG_A, member, "check_in", {
-      visitId: visit,
-      coords: { lat: 45.523, lng: -122.6789 },
-      accuracyM: 4.5,
-      capturedAt: new Date().toISOString(),
-    });
+    const original = await svc.recordCapture(
+      ORG_A,
+      member,
+      "check_in",
+      {
+        visitId: visit,
+        coords: { lat: 45.523, lng: -122.6789 },
+        accuracyM: 4.5,
+        capturedAt: new Date().toISOString(),
+      },
+      SYSTEM_FIXTURE,
+    );
     const base = {
       visitId: visit,
       coords: { lat: 45.523, lng: -122.6789 },
@@ -644,12 +818,18 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   it("RLS: org B cannot capture against org A's visit (visit invisible → 404)", async () => {
     const visit = await seedVisit(ORG_A);
     await expect(
-      svc.recordCapture(ORG_B, seeded[ORG_B].member, "check_in", {
-        visitId: visit,
-        coords: { lat: 45.5, lng: -122.6 },
-        accuracyM: 4.5,
-        capturedAt: new Date().toISOString(),
-      }),
+      svc.recordCapture(
+        ORG_B,
+        seeded[ORG_B].member,
+        "check_in",
+        {
+          visitId: visit,
+          coords: { lat: 45.5, lng: -122.6 },
+          accuracyM: 4.5,
+          capturedAt: new Date().toISOString(),
+        },
+        SYSTEM_FIXTURE,
+      ),
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

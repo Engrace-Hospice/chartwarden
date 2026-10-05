@@ -400,7 +400,7 @@ describe("#91 — the meeting can be conducted", () => {
     expect(bodies[0]?.decisionId).toBe(DECISION);
   });
 
-  it("Supersede POSTs to the supersede route, never a PATCH — the prior decision survives", async () => {
+  it("renders no Supersede action and sends no supersede request (the viewed meeting can never be the target)", async () => {
     decisions = [
       {
         id: DECISION,
@@ -408,7 +408,7 @@ describe("#91 — the meeting can be conducted", () => {
         patientId: PATIENT,
         agendaItemId: null,
         decisionKind: "referral",
-        status: "open",
+        status: "emitted",
         wasQuorate: true,
         recordedByMembershipId: "membership-1",
         recordedAt: "2026-08-27T09:30:00.000Z",
@@ -416,12 +416,11 @@ describe("#91 — the meeting can be conducted", () => {
       },
     ];
     mountLive();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Supersede" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Supersede" }));
     await waitFor(() =>
-      expect(writes()).toContain(`POST /api/v1/idg/decisions/${DECISION}/supersede`),
+      expect(screen.getByRole("button", { name: "Assign follow-up" })).toBeTruthy(),
     );
-    expect(writes().some((c) => c.startsWith("PATCH /api/v1/idg/decisions/"))).toBe(false);
+    expect(screen.queryByRole("button", { name: "Supersede" })).toBeNull();
+    expect(writes().some((c) => c.includes("/supersede"))).toBe(false);
   });
 
   it("Excuse soft-removes an attendance row rather than deleting the record of the mistake", async () => {

@@ -136,6 +136,12 @@ export interface DeviceAttestation {
   readonly valid: boolean;
   /** When the attestation was verified (ISO-8601), for diagnostics/audit. */
   readonly verifiedAt?: string;
+  /**
+   * The `device_attestation` row id the SESSION points at — the session-bound device identity. Read off the
+   * joined row by the session store, never from the request. M18 matches it to its own
+   * `evv_device.m2_device_attestation_id` so a capture is bound to the device that sent it.
+   */
+  readonly attestationId?: string;
 }
 
 /** The `attributes` key the device attestation rides on. */
@@ -150,18 +156,18 @@ export const DEVICE_ATTESTATION_ATTRIBUTE = "deviceAttestation";
  * point of the control: an un-attested device must not carry a bulk PHI export, and "we could not
  * tell" is an un-attested device.
  *
- * IT IS CLOSED TODAY, AND THAT IS A DECISION, NOT AN OVERSIGHT. No producer sets the attribute:
- * `applyRequestContext` hard-codes `attributes: {}`, M2 owns no `device_attestation` table
- * (ADR-0023 D2 lists that surface as still-unadjudicated M2 inflation), and the mobile client that
- * performs the §12.4 posture check is unbuilt (ADR-0035). So every caller of a route gated on this
- * is refused, deliberately. It is registered rather than left unregistered so the refusal is a
- * SEMANTIC deny with a reason, not a name the registry cannot resolve — an unresolvable name
- * denies identically but is indistinguishable from a typo, which is how M30's `inOrg` guards sat
- * dead across 7 route files. `arch:abac-predicates` now fails on such a name.
+ * IT IS CLOSED TODAY FOR PRACTICAL PURPOSES, AND THAT IS A DECISION, NOT AN OVERSIGHT. A producer now
+ * exists — the `authenticate` hook (`authenticate.ts`) stamps {@link DEVICE_ATTESTATION_ATTRIBUTE} from the
+ * session-bound stored attestation — but no client supplies a verdict yet: the mobile client that performs the
+ * §12.4 posture check is unbuilt (ADR-0035), so no session ever carries a valid attestation. Every caller of a
+ * route gated on this is therefore refused, deliberately. (M18 EVV capture is the one exception: it applies this
+ * gate only when `EVV_DEVICE_ATTESTATION_ENFORCED` is on, default off.) It is registered rather than left
+ * unregistered so the refusal is a SEMANTIC deny with a reason, not a name the registry cannot resolve — an
+ * unresolvable name denies identically but is indistinguishable from a typo, which is how M30's `inOrg` guards
+ * sat dead across 7 route files. `arch:abac-predicates` now fails on such a name.
  *
- * WHEN M2 LANDS THE ATTESTATION SURFACE, nothing here or at the route changes: the auth plugin
- * starts setting {@link DEVICE_ATTESTATION_ATTRIBUTE} and the gate begins passing for attested
- * devices. Widening it any earlier (registering a permissive stub, or reading a client-supplied
+ * WHEN A CLIENT STARTS SUPPLYING VERDICTS, nothing here or at the route changes: the gate begins
+ * passing for attested devices. Widening it any earlier (registering a permissive stub, or reading a client-supplied
  * header) would silently disable a control SecHardening requires.
  */
 export const deviceAttestationValid: AbacPredicate = (context) => {

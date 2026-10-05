@@ -4,7 +4,7 @@
 // org) and the cron evaluator calls `listDue` under `withPlatformContext`. `listActiveForOrg` +
 // `cascadeRecipientRevocation` back the §4.3 ScheduledReportProvider seam M34 consumes.
 import { schema } from "@wardenx/db";
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 
 const SCH = schema.reportSchedule;
@@ -36,6 +36,35 @@ export class ReportScheduleRepository {
       status ? eq(SCH.status, status) : undefined,
     );
     return this.db.select().from(SCH).where(where).orderBy(asc(SCH.nextRunAt));
+  }
+
+  /**
+   * The schedules an actor may SEE (GAP-097), filtered in SQL: every schedule in the org for an admin
+   * (`membershipId` ignored), else only those the membership owns or is listed on as a recipient. Any
+   * status (cancelled included) unless `status` narrows it; the route filter is honoured, not coerced.
+   */
+  async listVisible(
+    organizationId: string,
+    viewer: { readonly membershipId: string; readonly isAdmin: boolean },
+    status?: schema.ReportSchedule["status"],
+  ): Promise<readonly schema.ReportSchedule[]> {
+    const visibility = viewer.isAdmin
+      ? undefined
+      : or(
+          eq(SCH.ownerMembershipId, viewer.membershipId),
+          sql`${SCH.recipientMembershipIds} @> ${JSON.stringify([viewer.membershipId])}::jsonb`,
+        );
+    return this.db
+      .select()
+      .from(SCH)
+      .where(
+        and(
+          eq(SCH.organizationId, organizationId),
+          status ? eq(SCH.status, status) : undefined,
+          visibility,
+        ),
+      )
+      .orderBy(asc(SCH.nextRunAt));
   }
 
   /** Active schedules for an org — the §4.3 ScheduledReportProvider.listActiveSchedulesForOrg backing. */

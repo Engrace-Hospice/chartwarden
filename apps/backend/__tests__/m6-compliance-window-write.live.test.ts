@@ -238,11 +238,15 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
     });
 
     it("attested before the window lapses never emits", async () => {
-      const { period3Id, period2ScheduledEndAt } = await pendingRecertPeriod3(ORG_A, USER, MD);
+      const { admissionId, period3Id, period2ScheduledEndAt } = await pendingRecertPeriod3(
+        ORG_A,
+        USER,
+        MD,
+      );
 
       // Schedule → complete → attest the F2F on period 3 BEFORE the clock passes windowEnd.
       const f2f = await svc.scheduleF2f(ORG_A, {
-        admissionId: "ignored",
+        admissionId,
         electionPeriodId: period3Id,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_md",

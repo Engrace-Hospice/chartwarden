@@ -44,6 +44,11 @@ import type { M26ReadService } from "../src/modules/26-cap/routes/read-service";
 import type { M26WriteService } from "../src/modules/26-cap/routes/write-service";
 import { registerConsentRoutes } from "../src/modules/39-consent/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import {
+  DEFAULT_TEST_ROLE,
+  PERMISSIVE_ACCESS,
+  installPermissiveConsentAbac,
+} from "./consent-abac-harness";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -69,7 +74,9 @@ const PERMISSIONS = [
 function headerAuth(request: FastifyRequest): void {
   request.context.userId = USER;
   request.context.organizationId = ORG;
-  request.context.roles = ["seed"];
+  // GAP-109: the decision-audit list is compliance/privacy-officer only, so a request may name its role.
+  const role = request.headers["x-test-role"];
+  request.context.roles = [typeof role === "string" ? role : DEFAULT_TEST_ROLE];
 }
 
 const consentRecord: ConsentRecordView = {
@@ -162,13 +169,18 @@ describe.skipIf(!DB_URL)("GAP-079 read-audit emission — LIVE Postgres", () => 
       },
     ]);
     registerEffectivePermissionResolver(grantStore.store);
+    // GAP-109: the consent routes are ABAC-gated now; this suite proves read-audit emission, not scope.
+    installPermissiveConsentAbac();
     const app = buildServer({
       db: handle.db,
       authenticate: headerAuth,
       security: { rateLimitEnabled: false },
     });
     const { service } = createInMemoryConsentRouteService({ records: [consentRecord] });
-    registerConsentRoutes(app, { service: service as unknown as ConsentRouteService });
+    registerConsentRoutes(app, {
+      service: service as unknown as ConsentRouteService,
+      access: PERMISSIVE_ACCESS,
+    });
     registerCapRoutes(app, {
       readService: capReadService,
       writeService: {} as M26WriteService,
@@ -238,6 +250,7 @@ describe.skipIf(!DB_URL)("GAP-079 read-audit emission — LIVE Postgres", () => 
     const res = await app.inject({
       method: "GET",
       url: `/api/v1/consents/eval-audit/by-patient?patientId=${PATIENT}`,
+      headers: { "x-test-role": "compliance_officer" },
     });
     expect(res.statusCode).toBe(200);
     await app.close();

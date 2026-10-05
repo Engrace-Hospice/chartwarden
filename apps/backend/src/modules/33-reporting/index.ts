@@ -37,6 +37,7 @@ export {
   type ReportableScopeKind,
   type ReportingAbacDeps,
   type ReportingAbacResolver,
+  type ReportScheduleFacts,
   type ReportViewFacts,
   M33_ABAC_PREDICATES,
   buildM33AbacPredicates,

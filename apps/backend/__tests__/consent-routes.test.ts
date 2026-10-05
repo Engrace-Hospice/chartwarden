@@ -18,6 +18,12 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { registerConsentRoutes } from "../src/modules/39-consent/index";
+import {
+  DEFAULT_TEST_ROLE,
+  PERMISSIVE_ACCESS,
+  ROLE_FOR_TEST_USER,
+  installPermissiveConsentAbac,
+} from "./consent-abac-harness";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -66,13 +72,18 @@ function makeServer() {
     })),
   );
   registerEffectivePermissionResolver(grantStore.store);
+  installPermissiveConsentAbac();
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerConsentRoutes(app, { service });
+  registerConsentRoutes(app, { service, access: PERMISSIVE_ACCESS });
   return { app, service };
 }
 
 function h(user: string) {
-  return { "x-test-user": user, "x-test-org": ORG, "x-test-roles": "seed" };
+  return {
+    "x-test-user": user,
+    "x-test-org": ORG,
+    "x-test-roles": ROLE_FOR_TEST_USER[user] ?? DEFAULT_TEST_ROLE,
+  };
 }
 
 beforeEach(() => {

@@ -12,6 +12,7 @@
 // `evv_within_visit_window`) are built over the SAME in-memory backend via `buildEvvAbacPredicates` and
 // registered into the shared ABAC registry, exactly as `buildOrderAbacPredicates` does for M11.
 import {
+  DEVICE_ATTESTATION_ATTRIBUTE,
   createInMemoryEffectivePermissionStore,
   createInMemorySessionContextStore,
   createPredicateRegistry,
@@ -47,6 +48,13 @@ function headerAuth(request: FastifyRequest): void {
   // `request.headers["x-step-up"]`, a string the gated caller supplies. They resolve the REAL session
   // through M2's `SessionContextResolver` seam now, so the shim stamps a session id the way the
   // production authenticate hook does and the seam stub decides freshness.
+  // GAP-055 — the production authenticate hook stamps the session-bound attestation verdict; the shim does
+  // so only when the test asks (`x-test-attested: valid`), so an un-attested caller is the default shape.
+  if (request.headers["x-test-attested"] === "valid")
+    request.context.attributes[DEVICE_ATTESTATION_ATTRIBUTE] = {
+      valid: true,
+      attestationId: `att-${user}`,
+    };
   const session = request.headers["x-test-session"];
   if (typeof session === "string" && session.length > 0)
     request.context.attributes.sessionId = session;
@@ -55,7 +63,10 @@ function headerAuth(request: FastifyRequest): void {
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const VISIT_1 = "22222222-2222-4222-8222-222222222222";
+const VISIT_OTHER = "22222222-2222-4222-8222-222222222299"; // assigned to rn_2, not rn_1
 const DEVICE_UUID = "33333333-3333-4333-8333-333333333333";
+const DEVICE_UUID_NEWER = "33333333-3333-4333-8333-333333333344";
+const DEVICE_UUID_IN_ONLY = "33333333-3333-4333-8333-333333333399";
 const RESOLUTION_ATTEST = "55555555-5555-4555-8555-555555555555";
 const RESOLUTION_OVERRIDE = "66666666-6666-4666-8666-666666666666";
 const SUBMISSION_PENDING = "77777777-7777-4777-8777-777777777777";
@@ -75,7 +86,19 @@ const CHECK_OUT_AT = "2026-06-08T13:30:00.000Z";
 const CHECK_IN_RECENT = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1h ago
 const VISIT_DATE_RECENT = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 1 day ago
 
-const CLINICIAN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_field" };
+const CLINICIAN_UNATTESTED = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_field",
+};
+const CLINICIAN = { ...CLINICIAN_UNATTESTED, "x-test-attested": "valid" };
+// Holds `evv.check_in` only (no `evv.check_out`), on an attested device.
+const CHECKIN_ONLY = {
+  "x-test-user": "rn_in_only",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_field",
+  "x-test-attested": "valid",
+};
 const SUPERVISOR = {
   "x-test-user": "sup_1",
   "x-test-org": ORG,
@@ -174,56 +197,96 @@ function withUuidIds(backend: EvvRouteService): EvvRouteService {
   return backend;
 }
 
-function makeServer(service?: EvvRoutePort) {
+/** `deviceAttestationEnforced` defaults to TRUE here so the GAP-055 suites below keep exercising the enforced
+ * contract; the production default is OFF (see the "NOT enforced" suite at the bottom). */
+function makeServer(service?: EvvRoutePort, deviceAttestationEnforced = true) {
   const backend = withUuidIds(
-    new EvvRouteService({
-      visits: [
-        {
-          organizationId: ORG,
-          visitId: VISIT_1,
-          patientId: PATIENT,
-          assignedMembershipId: "rn_1",
-          scheduledStartedAt: VISIT_START,
-          scheduledEndedAt: VISIT_END,
-        },
-      ],
-      submissions: [
-        {
-          organizationId: ORG,
-          id: SUBMISSION_PENDING,
-          visitId: VISIT_1,
-          stateCode: "PA",
-          aggregatorVendor: "sandata",
-          status: "pending",
-        },
-        {
-          organizationId: ORG,
-          id: SUBMISSION_REJECTED,
-          visitId: VISIT_1,
-          stateCode: "PA",
-          aggregatorVendor: "sandata",
-          status: "rejected",
-        },
-      ],
-      resolutions: [
-        {
-          organizationId: ORG,
-          id: RESOLUTION_ATTEST,
-          visitId: VISIT_1,
-          kind: "missing_checkin",
-          status: "open",
-          checkInAt: CHECK_IN_RECENT,
-        },
-        {
-          organizationId: ORG,
-          id: RESOLUTION_OVERRIDE,
-          visitId: VISIT_1,
-          kind: "missing_checkout",
-          status: "open",
-          visitDate: VISIT_DATE_RECENT,
-        },
-      ],
-    }),
+    new EvvRouteService(
+      {
+        visits: [
+          {
+            organizationId: ORG,
+            visitId: VISIT_1,
+            patientId: PATIENT,
+            assignedMembershipId: "rn_1",
+            scheduledStartedAt: VISIT_START,
+            scheduledEndedAt: VISIT_END,
+          },
+          {
+            organizationId: ORG,
+            visitId: VISIT_OTHER,
+            patientId: PATIENT,
+            assignedMembershipId: "rn_2",
+            scheduledStartedAt: VISIT_START,
+            scheduledEndedAt: VISIT_END,
+          },
+        ],
+        // The session-bound device (GAP-055 follow-up): each attested clinician's session attestation
+        // (`att-<user>`, stamped by the shim) is bound to one approved device of theirs.
+        devices: [
+          {
+            organizationId: ORG,
+            id: DEVICE_UUID,
+            membershipId: "rn_1",
+            status: "approved",
+            attestationId: "att-rn_1",
+          },
+          {
+            // A NEWER approved device of rn_1 (no attestation): flag OFF resolves to it by default, while a
+            // claim naming the older DEVICE_UUID must still be accepted.
+            organizationId: ORG,
+            id: DEVICE_UUID_NEWER,
+            membershipId: "rn_1",
+            status: "approved",
+            attestationId: null,
+          },
+          {
+            organizationId: ORG,
+            id: DEVICE_UUID_IN_ONLY,
+            membershipId: "rn_in_only",
+            status: "approved",
+            attestationId: "att-rn_in_only",
+          },
+        ],
+        submissions: [
+          {
+            organizationId: ORG,
+            id: SUBMISSION_PENDING,
+            visitId: VISIT_1,
+            stateCode: "PA",
+            aggregatorVendor: "sandata",
+            status: "pending",
+          },
+          {
+            organizationId: ORG,
+            id: SUBMISSION_REJECTED,
+            visitId: VISIT_1,
+            stateCode: "PA",
+            aggregatorVendor: "sandata",
+            status: "rejected",
+          },
+        ],
+        resolutions: [
+          {
+            organizationId: ORG,
+            id: RESOLUTION_ATTEST,
+            visitId: VISIT_1,
+            kind: "missing_checkin",
+            status: "open",
+            checkInAt: CHECK_IN_RECENT,
+          },
+          {
+            organizationId: ORG,
+            id: RESOLUTION_OVERRIDE,
+            visitId: VISIT_1,
+            kind: "missing_checkout",
+            status: "open",
+            visitDate: VISIT_DATE_RECENT,
+          },
+        ],
+      },
+      { deviceAttestationEnforced },
+    ),
   );
 
   const grantStore = createInMemoryEffectivePermissionStore([
@@ -232,6 +295,13 @@ function makeServer(service?: EvvRoutePort) {
       userId: "rn_1",
       grants: [
         { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: CLINICIAN_PERMS },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "rn_in_only",
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["evv.check_in"] },
       ],
     },
     {
@@ -263,7 +333,7 @@ function makeServer(service?: EvvRoutePort) {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerEvvRoutes(app, { service: service ?? backend });
+  registerEvvRoutes(app, { service: service ?? backend, deviceAttestationEnforced });
   return { app, backend };
 }
 
@@ -1088,6 +1158,315 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe("pending_approval");
+    await app.close();
+  });
+});
+
+// ── GAP-055 — offline-sync + device attestation capture guards ─────────────────────────────────────────
+describe("GAP-055 — capture guards: device attestation + offline-sync per-event checks", () => {
+  const sync = (
+    app: ReturnType<typeof makeServer>["app"],
+    headers: Record<string, string>,
+    events: Array<Record<string, unknown>>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync",
+      headers,
+      payload: { evvDeviceId: DEVICE_UUID, events },
+    });
+  const written = async (backend: EvvRouteService) => (await backend.listEvents(ORG, {})).length;
+
+  const OTHER_DEVICE = "33333333-3333-4333-8333-333333333388";
+
+  it("check-in refuses an evvDeviceId that is not the session-bound device (403, nothing written)", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody({ evvDeviceId: OTHER_DEVICE }),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync refuses a batch evvDeviceId that is not the session-bound device (403, nothing written)", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync",
+      headers: CLINICIAN,
+      payload: {
+        evvDeviceId: OTHER_DEVICE,
+        events: [{ kind: "check_in", ...checkInBody({ evvDeviceId: OTHER_DEVICE }) }],
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync refuses an event naming a different device than the batch, even when one is bound (403)", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync",
+      headers: CLINICIAN,
+      payload: {
+        evvDeviceId: DEVICE_UUID,
+        events: [{ kind: "check_in", ...checkInBody({ evvDeviceId: OTHER_DEVICE }) }],
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("check-in / check-out refuse a caller whose session has no valid attestation (403)", async () => {
+    const { app, backend } = makeServer();
+    const ci = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN_UNATTESTED,
+      payload: checkInBody(),
+    });
+    const co = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-out",
+      headers: CLINICIAN_UNATTESTED,
+      payload: checkOutBody(),
+    });
+    expect([ci.statusCode, co.statusCode]).toEqual([403, 403]);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("a client-supplied attestation flag in the body never satisfies the guard", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN_UNATTESTED,
+      payload: checkInBody({ deviceAttestationValid: true, attested: true }),
+    });
+    expect([403, 422]).toContain(res.statusCode);
+    await app.close();
+  });
+
+  it("offline-sync refuses an un-attested session (403) and writes nothing", async () => {
+    const { app, backend } = makeServer();
+    const res = await sync(app, CLINICIAN_UNATTESTED, [{ kind: "check_in", ...checkInBody() }]);
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync refuses an event on a visit assigned to someone else (403), writes nothing", async () => {
+    const { app, backend } = makeServer();
+    const res = await sync(app, CLINICIAN, [
+      { kind: "check_in", ...checkInBody() },
+      { kind: "check_in", ...checkInBody({ visitId: VISIT_OTHER }) },
+    ]);
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync refuses an event outside the visit window (403), writes nothing", async () => {
+    const { app, backend } = makeServer();
+    const res = await sync(app, CLINICIAN, [
+      { kind: "check_in", ...checkInBody() },
+      { kind: "check_out", ...checkOutBody({ capturedAt: "2026-06-09T13:00:00.000Z" }) },
+    ]);
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync needs evv.check_out for a check_out event (403 for a check_in-only caller)", async () => {
+    const { app, backend } = makeServer();
+    const res = await sync(app, { ...CHECKIN_ONLY, "x-test-user": "rn_in_only" }, [
+      { kind: "check_out", ...checkOutBody() },
+    ]);
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync with all-valid events records every one", async () => {
+    const { app, backend } = makeServer();
+    const res = await sync(app, CLINICIAN, [
+      { kind: "check_in", ...checkInBody() },
+      { kind: "check_out", ...checkOutBody() },
+    ]);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(2);
+    expect(await written(backend)).toBe(2);
+    await app.close();
+  });
+});
+
+// ── GAP-055 follow-up — device attestation + session-device binding NOT enforced (the production default) ──
+// ADR-0035: no attested client exists yet, so `EVV_DEVICE_ATTESTATION_ENFORCED` defaults to false. Only the
+// attestation verdict and the session-device binding are relaxed; every other §8.2 guard still holds.
+describe("GAP-055 — capture guards with device attestation NOT enforced", () => {
+  const off = () => makeServer(undefined, false);
+  const post = (
+    app: ReturnType<typeof makeServer>["app"],
+    url: string,
+    headers: Record<string, string>,
+    payload: unknown,
+  ) => app.inject({ method: "POST", url, headers, payload: payload as Record<string, unknown> });
+  const written = async (backend: EvvRouteService) => (await backend.listEvents(ORG, {})).length;
+
+  it("check-in / check-out succeed for an un-attested session on the resolved (most-recent approved) device", async () => {
+    const { app, backend } = off();
+    const ci = await post(app, "/api/v1/evv/check-in", CLINICIAN_UNATTESTED, checkInBody());
+    const co = await post(app, "/api/v1/evv/check-out", CLINICIAN_UNATTESTED, checkOutBody());
+    expect([ci.statusCode, co.statusCode]).toEqual([201, 201]);
+    expect(await written(backend)).toBe(2);
+    await app.close();
+  });
+
+  it("offline-sync succeeds for an un-attested session", async () => {
+    const { app, backend } = off();
+    const res = await post(app, "/api/v1/evv/offline-sync", CLINICIAN_UNATTESTED, {
+      evvDeviceId: DEVICE_UUID,
+      events: [
+        { kind: "check_in", ...checkInBody() },
+        { kind: "check_out", ...checkOutBody() },
+      ],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await written(backend)).toBe(2);
+    await app.close();
+  });
+
+  it("an evvDeviceId that is not an approved device of the clinician is still refused (403, nothing written)", async () => {
+    const { app, backend } = off();
+    const res = await post(
+      app,
+      "/api/v1/evv/check-in",
+      CLINICIAN_UNATTESTED,
+      checkInBody({ evvDeviceId: "33333333-3333-4333-8333-333333333388" }),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("a claim naming the clinician's OLDER approved device is accepted; another member's device is refused", async () => {
+    const { app, backend } = off();
+    const older = await post(
+      app,
+      "/api/v1/evv/check-in",
+      CLINICIAN_UNATTESTED,
+      checkInBody({ evvDeviceId: DEVICE_UUID }),
+    );
+    expect(older.statusCode).toBe(201);
+    const foreign = await post(
+      app,
+      "/api/v1/evv/check-out",
+      CLINICIAN_UNATTESTED,
+      checkOutBody({ evvDeviceId: DEVICE_UUID_IN_ONLY }),
+    );
+    expect(foreign.statusCode).toBe(403);
+    expect(await written(backend)).toBe(1);
+    await app.close();
+  });
+
+  it("offline-sync accepts a batch claiming the older approved device", async () => {
+    const { app, backend } = off();
+    const res = await post(app, "/api/v1/evv/offline-sync", CLINICIAN_UNATTESTED, {
+      evvDeviceId: DEVICE_UUID,
+      events: [{ kind: "check_in", ...checkInBody({ evvDeviceId: DEVICE_UUID }) }],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await written(backend)).toBe(1);
+    await app.close();
+  });
+
+  it("offline-sync still refuses a batch whose device claim is not the resolved device (whole batch, nothing written)", async () => {
+    const { app, backend } = off();
+    const res = await post(app, "/api/v1/evv/offline-sync", CLINICIAN_UNATTESTED, {
+      evvDeviceId: "33333333-3333-4333-8333-333333333388",
+      events: [
+        {
+          kind: "check_in",
+          ...checkInBody({ evvDeviceId: "33333333-3333-4333-8333-333333333388" }),
+        },
+      ],
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("the assigned-clinician guard still holds (403) on a visit assigned to someone else", async () => {
+    const { app, backend } = off();
+    const res = await post(
+      app,
+      "/api/v1/evv/check-in",
+      CLINICIAN_UNATTESTED,
+      checkInBody({ visitId: VISIT_OTHER }),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("the visit-window guard still holds (403) outside the window", async () => {
+    const { app, backend } = off();
+    const res = await post(
+      app,
+      "/api/v1/evv/check-out",
+      CLINICIAN_UNATTESTED,
+      checkOutBody({ capturedAt: "2026-06-09T13:00:00.000Z" }),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync is still whole-batch-before-write: one bad event writes nothing", async () => {
+    const { app, backend } = off();
+    const res = await post(app, "/api/v1/evv/offline-sync", CLINICIAN_UNATTESTED, {
+      evvDeviceId: DEVICE_UUID,
+      events: [
+        { kind: "check_in", ...checkInBody() },
+        { kind: "check_in", ...checkInBody({ visitId: VISIT_OTHER }) },
+      ],
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("offline-sync still needs evv.check_out for a check_out event", async () => {
+    const { app, backend } = off();
+    const res = await post(
+      app,
+      "/api/v1/evv/offline-sync",
+      { ...CHECKIN_ONLY, "x-test-attested": "" },
+      { evvDeviceId: DEVICE_UUID_IN_ONLY, events: [{ kind: "check_out", ...checkOutBody() }] },
+    );
+    expect(res.statusCode).toBe(403);
+    expect(await written(backend)).toBe(0);
+    await app.close();
+  });
+
+  it("a body attestation flag still grants nothing (the caller needs no attestation, but still the other guards)", async () => {
+    const { app, backend } = off();
+    const res = await post(
+      app,
+      "/api/v1/evv/check-in",
+      CLINICIAN_UNATTESTED,
+      checkInBody({ deviceAttestationValid: true, visitId: VISIT_OTHER }),
+    );
+    expect([403, 422]).toContain(res.statusCode);
+    expect(await written(backend)).toBe(0);
     await app.close();
   });
 });

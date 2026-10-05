@@ -92,6 +92,7 @@
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
+        "apps/backend/__tests__/consent-routes-abac.test.ts",
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
@@ -357,6 +358,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
+        "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
       "directRoutesReferenced": 53
@@ -376,6 +378,7 @@
       "routes": 42,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/gap-097-m33-schedule-authz.test.ts",
         "apps/backend/__tests__/reporting-inject.test.ts"
       ],
       "directRoutesReferenced": 42
@@ -403,6 +406,7 @@
       "routes": 23,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
@@ -434,11 +438,13 @@
       "routes": 27,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/consent-routes-abac.test.ts",
         "apps/backend/__tests__/consent-routes-mount.test.ts",
         "apps/backend/__tests__/consent-routes.test.ts",
         "apps/backend/__tests__/consent-surface.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
-        "apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts"
+        "apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",
+        "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts"
       ],
       "directRoutesReferenced": 27
     },

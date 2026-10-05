@@ -369,6 +369,7 @@ jobs:
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
+          - { name: "M29 lab list caseload scope (GAP-085)", scripts: "test:m29:lab-list-scope:live" }
           # F-165 (#248): the m5.patient.deceased proposal-freeze consumer.
           - { name: "M29 patient-deceased freeze", scripts: "test:m29:patient-deceased-freeze:live" }
           # F-175 (#248): the T08 outbound MLLP dispatch worker — real Postgres + a real in-process mock
@@ -855,6 +856,8 @@ jobs:
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.
           - { name: "M33 schedule cron", scripts: "test:m33:schedule-cron:live" }
+          - { name: "M33 schedule authz (GAP-097)", scripts: "test:m33:schedule-authz:live" }
+          - { name: "M31 portal telehealth authz (GAP-094)", scripts: "test:m31:portal-telehealth-authz:live" }
           # GAP-051: the M33 PDF/XLSX export → M22 render → back-ref chain end-to-end. Nothing in it
           # ran before: the export outbox was unbound, M22 consumed the request event nowhere, and the
           # request carried a SQL string M22 could never have executed.

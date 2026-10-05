@@ -30,6 +30,21 @@
 // (`31-portal/routes/guards.ts`), so M39's copy was always dead weight, never the resolver that ran.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { ConsentSessionContext, ConsentTypeKey } from "@wardenx/consent";
+import {
+  type BereavementWindowPort,
+  type CaseloadPort,
+  type ConsentAccessDeps,
+  type ConsentAccessSubject,
+  type ConsentDisciplineScope,
+  decideBereavementWindow,
+  decideConsentReadScope,
+  decideDisciplineScope,
+  decideIsDrafter,
+  decideOwnerOrCompliance,
+  isComplianceOfficer,
+  isComplianceOrPrivacyOfficer,
+  isOrgAdminOrCompliance,
+} from "./access-scope";
 import { getConsentEvaluator } from "./seams";
 
 /** The seven §4.8 predicates M39 registers → the consent type each evaluates against. */
@@ -45,6 +60,96 @@ const PREDICATE_CONSENT_TYPE: Record<string, ConsentTypeKey> = {
 
 /** The seven predicate names M39 resolves (the §4.8 ownership set actually registered here). */
 export const M39_ABAC_PREDICATES = Object.keys(PREDICATE_CONSENT_TYPE) as readonly string[];
+
+/**
+ * GAP-109 — the route-gating predicates M39 owns (§4.1 ABAC column). Namespaced `consent_*` where the
+ * spec's bare name (`compliance_officer`, `privacy_officer`, `org_admin_or_compliance`,
+ * `bereavement_window`) is generic or already owned by another module. The consent-keyed targets carry
+ * facts the ROUTE resolved from the STORED consent row (`patientId`, `createdById`) — never a request claim.
+ */
+export const M39_ROUTE_ABAC_PREDICATES = [
+  "consent_owner_or_compliance",
+  "is_consent_drafter",
+  "consent_compliance_officer",
+  "consent_compliance_or_privacy_officer",
+  "consent_org_admin_or_compliance",
+  "consent_bereavement_window",
+  "consent_read_scope",
+  "consent_discipline_scope",
+] as const;
+
+const DISCIPLINE_SCOPES: readonly ConsentDisciplineScope[] = [
+  "consent_management",
+  "dpoa_clinical",
+  "delegated_access",
+  "post_mortem",
+];
+/** The surface a route names in its target; an unknown / missing one is `null` ⇒ deny. */
+const scopeOf = (target: AbacTarget): ConsentDisciplineScope | null => {
+  const value = target.disciplineScope;
+  return DISCIPLINE_SCOPES.find((scope) => scope === value) ?? null;
+};
+
+const targetString = (target: AbacTarget, key: string): string => {
+  const value = target[key];
+  return typeof value === "string" ? value : "";
+};
+
+/** Project the request-derived ABAC context onto the pure decisions' subject. */
+function subjectOf(context: AbacContext): ConsentAccessSubject {
+  const pinned = context.attributes.sessionPatientId;
+  return {
+    organizationId: context.organizationId,
+    userId: context.userId,
+    roles: context.roles,
+    sessionPatientId: typeof pinned === "string" && pinned.length > 0 ? pinned : null,
+    membershipId:
+      typeof context.attributes.membershipId === "string" ? context.attributes.membershipId : null,
+  };
+}
+
+function registerConsentRoutePredicates(deps: ConsentAccessDeps): void {
+  const caseload: CaseloadPort | undefined = deps.caseload;
+  const bereavement: BereavementWindowPort | undefined = deps.bereavementWindow;
+  registerPredicateIdempotent("consent_owner_or_compliance", (context, target) =>
+    decideOwnerOrCompliance(subjectOf(context), targetString(target, "patientId"), caseload),
+  );
+  // §4.11 read chain: discipline scope, then caseload / owner-or-compliance OR the on-call window.
+  registerPredicateIdempotent("consent_read_scope", (context, target) => {
+    const scope = scopeOf(target);
+    if (!scope) return false;
+    return decideConsentReadScope(
+      subjectOf(context),
+      targetString(target, "patientId"),
+      scope,
+      deps,
+    );
+  });
+  // Discipline scope alone (route 28 composes it ahead of its caseload / bereavement-window alternatives).
+  registerPredicateIdempotent("consent_discipline_scope", (context, target) => {
+    const scope = scopeOf(target);
+    if (!scope) return false;
+    const subject = subjectOf(context);
+    const pinned = subject.sessionPatientId;
+    if (pinned && pinned === targetString(target, "patientId")) return true;
+    return decideDisciplineScope(subject.roles, scope);
+  });
+  registerPredicateIdempotent("is_consent_drafter", (context, target) =>
+    decideIsDrafter(context, targetString(target, "createdById")),
+  );
+  registerPredicateIdempotent("consent_compliance_officer", (context) =>
+    isComplianceOfficer(context.roles),
+  );
+  registerPredicateIdempotent("consent_compliance_or_privacy_officer", (context) =>
+    isComplianceOrPrivacyOfficer(context.roles),
+  );
+  registerPredicateIdempotent("consent_org_admin_or_compliance", (context) =>
+    isOrgAdminOrCompliance(context.roles),
+  );
+  registerPredicateIdempotent("consent_bereavement_window", (context, target) =>
+    decideBereavementWindow(subjectOf(context), targetString(target, "patientId"), bereavement),
+  );
+}
 
 /** Build the seam's session context from the ABAC request context (the originating membership). */
 function sessionContextOf(context: AbacContext): ConsentSessionContext {
@@ -65,7 +170,8 @@ function patientIdOf(target: AbacTarget): string | null {
  * resolves through the `ConsentEvaluator` seam — so the predicate, the route gate, and the disclosure
  * path all share one decision (no drift). Call at boot after registerConsentSeams().
  */
-export function registerConsentAbacPredicates(): void {
+export function registerConsentAbacPredicates(deps: ConsentAccessDeps = {}): void {
+  registerConsentRoutePredicates(deps);
   for (const [name, consentType] of Object.entries(PREDICATE_CONSENT_TYPE)) {
     registerPredicateIdempotent(name, async (context: AbacContext, target: AbacTarget) => {
       const patientId = patientIdOf(target);

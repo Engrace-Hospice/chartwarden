@@ -3910,7 +3910,9 @@ export function createDbAdmissionRouteService(
             scheduledEndAt: EP.scheduledEndAt,
           })
           .from(EP)
-          .where(eq(EP.id, electionPeriodId))
+          // GAP-024 — child-resource binding: the period must belong to THE admission in the path. A
+          // period of another admission/patient reads exactly like an absent one (404, no existence leak).
+          .where(and(eq(EP.id, electionPeriodId), eq(EP.admissionId, admissionId)))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(electionPeriodId);
         // The elected hospice must belong to THIS org before it is written to two tables — the FK
@@ -4590,7 +4592,8 @@ export function createDbAdmissionRouteService(
         const [period] = await tx
           .select({ id: EP.id })
           .from(EP)
-          .where(eq(EP.id, input.electionPeriodId))
+          // GAP-024 — the period must belong to the admission the route authorized, never the body's claim.
+          .where(and(eq(EP.id, input.electionPeriodId), eq(EP.admissionId, input.admissionId)))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(input.electionPeriodId);
         const f2f = firstOrThrow(

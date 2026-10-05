@@ -44,6 +44,8 @@ export const M14_ERROR_STATUS = {
   // §2.2 / M14-F01 / ADR-0018 D2 — CANCEL/RESCHEDULE would push an included patient past their
   // per-patient 15-day review floor with no covering meeting and no audited override.
   PER_PATIENT_REVIEW_FLOOR_BREACH: 422,
+  // GAP-043 / §2.8 — a supersede whose successor meeting is not strictly later than the prior decision's meeting.
+  SUPERSEDE_MEETING_NOT_SUBSEQUENT: 422,
   // §2.2 — CANCEL/RESCHEDULE attempted without a reason.
   MEETING_TRANSITION_REASON_REQUIRED: 422,
 } as const;

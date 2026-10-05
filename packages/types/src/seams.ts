@@ -372,6 +372,8 @@ export type SeamName =
   // `on_call` recipient resolver, M20's after-hours SOS parallel recipient, M14's IDG packet, M31's portal
   // care-log and M30/M33's operational measures had no read path at all. M19-T06 registers the real impls;
   // the deny-stubs stay the fail-closed default for a boot that does not wire M19.
+  | "PatientSitingReader" // M6 — the location ids of a patient's active admission(s) (M36 care-team channel siting)
+  | "SupervisorReader" // M3 — supervision/location facts about a membership (M33 scoping, M36 member admin)
   | "OnCallProvider" // M19 — who is on call now + the active shifts M36's channel synchronizer re-syncs on
   | "TriageCallReader" // M19 — M32's PHI-free feature read + M14's since-last-IDG digest
   | "TriageCallProvider" // M19 — M14's full packet slice + M11's verbal-order → triage-context reverse lookup
@@ -498,6 +500,45 @@ export interface CaseloadProvider {
   caseloadPatientIds(input: {
     organizationId: string;
     userId: string;
+  }): Promise<readonly string[]>;
+}
+
+/**
+ * M6 — the location(s) a PATIENT is currently sited at, read from M6's own admission siting. Returns the
+ * DISTINCT location ids of the patient's ACTIVE admission(s); an unknown patient, one with no active
+ * admission, or one whose active admission is unsited yields `[]` (never a throw for "no data"; a
+ * missing/unreadable M6 throws via the deny-stub). Ids only — leaf-safe.
+ */
+export interface PatientSitingReader {
+  getPatientLocationIds(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<readonly string[]>;
+}
+
+/**
+ * M3 — supervision and location-scope facts about a staff MEMBERSHIP. The data model carries NO explicit
+ * supervisor/reporting-line relation, so supervision is DERIVED from facts that do exist: a membership is
+ * a supervisor at a location when it is ACTIVE, that location is in its location scope, and it holds an
+ * unexpired supervisory role (`clinical_supervisor` / `director_of_nursing`). Every method fails closed:
+ * unknown / cross-tenant / non-active memberships resolve to `[]` / `false`. Ids only — leaf-safe.
+ */
+export interface SupervisorReader {
+  /** Active memberships a supervisor supervises: the other active memberships sharing a location it supervises. Never includes itself. */
+  resolveSupervisedMembershipIds(input: {
+    organizationId: string;
+    membershipId: string;
+  }): Promise<readonly string[]>;
+  /** Is the membership a supervisor (see above) AT `locationId`? */
+  isSupervisorForLocation(input: {
+    organizationId: string;
+    membershipId: string;
+    locationId: string;
+  }): Promise<boolean>;
+  /** The membership's location scope (`membership.default_location_ids`) — `[]` unless the membership is active. */
+  membershipLocationIds(input: {
+    organizationId: string;
+    membershipId: string;
   }): Promise<readonly string[]>;
 }
 
@@ -662,7 +703,12 @@ export interface ResolvedActor {
    * `valid` is the whole contract M3's `device_attestation_valid` predicate reads; `verifiedAt` is
    * diagnostics. Structural, not an enum, so this leaf stays decoupled from M2's provider vocabulary.
    */
-  readonly deviceAttestation: { readonly valid: boolean; readonly verifiedAt?: string } | null;
+  readonly deviceAttestation: {
+    readonly valid: boolean;
+    readonly verifiedAt?: string;
+    /** The M2 `device_attestation` row id the session points at (server-derived; never a request field). */
+    readonly attestationId?: string;
+  } | null;
   /**
    * The `external_triage_vendor` row an M19 answering-service session acts for, or null on every other
    * class (F-030 / #75).
@@ -1180,6 +1226,8 @@ export interface SeamContracts {
   // import edge. All five are READ-only — M19 owns the call lifecycle internally and no seam can move a
   // `triage_call` row. NEITHER encrypted column crosses: `caller_quote_cipher` / `transcript_cipher` are
   // §3.6-denylisted and the per-tenant DEK never leaves M19's boundary (D14).
+  PatientSitingReader: PatientSitingReader;
+  SupervisorReader: SupervisorReader;
   OnCallProvider: OnCallProvider;
   TriageCallReader: TriageCallReader;
   TriageCallProvider: TriageCallProvider;

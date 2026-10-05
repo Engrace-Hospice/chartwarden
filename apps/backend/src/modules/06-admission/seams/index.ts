@@ -30,6 +30,7 @@ import { createDeathDischargeReader } from "./death-discharge-reader";
 import { createDischargeReader } from "./discharge-reader";
 import { createReferralReader } from "./drizzle-store";
 import { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
+import { createPatientSitingReader } from "./patient-siting-reader";
 import {
   createAdmissionCensusReader,
   createAdmissionStatusReader,
@@ -49,6 +50,7 @@ export {
 export { createDeathDischargeReader } from "./death-discharge-reader";
 export { createDischargeReader } from "./discharge-reader";
 export { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
+export { createPatientSitingReader } from "./patient-siting-reader";
 export { createAdmissionOnsetReader } from "./admission-onset-reader";
 export {
   type ActiveAdmissionDraftContext,
@@ -159,6 +161,9 @@ export function registerAdmissionSeams(deps: AdmissionSeamDeps = {}): void {
   registerSeam("LevelOfCareReader", createLevelOfCareReader(store));
   registerSeam("AdmissionStatusReader", createAdmissionStatusReader(store));
   registerSeam("AdmissionCensusReader", createAdmissionCensusReader(store));
+
+  // PatientSitingReader — over the pooled db only; without one the fail-closed deny-stub stands.
+  if (deps.db) registerSeam("PatientSitingReader", createPatientSitingReader(deps.db));
 
   const referralReader =
     deps.referralReader ?? (deps.db ? createReferralReader(deps.db) : undefined);

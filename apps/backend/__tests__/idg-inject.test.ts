@@ -880,10 +880,25 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const decisionPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/decisions/${decisionId}`,
-      headers: SUPER,
+      headers: { ...SUPER, "if-match": "0" },
       payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
     expect(decisionPatch.statusCode).toBe(422);
+    // concurrency precondition: absent If-Match is 428, malformed is 400 — before any state is read.
+    const noIfMatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/idg/decisions/${decisionId}`,
+      headers: SUPER,
+      payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
+    });
+    expect(noIfMatch.statusCode).toBe(428);
+    const badIfMatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/idg/decisions/${decisionId}`,
+      headers: { ...SUPER, "if-match": "abc" },
+      payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
+    });
+    expect(badIfMatch.statusCode).toBe(400);
     const decisionSupersede = await app.inject({
       method: "POST",
       url: `/api/v1/idg/decisions/${decisionId}/supersede`,
@@ -1138,6 +1153,166 @@ describe("M14-idg-inject — attendance trust (0286): self-only, discipline-from
     });
     expect(legacy).toMatchObject({ disciplineAttested: false, recordedByMembershipId: null });
     expect(await backend.loadPresentDisciplines(ORG, MEETING_LIVE)).toEqual(["rn_case_manager"]);
+    await app.close();
+  });
+});
+
+describe("M14-idg-inject — supersede route scope + quorum gates", () => {
+  const LOC_B = "99999999-9999-4999-8999-999999999999";
+  const M_PRIOR = "a1111111-1111-4111-8111-111111111111";
+  const M_TARGET = "a2222222-2222-4222-8222-222222222222";
+  const M_NONQUORATE = "a3333333-3333-4333-8333-333333333333";
+  const M_TARGET_B = "a4444444-4444-4444-8444-444444444444";
+  const M_PRIOR_B = "a5555555-5555-4555-8555-555555555555";
+  // The in-memory backend mints non-uuid decision ids (see the known-limitation block above), which the `:id`
+  // param schema refuses; these uuid aliases are mapped to the real ids by the decorated service below.
+  const DEC_ALIAS = "d1111111-1111-4111-8111-111111111111";
+  const DEC_ALIAS_B = "d2222222-2222-4222-8222-222222222222";
+  const QUORUM_DISCIPLINES: Readonly<Record<string, string>> = {
+    mem_md: "hospice_physician",
+    mem_rn: "rn_case_manager",
+    mem_msw: "msw",
+    mem_chap: "chaplain",
+  };
+  const seed = (
+    id: string,
+    locationId: string,
+    scheduledStart: string,
+    status: "live" | "adjourned" = "live",
+  ): IdgMeetingSeed => ({
+    id,
+    organizationId: ORG,
+    locationId,
+    status,
+    scheduledStart,
+    scheduledEnd: scheduledStart,
+    includedPatientIds: [PATIENT],
+  });
+  const REFERRAL = {
+    kind: "referral",
+    referralKind: "social_services",
+    referralTargetMdmId: null,
+    rationaleText: "IDG requested a social-services referral.",
+  } as const;
+
+  async function supersedeWorld() {
+    const backend = createInMemoryIdgBackend({
+      now: () => NOW,
+      disciplinesByMembership: QUORUM_DISCIPLINES,
+      meetings: [
+        seed(M_PRIOR, LOC, "2026-06-08T10:00:00.000Z"),
+        seed(M_TARGET, LOC, "2026-06-15T10:00:00.000Z"),
+        seed(M_NONQUORATE, LOC, "2026-06-15T11:00:00.000Z"),
+        seed(M_TARGET_B, LOC_B, "2026-06-15T12:00:00.000Z"),
+        seed(M_PRIOR_B, LOC_B, "2026-06-08T12:00:00.000Z"),
+      ],
+    });
+    const seat = async (meetingId: string) => {
+      for (const [membershipId, discipline] of Object.entries(QUORUM_DISCIPLINES)) {
+        await backend.recordAttendance(ORG, "coord_1", meetingId, {
+          membershipId,
+          discipline,
+          status: "present",
+        });
+      }
+    };
+    for (const m of [M_PRIOR, M_TARGET, M_TARGET_B, M_PRIOR_B]) await seat(m);
+    const emit = async (meetingId: string) => {
+      const d = await backend.recordDecision(ORG, "coord_1", meetingId, {
+        patientId: PATIENT,
+        decisionKind: "referral",
+        payload: REFERRAL,
+      });
+      await backend.adjournMeeting(ORG, "coord_1", meetingId, true);
+      return d.id;
+    };
+    const realIds: Record<string, string> = {
+      [DEC_ALIAS]: await emit(M_PRIOR),
+      [DEC_ALIAS_B]: await emit(M_PRIOR_B),
+    };
+    const real = (id: string) => realIds[id] ?? id;
+    const service = {
+      ...backend,
+      decisionMeetingId: (o: string, id: string) => backend.decisionMeetingId(o, real(id)),
+      supersedeDecision: (
+        o: string,
+        u: string,
+        id: string,
+        a: Parameters<typeof backend.supersedeDecision>[3],
+      ) => backend.supersedeDecision(o, u, real(id), a),
+    };
+    const grantStore = createInMemoryEffectivePermissionStore([
+      {
+        orgId: ORG,
+        userId: "coord_1",
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ALL_IDG_PERMISSIONS },
+        ],
+      },
+    ]);
+    registerEffectivePermissionResolver(grantStore.store);
+    const reg = createPredicateRegistry();
+    for (const [name, p] of Object.entries(buildIdgAbacPredicates({ resolver: backend }))) {
+      reg.register(name, p);
+    }
+    registerAbacRegistry(reg);
+    const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    registerIdgRoutes(app, { service, enrichment: { membershipRoles: FAKE_MEMBERSHIP_ROLES } });
+    return { app, backend, real };
+  }
+  const supersede = (
+    app: Awaited<ReturnType<typeof supersedeWorld>>["app"],
+    decisionId: string,
+    meetingId: string,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/idg/decisions/${decisionId}/supersede`,
+      headers: SUPER,
+      payload: { meetingId },
+    });
+
+  it("201 for a later, in-scope, quorate meeting", async () => {
+    const { app, backend } = await supersedeWorld();
+    const res = await supersede(app, DEC_ALIAS, M_TARGET);
+    expect(res.statusCode).toBe(201);
+    expect(res.json().status).toBe("superseded");
+    expect(await backend.listDecisions(ORG, M_TARGET)).toHaveLength(1);
+    await app.close();
+  });
+
+  it("404 (no existence leak) when the target meeting is outside the caller's location scope", async () => {
+    const { app, backend } = await supersedeWorld();
+    const res = await supersede(app, DEC_ALIAS, M_TARGET_B);
+    expect(res.statusCode).toBe(404);
+    expect(await backend.listDecisions(ORG, M_TARGET_B)).toHaveLength(0);
+    await app.close();
+  });
+
+  it("403 when the target meeting is not quorate", async () => {
+    const { app, backend } = await supersedeWorld();
+    const res = await supersede(app, DEC_ALIAS, M_NONQUORATE);
+    expect(res.statusCode).toBe(403);
+    expect(await backend.listDecisions(ORG, M_NONQUORATE)).toHaveLength(0);
+    await app.close();
+  });
+
+  it("404 when the PRIOR decision's meeting is outside the caller's scope, even naming an in-scope target", async () => {
+    const { app, backend, real } = await supersedeWorld();
+    const res = await supersede(app, DEC_ALIAS_B, M_TARGET);
+    expect(res.statusCode).toBe(404);
+    expect(await backend.listDecisions(ORG, M_TARGET)).toHaveLength(0);
+    const prior = (await backend.listDecisions(ORG, M_PRIOR_B)).find(
+      (d) => d.id === real(DEC_ALIAS_B),
+    );
+    expect(prior?.status).toBe("emitted");
+    await app.close();
+  });
+
+  it("404 for an unknown decision id", async () => {
+    const { app } = await supersedeWorld();
+    const res = await supersede(app, "d9999999-9999-4999-8999-999999999999", M_TARGET);
+    expect(res.statusCode).toBe(404);
     await app.close();
   });
 });

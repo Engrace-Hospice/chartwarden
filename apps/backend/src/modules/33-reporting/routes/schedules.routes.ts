@@ -4,10 +4,15 @@
 // / cancel it, bulk-delete its run history, and read the run ledger. Create + edit enforce the §2.3 domain
 // rules in the service (CRON_TOO_FREQUENT ≥ 5-min cadence, RECIPIENT_NOT_IN_ORG, PDF_ROW_LIMIT_EXCEEDED).
 // Every route is gated by the REAL Authorization Contract (`requirePermission` from @wardenx/auth, M3) on
-// the §4.6 `report.schedule.*` keys — all carry `abac:"none"` in the catalog, so `requirePermission` is the
-// authoritative gate (the route-table's `dashboard_visibility` / `org_admin_scope` intent is carried by the
-// M3 role assignment + the service's ownership check; M33 owns only `reportable_scope` +
-// `dashboard_visibility` as named predicates — the admin/definitions precedent).
+// the §4.6 `report.schedule.*` keys, and (GAP-097) COMPOSED with the M33-owned ABAC predicates via
+// `requireAbac` — `PermissionDef.abac` is only a declaration, `requirePermission` never reads it:
+//   - create        → `dashboard_visibility` on the body's `reportViewId` (the predicate loads the STORED view
+//                     and compares it with the session; the body id is only a lookup key, never a fact);
+//   - read / runs   → `report_schedule_access` mode `read` (owner, recipient or org_admin);
+//   - edit / pause / resume / cancel → mode `write` (owner or org_admin);
+//   - delete_all_runs → mode `admin` (org_admin only, `org_admin_scope`).
+// A deny answers 404 (`notFoundOnDeny`, existence non-leak). The service re-enforces every rule (defence in
+// depth) and the list query filters in SQL; the owner stamped on a schedule is the session membership.
 //
 // #29 delete_all_runs is the narrowest sensitive surface (bulk run-history / recipient-PII cleanup): it
 // additionally requires a recent M2 SESSION_POLICY STEP-UP (`requireStepUp`, the M34 D10 precedent) on top
@@ -15,7 +20,7 @@
 // ONE `withOrgContext` tx on the PRIMARY (RLS scopes to `app.org_id`); each carries `requireIdempotencyKey`.
 // READS disclose the actor's own org schedules / runs; the M4 write-audit trigger on the `withOrgContext`
 // path is the §164.312(b) anchor. Org/actor binding is ALWAYS server-side (request.context, never the body).
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { type GuardRequest, requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -45,6 +50,28 @@ const SCH_DELETE_RUNS = P("report.schedule.delete_all_runs");
 const STEPUP_DELETE_RUNS = requireStepUp("report.schedule.delete_all_runs") as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey();
 
+type ScheduleAccessMode = "read" | "write" | "admin";
+/** `report_schedule_access` on the route `:id` — the predicate resolves owner/recipients from the stored row. */
+const SCHEDULE_ACCESS = (key: string, mode: ScheduleAccessMode): PreHandler =>
+  requireAbac(key, "report_schedule_access", {
+    getTarget: (request: GuardRequest) => ({
+      scheduleId: (request.params as { id?: string } | undefined)?.id ?? "",
+      mode,
+    }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+/** `dashboard_visibility` on the view a new schedule targets (the stored view decides, not the body). */
+const VIEW_VISIBLE = requireAbac("report.schedule.write", "dashboard_visibility", {
+  getTarget: (request: GuardRequest) => ({
+    viewId: (request.body as { reportViewId?: string } | undefined)?.reportViewId ?? "",
+  }),
+  notFoundOnDeny: true,
+}) as PreHandler;
+const SCH_READ_ACCESS = SCHEDULE_ACCESS("report.schedule.read", "read");
+const SCH_WRITE_ACCESS = SCHEDULE_ACCESS("report.schedule.write", "write");
+const SCH_CANCEL_ACCESS = SCHEDULE_ACCESS("report.schedule.cancel", "write");
+const SCH_ADMIN_ACCESS = SCHEDULE_ACCESS("report.schedule.delete_all_runs", "admin");
+
 /** Register the §4.1 scheduled-report routes (#22–#31). */
 export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRouteDeps): void {
   const { service } = deps;
@@ -59,7 +86,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRoute
   // 23 — create a schedule (§2.3 CRON_TOO_FREQUENT / RECIPIENT_NOT_IN_ORG / PDF_ROW_LIMIT_EXCEEDED). §4.1.
   app.post(
     "/api/v1/reporting/schedules",
-    { preHandler: [SCH_WRITE, IDEMPOTENT] },
+    { preHandler: [SCH_WRITE, VIEW_VISIBLE, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(ScheduledReportCreate, request.body);
@@ -75,16 +102,20 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRoute
   );
 
   // 24 — read one schedule. §4.1.
-  app.get("/api/v1/reporting/schedules/:id", { preHandler: [SCH_READ] }, async (request) => {
-    const actor = writeActorOf(request);
-    const { id } = parse(ScheduleIdParams, request.params);
-    return service.getSchedule(actor, id);
-  });
+  app.get(
+    "/api/v1/reporting/schedules/:id",
+    { preHandler: [SCH_READ, SCH_READ_ACCESS] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(ScheduleIdParams, request.params);
+      return service.getSchedule(actor, id);
+    },
+  );
 
   // 25 — edit a schedule (re-validates the §2.3 rules on the changed fields). §4.1/§4.2.
   app.patch(
     "/api/v1/reporting/schedules/:id",
-    { preHandler: [SCH_WRITE, IDEMPOTENT] },
+    { preHandler: [SCH_WRITE, SCH_WRITE_ACCESS, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(ScheduleIdParams, request.params);
@@ -102,7 +133,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRoute
   // 26 — pause a schedule (clears next_run_at). §4.1.
   app.post(
     "/api/v1/reporting/schedules/:id/pause",
-    { preHandler: [SCH_WRITE, IDEMPOTENT] },
+    { preHandler: [SCH_WRITE, SCH_WRITE_ACCESS, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(ScheduleIdParams, request.params);
@@ -114,7 +145,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRoute
   // 27 — resume a paused schedule (recomputes next_run_at). §4.1.
   app.post(
     "/api/v1/reporting/schedules/:id/resume",
-    { preHandler: [SCH_WRITE, IDEMPOTENT] },
+    { preHandler: [SCH_WRITE, SCH_WRITE_ACCESS, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(ScheduleIdParams, request.params);
@@ -126,7 +157,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRoute
   // 28 — cancel a schedule (terminal). §4.1.
   app.post(
     "/api/v1/reporting/schedules/:id/cancel",
-    { preHandler: [SCH_CANCEL, IDEMPOTENT] },
+    { preHandler: [SCH_CANCEL, SCH_CANCEL_ACCESS, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(ScheduleIdParams, request.params);
@@ -138,7 +169,7 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRoute
   // 29 — bulk-delete the schedule's run history (STEP-UP + org-admin; D11/§12.4). §4.1.
   app.post(
     "/api/v1/reporting/schedules/:id/delete_all_runs",
-    { preHandler: [SCH_DELETE_RUNS, STEPUP_DELETE_RUNS, IDEMPOTENT] },
+    { preHandler: [SCH_DELETE_RUNS, SCH_ADMIN_ACCESS, STEPUP_DELETE_RUNS, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(ScheduleIdParams, request.params);
@@ -148,12 +179,16 @@ export function registerScheduleRoutes(app: FastifyInstance, deps: ScheduleRoute
   );
 
   // 30 — read a schedule's run ledger (newest first; cursor-paginated). §4.1.
-  app.get("/api/v1/reporting/schedules/:id/runs", { preHandler: [SCH_READ] }, async (request) => {
-    const actor = writeActorOf(request);
-    const { id } = parse(ScheduleIdParams, request.params);
-    const q = parse(ScheduleRunListQuery, request.query);
-    return service.listScheduleRuns(actor, id, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/reporting/schedules/:id/runs",
+    { preHandler: [SCH_READ, SCH_READ_ACCESS] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(ScheduleIdParams, request.params);
+      const q = parse(ScheduleRunListQuery, request.query);
+      return service.listScheduleRuns(actor, id, q.cursor, q.limit);
+    },
+  );
 
   // 31 — read one run by id (the M22 document back-ref + failure telemetry). §4.1.
   app.get(

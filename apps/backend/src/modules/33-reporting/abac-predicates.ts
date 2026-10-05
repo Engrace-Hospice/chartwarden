@@ -18,9 +18,14 @@
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has` (the M34 `registerTenantPlatformAbacPredicates` precedent).
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { canMutateSchedule, canReadSchedule, isScheduleAdmin } from "./routes/schedule-authz";
 
 /** The §4.7 predicate names M33 owns (registered into M3). Single-owner across the platform registry. */
-export const M33_ABAC_PREDICATES = ["reportable_scope", "dashboard_visibility"] as const;
+export const M33_ABAC_PREDICATES = [
+  "reportable_scope",
+  "dashboard_visibility",
+  "report_schedule_access",
+] as const;
 
 /** The four effective read scopes a §4.7 `reportable_scope` resolution can collapse to (D8). */
 export type ReportableScopeKind = "self" | "team" | "location" | "org";
@@ -52,6 +57,14 @@ export interface ReportViewFacts {
   readonly shareRoleKeys: readonly string[];
 }
 
+/** Owner facts for a report schedule (resolved off `report_schedule`, GAP-097). */
+export interface ReportScheduleFacts {
+  readonly scheduleId: string;
+  readonly organizationId: string;
+  readonly ownerMembershipId: string;
+  readonly recipientMembershipIds: readonly string[];
+}
+
 /**
  * Loads the org-scoped owner facts the M33 predicates resolve (in-memory in unit tests; Drizzle under
  * RLS in prod, P2C). The team/location resolvers are the OPAQUE M2 `SupervisorReader` / M5
@@ -60,6 +73,11 @@ export interface ReportViewFacts {
 export interface ReportingAbacResolver {
   /** Load a saved view's owner facts; `null` for an absent / cross-tenant row → fail-closed. */
   loadReportView(organizationId: string, viewId: string): Promise<ReportViewFacts | null>;
+  /** Load a schedule's owner/recipient facts; `null` for an absent / cross-tenant row → fail-closed. */
+  loadReportSchedule(
+    organizationId: string,
+    scheduleId: string,
+  ): Promise<ReportScheduleFacts | null>;
   /** M2 `SupervisorReader` (opaque): the membership ids the actor supervises (empty when none/unbound). */
   resolveSupervisedMembershipIds(input: {
     organizationId: string;
@@ -102,6 +120,9 @@ function membershipIdOf(context: AbacContext): string | null {
  */
 export const denyStubReportingAbacResolver: ReportingAbacResolver = {
   async loadReportView() {
+    return null;
+  },
+  async loadReportSchedule() {
     return null;
   },
   async resolveSupervisedMembershipIds() {
@@ -206,8 +227,10 @@ export function buildM33AbacPredicates(
     dashboard_visibility: async (context, target) => {
       const viewId = targetStr(target, "viewId");
       if (!viewId) return false; // fail-closed
-      const view = await resolver.loadReportView(context.organizationId, viewId);
-      if (!view) return false; // absent / cross-tenant
+      // The registry does not catch a predicate's throw, so a rejecting resolver (an invalid uuid raising
+      // 22P02, a transient DB error) must DENY here rather than surface as a 500.
+      const view = await resolver.loadReportView(context.organizationId, viewId).catch(() => null);
+      if (!view) return false; // absent / cross-tenant / lookup failed
       const actorMembershipId = membershipIdOf(context);
       if (actorMembershipId && view.ownerMembershipId === actorMembershipId) return true;
       if (view.shareScope === "org" && context.organizationId === view.organizationId) return true;
@@ -215,6 +238,25 @@ export function buildM33AbacPredicates(
         return true;
       }
       return false; // share_scope === 'private' and not owner
+    },
+
+    // Schedule access (GAP-097): target = { scheduleId, mode }. `read` = owner / recipient / org_admin;
+    // `write` = owner / org_admin; `admin` = org_admin only (delete_all_runs). The owner / recipients are
+    // loaded from the STORED row and compared with the session membership + roles — never the request.
+    report_schedule_access: async (context, target) => {
+      const scheduleId = targetStr(target, "scheduleId");
+      const mode = targetStr(target, "mode");
+      if (!scheduleId || !mode) return false; // fail-closed
+      if (mode === "admin") return isScheduleAdmin(context.roles);
+      // A rejecting resolver denies (the registry does not catch a predicate's throw).
+      const schedule = await resolver
+        .loadReportSchedule(context.organizationId, scheduleId)
+        .catch(() => null);
+      if (!schedule || schedule.organizationId !== context.organizationId) return false;
+      const actor = { membershipId: membershipIdOf(context), roles: context.roles };
+      if (mode === "write") return canMutateSchedule(actor, schedule);
+      if (mode === "read") return canReadSchedule(actor, schedule);
+      return false;
     },
   };
 }

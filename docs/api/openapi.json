@@ -98428,7 +98428,8 @@
                     "wasQuorate",
                     "recordedByMembershipId",
                     "recordedAt",
-                    "supersededByDecisionId"
+                    "supersededByDecisionId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -98571,6 +98572,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     },
                     "applications": {
                       "type": "array",
@@ -99614,7 +99619,8 @@
                     "wasQuorate",
                     "recordedByMembershipId",
                     "recordedAt",
-                    "supersededByDecisionId"
+                    "supersededByDecisionId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -99758,6 +99764,10 @@
                         }
                       ]
                     },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
                     "applications": {
                       "type": "array",
                       "items": {
@@ -99825,7 +99835,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "meetingId"
+                ],
                 "properties": {
+                  "meetingId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "reason": {
                     "maxLength": 2000,
                     "type": "string"
@@ -101322,7 +101339,8 @@
                       "wasQuorate",
                       "recordedByMembershipId",
                       "recordedAt",
-                      "supersededByDecisionId"
+                      "supersededByDecisionId",
+                      "version"
                     ],
                     "properties": {
                       "id": {
@@ -101466,6 +101484,10 @@
                           }
                         ]
                       },
+                      "version": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
                       "applications": {
                         "type": "array",
                         "items": {
@@ -101562,7 +101584,8 @@
                     "wasQuorate",
                     "recordedByMembershipId",
                     "recordedAt",
-                    "supersededByDecisionId"
+                    "supersededByDecisionId",
+                    "version"
                   ],
                   "properties": {
                     "id": {
@@ -101705,6 +101728,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
                     },
                     "applications": {
                       "type": "array",

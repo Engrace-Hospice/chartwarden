@@ -64,7 +64,6 @@ import {
   loadAttendance,
   loadDecisions,
   loadDisciplineNotes,
-  supersedeDecision,
   updateAttendance,
 } from "./idg-api";
 import { DecisionModal } from "./idg-decision-modal";
@@ -476,12 +475,6 @@ export function LiveMeeting(): JSX.Element {
     if (res.ok) await load();
   }
 
-  async function onSupersede(decisionId: string): Promise<void> {
-    const res = await supersedeDecision(client, decisionId);
-    setNotice(res.ok ? "Decision superseded — a new open decision replaces it." : res.message);
-    if (res.ok) await load();
-  }
-
   const otherAgenda = agenda.filter((a) => !a.patientId);
   const worklist = patients.map((p) => ({
     ...p,
@@ -581,11 +574,11 @@ export function LiveMeeting(): JSX.Element {
           >
             Assign follow-up
           </Button>
-          {d.status !== "superseded" ? (
-            <Button tone="tertiary" size="sm" onClick={() => void onSupersede(d.id)}>
-              Supersede
-            </Button>
-          ) : null}
+          {/* No Supersede action here on purpose. The server records the successor in a LATER, live, quorate
+              meeting (POST /idg/decisions/:id/supersede takes that TARGET meeting id), and this row's decision
+              belongs to the meeting being viewed, so offering it here could only ever 409/422. Follow-up: a
+              target-meeting picker (later LIVE meetings with the patient on the caseload; `emitted` decisions
+              only) that calls `supersedeDecision(client, decisionId, targetMeetingId)` from idg-api.ts. */}
         </span>
       ),
     },

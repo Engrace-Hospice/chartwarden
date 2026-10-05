@@ -152,6 +152,23 @@ function buildTestAbacResolver(writeService: M33WriteRouteService): ReportingAba
         return null; // absent / cross-tenant → fail-closed (the predicate's own contract)
       }
     },
+    // GAP-097: the `report_schedule_access` predicate loads the stored schedule's owner/recipients.
+    async loadReportSchedule(organizationId, scheduleId) {
+      try {
+        const s = await writeService.getSchedule(
+          { organizationId, userId: "resolver", roles: ["org_admin"], membershipId: "resolver" },
+          scheduleId,
+        );
+        return {
+          scheduleId: s.id,
+          organizationId: s.organizationId,
+          ownerMembershipId: s.ownerMembershipId,
+          recipientMembershipIds: s.recipientMembershipIds,
+        };
+      } catch {
+        return null;
+      }
+    },
   };
 }
 

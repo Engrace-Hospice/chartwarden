@@ -171,6 +171,7 @@ import {
   membershipRoleKeysForOrg,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
+  registerAuthorizationSeams,
 } from "./modules/03-authorization/index";
 import {
   M4_OUTBOX_EVENTS,
@@ -516,6 +517,7 @@ import {
   buildM18VisitPublishedConsumer,
   complianceStatesForVisitsForOrg,
   createDrizzleEvvSeamStore,
+  isEvvDeviceAttestationEnforced,
   mountEvvRoutes,
   registerEvvAbacPredicates,
   registerEvvRoutes,
@@ -1132,6 +1134,8 @@ export function wireModuleSeams(
   // TASK-004 — the handle is CAPTURED so the M3 route mount binds the SAME resolver + §2.5
   // invalidation cache for /me/permissions, anti-escalation, and grant/revoke cache drops.
   if (deps.db) liveRbacHandle = registerDbEffectivePermissionResolver(deps.db);
+  // M3 — SupervisorReader (membership location scope + derived supervision) for M33/M36; deny-stub without a db.
+  registerAuthorizationSeams({ db: deps.db });
   // M3 — register M3's own `step_up_recent` ABAC predicate (§4.2.1 — the step-up freshness gate every
   // `requireStepUp` route resolves through). It reads M2's SessionContextResolver seam (registered just
   // above) lazily at request time, so registration order only requires the seam present by first request.
@@ -1617,10 +1621,11 @@ export function wireModuleSeams(
   // "absent / cross-tenant" and denied, and `GET /reporting/dashboards/:id` — which mounts it with
   // `notFoundOnDeny: true` — answered 404 for every caller including a dashboard's own owner.
   //
-  // The team/location reach behind `reportable_scope` STAYS fail-closed and that is a declared absence:
-  // M2 publishes no `SupervisorReader` seam in this build. Without it every actor lacking org-wide
-  // authority resolves to `self`, the narrowest scope, which is the right answer to a question the
-  // platform cannot yet ask.
+  // The team/location reach behind `reportable_scope` STAYS fail-closed, on purpose: M3 now registers a
+  // `SupervisorReader` seam, but no consumer reads it yet, and `resolveSupervisedMembershipIds` stays a
+  // deny-stub until the supervision definition is tightened (the grant's scope is ignored, and locations
+  // come from the membership's default_location_ids). Until then every actor lacking org-wide authority
+  // resolves to `self`, the narrowest scope.
   registerM33AbacPredicates(
     deps.db ? { resolver: buildDrizzleReportingAbacResolver(deps.db) } : undefined,
   );
@@ -3339,7 +3344,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             },
           }); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
-          mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
+          // GAP-055 follow-up (ADR-0035): the device-attestation requirement + session-device binding are behind
+          // `EVV_DEVICE_ATTESTATION_ENFORCED` (default OFF — no attested client exists yet). Read ONCE here from the
+          // process env (already validated by `assertProductionEnv`) and injected — never from a request.
+          const evvDeviceAttestationEnforced = isEvvDeviceAttestationEnforced(process.env);
+          app.log.info(
+            { deviceAttestationEnforced: evvDeviceAttestationEnforced },
+            evvDeviceAttestationEnforced
+              ? "M18 EVV capture: device attestation + session-device binding ENFORCED"
+              : "M18 EVV capture: device attestation + session-device binding NOT enforced (EVV_DEVICE_ATTESTATION_ENFORCED unset/false; capture records the clinician's most-recently-approved device)",
+          );
+          mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher, {
+            deviceAttestationEnforced: evvDeviceAttestationEnforced,
+          }); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
           // M22 — reads + the write lifecycle over Drizzle+RLS; the reader is the `documents.doclens` DocLens gate
           // (F-091). F-235 (#248): review completion now PUBLISHES `m22.extraction.commit_requested` (the
           // DocLens → M5 demographics writeback), so the mount takes the m22 publisher + the tenant-DEK

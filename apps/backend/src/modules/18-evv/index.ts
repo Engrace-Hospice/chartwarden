@@ -31,10 +31,14 @@ export function mountEvvRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: EvvWriteOutboxPort,
+  options: { readonly deviceAttestationEnforced?: boolean } = {},
 ): void {
-  const backend = createDbEvvBackend(db, outbox);
+  // GAP-055 follow-up: ONE value (from validated server config, default OFF) feeds BOTH the routes' attestation
+  // gate and the service-layer guard, so they cannot disagree.
+  const deviceAttestationEnforced = options.deviceAttestationEnforced ?? false;
+  const backend = createDbEvvBackend(db, outbox, { deviceAttestationEnforced });
   _registerM18Abac({ resolver: backend });
-  _registerM18Routes(app, { service: backend });
+  _registerM18Routes(app, { service: backend, deviceAttestationEnforced });
 }
 
 export { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
@@ -46,6 +50,15 @@ export {
   buildEvvAbacPredicates,
   registerEvvAbacPredicates,
 } from "./abac-predicates";
+export {
+  type EvvCaptureAuthority,
+  EVV_DEVICE_ATTESTATION_ENFORCED_ENV,
+  assertCaptureAllowed,
+  clinicianCapture,
+  isEvvDeviceAttestationEnforced,
+  selectBoundDevice,
+  systemCapture,
+} from "./capture-guards";
 export { type EvvRouteDeps, registerEvvRoutes } from "./routes/evv-routes";
 export {
   type ArrivalView,
@@ -54,6 +67,7 @@ export {
   type EvvAggregatorSubmissionSeed,
   type EvvMissingResolutionSeed,
   type EvvRoutePort,
+  type EvvDeviceSeed,
   type EvvServiceSeed,
   type EvvVisitSeed,
   type GeofencePolicyView,

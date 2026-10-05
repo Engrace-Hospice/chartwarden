@@ -57,9 +57,15 @@ export interface RunnerRunLedgerPort {
 }
 
 /** Re-validates a recipient's `reportable_scope` (M39 `ConsentEvaluator.evaluateForReporting` / active
- *  membership). `true` = the recipient is still entitled to receive this view (the boot binds the real seam). */
+ *  membership). `true` = the recipient is still entitled to receive this view (the boot binds the real seam).
+ *  GAP-097: `reportViewId` is the schedule's saved view — an implementation must also confirm the
+ *  recipient may still SEE that view (a private view is not deliverable to a non-owner). */
 export interface RecipientScopeValidationPort {
-  isRecipientEntitled(membershipId: string, organizationId: string): Promise<boolean>;
+  isRecipientEntitled(
+    membershipId: string,
+    organizationId: string,
+    reportViewId: string,
+  ): Promise<boolean>;
 }
 
 /**
@@ -241,7 +247,11 @@ export async function handleScheduledRun(
   // Re-validate each recipient's reportable_scope (defence in depth, W-R-04). Drop + audit the failures.
   const validities: RecipientValidity[] = [];
   for (const membershipId of schedule.recipientMembershipIds) {
-    const entitled = await ports.recipients.isRecipientEntitled(membershipId, job.organizationId);
+    const entitled = await ports.recipients.isRecipientEntitled(
+      membershipId,
+      job.organizationId,
+      schedule.reportViewId,
+    );
     validities.push({ membershipId, entitled });
     if (!entitled) await ports.audit.recordRecipientLostAccess(job.scheduleId, membershipId);
   }

@@ -29,7 +29,7 @@
 //     here, so a run fails closed (DrilldownDekUnavailable) and writes NOTHING (never plaintext at rest, §3.6).
 import { randomUUID } from "node:crypto";
 import { type AuditContext, audit } from "@wardenx/audit";
-import { createDbAdminMembershipReader } from "@wardenx/auth";
+import { createDbAdminMembershipReader, roleConfersKey } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type CsvExportPorts,
@@ -62,9 +62,10 @@ import {
 import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import type { AdminMembershipReader } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";
+import { snapshotScopeKind, viewVisibleTo } from "../routes/schedule-authz";
 import { buildDrizzleTileSqlExecutor } from "../sql-executor";
 import { M33_PLATFORM_JOB_ID } from "../wiring";
 import {
@@ -81,6 +82,7 @@ import {
   scheduledRunProcessor,
 } from "./index";
 import { createRedisLagProbeAdvisoryPort, createRedisLagProbeStatePort } from "./lag-probe-state";
+import { gateRecipientsBySnapshotScope } from "./snapshot-recipient-gate";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
 
@@ -373,30 +375,86 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
         await runRepo.updateScheduleRunStatus(runId, scheduledFor, patch);
       },
     },
-    // BOUND: an M2 active-membership re-validation (the recipient's membership must still be ACTIVE in the
-    // SAME org the schedule was created under). This is narrower than the doc-comment's original aspiration
-    // ("M39 ConsentEvaluator.evaluateForReporting") — that method takes a PATIENT-identifier cohort for
-    // drilldown PHI narrowing (packages/reporting/src/seams/consumed/m39-consent.ts); a scheduled report's
-    // recipient list carries membership ids, not patient ids, so that method is the wrong shape for THIS
-    // re-validation and is not called here. What IS re-validated is exactly the scenario W-R-04 names — "a
-    // recipient may have lost access between schedule creation and this run" — for the membership-active
-    // fact; it does not re-run the full `reportable_scope` ABAC permission check (that needs a live
-    // request-context evaluator with no established background-job binding pattern in this codebase).
-    recipients: {
-      async isRecipientEntitled(membershipId, organizationId) {
-        const [row] = await db
-          .select({
-            status: schema.memberships.status,
-            organizationId: schema.memberships.organizationId,
-          })
-          .from(schema.memberships)
-          .where(eq(schema.memberships.id, membershipId))
-          .limit(1);
-        return (
-          row !== undefined && row.status === "active" && row.organizationId === organizationId
-        );
+    // BOUND (GAP-097): the recipient's membership must still be ACTIVE in the SAME org the schedule was
+    // created under AND the recipient must still be allowed to SEE the schedule's saved view (the §4.7.2
+    // `dashboard_visibility` ladder, evaluated from the STORED view + the recipient's CURRENT role keys —
+    // the one authorization decision the worker can make without a live request context). A private view
+    // of another member, or a role-shared view the recipient no longer holds a role for, drops the
+    // recipient (audited by the runner as lost-access) instead of delivering. This is narrower than
+    // `reportable_scope` team/location resolution (supervision is a deny-stub — see
+    // abac-resolver-db.ts) and than M39 consent (patient-cohort shaped; wrong shape for membership ids).
+    // The base check is then wrapped by `gateRecipientsBySnapshotScope` (snapshot-scope recipient gate;
+    // stricter than the interactive ladder — see that file's header).
+    // The worker never calls the request-facing service: it reads through these ports directly, so there
+    // is no actor to impersonate and no role-string system bypass.
+    recipients: gateRecipientsBySnapshotScope(
+      {
+        async isRecipientEntitled(membershipId, organizationId, reportViewId) {
+          const [row] = await db
+            .select({
+              status: schema.memberships.status,
+              organizationId: schema.memberships.organizationId,
+            })
+            .from(schema.memberships)
+            .where(eq(schema.memberships.id, membershipId))
+            .limit(1);
+          if (
+            row === undefined ||
+            row.status !== "active" ||
+            row.organizationId !== organizationId
+          ) {
+            return false;
+          }
+          const view = await new ReportViewRepository(db).findById(reportViewId);
+          if (!view || view.organizationId !== organizationId) return false;
+          // The SAME role authority every other read applies (M3's membership-role-keys read): an ENABLED
+          // role, on a grant in THIS org, unexpired, and not a tenant-owned row squatting a reserved platform
+          // key (`roleConfersKey`). The enabled/org predicates run in SQL and again over the rows, so the
+          // filter cannot be dropped by a refactor of either side.
+          const roleRows = await db
+            .select({
+              key: schema.roles.key,
+              category: schema.roles.category,
+              enabled: schema.roles.enabled,
+              roleOrganizationId: schema.roles.organizationId,
+              grantOrganizationId: schema.membershipRoles.organizationId,
+              expiresAt: schema.membershipRoles.expiresAt,
+            })
+            .from(schema.membershipRoles)
+            .innerJoin(schema.roles, eq(schema.roles.id, schema.membershipRoles.roleId))
+            .where(
+              and(
+                eq(schema.membershipRoles.membershipId, membershipId),
+                eq(schema.membershipRoles.organizationId, organizationId),
+                eq(schema.roles.enabled, true),
+              ),
+            );
+          const nowMs = now().getTime();
+          const roleKeys = roleRows
+            .filter(
+              (r) =>
+                r.enabled &&
+                r.grantOrganizationId === organizationId &&
+                (r.expiresAt === null || r.expiresAt.getTime() > nowMs) &&
+                roleConfersKey({
+                  organizationId: r.roleOrganizationId,
+                  key: r.key,
+                  category: r.category,
+                }),
+            )
+            .map((r) => r.key);
+          return viewVisibleTo(
+            { ...view, shareRoleKeys: view.shareRoleKeys ?? [] },
+            { membershipId, roles: roleKeys },
+          );
+        },
       },
-    },
+      {
+        findViewOwner: async (reportViewId) =>
+          (await new ReportViewRepository(db).findById(reportViewId))?.ownerMembershipId ?? null,
+        adminMemberships: deps.adminMemberships,
+      },
+    ),
     // BOUND: reuses the SAME view→version→definition→base→translateSpec chain
     // `export-drilldown-service.ts`'s `translateView` already runs in production for CSV/PDF/XLSX exports —
     // no new translation logic invented here. A `deny_stub` translation (the MV isn't materialized yet)
@@ -459,14 +517,15 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
               view.ownerMembershipId,
             )
           : false;
-        const scope: ReportableScopeEnvelope = orgWide
-          ? { scopeKind: "org", organizationId, membershipIds: [], locationIds: [] }
-          : {
-              scopeKind: "self",
-              organizationId,
-              membershipIds: [view.ownerMembershipId],
-              locationIds: [],
-            };
+        const scope: ReportableScopeEnvelope =
+          snapshotScopeKind(orgWide) === "org"
+            ? { scopeKind: "org", organizationId, membershipIds: [], locationIds: [] }
+            : {
+                scopeKind: "self",
+                organizationId,
+                membershipIds: [view.ownerMembershipId],
+                locationIds: [],
+              };
         const translation = translateSpec({ ...spec, filters }, translatorBase, scope);
         if (translation.kind === "deny_stub") {
           throw new Error(

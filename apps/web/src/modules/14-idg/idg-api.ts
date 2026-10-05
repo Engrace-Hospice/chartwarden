@@ -284,14 +284,17 @@ export async function recordDecision(
  * §2.8 — supersede a prior decision. NOT an edit: the server opens a NEW row and marks the prior one
  * `superseded`, so the record of what the group decided first survives. `PATCH /idg/decisions/:id`
  * amends an `open` row in place and is refused once the row is `emitted`, which adjournment makes it.
+ * GAP-043: the successor lands in `meetingId` — a LIVE, later meeting with the patient on its caseload —
+ * and the server decides quorum from that meeting's attendance.
  */
 export async function supersedeDecision(
   client: ApiClient,
   id: string,
+  meetingId: string,
 ): Promise<WriteResult<DecisionView>> {
   const { data, error, response } = await client.POST("/api/v1/idg/decisions/{id}/supersede", {
     params: { path: { id } },
-    body: {},
+    body: { meetingId },
   });
   if (error || !data) return failure(response?.status, error);
   return ok(data as DecisionView);

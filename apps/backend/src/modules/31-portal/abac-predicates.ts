@@ -345,6 +345,9 @@ export function buildPortalAbacPredicates(
       if (!context.organizationId) return false;
       const patientId = await visitPatient(context.organizationId, target);
       if (patientId === null) return false;
+      // GAP-094: when the guard supplies the session's patient (every portal route), it must be the visit's.
+      const sessionPatientId = targetStr(target, "sessionPatientId");
+      if (isPortalSession(context) && sessionPatientId !== patientId) return false;
       return ports.consentActive({
         organizationId: context.organizationId,
         patientId,

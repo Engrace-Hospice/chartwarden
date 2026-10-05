@@ -57,6 +57,14 @@ describe("in-memory service — scheduleF2f / attestF2f enforce the facts (a byp
     createInMemoryAdmissionBackend({
       clinicianRoleKeys: { [NP]: ["np"], [RN]: ["rn"] },
       records: [
+        // GAP-024 — the period must belong to the admission the F2F is scheduled for.
+        {
+          id: "ep",
+          organizationId: ORG,
+          kind: "election_period",
+          state: "active",
+          admissionId: "adm",
+        },
         {
           id: "f2f_done",
           organizationId: ORG,

@@ -148,6 +148,15 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => env.WARDENX_SINGLE_TENANT_DEPLOYMENT !== undefined,
   },
   {
+    // GAP-055 follow-up (ADR-0035) — require a valid device attestation and bind M18 EVV capture to the
+    // session's device. Optional (unset = NOT enforced: no attested client exists yet, so enforcing would 403
+    // every production capture); a SET value must be exactly `true`/`false`, so a typo such as `TRUE` refuses
+    // the boot instead of silently leaving the control off on a deployment that meant to turn it on.
+    key: "EVV_DEVICE_ATTESTATION_ENFORCED",
+    rule: (v) => (v === "true" || v === "false" ? null : "must be 'true' or 'false'"),
+    when: (env) => env.EVV_DEVICE_ATTESTATION_ENFORCED !== undefined,
+  },
+  {
     // GAP-009 — closed registration. `true`/`false` only (a typo must refuse the boot, not silently read as
     // the default). Unset: strict in production, open in dev (the seeds sign users up without an invite).
     key: "WARDENX_SIGNUP_REQUIRES_INVITE",

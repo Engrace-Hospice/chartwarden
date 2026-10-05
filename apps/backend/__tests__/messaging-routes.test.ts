@@ -21,9 +21,11 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/index";
+import { channelMemberAdminPredicate } from "../src/modules/36-messaging/routes/messaging-routes";
 
 /** Test-only auth shim: populate request.context from headers (mirrors terminology-routes.test). */
 function headerAuth(request: FastifyRequest): void {
@@ -34,6 +36,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  request.context.locationIds = [];
 }
 
 const ORG = "org_a";
@@ -119,6 +122,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
     if (!channelId || !ctx.organizationId || !ctx.userId) return false;
     return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
   });
+  registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
   registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });

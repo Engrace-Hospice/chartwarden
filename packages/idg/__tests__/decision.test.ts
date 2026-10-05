@@ -8,6 +8,8 @@ import {
   planDecisionEmit,
   planDecisionRecord,
   planDecisionSupersede,
+  planDecisionSupersedeInto,
+  planDecisionUpdate,
 } from "../src/lifecycle";
 
 const FULL_QUORUM = ["rn_case_manager", "msw", "chaplain", "medical_director"];
@@ -122,6 +124,82 @@ describe("§2.8 supersede", () => {
   it("refuses to supersede an uncommitted (open) decision (409 DECISION_NOT_OPEN)", () => {
     expect(() => planDecisionSupersede({ status: "open" })).toThrowError(
       expect.objectContaining({ code: "DECISION_NOT_OPEN" }),
+    );
+  });
+});
+
+describe("GAP-043 — planDecisionUpdate (an emitted/superseded decision is immutable, §2.8)", () => {
+  it("allows editing an open decision in a live meeting", () => {
+    expect(() => planDecisionUpdate({ status: "open", meetingIsLive: true })).not.toThrow();
+  });
+  it("refuses an emitted decision (409 DECISION_NOT_OPEN)", () => {
+    expect(() => planDecisionUpdate({ status: "emitted", meetingIsLive: true })).toThrowError(
+      expect.objectContaining({ code: "DECISION_NOT_OPEN", statusCode: 409 }),
+    );
+  });
+  it("refuses a superseded decision (409 DECISION_SUPERSEDED)", () => {
+    expect(() => planDecisionUpdate({ status: "superseded", meetingIsLive: true })).toThrowError(
+      expect.objectContaining({ code: "DECISION_SUPERSEDED", statusCode: 409 }),
+    );
+  });
+  it("refuses an open decision whose meeting is no longer live (422 MEETING_NOT_LIVE)", () => {
+    expect(() => planDecisionUpdate({ status: "open", meetingIsLive: false })).toThrowError(
+      expect.objectContaining({ code: "MEETING_NOT_LIVE" }),
+    );
+  });
+});
+
+describe("GAP-043 — planDecisionSupersedeInto (successor in a later, live, quorate meeting)", () => {
+  const base = {
+    priorStatus: "emitted" as const,
+    priorMeetingStart: "2026-06-22T14:00:00.000Z",
+    target: {
+      isLive: true,
+      scheduledStart: "2026-06-29T14:00:00.000Z",
+      patientIncluded: true,
+      presentDisciplines: FULL_QUORUM,
+    },
+  };
+  it("stamps the REAL quorum of the target meeting", () => {
+    const r = planDecisionSupersedeInto(base);
+    expect(r.wasQuorate).toBe(true);
+    expect([...r.quorumSnapshot.presentDisciplines].sort()).toEqual([...FULL_QUORUM].sort());
+  });
+  it("refuses a non-quorate target meeting (422 QUORUM_NOT_MET)", () => {
+    expect(() =>
+      planDecisionSupersedeInto({
+        ...base,
+        target: { ...base.target, presentDisciplines: ["msw"] },
+      }),
+    ).toThrowError(expect.objectContaining({ code: "QUORUM_NOT_MET", statusCode: 422 }));
+  });
+  it("refuses a target meeting that is not later than the prior's", () => {
+    expect(() =>
+      planDecisionSupersedeInto({
+        ...base,
+        target: { ...base.target, scheduledStart: base.priorMeetingStart },
+      }),
+    ).toThrowError(expect.objectContaining({ code: "SUPERSEDE_MEETING_NOT_SUBSEQUENT" }));
+  });
+  it("refuses a target meeting that is not live", () => {
+    expect(() =>
+      planDecisionSupersedeInto({ ...base, target: { ...base.target, isLive: false } }),
+    ).toThrowError(expect.objectContaining({ code: "MEETING_NOT_LIVE" }));
+  });
+  it("refuses a patient not on the target meeting's caseload", () => {
+    expect(() =>
+      planDecisionSupersedeInto({
+        ...base,
+        target: { ...base.target, patientIncluded: false },
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INCLUSION_CRITERIA_FAILED" }));
+  });
+  it("still refuses a non-emitted prior (409)", () => {
+    expect(() => planDecisionSupersedeInto({ ...base, priorStatus: "open" })).toThrowError(
+      expect.objectContaining({ code: "DECISION_NOT_OPEN" }),
+    );
+    expect(() => planDecisionSupersedeInto({ ...base, priorStatus: "superseded" })).toThrowError(
+      expect.objectContaining({ code: "DECISION_SUPERSEDED" }),
     );
   });
 });

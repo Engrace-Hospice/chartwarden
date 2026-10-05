@@ -2109,6 +2109,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
 
     async draftElectionStatement(organizationId, admissionId, electionPeriodId, input) {
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      // GAP-024 — the period must belong to THE admission in the path (404, like absent).
+      const ownPeriod = get(organizationId, electionPeriodId, "election_period");
+      if (!ownPeriod || ownPeriod.admissionId !== adm.id) notFound(electionPeriodId);
       const rec = insert("election_statement", organizationId, "drafted", {
         admissionId: adm.id,
         patientId: adm.patientId,
@@ -2242,6 +2245,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // W-F2F-01: the scheduled date must fall inside the CMS 418.22 prior-to window, computed
       // server-side in org TZ off the period start. Validated only when the period start is on file.
       const period = get(organizationId, input.electionPeriodId, "election_period");
+      // GAP-024 — the period must belong to the admission the route authorized (404, like absent).
+      if (!period || period.admissionId !== input.admissionId) notFound(input.electionPeriodId);
       if (input.scheduledDate && period?.periodStartDate) {
         const window = computeF2fWindow(period.periodStartDate, orgTimeZone);
         if (!isF2fScheduledWithinWindow(input.scheduledDate, window)) {

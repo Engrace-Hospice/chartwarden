@@ -82,6 +82,8 @@ export type {
   MileagePayrollReader,
   MswRiskFactorReader,
   OnCallProvider,
+  PatientSitingReader,
+  SupervisorReader,
   OrderProvider,
   OrderSignatureProvider,
   OrganizationReader,

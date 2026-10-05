@@ -10,6 +10,10 @@
 // `wireModuleSeams` installs the ABAC registry as the contract's evaluator and points
 // `step_up_recent` at an M2 session-context store, so a write route with a stale step-up denies for
 // the same reason it would in production — not because the predicate is missing.
+//
+// NB: the CaseloadProvider is overridden with a PERMISSIVE one here (consent-abac-harness), so this suite
+// proves route wiring, step-up and the happy paths — NOT caseload scoping. Scope denials live in
+// consent-routes.test.ts and the access-scope unit tests.
 import {
   abacRegistry,
   createInMemoryEffectivePermissionStore,
@@ -32,6 +36,12 @@ import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
 import { registerConsentRoutes } from "../src/modules/39-consent/index";
+import {
+  DEFAULT_TEST_ROLE,
+  PERMISSIVE_ACCESS,
+  ROLE_FOR_TEST_USER,
+  installPermissiveConsentAbac,
+} from "./consent-abac-harness";
 
 const ORG = "org_a";
 const PAT = "patient-1";
@@ -44,7 +54,7 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof user !== "string" || user.length === 0) return;
   request.context.userId = user;
   request.context.organizationId = ORG;
-  request.context.roles = ["seed"];
+  request.context.roles = [ROLE_FOR_TEST_USER[user] ?? DEFAULT_TEST_ROLE];
   request.context.attributes = { ...request.context.attributes, sessionId: SESSION };
 }
 
@@ -197,19 +207,24 @@ function makeServer(stepUpAgeMs: number | null = 60_000) {
       userId: "signer",
       membershipId: "mem-1",
       organizationId: ORG,
-      roles: ["seed"],
+      roles: [DEFAULT_TEST_ROLE],
       lastStepUpAt: stepUpAgeMs === null ? null : new Date(Date.now() - stepUpAgeMs),
       lastStepUpFactor: stepUpAgeMs === null ? null : "webauthn",
     },
   ]);
   wireModuleSeams({ sessionContextStore: sessionStore });
+  installPermissiveConsentAbac();
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerConsentRoutes(app, { service });
+  registerConsentRoutes(app, { service, access: PERMISSIVE_ACCESS });
   return { app, service, data };
 }
 
-const h = (user: string) => ({ "x-test-user": user, "x-test-org": ORG, "x-test-roles": "seed" });
+const h = (user: string) => ({
+  "x-test-user": user,
+  "x-test-org": ORG,
+  "x-test-roles": DEFAULT_TEST_ROLE,
+});
 
 beforeEach(() => {
   __resetSeamsForTest();

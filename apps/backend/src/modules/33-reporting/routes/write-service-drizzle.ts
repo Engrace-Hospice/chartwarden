@@ -22,9 +22,15 @@ import {
 } from "@wardenx/reporting";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError } from "@wardenx/types";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";
+import {
+  canMutateSchedule,
+  canReadSchedule,
+  isScheduleAdmin,
+  viewVisibleTo,
+} from "./schedule-authz";
 import {
   type CreateDefinitionArgs,
   type CreateScheduleArgs,
@@ -508,18 +514,28 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
 
     // ── scheduled reports ──
     async listSchedules(actor, filter, cursor, limit) {
-      const rows = await inOrgCtx(actor, async (tx) => {
-        const all = await new ReportScheduleRepository(tx).listActiveForOrg(actor.organizationId);
-        // listActiveForOrg returns active only; for a status filter we narrow, else all active.
-        return filter.status && filter.status !== "active" ? [] : all;
-      });
+      // GAP-097: filtered IN SQL by owner / recipient (org_admin sees the whole org); the status filter is
+      // honoured as asked (it used to coerce anything but 'active' to an empty page).
+      const rows = await inOrgCtx(actor, async (tx) =>
+        new ReportScheduleRepository(tx).listVisible(
+          actor.organizationId,
+          { membershipId: actor.membershipId, isAdmin: isScheduleAdmin(actor.roles) },
+          filter.status as schema.ReportSchedule["status"] | undefined,
+        ),
+      );
       const mapped = withKey(rows.map(mapSchedule));
       return paginate(mapped, cursor, limit) as CursorPage<ScheduleView>;
     },
     async createSchedule(actor, args: CreateScheduleArgs) {
       return inOrgCtx(actor, async (tx) => {
         const view = await new ReportViewRepository(tx).findById(args.reportViewId);
-        if (!view || view.organizationId !== actor.organizationId) {
+        // GAP-097: the actor must be able to SEE the view (§4.7.2 ladder); a private view of another
+        // member answers the same non-leaking 404 as an absent one.
+        if (
+          !view ||
+          view.organizationId !== actor.organizationId ||
+          !viewVisibleTo({ ...view, shareRoleKeys: view.shareRoleKeys ?? [] }, actor)
+        ) {
           throw new NotFoundError("report view");
         }
         await assertRecipientsInOrg(actor.organizationId, args.recipientMembershipIds);
@@ -561,6 +577,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         if (!row || row.organizationId !== actor.organizationId) {
           throw new NotFoundError("report schedule");
         }
+        if (!canReadSchedule(actor, row)) throw new NotFoundError("report schedule");
         return mapSchedule(row);
       });
     },
@@ -571,6 +588,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("report schedule");
         }
+        if (!canMutateSchedule(actor, existing)) throw new NotFoundError("report schedule");
         if (existing.status === "cancelled") {
           throw new ConflictError("a cancelled schedule cannot be edited");
         }
@@ -607,6 +625,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("report schedule");
         }
+        if (!canMutateSchedule(actor, existing)) throw new NotFoundError("report schedule");
         if (existing.status === "cancelled") {
           throw new ConflictError("a cancelled schedule cannot be paused");
         }
@@ -621,6 +640,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("report schedule");
         }
+        if (!canMutateSchedule(actor, existing)) throw new NotFoundError("report schedule");
         if (existing.status === "cancelled") {
           throw new ConflictError("a cancelled schedule cannot be resumed");
         }
@@ -636,6 +656,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("report schedule");
         }
+        if (!canMutateSchedule(actor, existing)) throw new NotFoundError("report schedule");
         const row = await repo.update(id, {
           status: "cancelled",
           nextRunAt: null,
@@ -650,9 +671,15 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         if (!existing || existing.organizationId !== actor.organizationId) {
           throw new NotFoundError("report schedule");
         }
+        if (!isScheduleAdmin(actor.roles)) throw new NotFoundError("report schedule");
         const deletedRows = await tx
           .delete(schema.reportScheduleRun)
-          .where(eq(schema.reportScheduleRun.scheduleId, id))
+          .where(
+            and(
+              eq(schema.reportScheduleRun.scheduleId, id),
+              eq(schema.reportScheduleRun.organizationId, actor.organizationId),
+            ),
+          )
           .returning({ id: schema.reportScheduleRun.id });
         return { scheduleId: id, deleted: deletedRows.length };
       });
@@ -663,6 +690,7 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         if (!schedule || schedule.organizationId !== actor.organizationId) {
           throw new NotFoundError("report schedule");
         }
+        if (!canReadSchedule(actor, schedule)) throw new NotFoundError("report schedule");
         return tx
           .select()
           .from(schema.reportScheduleRun)
@@ -684,6 +712,11 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
           .where(eq(schema.reportScheduleRun.id, runId))
           .limit(1);
         if (!row || row.organizationId !== actor.organizationId) {
+          throw new NotFoundError("report schedule run");
+        }
+        // GAP-097: a run is readable iff its parent schedule is (owner / recipient / org_admin).
+        const parent = await new ReportScheduleRepository(tx).findById(row.scheduleId);
+        if (!parent || !canReadSchedule(actor, parent)) {
           throw new NotFoundError("report schedule run");
         }
         return mapRun(row);

@@ -129,6 +129,7 @@ import {
   patientMutatorDenyStub,
   patientPrivacyFlagReaderDenyStub,
   patientReaderDenyStub,
+  patientSitingReaderDenyStub,
   planCatalogReaderDenyStub,
   portalDocumentReaderDenyStub,
   portalSessionBinderDenyStub,
@@ -155,6 +156,7 @@ import {
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
   subscriptionStateProviderDenyStub,
+  supervisorReaderDenyStub,
   supervisoryCadencePlanReaderDenyStub,
   supervisoryCadenceReaderDenyStub,
   supplyCostProviderDenyStub,
@@ -687,6 +689,9 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: admissionStatusReaderDenyStub,
   },
+  { key: "PatientSitingReader", ownerModule: 6, phi: true, denyStub: patientSitingReaderDenyStub },
+  // phi: FALSE — membership/location ids only, no patient reference.
+  { key: "SupervisorReader", ownerModule: 3, phi: false, denyStub: supervisorReaderDenyStub },
   {
     key: "AdmissionCensusReader",
     ownerModule: 6,

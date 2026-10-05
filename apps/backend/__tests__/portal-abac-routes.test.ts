@@ -135,9 +135,15 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
 
   it("telehealth_consent_active resolves the patient from the visit, not the wire", async () => {
     const p = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(true) });
-    expect(await p.telehealth_consent_active(ctx(), { telehealthVisitId: "v1" })).toBe(true);
+    const own = { telehealthVisitId: "v1", sessionPatientId: PATIENT };
+    expect(await p.telehealth_consent_active(ctx(), own)).toBe(true);
+    // GAP-094: a portal session scoped to ANOTHER patient (or none) never passes for this visit.
+    expect(
+      await p.telehealth_consent_active(ctx(), { ...own, sessionPatientId: "other-patient" }),
+    ).toBe(false);
+    expect(await p.telehealth_consent_active(ctx(), { telehealthVisitId: "v1" })).toBe(false);
     const denied = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(false) });
-    expect(await denied.telehealth_consent_active(ctx(), { telehealthVisitId: "v1" })).toBe(false);
+    expect(await denied.telehealth_consent_active(ctx(), own)).toBe(false);
   });
 
   it("state_two_party_recording_consent_present: two-party state needs consent; one-party passes", async () => {
