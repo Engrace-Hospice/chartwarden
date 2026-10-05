@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0208_medication_order_prescriber_index_sql", "label": "0208_medication_order_prescriber_index.sql", "file_type": "code", "source_file": "packages/db/migrations/0208_medication_order_prescriber_index.sql", "source_location": null}], "edges": []}

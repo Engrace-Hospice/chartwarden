@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_scripts_fixtures_migration_numbering_packages_db_migrations_0002_admission_location_backfill_sql", "label": "0002_admission_location_backfill.sql", "file_type": "code", "source_file": "scripts/__fixtures__/migration-numbering/packages/db/migrations/0002_admission_location_backfill.sql", "source_location": null}], "edges": []}

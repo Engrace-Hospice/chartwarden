@@ -72,3 +72,8 @@ scratchpad/
 
 # Downloaded reference releases (scripts/db/load-icd10cm.ts)
 .cache/
+
+# graphify generated artifacts: regenerable locally, too large for git (graph.json was 78 MB)
+graphify-out/graph.json
+graphify-out/graph.html
+graphify-out/cache/

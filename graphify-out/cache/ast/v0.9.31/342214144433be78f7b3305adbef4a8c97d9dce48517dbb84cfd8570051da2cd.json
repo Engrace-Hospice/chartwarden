@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0238_safety_check_in_schedule_app_delete_sql", "label": "0238_safety_check_in_schedule_app_delete.sql", "file_type": "code", "source_file": "packages/db/migrations/0238_safety_check_in_schedule_app_delete.sql", "source_location": null}], "edges": []}

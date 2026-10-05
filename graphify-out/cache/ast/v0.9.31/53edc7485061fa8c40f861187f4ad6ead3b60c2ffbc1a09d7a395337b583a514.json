@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0125_admission_m6_discharge_type_other_sql", "label": "0125_admission_m6_discharge_type_other.sql", "file_type": "code", "source_file": "packages/db/migrations/0125_admission_m6_discharge_type_other.sql", "source_location": null}], "edges": []}

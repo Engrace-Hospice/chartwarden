@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0010_authorization_role_template_read_sql", "label": "0010_authorization_role_template_read.sql", "file_type": "code", "source_file": "packages/db/migrations/0010_authorization_role_template_read.sql", "source_location": null}], "edges": []}

@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0207_org_scoped_rls_indexes_sql", "label": "0207_org_scoped_rls_indexes.sql", "file_type": "code", "source_file": "packages/db/migrations/0207_org_scoped_rls_indexes.sql", "source_location": null}], "edges": []}

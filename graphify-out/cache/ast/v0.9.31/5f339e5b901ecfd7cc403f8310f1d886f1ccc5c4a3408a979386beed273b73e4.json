@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0240_alert_outcome_pending_sql", "label": "0240_alert_outcome_pending.sql", "file_type": "code", "source_file": "packages/db/migrations/0240_alert_outcome_pending.sql", "source_location": null}], "edges": []}
