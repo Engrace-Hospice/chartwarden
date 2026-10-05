@@ -12,8 +12,10 @@
 // (GAP-046): `requirePermission` never reads `PermissionDef.abac`, so the route composes the shared
 // predicate itself over the plan's patient. M15's `:planId` is a DISCIPLINE plan id M7's own resolver cannot
 // resolve, hence the patient is resolved through the write service first. Reads narrow in the read service
-// (`./disclosure.ts` `actorMayReadPatient`); the discipline-scope and signer-role rules live in
-// `../lifecycle/validation`; the M39 consent gates in `./disclosure.ts`. See `../abac-predicates.ts`.
+// (`./disclosure.ts` `actorMayReadPatient`); the discipline-scope rule lives in
+// `../lifecycle/validation`; the signer-role binding (the claimed `signerRole` must be held by the
+// authenticated actor, one membership per slot) is enforced in the write service's `signVersion`
+// (GAP-045), NOT here — no route guard reads the body's `signerRole`; the M39 consent gates in `./disclosure.ts`. See `../abac-predicates.ts`.
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { type M15ReadActor, type PreHandler, actorOf } from "./actor";
 

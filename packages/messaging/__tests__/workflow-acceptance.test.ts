@@ -212,7 +212,12 @@ describe("§7.3 auto-managed membership tracks source-of-truth", () => {
 describe("§7.4 tenant cannot disable system_locked rules", () => {
   it("the three life/revenue/data-safety floors are present, system_locked, and enabled", () => {
     expect([...SYSTEM_LOCKED_EVENT_TYPES].sort()).toEqual(
-      ["field_safety.sos", "noe.late_risk", "system.backup_failure"].sort(),
+      [
+        "field_safety.sos",
+        "m3.breakglass.invoked",
+        "noe.late_risk",
+        "system.backup_failure",
+      ].sort(),
     );
     for (const eventType of SYSTEM_LOCKED_EVENT_TYPES) {
       const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);

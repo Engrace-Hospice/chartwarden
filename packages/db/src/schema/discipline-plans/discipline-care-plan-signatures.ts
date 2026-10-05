@@ -50,6 +50,9 @@ export const disciplineCarePlanSignature = pgTable(
       t.versionId,
       t.signerRole,
     ),
+    // GAP-045 — one membership fills at most ONE signer slot per version. Enforced by the BEFORE INSERT
+    // trigger in migration 0329 (raises 23505 naming discipline_care_plan_signature_version_membership_uq),
+    // NOT a unique index, so legacy duplicate rows do not block the deploy. No Drizzle mirror by design.
     versionIdx: index("discipline_care_plan_signature_version_idx").on(
       t.organizationId,
       t.versionId,

@@ -20,6 +20,13 @@ import type { ModuleEventContribution } from "@wardenx/types";
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
+/** GAP-088 — nominee-based one-step close: the closer is the only signer; the other party is merely nominated. */
+const closeParty = Type.Object({ membershipId: id, role: id });
+const closeAttestationFields = {
+  closedBy: closeParty,
+  nominatedCosigner: closeParty,
+  cosignerAttested: Type.Literal(false),
+};
 /** A `{ start, end }` period (CAHPS sample / reporting window). */
 const period = Type.Object({ start: isoInstant, end: isoInstant });
 
@@ -188,7 +195,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.qapi.pip_closed",
     moduleOwner: "m30",
     description:
-      "A PIP cycle was closed with the two-person co-sign (R-31); M33 reflects the closure.",
+      "A PIP cycle was closed (R-31) by the QAPI Coordinator or Medical Director; the other party is recorded as a nominated co-signer who has NOT attested; M33 reflects the closure.",
     payloadSchema: Type.Object({
       orgId: id,
       // `qapi_pip.linked_project_id` is a nullable FK — a PIP need not hang off a chartered project, so the
@@ -197,6 +204,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       pipId: id,
       outcome: id,
       closedAt: isoInstant,
+      ...closeAttestationFields,
     }),
     // F-144 (#248) — m22 REMOVED: "renders the minutes/outcome PDF on request" is a route-triggered
     // mechanism, not a push off this lifecycle event — the same shape as `m30.incident.submitted` and
@@ -242,12 +250,13 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.sra.cycle_closed",
     moduleOwner: "m30",
     description:
-      "An SRA cycle was closed with the two-person co-sign (R-47); M33 reflects it, M34 refreshes the tenant compliance gate (SRA freshness).",
+      "An SRA cycle was closed (R-47) by the Security or Compliance Officer; the other party is recorded as a nominated co-signer who has NOT attested; M33 reflects it, M34 refreshes the tenant compliance gate (SRA freshness).",
     payloadSchema: Type.Object({
       orgId: id,
       cycleId: id,
       closedAt: isoInstant,
       openFindingsAtClose: Type.Integer({ minimum: 0 }),
+      ...closeAttestationFields,
     }),
     // F-132 (#248) — m34 REMOVED: the description's "M34 refreshes the tenant compliance gate" is real
     // but the mechanism is the SEAM M30 publishes — `SecurityRiskAssessmentReader`, M30's own §4.6

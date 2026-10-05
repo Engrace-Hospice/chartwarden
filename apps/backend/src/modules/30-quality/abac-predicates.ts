@@ -51,8 +51,9 @@ import {
 import { schema } from "@wardenx/db";
 import type { QualityDb } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { selectActiveMemberRoleKeys } from "./member-roles";
 
 /**
  * The §4.7 predicate names M30 OWNS and registers into M3 (eleven). `inOrg` is excluded — it is the
@@ -80,11 +81,11 @@ export type M30RegisteredAbacPredicate = (typeof M30_REGISTERED_ABAC_PREDICATES)
 // names). `qapi_coordinator` is the Appendix-A `system_default` template; the rest are the
 // `system_locked` floor roles. Matching is by string — an unknown key simply fails closed (deny).
 // -----------------------------------------------------------------------------
-const ROLE_MEDICAL_DIRECTOR = "medical_director";
+export const ROLE_MEDICAL_DIRECTOR = "medical_director";
 const ROLE_ADMINISTRATOR = "administrator";
-const ROLE_COMPLIANCE_OFFICER = "compliance_officer";
-const ROLE_SECURITY_OFFICER = "hipaa_security_officer";
-const ROLE_QAPI_COORDINATOR = "qapi_coordinator";
+export const ROLE_COMPLIANCE_OFFICER = "compliance_officer";
+export const ROLE_SECURITY_OFFICER = "hipaa_security_officer";
+export const ROLE_QAPI_COORDINATOR = "qapi_coordinator";
 
 /** The D23 retention class promoting a row into 42 CFR Part 2 protection (the `part2Redisclosure` gate). */
 const RETENTION_CLASS_PART2 = "compliance_42cfr_part2";
@@ -260,8 +261,6 @@ export function buildDrizzleM30AbacResolver(db: QualityDb): ReadingM30AbacResolv
   const PRJ = schema.qapiProject;
   const CY = schema.sraCycle;
   const MR = schema.mortalityReview;
-  const ROLE = schema.roles;
-  const MEMBER_ROLE = schema.membershipRoles;
 
   return {
     async loadIncident(ctx, incidentId) {
@@ -349,21 +348,14 @@ export function buildDrizzleM30AbacResolver(db: QualityDb): ReadingM30AbacResolv
     },
 
     async loadMemberRoleKeys(ctx, membershipId) {
-      return withOrgContext(db, ctx, async (tx) => {
-        const rows = await tx
-          .select({ key: ROLE.key })
-          .from(MEMBER_ROLE)
-          .innerJoin(ROLE, eq(MEMBER_ROLE.roleId, ROLE.id))
-          .where(
-            and(
-              eq(MEMBER_ROLE.organizationId, ctx.organizationId),
-              eq(MEMBER_ROLE.membershipId, membershipId),
-              // time-bound roles (on-call elevation, §7.2): only the live, unexpired grants count.
-              or(isNull(MEMBER_ROLE.expiresAt), gt(MEMBER_ROLE.expiresAt, new Date())),
-            ),
-          );
-        return rows.map((r) => r.key);
-      });
+      // GAP-088: an inactive/unknown membership has NO roles (fail-closed), so it can never satisfy a
+      // two-person close predicate.
+      return withOrgContext(
+        db,
+        ctx,
+        async (tx) =>
+          (await selectActiveMemberRoleKeys(tx, ctx.organizationId, membershipId)) ?? [],
+      );
     },
 
     /**

@@ -18,9 +18,12 @@ import {
   buildM6WorkerDeps,
   runF2fWindowMissedScanCron,
 } from "../src/modules/06-admission/jobs/cron-workers";
+import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
+const F2F_ATTESTATION_NARRATIVE =
+  "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
 /** Clinical content every CTI draft carries (`CtiDraftSchema`, route 22) — mirrors m6-election-cti-write. */
 const CTI_CLINICAL = {
@@ -243,6 +246,7 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
         electionPeriodId: period3Id,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_md",
+        actor: SYSTEM_F2F_ACTOR,
       });
       // F-226 - completion computes the window from the REAL encounter date against the period's expected
       // start. Period 3 here starts ~90 days out (period 2 was just activated), so pull its start in to 10
@@ -253,7 +257,13 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
       );
       const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
       const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, yesterday);
-      const attested = await svc.attestF2f(ORG_A, f2f.id, done.version, USER);
+      const attested = await svc.attestF2f(
+        ORG_A,
+        f2f.id,
+        done.version,
+        USER,
+        F2F_ATTESTATION_NARRATIVE,
+      );
       expect(attested.state).toBe("attested");
 
       const deps = buildM6WorkerDeps({

@@ -465,6 +465,7 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
             signerMembershipId: input.cosignerMembershipId,
             signerDiscipline: input.cosignerRole,
             cosignerRole: input.cosignerRole,
+            attestationText: input.attestationText,
             signedAt: new Date(),
           })
           .returning({ id: OS.id });

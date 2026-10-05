@@ -68654,10 +68654,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "attestedByMembershipId",
-                  "attestedAt"
-                ],
                 "properties": {
                   "attestedByMembershipId": {
                     "format": "uuid",
@@ -69153,8 +69149,6 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "attestedByMembershipId",
-                  "attestedAt",
                   "reason"
                 ],
                 "properties": {
@@ -165513,7 +165507,7 @@
                 "required": [
                   "conclusionText",
                   "outcome",
-                  "cosign"
+                  "cosignerMembershipId"
                 ],
                 "properties": {
                   "conclusionText": {
@@ -165526,22 +165520,9 @@
                     "maxLength": 500,
                     "type": "string"
                   },
-                  "cosign": {
-                    "type": "object",
-                    "required": [
-                      "qapiCoordinatorMembershipId",
-                      "medicalDirectorMembershipId"
-                    ],
-                    "properties": {
-                      "qapiCoordinatorMembershipId": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "medicalDirectorMembershipId": {
-                        "format": "uuid",
-                        "type": "string"
-                      }
-                    }
+                  "cosignerMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }
@@ -167079,25 +167060,12 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "cosign"
+                  "cosignerMembershipId"
                 ],
                 "properties": {
-                  "cosign": {
-                    "type": "object",
-                    "required": [
-                      "securityOfficerMembershipId",
-                      "complianceOfficerMembershipId"
-                    ],
-                    "properties": {
-                      "securityOfficerMembershipId": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "complianceOfficerMembershipId": {
-                        "format": "uuid",
-                        "type": "string"
-                      }
-                    }
+                  "cosignerMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }

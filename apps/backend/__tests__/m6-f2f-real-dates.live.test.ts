@@ -30,9 +30,12 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
+const F2F_ATTESTATION_NARRATIVE =
+  "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
 const NARRATIVE_OK =
   "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care. The prognosis of six months or less is supported by serial decline in functional status, nutritional intake and symptom burden.";
@@ -155,6 +158,7 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       electionPeriodId: periodId,
       scheduledClinicianId: USER,
       clinicianRole: "hospice_md",
+      actor: SYSTEM_F2F_ACTOR,
     });
   const f2fRow = async (id: string) =>
     (
@@ -272,7 +276,7 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
         encounterDate: dayOffset(-1),
         withinWindow: true,
       });
-      await svc.attestF2f(ORG_A, f.id, done.version, USER);
+      await svc.attestF2f(ORG_A, f.id, done.version, USER, F2F_ATTESTATION_NARRATIVE);
       const signed = await svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER);
       expect(signed.state).toBe("signed");
       expect(await periodStatus(p.periodId)).toBe("active");
@@ -394,7 +398,7 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
         within_window: false,
         window_override: true,
       });
-      await svc.attestF2f(ORG_A, f.id, done.version, USER);
+      await svc.attestF2f(ORG_A, f.id, done.version, USER, F2F_ATTESTATION_NARRATIVE);
       await svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER);
       expect(await periodStatus(p.periodId)).toBe("active");
       expect((await adequacyOf(p.periodId))[0]).toMatchObject({
@@ -423,7 +427,7 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       await setStart(p.periodId, dayOffset(10));
       const f = await schedule(p.periodId);
       const done = await svc.completeF2f(ORG_A, f.id, f.version, dayOffset(-1));
-      await svc.attestF2f(ORG_A, f.id, done.version, USER);
+      await svc.attestF2f(ORG_A, f.id, done.version, USER, F2F_ATTESTATION_NARRATIVE);
       await setStart(p.periodId, dayOffset(60)); // encounter is now 61 days before the start
       await expect(
         svc.signCtiHospiceMd(ORG_A, p.cti.id, p.cti.version, USER),

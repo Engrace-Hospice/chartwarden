@@ -967,9 +967,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/admissions/:id/face-to-face",
     { preHandler: [F2F_SCHEDULE, admissionScope("f2f.schedule")] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const body = parse(F2fScheduleSchema, request.body);
       const res = await service.scheduleF2f(organizationId, {
+        // GAP-022 — `clinicianRole` is only a claim; the service derives the real role from the
+        // clinician's grants and refuses a claim they do not hold.
+        actor: { kind: "user", userId },
         admissionId: idOf(request),
         electionPeriodId: body.electionPeriodId,
         scheduledClinicianId: body.scheduledClinicianId,
@@ -1011,7 +1014,13 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(F2fAttestSchema, request.body);
-      return service.attestF2f(organizationId, idOf(request), body.ifVersion, userId);
+      return service.attestF2f(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+        body.attestationNarrative,
+      );
     },
   );
 

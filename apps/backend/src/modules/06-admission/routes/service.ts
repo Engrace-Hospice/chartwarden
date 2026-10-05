@@ -33,7 +33,9 @@ import {
   evaluateAdmissionReadiness,
 } from "../intake";
 export type { AdmissionReadinessResult } from "../intake";
+import { resolveF2fPerformerRole } from "../certification/f2f-performer";
 import { AdmissionStateError } from "../state-machines/errors";
+import { transitionFaceToFace } from "../state-machines/face-to-face";
 import { daysBetween } from "../state-machines/validation";
 
 /** 409 VERSION_MISMATCH — an optimistic-lock failure on a state-change route (§4 intro). */
@@ -370,11 +372,24 @@ export interface NorAcknowledgeInput {
   readonly deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
   readonly acknowledgedByRole: "patient" | "legal_representative";
 }
+/**
+ * GAP-022 — who is scheduling. `user` = a human session: the performer role is DERIVED from the
+ * scheduled clinician's real role grants. `system` is the one explicit, frozen marker for trusted
+ * non-request callers (workers / fixtures) whose `clinicianRole` is already server-decided; it is never
+ * built from request data and never inferred from a role string (cf. 11-orders SYSTEM_ORDER_ACTOR).
+ */
+export type F2fScheduleActor =
+  | { readonly kind: "user"; readonly userId: string }
+  | { readonly kind: "system" };
+export const SYSTEM_F2F_ACTOR: F2fScheduleActor = Object.freeze({ kind: "system" as const });
+
 export interface F2fScheduleInput {
   readonly admissionId: string;
   readonly electionPeriodId: string;
   readonly scheduledClinicianId: string;
-  readonly clinicianRole: string;
+  /** A CLAIM only (the request body's value): for a `user` actor it must be backed by the clinician's grants. */
+  readonly clinicianRole?: string;
+  readonly actor: F2fScheduleActor;
   /** Org-local F2F date (§7.4 W-F2F-01) — validated against the server-computed recert window. */
   readonly scheduledDate?: LocalDate;
 }
@@ -913,11 +928,13 @@ export interface AdmissionRouteService {
     ifVersion: number,
     encounterDate: string,
   ): Promise<MutationResult>;
+  /** GAP-022 - `attestationNarrative` (>= 100 chars, R-F2F-04) is persisted; the attester must be the performer. */
   attestF2f(
     organizationId: string,
     id: string,
     ifVersion: number,
     actorUserId: string,
+    attestationNarrative: string,
   ): Promise<MutationResult>;
   overrideF2fWindow(
     organizationId: string,
@@ -1142,6 +1159,12 @@ export interface AdmissionBackendSeed {
    * absent from the map yields no candidates.
    */
   readonly providerEntityLocations?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * GAP-022 — user id -> the role keys that user actually holds (the stand-in for the M3 grants the
+   * Drizzle backend reads through an injected port). A user absent from the map has no membership.
+   * With no map seeded, a `user` actor falls back to the claimed role (legacy slice tests).
+   */
+  readonly clinicianRoleKeys?: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -2209,6 +2232,13 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
 
     async scheduleF2f(organizationId, input) {
+      // GAP-022 — the performer role is derived from the clinician's grants, never the body.
+      if (input.actor.kind === "user" && seed.clinicianRoleKeys) {
+        resolveF2fPerformerRole(
+          seed.clinicianRoleKeys[input.scheduledClinicianId] ?? null,
+          input.clinicianRole,
+        );
+      }
       // W-F2F-01: the scheduled date must fall inside the CMS 418.22 prior-to window, computed
       // server-side in org TZ off the period start. Validated only when the period start is on file.
       const period = get(organizationId, input.electionPeriodId, "election_period");
@@ -2240,9 +2270,15 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
       return transition(rec, "completed", ifVersion);
     },
-    async attestF2f(organizationId, id, ifVersion, actorUserId) {
+    async attestF2f(organizationId, id, ifVersion, actorUserId, attestationNarrative) {
       void actorUserId;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
+      // GAP-022 — R-F2F-04: the >= 100-char narrative guard runs through the real machine.
+      transitionFaceToFace("completed", {
+        type: "attest",
+        narrative: attestationNarrative,
+        performerIsActor: true,
+      });
       return transition(rec, "attested", ifVersion, "m6.f2f.attested");
     },
     async overrideF2fWindow(organizationId, id, reason, ifVersion, actorUserId) {

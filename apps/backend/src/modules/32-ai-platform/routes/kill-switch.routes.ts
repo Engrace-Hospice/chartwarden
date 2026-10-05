@@ -24,13 +24,15 @@
 // has no honest value for.
 import type { FastifyInstance } from "fastify";
 
+import { hasPlatformKillSwitchAuthority } from "../abac-predicates";
 import {
+  type AiKillSwitchCaller,
   type AiSafetyServiceDeps,
-  activateAiKillSwitch,
-  deactivateAiKillSwitch,
+  activateAiKillSwitchAs,
+  deactivateAiKillSwitchAs,
   listActiveAiKillSwitches,
 } from "../safety/service";
-import { actorOf, killSwitchScopeOf, writeActorOf } from "./actor";
+import { type M32WriteActor, actorOf, killSwitchScopeOf, writeActorOf } from "./actor";
 import { ABAC_KILL_SWITCH_SCOPE, ABAC_SAFETY_OWNER_OR_IN_ORG, P, STEP_UP } from "./guards";
 import {
   ActivateKillSwitchBody,
@@ -41,10 +43,23 @@ import {
 
 export interface KillSwitchRouteDeps {
   readonly safety: AiSafetyServiceDeps;
+  /** Overrides the `WARDENX_SINGLE_TENANT_DEPLOYMENT` default (tests). */
+  readonly singleTenantDeployment?: boolean;
+}
+
+/**
+ * GAP-096 — the caller kind the SERVICE enforces, derived from the session's roles and organization and
+ * from nothing in the body: platform authority only for a safety-owner role set, otherwise a tenant caller
+ * pinned to the session's own org.
+ */
+function killSwitchCallerOf(actor: M32WriteActor, singleTenant?: boolean): AiKillSwitchCaller {
+  return hasPlatformKillSwitchAuthority(actor.roles, singleTenant)
+    ? { kind: "platform" }
+    : { kind: "tenant", organizationId: actor.organizationId };
 }
 
 export function registerKillSwitchRoutes(app: FastifyInstance, deps: KillSwitchRouteDeps): void {
-  const { safety } = deps;
+  const { safety, singleTenantDeployment } = deps;
 
   // R7 — activate. `activationMessage` is required by §3.2.12 for a human actor, and the four
   //      `automated_*` actor kinds are unspellable in the body (m32-typebox.ts) so a human cannot file a
@@ -62,14 +77,18 @@ export function registerKillSwitchRoutes(app: FastifyInstance, deps: KillSwitchR
       const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const body = parse(ActivateKillSwitchBody, request.body);
-      const outcome = await activateAiKillSwitch(safety, {
-        organizationId: killSwitchScopeOf(actor, body.scope),
-        capabilityId,
-        reason: body.reason,
-        actorKind: body.actorKind,
-        actorMembershipId: actor.membershipId,
-        activationMessage: body.activationMessage,
-      });
+      const outcome = await activateAiKillSwitchAs(
+        safety,
+        killSwitchCallerOf(actor, singleTenantDeployment),
+        {
+          organizationId: killSwitchScopeOf(actor, body.scope),
+          capabilityId,
+          reason: body.reason,
+          actorKind: body.actorKind,
+          actorMembershipId: actor.membershipId,
+          activationMessage: body.activationMessage,
+        },
+      );
       // The DEMOTION PLAN rides the response rather than being executed (see the header). A console that
       // showed "stopped" without saying "and this capability will be demoted to DEPRECATED" would leave
       // the operator to discover the lifecycle change from the ledger.
@@ -93,7 +112,7 @@ export function registerKillSwitchRoutes(app: FastifyInstance, deps: KillSwitchR
       const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const body = parse(DeactivateKillSwitchBody, request.body);
-      return deactivateAiKillSwitch(safety, {
+      return deactivateAiKillSwitchAs(safety, killSwitchCallerOf(actor, singleTenantDeployment), {
         organizationId: killSwitchScopeOf(actor, body.scope),
         capabilityId,
         actorKind: body.actorKind,

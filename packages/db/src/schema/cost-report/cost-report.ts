@@ -53,6 +53,10 @@ export const costReport = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    // GAP-081 two-person control: stamped server-side at approve_for_submit (the authenticated actor),
+    // compared at submit, cleared on return-to-draft / reopen. NULL on reports approved pre-0331 (submit refuses).
+    approvedByMembershipId: uuid("approved_by_membership_id"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
   },
   (t) => ({
     uniqProviderFye: unique("uniq_cost_report_provider_fye").on(

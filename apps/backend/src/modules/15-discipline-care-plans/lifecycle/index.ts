@@ -39,6 +39,7 @@ export {
 } from "./version";
 export {
   checkQuorumSatisfied,
+  actorHoldsSignerRole,
   decideRecordSignature,
   isQuorumMet,
   resolveRequiredSignerSet,

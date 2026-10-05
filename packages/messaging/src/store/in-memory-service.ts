@@ -35,7 +35,12 @@ import type {
   NotificationPreferencesView,
 } from "../interfaces/route-service";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
-import { PLATFORM_DEFAULT_ALERT_RULES, SYSTEM_LOCKED_EVENT_TYPES } from "../seed";
+import {
+  PLATFORM_DEFAULT_ALERT_RULES,
+  SYSTEM_LOCKED_EVENT_TYPES,
+  assertLockedRulePatchAllowed,
+  isSystemLockedEventType,
+} from "../seed";
 
 // ── value-level mirrors of the §3.2 enum unions (for routing-map validation) ────────────────
 const ALERT_CATEGORIES: readonly AlertCategory[] = [
@@ -549,10 +554,9 @@ export function createInMemoryMessagingService(
       const base = resolveRuleBase(orgId, input.ruleId, overrides);
       if (!base) throw new NotFoundError("alert rule", input.ruleId);
 
-      // §7.4: a system_locked rule can never be disabled (even by alert.rules.manage).
-      if (base.systemLocked && input.patch.enabled === false) {
-        throw new WardenXError("SYSTEM_LOCKED", "system_locked rules cannot be disabled", 403);
-      }
+      // §7.4 + GAP-102: a system_locked rule can never be disabled, re-resolved or downgraded (even by
+      // alert.rules.manage) — judged against the PLATFORM floor, not the (possibly cloned) base row.
+      assertLockedRulePatchAllowed(base.eventType, input.patch);
       if (
         input.patch.recipientResolver !== undefined &&
         !RECIPIENT_RESOLVERS.includes(input.patch.recipientResolver)
@@ -569,7 +573,7 @@ export function createInMemoryMessagingService(
         category: base.category,
         severityFloor: input.patch.severityFloor ?? base.severityFloor,
         recipientResolver: input.patch.recipientResolver ?? base.recipientResolver,
-        systemLocked: base.systemLocked,
+        systemLocked: base.systemLocked || isSystemLockedEventType(base.eventType),
         enabled: input.patch.enabled ?? base.enabled,
       };
       overrides.set(key, row);

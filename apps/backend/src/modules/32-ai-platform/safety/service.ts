@@ -41,6 +41,7 @@ import {
   evaluateAiKillSwitchDeactivation,
   requireAiGovernance,
 } from "@wardenx/ai-platform";
+import { ForbiddenError } from "@wardenx/types";
 import type {
   AiCapabilityLifecycleState,
   AiEvaluationRunStage,
@@ -131,6 +132,54 @@ export async function activateAiKillSwitch(
     demotion: decision.demotion,
     usedPlatformCredential: aiKillSwitchRequiresPlatformCredential(decision.scope),
   };
+}
+
+/**
+ * GAP-096 — who is asking, as the SESSION established it (never the body).
+ *
+ * `platform` is a session holding the cross-tenant AI-safety-owner authority from a PLATFORM-owned role
+ * (M3's enrichment reader drops a reserved key off a tenant-owned row, so a tenant-minted role key never
+ * yields this). `tenant` is everyone else, and is pinned to its own organization.
+ */
+export type AiKillSwitchCaller =
+  | { readonly kind: "platform" }
+  | { readonly kind: "tenant"; readonly organizationId: string };
+
+/**
+ * The service-layer half of the §4.1 R7/R8 guard. A platform (NULL-org) row stops a capability for EVERY
+ * tenant and is written through the platform credential, which RLS does not constrain, so the route's
+ * ABAC arm cannot be the only thing standing between a tenant and it.
+ */
+function assertKillSwitchCaller(caller: AiKillSwitchCaller, organizationId: string | null): void {
+  if (caller.kind === "platform") return;
+  if (organizationId === null) {
+    throw new ForbiddenError(
+      "a platform-wide AI kill switch requires platform AI-safety-owner authority, which a tenant role cannot confer",
+    );
+  }
+  if (organizationId !== caller.organizationId) {
+    throw new ForbiddenError("a tenant caller may only act on its own organization's kill switch");
+  }
+}
+
+/** R7 for an HTTP/session caller: {@link activateAiKillSwitch} behind {@link assertKillSwitchCaller}. */
+export async function activateAiKillSwitchAs(
+  deps: AiSafetyServiceDeps,
+  caller: AiKillSwitchCaller,
+  request: AiKillSwitchActivationRequest,
+): Promise<AiKillSwitchOutcome> {
+  assertKillSwitchCaller(caller, request.organizationId);
+  return activateAiKillSwitch(deps, request);
+}
+
+/** R8 for an HTTP/session caller: {@link deactivateAiKillSwitch} behind {@link assertKillSwitchCaller}. */
+export async function deactivateAiKillSwitchAs(
+  deps: AiSafetyServiceDeps,
+  caller: AiKillSwitchCaller,
+  request: AiKillSwitchDeactivationRequest,
+): ReturnType<typeof deactivateAiKillSwitch> {
+  assertKillSwitchCaller(caller, request.organizationId);
+  return deactivateAiKillSwitch(deps, request);
 }
 
 /** R8 — lift the switch. See `evaluateAiKillSwitchDeactivation`: this does NOT undo a D16 demotion. */

@@ -31,6 +31,7 @@ import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { buildM11OrmRequestedPorts } from "../src/modules/11-orders/orm-request/ports";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
 import { parseMshEnvelope } from "../src/modules/29-external-interfaces/listener/mllp-framing";
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
@@ -43,7 +44,6 @@ import type {
 import { ormDispatchExistsForOrder } from "../src/modules/29-external-interfaces/outbound/order-dispatch-dedupe";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -141,15 +141,25 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
   }
 
   async function draftAndRequest(service = svc): Promise<string> {
-    const draft = await service.createDraft(ORG_A, member, {
-      patientId: P_OK,
-      admissionId: ADMISSION,
-      kind: "lab" as never,
-      drafterDiscipline: "rn_case_manager",
-      data: { testCodes: LOINC, fastingRequired: false, routingLabId: FAC_ACTIVE },
-      orderingPhysicianMdmId: PH_ACTIVE,
-    }, SYSTEM_ORDER_ACTOR);
-    await service.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
+    const draft = await service.createDraft(
+      ORG_A,
+      member,
+      {
+        patientId: P_OK,
+        admissionId: ADMISSION,
+        kind: "lab" as never,
+        drafterDiscipline: "rn_case_manager",
+        data: { testCodes: LOINC, fastingRequired: false, routingLabId: FAC_ACTIVE },
+        orderingPhysicianMdmId: PH_ACTIVE,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await service.requestSignature(
+      ORG_A,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
     return draft.id;
   }
   const signArgs = () => ({
@@ -309,7 +319,9 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
     await seedFeed(PORT_X, FAC_ACTIVE);
     const id = await draftAndRequest();
     await svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR);
-    await expect(svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR)).rejects.toBeTruthy();
+    await expect(
+      svc.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR),
+    ).rejects.toBeTruthy();
     expect(await requestEvents(id)).toBe(1);
     await settle();
     expect(sent).toHaveLength(1);
@@ -330,9 +342,9 @@ describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIV
       },
       ports,
     );
-    await expect(crashing.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR)).rejects.toThrow(
-      /simulated crash/,
-    );
+    await expect(
+      crashing.signOrder(ORG_A, member, id, signArgs(), SYSTEM_ORDER_ACTOR),
+    ).rejects.toThrow(/simulated crash/);
     expect((await orderRow(id)).status).toBe("pending_signature");
     expect(await requestEvents(id)).toBe(0);
     expect(

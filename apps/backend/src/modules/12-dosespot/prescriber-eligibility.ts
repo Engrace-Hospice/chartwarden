@@ -97,6 +97,24 @@ export function assertDisciplineHeld(held: readonly string[], claimed: string): 
 }
 
 /**
+ * The discipline a draft is RECORDED under. A claim the session holds is honoured (a prescriber who also holds a
+ * nursing role may pick); a claim it does not hold is never trusted and never rejected here either — a nurse
+ * drafting for a physician legitimately names the physician's discipline in the UI — so the draft is recorded
+ * under a held discipline instead, preferring a draft-on-behalf one so the cosign axis stays closed. A session
+ * holding no discipline at all cannot draft (422).
+ */
+export function resolveDraftingDiscipline(held: readonly string[], claimed: string): string {
+  const key = claimed.trim().toLowerCase();
+  const heldKeys = held.map((d) => d.trim().toLowerCase()).filter((d) => d.length > 0);
+  if (heldKeys.includes(key)) return key;
+  const onBehalf = heldKeys.find((d) => DRAFT_ON_BEHALF_DISCIPLINES.has(d));
+  const fallback = onBehalf ?? heldKeys[0];
+  if (fallback) return fallback;
+  assertDisciplineHeld(held, claimed); // throws DISCIPLINE_NOT_HELD
+  return key;
+}
+
+/**
  * Spec §2.2 rule "recording actor is RN+": the seniority floor for RECORDING a verbal order (an RN may record
  * one she could not author). LPN, aide and non-nursing disciplines are below it. Local copy of M11's set
  * (`11-orders/routes/server-derived-facts.ts`) — M12 takes no import edge into M11. Role keys double as
@@ -156,6 +174,123 @@ export function assertRetransmitStanding(input: Omit<SignerStandingInput, "order
       "SIGNER_NOT_ORDERING_PHYSICIAN",
       "only the order's prescriber or the named ordering physician may retransmit it",
       HTTP_FORBIDDEN,
+    );
+  }
+}
+
+// ── GAP-034 — the cosignature axis ────────────────────────────────────────────────────────────────────
+
+/** The disciplines that may DRAFT on behalf of a prescriber (§2.1) but can never sign: their orders owe a cosign. */
+export const DRAFT_ON_BEHALF_DISCIPLINES: ReadonlySet<string> = new Set([
+  "rn_case_manager",
+  "clinical_supervisor",
+]);
+
+/**
+ * GAP-034 — whether an order drafted by `draftingDiscipline` owes a cosignature before it can be signed
+ * (M11 §2.5 axis 1 analogue: an order authored below the prescriber tier is supervised). Decided from the
+ * session/stored discipline, never from a body field. A prescriber-authored order owes none.
+ */
+export function cosignRequiredFor(draftingDiscipline: string): boolean {
+  return DRAFT_ON_BEHALF_DISCIPLINES.has(draftingDiscipline.trim().toLowerCase());
+}
+
+/**
+ * GAP-034 follow-up — the discipline the cosign axis is decided from at `requestSignature`: the STORED drafter
+ * discipline (`medication_order.drafted_by_discipline`, written from the session at create), so an RN draft a
+ * physician then submits still owes the cosign. NULL/blank = legacy/unknown row => the requesting session's
+ * discipline (the pre-column behaviour).
+ */
+export function cosignDraftingDiscipline(
+  storedDrafterDiscipline: string | null | undefined,
+  requestingDiscipline: string,
+): string {
+  const stored = storedDrafterDiscipline?.trim();
+  return stored ? stored : requestingDiscipline;
+}
+
+/** The cosigner roles the platform recognises (the `CosignRequest.cosignerRole` union). */
+export type CosignerRole = "rn_case_manager" | "clinical_supervisor" | "medical_director";
+
+/** An RN-tier draft demands a supervising-tier cosigner: a clinical supervisor, or a medical director (who outranks it). */
+export const COSIGN_SUPERVISING_ROLES: ReadonlySet<string> = new Set([
+  "clinical_supervisor",
+  "medical_director",
+]);
+
+/** The stored facts + session facts the cosign guard decides from. Nothing here is read off the request body
+ * except `claimedRole`, which is validated against `heldRoles`. */
+export interface CosignStandingInput {
+  readonly orderStatus: string;
+  readonly cosignRequired: boolean;
+  readonly cosignStatus: string | null;
+  readonly claimedRole: CosignerRole;
+  /** Roles/disciplines assembled from the SESSION. */
+  readonly heldRoles: readonly string[];
+  readonly cosignerMembershipId: string;
+  readonly drafterMembershipId: string | null;
+  /** The membership that will SIGN: the roster row mapped to the order's named physician MDM id (null = none). */
+  readonly signerMembershipId: string | null;
+}
+
+/**
+ * GAP-034 — refuse a cosign unless: the claimed role is held by the session (422), the order is awaiting
+ * signature with a pending required cosign (409), the claimed role satisfies the supervising demand (403),
+ * and the cosigner is neither the drafter nor the physician who will sign (403, separation of duties).
+ */
+export function assertCosignStanding(input: CosignStandingInput): void {
+  assertDisciplineHeld(input.heldRoles, input.claimedRole);
+  if (input.orderStatus !== "pending_signature") {
+    throw new WardenXError(
+      "COSIGN_NOT_ALLOWED_IN_STATUS",
+      `a cosignature can only be attached while the order is pending_signature (it is ${input.orderStatus})`,
+      HTTP_CONFLICT,
+    );
+  }
+  if (!input.cosignRequired) {
+    throw new WardenXError(
+      "COSIGN_NOT_REQUIRED",
+      "this medication order requires no cosignature",
+      HTTP_CONFLICT,
+    );
+  }
+  if (input.cosignStatus === "attached") {
+    throw new WardenXError(
+      "ALREADY_COSIGNED",
+      "this medication order is already cosigned",
+      HTTP_CONFLICT,
+    );
+  }
+  if (!COSIGN_SUPERVISING_ROLES.has(input.claimedRole)) {
+    throw new WardenXError(
+      "COSIGNER_ROLE_MISMATCH",
+      "this order needs a clinical_supervisor or medical_director cosignature",
+      HTTP_FORBIDDEN,
+    );
+  }
+  const isDrafter =
+    input.drafterMembershipId !== null && input.drafterMembershipId === input.cosignerMembershipId;
+  const isSigner =
+    input.signerMembershipId !== null && input.signerMembershipId === input.cosignerMembershipId;
+  if (isDrafter || isSigner) {
+    throw new WardenXError(
+      "COSIGN_SELF",
+      "a medication order may not be cosigned by its own drafter or by the physician who signs it (§7.3)",
+      HTTP_FORBIDDEN,
+    );
+  }
+}
+
+/** 409 — sign is refused while a required cosignature is not attached (M11 §2.2 cosign overlay). */
+export function assertCosignSatisfied(order: {
+  readonly cosignRequired: boolean;
+  readonly cosignStatus: string | null;
+}): void {
+  if (order.cosignRequired && order.cosignStatus !== "attached") {
+    throw new WardenXError(
+      "COSIGN_REQUIRED",
+      "this medication order requires a cosignature before it can be signed",
+      HTTP_CONFLICT,
     );
   }
 }

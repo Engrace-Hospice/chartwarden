@@ -37586,9 +37586,9 @@ export interface operations {
             content: {
                 "application/json": {
                     /** Format: uuid */
-                    attestedByMembershipId: string;
+                    attestedByMembershipId?: string;
                     /** Format: date-time */
-                    attestedAt: string;
+                    attestedAt?: string;
                     /** Format: uuid */
                     approvedByMembershipId?: string;
                 };
@@ -37676,9 +37676,9 @@ export interface operations {
             content: {
                 "application/json": {
                     /** Format: uuid */
-                    attestedByMembershipId: string;
+                    attestedByMembershipId?: string;
                     /** Format: date-time */
-                    attestedAt: string;
+                    attestedAt?: string;
                     /** Format: uuid */
                     approvedByMembershipId?: string;
                     reason: string;
@@ -63655,12 +63655,8 @@ export interface operations {
                 "application/json": {
                     conclusionText: string;
                     outcome: string;
-                    cosign: {
-                        /** Format: uuid */
-                        qapiCoordinatorMembershipId: string;
-                        /** Format: uuid */
-                        medicalDirectorMembershipId: string;
-                    };
+                    /** Format: uuid */
+                    cosignerMembershipId: string;
                 };
             };
         };
@@ -64146,12 +64142,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    cosign: {
-                        /** Format: uuid */
-                        securityOfficerMembershipId: string;
-                        /** Format: uuid */
-                        complianceOfficerMembershipId: string;
-                    };
+                    /** Format: uuid */
+                    cosignerMembershipId: string;
                 };
             };
         };

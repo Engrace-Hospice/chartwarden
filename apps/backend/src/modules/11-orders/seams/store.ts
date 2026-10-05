@@ -78,6 +78,8 @@ export interface InsertCosignatureInput {
   readonly targetId: string;
   readonly cosignerMembershipId: string;
   readonly cosignerRole: "rn_case_manager" | "clinical_supervisor" | "medical_director";
+  /** The cosigner's attestation (50-1000 chars; persisted to `order_signature.attestation_text`, denylisted in audit). */
+  readonly attestationText: string;
 }
 
 /** The fields a `discontinueOrder` write records (the command + its own row, D13). */

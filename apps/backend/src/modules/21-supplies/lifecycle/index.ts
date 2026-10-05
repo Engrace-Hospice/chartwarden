@@ -27,3 +27,4 @@ export * from "./dispatch";
 export * from "./return";
 export * from "./par-stock";
 export * from "./caregiver-signature";
+export * from "./serving-location";

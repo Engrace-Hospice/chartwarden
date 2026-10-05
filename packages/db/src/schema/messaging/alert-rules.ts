@@ -2,7 +2,7 @@
 // the catalog-validated dispatch path (M36-F06a): for a given event type it sets the severity
 // floor, the named recipient resolver (+ args), and an optional channel override. A NULL
 // organization_id is a platform-default rule (seeded in M36-T05, §3.10); `system_locked` rules
-// cannot be disabled by tenants (§7.4). RLS + the M4 write-audit trigger land in M36-T03.
+// are tighten-only for tenants (§7.4; GAP-102 trigger, migration 0334). RLS + the M4 write-audit trigger land in M36-T03.
 import { sql } from "drizzle-orm";
 import {
   boolean,

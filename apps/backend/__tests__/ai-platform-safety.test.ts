@@ -15,9 +15,11 @@ import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/
 import type { AiCapabilityGovernanceRow } from "../src/modules/32-ai-platform/governance/store";
 import {
   activateAiKillSwitch,
+  activateAiKillSwitchAs,
   createAiKillSwitchGate,
   createInMemoryAiSafetyStores,
   deactivateAiKillSwitch,
+  deactivateAiKillSwitchAs,
   executeAiHallucinationFollowUp,
   fileAiHallucinationReport,
   listActiveAiKillSwitches,
@@ -154,6 +156,65 @@ describe("kill switch service (R7/R8/R9, W3)", () => {
     await activateAiKillSwitch(d, { ...ACTIVATION, organizationId: OTHER_ORG });
     const listed = await listActiveAiKillSwitches(d, ORG);
     expect(listed.map((r) => r.organizationId)).toEqual([ORG]);
+  });
+});
+
+// ── GAP-096 — the kill-switch service enforces the caller's authority itself ─────────────────────────
+// The route's ABAC guard is the cheap early refusal; the service is the authority (guards.ts rule 3). A
+// platform (NULL-org) row stops a capability for EVERY tenant and is written through the platform
+// credential, which RLS does not constrain — so nothing below the guard may rely on it having run.
+
+describe("GAP-096 — kill switch caller authority (service layer)", () => {
+  const TENANT_CALLER = { kind: "tenant", organizationId: ORG } as const;
+  const PLATFORM_CALLER = { kind: "platform" } as const;
+
+  it("refuses a tenant caller a platform (NULL-org) activation and writes nothing", async () => {
+    const d = deps();
+    await expect(
+      activateAiKillSwitchAs(d, TENANT_CALLER, { ...ACTIVATION, organizationId: null }),
+    ).rejects.toThrow(/platform/i);
+    expect(await d.killSwitches.findScopedRow(null, CAP_ID)).toBeNull();
+  });
+
+  it("refuses a tenant caller another tenant's org and writes nothing", async () => {
+    const d = deps();
+    await expect(
+      activateAiKillSwitchAs(d, TENANT_CALLER, { ...ACTIVATION, organizationId: OTHER_ORG }),
+    ).rejects.toThrow(/own organization/i);
+    expect(await d.killSwitches.findScopedRow(OTHER_ORG, CAP_ID)).toBeNull();
+  });
+
+  it("lets a tenant caller stop the capability for its OWN org on the tenant credential", async () => {
+    const d = deps();
+    const outcome = await activateAiKillSwitchAs(d, TENANT_CALLER, ACTIVATION);
+    expect(outcome.scope).toBe("tenant");
+    expect(outcome.usedPlatformCredential).toBe(false);
+    expect(await readAiKillSwitchVerdict(d, OTHER_ORG, CAP_ID)).toMatchObject({ killed: false });
+  });
+
+  it("lets a platform caller write the NULL-org row", async () => {
+    const d = deps();
+    const outcome = await activateAiKillSwitchAs(d, PLATFORM_CALLER, {
+      ...ACTIVATION,
+      organizationId: null,
+    });
+    expect(outcome.scope).toBe("platform");
+    expect(outcome.usedPlatformCredential).toBe(true);
+  });
+
+  it("refuses a tenant caller lifting a platform switch, and leaves it active", async () => {
+    const d = deps();
+    await activateAiKillSwitchAs(d, PLATFORM_CALLER, { ...ACTIVATION, organizationId: null });
+    await expect(
+      deactivateAiKillSwitchAs(d, TENANT_CALLER, {
+        organizationId: null,
+        capabilityId: CAP_ID,
+        actorKind: "ai_safety_owner",
+        actorMembershipId: MEMBERSHIP,
+        resolutionNarrative: "tenant tries to lift the platform stop",
+      }),
+    ).rejects.toThrow(/platform/i);
+    expect((await d.killSwitches.findScopedRow(null, CAP_ID))?.active).toBe(true);
   });
 });
 

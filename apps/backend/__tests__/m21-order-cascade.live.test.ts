@@ -35,6 +35,7 @@ import {
   buildM11DischargeCascadeConsumer,
   createDbOrderBackend,
 } from "../src/modules/11-orders/index";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
@@ -51,7 +52,6 @@ import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
-import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const CTI_CLINICAL = {
   terminalDiagnosisIcd10: "C34.90",
@@ -406,10 +406,16 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
       },
     );
 
-    await orderSvc.discontinueOrder(ORG_A, memberId, order, {
-      reason: "clinical_judgement",
-      effectiveAt: new Date().toISOString(),
-    } as never, SYSTEM_ORDER_ACTOR);
+    await orderSvc.discontinueOrder(
+      ORG_A,
+      memberId,
+      order,
+      {
+        reason: "clinical_judgement",
+        effectiveAt: new Date().toISOString(),
+      } as never,
+      SYSTEM_ORDER_ACTOR,
+    );
     await dispatcher.tick();
 
     const row = await supplyRequestRow(request);
@@ -424,10 +430,16 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
     const order = await seedOrder(admissionId, patientId, "supply", "active");
     const request = await seedSupplyRequest(order, admissionId, patientId, "supply", "delivered");
 
-    await orderSvc.discontinueOrder(ORG_A, memberId, order, {
-      reason: "clinical_judgement",
-      effectiveAt: new Date().toISOString(),
-    } as never, SYSTEM_ORDER_ACTOR);
+    await orderSvc.discontinueOrder(
+      ORG_A,
+      memberId,
+      order,
+      {
+        reason: "clinical_judgement",
+        effectiveAt: new Date().toISOString(),
+      } as never,
+      SYSTEM_ORDER_ACTOR,
+    );
     await dispatcher.tick();
 
     const row = await supplyRequestRow(request);

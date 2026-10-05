@@ -30,6 +30,7 @@
 // the M30 export service in P2c rather than being invented against an absent contract method.
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
+import { requestStepUpFresh } from "../../../bootstrap/index";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import {
@@ -65,6 +66,15 @@ const SRA_CLOSE = P("sra.close");
 const SRA_CYCLE_OWN = OWNS_CYCLE("sra.write");
 // W-M30-30 — closing a cycle requires a recent step-up; the `step_up_recent` predicate resolves the
 // per-operation freshness policy off this operation key (the M33 `requireStepUp` precedent).
+// GAP-088 — `sraCloseAuthority`: caller is Security Officer / Compliance Officer and the body's co-signer is
+// a distinct person holding the OTHER role. Break-glass cannot stand in for the second human signer.
+const SRA_CLOSE_AUTHORITY = requireAbac("sra.close", "sraCloseAuthority", {
+  getTarget: (request) => ({
+    cosignerMembershipId: (request.body as { cosignerMembershipId?: unknown } | null)
+      ?.cosignerMembershipId,
+  }),
+  breakGlassBypassable: false,
+}) as PreHandler;
 const SRA_CLOSE_STEPUP = requireStepUp("sra.close") as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey();
 
@@ -185,17 +195,23 @@ export function registerSraRoutes(app: FastifyInstance, deps: SraRouteDeps): voi
     },
   );
 
-  // R-47 — close a cycle (TWO-PERSON co-sign V-12 + recent step-up W-M30-30). RBAC gates `sra.close`,
+  // R-47 — close a cycle. NOMINEE-BASED ONE-STEP close: the caller is the only signer; `cosignerMembershipId`
+  // is validated as an eligible Security/Compliance Officer but recorded as a NOMINATED co-signer
+  // (`cosignerAttested: false`). Pending-close + nominee confirmation is the logged follow-up. (V-12 +
+  // recent step-up W-M30-30.) RBAC gates `sra.close`,
   // `requireStepUp` enforces step-up freshness, and the write service runs `assertSraCloseSplitActor`
   // (Security Officer ≠ Compliance Officer) before the SRA `close` reducer. §4.1/§4.2.
   app.post(
     "/api/v1/quality/sra/cycles/:cycleId/close",
-    { preHandler: [SRA_CLOSE, SRA_CLOSE_STEPUP, IDEMPOTENT] },
+    { preHandler: [SRA_CLOSE, SRA_CLOSE_STEPUP, SRA_CLOSE_AUTHORITY, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { cycleId } = parse(CycleIdParamsSchema, request.params);
       const body = parse(CloseSraCycleBodySchema, request.body);
-      const res = await service.closeSraCycle(actor, cycleId, { cosign: body.cosign });
+      const res = await service.closeSraCycle(actor, cycleId, {
+        cosignerMembershipId: body.cosignerMembershipId,
+        recentStepUp: await requestStepUpFresh(request, "sra.close"),
+      });
       return reply.code(200).send(res);
     },
   );

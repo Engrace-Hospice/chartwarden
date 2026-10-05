@@ -223,6 +223,11 @@ export {
   toNewAlertRuleRows,
   validateAlertRuleSeed,
   assertAlertRuleSeedValid,
+  // GAP-102 locked-rule tighten-only floor
+  ALERT_SEVERITY_RANK,
+  assertLockedRulePatchAllowed,
+  isSystemLockedEventType,
+  selectEffectiveAlertRules,
   // M36-T09 platform-floor notification template seed (§3.13.1 Phase C, ADR-0024)
   PLATFORM_NOTIFICATION_TEMPLATES,
   toNewNotificationTemplateRows,
@@ -233,6 +238,8 @@ export type {
   PlatformAlertRuleSeed,
   PlatformAlertRuleRow,
   AlertRuleSeedViolation,
+  LockedRulePatch,
+  EffectiveRuleRow,
   PlatformNotificationTemplateRow,
   NotificationTemplateSeedViolation,
 } from "./seed";

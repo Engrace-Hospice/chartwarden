@@ -39,6 +39,7 @@ import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
 } from "../src/modules/11-orders/orders-route-service-db";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import {
   type DoseSpotWriteOutboxPort,
   createDbDoseSpotBackend,
@@ -77,7 +78,6 @@ import {
 } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -335,11 +335,22 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
 
   it("a signed order requests its PDF, and the dispatcher renders it into document/document_version", async () => {
     const draft = await orders.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await orders.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
-    await orders.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDiscipline: "rn_case_manager",
-      signedAtClient: new Date().toISOString(),
-    }, SYSTEM_ORDER_ACTOR);
+    await orders.requestSignature(
+      ORG_A,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await orders.signOrder(
+      ORG_A,
+      memberOf[ORG_A],
+      draft.id,
+      {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
 
     // The emission GAP-023 says never happened.
     const emitted = await outboxFor(draft.id);
@@ -389,11 +400,22 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
   // durable dedup key, so a replay must not mint a second document or a second version.
   it("re-delivering the same request renders nothing new (D14 idempotency)", async () => {
     const draft = await orders.createDraft(ORG_A, memberOf[ORG_A], draftArgs(), SYSTEM_ORDER_ACTOR);
-    await orders.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
-    await orders.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
-      signerDiscipline: "rn_case_manager",
-      signedAtClient: new Date().toISOString(),
-    }, SYSTEM_ORDER_ACTOR);
+    await orders.requestSignature(
+      ORG_A,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await orders.signOrder(
+      ORG_A,
+      memberOf[ORG_A],
+      draft.id,
+      {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     await dispatcher.tick();
     expect(await documentsFor(draft.id)).toHaveLength(1);
 

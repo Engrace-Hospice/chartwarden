@@ -36,6 +36,7 @@ import {
   AUTO_RETRY_WINDOW_MS,
 } from "../src/modules/11-orders/orm-request/stuck-recovery";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
+import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 import { createStuckTransmissionRecovery } from "../src/modules/11-orders/stuck-transmission-recovery";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
 import { parseMshEnvelope } from "../src/modules/29-external-interfaces/listener/mllp-framing";
@@ -58,7 +59,6 @@ import {
 } from "../src/modules/36-messaging/index";
 import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
 import { appRoleConnectionString } from "./_live-app-role";
-import { SYSTEM_ORDER_ACTOR } from "../src/modules/11-orders/routes/service";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -193,19 +193,35 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
   async function signedLab(org = ORG_A, who = member): Promise<string> {
     const patientId = randomUUID();
     await seedPatient(patientId, org, `MRN-${patientId.slice(0, 6)}`);
-    const draft = await svc.createDraft(org, who, {
-      patientId,
-      admissionId: ADMISSION,
-      kind: "lab" as never,
-      drafterDiscipline: "rn_case_manager",
-      data: LAB_DATA,
-      orderingPhysicianMdmId: PH_ACTIVE,
-    }, SYSTEM_ORDER_ACTOR);
-    await svc.requestSignature(org, draft.id, { signerDiscipline: "rn_case_manager" }, SYSTEM_ORDER_ACTOR);
-    await svc.signOrder(org, who, draft.id, {
-      signerDiscipline: "rn_case_manager",
-      signedAtClient: new Date().toISOString(),
-    }, SYSTEM_ORDER_ACTOR);
+    const draft = await svc.createDraft(
+      org,
+      who,
+      {
+        patientId,
+        admissionId: ADMISSION,
+        kind: "lab" as never,
+        drafterDiscipline: "rn_case_manager",
+        data: LAB_DATA,
+        orderingPhysicianMdmId: PH_ACTIVE,
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.requestSignature(
+      org,
+      draft.id,
+      { signerDiscipline: "rn_case_manager" },
+      SYSTEM_ORDER_ACTOR,
+    );
+    await svc.signOrder(
+      org,
+      who,
+      draft.id,
+      {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      },
+      SYSTEM_ORDER_ACTOR,
+    );
     return draft.id;
   }
   async function settle() {

@@ -36,6 +36,7 @@ import {
 } from "../consumers/index";
 import {
   DisciplinePlanStateError,
+  actorHoldsSignerRole,
   checkAuthoringDiscipline,
   checkDpoaGoalConsent,
   checkGoalTextVerbatim,
@@ -93,6 +94,31 @@ import type {
   VolunteerHourEntryView,
   WriteOutboxPort,
 } from "./write-service";
+
+const SIGNER_SLOT_UNIQUE_INDEX = "discipline_care_plan_signature_version_membership_uq";
+const PG_UNIQUE_VIOLATION = "23505";
+
+/**
+ * A Postgres unique violation on the one-slot-per-membership rule. Migration 0329 enforces it with a BEFORE
+ * INSERT trigger that raises 23505 naming the constraint (both in the `constraint` field and the message),
+ * so match code 23505 plus the name in either place. Drizzle wraps the driver error in `.cause`.
+ */
+function isSignerSlotCollision(err: unknown): boolean {
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+    cause?: { code?: string; constraint?: string; message?: string };
+  };
+  const code = e?.code ?? e?.cause?.code;
+  if (code !== PG_UNIQUE_VIOLATION) return false;
+  const constraint = e?.constraint ?? e?.cause?.constraint;
+  return (
+    constraint === SIGNER_SLOT_UNIQUE_INDEX ||
+    String(e?.message ?? "").includes(SIGNER_SLOT_UNIQUE_INDEX) ||
+    String(e?.cause?.message ?? "").includes(SIGNER_SLOT_UNIQUE_INDEX)
+  );
+}
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 
@@ -439,6 +465,22 @@ export function buildDrizzleM15WriteService(
           .orderBy(asc(SIG.signedAt));
         const sealedSet = (version.requiredSignerSet ?? []) as DisciplineRequiredSignerSet;
 
+        // GAP-045 — the claimed slot is a BODY field; bind it to the AUTHENTICATED actor. The role must be
+        // one the actor holds (the system actor, which holds none by design, is exempt) and one membership
+        // fills at most ONE slot per version, so a single person can never satisfy a multi-signer quorum.
+        if (actor.kind !== "system" && !actorHoldsSignerRole(actor.roles, input.signerRole)) {
+          throw new DisciplinePlanStateError(
+            "SIGNER_ROLE_MISMATCH",
+            "the caller does not hold the requested signer role",
+          );
+        }
+        if (collected.some((s) => s.signerMembershipId === actor.membershipId)) {
+          throw new DisciplinePlanStateError(
+            "SIGNER_ALREADY_SIGNED",
+            "this membership has already signed a slot of this version",
+          );
+        }
+
         // The pure machine validates the slot (SIGNER_ROLE_MISMATCH / DUPLICATE_SIGNER_ROLE) and reports
         // whether this signature completes the quorum; the transition below applies its effects.
         const decision = decideRecordSignature(
@@ -457,17 +499,29 @@ export function buildDrizzleM15WriteService(
           },
         );
 
-        await tx.insert(SIG).values({
-          ...inherit(plan),
-          versionId,
-          // The signer is the SERVER-assembled acting membership — never a body field (§8.6 spoofing).
-          signerMembershipId: actor.membershipId,
-          signerRole: input.signerRole,
-          isAcknowledgment: input.isAcknowledgment ?? decision.isAcknowledgment,
-          signedAt: new Date(now()),
-          attestationText: input.attestationText,
-          sessionClass: actor.sessionClass,
-        });
+        try {
+          await tx.insert(SIG).values({
+            ...inherit(plan),
+            versionId,
+            // The signer is the SERVER-assembled acting membership — never a body field (§8.6 spoofing).
+            signerMembershipId: actor.membershipId,
+            signerRole: input.signerRole,
+            isAcknowledgment: input.isAcknowledgment ?? decision.isAcknowledgment,
+            signedAt: new Date(now()),
+            attestationText: input.attestationText,
+            sessionClass: actor.sessionClass,
+          });
+        } catch (err) {
+          // Two concurrent signs by one membership both pass the app-level check above; migration 0329's
+          // trigger is the backstop — surface it as the same 409, not a 500.
+          if (isSignerSlotCollision(err)) {
+            throw new DisciplinePlanStateError(
+              "SIGNER_ALREADY_SIGNED",
+              "this membership has already signed a slot of this version",
+            );
+          }
+          throw err;
+        }
 
         const quorumMet = transition.to === "signed";
         const [updated] = await tx

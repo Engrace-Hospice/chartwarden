@@ -19,8 +19,11 @@ import {
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "../src/modules/06-admission/admission-route-service-db";
+import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+const F2F_ATTESTATION_NARRATIVE =
+  "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -173,6 +176,7 @@ describe.skipIf(!DB_URL)(
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_md",
+        actor: SYSTEM_F2F_ACTOR,
       });
       const loc = await svc.changeLoc(ORG_A, admissionId, "routine_home_care");
 

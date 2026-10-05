@@ -27,6 +27,7 @@ import {
   createInMemoryDoseSpotBackend,
   registerDoseSpotRoutes,
 } from "../src/modules/12-dosespot/index";
+import { cosignDraftingDiscipline } from "../src/modules/12-dosespot/prescriber-eligibility";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -55,6 +56,7 @@ const PHYS = "44444444-4444-4444-8444-444444444444";
 const SOURCE_ORDER = "00000000-0000-4000-8000-0000000000a1";
 const REFILL = "00000000-0000-4000-8000-0000000000b1";
 const NOW = "2026-06-08T12:00:00.000Z";
+const COSIGN_NAMED_MDM = "44444444-4444-4444-8444-4444444444c0";
 
 const READ = ["prescribing.read"];
 const WRITE = [
@@ -76,6 +78,11 @@ const CASELOAD = [
   { organizationId: ORG, userId: "rn_signer", patientId: PATIENT },
   { organizationId: ORG, userId: "rn_verbal", patientId: PATIENT },
   { organizationId: ORG, userId: "lpn_verbal", patientId: PATIENT },
+  // GAP-034 — cosign actors.
+  { organizationId: ORG, userId: "sup_1", patientId: PATIENT },
+  { organizationId: ORG, userId: "sup_2", patientId: PATIENT },
+  { organizationId: ORG, userId: "md_named", patientId: PATIENT },
+  { organizationId: ORG, userId: "rn_2", patientId: PATIENT },
 ];
 const PERMISSION_SEED = [
   {
@@ -96,6 +103,11 @@ const PERMISSION_SEED = [
     userId: "lpn_verbal",
     permissions: [...READ, "prescribing.draft", "prescribing.verbal.record"],
   },
+  // GAP-034 — cosign actors (a supervisor drafter, a second supervisor, the named physician, a peer RN).
+  { userId: "sup_1", permissions: [...READ, "prescribing.draft", "prescribing.cosign"] },
+  { userId: "sup_2", permissions: [...READ, "prescribing.cosign"] },
+  { userId: "md_named", permissions: [...READ, ...WRITE] },
+  { userId: "rn_2", permissions: [...READ, "prescribing.draft", "prescribing.cosign"] },
   { userId: "md_1_hist", permissions: [...READ, "prescribing.history.read"] },
   { userId: "md_1", permissions: [...READ, ...WRITE] },
   { userId: "rn_1", permissions: [...READ, "prescribing.draft", "prescribing.verbal.record"] },
@@ -109,7 +121,10 @@ const PERMISSION_SEED = [
   { userId: "viewer_1_user", permissions: READ },
 ];
 
-function makeServer(extraOrders: NonNullable<DoseSpotRouteSeed["orders"]> = []) {
+function makeServer(
+  extraOrders: NonNullable<DoseSpotRouteSeed["orders"]> = [],
+  extraPrescribers: NonNullable<DoseSpotRouteSeed["prescribers"]> = [],
+) {
   const backend = createInMemoryDoseSpotBackend({
     now: () => NOW,
     orders: [
@@ -137,6 +152,7 @@ function makeServer(extraOrders: NonNullable<DoseSpotRouteSeed["orders"]> = []) 
     ],
     prescribers: [
       { organizationId: ORG, membershipId: "md_1", deaAuthorizedSchedules: ["II", "III"] },
+      ...extraPrescribers,
     ],
     // GAP-026 — the caseload axis is keyed by USER id (`patient_assignment.clinician_user_id` in
     // prod), never by membership id. `rn_1` covers this patient while `md_1` is the named prescriber.
@@ -1114,5 +1130,339 @@ describe("MDM-id uniqueness — enrollPrescriber", () => {
     await backend.revokePrescriber(ORG, "md_2", "left");
     await expect(backend.enrollPrescriber(ORG, "md_3", [], PHYS)).resolves.toBeDefined();
     await app.close();
+  });
+});
+
+describe("GAP-034 — cosign is guarded by status, session role, separation of duties, and a real requirement", () => {
+  const COSIGN_ORDER = "00000000-0000-4000-8000-0000000000d1";
+  const ATTEST =
+    "I have reviewed this medication order drafted on behalf of the prescriber and concur.";
+  const asUser = (user: string, roles: string) => ({
+    "x-test-user": user,
+    "x-test-org": ORG,
+    "x-test-roles": roles,
+  });
+  const SUPERVISOR = asUser("sup_2", "clinical_supervisor");
+  const MEDICAL_DIRECTOR = asUser("md_off", "medical_director");
+  const url = (id = COSIGN_ORDER) => `/api/v1/medication-orders/${id}/cosign`;
+  const body = (role: string) => ({ cosignerRole: role, attestationText: ATTEST });
+  const rnDrafted = (over: Record<string, unknown> = {}) => ({
+    id: COSIGN_ORDER,
+    organizationId: ORG,
+    patientId: PATIENT,
+    admissionId: ADMISSION,
+    medClass: "standard" as const,
+    status: "pending_signature" as const,
+    prescriberMembershipId: "rn_1",
+    prescriberDiscipline: "rn_case_manager",
+    prescribingPhysicianMdmId: COSIGN_NAMED_MDM,
+    cosignRequired: true,
+    cosignStatus: "pending" as const,
+    ...over,
+  });
+  const NAMED_PHYSICIAN = [
+    { organizationId: ORG, membershipId: "md_named", externalPhysicianMdmId: COSIGN_NAMED_MDM },
+  ];
+  const makeCosignServer = (orders: Parameters<typeof makeServer>[0]) =>
+    makeServer(orders, NAMED_PHYSICIAN);
+  const code = (res: { json: () => unknown }) =>
+    (res.json() as { error?: { code?: string } }).error?.code;
+
+  it("attaches the cosignature on a pending_signature order that requires one", async () => {
+    const { app } = makeCosignServer([rnDrafted()]);
+    const res = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: SUPERVISOR,
+      payload: body("clinical_supervisor"),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().cosignStatus).toBe("attached");
+    await app.close();
+  });
+
+  it("refuses a cosign on an order that is not awaiting signature (409), leaving it untouched", async () => {
+    for (const status of ["draft", "active", "signed", "discontinued"] as const) {
+      const { app, backend } = makeCosignServer([rnDrafted({ status })]);
+      const res = await app.inject({
+        method: "POST",
+        url: url(),
+        headers: SUPERVISOR,
+        payload: body("clinical_supervisor"),
+      });
+      expect(res.statusCode, status).toBe(409);
+      expect((await backend.getOrder(ORG, COSIGN_ORDER)).cosignStatus).toBe("pending");
+      await app.close();
+    }
+  });
+
+  it("refuses a cosign on an order that requires none, and a second cosign (409)", async () => {
+    const none = makeCosignServer([rnDrafted({ cosignRequired: false, cosignStatus: null })]);
+    const r1 = await none.app.inject({
+      method: "POST",
+      url: url(),
+      headers: SUPERVISOR,
+      payload: body("clinical_supervisor"),
+    });
+    expect(r1.statusCode).toBe(409);
+    expect(code(r1)).toBe("COSIGN_NOT_REQUIRED");
+    await none.app.close();
+    const done = makeCosignServer([rnDrafted({ cosignStatus: "attached" })]);
+    const r2 = await done.app.inject({
+      method: "POST",
+      url: url(),
+      headers: SUPERVISOR,
+      payload: body("clinical_supervisor"),
+    });
+    expect(r2.statusCode).toBe(409);
+    expect(code(r2)).toBe("ALREADY_COSIGNED");
+    await done.app.close();
+  });
+
+  it("sign-controlled/complete refuses 409 COSIGN_REQUIRED while the owed cosign is unattached (EPCS cannot reopen the hole)", async () => {
+    const MD_SIGNER = {
+      "x-test-user": "md_1",
+      "x-test-org": ORG,
+      "x-test-roles": "hospice_physician",
+    };
+    const complete = {
+      method: "POST" as const,
+      url: `/api/v1/medication-orders/${COSIGN_ORDER}/sign-controlled/complete`,
+      headers: MD_SIGNER,
+      payload: { nonce: "n1", proof: { factorType: "totp", totpCode: "123456" } },
+    };
+    const owed = makeCosignServer([rnDrafted({ status: "epcs_identity_pending" })]);
+    const res = await owed.app.inject(complete);
+    expect(res.statusCode).toBe(409);
+    expect(code(res)).toBe("COSIGN_REQUIRED");
+    expect((await owed.backend.getOrder(ORG, COSIGN_ORDER)).status).toBe("epcs_identity_pending");
+    await owed.app.close();
+    // Control: once the cosign is attached the guard no longer fires (the order completes).
+    const attached = makeCosignServer([
+      rnDrafted({ status: "epcs_identity_pending", cosignStatus: "attached" }),
+    ]);
+    const ok = await attached.app.inject(complete);
+    expect(code(ok)).not.toBe("COSIGN_REQUIRED");
+    await attached.app.close();
+  });
+
+  it("422 DISCIPLINE_NOT_HELD when the body claims a role the session does not hold", async () => {
+    const { app, backend } = makeCosignServer([rnDrafted()]);
+    const rn = asUser("rn_2", "rn_case_manager");
+    const res = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: rn,
+      payload: body("medical_director"),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(code(res)).toBe("DISCIPLINE_NOT_HELD");
+    expect((await backend.getOrder(ORG, COSIGN_ORDER)).cosignStatus).toBe("pending");
+    await app.close();
+  });
+
+  it("403 COSIGNER_ROLE_MISMATCH when the held role is below the one the order demands (peer RN)", async () => {
+    const { app } = makeCosignServer([rnDrafted()]);
+    const rn = asUser("rn_2", "rn_case_manager");
+    const res = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: rn,
+      payload: body("rn_case_manager"),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(code(res)).toBe("COSIGNER_ROLE_MISMATCH");
+    await app.close();
+  });
+
+  it("403 COSIGN_SELF when the cosigner is the drafter", async () => {
+    const { app } = makeCosignServer([
+      rnDrafted({ prescriberMembershipId: "sup_1", prescriberDiscipline: "clinical_supervisor" }),
+    ]);
+    const res = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: asUser("sup_1", "clinical_supervisor"),
+      payload: body("clinical_supervisor"),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(code(res)).toBe("COSIGN_SELF");
+    await app.close();
+  });
+
+  it("403 COSIGN_SELF when the cosigner is the named physician who will sign (signer separation)", async () => {
+    const { app } = makeCosignServer([rnDrafted()]);
+    const res = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: asUser("md_named", "medical_director"),
+      payload: body("medical_director"),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(code(res)).toBe("COSIGN_SELF");
+    await app.close();
+  });
+
+  it("a medical_director who is neither drafter nor signer satisfies the supervisor demand", async () => {
+    const { app } = makeCosignServer([rnDrafted()]);
+    const res = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: MEDICAL_DIRECTOR,
+      payload: body("medical_director"),
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("request-signature by an RN drafter sets cosign_required + 'pending'; by a physician it does not", async () => {
+    const rn = makeCosignServer([
+      rnDrafted({
+        status: "draft",
+        cosignRequired: false,
+        cosignStatus: null,
+        data: stdBody().data,
+      }),
+    ]);
+    const r1 = await rn.app.inject({
+      method: "POST",
+      url: `/api/v1/medication-orders/${COSIGN_ORDER}/request-signature`,
+      headers: asUser("rn_2", "rn_case_manager"),
+      payload: { signerDiscipline: "rn_case_manager" },
+    });
+    expect(r1.statusCode, r1.body).toBe(200);
+    expect(r1.json()).toMatchObject({
+      status: "pending_signature",
+      cosignRequired: true,
+      cosignStatus: "pending",
+    });
+    await rn.app.close();
+    const md = makeCosignServer([
+      rnDrafted({
+        status: "draft",
+        cosignRequired: false,
+        cosignStatus: null,
+        prescriberMembershipId: "md_1",
+        prescriberDiscipline: "hospice_physician",
+        data: stdBody().data,
+      }),
+    ]);
+    const r2 = await md.app.inject({
+      method: "POST",
+      url: `/api/v1/medication-orders/${COSIGN_ORDER}/request-signature`,
+      headers: MD,
+      payload: { signerDiscipline: "hospice_physician" },
+    });
+    expect(r2.statusCode).toBe(200);
+    expect(r2.json()).toMatchObject({
+      status: "pending_signature",
+      cosignRequired: false,
+      cosignStatus: null,
+    });
+    await md.app.close();
+  });
+
+  it("sign is blocked (409 COSIGN_REQUIRED) until the cosignature is attached", async () => {
+    const { app } = makeCosignServer([rnDrafted()]);
+    const named = asUser("md_named", "hospice_physician");
+    const blocked = await app.inject({
+      method: "POST",
+      url: `/api/v1/medication-orders/${COSIGN_ORDER}/sign`,
+      headers: named,
+      payload: { signedAtClient: NOW },
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(code(blocked)).toBe("COSIGN_REQUIRED");
+    await app.inject({
+      method: "POST",
+      url: url(),
+      headers: SUPERVISOR,
+      payload: body("clinical_supervisor"),
+    });
+    const ok = await app.inject({
+      method: "POST",
+      url: `/api/v1/medication-orders/${COSIGN_ORDER}/sign`,
+      headers: named,
+      payload: { signedAtClient: NOW },
+    });
+    expect(ok.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+describe("GAP-034 follow-up — the drafter discipline is session-derived, stored, and drives the cosign axis", () => {
+  // rn_2 is on the PATIENT caseload and holds prescribing.draft (rn_1 is not on it).
+  const RN_DRAFTER = {
+    "x-test-user": "rn_2",
+    "x-test-org": ORG,
+    "x-test-roles": "rn_case_manager",
+  };
+  const draft = (headers: Record<string, string>, over: Record<string, unknown> = {}) =>
+    makeServer().app.inject({
+      method: "POST",
+      url: "/api/v1/medication-orders",
+      headers,
+      payload: stdBody(over),
+    });
+
+  it("a claimed prescriberDiscipline the session does not hold is NOT trusted: the draft is recorded under a held discipline, so claiming physician cannot dodge the cosign", async () => {
+    const { app, backend } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/medication-orders",
+      headers: RN_DRAFTER,
+      payload: stdBody({ prescriberDiscipline: "hospice_physician" }),
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+    expect((await backend.getOrder(ORG, id)).prescriberDiscipline).toBe("rn_case_manager");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/medication-orders/${id}/request-signature`,
+      headers: MD,
+      payload: { signerDiscipline: "hospice_physician" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((await backend.getOrder(ORG, id)).cosignRequired).toBe(true);
+  });
+
+  it("a session that holds no discipline at all cannot draft (422)", async () => {
+    const res = await draft(
+      { ...RN_DRAFTER, "x-test-roles": "" },
+      { prescriberDiscipline: "hospice_physician" },
+    );
+    expect([403, 422]).toContain(res.statusCode);
+  });
+
+  it("an RN draft followed by a PHYSICIAN request-signature still requires the cosign", async () => {
+    const { app, backend } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/medication-orders",
+      headers: RN_DRAFTER,
+      payload: stdBody({ prescriberDiscipline: "rn_case_manager" }),
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/medication-orders/${id}/request-signature`,
+      headers: MD,
+      payload: { signerDiscipline: "hospice_physician" },
+    });
+    expect(res.statusCode).toBe(200);
+    const stored = await backend.getOrder(ORG, id);
+    expect(stored.cosignRequired).toBe(true);
+    expect(stored.cosignStatus).toBe("pending");
+    await app.close();
+  });
+
+  it("cosignDraftingDiscipline prefers the stored drafter discipline and falls back to the requester only when NULL/blank", () => {
+    expect(cosignDraftingDiscipline("rn_case_manager", "hospice_physician")).toBe(
+      "rn_case_manager",
+    );
+    expect(cosignDraftingDiscipline(null, "rn_case_manager")).toBe("rn_case_manager");
+    expect(cosignDraftingDiscipline(undefined, "hospice_physician")).toBe("hospice_physician");
+    expect(cosignDraftingDiscipline("  ", "rn_case_manager")).toBe("rn_case_manager");
   });
 });

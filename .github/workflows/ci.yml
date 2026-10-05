@@ -611,9 +611,11 @@ jobs:
                 # F-220 (#248) adds test:m31:lazy-room-mint:live — the lazy telehealth room mint on first join.
                 "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live test:m31:bereavement-contact-active:live test:m31:post-discharge-grace:live test:m31:lazy-room-mint:live",
             }
+          # GAP-096 (M32) — a tenant-minted `ai_safety_owner` cannot write the platform kill switch.
+          - { name: "M32 kill-switch role key", scripts: "test:m32:kill-switch-role-key:live" }
           - {
               name: "M36 Messaging alerts",
-              scripts: "test:m36:alert-emitter:live test:m36:alert-outcome:live",
+              scripts: "test:m36:alert-emitter:live test:m36:alert-outcome:live test:m36:locked-alert-rule:live",
             }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order

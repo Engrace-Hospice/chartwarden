@@ -127,6 +127,21 @@ function safetyOwnerRoleKeys(singleTenantDeployment: boolean): readonly string[]
 }
 
 /**
+ * GAP-096 — does this SESSION role set carry the cross-tenant (platform-scope kill switch) authority?
+ *
+ * The same role set `ai_safety_owner` decides on, exported so the kill-switch route can hand the SERVICE
+ * layer a caller kind derived from the session rather than from the body. The reserved keys only reach
+ * `roles` from a platform-owned role row (`@wardenx/auth` `roleConfersKey`).
+ */
+export function hasPlatformKillSwitchAuthority(
+  roles: readonly string[],
+  singleTenantDeployment: boolean = isSingleTenantDeployment(),
+): boolean {
+  const ownerKeys = safetyOwnerRoleKeys(singleTenantDeployment);
+  return roles.some((role) => ownerKeys.includes(role));
+}
+
+/**
  * §4.1 R9/R16 — the roles whose read arm is ORed beside the safety owner's.
  *
  * Kept as its own list rather than merged into {@link AI_SAFETY_OWNER_ROLE_KEYS} for the reason stated

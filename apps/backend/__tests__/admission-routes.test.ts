@@ -42,6 +42,10 @@ function headerAuth(request: FastifyRequest): void {
     request.context.attributes.sessionPatientId = sessionPatient;
 }
 
+// GAP-022 / 42 CFR 418.22 — the F2F attestation narrative must be >= 100 characters.
+const LONG_NARRATIVE =
+  "Patient was seen face to face by the hospice physician; the clinical findings support a terminal prognosis of six months or less.";
+
 const ORG = "org_a";
 const ORG_B = "org_b";
 const ADMISSION = "adm_seed";
@@ -98,6 +102,8 @@ const PERMISSION_SEED = [
     permissions: ["f2f.attest", "discharge.for_cause", "discharge.cosign_for_cause"],
   },
   { userId: "co_1", permissions: ["compliance.read", "compliance.override"] },
+  // GAP-022 — a scheduler (intake side): may schedule an F2F but is not the performer.
+  { userId: "sched_1", permissions: ["f2f.schedule", "admission.read"] },
   // #50 — an intake user who may activate, for the service-location siting tests below.
   { userId: "act_1", permissions: ["admission.read", "admission.activate"] },
 ];
@@ -110,9 +116,12 @@ function makeServer(
       patientId: string;
     }) => Promise<boolean>;
     caseloadPatientIds?: (q: { organizationId: string; userId: string }) => Promise<string[]>;
+    /** GAP-022 — the role keys each scheduled clinician actually holds (the M3 grants stand-in). */
+    clinicianRoleKeys?: Readonly<Record<string, readonly string[]>>;
   } = {},
 ) {
   const backend = createInMemoryAdmissionBackend({
+    clinicianRoleKeys: options.clinicianRoleKeys,
     records: [
       {
         id: ADMISSION,
@@ -757,7 +766,7 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       url: `/api/v1/face-to-face/${F2F}/attest`,
       headers: RN, // has f2f.attest perm but role is clinical_rn → fails f2f.is_hospice_md_or_np
       payload: {
-        attestationNarrative: "Patient continues to meet hospice eligibility.",
+        attestationNarrative: LONG_NARRATIVE,
         ifVersion: 1,
       },
     });
@@ -768,13 +777,146 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       url: `/api/v1/face-to-face/${F2F}/attest`,
       headers: RN_AS_NP,
       payload: {
-        attestationNarrative: "Patient continues to meet hospice eligibility.",
+        attestationNarrative: LONG_NARRATIVE,
         ifVersion: 1,
       },
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().state).toBe("attested");
     await app.close();
+  });
+
+  it("GAP-022 f2f attest — a 20-char narrative is refused 422 F2F_ATTESTATION_TOO_SHORT and the service never attests", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/face-to-face/${F2F}/attest`,
+      headers: RN_AS_NP,
+      payload: { attestationNarrative: "x".repeat(20), ifVersion: 1 },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("F2F_ATTESTATION_TOO_SHORT");
+    expect(backend.events).not.toContain("m6.f2f.attested");
+    await app.close();
+  });
+
+  it("GAP-022 f2f attest — the route forwards the narrative to the service (it used to be parsed and dropped)", async () => {
+    const { app, backend } = makeServer();
+    const seen: unknown[][] = [];
+    const real = backend.service.attestF2f.bind(backend.service);
+    backend.service.attestF2f = async (...args: Parameters<typeof real>) => {
+      seen.push(args);
+      return real(...args);
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/face-to-face/${F2F}/attest`,
+      headers: RN_AS_NP,
+      payload: { attestationNarrative: LONG_NARRATIVE, ifVersion: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain(LONG_NARRATIVE);
+    await app.close();
+  });
+
+  it.each(["rn", "rn_case_manager"])(
+    "GAP-022 f2f attest — an %s-only caller is denied 403 (the MD/NP predicate no longer admits RNs)",
+    async (role) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/face-to-face/${F2F}/attest`,
+        headers: { ...RN, "x-test-roles": role },
+        payload: { attestationNarrative: LONG_NARRATIVE, ifVersion: 1 },
+      });
+      expect(res.statusCode).toBe(403);
+      await app.close();
+    },
+  );
+
+  it.each(["md", "np", "hospice_physician", "medical_director"])(
+    "GAP-022 f2f attest — a %s caller passes the MD/NP predicate",
+    async (role) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/face-to-face/${F2F}/attest`,
+        headers: { ...RN, "x-test-roles": role },
+        payload: { attestationNarrative: LONG_NARRATIVE, ifVersion: 1 },
+      });
+      expect(res.statusCode).toBe(200);
+      await app.close();
+    },
+  );
+
+  describe("GAP-022 f2f schedule — the performer role comes from the clinician's grants, not the body", () => {
+    const CLINICIAN_RN = "cccccccc-0000-4000-8000-000000000001";
+    const CLINICIAN_NP = "cccccccc-0000-4000-8000-000000000002";
+    const SCHED = {
+      "x-test-user": "sched_1",
+      "x-test-org": ORG,
+      "x-test-roles": "intake_coordinator",
+    };
+    const body = (scheduledClinicianId: string, clinicianRole: string) => ({
+      electionPeriodId: "dddddddd-0000-4000-8000-000000000001",
+      scheduledDate: "2026-06-25",
+      windowStart: "2026-06-01",
+      windowEnd: "2026-06-30",
+      clinicianRole,
+      scheduledClinicianId,
+    });
+    const roles = { [CLINICIAN_RN]: ["rn", "rn_case_manager"], [CLINICIAN_NP]: ["np"] };
+
+    it("an RN clinician claimed as hospice_md is refused 422 F2F_INVALID_PERFORMER", async () => {
+      const { app } = makeServer({ clinicianRoleKeys: roles });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/face-to-face`,
+        headers: SCHED,
+        payload: body(CLINICIAN_RN, "hospice_md"),
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("F2F_INVALID_PERFORMER");
+      await app.close();
+    });
+
+    it("an NP clinician claimed as hospice_md is refused (a role the clinician does not hold)", async () => {
+      const { app } = makeServer({ clinicianRoleKeys: roles });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/face-to-face`,
+        headers: SCHED,
+        payload: body(CLINICIAN_NP, "hospice_md"),
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("F2F_INVALID_PERFORMER");
+      await app.close();
+    });
+
+    it("an unknown clinician (no grants on file) is refused", async () => {
+      const { app } = makeServer({ clinicianRoleKeys: roles });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/face-to-face`,
+        headers: SCHED,
+        payload: body("cccccccc-0000-4000-8000-0000000000ff", "hospice_np"),
+      });
+      expect(res.statusCode).toBe(422);
+      await app.close();
+    });
+
+    it("an NP clinician claimed as hospice_np schedules (201)", async () => {
+      const { app } = makeServer({ clinicianRoleKeys: roles });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admissions/${ADMISSION}/face-to-face`,
+        headers: SCHED,
+        payload: body(CLINICIAN_NP, "hospice_np"),
+      });
+      expect(res.statusCode).toBe(201);
+      await app.close();
+    });
   });
 
   it("F-226 f2f complete — the route forwards the body's encounterDate to the service (it used to be dropped)", async () => {

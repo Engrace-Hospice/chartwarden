@@ -330,6 +330,41 @@ describe.skipIf(!DB_URL)("F-193 — M21's caregiver-signature capture — LIVE P
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  // GAP-064 — a dispatch ships from the Location STORED on its supply request; a body naming another
+  // Location is refused (422) before eligibility, par-stock or any insert, as the real wardenx_app role.
+  it("GAP-064: createDispatch refuses a body locationId that is not the request's stored Location and writes no dispatch row", async () => {
+    const req = await seedRequest({
+      organizationId: ORG_A,
+      providerEntityId: providerA,
+      locationId: locationA,
+      membershipId: memberA,
+      status: "requested",
+    });
+    await expect(
+      writeService.createDispatch(actorFor(ORG_A, USER_A, memberA), {
+        supplyRequestId: req.id,
+        comfortKitTemplateId: randomUUID(),
+        locationId: locationB,
+        deploymentSite: "home",
+        dispatchSource: "supply_hub",
+        pharmacyDispatchMode: "supply_hub_dispatch",
+        kitSerialNumber: "KIT-GAP064",
+        contents: [
+          {
+            comfortKitTemplateMedicationId: randomUUID(),
+            dispatchedQuantity: "1",
+            dispatchedUnit: "tablet",
+          },
+        ],
+      } as never),
+    ).rejects.toMatchObject({ code: "M21_LOCATION_MISMATCH" });
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM comfort_kit_dispatch WHERE supply_request_id = $1::uuid",
+      [req.id],
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
   it("the M4 audit trigger scrubs caregiver_signature_evidence_jsonb from the audit diff (migration 0268's denylist extension)", async () => {
     const req = await seedRequest({
       organizationId: ORG_A,

@@ -56,6 +56,7 @@ import {
   SupplyStateError,
   applyParStockMovement,
   assertCaregiverSignatureCaptureAllowed,
+  assertDispatchLocationMatchesRequest,
   assertParThresholdsOrdered,
   assertTemplateEffective,
   authorTenantTemplate,
@@ -67,6 +68,7 @@ import {
   transitionComfortKitDispatch,
   transitionComfortKitReturn,
   transitionSupplyRequest,
+  verifyRequestServingLocation,
 } from "../lifecycle/index";
 import { getAdmissionStatusReader } from "../seams/index";
 import type { M21WriteActor } from "./actor";
@@ -435,6 +437,12 @@ export interface M21WriteDeps {
   readonly returnWindowHours?: number;
 }
 
+/** The kinds that move a scheduled drug — the §4.1 row-1 conditional ABAC cell, re-checked in the service. */
+const KIT_REQUEST_KINDS: ReadonlySet<string> = new Set([
+  "comfort_kit_deploy",
+  "comfort_kit_replenish",
+]);
+
 export function buildDrizzleM21WriteService(
   db: DbClient,
   readService: M21ReadService,
@@ -519,6 +527,26 @@ export function buildDrizzleM21WriteService(
     );
   }
 
+  /**
+   * GAP-064 — the serving Location M6 holds for an admission (null when unsited / unreadable). Read through
+   * the same `AdmissionStatusReader` seam as the provider entity; a failure is "no server fact", which the
+   * verifier turns into a refusal rather than a trust-the-body fallback.
+   */
+  async function admissionLocationFor(
+    organizationId: string,
+    admissionId: string,
+  ): Promise<string | null> {
+    try {
+      const siting = await getAdmissionStatusReader().getAdmissionSiting(
+        organizationId,
+        admissionId as never,
+      );
+      return siting?.locationId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Run one §2.2 transition end to end (load → decide → effects → patch → return the fresh detail). */
   async function runRequestTransition(
     actor: M21WriteActor,
@@ -573,12 +601,34 @@ export function buildDrizzleM21WriteService(
     async createSupplyRequest(actor, input): Promise<CreateSupplyRequestResult> {
       const at = now();
       const providerEntityId = await providerEntityFor(actor.organizationId, input.admissionId);
+      // GAP-064 — the body's Location is a claim: verify it against the admission's siting (or, for an
+      // unsited admission, the actor's own Locations) and anchor the row to the VERIFIED value only.
+      const servingLocationId = verifyRequestServingLocation({
+        bodyLocationId: input.locationId,
+        admissionLocationId: await admissionLocationFor(actor.organizationId, input.admissionId),
+        actorLocationIds: actor.locationIds,
+      });
+      // A kit request moves a scheduled drug: re-check the §4.4 authority here (service layer — the
+      // route's preHandler is the early refusal, this is the authority) over the VERIFIED Location.
+      if (KIT_REQUEST_KINDS.has(input.kindPayload.kind)) {
+        const eligible = await dispatcherEligible({
+          organizationId: actor.organizationId,
+          membershipId: actor.membershipId,
+          locationId: servingLocationId,
+        }).catch(() => false);
+        if (!eligible) {
+          throw new SupplyStateError(
+            "M21_CONTROLLED_SUBSTANCE_DISPATCHER_DENIED",
+            "the actor is not a controlled-substance dispatcher for this admission's serving Location",
+          );
+        }
+      }
       const created = await scoped(actor, (tx) =>
         insertSupplyRequest(tx, outbox, {
           organizationId: actor.organizationId,
           patientId: input.patientId,
           admissionId: input.admissionId,
-          locationId: input.locationId,
+          locationId: servingLocationId,
           providerEntityId,
           kind: input.kindPayload.kind,
           // The D7 delivery-address snapshot rides inside `data` (§3.1.7 has no address columns): the
@@ -984,19 +1034,27 @@ export function buildDrizzleM21WriteService(
     // ── §2.5 dispatch ─────────────────────────────────────────────────────────────────────────────
     async createDispatch(actor, input: CreateDispatchInput) {
       const at = now();
+      // GAP-064 — the Location a kit ships from is the one STORED on its supply request, never the body's.
+      // Read it first, refuse a differing body value, and run every Location-bearing step (eligibility,
+      // par-stock decrement, the dispatch row) against that verified value only.
+      const storedRequest = await scoped(actor, (tx) => loadRequest(tx, input.supplyRequestId));
+      const servingLocationId = assertDispatchLocationMatchesRequest(
+        storedRequest.locationId,
+        input.locationId,
+      );
       // The §4.4 authority is re-checked HERE — after the preHandler, before the transaction opens — for
       // the same pool reason as `assignVendor` above: the probe reads M3's grant store through its own org
       // context, and nesting that inside the dispatch transaction would hold two connections per request.
-      // What it still buys over the preHandler alone is that the check runs against the LOCATION the body
-      // actually names and over the same resolver the predicate uses, so a route that bound the wrong
-      // target (or none) cannot ship a kit that `assertDispatchValid` would then wave through.
+      // It runs over the VERIFIED Location and the same resolver the predicate uses.
       const eligible = await dispatcherEligible({
         organizationId: actor.organizationId,
         membershipId: actor.membershipId,
-        locationId: input.locationId,
+        locationId: servingLocationId,
       }).catch(() => false);
       const dispatchId = await scoped(actor, async (tx) => {
         const request = await loadRequest(tx, input.supplyRequestId);
+        // The stored Location is immutable, but the transaction re-asserts it so a stale read cannot ship.
+        assertDispatchLocationMatchesRequest(request.locationId, servingLocationId);
         const [template] = await tx
           .select()
           .from(TEMPLATE)
@@ -1063,7 +1121,7 @@ export function buildDrizzleM21WriteService(
         );
 
         // Rule 3 — decrement the shelf BEFORE the insert, so an empty hub rolls the whole dispatch back.
-        await decrementPar(tx, actor, input.locationId, lines, at);
+        await decrementPar(tx, actor, servingLocationId, lines, at);
 
         const [dispatch] = await tx
           .insert(DISPATCH)
@@ -1072,7 +1130,7 @@ export function buildDrizzleM21WriteService(
             organizationId: actor.organizationId,
             patientId: request.patientId,
             admissionId: request.admissionId,
-            locationId: input.locationId,
+            locationId: servingLocationId,
             providerEntityId: request.providerEntityId,
             comfortKitTemplateId: template.id,
             deploymentSite: input.deploymentSite,
@@ -1100,7 +1158,7 @@ export function buildDrizzleM21WriteService(
             dispatchPartitionDispatchedAt: at,
             organizationId: actor.organizationId,
             providerEntityId: request.providerEntityId,
-            locationId: input.locationId,
+            locationId: servingLocationId,
             comfortKitTemplateMedicationId: line.comfortKitTemplateMedicationId,
             medicationOrderId:
               input.contents.find(

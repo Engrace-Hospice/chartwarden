@@ -464,17 +464,31 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     });
 
     it("approve + submit produce a real content-hashed snapshot and enqueue ECR generation for real; running the job renders real artifacts, and the M4 write-audit trail carries the real actor", async () => {
-      const approved = await writeService().approveForSubmit(actor, costReportId, {
+      // GAP-081: the approver is a DIFFERENT authenticated membership, stored server-side.
+      const approverActor: M27WriteActor = {
+        ...actor,
+        userId: APPROVER_USER_ID,
+        membershipId: APPROVER_MEMBERSHIP,
+      };
+      const approved = await writeService().approveForSubmit(approverActor, costReportId, {
         validationId: secondValidationId,
       });
       expect(approved.state).toBe("approved_for_submit");
+      const stored = await admin.query(
+        "SELECT approved_by_membership_id, approved_at FROM cost_report WHERE id=$1",
+        [costReportId],
+      );
+      expect(stored.rows[0].approved_by_membership_id).toBe(APPROVER_MEMBERSHIP);
+      expect(stored.rows[0].approved_at).not.toBeNull();
+
+      // The approver cannot submit — no body field is involved, the stored approver is compared always.
+      await expect(writeService().submit(approverActor, costReportId)).rejects.toMatchObject({
+        code: "TWO_PERSON_CONTROL_VIOLATION",
+        statusCode: 403,
+      });
 
       const emissionsBeforeSubmit = outbox.emissions.length;
-      const submitted = await writeService().submit(actor, costReportId, {
-        attestedByMembershipId: MEMBERSHIP,
-        attestedAt: new Date().toISOString(),
-        approvedByMembershipId: APPROVER_MEMBERSHIP, // two-person control: approver != submitter
-      });
+      const submitted = await writeService().submit(actor, costReportId);
       expect(submitted.state).toBe("submitted");
       expect(submitted.latestSnapshotId).toBeTruthy();
 

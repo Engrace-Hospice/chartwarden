@@ -17,6 +17,7 @@
 // is idempotent via registerPredicateIdempotent.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { getSeam } from "../../bootstrap/index";
+import { F2F_PERFORMER_ROLE_KEYS } from "./certification/f2f-performer";
 import type { AdmissionAbacResolver } from "./routes/service";
 
 /** The §4.6 predicate names M6 owns (registered into M3). `patient.scope` is excluded — it is M5's. */
@@ -41,7 +42,9 @@ export const M6_ROLE_PREDICATE_NAMES = {
   complianceWindowOverride: "compliance.window_override",
 } as const;
 
-const MD_OR_NP = ["medical_director", "hospice_physician", "np", "rn_case_manager", "rn"] as const;
+// GAP-022 — 42 CFR 418.22 / spec R-F2F-01: only a hospice physician or NP attests the F2F. RN and
+// RN case manager are NOT admitted (they were: an RN scheduled as performer could attest a recert F2F).
+const MD_OR_NP = F2F_PERFORMER_ROLE_KEYS;
 
 const UNSITED_ADMISSION_ROLES = [
   "intake_coordinator",

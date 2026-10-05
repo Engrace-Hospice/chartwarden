@@ -47,6 +47,7 @@ import {
   type NotificationChannel,
   createAlertEmitter,
   rollUpAlertOutcome,
+  selectEffectiveAlertRules,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
@@ -166,15 +167,12 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
               or(isNull(AR.organizationId), eq(AR.organizationId, orgId)),
             ),
           );
-        // Mirrors messaging-route-service-db.ts's `listAlertRules`/`patchAlertRule` established
-        // design: a tenant's own row for an eventType REPLACES the platform default entirely (the
-        // clone-on-first-edit model — the platform row is never deleted, just shadowed), never a
-        // union at the eventType granularity. Unlike that admin-list view (which keeps only ONE row
-        // per eventType, silently dropping extra org severityFloor variants), this keeps every org
-        // row so multiple tenant-configured severity tiers for the same event all fire.
-        const orgRows = rows.filter((r) => r.organizationId === orgId);
-        const platformRows = rows.filter((r) => r.organizationId === null);
-        return (orgRows.length > 0 ? orgRows : platformRows).map(toEmitAlertRule);
+        // A tenant's own row for an eventType REPLACES the platform default (the clone-on-first-edit
+        // model — the platform row is never deleted, just shadowed); every org row is kept so multiple
+        // tenant-configured severity tiers for one event all fire. GAP-102: against a system_locked
+        // platform rule an org row only counts if it TIGHTENS it (spec §7.4/D11) — a weaker row (legacy
+        // data written before migration 0334) is ignored and the locked platform rule fires instead.
+        return selectEffectiveAlertRules(rows, orgId).map(toEmitAlertRule);
       });
     },
 

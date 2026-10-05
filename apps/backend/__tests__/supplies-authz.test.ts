@@ -228,6 +228,152 @@ describe("M21-T05 §4.4 — controlled_substance_dispatcher_eligible", () => {
     ).toBe(true);
   });
 
+  // ── GAP-064 — the Location is a SERVER fact, never the body's claim ───────────────────────────────
+  it("GAP-064: evaluates a dispatch-create target against the STORED request Location, not the body's", async () => {
+    const resolver: SuppliesAbacResolver = {
+      ...denyStubSuppliesAbacResolver,
+      async loadRequest() {
+        // a wound-supply-kind row: the request-kind gate would allow, but the dispatch route declares it controlled
+        return {
+          organizationId: ORG,
+          targetId: "req-1",
+          locationId: LOC_B,
+          involvesControlledSubstance: false,
+        };
+      },
+      async roleKeysOf() {
+        return ["supply_coordinator"];
+      },
+      async locationIdsOf() {
+        return [LOC_A];
+      },
+    };
+    const predicate = buildSuppliesAbacPredicates({
+      resolver,
+    }).controlled_substance_dispatcher_eligible;
+    expect(
+      await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
+        supplyRequestId: "req-1",
+        locationId: LOC_A, // the body's lie
+        involvesControlledSubstance: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("GAP-064: a dispatch-create target naming a request that does not exist DENIES", async () => {
+    const predicate = buildSuppliesAbacPredicates({
+      resolver: denyStubSuppliesAbacResolver,
+    }).controlled_substance_dispatcher_eligible;
+    expect(
+      await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
+        supplyRequestId: "missing",
+        locationId: LOC_A,
+        involvesControlledSubstance: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("GAP-064: a request-create target resolves the Location off the ADMISSION, ignoring the body's", async () => {
+    const resolver: SuppliesAbacResolver = {
+      ...denyStubSuppliesAbacResolver,
+      async loadAdmissionLocation() {
+        return LOC_B;
+      },
+      async roleKeysOf() {
+        return ["supply_coordinator"];
+      },
+      async locationIdsOf() {
+        return [LOC_A];
+      },
+    };
+    const predicate = buildSuppliesAbacPredicates({
+      resolver,
+    }).controlled_substance_dispatcher_eligible;
+    expect(
+      await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
+        admissionId: "adm-1",
+        locationId: LOC_A,
+        involvesControlledSubstance: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("GAP-064: a request-create target whose admission Location cannot be resolved DENIES", async () => {
+    const predicate = buildSuppliesAbacPredicates({
+      resolver: denyStubSuppliesAbacResolver,
+    }).controlled_substance_dispatcher_eligible;
+    expect(
+      await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
+        admissionId: "adm-1",
+        locationId: LOC_A,
+        involvesControlledSubstance: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("GAP-064: a NON-controlled create target passes WITHOUT consulting the admission siting", async () => {
+    const resolver: SuppliesAbacResolver = {
+      ...denyStubSuppliesAbacResolver,
+      async loadAdmissionLocation() {
+        throw new Error("must not be consulted");
+      },
+    };
+    const predicate = buildSuppliesAbacPredicates({
+      resolver,
+    }).controlled_substance_dispatcher_eligible;
+    expect(
+      await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
+        admissionId: "adm-1",
+        locationId: LOC_A,
+        involvesControlledSubstance: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("GAP-064: a controlled create target on an UNSITED admission evaluates against the actor's own Locations", async () => {
+    const resolver: SuppliesAbacResolver = {
+      ...denyStubSuppliesAbacResolver,
+      async roleKeysOf() {
+        return ["supply_coordinator"];
+      },
+      async locationIdsOf() {
+        return [LOC_A];
+      },
+    };
+    const predicate = buildSuppliesAbacPredicates({
+      resolver,
+    }).controlled_substance_dispatcher_eligible;
+    const ctx = contextOf({ attributes: { membershipId: DISPATCHER } });
+    const target = { admissionId: "adm-1", involvesControlledSubstance: true };
+    expect(await predicate(ctx, { ...target, locationId: LOC_A })).toBe(true);
+    expect(await predicate(ctx, { ...target, locationId: LOC_B })).toBe(false);
+  });
+
+  it("GAP-064: a controlled create target DENIES when the admission siting read throws", async () => {
+    const resolver: SuppliesAbacResolver = {
+      ...denyStubSuppliesAbacResolver,
+      async loadAdmissionLocation() {
+        throw new Error("seam down");
+      },
+      async roleKeysOf() {
+        return ["supply_coordinator"];
+      },
+      async locationIdsOf() {
+        return [LOC_A];
+      },
+    };
+    const predicate = buildSuppliesAbacPredicates({
+      resolver,
+    }).controlled_substance_dispatcher_eligible;
+    expect(
+      await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
+        admissionId: "adm-1",
+        locationId: LOC_A,
+        involvesControlledSubstance: true,
+      }),
+    ).toBe(false);
+  });
+
   it("DENIES a create-path target that declares no Location (a route that forgot its getTarget)", async () => {
     const predicate = buildSuppliesAbacPredicates({
       resolver: denyStubSuppliesAbacResolver,

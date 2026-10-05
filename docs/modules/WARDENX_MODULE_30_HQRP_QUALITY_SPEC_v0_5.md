@@ -2178,10 +2178,10 @@ Per architecture v0.11 §7 (Outbox-only cross-module communication), M30 emits t
 | `m30.cahps.export_completed` | R-14 worker finishes | `{ orgId, exportId, samplePeriod, vendor, status }` | M33 |
 | `m30.cahps.results_ingested` | R-16 ingests vendor results | `{ orgId, period, measuresAffected: MeasureId[] }` | M28, M33 |
 | `m30.qapi.project_chartered` | New QAPI project inserted | `{ orgId, projectId, indicatorId, phase: 'planned' }` | M33, M22 (charter PDF on request) |
-| `m30.qapi.pip_closed` | PIP close with co-sign | `{ orgId, projectId, pipId, outcome, closedAt }` | M33, M22 |
+| `m30.qapi.pip_closed` | PIP close (closer signs; co-signer nominated, un-attested) | `{ orgId, projectId, pipId, outcome, closedAt, closedBy, nominatedCosigner, cosignerAttested:false }` | M33, M22 |
 | `m30.sra.cycle_opened` | New SRA cycle created | `{ orgId, cycleId, fiscalYear, scopeTemplateVersion }` | M33 |
 | `m30.sra.finding_added` | New finding | `{ orgId, cycleId, findingId, controlRef, riskBand }` | M33 |
-| `m30.sra.cycle_closed` | Co-signed close | `{ orgId, cycleId, closedAt, openFindingsAtClose }` | M33, M34 (tenant gate refresh) |
+| `m30.sra.cycle_closed` | Close (closer signs; co-signer nominated, un-attested) | `{ orgId, cycleId, closedAt, openFindingsAtClose, closedBy, nominatedCosigner, cosignerAttested:false }` | M33, M34 (tenant gate refresh) |
 | `m30.mortality.review_created` | Auto-created on `m6.discharge.death` | `{ orgId, reviewId, patientId, dateOfDeath, targetCompletionAt }` | M33 |
 | `m30.mortality.review_completed` | Reviewer completes | `{ orgId, reviewId, dimensions: { clinical, satisfaction, compliance } }` | M33 |
 | `m30.cop.status_changed` | Citation status transition | `{ orgId, citationId, fromStatus, toStatus, lastReviewedAt }` | M33, M34 |

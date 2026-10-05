@@ -11,6 +11,9 @@ import {
   F2fScheduleOutOfWindowError,
   createInMemoryAdmissionBackend,
 } from "../src/modules/06-admission/index";
+import { SYSTEM_F2F_ACTOR } from "../src/modules/06-admission/routes/service";
+const F2F_ATTESTATION_NARRATIVE =
+  "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -260,6 +263,7 @@ describe("M6-T12 §7.4 — conduct & attest F2F (W-F2F)", () => {
         electionPeriodId: "period_f",
         scheduledClinicianId: "np_1",
         clinicianRole: "np",
+        actor: SYSTEM_F2F_ACTOR,
         scheduledDate: "2026-10-15",
       }),
     ).rejects.toBeInstanceOf(F2fScheduleOutOfWindowError);
@@ -292,11 +296,12 @@ describe("M6-T12 §7.4 — conduct & attest F2F (W-F2F)", () => {
       electionPeriodId: "period_f",
       scheduledClinicianId: "np_1",
       clinicianRole: "np",
+      actor: SYSTEM_F2F_ACTOR,
       scheduledDate: "2026-09-01",
     });
     const done = await svc.completeF2f(ORG, f2f.id, f2f.version, "2026-08-30");
     expect(done.state).toBe("completed");
-    const att = await svc.attestF2f(ORG, f2f.id, done.version, "np_1");
+    const att = await svc.attestF2f(ORG, f2f.id, done.version, "np_1", F2F_ATTESTATION_NARRATIVE);
     expect(att.state).toBe("attested");
     expect(backend.events).toEqual(expect.arrayContaining(["m6.f2f.scheduled", "m6.f2f.attested"]));
   });

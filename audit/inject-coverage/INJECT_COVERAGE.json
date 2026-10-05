@@ -317,7 +317,8 @@
       "routes": 45,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/cost-report-inject.test.ts"
+        "apps/backend/__tests__/cost-report-inject.test.ts",
+        "apps/backend/__tests__/m27-two-person-control-routes.test.ts"
       ],
       "directRoutesReferenced": 45
     },
@@ -345,6 +346,7 @@
       "routes": 60,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m30-close-cosign.test.ts",
         "apps/backend/__tests__/quality-inject.test.ts"
       ],
       "directRoutesReferenced": 60
