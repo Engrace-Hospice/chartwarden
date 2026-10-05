@@ -1,19 +1,25 @@
 # ADR-0050 — Production moves from a single Compose VPS to Talos Linux / Kubernetes behind Pangolin, deployed by GitOps pull
 
-- **Status:** **Proposed** — the product owner has decided D3 (CloudNativePG), D4 (Argo CD), D5
-  (External Secrets + OpenBao) and the D6 object store (Garage). It stays Proposed until the open
-  questions below are settled, cluster hosting first.
+- **Status:** **Proposed** — the product owner has decided:
+  - D1 hosting: Hostinger test → OVHcloud production → Hostinger playground
+  - D3: CloudNativePG
+  - D4: Argo CD
+  - D5: External Secrets + OpenBao
+  - D6 object store: Garage
+
+  It stays Proposed until the three open questions below are settled.
 - **Date:** 2026-10-05
 - **Phase:** production platform.
 - **Supersedes (when Accepted):** System Design §2.4 ("Why Not Kubernetes Initially"), and §2.2's VM
-  allocation as the *runtime* layout. Proxmox remains the hypervisor.
+  allocation as the *runtime* layout. Production runs on OVHcloud bare metal, not Proxmox (D1).
 - **Amends (when Accepted):** Architecture §18 (the "Deploy" bullet: "Proxmox VMs pull via
   systemd-managed compose"), §19, and the §14 "Encryption at rest" row; DR/BCP §4.1 (pgBackRest → CloudNativePG) and §4.2
   (MinIO → Garage); the Ops Runbook; `.github/workflows/deploy.yml`'s `deploy` job.
 - **Related:** [ADR-0049](ADR-0049-tenant-subdomains.md) (the Pangolin wildcard edge this platform sits
   behind), [ADR-0045](ADR-0045-platform-kek-custody.md) (the env-held platform KEK, which becomes a
   Kubernetes Secret here), [ADR-0010](ADR-0010-tenancy-rls-invariants.md) (the NOBYPASSRLS
-  `wardenx_app` role this ADR must preserve), [ADR-0038](ADR-0038-app-layer-envelope-encryption.md)
+  `wardenx_app` role this ADR must preserve), [Platform Tools Manual](../PLATFORM_TOOLS_MANUAL.md) (the
+  operating manual for every tool named here), [ADR-0038](ADR-0038-app-layer-envelope-encryption.md)
   (application-layer encryption, unchanged).
 
 ## Context
@@ -59,7 +65,22 @@ OS with no SSH and no shell.
 
 ## Decision
 
-### D1 — Cluster: Talos Linux on Proxmox VMs, three nodes to start
+### D1 — Cluster: Talos Linux, three nodes, in three hosting phases
+
+**Hosting** *(decided by the product owner, 2026-10-05)*:
+
+| Phase | Where | Purpose | Data |
+|---|---|---|---|
+| Stage 0 (now) | Hostinger servers | Build and rehearse the whole platform; prove the app and the cutover | **Synthetic only** |
+| Stage 1 | OVHcloud bare metal, Oregon region (East region later for DR) | Production | Real PHI, under OVHcloud's BAA |
+| After stage 1 | The Hostinger cluster, kept | Permanent playground: upgrade rehearsals, experiments, drills | **Synthetic only**, no production credentials |
+
+- **Production stays put until stage 1.** The current Compose VPS remains production throughout stage 0.
+  Hostinger is not a production target unless Hostinger signs a BAA, so neither the Hostinger test cluster
+  nor the playground may ever hold PHI or a production secret.
+- **Before stage-0 work starts, confirm two things:**
+  - **Hostinger:** the servers can boot a custom Talos image (Image Factory ISO or disk image).
+  - **OVHcloud:** the BAA covers the bare-metal product actually rented.
 
 - **Nodes:** three Talos nodes, each a control-plane node that also schedules workloads. etcd needs
   three members to survive losing one. Dedicated worker nodes join when load requires; the inference
@@ -89,7 +110,7 @@ OS with no SSH and no shell.
 | docling sidecar | Deployment (CPU) | Already a separate service per ADR-0048 |
 | local inference (Ollama) | Deployment on the GPU node when present | Optional, as today |
 
-- **Ingress:** a Gateway API implementation (Cilium Gateway or Traefik). It receives Pangolin's
+- **Ingress:** **Envoy Gateway** (Gateway API), with no public LoadBalancer IP. It receives Pangolin's
   traffic and path-routes `/api/`, `/portal/` and `/` (ADR-0049 D2). **Not ingress-nginx**, which the
   Kubernetes project has retired.
 - **Pangolin connection:** Pangolin reaches the cluster through its tunnel client, **Newt**, running
@@ -100,11 +121,14 @@ OS with no SSH and no shell.
 ### D3 — PostgreSQL: CloudNativePG in-cluster *(decided by the product owner, 2026-10-05)*
 
 - **Topology:** the CloudNativePG operator runs a `Cluster` with one primary and two streaming
-  replicas (one per node) using the pgvector image, with automated failover.
-- **Backups:** continuous WAL archiving and scheduled base backups go through barman-cloud to an
-  off-site, encrypted S3-compatible target. The target is **not** the in-cluster Garage, so a
-  cluster loss cannot take its own backups with it. Point-in-time recovery makes DR Tier-1's 5-minute
-  RPO real.
+  replicas (one per node) using the pgvector image, with automated failover. Replication is
+  **synchronous with at least one synchronous standby**, so losing the primary loses no committed
+  transaction (RPO ≈ 0 for node failure).
+- **Backups:** continuous WAL archiving and scheduled base backups go **directly** through barman-cloud
+  to an off-site, encrypted, BAA-covered S3-compatible target with **Object Lock**. They are written with
+  credentials that cannot delete, so neither a cluster loss nor an attacker holding cluster credentials
+  can destroy the recovery path. A nightly copy into the in-cluster Garage speeds up routine restores;
+  it is never the only copy. Point-in-time recovery makes DR Tier-1's 5-minute RPO real.
 - **What it replaces:** DR/BCP §4.1's pgBackRest design. The VM-based alternative (dedicated Postgres
   VMs with pgBackRest) was considered and rejected: hand-built failover, and a second operational
   surface with no declarative state.
@@ -139,10 +163,13 @@ OS with no SSH and no shell.
 - **Sync policy:** automated sync with `selfHeal` (a manual `kubectl` edit is reverted to Git). `prune`
   is on for app resources, and **off** for data services (CloudNativePG `Cluster`, Garage, OpenBao), so
   a bad commit can never delete a database.
-- **Signature verification moves into admission.** A policy controller (Kyverno, or Sigstore
-  `policy-controller`) refuses any pod whose image lacks a keyless signature from **this repository's
-  `deploy.yml` on `main`**. That is the same identity `deploy.sh` pins today, so the F-040 property is
-  enforced for *every* pod, not just at deploy time.
+- **Signature verification moves into admission, at stage 1.** Kyverno (`verifyImages` plus
+  digest pinning, in Enforce mode from the first production sync) refuses any pod whose image lacks a
+  keyless signature from **this repository's `deploy.yml` on `main`**. That is the same identity
+  `deploy.sh` pins today, so the F-040 property is enforced for *every* pod, not just at deploy time.
+  Once `deploy.sh` is gone, admission is the only place this check runs, so it cannot wait for stage 2.
+  Kyverno's other policies (non-root, read-only root filesystem, and so on) roll in through Audit mode
+  at stage 2.
 - **Argo CD hardening:** Argo CD holds cluster-admin, so it is the most sensitive service in the
   cluster.
   - The local `admin` account is disabled after bootstrap. Sign-in is SSO only, with RBAC: owners can
@@ -247,21 +274,28 @@ OS with no SSH and no shell.
 
 ## Migration plan
 
-1. **Stand up the cluster.** Talos, Cilium, Argo CD, OpenBao + External Secrets, the policy controller, storage, CloudNativePG, Valkey,
-   Garage (with its bucket/key bootstrap Job), Newt.
-2. **Prove the app in staging.** Deploy it against an empty database and run the live suites (real
-   `wardenx_app`, NOBYPASSRLS) and the smoke test (`deploy/production/smoke.sh`) against it.
-3. **Rehearse the cutover.** `pg_dump` → restore into CloudNativePG, timed. Copy every bucket from the
+1. **Stage 0: build on Hostinger.** Talos, Cilium, Envoy Gateway, Argo CD, OpenBao + External Secrets,
+   Kyverno, storage, CloudNativePG, Valkey, Garage (with its bucket/key bootstrap Job), Newt.
+   Everything is defined in Git so it can be replayed on OVHcloud.
+2. **Prove the app on Hostinger (synthetic data).** Run the live suites (real `wardenx_app`,
+   NOBYPASSRLS), the Garage adapter suite and the smoke test (`deploy/production/smoke.sh`). Drill
+   failover, restore from the off-site backups, and OpenBao unseal and recovery.
+3. **Stage 1: replay the platform on OVHcloud** from the same Git definitions. Only the environment
+   overlay differs.
+4. **Rehearse the cutover on OVHcloud.** `pg_dump` → restore into CloudNativePG, timed. Copy every bucket from the
    VPS MinIO into Garage with `rclone sync --checksum`, keeping keys and bucket names identical.
    Verify object counts and SHA-256s, and row counts.
-4. **Cut over.** In a maintenance window: freeze writes on the VPS, take the final dump and restore,
+5. **Cut over.** In a maintenance window: freeze writes on the VPS, take the final dump and restore,
    then point the Pangolin resource at the cluster. The VPS stays warm and read-only for 14 days as
    the rollback path.
-5. **Decommission** the VPS, the SSH deploy secrets and the self-hosted runner.
+6. **Decommission** the Compose VPS, the SSH deploy secrets and the deploy job's self-hosted runner.
+   The Hostinger cluster becomes the playground. Its Argo CD tracks a separate `playground` overlay,
+   and it never receives production secrets.
 
 ## Consequences
 
-- System Design §2.4 is superseded, and §2.2's VM table becomes the Proxmox *host* layout under Talos.
+- System Design §2.4 is superseded, and §2.2's Proxmox VM table is replaced by the three-phase hosting in
+  D1.
 - `deploy/production/` (Compose + `deploy.sh`) is retired after cutover, and `deploy/k8s/` becomes the
   source of truth. `deploy.sh`'s safeguards survive in new places:
   - the production env-contract check → an init container
@@ -273,19 +307,14 @@ OS with no SSH and no shell.
 - New fitness work (follow-up issues, not this ADR):
   - Kubernetes manifests must pass the policy checks (image digest pinned, signature policy present,
     no BYPASSRLS credentials in app Secrets).
-  - The live suites gain a job against the staging cluster.
+  - The live suites gain a job against the Hostinger cluster (stage 0, then the playground).
 
 ## Open questions (for decision)
 
-1. **Where the cluster is hosted.** The architecture assumes Proxmox in the homelab, while production
-   today is a Hostinger VPS. Talos can run on either. Homelab hardware must meet DR/BCP's off-site
-   requirement separately.
-2. **OpenBao auto-unseal mechanism (D5):** which key outside the cluster unseals it? Candidates: a
+1. **OpenBao auto-unseal mechanism (D5):** which key outside the cluster unseals it? Candidates: a
    cloud KMS, an HSM / PKCS#11 device, or a second small OpenBao (transit seal) on separate hardware.
    Confirm what the pinned OpenBao release supports.
-3. **Off-site backup target (D3):** which encrypted S3-compatible provider holds the CloudNativePG WAL
-   archive and base backups? It must be covered by a BAA if it is a third party.
-4. **Staging:** a separate small cluster, or a `staging` namespace in production? A separate cluster is
-   recommended for a PHI system.
-5. **Garage off-site protection (D6):** a second Garage zone at another site, or a scheduled `rclone`
+2. **Off-site backup target (D3):** which encrypted, Object-Lock-capable S3 provider holds the
+   CloudNativePG WAL archive and base backups? It must be covered by a BAA if it is a third party.
+3. **Garage off-site protection (D6):** a second Garage zone at another site, or a scheduled `rclone`
    copy to an encrypted off-site S3 target?
