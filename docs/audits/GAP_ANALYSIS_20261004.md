@@ -1,0 +1,3889 @@
+# WardenX Gap Analysis — 2026-10-04
+
+Generated: 2026-10-04T22:10:06Z · Repository: WardenX (`/Users/fabrice/Apps/x2/wardenx4`, branch `main` @ `77b919edb`) · Brief: `docs/audits/GAP_ANALYSIS_AUDIT_PROMPT.md`
+
+This report merges the output of **14 first-pass workers**: 8 module batches (M01–M05 … M36–M40) plus the fitness-kit, seams, ui-parity, security, docs and discovered-gap workers. None of them failed. Verification method:
+- **P0:** majority vote of 3 independent verifier lenses.
+- **P1:** one independent verifier, doing a separate re-read and a counter-evidence search.
+- **P2/P3:** every 5th finding per worker was sampled; the rest are marked `Verified=false`.
+
+Where a verifier returned `confirmed_with_corrections`, its corrected gap, evidence and severity replace the originals (corrections are listed in §7). No finding was refuted. Every P0/P1 below is verified.
+
+> **Scope exclusion (owner decision):** the CI/deploy `verify` gate is disabled on purpose. It is out of scope here, and any finding about it (for example, the prior audit's GAP-072) has been excluded.
+
+## 1. Executive summary
+
+| Severity | Count |
+|---|---|
+| P0 | 6 |
+| P1 | 106 |
+| P2 | 76 |
+| P3 | 20 |
+| **Total** | **208** |
+
+### Top 5 risks (could break prod or block certification)
+
+1. **Breaks in tenancy and identity trust.** A tenant admin can do three things across tenant boundaries: mint a `platform_admin`/`platform_ops` role key and suspend or close another tenant (GAP-003), deactivate any user platform-wide (GAP-001), and stop AI capabilities for every tenant (GAP-096). Separately, staff sessions live 7 days, rolling, with no 15-min idle or 8h absolute logoff (GAP-002).
+2. **Clinical-safety controls decided by the client.** These checks trust values in the request body: the controlled-substance witness (body `medClass`, GAP-005), M11/M12 signer discipline and named prescriber (GAP-031, GAP-035), the M12 SUD consent gate (hard-coded true, GAP-036), F2F performer role (GAP-022), and EVV presence and geofence (GAP-050, GAP-054).
+3. **Minimum-necessary access within a tenant.** `caseload_or_scope` is declared but never applied on eMAR (now P0, GAP-004), orders, prescribing, visits, triage, labs, consents, M15 writes and M30 PHI routes. Because `requirePermission` ignores `PermissionDef.abac`, any key holder can read or write PHI for every patient in the org.
+4. **Patient-rights and compliance writes silently dropped.** These routes return success and persist nothing: portal §164.526 amendments (GAP-006), the §164.524 export bundle (GAP-065), portal caregiver attestation and opt-out (GAP-092). Break-glass never notifies Compliance (GAP-010). Binary PHI reads are not audited (GAP-013). Write audits record a NULL actor across 11 modules (GAP-111).
+5. **Revenue, cap and quality pipelines that never run.** No worker revalidates M23 claims (GAP-070), and the NOE window crons throw (GAP-069). The M26 cap ledger and inpatient accrual are never written (GAP-075, GAP-077). M24 room-and-board days are never created (GAP-071). The M25 denial seed consumers are not constructed (GAP-072). M30 operational measures throw, and the missed-dose rate is fabricated (GAP-090, GAP-039).
+
+**Overall health:** the structural fitness kit is fully green (build, typecheck, 38/38 gates, 11,033 tests, clean `bun audit`), but those gates are proxies. Behind them are 6 verified P0s in tenancy, identity, controlled substances and patient rights; a systemic gap in intra-tenant ABAC; and a large layer of workers and outbox seams that are bound but never run.
+
+## Delta vs. 2026-10-02 audit
+
+The 2026-10-02 report (`docs/audits/GAP_ANALYSIS_20261002.md`, at `4ba54589d`) had 73 P0/P1 findings: 1 P0 and 72 P1. Here is how they map to this run:
+
+- **Still open (matched to a new GAP id):** 60. Three were raised to P0: prior GAP-002 (session timeouts) and prior GAP-020 and GAP-021 (M13 witness and caseload). Several were merged or split.
+- **Not re-found:** 12. **None is positively shown as fixed.** In every case this run's workers did not re-examine that code path. Treat them as still open until checked.
+- **Excluded:** 1 (prior GAP-072, the CI/deploy gate).
+- **Genuinely new findings** (no match to any prior GAP id, matched by keyword against the prior report): **131**, of which **55 are P0/P1**. Five prior P2 findings were raised to P1 this run: GAP-075 (open sign-up), GAP-085 (M8 cosigner id mismatch), GAP-096 (M13 PRN), GAP-101 (M19 triage list) and GAP-136 (M36 manage_members).
+
+Every prior P0/P1 matched above was re-verified as still present at HEAD `77b919edb`.
+
+| Prior ID (2026-10-02) | Sev | Prior title | Status this run | New ID(s) |
+|---|---|---|---|---|
+| 10-02 GAP-001 | P0 | Role-key spoof cross-tenant | still open | GAP-003 |
+| 10-02 GAP-002 | P1 | Session timeouts not enforced | still open (now P0) | GAP-002 |
+| 10-02 GAP-003 | P1 | No provider_entity/location creation | still open (re-found as part of a P2) | GAP-115 |
+| 10-02 GAP-004 | P1 | M3 break-glass/engagements in-memory | still open | GAP-010, GAP-011 |
+| 10-02 GAP-005 | P1 | M4 workers never built | still open | GAP-014 |
+| 10-02 GAP-006 | P1 | M5 payer write ABAC | still open | GAP-017 |
+| 10-02 GAP-007 | P1 | M5 no outbox emit | still open | GAP-016 |
+| 10-02 GAP-008 | P1 | No patient_assignment writer | still open | GAP-015 |
+| 10-02 GAP-009 | P1 | M5 13 routes absent / soft-match | still open | GAP-018, GAP-019 |
+| 10-02 GAP-010 | P1 | No discharge/revocation/transfer UI | still open | GAP-021 |
+| 10-02 GAP-011 | P1 | M8 late-entry tiers never computed | not re-found: batch-2's M8 pass covered ABAC, cosign, sign and addenda but not late-entry. Not re-examined; no evidence it is fixed. | — |
+| 10-02 GAP-012 | P1 | M8 author ABAC | still open | GAP-028 |
+| 10-02 GAP-013 | P1 | M8 override step-up | not re-found: not re-examined (no M8 step-up check in the inputs). | — |
+| 10-02 GAP-014 | P1 | M8 EncounterCreator in-memory | not re-found: the seams worker's in-memory ledger review listed only M2/M3 entries. That does not show the M8 fallback was fixed; not re-examined. | — |
+| 10-02 GAP-015 | P1 | M11 caseload | still open | GAP-030 |
+| 10-02 GAP-016 | P1 | M12 caseload | still open | GAP-033 |
+| 10-02 GAP-017 | P1 | No DoseSpot transport | still open | GAP-037 |
+| 10-02 GAP-018 | P1 | Rx-benefit hard-coded | not re-found: batch-3 read only the sign, cosign and edit paths. Not re-examined. | — |
+| 10-02 GAP-019 | P1 | M12 policy tables missing | not re-found: not re-examined. | — |
+| 10-02 GAP-020 | P1 | M13 witness on client medClass | still open (now P0) | GAP-005 |
+| 10-02 GAP-021 | P1 | M13 caseload | still open (now P0) | GAP-004 |
+| 10-02 GAP-022 | P1 | M13 void step-up | still open | GAP-041 |
+| 10-02 GAP-023 | P1 | M14 decision rewrite | still open | GAP-043 |
+| 10-02 GAP-024 | P1 | M14 supersede quorum | still open (merged) | GAP-043 |
+| 10-02 GAP-025 | P1 | M14 agenda PATCH/DELETE no-ops | not re-found: batch-3 read only the decision and action-item paths. Not re-examined. | — |
+| 10-02 GAP-026 | P1 | M14 meeting scope / concurrency | still open (re-found as P2, not sampled) | GAP-127 |
+| 10-02 GAP-027 | P1 | M14 packet caseload | still open (re-found as P2, not sampled) | GAP-128 |
+| 10-02 GAP-028 | P1 | M16 workers | still open | GAP-048 |
+| 10-02 GAP-029 | P1 | M16 consumers | still open (rated P2 this time as a documented deferral) | GAP-130 |
+| 10-02 GAP-030 | P1 | M17 visit reads caseload | still open | GAP-053 |
+| 10-02 GAP-031 | P1 | M17 own-vs-any | still open | GAP-051 |
+| 10-02 GAP-032 | P1 | M17 PTO reassignment | still open | GAP-052 |
+| 10-02 GAP-033 | P1 | Null audit actor M17/M18 | still open (wider: 11 modules) | GAP-111 |
+| 10-02 GAP-034 | P1 | M18 geofence | still open | GAP-054 |
+| 10-02 GAP-035 | P1 | M18 workers | still open | GAP-056 |
+| 10-02 GAP-036 | P1 | M18 offline-sync ABAC | still open | GAP-055 |
+| 10-02 GAP-037 | P1 | M18 base64 coords | still open (re-found as P2, not sampled) | GAP-133 |
+| 10-02 GAP-038 | P1 | M19 crons | still open | GAP-057 |
+| 10-02 GAP-039 | P1 | M20 overdue detector | still open | GAP-061 |
+| 10-02 GAP-040 | P1 | M20 cipher unbound | still open | GAP-060 |
+| 10-02 GAP-041 | P1 | M21 crons | still open | GAP-062 |
+| 10-02 GAP-042 | P1 | M23 window-watch crons | still open | GAP-069 |
+| 10-02 GAP-043 | P1 | M23 revalidate worker | still open | GAP-070 |
+| 10-02 GAP-044 | P1 | M23 validation override 503 | not re-found: not re-examined. | — |
+| 10-02 GAP-045 | P1 | M23 eligibility check 503 | still open (merged) | GAP-070 |
+| 10-02 GAP-046 | P1 | M24 rb_day | still open | GAP-071 |
+| 10-02 GAP-047 | P1 | M25 consumers not constructed | still open | GAP-072 |
+| 10-02 GAP-048 | P1 | M27 two-person control | still open | GAP-081 |
+| 10-02 GAP-049 | P1 | FHIR resource coverage | not re-found: batch-6 checked M28 routes against spec §4.1 but did not enumerate resource types. Not shown fixed; listed in §7. | — |
+| 10-02 GAP-050 | P1 | M29 MLLP listener | still open | GAP-086 |
+| 10-02 GAP-051 | P1 | M29 lab read audit | not re-found: the security worker's read-audit review covered Buffer emission only. Not re-examined. | — |
+| 10-02 GAP-052 | P1 | M29 lab list caseload | still open | GAP-085 |
+| 10-02 GAP-053 | P1 | M30 PIP/SRA two-person | still open | GAP-088 |
+| 10-02 GAP-054 | P1 | M30 mortality + CAHPS | still open (split) | GAP-089, GAP-087 |
+| 10-02 GAP-055 | P1 | M30 CAHPS cron RLS base pool | not re-found: the seams verifier noted that crons skip orgs without an active binding, but did not test the RLS context. Not re-examined. | — |
+| 10-02 GAP-056 | P1 | M30 alerts never reach M36 | partly re-found (SRA reminders and cap_overdue, P2). The rest was not re-examined. | GAP-155 |
+| 10-02 GAP-057 | P1 | M31 portal provisioning no-ops | still open | GAP-092 |
+| 10-02 GAP-058 | P1 | M31 portal logout/step-up no-ops | not re-found: not re-examined. | — |
+| 10-02 GAP-059 | P1 | M31 opt-out/preferences no-ops | still open (merged) | GAP-092 |
+| 10-02 GAP-060 | P1 | M33 drilldown DEK | not re-found: batch-7 reported consent narrowing present but did not re-check the DEK binding. Not re-examined. | — |
+| 10-02 GAP-061 | P1 | M34 deny-all ABAC resolver | still open | GAP-098 |
+| 10-02 GAP-062 | P1 | M35 Stripe loop | still open | GAP-100 |
+| 10-02 GAP-063 | P1 | M35 published seams | still open, but this run rates it P3 (a documented placeholder with no consumer) | GAP-208 |
+| 10-02 GAP-064 | P1 | M36 out-of-band delivery | still open | GAP-101 |
+| 10-02 GAP-065 | P1 | M37 crons | still open | GAP-105 |
+| 10-02 GAP-066 | P1 | M37 GIP attester | still open (merged) | GAP-106 |
+| 10-02 GAP-067 | P1 | M37 LCP confirm | still open (merged) | GAP-106 |
+| 10-02 GAP-068 | P1 | M37 IV overlay | still open | GAP-107 |
+| 10-02 GAP-069 | P1 | M38 loader | still open | GAP-108 |
+| 10-02 GAP-070 | P1 | M39 consent ABAC | still open | GAP-109 |
+| 10-02 GAP-071 | P1 | M39 D13 deceased | still open | GAP-110 |
+| 10-02 GAP-072 | P1 | CI/deploy verify gate disabled | **excluded**: intentionally disabled (owner decision). | — |
+| 10-02 GAP-073 | P1 | nginx access logs leak PHI | still open | GAP-112 |
+
+**Genuinely new P0/P1 in this run:** GAP-001 (M02), GAP-006 (M31), GAP-007 (M01), GAP-008 (M02), GAP-012 (M04), GAP-013 (M04), GAP-020 (M06), GAP-022 (M06), GAP-023 (M06), GAP-024 (M06), GAP-025 (M06), GAP-026 (M06), GAP-027 (M08), GAP-031 (M11), GAP-032 (M11), GAP-034 (M12), GAP-035 (M12), GAP-036 (M12), GAP-038 (M13), GAP-039 (M13), GAP-042 (M14), GAP-044 (M15), GAP-045 (M15), GAP-046 (M15), GAP-047 (M16), GAP-049 (M16), GAP-050 (M17), GAP-058 (M19), GAP-063 (M21), GAP-064 (M21), GAP-065 (M22), GAP-066 (M22), GAP-067 (M22), GAP-068 (M22), GAP-073 (M25), GAP-074 (M25), GAP-075 (M26), GAP-076 (M26), GAP-077 (M26), GAP-078 (M26), GAP-079 (M26), GAP-080 (M27), GAP-082 (M27), GAP-083 (M28), GAP-084 (M28), GAP-090 (M30), GAP-091 (M30), GAP-093 (M31), GAP-094 (M31), GAP-095 (M31), GAP-096 (M32), GAP-097 (M33), GAP-099 (M35), GAP-102 (M36), GAP-104 (M36).
+
+### Themes (fix as sweeps)
+
+| Theme | Pattern | Gaps |
+|---|---|---|
+| T1 | Caseload/scope ABAC declared but not applied. `requirePermission` never reads `PermissionDef.abac`, and route headers claim a 'default ABAC' binding that does not exist (F-092, unremediated). | GAP-004, GAP-015, GAP-017, GAP-020, GAP-028, GAP-030, GAP-033, GAP-046, GAP-053, GAP-059, GAP-067, GAP-085, GAP-091, GAP-093, GAP-094, GAP-103, GAP-104, GAP-109, GAP-120, GAP-128, GAP-145, GAP-148, GAP-169, GAP-182 |
+| T2 | Client-supplied authorization or clinical facts are trusted: `medClass`, signer discipline, cosigner ids, `approvedByMembershipId`, body `locationId`, F2F performer role, outreach `kind`, `primaryApproverId`, release-document presence. | GAP-005, GAP-022, GAP-024, GAP-029, GAP-031, GAP-034, GAP-035, GAP-036, GAP-045, GAP-047, GAP-049, GAP-050, GAP-051, GAP-054, GAP-055, GAP-064, GAP-073, GAP-081, GAP-088, GAP-106, GAP-121, GAP-132, GAP-134, GAP-153 |
+| T3 | Workers and crons were never built, or are built over unbound/fail-closed ports (`unboundWorkerPort`, `FAIL_CLOSED_ORGS`, registrars that are never called). | GAP-010, GAP-011, GAP-014, GAP-026, GAP-032, GAP-037, GAP-038, GAP-039, GAP-044, GAP-048, GAP-052, GAP-056, GAP-057, GAP-061, GAP-062, GAP-069, GAP-070, GAP-071, GAP-076, GAP-080, GAP-084, GAP-086, GAP-090, GAP-098, GAP-100, GAP-101, GAP-105, GAP-108, GAP-113, GAP-141, GAP-155, GAP-159, GAP-163, GAP-171, GAP-173, GAP-181 |
+| T4 | Outbox seams that are bound but never run: no producer, consumer never constructed, or payload/envelope mismatch. | GAP-016, GAP-025, GAP-040, GAP-058, GAP-063, GAP-072, GAP-075, GAP-077, GAP-089, GAP-107, GAP-110, GAP-130, GAP-135, GAP-150, GAP-161, GAP-177 |
+| T5 | Fake-success stubs: a 2xx response or fabricated id while nothing is persisted or sent. | GAP-006, GAP-060, GAP-065, GAP-068, GAP-078, GAP-087, GAP-092, GAP-095, GAP-129, GAP-131, GAP-133, GAP-140, GAP-152, GAP-166 |
+| T6 | Identity/session/platform-role trust: role-key strings decide platform authority, open sign-up, no server timeouts. | GAP-001, GAP-002, GAP-003, GAP-008, GAP-009, GAP-096, GAP-172 |
+| T7 | Audit attribution and PHI logging: NULL write-audit actor, Buffer read audit skipped, proxy access logs. | GAP-013, GAP-111, GAP-112 |
+| T8 | Read-only UIs on top of live write backends (M06, M08, M25, M26, M27, HIPAA, admin consoles). | GAP-012, GAP-021, GAP-023, GAP-027, GAP-074, GAP-079, GAP-082, GAP-116, GAP-125, GAP-157, GAP-160 |
+| T9 | Code comments, threat models and docs that describe a control that is not built. | GAP-066, GAP-083, GAP-097, GAP-099, GAP-156, GAP-168, GAP-179, GAP-187, GAP-188, GAP-190, GAP-199, GAP-200, GAP-202, GAP-203, GAP-204, GAP-206, GAP-208 |
+| T10 | Two-person / separation-of-duties controls that can be bypassed (self-cosign, body-supplied co-signers, a single approver). | GAP-029, GAP-031, GAP-034, GAP-045, GAP-047, GAP-081, GAP-088, GAP-121, GAP-153 |
+
+## 2. Fitness kit results
+
+| Command | Pass/Fail | Metric | Non-green output | Failure class (code/test-infra/unverified) |
+|---|---|---|---|---|
+| bun install --frozen-lockfile (exit 0) | Pass | Lockfile/install integrity | None ('Checked 529 installs across 656 packages (no changes)') | none |
+| bun run build (exit 0) | Pass | tsc -b project build | None | none |
+| bun run typecheck (exit 0) | Pass | tsc -b + tests + tests.dom | None | none |
+| bun run arch:fitness (exit 0) | Pass | 38 fitness gates | All 38 pass (34.7 s). Informational: 327 migrations, 21 frozen duplicate pairs, 12 ordinal gaps. Route reachability: 166 registrars, 1 deferred (registerMessagingWebhookRoutes, 3 routes). Outbox bindings: 177 live, 187/717 events; 89 subscribed names in exceptions. Seams: 159 registered / 99 consumed. ABAC: 173/135/249. OpenAPI: 1365/1370 enriched. E2E reach: 19/159. Frame fidelity: 3 green / 14 partial. 8 Trivy suppressions (expire 2026-12-31). | none |
+| bun run status:matrix (exit 0) | Pass | Per-module status | 40 Implemented / 0 Partial / 0 Placeholder. Counts registered routes, not spec coverage (see §5.3). | none |
+| bun run openapi:coverage (exit 0) | Pass | Enrichment ratchet | 1365/1370 enriched (5 unenriched bootstrap routes). 1/774 mutating routes have an unpublished body (Stripe webhook, registered). 10/563 GETs have no response schema. | none |
+| bun run ui:parity (exit 0) | Pass | Specs vs registered screens | 113 documented, 306 screens across 3 apps. No per-spec join. | none |
+| bun run frame:fidelity (exit 0) | Pass | Frame-fidelity ledger | 17 mapped of 120: 3 matched / 14 partial / 0 pending. | none |
+| bun run docs:ui (exit 0) | Pass | UI corpus | 113 screens, 29 patterns, 287 links. | none |
+| bun run test (exit 0) | Pass | Non-live vitest | 743 files passed, 262 skipped (env-gated live suites). 11,033 tests passed, 2,888 skipped, 12 todo. 98.7 s. | none |
+| bun run arch:abac-predicates (exit 0) | Pass | requireAbac names registered | 173 declared / 135 used / 249 guards. 38 declared but unused. | none |
+| bun run arch:tenancy / arch:gaps / arch:request-header-auth / arch:context-attributes / arch:ai-governance / arch:vuln-allowlist / arch:audit-denylist-sync / arch:audit-exceptions (all exit 0) | Pass | Security gates (security worker) | Tenancy rule OK. 432 org-scoped tables have PHI guards. 41 header reads. 137 attribute reads. 18 AI capabilities. 208 tables synced. | none |
+| bun run arch:route-reachability / arch:live-suites / arch:migration-numbering (exit 0) | Pass | Discovered worker | 166 registrars reached, 1 deferred. 261 live suites wired. 327 migrations. | none |
+| arch:architecture-docs / arch:module-docs / arch:adr-docs (exit 0) | Pass | Docs corpus | 247 citations (44 documented-absent). 40 specs. 48 ADRs. | none |
+| bun audit (exit 0) | Pass | npm advisories | No vulnerabilities found | none |
+| Targeted vitest per batch (all exit 0) | Pass | Module unit/inject | M01–M05 215 passed (4 todo). M06–M10 1061. M11–M15 172. M16–M20 1151. M26–M30 353. | none |
+| bun run check:boot:platform (exit 1) | Fail | Prod-config boot with platform credential | DATABASE_PLATFORM_URL is required. Not set locally; the worker chose not to run it against the shared dev DB. | test-infra |
+
+Live (`*.live.test.ts`) suites were not run in this pass (they need Docker Postgres), so live behavior is inferred from code reading. See §7.
+
+## 3. Per-module gap table
+
+Rows are sorted by severity, then module. The table shows up to three citations per row; the full evidence lists are in the §8 JSON appendix.
+
+| ID | Module | Area | Gap | Evidence | Severity | Verified | Recommended fix |
+|---|---|---|---|---|---|---|---|
+| GAP-001 | M02 | POST /api/v1/users/:id/deactivate | **A tenant admin can deactivate any user on the platform, including other tenants' users.** The handler checks only requirePermission('user.deactivate') (abac 'none'). It never checks that the :id user has a membership in the caller's org. It then sets users.status='deactivated' globally and deletes every session that user holds, in every org. users/sessions have no RLS. Every tenant's org_admin and CoP 'administrator' hold the key through the full-catalog sync. The audit row and the m2.user.deactivated event are written under the caller's org, so the victim's tenant has no audit trail. Spec §4.7: org_admin (own org) only. | 02-identity/routes/identity-routes.ts:730-755<br>02-identity/identity-stores-db.ts:248-249<br>02-identity/session-writer-db.ts:40-45 | P0 | true | For non-platform callers, require that the target has a membership in request.context.organizationId (404 otherwise). Limit org_admin to revoking that org's membership and sessions. Keep global deactivation for platform_ops only. Audit and publish the event under the target's org. |
+| GAP-002 | M02 | Session idle/absolute timeout (HIPAA §164.312 automatic logoff) | **The server does not enforce the staff 15-min idle or 8h/24h absolute session timeouts.** SESSION_POLICY declares staff idle 15m / absolute 8h / hard 24h and auditor idle 10m, but no server code reads idleSec, absoluteSec or absoluteHardSec. Only the client-side screen lock reads SESSION_POLICY. Better Auth sets no expiresIn or updateAge, so the better-auth 1.6.25 default applies: 7-day expiry, extended once a day on use. getIdentitySession only calls auth.api.getSession. Nothing ever produces the expired_idle or expired_absolute states. identity-ports sessionTtlSec has no reader. A stolen or unattended staff session cookie stays valid for up to 7 days of inactivity. _(prior: GAP-002 (was P1))_ | packages/types/src/policy/session-policy.ts:62-71<br>packages/auth/src/identity/auth.ts:270-301<br>node_modules/better-auth/dist/context/create-context.mjs:146-148 | P0 | true | Set Better Auth session.expiresIn to the hard cap and choose updateAge to match. Enforce SESSION_POLICY per session class in the authenticate hook: keep a throttled last-activity timestamp and reject with expired_idle or expired_absolute. Remove the dead sessionTtlSec. |
+| GAP-003 | M03 | Platform-operator ABAC / custom roles | **Tenant-minted role keys satisfy platform-operator predicates, so a tenant can suspend or close another tenant.** isPlatformOperator (M2), the M29 and M35 role axes, M26 cap_platform_admin and M34 hasRole('platform_ops') all decide platform status from a role.key string. The enrichment reader returns raw role.key values and never checks organization_id IS NULL or category. POST /api/v1/roles accepts any ^[a-z0-9_]+$ key and the category platform_staff. The unique index is (organization_id,key), so a tenant row named 'platform_admin' does not collide with the platform template. A zero-permission role passes anti-escalation. A tenant member holding role.manage+role.assign+org.manage (the seeded first admin) can self-assign the role and call POST /api/v1/platform/organizations/<other org>/status. The writer runs withOrgContext(target), sets status to suspended or closed, and deletes all of that tenant's sessions. The repo's own dev seed relies on a tenant-scoped 'platform_admin' role. _(prior: GAP-001)_ | 02-identity/abac-predicates.ts:19-21<br>packages/auth/src/rbac/drizzle-store.ts:119-161<br>03-authorization/role-store.ts:184-209 | P0 | true | Resolve platform status server-side from role rows with organization_id IS NULL and category 'platform_staff'. Reject tenant role creation or rename to reserved keys (PLATFORM_OPS_ROLE_KEYS and system template keys) and to category platform_staff, and add a DB CHECK/trigger as a backstop. Apply the same check to M26, M29, M32, M34 and M35. |
+| GAP-004 | M13 | eMAR caseload_or_scope | **No eMAR route composes caseload_or_scope; any holder can read or modify any patient's MAR.** Spec §4.1 requires caseload_or_scope on rows 1, 4-11 and 13-21 (record, refuse, correct, void, reads, scheduled and missed doses, reconciliation). emar-routes.ts composes only requirePermission plus four M13-owned predicates. The header's claim of a '§4.6 default ABAC' binding is false, because requirePermission never reads PermissionDef.abac. getAdministration(orgId,id) takes no actor input. Any administration.read holder can read every patient's MAR, and holders of correct, void or decide can modify them org-wide. This is a known instance of the unremediated F-092. The verifier raised the severity to P0 (cross-patient PHI read and write). _(prior: GAP-021 (was P1))_ | 13-emar/routes/emar-routes.ts:11-13,250-310,381-510<br>13-emar/emar-route-service-db.ts:496<br>spec:WARDENX_MODULE_13_EMAR_SPEC_v0_2.md:1275-1295 | P0 | true | Compose caseload_or_scope (notFoundOnDeny) keyed on the patient of the administration or dose on every M13 PHI route, and narrow list queries in SQL through the M5 CaseloadProvider. |
+| GAP-005 | M13 | Controlled-substance witness (D7 two-person rule) | **The controlled-substance witness requirement is keyed on the client-supplied body.medClass.** recordAdministration sets isControlled from args.medClass, makes requiresWitness depend on it, and stores is_controlled_substance from the same client value. recordRefusal does the same. The administering_clinician_eligible ABAC target is also taken from body.medClass. The M13 identity adapter drops order.isControlledSubstance/medClass, although M12 MedicationOrderDto carries both. A clinician can send medClass:'standard' for a Schedule II-V order and skip the witness token. emar-typebox.ts:6-8 claims the service re-verifies medClass; it does not. _(prior: GAP-020 (was P1))_ | 13-emar/emar-route-service-db.ts:714,836,938,1318<br>13-emar/index.ts:38-53<br>13-emar/routes/emar-routes.ts:90-93,157 | P0 | true | Return medClass, isControlledSubstance and deaSchedule from the identity adapter. Derive isControlled from the order on both the administration and refusal paths. Return 422 MED_CLASS_MISMATCH when the body disagrees, or drop the body field. Resolve the ABAC target from the order. |
+| GAP-006 | M31 | Portal amendment request (HIPAA §164.526) | **Portal amendment submit returns 202 'submitted' and throws the request away; the list is always empty.** POST /api/v1/portal/amendments/submit runs planAmendmentRequest and returns 202 {status:'submitted'} with a fabricated ref id built from portalAccountId and a timestamp. Nothing persists the request: there is no portal_amendment_request_ref migration, M5 submitAmendment is never called, and no m31.* event is published (M31 has no outbox publisher). GET /portal/amendments always returns []. The SPA tells the patient 'Your request was submitted', so §164.526 requests are silently lost and the 60-day clock never starts. The write.routes.ts header wrongly claims deps.outbox emits the event. | 31-portal/routes/write.routes.ts:176-218<br>31-portal/routes/write.routes.ts:8-11<br>apps/portal/src/screens/amendments.tsx:76-85 | P0 | true | Call M5 submitAmendment (source=portal) inside the route, or publish m31.portal_amendment_request.submitted through a new events-by-m31.ts and an M5 consumer. Back GET /portal/amendments with the portal-submitted M5 rows. Return 503 until either is done. |
+| GAP-007 | M01 | Idempotency-Key middleware (§4.6, M01-F15) | **Two concurrent requests with the same key both run the handler, and an expired key re-executes on every retry.** putPending is INSERT ... ON CONFLICT DO NOTHING and returns void. The middleware never checks whether it won the claim and never re-reads the row, although comments say it does. No sweeper exists, so once a row expires every reuse of that key re-executes the handler. The store header names M23 claim submit and M26 settlement finalize as paths that depend on this guard. | backend/bootstrap/plugins/idempotency.ts:43-56,101-103<br>backend/bootstrap/plugins/idempotency-store-db.ts:12-15,68-71,86-104<br>spec:WARDENX_MODULE_01_FOUNDATION_SPEC_v0_4.md:65 | P1 | true | Make putPending return the claim result (RETURNING id; reclaim expired rows with ON CONFLICT DO UPDATE ... WHERE expires_at<=now()). When the claim is lost, reload and return 409 or a replay. |
+| GAP-008 | M02 | Invitation proposedRoleKeys -> M3 attach | **Accepting an invite grants any role key and skips the anti-escalation check.** The invite route needs only member.invite and stores proposedRoleKeys after a shape check only. On accept, createDbProposedRoleAttacher inserts membership_role rows for any enabled org role (org_admin included), with no ceiling check, and records the invitee as grantedBy. assertNoEscalation exists only on the direct role-grant route. A tenant custom role that holds member.invite can therefore escalate. | 02-identity/routes/identity-routes.ts:296-317,451-458<br>03-authorization/proposed-role-attacher.ts:71-111<br>03-authorization/routes/authz-routes.ts:258-270 | P1 | true | When proposedRoleKeys is non-empty, require role.assign plus assertNoEscalation against the inviter's permissions at invite creation. Store the inviter and record them as grantedBy. |
+| GAP-009 | M02 | Provisioning / authentication | **Self-registration is open, email is never verified, invite acceptance is not tied to the invitee, and MFA is not mandated server-side.** emailAndPassword is enabled with no disableSignUp, no requireEmailVerification and no hooks. magicLink creates users by default. /api/auth/* is forwarded wholesale. Invitation accept consumes the token and attaches a membership to whatever session presents it, without comparing emails. Nothing enforces the per-role MFA matrix or blocks two-factor/disable. Combined with token possession, an attacker-chosen unverified account can join an org without MFA. _(prior: GAP-075 (P2, sign-up part))_ | packages/auth/src/identity/auth.ts:197-224,250<br>packages/auth/src/identity/mount.ts:61<br>02-identity/routes/identity-routes.ts:399-416 | P1 | true | Set disableSignUp (or require an invite token in a hook), set requireEmailVerification, require a verified session email equal to the invitation email on accept, and enforce the MFA matrix before org binding. |
+| GAP-010 | M03 | Break-glass Compliance notification / M3 outbox events | **The break-glass Compliance notifier is an in-memory array, and M3 publishes none of its spec'd outbox events.** The production mount binds createInMemoryComplianceNotifier, which pushes to a process-local array that nothing reads. There is no events-by-m3.ts (m3.* names exist only as M4 audit actions) and no M36 break-glass rule. Break-glass is audited but Compliance is never notified. The gap is recorded only in the in-memory ledger. _(prior: GAP-004)_ | 03-authorization/index.ts:89,158<br>03-authorization/authz-ports.ts:621-634<br>03-authorization/routes/authz-routes.ts:360-366 | P1 | true | Add events-by-m3.ts (breakglass.invoked/ended, engagement.closed, role.assigned/revoked), publish them in the same transaction, and add an M36 alert rule for breakglass.invoked. |
+| GAP-011 | M03 | Auditor engagements / auditor sessions / in-memory boot ledger | **Auditor engagements and auditor-session minting are in-memory on every DB boot, and auditor_engagement is never written.** The M3 mount binds createInMemoryEngagementStore and createInMemoryAuditorSessionMinter. The M2 AuditorSessionMinter seam uses the in-memory magic-link issuer because index.ts passes no auditorLinks. No code writes auditor_engagement, no engagement_scope predicate exists and no close_engagements cron exists. index.ts records all of this in the TASK-001 ledger. In NODE_ENV=production, assertNoInMemoryBindingsOnDbBoot throws unless WARDENX_INMEM_ASSERT=warn, and no tracked deploy file sets that variable. So production either refuses to boot or runs with the global downgrade, which also silences the M2 magic-link and attestation entries. _(prior: GAP-004)_ | 03-authorization/index.ts:86-87,156-157<br>02-identity/seams.ts:83,91<br>backend/index.ts:3136-3142,4132 | P1 | true | Back engagements and auditor sessions with Drizzle stores over auditor_engagement, give M2 a durable magic-link issuer, add an engagement_scope predicate and the close_engagements cron. Document the WARDENX_INMEM_ASSERT posture until the ledger is empty. |
+| GAP-012 | M04 | Staff HIPAA §164.528 / §164.526 UI | **Staff have no UI for accounting of disclosures or for working amendment requests.** GET /audit/patients/:id/accounting and /access have no UI caller. Patients can submit amendments through the portal, but no screen lets staff accept or deny them. There is also no GET route listing pending amendments for a staff inbox. WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE.md is unimplemented, and DEFERRED_SCREENS covers only the portal side. | 04-audit/routes/patient-accounting.ts:124<br>05-patient/routes/patient-routes.ts:425-451<br>docs/design/screens/compliance/WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE.md:12-16 | P1 | true | Build the HIPAA privacy work queue (accounting view, access report, amendment inbox with accept/deny) and add an M5 pending-amendments list route. |
+| GAP-013 | M04 | PHI read audit for binary responses | **No read-audit event is written for Buffer responses (DocLens page image, records-request cover sheet).** Read audit is emitted only in a preSerialization hook, and Fastify skips that hook for Buffer payloads (checked empirically). Two PHI routes declare auditRead but reply with a Buffer, so no audit row is ever written. The coverage gate still passes because the config is declared. | backend/bootstrap/plugins/read-audit.ts:155-201<br>node_modules/fastify/lib/reply.js:193-200<br>22-documents/extraction/review-workspace-routes.ts:332-351 | P1 | true | Emit read audits from onSend/onResponse (or call auditPhiRead inline in binary handlers), and make the coverage gate reject emission configs on non-JSON routes. |
+| GAP-014 | M04 | Audit §4.4 jobs | **M4's retention, destruction, integrity-sample and export workers are never built, so exports stay 'pending' forever.** registerAuditWorkers/scheduleAuditJobs have no caller (documented deferral at index.ts:4230-4232). Approving a destruction certificate only flips its status. The quarterly integrity sample has no run history. Export rows stay pending. Erasure through the M34 offboarding path is wired. _(prior: GAP-005)_ | backend/index.ts:4230-4232<br>04-audit/routes/audit-exports.ts:5-15<br>04-audit/routes/destruction-certificates.ts:5-18 | P1 | true | Bind production AuditJobAdapters (object store, destruction executor, integrity sampler) and construct the workers next to M34 with DLQ alerts. |
+| GAP-015 | M05 | patient_assignment writer / caseload source | **No production code writes patient_assignment, and the spec'd assignment routes do not exist.** Production backend code only reads patient_assignment (CaseloadProvider, CareTeamProvider, care-team tab). Only dev seed scripts and tests insert rows. Durable caseload membership for caseload_or_scope, and the care-team lookups used by M8, M12, M13 and M36, cannot be created in a real tenant. The only caseload source is the M17 Valkey shift cache, and there is none at all without Valkey. _(prior: GAP-008)_ | 05-patient/seams/drizzle-stores.ts:29,415-440<br>05-patient/outbox-consumers/m17-visit-assignment.ts:1-18<br>spec:WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1247-1249,1430-1439 | P1 | true | Build POST /patients/:id/assignments and .../end (patient.assign, cache invalidation, assignment events), or amend the spec to make the shift cache the sole source. |
+| GAP-016 | M05 | Production PatientRouteService outbox | **Admit, address, payer and amendment writes publish no m5.* outbox events in production.** mountPatientRoutes builds createDbPatientRouteService with no outbox. The file header lists outbox emission as a follow-up. addAddress returns a hard-coded cascadeEmitted literal. Live consumers in M12 (patient sync), M24 (revalidation), M33 (census MV) and M22 (statement of disagreement) never fire for staff-entered changes. _(prior: GAP-007)_ | 05-patient/index.ts:331-341<br>05-patient/patient-route-service-db.ts:8-10,687-723<br>12-dosespot/consumers/index.ts:73-76 | P1 | true | Thread the m5 outbox port into the DB service and publish created, address_changed, payer_changed and the amendment_* events in the same withOrgContext transaction. |
+| GAP-017 | M05 | POST /api/v1/patients/:id/payers | **The payer write skips caseload_or_scope and checks patient.edit instead of patient.edit_payers.** The preHandler is [EDIT] only, while the sibling /addresses route has [EDIT, SCOPE_EDIT]. addPayer narrows by RLS org only. patient.edit_payers is declared but never checked and never granted. Any patient.edit holder can rewrite coverage for patients outside their caseload. _(prior: GAP-006)_ | 05-patient/routes/patient-routes.ts:122,142,307-321,385-387<br>05-patient/patient-route-service-db.ts:455-480<br>spec:WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1244,1546 | P1 | true | Use preHandler [requirePermission('patient.edit_payers'), chartScope('patient.edit_payers')] and grant the key in the role templates. |
+| GAP-018 | M05 | §4.3 route inventory | **15 spec'd M5 routes are missing: status transitions, record-death, caregivers, assignments, match queue, unmerge, statement of disagreement.** PATCH /patients/:id, POST status, deceased and identifiers, caregivers GET/POST, assignments GET/POST/end, the patient-matches queue with merge and not-a-match, unmerge, GET amendments and the amendments statement route are not registered. GET /care-team partly covers the assignment read. Six declared keys are used by no route, and POST /payers checks patient.edit. The status matrix reports '23/23' because it counts only registered routes. No deferral is documented. _(prior: GAP-009)_ | 05-patient/routes/patient-routes.ts:215-451<br>spec:WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1229-1262<br>audit/implementation-status/IMPLEMENTATION_STATUS.md:17 | P1 | true | Implement the routes with the spec's permission, caseload ABAC and step-up, or record documented deferrals in the spec's As-built section. |
+| GAP-019 | M05 | Soft-duplicate review (§7.3) | **Soft-duplicate matches are never queued in production: the patient is created and matchReviewIds is empty.** On a soft_review match, admit inserts the patient and returns matchReviewIds: [] (marked as a follow-up in a comment). No code inserts patient_match_review rows and there is no review-queue route, so probable duplicate charts are created silently. _(prior: GAP-009 (part))_ | 05-patient/patient-route-service-db.ts:353-356<br>packages/db/migrations/0021_patient_m5_rls_audit_triggers.sql:112-118<br>spec:WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1235,2490 | P1 | true | Insert one patient_match_review row per soft candidate in the same transaction, return their ids, and build the review queue routes. |
+| GAP-020 | M06 | Patient-keyed reads / POST /admissions | **Patient-keyed admission and election-certification reads, and POST /admissions, have no caseload/patient scope check.** GET /patients/:patientId/admissions and /election-certification use [READ] only, and POST /admissions uses [CREATE] only. The documented exclusion covers only list routes without an :id. Any admission.read holder can read the CTI, election and F2F data of any patient in the org. | 06-admission/routes/admission-routes.ts:150-156,507-512,575-608<br>spec:WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md:1813 | P1 | true | Compose requireAbac(action,'caseload_or_scope',{notFoundOnDeny}) on these routes, with target params.patientId or body.patientId. |
+| GAP-021 | M06 | Discharge / revocation / transfer / death UI | **There is no UI for ending or moving a hospice episode.** The backend routes for hold/resume, revocation, transfer-out/in, discharge (including death) and for-cause cosign are live and in the typed client, but no web screen calls them. The IPU UI tells users to 'Record the discharge on the M6 admission first'. No DEFERRED_SCREENS entry exists. _(prior: GAP-010)_ | 06-admission/routes/admission-routes.ts:630,640,1022,1044,1091,1113<br>apps/web/src/modules/06-admission/admission-detail.tsx:1055-1069<br>apps/web/src/modules/37-ipu/ipu-api.ts:268 | P1 | true | Build the Discharge/Revocation/Transfer stepper, the death branch and the for-cause cosign queue on admission-detail. |
+| GAP-022 | M06 | F2F attestation (42 CFR 418.22) | **F2F attestation drops the narrative, takes the performer role from the client, and the MD/NP predicate also admits RNs.** The attest route parses attestationNarrative but never passes it on, so the column is never written and the ≥100-char guard never runs. scheduleF2f takes clinicianRole and the clinician id from the request body. The adequacy check trusts the stored role. MD_OR_NP includes rn and rn_case_manager. An RN scheduled as the performer can complete and attest a recert F2F that is recorded as hospice_md. | 06-admission/routes/admission-routes.ts:937-945<br>06-admission/admission-route-service-db.ts:4550-4561,4669-4710<br>06-admission/abac-predicates.ts:44,209 | P1 | true | Persist the narrative and run transitionFaceToFace('attest'). Derive performer_role from the scheduled clinician's membership and credential. Remove the RN roles from MD_OR_NP. |
+| GAP-023 | M06 | Face-to-face capture UI | **The face-to-face encounter cannot be recorded, attested or completed from the UI.** The create, complete, attest and override-window F2F routes exist, but the web app only reads F2F data. The backend enforces an attested F2F for benefit period sequence ≥3, so recertification cannot be completed in the app. | 06-admission/routes/admission-routes.ts:896,928,938,948<br>apps/web/src/modules/06-admission/election-certification-api.ts:47<br>apps/web/src/modules/06-admission/patient-election-cert.tsx:513 | P1 | true | Add F2F record, attest, complete and override actions to patient-election-cert and the admission-detail F2F section. |
+| GAP-024 | M06 | Child-resource binding (F2F / election statement) | **F2F schedule and election-statement draft write against a client-supplied electionPeriodId that is never checked against the admission in the path.** Both routes authorize admission.scope on :id, but the services load the election period by body id only. scheduleF2f ignores input.admissionId. The election statement is inserted with the path patient and an arbitrary period from the same org. This allows writes outside the caller's caseload and attaching one patient's records to another patient's period. RLS still bounds this to the org. | 06-admission/routes/admission-routes.ts:662-684,896-910<br>06-admission/admission-route-service-db.ts:3883-3923,4541-4549 | P1 | true | Add eq(EP.admissionId, admissionId) to both lookups and return 404 when they do not match. |
+| GAP-025 | M06 | m6.election.period_ended / benefit-period lifecycle | **Nothing publishes m6.election.period_ended, so M23's revalidate consumer bound to it never fires.** The only 'complete' transition is the discharge cascade. It discards the transition's outbox effect and runs a bare UPDATE (hard-coded to cause 'discharge'). There is no midnight auto-end job and no next_period completion. Payload extras (electionPeriodId, sequence, endDate) are missing. docs/history records the M23 binding as 'built', so it is bound but never computing. | 06-admission/admission-route-service-db.ts:602-631,669-704<br>06-admission/state-machines/election-period.ts:169-175<br>23-billing-medicare/outbox-consumers/m23-revalidate-triggers.ts:66 | P1 | true | Publish the event from the cascade with the spec payload, and add a daily per-org job that completes periods at their end date. |
+| GAP-026 | M06 | Compliance-window jobs (§4.3) | **Only F2F windows go overdue: CTI, NOE and NOR windows never escalate, and recert_due_notify has no worker.** The windowAlert worker runs only runF2fWindowMissedScanCron. planWindowAlert and promoteWindowStatus are 'still unwired'. m6.compliance.window.overdue is never emitted, and even if it were, it has no M36 consumer. No workers exist for recertDueNotify, recomputeWindows or ctiLateFollowup. The deferral is recorded only in a code comment. | 06-admission/jobs/cron-workers.ts:222-229,303-322<br>06-admission/jobs/index.ts:261-275<br>06-admission/events-by-m6.ts:988-1003 | P1 | true | Wire planWindowAlert and promoteWindowStatus for every window kind, emit the event, bind the M36 consumer, and add the recertDueNotify worker. |
+| GAP-027 | M08 | Encounter addenda UI | **The UI can open an addendum but cannot edit, finalize or sign it.** encounter-read creates the addendum with POST /addenda, but no web code calls the addendum selections, finalize or sign routes. Addenda opened in the UI are stranded as drafts. A code comment marks this 'STILL DEFERRED', which conflicts with M8's done gate ('addenda first-class'). | apps/web/src/modules/08-encounters/encounter-read.tsx:908-926,2324<br>08-encounters/routes/encounters-routes.ts:625-668<br>apps/web/src/modules/08-encounters/screens.ts:31-32 | P1 | true | Route opened addenda into the compose editor bound to the addenda selections routes, with Sign and Finalize actions. |
+| GAP-028 | M08 | Author / author_or_supervisor / addendum author ABAC | **M8 mutation routes never register or compose is_author*: any encounter.sign holder can sign another clinician's note, and addenda are attributed to the wrong author.** The is_author* names exist only as inert abac declarations. Routes 4-7, 9-14 and 23-25 also lack encounter.scope. sign() records the caller as signer without checking authorship. createAddendum stores the parent encounter's author as the addendum author. _(prior: GAP-012)_ | 08-encounters/routes/encounters-routes.ts:291-669<br>08-encounters/abac-predicates.ts:48<br>08-encounters/encounters-route-service-db.ts:1786-1788,2142-2167 | P1 | true | Register is_author, is_author_or_supervisor and is_addendum_author (membership compared to authored_by_membership_id), compose them together with encounter.scope, and pass the caller's membership into createAddendum. |
+| GAP-029 | M08 | Two-person cosign (m8.cosigner_role_match) | **The no-self-cosign check compares a membership id with a user id, so it never fires.** The predicate returns authoredByUserId !== context.userId, where authoredByUserId is filled from a membership id. cosignSign and cosignAcknowledge have no author check. The encounter discipline comes from the request body, so an RN can author an 'lpn' encounter and then cosign it. M9 and M10 have already fixed this same defect class. _(prior: GAP-085 (P2))_ | 08-encounters/abac-predicates.ts:103-111<br>08-encounters/encounters-route-service-db.ts:2052-2116,2353,2363<br>10-hope/abac-predicates.ts:190-196 | P1 | true | Compare membershipIdOf(context) with authoredByMembershipId, and add a service-level guard that the actor is not the author. |
+| GAP-030 | M11 | Orders caseload_or_scope | **No M11 order route enforces caseload_or_scope; the header's claim that a 'default ABAC' binding exists is false.** Every GET and every PATCH, request-signature, verbal, discontinue and complete route composes only requirePermission plus discipline/signer predicates. listOrders filters by org only. Any orders.read holder can read every order in the org. M11_DR_INT_INVENTORY says the opposite. The security worker's cross-module finding is merged here. _(prior: GAP-015)_ | 11-orders/routes/orders-routes.ts:9-11,127-134,140-443<br>11-orders/orders-route-service-db.ts:857-863<br>packages/auth/src/rbac/require-role.ts:127-136 | P1 | true | Compose caseload_or_scope (resolve patientId from the order) on every patient-bearing route, or filter lists through the CaseloadProvider. |
+| GAP-031 | M11 | Cosign requirement / signature attribution | **Cosign requirement and signer discipline are computed from client body fields, so the LPN, NP and escalation cosign rules can be bypassed.** drafter_discipline is stored from the body. insertDraft checks only whether the claimed discipline may order the kind. request-signature (guarded by orders.draft only) resolves cosign from the body's signerDiscipline and levelChange. sign and sign-on-behalf write the body's discipline to order_signature. actor.disciplines is computed but never compared. recorderEligible is hard-coded true. | 11-orders/orders-route-service-db.ts:585-588,746-779,1035-1041,956,1120<br>11-orders/abac-predicates.ts:83-94<br>packages/orders/src/lifecycle/cosign-rules.ts:92-119 | P1 | true | Derive drafter and signer discipline from the session roles (reject undeclared ones with 422 DISCIPLINE_NOT_HELD), derive levelChange server-side, and compute recorderEligible. |
+| GAP-032 | M11 | §4.8 verbal pre-expiry / lab-results-overdue / completion-watcher | **The verbal pre-expiry alert, lab-results-overdue sweep and completion-watcher are never built, and their events have no emitter.** Only the standing-spawn, verbal-expiry and stuck-transmission workers exist. m11.order.verbal_expiring_soon and results_overdue are catalogued but never emitted, and results_overdue is never written. All three are part of the spec's Phase-1 done gate. verbal-order-expiry-worker.ts points to a deferral note that does not exist. The DR inventory describes the sweep as if it existed. | 11-orders/jobs/index.ts:1-3<br>backend/index.ts:5404,5430,5463<br>11-orders/events-by-m11.ts:515,609 | P1 | true | Build the three workers on the active-org fan-out, wire them in index.ts with DLQ alerts, and emit the catalogued events. |
+| GAP-033 | M12 | Medication orders caseload_or_scope | **M12 medication-order and medication-history routes have no caseload check; the refill inbox is the only caseload-aware path.** List, detail, transmission, active-medications and history routes use [READ] or [HISTORY_READ] only, and so do the patient-bearing writes. listOrders has no caseload predicate and no limit. The header's 'default ABAC' claim is false. Refill list and detail already use refill_inbox_scope. _(prior: GAP-016)_ | 12-dosespot/routes/dosespot-routes.ts:10-11,129-145,180-191,380-397<br>12-dosespot/dosespot-route-service-db.ts:426-453<br>packages/auth/src/permissions/contributed.ts:1415-1434 | P1 | true | Bind caseload_or_scope on every M12 patient-bearing route (404 on deny), resolving patientId from the order. |
+| GAP-034 | M12 | Medication-order cosignature | **M12 cosign only flips cosign_status to 'attached': no role check, no status guard, no signature record.** cosignOrder ignores its args and blocks only a self-cosign by the drafter. It sets 'attached' on an order in any state, writes no M11 order_signature row and binds no cosigner_role_match. Upstream, nothing ever sets cosign_required or 'pending', so the entire cosign axis is a stub. | 12-dosespot/dosespot-route-service-db.ts:119-120,745-760<br>12-dosespot/routes/dosespot-routes.ts:267-277<br>11-orders/abac-predicates.ts:37,95 | P1 | true | Establish the cosign requirement, route cosign through M11 OrderSignatureProvider (signature_kind='cosignature'), guard on status, and enforce the cosigner role from the session. |
+| GAP-035 | M12 | Medication-order signing (named prescriber) | **M12 sign decides named-prescriber and signer eligibility from client-supplied fields, and the signer_eligible ABAC is not bound.** The sign route is [SIGN] only. signerEligible is a set lookup on the body's discipline string, and signerIsOrderingPhysician defaults to !fromVerbal. Any prescribing.sign holder can sign another prescriber's pending order just by sending signerDiscipline 'physician', and can sign a verbal order by also sending the flag. The header's 'service-layer enforcement' claim is false. | 12-dosespot/routes/dosespot-routes.ts:11-14,218-228<br>12-dosespot/dosespot-route-service-db.ts:71-72,597-607<br>packages/auth/src/permissions/contributed.ts:1428 | P1 | true | Remove signerIsOrderingPhysician from the request, compare the caller with prescriberMembershipId or the verbal named prescriber, derive discipline from the session, and bind a signer-eligibility predicate. |
+| GAP-036 | M12 | SUD-consent and allergy gates (DB backend) | **The production M12 backend hard-codes the SUD-consent gate to pass (and the allergy gate, a known gap).** The DB requestSignature passes sudConsentSatisfied: true ('M39 consent unbound') and never calls the ConsentEvaluator seam. The in-memory service does call it. allergyCheckPassed: true is hard-coded in both backends; that part is already documented. The request-signature and sign routes also lack the prescriber_eligible and signer_eligible ABAC. | 12-dosespot/dosespot-route-service-db.ts:568-577<br>12-dosespot/seams/index.ts:96-98<br>12-dosespot/routes/service.ts:650-653 | P1 | true | Call the ConsentEvaluator for SUD-treatment medications, failing closed. Add a real allergy check. Derive the signer from the membership. |
+| GAP-037 | M12 | DoseSpot transmission and SLA crons (§4.8) | **No outbound e-prescribing transmission and none of the refill-SLA, IAL2, timeout or EPCS crons exist.** Only the dosespot_sync_queue drain is wired. transmit_newrx and seven other §4.8 queues are absent. Every order is not_required and activates locally. The upstream data these crons would read is never produced either: there is no refill ingest and no ial2_expires_at writer. F-230 partly records the vendor deferral, but the status matrix shows M12 as Implemented. _(prior: GAP-017)_ | backend/index.ts:5544-5572<br>12-dosespot/dosespot-route-service-db.ts:289-296<br>docs/history/outbox-248-builds.md:2203-2213 | P1 | true | Record an explicit per-queue deferral and a status-matrix note, then build the crons together with the vendor ingest that feeds them. |
+| GAP-038 | M13 | Scheduled-dose window / §4.8 crons | **Scheduled doses are materialized for 7 days at activation and never extended; the extend-schedule cron does not exist.** Doses are materialized once for materialization_window_days (fallback 7). extend-schedule, reconciliation-due-warning, kit-return-overdue and purge-offline-queue do not exist, and no M13 cron allowlist is wired. Long hospice orders have no doses after the window. | 13-emar/outbox-consumers/m12-medication-order-active.ts:30-55<br>backend/index.ts:6576,6599<br>spec:WARDENX_MODULE_13_EMAR_SPEC_v0_2.md:41,169,1531-1543 | P1 | true | Add the daily extend-schedule cron (deduplicating on the materialization pass) plus the reconciliation-warning and kit-return crons. |
+| GAP-039 | M13 | Missed-dose detection | **No missed-dose sweep exists and nothing writes missed_dose, so M30 publishes a fabricated 0% missed-dose rate.** There is no m13.missed-dose-sweep. Nothing inserts missed_dose, sets scheduled_dose status 'missed' or emits m13.scheduled_dose.missed. The inbox, the M14 packet events and getMissedDoseSummary are always empty. M30 divides a real denominator by a numerator that is always 0 and passes its threshold. The spec and DR inventory describe the sweep as existing. | 13-emar/events-by-m13.ts:272-293<br>13-emar/seams/drizzle-store.ts:174<br>30-quality/jobs/m30-jobs.ts:735-737 | P1 | true | Implement the 15-minute sweep (active-org fan-out with withOrgContext) that inserts missed_dose, sets status and emits the event, and handle late administrations. |
+| GAP-040 | M13 | PRN reassessment-overdue (M13 -> M9 -> M36) | **No module produces the PRN reassessment-overdue signal, so overdue PRN reassessments never alert.** M13 subscribes to m9.prn_reassessment_overdue, but M9 neither catalogs nor emits it and has no PRN linkage. F-143 removed M9 as a consumer because the M9 spec never mentions PRN, while the M13 spec assigns M9 the sweep, so the specs conflict. This is a documented no-such-event deferral. _(prior: GAP-096 (P2))_ | 13-emar/consumers/index.ts:67<br>13-emar/events-by-m13.ts:247-254<br>scripts/outbox-subscription-exceptions.ts:166-172 | P1 | true | Decide sweep ownership in the specs, add a PRN-to-scale linkage, catalog and emit the event, bind the M36 alert, and drop the exception. |
+| GAP-041 | M13 | Administration void | **Hard-voiding an administration has no step-up, no supervisor floor and no status guard.** The route is [VOID] only. Both the route comment and the permission definition claim step-up is 'enforced upstream'; it is not. voidAdministration does an unconditional UPDATE to 'voided', bypassing the lifecycle machine, which allows void only from committed and requires a reason of at least 40 characters. The schema accepts a 1-character reason. Rows can be re-voided and their attribution overwritten. _(prior: GAP-022)_ | 13-emar/routes/emar-routes.ts:74,262-268<br>13-emar/emar-route-service-db.ts:1273-1291<br>packages/emar/src/lifecycle/administration-record.ts:95-126 | P1 | true | Add requireStepUp and a supervisor predicate, and route the void through the lifecycle machine. |
+| GAP-042 | M14 | §418.56(d) review-clock sweep | **The review-clock sweep covers only patients who already have an IDG packet, so never-reviewed admissions are invisible.** The sweep population is DISTINCT patients from idg_patient_packet. The spec says per active admission, falling back to activated_at, and calls this the citation-relevant control. The comment's justification ('no seam') is wrong: M6 listActiveAdmissions exists. | 14-idg/jobs/index.ts:11-18<br>14-idg/jobs/cron-store.ts:35-49<br>spec:WARDENX_MODULE_14_IDG_SPEC_v0_4.md:102,1200 | P1 | true | Use the M6 active-admission seam as the population and fall back to activated_at. |
+| GAP-043 | M14 | IDG decision integrity / supersede | **updateDecision rewrites emitted or superseded decisions, and supersede skips quorum with wasQuorate hard-coded true.** PATCH /idg/decisions/:id does an unconditional UPDATE in both implementations, with no immutability trigger, no meeting scope and no If-Match. Four comments assert a guard that does not exist. Supersede uses only [DECIDE], writes the successor into the prior meeting with wasQuorate:true and copies the old quorum snapshot. _(prior: GAP-023, GAP-024)_ | 14-idg/idg-route-service-db.ts:1797-1854<br>14-idg/routes/idg-routes.ts:601-622<br>packages/db/migrations/0043_idg_m14_rls_audit_triggers.sql:117-124 | P1 | true | Refuse non-open decisions with 409, add If-Match and meeting scope, require a later quorate meeting for supersede, and store the real quorum. |
+| GAP-044 | M15 | §4.6 crons | **None of the five M15 crons exist (supervisory overdue, MSW and chaplain initial overdue, volunteer gate-watcher, hour aggregator).** M15 has no jobs directory and registers nothing. Five catalogued events are never emitted. decideExpireGate is called only from tests. Read-time fail-closed status still blocks scheduling an expired volunteer. What is missing is proactive CoP alerting, the stored state flips and the hour ledger. | backend/index.ts:1314-1325<br>15-discipline-care-plans/events-by-m15.ts:134-165<br>15-discipline-care-plans/volunteer/gates.ts:176-191 | P1 | true | Implement the five crons on the active-org fan-out, emit the events, and wire them with DLQ alerts. |
+| GAP-045 | M15 | Discipline-plan signer quorum | **signVersion takes the signer role from the request body, so one member can fill every signer slot.** The role is validated against the sealed RequiredSignerSet only. Nothing checks that the actor holds that role or has not already signed. The unique index is on signer_role only, and actor.roles is ignored. One person can satisfy the MSW plus RN quorum alone. The guards.ts and abac-predicates.ts comments claim enforcement that does not exist. | 15-discipline-care-plans/routes/write-service-drizzle.ts:373-421<br>packages/db/migrations/0098_discipline_plans_m15_enums_tables.sql:119<br>15-discipline-care-plans/abac-predicates.ts:21-27 | P1 | true | Refuse roles the actor does not hold (403 SIGNER_ROLE_MISMATCH) and refuse a second signature from the same membership, backed by a unique index. |
+| GAP-046 | M15 | Write-route caseload scoping | **M15 write routes (goals, interventions, assessments, finalize, sign, amend, supervisory) have no caseload or discipline scope check.** The routes compose only P, IDEMPOTENT and STEP_UP. planOr404 is a bare select scoped by RLS org only. Reads do check actorMayReadPatient. Any same-org key holder can write PHI for off-caseload patients. The verifier raised this from P2 to P1. | 15-discipline-care-plans/routes/plans.routes.ts:119-254<br>15-discipline-care-plans/routes/write-service-drizzle.ts:147-151<br>15-discipline-care-plans/routes/read-service-drizzle.ts:253-264 | P1 | true | Reuse actorMayReadPatient in planOr404 and return 404 off-caseload. |
+| GAP-047 | M16 | Early-close cosign (D7) | **close-early closes the plan immediately and records the closing counselor as the supervisor cosigner.** One transaction moves the plan to closed_early, cancels outreach, emits the event with the closer as cosigner, and inserts the closure with cosigned_by set to the closer. cosign-close only rewrites the cosigner afterwards (it does refuse a self-cosign). There is no pending-cosign state or alert. The §3.3.7 CHECK requires a non-null cosigner. | 16-bereavement/routes/write-service-drizzle.ts:934-1017<br>16-bereavement/lifecycle/plan.ts:338-371<br>spec:WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md:187,1722,2101 | P1 | true | Make close-early record a pending-cosign request only, and have cosign-close (a different supervisor, with step-up) perform the transition. Either defer the closure insert or relax the CHECK in a migration. |
+| GAP-048 | M16 | §4.9 workers | **M16 has no cron workers: plans never auto-close at 13 months, outreach is never marked missed, and there are no anniversary alerts.** No M16 jobs exist. closeAt13Months and missDeadline have no caller. Status 'missed' is never written, so the M30 missedCount and overdue counts are always 0 and the late-attempt route can never succeed. The only reference is a subscription-exception note. _(prior: GAP-028)_ | 16-bereavement/lifecycle/outreach.ts:177-190<br>16-bereavement/lifecycle/plan.ts:373-392<br>16-bereavement/seams/drizzle-store.ts:255 | P1 | true | Add the four §4.9 crons and register them next to M17, M19 and M20. |
+| GAP-049 | M16 | Outreach completion (D15) | **completeOutreach checks the D15 encounter rule against the client's kind and never verifies the encounter id.** The contact log and the transition use input.kind, never the stored outreach.kind, so an in-person visit can be completed as a phone call. The encounter id is not checked for existence, signature or patient. This feeds the CoP 418.64(d) numerator. Notes are dropped. | 16-bereavement/routes/write-service-drizzle.ts:1437-1496<br>16-bereavement/routes/m16-typebox.ts:362-377<br>packages/db/src/schema/bereavement/bereavement-contact-log.ts:58 | P1 | true | Reject when the kind mismatches, and resolve sourceEncounterId through an M8 seam (signed, same patient, bereavement_contact). |
+| GAP-050 | M17 | Visit start/arrive EVV bracket | **visit.start holders can mark a visit evv_present with no EVV event, skipping step-up and the reason requirement.** When evvMissingReason is omitted, the route passes {via:'evv'}, which is the system path, and stamps evv_present with no M18 lookup and no assignee check. This bypasses the self-attest step-up and the 40-character floor. A false evv_present is written to the visit row, history and m17.visit.started. M18's encounter consumer reads the encounter's own bracket, not the visit's. | 17-scheduling/routes/scheduling-routes.ts:91,238-265<br>17-scheduling/scheduling-route-service-db.ts:986-1067<br>packages/scheduling/src/lifecycle/visit-machine.ts:32-41,109-112 | P1 | true | Always use via:'self_attest' on the HTTP routes and require a reason. Advance via:'evv' only from the M18 consumers. Bind an assigned-clinician check. |
+| GAP-051 | M17 | Availability / time-off own-vs-any | **Availability and PTO routes check only the *_own keys and the services ignore the caller.** Any clinician can edit a colleague's availability, file or cancel PTO for them, and list the whole org's PTO. RLS is org-only. A supervisor without cancel_own cannot cancel team PTO, although the spec allows it via approve. Self-approval is not blocked; that is hardening, not a spec requirement. _(prior: GAP-031)_ | 17-scheduling/routes/scheduling-routes.ts:101-106,412-470<br>17-scheduling/scheduling-route-service-db.ts:1871-2059<br>spec:WARDENX_MODULE_17_SCHEDULING_SPEC_v0_2.md:710-715 | P1 | true | Require membershipId to equal the actor unless the caller holds edit_any, read_team or approve. Resolve user to membership before checking self-approval. |
+| GAP-052 | M17 | PTO reassignment scan / §4.8 workers | **Approving PTO never runs the reassignment scan; the reassignment-scan and caregiver-reminder crons are missing.** conflictingVisitCount and affectedPublishedVisitCount are hard-coded 0, and the trigger_reassignment_scan effect has no interpreter. m17.caregiver_reminder_due has no producer. The late-check sweep is a documented record-only deviation (F-141; M18 owns it). _(prior: GAP-032)_ | 17-scheduling/scheduling-route-service-db.ts:1976-2001<br>17-scheduling/outbox-consumers/m15-volunteer-assignment-inactivated.ts:17-21<br>22-documents/outbox-consumers/render-consumer.ts:300-305 | P1 | true | Query published visits in the PTO window, emit m17.reassignment_needed, and add the caregiver-reminder cron. |
+| GAP-053 | M17 | Visit reads caseload | **Visit list, detail, day, week and map views and proposal reads check RBAC only; listVisits applies no caseload filter.** No M17 read route uses caseload_or_scope. listVisits and getVisit run with no actor, and RLS is org-only. Day and week views without a membership return the whole org. visit.read_team is unused. _(prior: GAP-030)_ | 17-scheduling/routes/scheduling-routes.ts:87,164-191,311-321,474-510<br>17-scheduling/scheduling-route-service-db.ts:852-885,2061-2080<br>packages/db/migrations/0045_scheduling_m17_rls_audit_triggers.sql:181-210 | P1 | true | Compose caseload_or_scope on the detail routes, add SQL caseload or own-assignment filters on lists, and require visit.read_team for org-wide views. |
+| GAP-054 | M18 | Geofence decision | **EVV marks a visit as at the patient's address based only on GPS accuracy; a client flag turns a failed accuracy check into a pass.** captureInTx never computes the distance to the patient's address. A client-supplied 'degraded_attested' flag turns a failed accuracy check into 'pass'. The code then emits at_patient_address with a hard-coded distance of 0 (the stored distance is NULL), and visit_verified on check-out. This is documented only as compromise (3) in the file header. _(prior: GAP-034)_ | 18-evv/evv-route-service-db.ts:306-315,357,372-388<br>18-evv/evv-route-service-db.ts:29-31<br>spec:WARDENX_MODULE_18_EVV_SPEC_v0_2.md:39,1720 | P1 | true | Compute haversine distance to the M5 address coordinate. Treat degraded_attested as an advisory breach, not a pass. Stop emitting fabricated distances. |
+| GAP-055 | M18 | Capture guards (offline-sync, device attestation) | **POST /evv/offline-sync skips the assigned-clinician and visit-window checks, and device_attestation_valid is enforced on no route.** offline-sync checks only evv.check_in, then records client-supplied kind (including check_out), visitId and capturedAt for each event. Capture uses the caller's most recently approved device rather than the device that sent the request. Device attestation is a known gap (no attested client, ADR-0035). _(prior: GAP-036)_ | 18-evv/routes/evv-routes.ts:97-115,156-174<br>18-evv/evv-route-service-db.ts:205-218,738-748<br>spec:WARDENX_MODULE_18_EVV_SPEC_v0_2.md:1476-1478 | P1 | true | Run both predicates for each offline event on the server, require evv.check_out for check-out events, and bind device attestation once a client exists. |
+| GAP-056 | M18 | Workers / aggregator submission | **M18 has no workers: no aggregator submission row is ever created, and there is no late-check sweep, poller or spoof detector.** No code inserts evv_aggregator_submission rows. dispatchSubmission and pollSubmissionOnce are only re-exported, never called. Missing-checkout resolutions are created only through correction-of-record. suspected_spoof is never set. The late-check sweep and the GPS-spoof worker are in the Phase-1 done gate. _(prior: GAP-035)_ | 18-evv/evv-route-service-db.ts:320,349,660,731,916,972<br>18-evv/submission-flow.ts:38,77<br>spec:WARDENX_MODULE_18_EVV_SPEC_v0_2.md:26,1199-1210 | P1 | true | Add an 18-evv jobs module with the late-check sweep, aggregator prep (on check_out_recorded), submitter and poller. |
+| GAP-057 | M19 | Tier-1 crons (§4.8) | **Only the roster-sync workers exist; shift-open/close, the coverage-gap watchdog and the SLA crons are not built.** registerM19CronWorkers builds two workers. activateShift is called only from the manual route. The only coverage_gap emit is reactive. Calls never time out, and SLAs never alert. _(prior: GAP-038)_ | 19-oncall/jobs/worker.ts:151-161<br>19-oncall/jobs/index.ts:19-22<br>spec:WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md:1340-1356 | P1 | true | Add the Tier-1 crons: shift-open/close and the coverage-gap watchdog, then the callback, escalation and close-documented crons. |
+| GAP-058 | M19 | m8.encounter.signed -> documented; encounter-creator retry | **The triage encounter-signed decider exists but is never bound, so triage calls never reach documented or closed.** decideEncounterSigned has no production caller, and M8 declares no m19 consumer. markDocumented is the only way into 'documented', so every call stays in documented_pending_encounter. The §4.8 retry worker promised in three comments does not exist. The deferral note is stale: it says 'no decider written'. | 19-oncall/clinical/m8-encounter-signed.ts:96-131<br>19-oncall/lifecycle/triage-call.ts:104-105<br>scripts/outbox-subscription-exceptions.ts:128-134 | P1 | true | Bind an M19 consumer for m8.encounter.signed, declare m19 on the event, add the retry worker, and fix the exception text. |
+| GAP-059 | M19 | Triage call list ABAC | **GET /triage-calls lets every triage.read holder see every triage call in the org.** The caseload_or_scope check passes with an empty target {} and defers row filtering to the service. listTriageCalls never filters by caseload, and RLS is org-only. The spec requires zero rows for patients outside the caller's caseload. _(prior: GAP-101 (P2))_ | 19-oncall/routes/guards.ts:113-126<br>07-care-plan/abac-predicates.ts:296-314<br>19-oncall/routes/read-service-drizzle.ts:220-273 | P1 | true | For callers without org-wide scope, add a SQL predicate restricting to caseload patients or calls the actor handled. |
+| GAP-060 | M20 | DEK cipher port | **The M20 cipher port is not bound: SOS coordinates are dropped and POST /safety/incidents always returns 503.** mountM20Routes receives no cipher, decipher or recipientCountFor. M34 is not the blocker: getTenantKeyProvider is already used by M8, M29, M31 and M39. This is documented only in an inline comment. _(prior: GAP-040)_ | backend/index.ts:3869-3896<br>20-field-safety/routes/write-service-drizzle.ts:121-124,337-347<br>packages/saas-tenant-platform/src/seam-bootstrap.ts:117 | P1 | true | Bind an M20 cipher and decipher over getTenantKeyProvider(), plus the recipient resolver. |
+| GAP-061 | M20 | Check-in overdue detector / §4.8 crons | **The 30-second overdue check-in detector, the core lone-worker safety control, does not exist.** Only the SOS SLA watchdog is registered. decideOverdueCheckIn has no production caller, so nothing flips schedules to overdue and there is no tier cascade. The only check_in_overdue emitter is the M17 no-show consumer. Six other §4.8 crons are missing. This is a repeat of GAP-039. _(prior: GAP-039)_ | 20-field-safety/jobs/cron-workers.ts:645-671<br>20-field-safety/lifecycle/check-in-overdue.ts:206<br>spec:WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md:17,1398-1410 | P1 | true | Add the overdue-detector cron, the post-visit closer and the coverage-gap watchdog to registerM20CronWorkers. |
+| GAP-062 | M21 | par-monitor / unreturned-kit-monitor / overdue detectors | **None of the M21 §4.6 crons exist: par alerts, the automatic 30-day overdue flip and the 72h auto-confirm never run.** runParMonitor, detectReturnEscalation and detectSupplyRequestFindings have no production caller. par.below_threshold and the supply-request overdue events are never emitted. return_overdue fires only from the manual 90-day route. This is a repeat of GAP-041. _(prior: GAP-041)_ | 21-supplies/lifecycle/par-stock.ts:56,72<br>21-supplies/lifecycle/return.ts:409<br>21-supplies/routes/operations.routes.ts:128-130 | P1 | true | Add a jobs module with the par-monitor and unreturned-kit-monitor crons on the active-org enumerator. |
+| GAP-063 | M21 | M21 -> M27 vendor-invoice accrual (D16) | **invoice_accrued and invoice_reconciled are never emitted and the invoice columns are never written, so the M27 consumer and SupplyCostProvider are dead.** M21 has no emit site and never writes invoice_total_cents or the accrued/reconciled timestamps. SupplyCostProvider sums are always 0. No intake or reconciliation path exists. The catalog description says the opposite of what the code does. | 21-supplies/events-by-m21.ts:276-305<br>21-supplies/seams/store-drizzle.ts:193-197,334-349<br>27-cost-report/outbox-consumers/m21-vendor-invoice.ts:46-47 | P1 | true | Emit invoice_accrued and set the columns on dispatch or mark-ordered, and build the reconciliation intake. |
+| GAP-064 | M21 | Controlled-substance dispatcher location | **The controlled-substance dispatcher ABAC check uses a location id supplied in the request body.** Both create routes evaluate dispatcher eligibility against body.locationId. createDispatch re-checks against that same value, then decrements par stock and inserts the row against it, without comparing it to the request's or admission's location. createSupplyRequest stores the body location unverified. | 21-supplies/routes/guards.ts:60-88<br>21-supplies/routes/write-service-drizzle.ts:503-581,992-1075<br>21-supplies/abac-predicates.ts:255-275 | P1 | true | Resolve the serving location on the server (admission or supply_request row), reject a mismatched body value, and evaluate ABAC on the server-resolved value. |
+| GAP-065 | M22 | Right-of-access PHI export bundle | **export-phi-bundle returns a made-up tracking id; nothing is stored, queued or produced.** The DB exportPhiBundle ignores its arguments and returns randomUUID(). There is no row, no job and no m22.phi_bundle.exported event, and no worker exists. The route replies 201. The §8.9 controls (justification, approver, encrypted object, 24h URL) are also missing. No UI calls this route. | 22-documents/documents-route-service-db.ts:719-722<br>22-documents/routes/documents-routes.ts:390-403<br>spec:WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:2926-2940 | P1 | true | Persist the request and enqueue a real bundle job (or delegate to the M34 DSAR worker); return 503 until that exists. |
+| GAP-066 | M22 | Step-up on PHI export / overlay publish / render retry | **Step-up is required by the spec and claimed in route comments, but it is not composed on export-phi-bundle, the overlay PUT or the admin retry route.** The preHandlers use only requirePermission and non-step-up ABAC. requireStepUp is never imported in M22. The spec requires step-up for the §164.524 export and for the overlay (the retry requirement is inconsistent within the spec). abac-predicates.ts:254 repeats the false claim. | 22-documents/routes/documents-routes.ts:10,390-393,736-739,762-765<br>22-documents/abac-predicates.ts:254<br>spec:WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:1506,1526,1865-1872 | P1 | true | Add requireStepUp to all three preHandler chains. |
+| GAP-067 | M22 | 42 CFR Part 2 / DocLens review reads | **No route composes sud_consent_present; the DocLens workspace returns decrypted SUD content to any intake.review holder.** M39 registers the predicate, but no route uses requireAbac with it. The workspace and page-image GETs use only INTAKE_REVIEW. getWorkspace decrypts every value, SUD candidates and SUD evidence, and the image route renders raw pages. The M22 presign and M5 paths do gate SUD in the service, so the gap is the DocLens review surface. | 39-consent/abac-predicates.ts:5,37<br>22-documents/extraction/review-workspace-routes.ts:268-356<br>22-documents/extraction/review-workspace.ts:537-604 | P1 | true | Restrict SUD values and evidence to extraction_reviewer_eligible plus the Part 2 need-to-know check (redact otherwise), and add a gate that flags predicates registered but never composed. |
+| GAP-068 | M22 | Document upload / versions | **POST /api/v1/documents and POST /documents/:id/versions always return 503 in production.** uploadDocument and uploadVersion throw DegradedError unconditionally. The S3 store is wired only for presigned downloads. Clinicians cannot attach documents through the spec'd route. The file header comment about the presigner is stale. | 22-documents/documents-route-service-db.ts:12-13,614-625<br>22-documents/index.ts:75-93<br>spec:WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:1496-1497 | P1 | true | Implement upload over the bound S3 store: stream, verify size and SHA-256, then insert the document and version 1 in one transaction. Keep the 503 only when no store is configured. |
+| GAP-069 | M23 | NOE/NOTR window-watch / eligibility stale-watch | **The NOE/NOTR 5-day window-watch and eligibility stale-watch crons are scheduled but throw on every tick.** buildM23WorkerDeps is called without activeOrgs, noticeWindow, hets or validationRunner. Each watch calls listActiveOrgs, which throws unboundWorkerPort. The breach branch also needs noticeWindow. This is partly documented (F-161 and a TODO). M25 binds an enumerator; M23 does not. _(prior: GAP-042)_ | backend/index.ts:4728-4759<br>23-billing-medicare/jobs/m23-jobs.ts:566-576,1361,1432,1494<br>backend/index.ts:4940-4945 | P1 | true | Bind activeOrgs (buildActiveOrgEnumerator with an M23 platform job id) and noticeWindow in buildM23WorkerDeps. |
+| GAP-070 | M23 | eligibility.refresh / validation-run / revalidate.consumer | **No worker is built for revalidate.consumer, eligibility.refresh or validation-run; the eligibility-check and manual-validate routes always return 503.** registerM23Workers, the only place these Workers are built, has no caller. The composition root wires only the Launch and Cron registrars. The producer is unconditional (index.ts:2470, 6814), so revalidate jobs pile up in Valkey: claims are never re-validated after CTI, F2F, LOC, period-end, cosign, death or EVV changes. The outbox submission gate rejects the other two queue names with 503. Several comments and the docs history wrongly say the worker is registered. Merged with discovered/revalidate. _(prior: GAP-043, GAP-045)_ | 23-billing-medicare/jobs/m23-jobs.ts:1650-1762<br>backend/index.ts:2470,3601,4751-4759,6814<br>23-billing-medicare/outbox-consumers/submit-requests.ts:100-112 | P1 | true | Build Workers for the three queues in the composition root, gated on queueConnection only. Route validation and eligibility enqueues to a real producer. Fix the comments. |
+| GAP-071 | M24 | rb_day derivation / M24 crons | **No production code creates rb_day rows, so Medicaid room-and-board can never be billed.** registerM24CronWorkers and scheduleM24Jobs are never called, and their worker bodies only list orgs. No RbDaySweepStore exists. No code inserts rb_day (the only writes are UPDATEs). The eligibility watchdog never ticks. The deferral is documented in jobs/index.ts:8-10, but the status matrix shows M24 fully green. Merged with discovered/rb_day. _(prior: GAP-046)_ | 24-billing-medicaid/jobs/index.ts:8-10,37-74<br>24-billing-medicaid/routes/write-service-drizzle.ts:609-645,1349-1363<br>audit/implementation-status/IMPLEMENTATION_STATUS.md:36 | P1 | true | Implement RbDaySweepStore and EligibilityWatchdogStore and wire both crons; until then, log a boot warning and add a status-matrix note. |
+| GAP-072 | M25 | Outbox consumers not constructed | **M25's consumers for m23.claim.rejected and m18.evv.aggregator_rejected are never built, so rejections never seed the denial worklist and the rows stay pending.** Both factories are referenced only in their own files, and index.ts builds only buildM25EdiReceivedConsumer. m25 is the only declared consumer, so the dispatcher re-defers the rows every 30 minutes forever. arch:outbox-bindings stays green because it scans files rather than composition-root reachability. The deferrals list marks both as BUILT. _(prior: GAP-047)_ | 25-remittance/outbox-consumers/m23-claim-rejected.ts:44-47<br>backend/index.ts:717,6688<br>backend/bootstrap/outbox-dispatcher.ts:287-290,438-446 | P1 | true | Construct both bindings in index.ts, and add a reachability rule to check-outbox-bindings. |
+| GAP-073 | M25 | Manual match / adjustment override | **Manual match binds an unchecked client-supplied claim id, drops the rationale and never posts; adjustment override drops its reason and has no effect.** manualMatch writes proposedClaimId with no claim lookup (claim_id has no foreign key). It leaves the line 'manual_matched', never 'posted', and never emits claim_paid as §7.2 requires, so M23 and M24 never learn about it. overrideAdjustment only changes postAction. DB audit triggers record the diff but not the rationale. | 25-remittance/routes/write-service-drizzle.ts:125-178<br>packages/db/migrations/0082_remittance_m25_partitioned_lines.sql:21<br>spec:WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md:971-972,1668-1670 | P1 | true | Look up the claim through M23 ClaimReader (404 if missing or cross-provider-entity), persist the reason, run the posting pipeline, and implement the postAction effects. |
+| GAP-074 | M25 | Denials / appeals / remittance UI | **The M25 web UI is read-only: no denial work, appeal lifecycle or ERA manual match.** All four screens only issue GETs. The backend has about 18 write routes (assign, resolve, appeals submit and decide, manual-match, overrides, taxonomy overlay). DEFERRED_SCREENS marks M25 'done' and the status matrix shows Screens ✅. | apps/web/src/modules/25-remittance/denial-worklist.tsx:59<br>25-remittance/routes/denials.routes.ts:88-194<br>docs/design/DEFERRED_SCREENS.md:471 | P1 | true | Add denial and appeal detail panels with lifecycle actions, plus manual-match and override; correct DEFERRED_SCREENS. |
+| GAP-075 | M26 | Cap accrual consumers (M25/M23 -> M26) | **The M26 upstream consumer never records a cap accrual: handlers read organizationId and patientId from payloads that do not carry them.** buildM26UpstreamConsumer forwards only event.payload, so the envelope's organizationId is lost and every handler sees ''. advice_posted has no patientId and returns early, and its emit sets postedAt to new Date(0). claim_recouped fails in withOrgContext(''). This store is the only writer of cap_beneficiary_accrual_line. The tests inject organizationId into the payload, which hides the bug. The F-164 group was removed, so this is not a documented deferral. | 26-cap/consumers/outbox-binding.ts:68-72<br>26-cap/consumers/handlers.ts:55-59,90,114<br>25-remittance/events-by-m25.ts:65-72 | P1 | true | Merge the envelope's organizationId into the payload, and make M25 emit per-claim accrual facts (or have M26 read posted lines through a seam). Add a real-publisher live test. |
+| GAP-076 | M26 | §4.8 cap crons | **M26 cron workers are built without an active-org enumerator or alert router, so every tick throws.** registerM26CronWorkers gets only {connection, db}. activeOrgs falls back to FAIL_CLOSED_ORGS, which throws, and alerts fall back to a no-op. The nightly projection, the D8 cap-year auto-close and the PS&R watchdog therefore never run. Every peer cron module binds buildActiveOrgEnumerator, and the comment citing 'M25 deferred-bind' is stale because M25 now binds it. | 26-cap/jobs/index.ts:49-56,127-182<br>backend/index.ts:4988-4995<br>backend/index.ts:4940,4970 | P1 | true | Bind buildActiveOrgEnumerator with an M26 platform job id (and add it to the allowlist) plus an AlertEmitter-backed alerts port. |
+| GAP-077 | M26 | Inpatient 20% cap day accrual | **m23.claim.line_finalized has no producer and its schema does not match the handler, so cap_inpatient_accrual is never written.** No code publishes line_finalized. The catalog uses revenueCode and has no patientId or organizationId, while handleInpatientDay reads revCode, patientId and organizationId. As a result the 20% inpatient cap and M27's inpatient days are always 0. | 23-billing-medicare/events-by-m23.ts:272-285<br>26-cap/consumers/handlers.ts:104-123<br>26-cap/seam-impls.ts:130-158 | P1 | true | Emit line_finalized on paid 0655/0656 lines with a field set both sides agree on, and take organizationId from the envelope. |
+| GAP-078 | M26 | PS&R import / reconciliation | **PS&R import goes nowhere: CSV bytes are discarded, no reconcile worker exists, and no reconciliation rows are written.** importPsr only hashes the file, inserts a 'queued' row and enqueues nothing. No worker exists for cap:psr-reconcile. No code inserts cap_psr_reconciliation. psr_variance_raised is never emitted. The threshold evaluator runs inline. | 26-cap/routes/write-service-drizzle.ts:334-363<br>26-cap/jobs/index.ts:127-181<br>spec:WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md:416,1570,2322 | P1 | true | Store the CSV in MinIO with a DEK, enqueue psr-reconcile, write reconciliation rows, and emit variance_raised. |
+| GAP-079 | M26 | Cap settlement / period lifecycle UI | **The M26 cap UI is read-only: no settlement propose or finalize, period close or reopen, PSR resolve or threshold acknowledge.** All six screens only issue GETs, and the settlement screen asks the user to 'Propose a settlement worksheet' without offering a control. About 10 write routes exist. DEFERRED_SCREENS marks M26 'done'. | apps/web/src/modules/26-cap/cap-settlement.tsx:14-17,80,92,302<br>26-cap/routes/settlement.routes.ts:43,54<br>docs/design/DEFERRED_SCREENS.md:471 | P1 | true | Add propose and finalize (with step-up), the period lifecycle, PSR resolve and acknowledge actions. |
+| GAP-080 | M27 | S-3 statistics refresh | **Statistics refresh always fails because the M6 and M8 statistics seams are unbound, and statistic_data cannot be filled by hand.** All four StatisticsSeams ports throw unboundWorkerPort, and index.ts passes none. No route writes statistic_data. M6's LevelOfCarePeriodReader exists but in the HCI shape, so the comment is partly stale. Allocation still runs, but S-3 stays empty. This is a documented deferral (WX-PR-013). | 27-cost-report/jobs/m27-jobs.ts:365-391,1207-1213<br>backend/index.ts:4642-4685<br>27-cost-report/routes/statistics.routes.ts:31-46 | P1 | true | Publish M6 monthly census and M8 visits/FTE seams and bind statisticsSeams (a manual route would need a spec change). |
+| GAP-081 | M27 | Cost-report submit two-person control | **Approve/submit separation relies on a client-supplied, optional approvedByMembershipId.** The check runs only when the body field is present. approveForSubmit never stores the approver (there is no column). A user who holds both keys can approve, then submit with the field omitted. The attester is also taken from the body. _(prior: GAP-048)_ | 27-cost-report/routes/write-service-drizzle.ts:1107-1156<br>27-cost-report/routes/cost-report-typebox.ts:150-159<br>spec:WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md:1497,1554,1599 | P1 | true | Store approved_by and approved_at, compare with the actor at submit (403 TWO_PERSON_CONTROL_VIOLATION), and take the attester from the actor. |
+| GAP-082 | M27 | Cost report workspace UI | **The M27 cost-report UI is entirely read-only: no import, compute, validate or submit.** The six screens issue no writes, against 29 write routes. The CMS-1984 filing cannot be prepared in the app. DEFERRED_SCREENS only implies a deferral, and UI_PARITY marks all six screens as passing. The verifier raised this from P2 to P1. | apps/web/src/modules/27-cost-report/cost-report-workspace.tsx:14<br>27-cost-report/routes/cost-reports.routes.ts:66,119<br>audit/ui-parity/UI_PARITY.md:249-254 | P1 | true | Add an explicit deferral row, then build the import, compute, validate, approve and submit write path. |
+| GAP-083 | M28 | FHIR client request-time gates (D12/D16) | **The per-client IP allowlist, BAA check and tier rate limit are stored but never enforced on token mint or FHIR reads.** resolveBearer checks only clientStatus. Token mint records ipAtIssue but never compares it with the allowlist. The BAA port is unbound. rateLimitRps is never read; only the global org/IP limiter applies, and it fails open. index.ts wrongly says the handler enforces these checks. | 28-fhir/routes/fhir-r4.routes.ts:158-186<br>28-fhir/routes/token-mint.ts:293-305,395<br>backend/index.ts:1810-1817 | P1 | true | Enforce the IP allowlist and BAA in token mint and resolveBearer, and add a Valkey per-client limiter that returns 429. |
+| GAP-084 | M28 | Bulk export / inbound lifecycle workers | **M28 has no BullMQ workers: $export jobs are accepted and never run, and inbound SLA expiry and payload destruction never happen.** None of the seven §4.8 queues exists. createJob inserts an 'accepted' job, and poll returns output: []. The offboarding eraser shreds payloads only when an org offboards. F-035 dropped $export from the CapabilityStatement, but the POST routes still accept jobs. $export is part of the Phase-1 done gate. | 28-fhir/routes/fhir-r4.routes.ts:388-478<br>28-fhir/routes/store-drizzle.ts:513-545<br>docs/history/m28-fhir-gateway.md (F-035) | P1 | true | Add the M28 jobs (bulk export to MinIO NDJSON plus the sweepers); return 501 from $export until then. |
+| GAP-085 | M29 | Clinician lab observation list | **GET /api/clinical/labs/observations ignores caseload and lists every lab result in the org.** The route uses only P and inOrg with an empty target. No caseloadPatientIds is passed, and RLS is org-only. The store filters patientId and loinc in memory after an org-wide LIMIT, never applies abnormalFlag or the cursor, and detail routes do use the caseload predicate. _(prior: GAP-052)_ | 29-external-interfaces/routes/labs.routes.ts:33-78<br>29-external-interfaces/routes/store-drizzle.ts:853-869<br>packages/db/migrations/0148_external_interfaces_m29_rls_audit_triggers.sql:103 | P1 | true | Resolve the caseload through CaseloadProvider, and move the filters and keyset cursor into SQL before LIMIT. |
+| GAP-086 | M29 | Inbound MLLP listener (§4.11) | **The inbound HL7 MLLP listener is never started, so ORU and ADT messages cannot be received.** Nothing composes the supervisor: startListenerProcess is defined nowhere, and createTlsListenerRegistry is used only in tests. No hl7-listener compose service exists. hl7_message_inbound and lab_observation have no production writer. This is a documented deferral that was never picked up after T08. _(prior: GAP-050)_ | 29-external-interfaces/listener/index.ts:1-11<br>backend/index.ts:800-824<br>deploy/production/compose.yml | P1 | true | Add the listener process entry point and the compose service. |
+| GAP-087 | M30 | CAHPS sample / export pipeline | **CAHPS export returns a fabricated 'queued' job, and every port of the sample and export crons is unbound.** createCahpsExport returns a random exportId and enqueues nothing, and GET export always returns 404. The export worker's adapters, decrypt, binding config and outbox ports throw, and the monthly sample's candidate, insert and emit ports are unbound. Orgs with an active binding dead-letter monthly. export_failed is not in the catalog. getTenantKeyProvider and the m30 outbox are available but not routed. Merged with seams/CAHPS. _(prior: GAP-054 (CAHPS half))_ | 30-quality/routes/write-service-drizzle.ts:716-740<br>30-quality/jobs/m30-jobs.ts:1799-1857,2076-2107<br>backend/index.ts:4578-4613 | P1 | true | Return 501 from R-14 until the pipeline exists, then persist export jobs, bind the vendor adapters, the caregiver-contact cipher, the death-feed reader and the outbox, and catalog export_failed. |
+| GAP-088 | M30 | QAPI PIP / SRA cycle close | **PIP and SRA closure co-signers are arbitrary membership ids taken from the request body.** R-31 and R-47 check RBAC only (plus step-up on R-47). The service stores whatever two ids the body supplies, and recentStepUp is hard-coded true. qapiCloseAuthority and sraCloseAuthority are implemented and registered but never composed. The DB CHECK only requires timestamps. _(prior: GAP-053)_ | 30-quality/routes/write-service-drizzle.ts:1002-1034,1228-1247<br>30-quality/abac-predicates.ts:578-640<br>apps/backend/__tests__/quality-inject.test.ts:17-20 | P1 | true | Require the actor to be one of the co-signers and compose the close-authority predicates against the other co-signer, or move to a two-step close. |
+| GAP-089 | M30 | M6 -> M30 mortality review | **M30 does not consume m6.discharge.death and has no create route, so mortality reviews can never exist.** m6.discharge.death declares only m5 and m37. The M30 consumer is left unbound because it shares a handler with the CAHPS candidate. The routes are list, get, patch and complete only, and review_created has no producer. The D9 auto-creation is in the done gate. _(prior: GAP-054 (mortality half))_ | 06-admission/events-by-m6.ts:854-886<br>30-quality/outbox-consumers/upstream-consumer-ports.ts:8-21,109-111<br>30-quality/routes/mortality.routes.ts:63,78,92,109 | P1 | true | Split handleDischargeDeath, bind the mortality-draft half, and add m30 as a consumer. |
+| GAP-090 | M30 | Operational measure inputs in the recompute worker | **visit_on_time_rate, evv_compliance_rate and opioid_on_admission_rate throw in the worker because their stores require a request context.** The worker runs inside withOrgContext only. The M17, M18 and M12 stores call withOrgContextFromRequest, which throws 'no ambient request context', and their providers ignore the orgId. Only a mocked unit test covers this. These are the 'Relay ticks and workers are not requests' rule. | 30-quality/jobs/m30-jobs.ts:648-650,1714-1717,2218-2241<br>17-scheduling/seams/drizzle-store.ts:302-303<br>18-evv/seams/drizzle-store.ts:260-261 | P1 | true | Add org-explicit ...ForOrg store methods, or wrap the calls in runWithRequestContext. |
+| GAP-091 | M30 | Incident list / PHI patient scope | **The incident list pages within a fixed 200-row window, and no M30 PHI route applies patient scope.** listIncidents fetches the newest 200 rows and then filters and paginates in memory, so older records are unreachable. Incident, mortality and infection routes lack the requirePatientScope the spec requires. Their comments claim a 'patient-level RLS predicate' exists, but migration 0067 is org-only, and the CAHPS shim checks only that a session exists. The verifier raised this from P2 to P1. | 30-quality/routes/read-service-drizzle.ts:795-829<br>packages/db/migrations/0067_quality_m30_rls.sql:113-133<br>30-quality/routes/infection.routes.ts:15-19,67,87 | P1 | true | Push the filters and keyset cursor into the repo, and compose a real patient scope on the PHI routes (or amend the spec). |
+| GAP-092 | M31 | Portal and admin write surfaces | **Several M31 routes return fake success with no side effect, and no production path creates portal accounts or grants.** caregiver-attested returns 202 'attested' with no M13 write. upload-init returns https://uploads.invalid/... and upload-complete emits nothing. bereavement opt-out and notification preferences return ok. The invitation issue route fabricates ids, and list, audit-views and amendments always return []. revoke and invite-bereaved do nothing. store.ts has no insert for portal_account or portal_access_grant (F-164). Comments falsely claim the M13 write and the emit happen. _(prior: GAP-057, GAP-059)_ | 31-portal/routes/write.routes.ts:72-125,155-173,248-280<br>31-portal/routes/admin.routes.ts:56-119,214-229<br>31-portal/outbox-consumers/m16-bereavement-contact-active.ts:33-37 | P1 | true | Implement the M2 invite primitive and grant creation, and wire M13, M22 and M16. Any route that is not yet backed must return 501/503. |
+| GAP-093 | M31 | Staff-side caseload ABAC | **Staff telehealth and invitation routes use inOrg instead of caseload ABAC, and the auditor route has no engagement scope.** ABAC_IN_ORG appears on staff join, leave, end, stop-recording and the invitation and account routes. The stated reason ('caseload_membership has no producer') is false: M5 registers caseload_membership and M7 registers caseload_or_scope. stop-recording does not check that the caller is the one who started it. The auditor route passes engagementId as a patientId behind inOrg, and no engagement_scope predicate exists. | 31-portal/routes/guards.ts:92-101<br>05-patient/seams/caseload-provider.ts:47-70<br>31-portal/routes/admin.routes.ts:280-296 | P1 | true | Compose caseload_or_scope with a resolved patientId, enforce starter-only stop-recording, and add an engagement-scope predicate. |
+| GAP-094 | M31 | Portal telehealth join authorization | **Portal telehealth join and leave are not tied to the session's granted patient.** Join composes only P and telehealth_consent_active. That predicate checks only the visit patient's consent: no isPortalSession, no grant and no comparison with sessionPatientId. The handler advances the lifecycle to in_progress and mints a token. The token is empty today under NOOP, but this becomes a cross-patient video exposure once an adapter is bound. | 31-portal/routes/telehealth.routes.ts:46-127<br>31-portal/abac-predicates.ts:271-279,344-355<br>31-portal/routes/guards.ts:80-85 | P1 | true | Add ABAC_GRANT and reject when visit.patientId does not equal the session patient. |
+| GAP-095 | M31 | Telehealth lifecycle vs vendor | **Telehealth join returns a hard-coded fake vendor URL even with an adapter bound; leave, end and recording never reach the vendor.** join always returns https://telehealth.invalid/<id> because vendorRoomUrlCipher is never decrypted, and it writes in_progress before minting. leave stores nothing. start-recording discards the vendor id. end never calls endRoom. Today the unbound adapter fails closed (the lazy mint returns 503), so no rows exist yet. The defect surfaces as soon as a vendor is bound. | 31-portal/routes/telehealth.routes.ts:23-39,70-103,164-219<br>31-portal/telehealth/room-mint.ts:103-122<br>backend/index.ts:3897-3919 | P1 | true | Decrypt and return the minted room URL, mint before writing the lifecycle, persist leave, and call endRoom. |
+| GAP-096 | M32 | ai_safety_owner / platform kill switch | **A tenant admin can stop an AI capability for every tenant by minting a role key.** ai_safety_owner passes on the role keys ai_safety_owner, platform_ops or clinical_safety_lead, and none of them is reserved. With scope 'platform', the kill switch writes a NULL-org row through withPlatformContext, so RLS does not block it. No single-tenant gate exists for clinical_safety_lead. This is the same root cause as the platform role-key finding. | 32-ai-platform/abac-predicates.ts:91-95,218-228<br>32-ai-platform/routes/guards.ts:126-138<br>32-ai-platform/safety/store-drizzle.ts:~180-235 | P1 | true | Reserve the platform role keys and require a NULL-org platform role, and gate clinical_safety_lead behind a single-tenant flag. |
+| GAP-097 | M33 | Scheduled-report authorization | **Report schedules have no owner or visibility check, although comments claim one exists.** The routes use permission only (abac 'none'). The service checks only the org. createSchedule accepts another user's private view, update and pause need no owner, and list returns every schedule in the org. The worker re-checks only active membership, not reportable_scope. A status filter other than 'active' returns []. | 33-reporting/routes/schedules.routes.ts:6-10,37-45<br>33-reporting/routes/write-service-drizzle.ts:510-602<br>33-reporting/jobs/m33-jobs.ts:376-398 | P1 | true | Compose dashboard_visibility, limit mutations to the owner or org_admin, filter lists, and check reportable_scope for each recipient. |
+| GAP-098 | M34 | ABAC resolver binding | **The M34 ABAC predicates run on a deny-all resolver in production, so support sessions, feature-flag writes and the kill switch always return 403.** registerTenantPlatformAbacPredicates is called unconditionally with SLICE_M34_ABAC_RESOLVER, whose loaders all return null or false. The 'role-only' comment is false. This fails closed and is a repeat of GAP-061. _(prior: GAP-061)_ | backend/index.ts:1703-1708,1965-1976<br>34-saas-tenant-platform/abac-predicates.ts:124-180<br>34-saas-tenant-platform/routes/platform/feature-flags-admin.ts:60-115 | P1 | true | Implement a Drizzle TenantPlatformAbacResolver and bind it at DB boot. |
+| GAP-099 | M35 | Promo code application | **Promo application ignores the validity window and redemption cap and never increments redemption_count.** Both apply paths check only isActive. valid_from, valid_to and max_redemptions are never read, and nothing increments the count. guards.ts claims the server enforces these. Duplicate application is blocked by a partial unique index, but the service does not map that error, so a duplicate surfaces as a 500. There is no visibility column. | 35-subscription/routes/service-drizzle.ts:844-889,1304-1310<br>35-subscription/routes/guards.ts:14-17<br>packages/db/migrations/0141_subscription_billing_m35_tenant_tables.sql:240 | P1 | true | SELECT ... FOR UPDATE the promo, enforce the window and cap, increment the count, and map 23505 to 409. |
+| GAP-100 | M35 | Stripe integration / §4.9 workers | **No Stripe dispatcher, webhook ingest, dunning, usage or revenue worker exists, so subscription billing is local state only.** Every mutation emits an event for a dispatcher that does not exist. setup_intent returns a null clientSecret. The webhook returns 503. Only 3 of the 11 §4.9 queues exist (as consumers). The status matrix shows Implemented. This is a repeat of GAP-062. _(prior: GAP-062)_ | 35-subscription/routes/service-drizzle.ts:8-10,891-895<br>35-subscription/routes/webhooks.routes.ts:43-50<br>backend/index.ts:3488-3522,6855-6863 | P1 | true | Wire the dispatcher and webhook ingest from packages/subscription-billing, add the crons, and mark M35 as not live until then. |
+| GAP-101 | M36 | Out-of-band delivery and vendor webhooks | **No push, SMS, email or voice dispatcher exists, the vendor webhooks are unmounted, and Tier-1 SOS voice escalation is unbuilt.** The 12 queues are data only, with no Worker and no vendor adapter. Delivery settles only through the in-app poll. delivery_failed has no producer. tenant_alert_routing_override is never read, and the tighten-only trigger does not exist. The webhook registrar is deferred because the service has no implementation and formbody is not registered. M20 requests push, SMS and voice for SOS. ADR-0036 defers only the realtime socket. Merged with fitness-kit/webhooks. _(prior: GAP-064)_ | packages/messaging/src/jobs/queues.ts:1-9,35-48<br>36-messaging/messaging-route-service-db.ts:776-800<br>scripts/check-route-reachability.ts:53-67 | P1 | true | Build the fan_out and send_* workers (critical field-safety channels first), implement the webhook service and mount it, and produce delivery_failed. Alternatively, record an ADR deferral. |
+| GAP-102 | M36 | alert_rule system_locked | **A tenant admin can weaken a system_locked alert rule such as SOS (downgrade severity or change the resolver).** patchAlertRule refuses only enabled=false. The first edit clones the rule with system_locked=true, and the INSERT RLS policy does not check system_locked. The emitter then uses the org rows instead of the platform rule. The clone also cannot be edited again, because the UPDATE policy requires system_locked=false. This applies to field_safety.sos, noe.late_risk and system.backup_failure. | 36-messaging/messaging-route-service-db.ts:982-1027<br>packages/db/migrations/0017_messaging_m36_rls_audit_triggers.sql:57-66<br>36-messaging/alert-emitter-drizzle.ts:165-167 | P1 | true | Reject resolver changes and severity downgrades on locked rules (403), and add a DB backstop. |
+| GAP-103 | M36 | manage_members ABAC / audit actor | **Member add and remove routes skip the location ABAC, and their writes record an empty audit actor.** MANAGE_MEMBERS is requirePermission only, and both the header and the catalog overstate it. A holder can add themselves to any care_team channel, and since channel_visibility is a membership check, that grants PHI read. addMember, removeMember and patchAlertRule use userId "", so the audit actor is NULL. _(prior: GAP-136 (P2))_ | 36-messaging/routes/messaging-routes.ts:10-12,89,199-226<br>36-messaging/messaging-route-service-db.ts:337-362,508,535,967<br>spec:WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md:1720 | P1 | true | Compose location_membership and pass the actor into withOrgContext. |
+| GAP-104 | M36 | Channel membership lifecycle | **Care-team channel membership is only re-synced by portal activity; on-call, bereavement and archive sync return 501.** canViewChannel checks only for a channel_member row. syncCareTeamChannel is called only from two M31 portal routes: there is no M5 consumer and no channel_sync worker. The on-call, bereavement and archive hooks throw 501. A clinician removed from a caseload keeps channel access, and channels are never archived on discharge. | 36-messaging/messaging-route-service-db.ts:337-366<br>36-messaging/messaging-provider-db.ts:67-82,205-304<br>31-portal/routes/read.routes.ts:357 | P1 | true | Have channel_visibility consult the CaseloadProvider, or bind an M5 assignment consumer, and implement archive. |
+| GAP-105 | M37 | §4.8 crons / census / IRC | **Only one M37 cron exists: census snapshot, IRC day count, restraint and cleaning watchdogs are never built.** Only rn-coverage-watchdog exists, and census, restraint and cleaning are open on #174. ipu_census_snapshot has no writer, so snapshot_taken never fires (no external consumer reads it today). consecutive_day_count stays 1 because advanceIrcEpisode has no caller, so the day-6+ RHC repricing never fires. Nine events are catalog-only. _(prior: GAP-065)_ | 37-ipu/jobs/index.ts:22-34<br>37-ipu/jobs/cron-workers.ts:266-275<br>packages/inpatient/src/machines/irc-episode.ts:79-90 | P1 | true | Build the census, IRC day-advance, restraint, cleaning and GIP-staleness crons. |
+| GAP-106 | M37 | Body release / GIP attestation / M6 confirm | **Body release, GIP attestation and the M6 confirm handshake trust client-supplied facts.** Body release passes if the body contains any document or funeral home id, and postClose sets isSystemActor:true. attestGip stores an unvalidated attestingPhysicianId; attester_eligible is never composed, stepUpAssertionId holds the membership id, and gip_criteria.attested is not catalogued. The system-internal POST /confirm hard-codes lcpConfirmed:true for any m37.ipu_admission.create holder, and no M6 activation consumer exists. _(prior: GAP-066, GAP-067)_ | 37-ipu/routes/service-drizzle.ts:1117-1145,1206-1243,2310-2321<br>37-ipu/routes/ipu.routes.ts:289-298,322-326<br>spec:WARDENX_MODULE_37_IPU_SPEC_v0_2.md:231,354-363,1386 | P1 | true | Check the M22 signed body-release document and resolve the funeral home through M40. Compose attester_eligible and store the real step-up assertion id. Make confirm system-internal, driven by M6. |
+| GAP-107 | M37 | IV-continuous safety overlay (D7) | **The IPU IV safety overlay has a reader and an eraser but no writer, and M13 never asks for it.** Nothing writes ipu_iv_safety_overlay, M37 has no m11 or m12 signed consumer, and M13 never calls getOverlayForOrder, so the seam always returns null. Sedation dual-witness is not enforced (M13 does enforce basic rate bounds). The spec's trigger, kind=medication_iv_continuous on m11, does not exist, because medication orders belong to M12. _(prior: GAP-068)_ | 37-ipu/seams.ts:186-200,356<br>11-orders/events-by-m11.ts:21-30<br>13-emar/index.ts:44-50 | P1 | true | Bind a writer on M12 medication-order signing using the overlay-builder, have M13 call the seam and enforce dual witness, and reconcile the spec. |
+| GAP-108 | M38 | Terminology loader / jobs | **There is no production terminology loader or worker; the admin load route only registers a version row.** None of the nine §4.3 jobs has a Worker. The jobs directory that queues.ts points to does not exist, and neither does packages/terminology-loader. load returns 'pending_loader_worker'. Only ICD-10-CM can be loaded, out of band. tenant_deprecation_scan never runs. _(prior: GAP-069)_ | 38-terminology/routes/admin-terminology-routes.ts:16-21,117,141<br>packages/terminology/src/jobs/queues.ts:1-31<br>scripts/db/load-icd10cm.ts:1-27 | P1 | true | Build load_version (generalizing the ICD loader), refresh_expansions and tenant_deprecation_scan, and have the route enqueue. |
+| GAP-109 | M39 | Consent routes ABAC | **No consent route applies the spec's ABAC (caseload, consent owner or compliance officer, bereavement window).** Every route uses requirePermission and requireStepUp only, and requireAbac is not imported. Any consent.read holder (every clinical role) can read any patient's Part 2 releases and DPOA records, and author, sign or revoke holders can act on any patient. consent.read is declared with abac 'none'. _(prior: GAP-070)_ | 39-consent/routes/consent-routes.ts:1,78-95,150-161<br>spec:WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md:1050-1077,1711-1727<br>packages/auth/src/permissions/contributed.ts:571 | P1 | true | Compose caseload_or_scope on patient-keyed routes, add a consent_owner_or_compliance predicate for consent-keyed routes, and add the bereavement window. |
+| GAP-110 | M39 | Consent D13 post-death scope | **ConsentEvaluator never learns of a patient's death, and m5.patient.deceased has no M39 consumer.** The store's isPatientDeceased returns false unconditionally ('not yet wired'). m39 is not a consumer of the event, so arch:outbox-bindings cannot flag it. Consents that should end at death keep authorizing M22 PHI egress. _(prior: GAP-071)_ | 39-consent/consent-store-db.ts:168-173<br>packages/consent/src/seams/consent-evaluator.ts:326-336<br>05-patient/events-by-m5.ts:141-142 | P1 | true | Implement isPatientDeceased from patient.status and bind the D13 expiry consumer. |
+| GAP-111 | global | PHI write-audit actor attribution | **Route-level PHI writes call withOrgContext with userId "", so the write-audit trigger records a NULL actor.** withOrgContext sets app.user_id only from ctx.userId, and the triggers read NULLIF(app.user_id,'')::uuid. Calls with an empty userId: M5 9, M6 49/76, M7 21/22, M8 37/37, M9 19/19, M10 32/32, M11 29, M17 36, M18 25, M36 4, M39 20. This is a documented 'M8-M17 convention' compromise that breaks HIPAA §164.312(b) attribution. Some services already have an actor in hand; others need their interfaces widened. _(prior: GAP-033)_ | packages/tenancy/src/context.ts:56-66<br>packages/db/migrations/0317_m6_referral_payer_numbers.sql:39-40<br>08-encounters/encounters-route-service-db.ts:14-16,1774-1775 | P1 | true | Thread the acting user id into every request-path service, or default withOrgContext to getRequestContext().userId. Keep "" for workers only. |
+| GAP-112 | global | Proxy access logging | **Production nginx logs the full request URI, including patient search terms and S3 presigned signatures.** None of the three vhosts sets access_log or log_format, and the global nginx.conf is not managed by the repo, so the default 'combined' format logs $request. That captures ?q=name\|MRN on /api and X-Amz-Signature on the storage vhost. The backend strips query strings only from its own Pino logs. _(prior: GAP-073)_ | deploy/production/nginx/wardenx-frontend.conf:1-31<br>deploy/production/nginx/wardenx-storage.conf:1-20<br>backend/bootstrap/plugins/logger.ts:3-7,26-30 | P1 | true | Define a PHI-safe log_format using $uri, disable or limit the storage access log, and document the host nginx.conf. |
+| GAP-113 | M01 | §4.8 audit.archive / idempotency.cleanup | **M1 audit.archive and idempotency.cleanup jobs are not implemented.** Neither job exists. Expired idempotency rows are 'left for the sweeper', which does not exist, so idempotency_key grows without bound. | backend/bootstrap/plugins/idempotency-store-db.ts:68-71<br>packages/audit/src/jobs/queues.ts:12<br>spec:WARDENX_MODULE_01_FOUNDATION_SPEC_v0_4.md:2531-2548 | P2 | false | Add an hourly org fan-out purge, and implement audit.archive or defer it. |
+| GAP-114 | M01 | Foundation OpenAPI | **Foundation routes /health, /ready, /version and /system/feature-flags have no OpenAPI enrichment.** bootstrap has 6 of 11 routes enriched and the baseline locks in a deficit of 5. The '11 routes' count may be stale since /healthz was retired. | audit/openapi-coverage/OPENAPI_COVERAGE.md:53<br>audit/openapi-coverage/baseline.json:199-203<br>backend/bootstrap/routes/health.ts:30-47 | P2 | false | Add enrichments with the §4.2 schemas and ratchet the bootstrap deficit to 0. |
+| GAP-115 | M02 | §4.1 route inventory | **M2 spec routes are missing: /me/session, step-up overrides, funeral invite, org and provider-entity/location writes.** There is no /me/session with stepUpStatus. The step-up override store has only find, so W-M2-10 can be set only with SQL. There is no /orgs CRUD and only GET for provider entities and locations. Session list/revoke and screen-unlock are path drift (Better Auth defaults and a client-side re-sign-in). This partly reopens prior GAP-003 (no tenant-onboarding writes). _(prior: GAP-003, GAP-074)_ | 02-identity/step-up-override-store.ts:21-27<br>backend/bootstrap/routes/provider-entities.ts:28<br>spec:WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md:716-756,1613 | P2 | true | Implement /me/session and the override admin routes (tighten-only), or record deferrals and reconcile with M34. |
+| GAP-116 | M03 | Admin consoles | **The admin consoles are read-only against specs that require writes; terminology.admin and mdm.console have no requiredPermission.** roles-permissions is 'Read-only by design'. | apps/web/src/modules/03-authorization/roles-permissions.tsx:15<br>apps/web/src/modules/40-mdm/screens.ts:11-16 | P2 | false | Gate them on real read keys, and build or defer the writes. |
+| GAP-117 | M03 | Role revoke / break-glass transitions | **There is no last-required-role guard, and break-glass revoke has no status guard.** DELETE membership roles revokes unconditionally. breakGlass.revoke has no status predicate, there is no deny route, and the reap_breakglass cron is missing (reads are still time-boxed). | 03-authorization/routes/authz-routes.ts:294-310<br>03-authorization/break-glass-store.ts:139-148 | P2 | false | Return 409 LAST_REQUIRED_ROLE, add a status guard, and build reap_breakglass. |
+| GAP-118 | M05 | Amendment accept/deny | **The amendment decision has no status guard, does not apply the accepted change, and returns 500 for an unknown id.** The UPDATE has no status='pending' condition, the accepted change is not applied, and errors are thrown as plain Error. The amendment SLA and geocode jobs are never built. | 05-patient/patient-route-service-db.ts:760-788<br>05-patient/jobs/index.ts:8-17 | P2 | false | Guard the transition (409), use typed errors, apply the change, and build the SLA worker. |
+| GAP-119 | M05 | Census KPIs / global search | **Census KPIs and global-search scopes say they are waiting for modules that have shipped.** The KPIs are hard-coded '—'. The M22, M16 and M19 labels are wrong. _(prior: GAP-158)_ | apps/web/src/modules/05-patient/patient-list-census.tsx:69-82<br>apps/web/src/modules/05-patient/global-search.tsx:60-63 | P2 | false | Compute the KPIs and fix the labels. |
+| GAP-120 | M05 | POST /api/v1/patients | **Patient admit does not apply the location_scope ABAC the spec requires; the spec contradicts itself.** The preHandler is [CREATE] only. location_scope already exists, but the admit body has no locationId and patient.location_id is null until admission. _(prior: GAP-079)_ | 05-patient/routes/patient-routes.ts:121,352<br>spec:WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:16,494-499,1235,1542 | P2 | true | Resolve a target location from primaryAddress, or amend the spec to say admit is org-wide. |
+| GAP-121 | M06 | For-cause discharge governance | **For-cause discharge: the filer and cosigner are not checked to differ, there is no decline or reversal route, and the discharge route has no admission.scope.** cosignDischarge discards its input, there is no filer column, and the route uses only dischargeReasonGuard. | 06-admission/admission-route-service-db.ts:5432-5536<br>06-admission/routes/admission-routes.ts:1090-1093 | P2 | false | Persist the filer and require filer != cosigner. Add a decline route and admissionScope. |
+| GAP-122 | M06 | GIP level-of-care gate (D12) | **The GIP gate is a 30-character free-text reason instead of the three D12 attestations; the spec contradicts itself.** R-LCP-01 (30 characters, 422) is enforced twice. D12 asks for three attestations and a 412, plus a UI checklist, and neither exists. | 06-admission/state-machines/level-of-care.ts:75-80<br>06-admission/routes/service.ts:2258-2262<br>spec:WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md:593,2082,2962 | P2 | true | Settle which rule applies in the spec, then implement it in both places. |
+| GAP-123 | M08 | Encounter scale launcher | **The encounter read screen records assessment scales as raw JSON and offers scales that cannot be scored.** This is a 500 path; the M9 modal was not reused here. | apps/web/src/modules/08-encounters/encounter-read.tsx:2255-2265<br>apps/web/src/modules/15-discipline-care-plans/assessment-editor.tsx:114 | P2 | false | Reuse RecordAssessmentModal. |
+| GAP-124 | M10 | HOPE draft writes | **PUT /hope/assessments/:id and PATCH answers do not apply the discipline predicate.** Create and sign use ABAC_AUTHOR, but PUT and PATCH answers use only hope.scope. regenerate-schedules checks permission only. | 10-hope/routes/hope-routes.ts:269-272,375-378,601-608 | P2 | false | Add ABAC_AUTHOR, and scope regenerate. |
+| GAP-125 | M11 | Operational routes with no UI | **Held-transmission recovery, rate tables, wage indexes and med retransmit have no UI.** Failed transmissions can be recovered only through the API. | openapi uncalled: /api/v1/orders/held-transmissions, /billing/rate-tables, /medication-orders/{id}/retransmit | P2 | false | Add a held-transmissions queue and the admin screens. |
+| GAP-126 | M11 | Draft edit | **Any orders.draft holder can edit any draft; indicationText is dropped.** editDraft checks status only, not author or supervisor. The route never passes indicationText. | 11-orders/orders-route-service-db.ts:1002-1017<br>11-orders/routes/orders-typebox.ts:87-91 | P2 | false | Allow edits only by the author or a supervisor, and persist or remove the field. |
+| GAP-127 | M14 | Concurrency headers / action items | **M14 PATCH and DELETE routes do not require If-Match or an Idempotency-Key; action-item PATCH has no assignee check and DELETE has no pre-adjourn guard.** Only the discipline-note routes use the headers. is_assignee is registered nowhere, and removeActionItem has no adjourn check. _(prior: GAP-026)_ | 14-idg/routes/idg-routes.ts:133-134,210-692<br>14-idg/idg-route-service-db.ts:1894-1940 | P2 | false | Apply the headers, enforce assignee-or-coordinator, and refuse after adjournment. |
+| GAP-128 | M14 | Packet / history PHI scope | **IDG packet reads have no per-patient caseload check, and idg-history (not in the spec) is gated by idg.read only.** The routes compose READ plus location SCOPE only. idg-history has no scope at all. _(prior: GAP-027 (was P1))_ | 14-idg/routes/idg-routes.ts:460-533<br>14-idg/abac-predicates.ts:126-131 | P2 | false | Add a CaseloadProvider filter and add the history route to the spec. |
+| GAP-129 | M16 | Cipher port / caregiver roster | **Every M16 *_cipher column is written as NULL, so contact methods and notes are discarded; the caregiver seed is ignored.** This is documented in the file header. The 13-month program has no stored way to contact anyone. | 16-bereavement/routes/write-service-drizzle.ts:22-35,1392,1457 | P2 | false | Bind an M34-backed cipher and the M5 caregiver reader, and return 503 when notes are provided until then. |
+| GAP-130 | M16 | Outbox subscriptions (§4.5) | **The m8.encounter.signed, m22.document.rendered, m4.legal_hold.* and m39.consent.created subscriptions are not bound (documented exceptions).** In-person visits never complete outreach, rendered back-references are never set, and the legalHold transitions have no caller. m17.shift_changed is drift on the producer side. _(prior: GAP-029 (was P1))_ | scripts/outbox-subscription-exceptions.ts:107-128<br>backend/index.ts:5845-5897<br>packages/types/src/bereavement.ts:313-317 | P2 | true | Build the m8 and m22 consumers and declare m16 as a consumer on the producers. |
+| GAP-131 | M17 | Metrics routes | **GET /metrics/visits returns a hard-coded onTimeRate: 1, and route-efficiency returns zeros.** The window is ignored, so dashboards show fabricated values. | 17-scheduling/scheduling-route-service-db.ts:2096-2106 | P2 | false | Compute the real rate, and return null or 501 for efficiency. |
+| GAP-132 | M17 | Portal upcoming / EVV arrival | **Portal upcoming-visit and arrival routes trust the patient or visit id in the request, with no session or consent binding (latent).** Gated by RBAC keys only (abac 'none'). No default role grants these keys. The live M31 upcoming route binds the patient through the session, but M31 has no arrival route. The verifier lowered this from P1 to P2. | 17-scheduling/routes/scheduling-routes.ts:524-533<br>18-evv/routes/evv-routes.ts:481-496<br>31-portal/routes/read.routes.ts:158-165 | P2 | true | Bind sessionPatientId plus M39 consent, or retire the M17 duplicate route. |
+| GAP-133 | M18 | GPS coordinate storage | **EVV coordinates are stored as base64('lat,lng') in coords_cipher, stamped with dek_version=1.** This is encoding, not encryption. It is a documented D10 deferral. _(prior: GAP-037 (was P1))_ | 18-evv/coords.ts:13-26 | P2 | false | Bind the M34 envelope cipher and stop stamping a DEK version. |
+| GAP-134 | M19 | Verbal-order disposition | **The verbal-order disposition accepts an unchecked orderRecordId, and the link effect never runs.** recordTriageVerbalOrder is called only from tests, and linked_verbal_order_ids is never appended. | 19-oncall/lifecycle/disposition.ts:176-180<br>19-oncall/clinical/verbal-order.ts:185-205 | P2 | false | Resolve the id through M11 and append the link in the same transaction. |
+| GAP-135 | M20 | Patient-death cascade | **M20 does not consume m5.patient.deceased, so safety obligations stay open after death.** This is a documented no-handler exception. | 20-field-safety/consumers/index.ts:31-32<br>scripts/outbox-subscription-exceptions.ts:136-141 | P2 | false | Write and bind the consumer. |
+| GAP-136 | M20 | Live tests for Drizzle route services | **No live test exercises the M20 Drizzle route services (about 2,870 lines) or either M16 Drizzle service.** Only consumer, worker and table-RLS suites exist. The M16 write service is not reached through m39-consent-signed. | 20-field-safety/routes/write-service-drizzle.ts<br>16-bereavement/outbox-consumers/m39-consent-signed.ts:62-76 | P2 | true | Add m20 and m16 route live suites plus the package and CI rows. |
+| GAP-137 | M21 | AI-block (D15) / M23 D13 | **M21 has no AI block, and M23's validateAiBlockForBilling is never called at boot.** There is no validateSupplyAIBlock and no rejectAiActor. M37 shows the boot pattern exists. | 23-billing-medicare/ai-block.ts:26-29,115<br>backend/index.ts:4163 | P2 | false | Add both validators at boot and reject AI actors on controlled-substance routes. |
+| GAP-138 | M22 | DocLens production deployment | **The docling-worker sidecar is missing from production compose and deploy.yml, so DocLens returns 503.** ADR-0048 does not mention production. | deploy/production/compose.yml:11-165<br>22-documents/extraction/docling-client.ts:247-256 | P2 | false | Add the image build and service, or record a deferral. |
+| GAP-139 | M22 | Object storage credentials | **The backend and worker use the MinIO root account as their S3 credential.** MINIO_SECRET_KEY is set from MINIO_ROOT_PASSWORD. | deploy/production/compose.yml:47,103,135 | P2 | false | Provision a scoped service account. |
+| GAP-140 | M22 | Overlay / classification / template / retry / intake guards | **Several M22 writes return success but discard their payload.** Overlay branding is saved as {}. pageRanges is ignored. publishTemplateVersion is fake. retryRender has no worker. confirm and openReview have no batch-status guard. | 22-documents/documents-route-service-db.ts:771-795,1074-1131<br>22-documents/routes/documents-routes.ts:741-745 | P2 | false | Persist the payloads or return 501, and guard the transitions. |
+| GAP-141 | M22 | §4.8 workers | **The M22 retention-rotation, ai-block-validator and MinIO access-log queues are never built.** Intake artifacts are never rotated. form-render is covered by the outbox render consumer, which is architectural drift from the spec. | backend/index.ts:5485-5501<br>spec:WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:737-757,1902-1918 | P2 | true | Implement retention-rotation and the boot ai-block validator, or defer them in the spec. |
+| GAP-142 | M23 | Route inventory drift | **About 27 implemented routes appear only in OpenAPI and in no spec (rate-tables, wage-indexes and others).** rule-config and sequestration-policy differ between spec and code in singular vs plural form. The verifier raised this from P3 to P2. _(prior: GAP-168 (part))_ | 23-billing-medicare/routes/rule-config.routes.ts:48-128<br>spec:WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md:1475-1490,1499 | P2 | true | Add the routes to the §4 inventories. |
+| GAP-143 | M23 | MAC jurisdiction enumerator | **The M23 cron jurisdiction list is hard-coded to 'ngs_j6'.** Tenants with any other MAC never get ACK pulls. | backend/index.ts:~4740<br>23-billing-medicare/jobs/m23-jobs.ts:1214,1280,1580 | P2 | false | Bind it to the provider-entity MACs, or defer with a boot assertion. |
+| GAP-144 | M23 | Spec routes | **M23 is missing the validation-overrides audit, mac-credentials test and platform-rules routes; several paths differ from the spec.** Plus drift between noe-records and rule-configs paths and a duplicated validate route. | spec:WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md:1474,1493,1498 | P2 | false | Add the routes or defer them, and align the paths. |
+| GAP-145 | M24 | Claim / R&B ABAC scoping | **M24 claim and R&B authorization is org-wide.** The claim predicate is 'row exists' with no provider-entity check. Lists use a provider-entity id chosen by the caller. ABAC_QUERY_PE is defined but unused. PATCH /rb-days/:id has no ABAC. | 24-billing-medicaid/abac-predicates.ts:152-159<br>24-billing-medicaid/routes/guards.ts:66-71<br>24-billing-medicaid/routes/rb.routes.ts:175-186 | P2 | true | Add a provider-entity check, derive the scope on the server, and apply ABAC to rb-days. |
+| GAP-146 | M24 | Integration switch default | **M24_LAUNCH_GATEWAY_ENABLED is opt-in, so Medicaid submit and poll workers are silently not built.** This goes against env.ts's opt-out policy and is undocumented. About 15 other variables are missing from .env.example. This repeats GAP-109. _(prior: GAP-109)_ | packages/medicaid-adapters/src/oregon/launch-gateway.ts:333-342<br>backend/index.ts:4790-4808<br>backend/bootstrap/env.ts:29-49 | P2 | true | Add it to INTEGRATION_SWITCHES or document it, and add it to .env.example. |
+| GAP-147 | M25 | Late good-cause appeal | **POST /appeals/:id/submit-late-good-cause (M25-F03) is not implemented.** After T-0 there is no path at all to file a 405.942(b) appeal. | spec:WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md:1719-1724 | P2 | false | Add the route with step-up and a reason of at least 40 characters. |
+| GAP-148 | M25 | Remittance / denial / appeal reads | **M25 reads are not limited to the actor's provider entities.** RBAC only, with a provider-entity filter chosen by the caller. | 25-remittance/routes/read-service-drizzle.ts:62,134-140,168 | P2 | false | Resolve the provider-entity scope from the request context. |
+| GAP-149 | M26 | CapAccrualReader CCN scoping | **CapAccrualReader.aggregateForCostReport ignores CCN (it takes the first row for the cap year).** cap_period is unique per org, CCN and year, but the query is limit 1 with no order, so multi-CCN orgs can get the wrong CCN. CapSettlementProvider is spec drift between M26 and M27. | 26-cap/seam-impls.ts:124-133<br>27-cost-report/jobs/validation-context-builder.ts:105 | P2 | true | Add a CCN or provider-entity parameter and filter on it. |
+| GAP-150 | M26 | §4.10 outbox events | **m26.cap.accrual_recorded and psr_variance_raised are catalogued but never emitted.** recordAccrualLine publishes nothing. | 26-cap/consumers/drizzle-store.ts:175-207 | P2 | false | Publish accrual_recorded inside recordAccrualLine. |
+| GAP-151 | M28 | $export poll / cancel | **Bulk-export poll and cancel are scoped by org only, so another client in the same tenant can read or cancel a job.** There is no clientId comparison. | 28-fhir/routes/fhir-r4.routes.ts:445-496 | P2 | false | Return 404 unless job.clientId matches ctx.clientId. |
+| GAP-152 | M29 | acknowledge-abnormal | **Acknowledge-abnormal returns success without storing anything or clearing the M36 badge.** The route returns a literal object. | 29-external-interfaces/routes/labs.routes.ts:140-168 | P2 | false | Persist the acknowledgement and emit an event. |
+| GAP-153 | M29 | Feed revoke dual approval | **Feed-revoke dual approval trusts an optional primaryApproverId supplied in the request body.** The check passes when the field is absent. The store ignores args. There is no credential cascade. The comment claims defense-in-depth that does not exist. | 29-external-interfaces/abac-predicates.ts:232-240<br>29-external-interfaces/routes/store-drizzle.ts:459-472 | P2 | true | Store the pending revoke and its approver, require a second distinct approver, and cascade credentials. |
+| GAP-154 | M30 | Provider-entity attribution | **M30 writes are stamped with the org's 'primary' provider entity.** In multi-CCN orgs, outbreak clustering merges across CCNs and CAHPS results are attributed to one CCN. | backend/bootstrap/provider-entity-resolver.ts:29-46<br>30-quality/routes/write-service-drizzle.ts:746,818,1286,1685 | P2 | false | Derive the provider entity from the subject (the admission). |
+| GAP-155 | M30 | SRA reminders / cap_overdue | **The SRA reminder cron throws on every run, and m30.incident.cap_overdue has no producer.** listOpenCyclesWithDue and alerts.dispatch are unbound. This also absorbs the SRA half of batch-6's mortality/SRA finding. _(prior: GAP-056 (part))_ | 30-quality/jobs/m30-jobs.ts:2136-2152<br>packages/quality/src/alert-defs.ts:146-151 | P2 | false | Bind the scan plus the AlertEmitter, and add a CAP-overdue cron. |
+| GAP-156 | M30 | SRA finding ownership | **SRA finding and remediation mutations skip ownsSraCycle, although the comment says the check is enforced.** The service checks org only. | 30-quality/routes/write-service-drizzle.ts:1152-1172 | P2 | false | Load the cycle and require the owner or sra.admin. |
+| GAP-157 | M30 | QAPI incidents UI | **The M30 QAPI incidents screen cannot report, investigate or close an incident.** The screen issues GETs only. M30 is listed in DEFERRED_SCREENS without 'done'. | apps/web/src/modules/30-quality/qapi-incidents.tsx | P2 | false | Add the lifecycle actions and an explicit deferral row. |
+| GAP-158 | M31 | Deny-stub seams | **PatientCaregiverReader and ExternalGriefResourceReader are deny-stubs only.** Family caregivers can never pass the attestation gate, and the grief resources route returns 501. The 'every producer is LIVE' comment is stale. | backend/bootstrap/seams/registry.ts:227-259<br>31-portal/abac-predicates.ts:193-198 | P2 | false | Add the caregiver-to-user link, and build the M40 grief catalog. |
+| GAP-159 | M31 | Jobs and outbox | **Six M31 §4.8 queues are missing, M31 publishes none of its 22 events, and the post-discharge read-only gate is dead code.** isDischargedReadOnly is optional on the interface and implemented nowhere, so the gate always returns false. Zero m31 events are acknowledged in docs/history. | 31-portal/jobs/queues.ts:9-11<br>31-portal/routes/write.routes.ts:56-67<br>packages/types/src/admission.ts:351-364 | P2 | true | Add events-by-m31.ts, implement the discharged reader, and build or drop the crons. |
+| GAP-160 | M31 | Staff telehealth UI | **Clinicians have no web UI to join or end a telehealth visit.** Only the portal joins. The forward-surface deferral does not cover clinicians. | 31-portal/routes/telehealth.routes.ts:131<br>docs/design/DEFERRED_SCREENS.md:747 | P2 | false | Add a staff room or an explicit deferral. |
+| GAP-161 | M32 | Outbox events / workers | **M32 catalogs 21 outbox events but publishes none, and no §4.8 workers exist.** There is no phi.disclosed feed to the M4 accounting log, and the kill-switch demotion plan is never carried out. | 32-ai-platform/events-by-m32.ts:71-449<br>32-ai-platform/routes/kill-switch.routes.ts:20-23 | P2 | false | Publish at the write sites and build the workers, or defer them. |
+| GAP-162 | M33 | Admin surface | **M33 platform and compliance admin routes check permission only; tile_warm_cache has no worker.** This is a documented P2C deferral. | 33-reporting/routes/admin.routes.ts:1-9,30-36 | P2 | false | Register platform and compliance scope predicates. |
+| GAP-163 | M34 | Jobs | **M34 onboarding_advance and the bundle-expiry, BAA-expiry and support-session-close crons are never built.** DSAR bundles holding PHI are never reaped after 7 days. | backend/index.ts:4361-4390<br>34-saas-tenant-platform/jobs/saas-jobs.ts:984-1015 | P2 | false | Register the four queues, bundle_expiry first. |
+| GAP-164 | M34 | Route inventory | **Six M34 §4.1 routes are missing, including tenant/account and tenant feature-flags.** The TypeBox schemas exist but are unused. | 34-saas-tenant-platform/routes/typebox.ts:160-163,263-266 | P2 | false | Implement the routes or record their removal. |
+| GAP-165 | M36 | Routes | **The spec route GET /admin/messaging/alert-deliveries is not implemented.** messaging.admin.read is used by no route. | spec:WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md:1553 | P2 | false | Implement it behind a platform-ops ABAC check, or defer it. |
+| GAP-166 | M36 | Endpoint verification | **Endpoint verification accepts any token.** verifyEndpoint discards the token (void token) and marks the endpoint verified. This is latent until a dispatcher exists. | 36-messaging/messaging-route-service-db.ts:750-756 | P2 | true | Add a token-hash column and do a constant-time comparison. |
+| GAP-167 | M36 | Live RLS | **alert_receipt has no live test, although it caused a production 42501 incident.** The table was fixed in 0247 but is not covered by m36-rls-isolation. | packages/db/migrations/0247_alert_receipt_rls_and_grants.sql:1-21 | P2 | false | Add the table to the m36 live suite. |
+| GAP-168 | M36 | THREAT_MODEL | **The M36 THREAT_MODEL cites an assertChannelVisible caseload guard that does not exist.** The real gate is a membership-only check. | 36-messaging/THREAT_MODEL.md:19,26,31 | P2 | false | Correct T-2 and E-1 and record the residual risk. |
+| GAP-169 | M37 | ABAC predicates | **None of the five registered M37 ABAC predicates is applied on any route.** attester_eligible, within_cap and staff_member have no service-level equivalent either. _(prior: GAP-141)_ | 37-ipu/abac/predicates.ts:21-52 | P2 | false | Enforce them in the service, or deregister them through an ADR. |
+| GAP-170 | M37 | Live RLS | **ipu_rn_break_glass has no cross-tenant RLS proof; the suite claims to cover 'ALL 26' tables.** The table was added in 0230. | packages/db/migrations/__tests__/m37-rls-isolation.live.test.ts:7 | P2 | false | Add it to the COVERED list. |
+| GAP-171 | M39 | Revocation cascade tracking | **Revocation-cascade ACK tracking never updates; there is no retry cron or alert, and the renewal and draft crons are unbuilt.** No consumer ever writes an ACK, so cascade_status stays pending. partial_failed is reached only through the manual route 30, and the critical alert is never emitted. The eval-audit partition cron is redundant because the 0224 rotation already covers it. | 39-consent/consent-store-db.ts:721-722,1380-1392<br>39-consent/jobs/cron-workers.ts:57-75<br>39-consent/alerts-by-m39.ts:36 | P2 | true | Have consumers record ACKs, and add the retry cron and the alert. |
+| GAP-172 | M40 | Platform-only routes | **The /admin/mdm/* routes are gated by RBAC alone, with no platform-ops ABAC (unlike M38).** Whether a tenant can be granted platform-category keys has not been verified. | 40-mdm/routes/mdm-routes.ts:70-73,215-263 | P2 | false | Add a platform-ops ABAC check. |
+| GAP-173 | M40 | §4.3 jobs | **None of the eight M40 jobs is built, and merge_request has no writer.** The BAA and license expiry alerts never fire. | packages/mdm/src/jobs/queues.ts:9-20 | P2 | false | Wire fuzzy_dedup, the BAA and license scans, and provisional aging. |
+| GAP-174 | M40 | nppes/sync-log route | **GET /admin/mdm/nppes/sync-log reads a table the app role has no grant on, so it fails with permission denied (500).** This is the same defect GAP-060 fixed for merge requests. | 40-mdm/mdm-store-db.ts:519-530<br>packages/db/migrations/0019_mdm_m40_rls_audit_triggers.sql:77-78 | P2 | false | Add a SECURITY DEFINER reader. |
+| GAP-175 | global | Error envelope | **38 route responses bypass the M1 error envelope.** They return flat {error:'...'} or bare {code,message} with no correlationId (M02, M12, M29, M33, M37). _(prior: GAP-153)_ | 02-identity/routes/session-step-up.ts:68,178<br>29-external-interfaces/routes/labs.routes.ts:85,154 | P2 | false | Throw typed WardenXError subclasses and add a lint rule. |
+| GAP-176 | global | Production deploy template | **.env.production.example is referenced by bootstrap-vps.sh but was never committed.** The .env.* glob ignores it. Fresh provisioning and DR rebuilds abort, and 10 required keys are undocumented. The verifier lowered this from P1 to P2. This repeats GAP-152. _(prior: GAP-152)_ | deploy/production/bootstrap-vps.sh:9,39-51<br>.gitignore:25-26<br>backend/bootstrap/env.ts:52-241 | P2 | true | Commit the template, add a .gitignore exception, and add a sync test. |
+| GAP-177 | global | Declared-but-never-emitted events (M6/M8/M9) | **Seven catalogued events have no emit site (for example, m6.referral.accepted, triaged and duplicate).** acceptReferral emits converted, and triage emits review_started or declined. The M9 acknowledge and policy PATCH emit nothing. All of these are record-only or seam-only. | 06-admission/admission-route-service-db.ts:2556-2577,2950<br>09-assessments/events-by-m9.ts:124,194 | P2 | false | Emit them at the transitions, or remove them from the catalog and spec. |
+| GAP-178 | global | FK indexes | **480 FK constraints have no supporting index, and no gate checks for them.** This includes cascade FKs on clinical tables, for example idg_action_item.idg_meeting_id. _(prior: GAP-188)_ | packages/db/migrations/0042_idg_m14_tables.sql:196<br>scripts/check-org-index-coverage.ts:1-40 | P2 | false | Add an indexing migration and a check-fk-index gate. |
+| GAP-179 | global | Frame-fidelity registry | **Frame-fidelity has 14 of 17 mappings partial and 104 of 120 frames unmapped; its notes are stale.** The eMAR, Encounter and Patient notes contradict the code (eMAR writes exist) and predate the redesign. Merged with fitness-kit/M13 note. _(prior: GAP-148)_ | scripts/frame-fidelity/registry.ts:108-109,144,189<br>apps/web/src/modules/13-emar/patient-emar.tsx:51,387 | P2 | false | Re-audit and update the notes, then map the remaining frames. |
+| GAP-180 | global | RLS GUC naming in specs | **The M22, M25, M05, M11 and M29 specs still prescribe the banned app.tenant_id and withTenantContext.** There are about 90 withTenantContext samples. The code follows ADR-0010. | docs/adr/ADR-0010-tenancy-rls-invariants.md:32-36<br>spec:WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:2825-2826<br>spec:WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md:1802 | P2 | true | Normalize to app.org_id and withOrgContext, and add a banned-token rule. |
+| GAP-181 | global | M7/M9/M10 jobs | **The M9 reassessment-due cron only logs; the M10 alerts, scheduling, validation and retention queues and the M7 snapshot queue have no worker.** These are documented deferrals, but HOPE retention is not implemented. | 09-assessments/jobs/cron-workers.ts:205-232<br>backend/index.ts:5203-5205 | P2 | false | Implement the cadence output and HOPE retention, or retire the queue declarations. |
+| GAP-182 | global | Caseload on list and internal routes (M6-M10) | **Org-wide list routes and the patient-keyed /internal routes have no caseload or system-principal gating.** These lists are org-wide: M6 referrals and admissions, M8 GET /encounters and M10 /hope/sfv. /internal/assessments/latest-batch and the care-plan relevant-elements route take any patientId behind read permission only. | 08-encounters/routes/encounters-routes.ts:166-170<br>09-assessments/routes/assessments-routes.ts:340-365<br>07-care-plan/routes/care-plan-routes.ts:510-512 | P2 | false | Filter lists by caseload, and restrict /internal routes to a system principal. |
+| GAP-183 | global | Live RLS proofs (M6/M7/M10) | **Six org-scoped PHI tables have no cross-tenant live test as wardenx_app.** Missing: referral_activity, referral_note, admission_evidence, hope_assessment_answer, hope_submission_result_event (no RLS until 0233) and care_plan_idg_proposed_change. Gates check structure only. | packages/db/migrations/__tests__/m6-rls-isolation.live.test.ts:7,53-66<br>packages/db/migrations/__tests__/m10-rls-isolation.live.test.ts:57-63<br>packages/db/migrations/0233_rls_force_and_hope_result_event_rls.sql:21-27 | P2 | true | Extend the COVERED arrays with seed rows. |
+| GAP-184 | global | Spec §5 route inventories | **Spec route inventories differ from the registered routes in 8 modules (M02, M05, M23, M29, M31, M33, M34, M36).** Some are renames (M29, M33, M36) and some are unbuilt rows (M05, M31, M34). | spec:WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md:615-622 | P2 | false | Update to the as-built paths, or mark rows as deferred. |
+| GAP-185 | global | SPA security headers | **The SPA is served without CSP, frame-ancestors, HSTS, nosniff or Referrer-Policy.** Only Cache-Control is set, so the app can be framed. This is still open from GAP-149. _(prior: GAP-149)_ | deploy/production/web-nginx.conf:1-21<br>Dockerfile.web:20<br>docs/architecture/WARDENX_SECURITY_HARDENING_v0_2.md:1139-1162 | P2 | true | Add the §9.6 headers to web-nginx.conf and assert them in smoke.sh. |
+| GAP-186 | global | Screen specs with no implementation | **About 15 screen specs have no screen and no deferral row (wound care, prior auth, grievances, accreditation, external portals, OIG and others).** ui:parity does no per-spec join. Credentials GET is used by scheduling only. _(prior: GAP-146)_ | docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md:25,62,77,93-111<br>audit/ui-parity/UI_PARITY.md:13 | P2 | true | Add a per-spec status table or a spec-to-screenId key. |
+| GAP-187 | global | UI ledger / composition comments | **Stale UI docs: DEFERRED_SCREENS marks read-only M25 and M26 as 'done', counts and paths are wrong, and main.tsx says nothing is registered.** The verifier raised this from P3 to P2 (ledger status drift). | docs/design/DEFERRED_SCREENS.md:115,471,745-746<br>apps/web/src/main.tsx:13<br>apps/admin/src/main.tsx:8-9 | P2 | true | Update the ledger and the comments. |
+| GAP-188 | global | Stale wiring comments | **Comments say the auditor, outbox, KEK, x12 and consumers are unbound when they are live.** Seven sites in index.ts, the M34 wiring, M05 privacy and the M22 eraser. | backend/index.ts:1854,3366-3368,4704-4711<br>05-patient/privacy/index.ts:102-104 | P2 | false | Rewrite the comments and delete the unused constant. |
+| GAP-189 | M01 | Migration runner / Drizzle config | **migrate.ts does not detect applied migrations whose file was removed, and the drizzle.config 'frozen journal' comment is stale.** The dev DB shows a renamed migration (0306/0307) that was applied twice. | scripts/db/migrate.ts:177-202<br>drizzle.config.ts:5-12 | P3 | false | Warn (or fail under --strict) on orphan tracking rows, and fix the comment. |
+| GAP-190 | M02 | two_factor / passkey RLS | **M2 spec §3.8 says two_factor and passkey have user-ownership RLS; the implementation intentionally has none (ADR-0010 D2).** The difference is documented in migration 0006 but not in the spec. | packages/db/migrations/0006_identity_m2_rls_audit_triggers.sql:6-28<br>spec:WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md:541-549 | P3 | false | Update spec §3.8. |
+| GAP-191 | M10 | Browser storage | **Record identifiers are kept in localStorage and never cleared on sign-out.** Only ids are stored, no PHI values. | apps/web/src/modules/10-hope/hope-assessment-detail.tsx:355-402<br>apps/web/src/modules/04-audit/audit-exports.tsx:47-89 | P3 | false | Use sessionStorage, or clear wx.* keys on logout. |
+| GAP-192 | M11 | Dead deny-stub seams | **The M11/M12 PDF renderer and M28 FHIR publisher deny-stubs and their interfaces are exported but never consumed.** The real flows are the M22 outbox render and the M28 pull. The DR_INT inventories still describe the stubs as live. | 11-orders/seams/m22-order-pdf.ts:47<br>12-dosespot/seams/m22-medication-order-pdf.ts:49<br>11-orders/M11_DR_INT_INVENTORY.md:64 | P3 | true | Delete the stubs and fix the inventories. |
+| GAP-193 | M15 | OpenAPI response contracts | **Two M15 JSON GETs, plus the system feature-flags GET, publish no response schema.** The routes are /api/v1/volunteer-hour-ratio, /internal/discipline-plans/msw-risk-factors and /api/v1/system/feature-flags. Merged from batch-3 and fitness-kit. | audit/openapi-coverage/OPENAPI_COVERAGE.md:8,27 | P3 | false | Add response schemas in enrichments.ts. |
+| GAP-194 | M16 | Optimistic concurrency | **startOutreach ignores expectedVersion (`void expectedVersion`).** bereavement_outreach has no version column. | 16-bereavement/routes/write-service-drizzle.ts:1415-1418 | P3 | false | Drop the field or guard it in the WHERE clause. |
+| GAP-195 | M17 | Spec route inventory | **M17 routes /arrive and /memberships/:id/credentials are implemented but missing from spec §4.1.**  _(prior: GAP-168)_ | 17-scheduling/routes/scheduling-routes.ts:253,574-620 | P3 | false | Add the rows to the spec. |
+| GAP-196 | M24 | Eligibility service state | **refreshEligibility records the service state from the first credential found (LIMIT 1).** Only affects multi-state tenants. The outcome is 'unknown' today. | 24-billing-medicaid/routes/write-service-drizzle.ts:1153-1160 | P3 | false | Derive the state from the coverage. |
+| GAP-197 | M26 | Route surface | **The PS&R import path differs from the spec, and the platform cap routes lack a platformOnly guard.** platformOnly does not exist; the role gate is cap_platform_admin. _(prior: GAP-173)_ | 26-cap/routes/psr.routes.ts:34-36<br>26-cap/routes/platform.routes.ts:24-28 | P3 | false | Align the spec or add the guard. |
+| GAP-198 | M28 | Inbound proposal ABAC | **fhir_inbound_owner_module_match omits caseload_or_scope.**  | 28-fhir/abac-predicates.ts:188-203 | P3 | false | Add the caseload check. |
+| GAP-199 | M31 | Composition-root comments | **The M31 and M8 mount comments call the M34 key ring a slice deny-stub; it is live on a DB boot.** The real 503 condition is a missing KEK or gateway. | backend/index.ts:3259-3267,3904-3907<br>backend/index.ts:1855-1872 | P3 | true | Update both comments. |
+| GAP-200 | M36 | Spec text | **M36 spec §8.1.2 says no outbox catalog exists, and the mount comment says writes return 501.** Both statements are stale. | spec:WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md:2369<br>36-messaging/index.ts:132-137 | P3 | true | Update the spec and comments. |
+| GAP-201 | M39 | Portal consent routes | **Spec routes 25-27 (/portal/consents/*) are absent; this is a documented Phase-2 deferral.**  | spec:WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md:1072-1074,2294 | P3 | false | None for now. |
+| GAP-202 | global | Stale '501' comments | **Route-service docstrings say writes fail closed with 501; no route returns 501.** Affects M06, M08, M09, M10, M22 and M36. | 06-admission/index.ts:26-31<br>36-messaging/index.ts:136 | P3 | false | Delete the sentences. |
+| GAP-203 | global | CLAUDE.md accuracy | **CLAUDE.md says audit-fitness has a --check mode inside arch:fitness; it does not.** The report is stale (last generated 2026-06-14). The gate list also omits about 12 gates. | CLAUDE.md:66<br>scripts/audit-fitness.ts:1-15<br>scripts/run-fitness-gates.ts:30-79 | P3 | true | Add a --check mode, or drop the mention (and mirror the change to AGENTS.md). |
+| GAP-204 | global | Stale code comments (M6/M8/M10/index.ts) | **Several load-bearing comments describe behavior the code no longer has.** Examples: the HearthNote deny-stub, the hope.submission stage wiring, the M8 'no signature row' note, the M10 PPS snapshot note, the M6 scheduled_date note and the 'triaged always emitted' note. | backend/index.ts:3258-3263,5201-5205<br>08-encounters/encounters-route-service-db.ts:19-21 | P3 | false | Update or delete the stale comments. |
+| GAP-205 | global | Dead registrars | **registerM23-M27Consumers and the in-memory consumer stores are exported but never called.** Their doc comments describe call sites that do not exist. | 25-remittance/consumers/index.ts:85-91<br>26-cap/consumers/index.ts:72-78 | P3 | false | Delete them or fold them into the live bindings. |
+| GAP-206 | global | Docs index / counts / links | **docs/README is incomplete, some counts are stale (35 vs 48 ADRs, 461 vs 502 tables), and some relative links are broken.** The brief itself cites a repo path and a migrations directory that do not exist. | docs/README.md:95<br>docs/APP_OVERVIEW.md:160<br>docs/REMEDIATION_SUMMARY.md:40-41 | P3 | false | Index all subtrees, point to generated reports instead of counts, and fix the links. |
+| GAP-207 | global | Redesign sweep | **The redesign sweep skipped apps/admin and apps/portal.** The wx-* list chrome is styled only in the web app's CSS. Some uppercase styling is left over. | packages/ui/src/web/layouts/regions.tsx:29,83,238<br>apps/admin/src/modules/34-saas-platform/feature-flags.tsx:268 | P3 | false | Move the list-chrome styles into a shared stylesheet. |
+| GAP-208 | global | Stale seam comments / dormant seams | **Stale seam-status comments and an unused M33 deny-stub bundle mislead seam audits.** MetricsProvider is never consumed, and 8 REQUIRED_SEAMS entries are documented placeholders (this covers prior GAP-063). _(prior: GAP-063 (was P1))_ | backend/index.ts:1201-1203,4557-4558<br>packages/reporting/src/seam-registration.ts:149-178<br>backend/bootstrap/seams/registry.ts:591-648 | P3 | true | Fix the comments and delete or wire the bundle. |
+
+## 4. Cross-module seams table
+
+This table lists every seam traced by any worker, including live ones. Verified = `Yes (GAP-n)` when the seam is backed by a verified finding; `Traced` means it was checked by code reading only.
+
+| Source | Target | Seam | Status | Evidence | Verified | Risk |
+|---|---|---|---|---|---|---|
+| M02 invitation accept | M03 ProposedRoleAttacher | proposedRoleKeys -> membership_role | live (bypasses anti-escalation) | identity-routes.ts:451; proposed-role-attacher.ts:72-107 | Yes (GAP-008) | Privilege escalation |
+| M03 | M02 | AuditorSessionMinter | stubbed (in-memory) | 02-identity/seams.ts:83,91; 03-authorization/index.ts:157 | Yes (GAP-011) | Auditor access unusable |
+| M03 | M36 | m3.breakglass.invoked -> Compliance alert | missing | 03-authorization/index.ts:158; authz-ports.ts:621-634 | Yes (GAP-010) | Compliance never notified |
+| M05 route writes | M12/M24/M33/M22 | m5.patient.* outbox | missing | 05-patient/index.ts:339; patient-route-service-db.ts:690 | Yes (GAP-016) | Downstream consumers never fire |
+| M05 | M03 caseload_or_scope | CaseloadProvider | live (fail-closed); data source empty | patient-routes.ts:187-203; drizzle-stores.ts:415-440 | Yes (GAP-015) | No durable caseload |
+| M17 | M05 | m17.visit.assigned -> caseload shift cache | live | 05-patient/outbox-consumers/m17-visit-assignment.ts:1-15 | Traced | Only caseload source |
+| M04 | Owning-module HoldApplier | m4.legal_hold.applied/released | partial (no consumer; documented) | index.ts:2669-2671; 04-audit/routes/legal-holds.ts:1-13 | Traced | Holds are enforced only at erasure |
+| M06 | M23 | m6.election.period_ended | missing | events-by-m6.ts:464-477; admission-route-service-db.ts:690-703 | Yes (GAP-025) | No claim revalidation at period end |
+| M06 | M36/M14 | m6.compliance.window.overdue | missing | jobs/index.ts:258-270; cron-workers.ts:222-229 | Yes (GAP-026) | Missed CTI/NOE/NOR not escalated |
+| M09 | M08/M10 | LatestAssessmentProvider | live | 10-hope/hope-route-service-db.ts:304-321 | Traced | Stale header comment |
+| M08 | M30 | SignedEncountersReader | live | 08-encounters/seams/drizzle-store.ts:116-195; index.ts:1208 | Traced | Low |
+| M06 | M30 | DeathDischargeReader | live | 06-admission/seams/death-discharge-reader.ts:47-105 | Traced | Low |
+| M06/M17/M14/M22 | M06/M07/M08/M10 | outbox consumers built in index.ts | live | index.ts (all build*Consumer referenced); dead export m6-admission-scheduling.ts:62 | Traced | One dead export |
+| M12 MedicationOrderProvider | M13 administrationIdentity | order context -> witness rule | partial (drops medClass) | 13-emar/index.ts:38-53; emar-route-service-db.ts:714 | Yes (GAP-005) | Witness bypass |
+| M13 missed_dose | M30/M14 | missed-dose counts | stubbed (always empty) | m30-jobs.ts:464-468; 14-idg/jobs/packet-build.ts:20 | Yes (GAP-039) | Fabricated 0% rate |
+| M12 transmit_newrx | M22 | m12.medication_order.transmitted | missing | render-consumer.ts:412-417 | Yes (GAP-037) | No transmitted render |
+| M14 review-clock sweep | M36 | m14.review_clock.escalated | partial (packets only) | index.ts:5255-5357; cron-store.ts:41-49 | Yes (GAP-042) | Never-reviewed admissions not covered |
+| M05 CaseloadProvider | M11/M12/M13 | caseload_or_scope | missing (declared only) | contributed.ts:1269-1287; require-role.ts:127-136 | Yes (GAP-030) | Org-wide PHI reads |
+| M06 | M16 | bereavement intake / death / cosign consumers | live | index.ts:5851-5891 | Traced | Low |
+| M08 | M16 | m8.encounter.signed -> outreach completion | missing (documented) | outbox-subscription-exceptions.ts:116-121 | Yes (GAP-130) | In-person visits never complete |
+| M22 | M16 | m22.document.rendered | missing (documented) | outbox-subscription-exceptions.ts:123-128 | Yes (GAP-130) | No rendered back-reference |
+| M18 | M17 | EVV events -> visit advance | live | index.ts:5966-5979 | Traced | Low |
+| M17 | M18 | visit published/cancelled -> EVV bracket | live | index.ts:6034-6040 | Traced | Low |
+| M17 evv_bracket_state | M18/M8 | EVV-missing documentation | partial | m8-encounter-signed.ts:108; scheduling-route-service-db.ts:1001-1008 | Yes (GAP-050) | False evv_present |
+| M08 | M19 | m8.encounter.signed -> triage documented | stubbed (decider unbound) | 19-oncall/clinical/m8-encounter-signed.ts:122 | Yes (GAP-058) | Calls never close |
+| M19 | M11 | recordTriageVerbalOrder | stubbed (tests only) | verbal-order.ts:185-196 | Traced (unsampled) (GAP-134) | No call-to-order link |
+| M18 | State aggregators | submission prep/submit/poll | missing | submission-flow.ts:38,77 | Yes (GAP-056) | Cures Act path cannot start |
+| M20 | M34 key ring | DEK cipher port | missing (deliberately unbound) | index.ts:3875-3897 | Yes (GAP-060) | Incidents return 503 |
+| M06/M08/M05/M18 | M23 | revalidate.consumer queue | partial (no worker) | index.ts:2470,6814; m23-jobs.ts:1718-1762 | Yes (GAP-070) | No claim revalidation |
+| M21 | M27 | invoice_accrued / SupplyCostProvider | partial (no producer) | 27-cost-report/outbox-consumers/m21-vendor-invoice.ts | Yes (GAP-063) | Empty supply cost tier |
+| M21 | M36/M33 | par / kit-return crons | missing | no M21 cron in index.ts | Yes (GAP-062) | No par/overdue alerts |
+| M25 manual match | M23 | claim posting | missing | 25-remittance write-service-drizzle.ts:125-163 | Yes (GAP-073) | Payments not posted |
+| M23 cron | M02 active-org enumerator | activeOrgs port | stubbed (throws) | index.ts:4728-4747; m23-jobs.ts:566-576 | Yes (GAP-069) | NOE window never watched |
+| M25 cron | M02 active-org enumerator | activeOrgs port | live | index.ts:4940-4973 | Traced | Low |
+| M24 cron | rb_day / eligibility watchdog | registerM24CronWorkers | missing | 24-billing-medicaid/jobs/index.ts:37-58 | Yes (GAP-071) | R&B never billable |
+| M22 routes | S3/MinIO | DocumentStorageProvider | partial (download only) | 22-documents/index.ts:78-93; documents-route-service-db.ts:614-625 | Yes (GAP-068) | Upload returns 503 |
+| M02/M34 enumerator | M26 crons | ActiveOrgListPort | stubbed (throws) | index.ts:4992-4995; 26-cap/jobs/index.ts:49-56 | Yes (GAP-076) | Cap year never auto-closes |
+| M26 | M27 | CapAccrualReader | partial (no CCN filter, empty data) | 26-cap/seam-impls.ts:125-170; index.ts:4663-4672 | Yes (GAP-149) | Wrong or zero Worksheet E |
+| M26 | M27 | CapSettlementProvider | missing (spec drift M26 vs M27) | 26-cap/wiring.ts:8-9 | Yes (GAP-149) | No per-beneficiary attachment |
+| M26 | M23 | CapProjectionProvider | live but empty | boot-assembly.ts:250-253 | Yes (GAP-075) | Cap warnings never fire |
+| M25/M23 | M26 | remittance/claim events -> CapConsumerStore | stubbed (org/patient missing) | 26-cap/consumers/outbox-binding.ts:69-72; handlers.ts:59,90,114 | Yes (GAP-075) | Cap ledger empty |
+| M23 | M26 | m23.claim.line_finalized | missing (no producer, schema mismatch) | events-by-m23.ts:272-285; handlers.ts:104-123 | Yes (GAP-077) | 20% cap reads 0 |
+| M06/M08 | M27 | statistics seams | missing | m27-jobs.ts:365-391 | Yes (GAP-080) | S-3 empty |
+| Xero/Gusto | M27 | trial balance / wage pulls | stubbed (documented; manual CSV) | m27-jobs.ts:341-363 | Traced | Manual fallback |
+| M27 | M30 | CostReportFilingStatusReader | live | index.ts:1265; m30-jobs.ts | Traced | Low |
+| External HL7 | M29 | MLLP listener | missing | listener/index.ts:1-11 | Yes (GAP-086) | No inbound labs/ADT |
+| M29 | M28 | LabObservationReader | live (store-gated) | index.ts:1826-1831 | Traced | Low |
+| M28 $export | MinIO NDJSON | fhir.bulk-export worker | missing | fhir-r4.routes.ts:388-478 | Yes (GAP-084) | Jobs never complete |
+| M06 | M30 | m6.discharge.death -> mortality review / CAHPS | stubbed (deliberately unbound) | upstream-consumer-ports.ts:8-21,109-112 | Yes (GAP-089) | No mortality reviews |
+| M06/M08/M12 readers | M30 recompute | getSeam readers | live | index.ts:4560-4598 | Traced | Low |
+| M17/M18/M12 stores | M30 recompute | Visit/Evv/MedicationOrder providers | partial (need request context) | 17-scheduling/seams/drizzle-store.ts:302; 18-evv/seams/drizzle-store.ts:260 | Yes (GAP-090) | Three measures throw |
+| M01 outbox + DEK | M30 | CAHPS sample/export ports | stubbed | m30-jobs.ts:1803-1855,2076-2107 | Yes (GAP-087) | No CAHPS export |
+| M30 | M33 | MetricsProvider / HQRP tiles | partial (documented Phase 2) | 33-reporting/wiring.ts:295-298 | Yes (GAP-208) | No HQRP data in M33 |
+| M01 provider-entity resolver | M30 | primary PE stamping | partial | provider-entity-resolver.ts:29-46 | Traced (unsampled) (GAP-154) | Wrong PE attribution |
+| M01 tenancy | M30 workers | per-job withOrgContext | live | m30-jobs.ts:2218-2268 | Traced | Envelope correct |
+| M23/M18 | M25 | claim.rejected / aggregator_rejected -> denial seed | stubbed (not constructed) | index.ts:717,6688 | Yes (GAP-072) | Rows pending forever |
+| M25 | M26 | remittance events binding | live but non-computing | index.ts:5897-5915 | Yes (GAP-075) | See accrual row |
+| M05/M40 | M31 | PatientCaregiverReader / ExternalGriefResourceReader | stubbed (deny-stub) | registry.ts:227-259 | Traced (unsampled) (GAP-158) | Caregiver gate unusable |
+| M35/M34/M32 | M33/M34/M35 | 8 REQUIRED_SEAMS placeholders | stubbed (dormant, documented) | registry.ts:590-655 | Yes (GAP-208) | Dead contract surface |
+| M12 | M27 | DrugCostBillingReader | stubbed (documented) | registry.ts:432-436 | Traced | Rule skips |
+| M31 | M39/M16/M05 | portal ABAC ports | live (fail-closed) | 31-portal/abac-predicates.ts:155-198 | Traced | Low |
+| M31 | M13 | caregiver-attested administration | stubbed (202, no write) | write.routes.ts:83-124 | Yes (GAP-092) | Attestations lost |
+| M31 | M05 | portal amendment request | missing | write.routes.ts:176-206 | Yes (GAP-006) | §164.526 requests lost |
+| M31 | M22 | portal upload -> intake | stubbed (uploads.invalid) | write.routes.ts:153-174 | Yes (GAP-092) | Uploads lost |
+| M31 | Telehealth vendor | TelehealthAdapterPort | stubbed (NOOP; documented) | telehealth.routes.ts:22-37; index.ts:3898-3903 | Yes (GAP-095) | Fake join URL |
+| M32 | M04/M35/M36 | m32.* events | missing | events-by-m32.ts | Traced (unsampled) (GAP-161) | No phi.disclosed accounting |
+| M33 | Recipients | scheduled_run recipient check | partial (membership only) | m33-jobs.ts:376-398 | Yes (GAP-097) | Out-of-scope delivery |
+| M34 | M03 ABAC registry | TenantPlatformAbacResolver | stubbed (deny-all) | index.ts:1703-1708,1966-1976 | Yes (GAP-098) | Support/flags unusable |
+| M34 | M01 envelope | TenantKeyProvider | live on DB boot | index.ts:1855-1871 | Traced | Low |
+| M35 | Stripe | dispatcher + webhook | missing / stubbed (503) | service-drizzle.ts:9; webhooks.routes.ts:43-51 | Yes (GAP-100) | No billing |
+| M02/M05 | M35 | org-lifecycle / session / patient-period consumers | live | index.ts:6857-6863 | Traced | Low |
+| M37 | M13 | IpuIvSafetyOverlayProvider | partial (no writer, no caller) | 37-ipu/seams.ts:186-200,356 | Yes (GAP-107) | Sedation dual witness not enforced |
+| M37 | M23/M26/M27 | census snapshot + IpuCensusProvider | stubbed (no producer) | 37-ipu/jobs/index.ts:22-28; seams.ts:87-103 | Yes (GAP-105) | No census snapshot |
+| M06 | M37 | LCP activation -> confirm | missing (hard-coded lcpConfirmed) | 37-ipu/routes/service-drizzle.ts:1131 | Yes (GAP-106) | Unconfirmed activation |
+| M36 | M19/M20/M26 | m36.notification.delivery_failed | stubbed (no producer) | events-by-m36.ts | Yes (GAP-101) | No failure escalation |
+| M05 | M36 | caseload -> care_team membership | partial (portal-triggered only) | write.routes.ts:238; messaging-provider-db.ts:209-295 | Yes (GAP-104) | Stale PHI channel access |
+| M36 | M19/M16 | on-call/bereavement channel sync | stubbed (501) | messaging-provider-db.ts:68-74,297-305 | Yes (GAP-104) | No such channels |
+| M39 | M02/M16/M31 | revocation cascade ACK | partial (never ACKed) | consent-store-db.ts:722,1380-1392 | Yes (GAP-171) | No cascade assurance |
+| M37 | M03 | five §4.7 predicates | registered, never composed | 37-ipu/abac/predicates.ts:21-27 | Traced (unsampled) (GAP-169) | Unit scoping unenforced |
+| M09 | M13/M36 | m9.prn_reassessment_overdue | missing | 13-emar/consumers/index.ts:67 | Yes (GAP-040) | No PRN follow-up alert |
+| Twilio/Postmark | M36 | inbound delivery webhooks | stubbed (deferred registrar) | check-route-reachability.ts:56-66 | Yes (GAP-101) | Bounces never reconciled |
+| M05 | M20 | m5.patient.deceased | missing (documented) | 20-field-safety/consumers/index.ts:31-32 | Traced (unsampled) (GAP-135) | Obligations stay open |
+| M09 | M13 | reassessmentCoverage | live | 13-emar/seams/index.ts:72,87 | Traced | Low |
+| M05 | M39 | m5.patient.deceased -> D13 expiry | missing | consent-store-db.ts:168-173 | Yes (GAP-110) | Post-death disclosure |
+| M39 | M05 | m39.consent.* -> privacy snapshot | live | index.ts:6246 (stale DEFERRED constant) | Traced (unsampled) (GAP-188) | Comment drift |
+| M04 platform audit | M34 | PlatformBypassAuditor | live | index.ts:1926-1935,3376 | Traced (unsampled) (GAP-188) | Misleading comment |
+| M02 SessionContextResolver | M03 step_up_recent | step-up freshness | live | index.ts:1124-1127; 03-authorization/abac-predicates.ts:46-68 | Traced | Low |
+| M03 role keys | M02/M29/M32/M34/M35 | platform-ops role axis | partial (spoofable) | 02-identity/abac-predicates.ts:19-27 | Yes (GAP-003) | Cross-tenant takeover |
+| M39 sud_consent_present | M22/M05/M08/M12 | Part 2 consent gate | stubbed (never composed) | 39-consent/abac-predicates.ts:36-37; dosespot-route-service-db.ts:575 | Yes (GAP-067) | SUD exposure |
+| M22 DocLens intake | M32 invocation | AI capability seams | live | 32-ai-platform/seams/published.ts:396-425; index.ts:3980 | Traced | Low (cloud opt-in refused) |
+| M04 read-audit | M22 binary routes | auditRead emission | partial (Buffer skipped) | read-audit.ts; review-workspace-routes.ts:350 | Yes (GAP-013) | Unaudited PHI reads |
+| M03 BreakGlassStore | break_glass_event | durable break-glass | live | break-glass-store.ts:60,97-135 | Traced | Low |
+| M22 extraction | docling-worker | DoclingClient HTTP | stubbed in production | docling-client.ts:247-256 | Traced (unsampled) (GAP-138) | DocLens returns 503 in prod |
+| deploy bootstrap | env template | provisioning template | missing | bootstrap-vps.sh:49; .gitignore:25 | Yes (GAP-176) | Fresh bootstrap fails |
+| M28/M02/M34 | Valkey | in-memory fallback without REDIS_URL | live (REDIS_URL required in prod) | env.ts:92-97 | Traced | Low |
+| Web/portal/admin client | Backend routes | UI -> API path existence | live (701 calls, 0 missing) | openapi.json join | Traced | Low |
+| Web/admin/portal screens | App registries | screen registration | live | main.tsx; app.tsx:68 | Traced | Low |
+| M06 discharge routes | Web admission UI | backend capability -> UI | missing | admission-routes.ts:630-1112 | Yes (GAP-021) | Episodes cannot end in-app |
+| M25/M26 writes | Web UI | backend capability -> UI | missing | 0 write calls | Yes (GAP-074) | Revenue work API-only |
+| M40/M01 provider-entity MACs | M23 crons | MacJurisdictionListPort | stubbed ('ngs_j6' hard-coded) | index.ts:~4740 | Traced (unsampled) (GAP-143) | Other MACs not polled |
+
+## 5. Global / systemic findings
+
+### 5.1 Build/test failures (code)
+
+**No gaps found.** Checks run: `bun install --frozen-lockfile`, `bun run build`, `bun run typecheck` and `bun run test` all exited 0; the per-batch targeted vitest runs also passed (§2).
+
+### 5.2 Test infrastructure failures
+
+- `bun run check:boot:platform` exits 1: `DATABASE_PLATFORM_URL is required`. **Remediation:** run it against a throwaway migrated DB with a provisioned `wardenx_platform_login`, the way the ci.yml outbox-boot job does (`.github/workflows/ci.yml:1026-1042`), or document a local value. Do not point it at the shared dev DB, because it would start a second outbox relay. The only evidence the relay starts is a worker-container log line from an image whose commit is unknown.
+- Live suites were not executed by any worker. RLS/live claims rest on reading the suites.
+
+### 5.3 Architecture-fitness failures (incl. green gates hiding gaps)
+
+All 38 gates pass, and none fails. These green gates are proxies that hide real gaps:
+
+- **arch:outbox-bindings** finds bindings by scanning files, not by checking that the composition root actually constructs them. It also cannot flag pairs where the consumer is not declared on the event. Hidden gaps: GAP-072, GAP-075, GAP-077, GAP-110, GAP-025.
+- **arch:abac-predicates** checks only that each `requireAbac` name is registered. Nothing flags a predicate that is registered but never applied, or a permission whose declared `abac` is never enforced. Hidden gaps: GAP-067, GAP-169, GAP-088 and the whole T1 theme.
+- **status:matrix** reports 40/40 Implemented and counts registered routes, not spec rows. Hidden gaps: GAP-018, GAP-037, GAP-071, GAP-100.
+- **read-audit coverage gate** accepts an emission config even on Buffer routes, where the hook never fires (GAP-013).
+- **openapi:coverage** does not ratchet GETs that lack a response schema (GAP-193). **ui:parity** does no per-spec join (GAP-186). **arch:org-indexes** covers `organization_id` only (GAP-178). **arch:route-reachability** passes with one deferred registrar (GAP-101).
+- **In-memory boot ledger:** production enforce mode would throw on the M3/M2 entries unless `WARDENX_INMEM_ASSERT=warn` is set somewhere outside the repo (GAP-011).
+
+### 5.4 Security / compliance
+
+**2026-06-27 remediation checklist (security worker):**
+
+| Control | Status |
+|---|---|
+| Production ABAC evaluator + step_up_recent | INTACT |
+| PHI-safe Fastify logging (path-only URL, redaction) | INTACT (app logs only; proxy logs leak, GAP-112) |
+| Chromed-route guard fail-closed | INTACT |
+| Read-audit coverage gate | INTACT for JSON; gap for Buffer (GAP-013) |
+| Production env validation fail-closed | INTACT |
+| M34 platform.bypass_invoked auditor | INTACT |
+| Durable break-glass + distinct cosigner CHECK | INTACT (notification in-memory, GAP-010) |
+| Secrets scan | Clean (only documented AWS example creds in tests) |
+| New tables 0253-0315: ENABLE+FORCE RLS + policy + audit trigger | INTACT |
+| DocLens/M32 PHI egress (opt-in denial, ZDR) | INTACT; no cloud egress path |
+| bun audit / Trivy allowlist | Clean / 8 suppressions within 90 days |
+
+**Security/compliance gaps:** GAP-001, GAP-002, GAP-003, GAP-004, GAP-005, GAP-008, GAP-009, GAP-013, GAP-017, GAP-020, GAP-024, GAP-029, GAP-030, GAP-033, GAP-035, GAP-036, GAP-045, GAP-046, GAP-050, GAP-051, GAP-053, GAP-055, GAP-059, GAP-064, GAP-066, GAP-067, GAP-081, GAP-083, GAP-085, GAP-088, GAP-094, GAP-096, GAP-097, GAP-111, GAP-112, GAP-132, GAP-133, GAP-137, GAP-139, GAP-145, GAP-148, GAP-151, GAP-153, GAP-172, GAP-185, GAP-191.
+
+### 5.5 Documentation drift
+
+GAP-099, GAP-142, GAP-156, GAP-168, GAP-179, GAP-187, GAP-188, GAP-190, GAP-195, GAP-199, GAP-200, GAP-201, GAP-202, GAP-203, GAP-204, GAP-206, GAP-208. Also: CLAUDE.md and AGENTS.md are byte-identical at `77b919edb`, and every `bun run X` referenced in the docs exists.
+
+### 5.6 Discovered gaps
+
+GAP-123, GAP-125, GAP-138, GAP-142, GAP-146, GAP-175, GAP-176, GAP-178, GAP-189, GAP-192, GAP-205, GAP-207.
+
+## 6. Remediation backlog
+
+This is ordered P0 → P3, matching §3. Do the theme sweeps in §1 as single changes where possible: T1 first (one composition pattern, about 20 routes), then T3/T4 (worker and consumer wiring in `apps/backend/src/index.ts`).
+
+| # | ID | Sev | Task | File(s) to change | Done when | Verify |
+|---|---|---|---|---|---|---|
+| 1 | GAP-001 | P0 | A tenant admin can deactivate any user on the platform, including other tenants' users | `apps/backend/src/modules/02-identity/routes/identity-routes.ts`<br>`apps/backend/src/modules/02-identity/identity-stores-db.ts`<br>`apps/backend/__tests__/identity-routes.test.ts` | Cross-tenant deactivate is refused; same-org deactivate still works. | Cross-tenant inject test plus a live suite: an org A admin deactivating a user who belongs only to org B gets 404/403, and that user's status and sessions are unchanged. |
+| 2 | GAP-002 | P0 | The server does not enforce the staff 15-min idle or 8h/24h absolute session timeouts | `packages/auth/src/identity/auth.ts`<br>`apps/backend/src/bootstrap/plugins/authenticate.ts`<br>`packages/auth/src/identity/db-session-store.ts`<br>`apps/backend/src/modules/02-identity/identity-ports.ts` | Idle and absolute timeouts are enforced server-side for every session class. | Live auth suite: after 16 idle minutes the next API call returns 401 SESSION_EXPIRED. Continuous activity past 8h/24h also returns 401. A unit test shows SESSION_POLICY.byClass drives the decision. |
+| 3 | GAP-003 | P0 | Tenant-minted role keys satisfy platform-operator predicates, so a tenant can suspend or close another tenant | `apps/backend/src/modules/03-authorization/role-store.ts`<br>`apps/backend/src/modules/03-authorization/routes/authz-typebox.ts`<br>`packages/auth/src/rbac/drizzle-store.ts`<br>`apps/backend/src/modules/02-identity/abac-predicates.ts`<br>`apps/backend/src/modules/34-saas-tenant-platform/abac-predicates.ts`<br>`apps/backend/src/modules/29-external-interfaces/abac-predicates.ts`<br>`apps/backend/src/modules/35-subscription/abac-predicates.ts` | No tenant-owned role can satisfy any platform predicate; reserved keys are rejected at the API and DB layers. | Inject and live tests: POST /api/v1/roles {key:'platform_admin'} returns 422. A tenant-seeded 'platform_admin' role fails organization_lifecycle_platform_ops. A tenant actor calling POST /api/v1/platform/organizations/<other>/status gets 403. |
+| 4 | GAP-004 | P0 | No eMAR route composes caseload_or_scope; any holder can read or modify any patient's MAR | `apps/backend/src/modules/13-emar/routes/emar-routes.ts`<br>`apps/backend/src/modules/13-emar/emar-route-service-db.ts` | Compose caseload_or_scope (notFoundOnDeny) keyed on the patient of the administration or dose on every M13 PHI route, and narrow list queries in SQL through the M5 CaseloadProvider. | Route and live tests: an off-caseload RN gets 404 on GET /api/v1/administrations/:id and an empty ?patient=P list. A Medical Director (org-wide scope) still passes. |
+| 5 | GAP-005 | P0 | The controlled-substance witness requirement is keyed on the client-supplied body.medClass | `apps/backend/src/modules/13-emar/index.ts`<br>`apps/backend/src/modules/13-emar/emar-route-service-db.ts`<br>`apps/backend/src/modules/13-emar/routes/emar-routes.ts` | Witness need is derived only from the order. | Live test in m13-emar-write.live.test.ts: a controlled order sent with body medClass 'standard' and no X-Witness-Attestation returns 422, and no administration_record row is written. |
+| 6 | GAP-006 | P0 | Portal amendment submit returns 202 'submitted' and throws the request away; the list is always empty | `apps/backend/src/modules/31-portal/routes/write.routes.ts`<br>`apps/backend/src/modules/31-portal/events-by-m31.ts (new)` | Call M5 submitAmendment (source=portal) inside the route, or publish m31.portal_amendment_request.submitted through a new events-by-m31.ts and an M5 consumer. Back GET /portal/amendments with the portal-submitted M5 rows. Return 503 until either is done. | Live test: after a portal submit, an M5 amendment row (or an outbox row) exists and GET /api/v1/portal/amendments returns it. |
+| 7 | GAP-007 | P1 | Two concurrent requests with the same key both run the handler, and an expired key re-executes on every retry | `apps/backend/src/bootstrap/plugins/idempotency.ts`<br>`apps/backend/src/bootstrap/plugins/idempotency-store-db.ts`<br>`packages/shared/src/idempotency/idempotency.ts` | Make putPending return the claim result (RETURNING id; reclaim expired rows with ON CONFLICT DO UPDATE ... WHERE expires_at<=now()). When the claim is lost, reload and return 409 or a replay. | Live test: two concurrent POSTs with the same Idempotency-Key run the handler once. Reusing a key after expiry claims fresh and then replays. |
+| 8 | GAP-008 | P1 | Accepting an invite grants any role key and skips the anti-escalation check | `apps/backend/src/modules/02-identity/routes/identity-routes.ts`<br>`apps/backend/src/modules/03-authorization/proposed-role-attacher.ts` | When proposedRoleKeys is non-empty, require role.assign plus assertNoEscalation against the inviter's permissions at invite creation. Store the inviter and record them as grantedBy. | Unit test: an actor with only member.invite who proposes org_admin gets 403 ESCALATION_BLOCKED. Live accept test: no role above the inviter's ceiling is attached. |
+| 9 | GAP-009 | P1 | Self-registration is open, email is never verified, invite acceptance is not tied to the invitee, and MFA is not mandated server-side | `packages/auth/src/identity/auth.ts`<br>`packages/auth/src/identity/mount.ts`<br>`apps/backend/src/modules/02-identity/routes/identity-routes.ts` | Set disableSignUp (or require an invite token in a hook), set requireEmailVerification, require a verified session email equal to the invitation email on accept, and enforce the MFA matrix before org binding. | Auth live suite: sign-up without an invite returns 403. Accept with a mismatched email returns 403. An org_admin without TOTP/passkey cannot select an organization. |
+| 10 | GAP-010 | P1 | The break-glass Compliance notifier is an in-memory array, and M3 publishes none of its spec'd outbox events | `apps/backend/src/modules/03-authorization/index.ts`<br>`apps/backend/src/modules/03-authorization/events-by-m3.ts (new)`<br>`apps/backend/src/index.ts` | Add events-by-m3.ts (breakglass.invoked/ended, engagement.closed, role.assigned/revoked), publish them in the same transaction, and add an M36 alert rule for breakglass.invoked. | Real-publisher live test: POST /api/v1/breakglass writes an m3.breakglass.invoked outbox row and M36 raises an alert. arch:outbox-bindings stays green. |
+| 11 | GAP-011 | P1 | Auditor engagements and auditor-session minting are in-memory on every DB boot, and auditor_engagement is never written | `apps/backend/src/modules/03-authorization/index.ts`<br>`apps/backend/src/modules/03-authorization/authz-ports.ts`<br>`apps/backend/src/modules/02-identity/seams.ts`<br>`apps/backend/src/index.ts` | Back engagements and auditor sessions with Drizzle stores over auditor_engagement, give M2 a durable magic-link issuer, add an engagement_scope predicate and the close_engagements cron. Document the WARDENX_INMEM_ASSERT posture until the ledger is empty. | Live test: an engagement survives a restart and is visible to a second instance. Boot test: NODE_ENV=production with DATABASE_URL set and WARDENX_INMEM_ASSERT unset raises no InMemoryBindingError. |
+| 12 | GAP-012 | P1 | Staff have no UI for accounting of disclosures or for working amendment requests | `apps/web/src/modules/04-audit/screens.ts`<br>`apps/web/src/modules/05-patient/screens.ts`<br>`apps/backend/src/modules/05-patient/routes/patient-routes.ts` | Build the HIPAA privacy work queue (accounting view, access report, amendment inbox with accept/deny) and add an M5 pending-amendments list route. | DOM tests. Then, on the Docker stack, submit an amendment from the portal and decide it in the web app. |
+| 13 | GAP-013 | P1 | No read-audit event is written for Buffer responses (DocLens page image, records-request cover sheet) | `apps/backend/src/bootstrap/plugins/read-audit.ts`<br>`apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts`<br>`apps/backend/src/modules/22-documents/records-request/records-request-routes.ts` | Emit read audits from onSend/onResponse (or call auditPhiRead inline in binary handlers), and make the coverage gate reject emission configs on non-JSON routes. | Inject/live test: GET page-image and cover-sheet each write one audit_event read row. |
+| 14 | GAP-014 | P1 | M4's retention, destruction, integrity-sample and export workers are never built, so exports stay 'pending' forever | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/04-audit/jobs/audit-jobs.ts` | Bind production AuditJobAdapters (object store, destruction executor, integrity sampler) and construct the workers next to M34 with DLQ alerts. | Live test: an export reaches 'ready' with an artifact. The retention scan creates a pending certificate and skips rows under legal hold. |
+| 15 | GAP-015 | P1 | No production code writes patient_assignment, and the spec'd assignment routes do not exist | `apps/backend/src/modules/05-patient/routes/patient-routes.ts`<br>`apps/backend/src/modules/05-patient/patient-route-service-db.ts` | Build POST /patients/:id/assignments and .../end (patient.assign, cache invalidation, assignment events), or amend the spec to make the shift cache the sole source. | A grep finds a production insert. A live suite assigns a clinician through the route, and CaseloadProvider.isAssigned returns true under wardenx_app. |
+| 16 | GAP-016 | P1 | Admit, address, payer and amendment writes publish no m5.* outbox events in production | `apps/backend/src/modules/05-patient/patient-route-service-db.ts`<br>`apps/backend/src/modules/05-patient/index.ts` | Thread the m5 outbox port into the DB service and publish created, address_changed, payer_changed and the amendment_* events in the same withOrgContext transaction. | Real-publisher live test: POST /patients/:id/addresses writes an m5.patient.address_changed row, and the M12 consumer receives it. |
+| 17 | GAP-017 | P1 | The payer write skips caseload_or_scope and checks patient.edit instead of patient.edit_payers | `apps/backend/src/modules/05-patient/routes/patient-routes.ts`<br>`apps/backend/__tests__/patient-routes.test.ts` | Use preHandler [requirePermission('patient.edit_payers'), chartScope('patient.edit_payers')] and grant the key in the role templates. | Inject test: an off-caseload holder of patient.edit gets 404/403 on POST payers. |
+| 18 | GAP-018 | P1 | 15 spec'd M5 routes are missing: status transitions, record-death, caregivers, assignments, match queue, unmerge, statement of disagreement | `apps/backend/src/modules/05-patient/routes/patient-routes.ts`<br>`apps/backend/src/modules/05-patient/patient-route-service-db.ts` | Implement the routes with the spec's permission, caseload ABAC and step-up, or record documented deferrals in the spec's As-built section. | Route inventory diff against spec §4.3 shows no missing rows. Add inject tests for each new route. |
+| 19 | GAP-019 | P1 | Soft-duplicate matches are never queued in production: the patient is created and matchReviewIds is empty | `apps/backend/src/modules/05-patient/patient-route-service-db.ts` | Insert one patient_match_review row per soft candidate in the same transaction, return their ids, and build the review queue routes. | Live test: admitting a near-duplicate returns 201 with non-empty matchReviewIds, and the review row is visible under RLS. |
+| 20 | GAP-020 | P1 | Patient-keyed admission and election-certification reads, and POST /admissions, have no caseload/patient scope check | `apps/backend/src/modules/06-admission/routes/admission-routes.ts` | Compose requireAbac(action,'caseload_or_scope',{notFoundOnDeny}) on these routes, with target params.patientId or body.patientId. | Route test: an off-caseload user gets 404 on both GET routes and on POST. |
+| 21 | GAP-021 | P1 | There is no UI for ending or moving a hospice episode | `apps/web/src/modules/06-admission/admission-detail.tsx`<br>`apps/web/src/modules/06-admission/screens.ts` | Build the Discharge/Revocation/Transfer stepper, the death branch and the for-cause cosign queue on admission-detail. | DOM test for each reason. On the Docker stack, discharge from the UI and confirm the NOTR/claim cascade runs. |
+| 22 | GAP-022 | P1 | F2F attestation drops the narrative, takes the performer role from the client, and the MD/NP predicate also admits RNs | `apps/backend/src/modules/06-admission/routes/admission-routes.ts`<br>`apps/backend/src/modules/06-admission/admission-route-service-db.ts`<br>`apps/backend/src/modules/06-admission/abac-predicates.ts` | Persist the narrative and run transitionFaceToFace('attest'). Derive performer_role from the scheduled clinician's membership and credential. Remove the RN roles from MD_OR_NP. | Live test: a 20-char narrative returns 422. Scheduling an RN as performer returns 422 F2F_INVALID_PERFORMER. The predicate denies {roles:['rn']}. |
+| 23 | GAP-023 | P1 | The face-to-face encounter cannot be recorded, attested or completed from the UI | `apps/web/src/modules/06-admission/patient-election-cert.tsx`<br>`apps/web/src/modules/06-admission/admission-detail.tsx` | Add F2F record, attest, complete and override actions to patient-election-cert and the admission-detail F2F section. | DOM test. On the Docker stack, attest an F2F and confirm the readiness requirement clears. |
+| 24 | GAP-024 | P1 | F2F schedule and election-statement draft write against a client-supplied electionPeriodId that is never checked against the admission in the path | `apps/backend/src/modules/06-admission/admission-route-service-db.ts` | Add eq(EP.admissionId, admissionId) to both lookups and return 404 when they do not match. | Live test: posting admission B's electionPeriodId on admission A's routes returns 404 and writes no rows. |
+| 25 | GAP-025 | P1 | Nothing publishes m6.election.period_ended, so M23's revalidate consumer bound to it never fires | `apps/backend/src/modules/06-admission/admission-route-service-db.ts`<br>`apps/backend/src/modules/06-admission/jobs/cron-workers.ts` | Publish the event from the cascade with the spec payload, and add a daily per-org job that completes periods at their end date. | Real-publisher live test: a discharge produces one period_ended row. A cron test shows a period past its end date becomes completed and emits the event. |
+| 26 | GAP-026 | P1 | Only F2F windows go overdue: CTI, NOE and NOR windows never escalate, and recert_due_notify has no worker | `apps/backend/src/modules/06-admission/jobs/cron-workers.ts`<br>`apps/backend/src/modules/06-admission/jobs/index.ts` | Wire planWindowAlert and promoteWindowStatus for every window kind, emit the event, bind the M36 consumer, and add the recertDueNotify worker. | Cron test: an open cti_signature window past its deadline becomes 'overdue' with severity 'alert' and one outbox row. |
+| 27 | GAP-027 | P1 | The UI can open an addendum but cannot edit, finalize or sign it | `apps/web/src/modules/08-encounters/encounter-read.tsx`<br>`apps/web/src/modules/08-encounters/encounter-compose.tsx` | Route opened addenda into the compose editor bound to the addenda selections routes, with Sign and Finalize actions. | DOM test of open, edit, sign and finalize. Check the state on the Docker stack. |
+| 28 | GAP-028 | P1 | M8 mutation routes never register or compose is_author*: any encounter.sign holder can sign another clinician's note, and addenda are attributed to the wrong author | `apps/backend/src/modules/08-encounters/abac-predicates.ts`<br>`apps/backend/src/modules/08-encounters/routes/encounters-routes.ts`<br>`apps/backend/src/modules/08-encounters/encounters-route-service-db.ts` | Register is_author, is_author_or_supervisor and is_addendum_author (membership compared to authored_by_membership_id), compose them together with encounter.scope, and pass the caller's membership into createAddendum. | Route tests: membership B acting on A's encounter gets 403/404. Live test: the addendum author equals the caller. |
+| 29 | GAP-029 | P1 | The no-self-cosign check compares a membership id with a user id, so it never fires | `apps/backend/src/modules/08-encounters/abac-predicates.ts`<br>`apps/backend/src/modules/08-encounters/encounters-route-service-db.ts` | Compare membershipIdOf(context) with authoredByMembershipId, and add a service-level guard that the actor is not the author. | Route test with distinct user and membership ids: the author cosigning their own encounter gets 403. |
+| 30 | GAP-030 | P1 | No M11 order route enforces caseload_or_scope; the header's claim that a 'default ABAC' binding exists is false | `apps/backend/src/modules/11-orders/routes/orders-routes.ts`<br>`apps/backend/src/modules/11-orders/orders-route-service-db.ts` | Compose caseload_or_scope (resolve patientId from the order) on every patient-bearing route, or filter lists through the CaseloadProvider. | Tests: an off-caseload RN gets an empty list, 404 on GET /orders/:id and 403/404 on discontinue. |
+| 31 | GAP-031 | P1 | Cosign requirement and signer discipline are computed from client body fields, so the LPN, NP and escalation cosign rules can be bypassed | `apps/backend/src/modules/11-orders/orders-route-service-db.ts`<br>`apps/backend/src/modules/11-orders/routes/orders-routes.ts` | Derive drafter and signer discipline from the session roles (reject undeclared ones with 422 DISCIPLINE_NOT_HELD), derive levelChange server-side, and compute recorderEligible. | Live test: an LPN-only user claiming rn_case_manager is refused, or still gets cosign_required. An NP claiming physician is refused. |
+| 32 | GAP-032 | P1 | The verbal pre-expiry alert, lab-results-overdue sweep and completion-watcher are never built, and their events have no emitter | `apps/backend/src/modules/11-orders/jobs/`<br>`apps/backend/src/index.ts` | Build the three workers on the active-org fan-out, wire them in index.ts with DLQ alerts, and emit the catalogued events. | Live test: an overdue lab order flips to results_overdue and emits the event. A verbal order 12h before expiry emits verbal_expiring_soon once. |
+| 33 | GAP-033 | P1 | M12 medication-order and medication-history routes have no caseload check; the refill inbox is the only caseload-aware path | `apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts`<br>`apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts` | Bind caseload_or_scope on every M12 patient-bearing route (404 on deny), resolving patientId from the order. | Live test: an off-caseload prescriber gets an empty list and 404 on /patients/P/medications/history. |
+| 34 | GAP-034 | P1 | M12 cosign only flips cosign_status to 'attached': no role check, no status guard, no signature record | `apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts`<br>`apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts` | Establish the cosign requirement, route cosign through M11 OrderSignatureProvider (signature_kind='cosignature'), guard on status, and enforce the cosigner role from the session. | Live test: a non-MD cosigning an NP order that needs an MD cosign is refused. A valid cosign writes an order_signature cosignature row. |
+| 35 | GAP-035 | P1 | M12 sign decides named-prescriber and signer eligibility from client-supplied fields, and the signer_eligible ABAC is not bound | `apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts`<br>`apps/backend/src/modules/12-dosespot/routes/dosespot-typebox.ts`<br>`apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts` | Remove signerIsOrderingPhysician from the request, compare the caller with prescriberMembershipId or the verbal named prescriber, derive discipline from the session, and bind a signer-eligibility predicate. | Live test: user B signing A's verbal order gets 403 VERBAL_SIGNER_NOT_NAMED_PRESCRIBER and the status is unchanged. |
+| 36 | GAP-036 | P1 | The production M12 backend hard-codes the SUD-consent gate to pass (and the allergy gate, a known gap) | `apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts` | Call the ConsentEvaluator for SUD-treatment medications, failing closed. Add a real allergy check. Derive the signer from the membership. | Live test: an SUD medication for a patient without a Part 2 release returns 422 SUD_CONSENT_REQUIRED. |
+| 37 | GAP-037 | P1 | No outbound e-prescribing transmission and none of the refill-SLA, IAL2, timeout or EPCS crons exist | `apps/backend/src/modules/12-dosespot/jobs/`<br>`apps/backend/src/index.ts`<br>`docs/history/` | Record an explicit per-queue deferral and a status-matrix note, then build the crons together with the vendor ingest that feeds them. | The deferral entry lists every §4.8 queue. Later: a pending refill older than 48h emits sla_warn. |
+| 38 | GAP-038 | P1 | Scheduled doses are materialized for 7 days at activation and never extended; the extend-schedule cron does not exist | `apps/backend/src/modules/13-emar/jobs/ (new)`<br>`apps/backend/src/index.ts` | Add the daily extend-schedule cron (deduplicating on the materialization pass) plus the reconciliation-warning and kit-return crons. | Live test: an order activated 8 days ago still has today's doses after a tick. |
+| 39 | GAP-039 | P1 | No missed-dose sweep exists and nothing writes missed_dose, so M30 publishes a fabricated 0% missed-dose rate | `apps/backend/src/modules/13-emar/jobs/ (new)`<br>`apps/backend/src/index.ts` | Implement the 15-minute sweep (active-org fan-out with withOrgContext) that inserts missed_dose, sets status and emits the event, and handle late administrations. | Live test: a dose past its grace period yields exactly one missed_dose row and one event, and stays idempotent across ticks. |
+| 40 | GAP-040 | P1 | No module produces the PRN reassessment-overdue signal, so overdue PRN reassessments never alert | `apps/backend/src/modules/09-assessments/events-by-m9.ts`<br>`scripts/outbox-subscription-exceptions.ts` | Decide sweep ownership in the specs, add a PRN-to-scale linkage, catalog and emit the event, bind the M36 alert, and drop the exception. | arch:outbox-bindings passes with the exception removed. Live test: a PRN deadline passing creates an M36 alert. |
+| 41 | GAP-041 | P1 | Hard-voiding an administration has no step-up, no supervisor floor and no status guard | `apps/backend/src/modules/13-emar/routes/emar-routes.ts`<br>`apps/backend/src/modules/13-emar/emar-route-service-db.ts` | Add requireStepUp and a supervisor predicate, and route the void through the lifecycle machine. | Route test: a void without step-up returns STEP_UP_REQUIRED, and re-voiding returns 409. |
+| 42 | GAP-042 | P1 | The review-clock sweep covers only patients who already have an IDG packet, so never-reviewed admissions are invisible | `apps/backend/src/modules/14-idg/jobs/cron-store.ts`<br>`apps/backend/src/modules/14-idg/jobs/cron-workers.ts` | Use the M6 active-admission seam as the population and fall back to activated_at. | Live test: an admission 13 days old with no packet emits a review_clock escalation. |
+| 43 | GAP-043 | P1 | updateDecision rewrites emitted or superseded decisions, and supersede skips quorum with wasQuorate hard-coded true | `apps/backend/src/modules/14-idg/idg-route-service-db.ts`<br>`apps/backend/src/modules/14-idg/routes/service.ts`<br>`apps/backend/src/modules/14-idg/routes/idg-routes.ts` | Refuse non-open decisions with 409, add If-Match and meeting scope, require a later quorate meeting for supersede, and store the real quorum. | Live test: PATCH on an emitted decision returns 409. Superseding from a non-quorate meeting is refused. |
+| 44 | GAP-044 | P1 | None of the five M15 crons exist (supervisory overdue, MSW and chaplain initial overdue, volunteer gate-watcher, hour aggregator) | `apps/backend/src/modules/15-discipline-care-plans/jobs/ (new)`<br>`apps/backend/src/index.ts` | Implement the five crons on the active-org fan-out, emit the events, and wire them with DLQ alerts. | Live test: an overdue aide_poc plan emits m15.aide_supervisory.overdue, and an expired gate flips to expired. |
+| 45 | GAP-045 | P1 | signVersion takes the signer role from the request body, so one member can fill every signer slot | `apps/backend/src/modules/15-discipline-care-plans/routes/write-service-drizzle.ts`<br>`packages/db/migrations/<new>` | Refuse roles the actor does not hold (403 SIGNER_ROLE_MISMATCH) and refuse a second signature from the same membership, backed by a unique index. | Route test: the same membership signing twice gets 409, and signing as 'msw' without that role gets 403. |
+| 46 | GAP-046 | P1 | M15 write routes (goals, interventions, assessments, finalize, sign, amend, supervisory) have no caseload or discipline scope check | `apps/backend/src/modules/15-discipline-care-plans/routes/write-service-drizzle.ts` | Reuse actorMayReadPatient in planOr404 and return 404 off-caseload. | authz test: an off-caseload author posting goals gets 404. |
+| 47 | GAP-047 | P1 | close-early closes the plan immediately and records the closing counselor as the supervisor cosigner | `apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts`<br>`apps/backend/src/modules/16-bereavement/lifecycle/plan.ts` | Make close-early record a pending-cosign request only, and have cosign-close (a different supervisor, with step-up) perform the transition. Either defer the closure insert or relax the CHECK in a migration. | Live test: after close-early the plan is still active. A cosign by a different supervisor moves it to closed_early, and a self-cosign returns 403. |
+| 48 | GAP-048 | P1 | M16 has no cron workers: plans never auto-close at 13 months, outreach is never marked missed, and there are no anniversary alerts | `apps/backend/src/modules/16-bereavement/jobs/*`<br>`apps/backend/src/index.ts` | Add the four §4.9 crons and register them next to M17, M19 and M20. | Live test: a plan for a death 14 months ago closes on a tick, and outreach past its grace period becomes missed with an event. |
+| 49 | GAP-049 | P1 | completeOutreach checks the D15 encounter rule against the client's kind and never verifies the encounter id | `apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts` | Reject when the kind mismatches, and resolve sourceEncounterId through an M8 seam (signed, same patient, bereavement_contact). | Unit test: kind mismatch returns 409/422. Live test: a fabricated encounter id returns 422. |
+| 50 | GAP-050 | P1 | visit.start holders can mark a visit evv_present with no EVV event, skipping step-up and the reason requirement | `apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts`<br>`apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts` | Always use via:'self_attest' on the HTTP routes and require a reason. Advance via:'evv' only from the M18 consumers. Bind an assigned-clinician check. | Inject test: an empty-body start returns 422 and a non-assignee gets 403. Live test: M18 check-in still advances the visit. |
+| 51 | GAP-051 | P1 | Availability and PTO routes check only the *_own keys and the services ignore the caller | `apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts`<br>`apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts` | Require membershipId to equal the actor unless the caller holds edit_any, read_team or approve. Resolve user to membership before checking self-approval. | Inject tests: A editing B's availability gets 403, A cancelling B's PTO gets 403, and self-approval gets 409. |
+| 52 | GAP-052 | P1 | Approving PTO never runs the reassignment scan; the reassignment-scan and caregiver-reminder crons are missing | `apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts`<br>`apps/backend/src/modules/17-scheduling/jobs/*` | Query published visits in the PTO window, emit m17.reassignment_needed, and add the caregiver-reminder cron. | Live test: PTO overlapping a published visit yields a reassignment_needed row and a non-zero count. |
+| 53 | GAP-053 | P1 | Visit list, detail, day, week and map views and proposal reads check RBAC only; listVisits applies no caseload filter | `apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts`<br>`apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts` | Compose caseload_or_scope on the detail routes, add SQL caseload or own-assignment filters on lists, and require visit.read_team for org-wide views. | Live test: a clinician with an empty caseload gets [] from GET /visits and 404 on another patient's visit. |
+| 54 | GAP-054 | P1 | EVV marks a visit as at the patient's address based only on GPS accuracy; a client flag turns a failed accuracy check into a pass | `apps/backend/src/modules/18-evv/evv-route-service-db.ts` | Compute haversine distance to the M5 address coordinate. Treat degraded_attested as an advisory breach, not a pass. Stop emitting fabricated distances. | Live test: a capture 5 km from the address with good GPS accuracy produces a breach and no at_patient_address event. |
+| 55 | GAP-055 | P1 | POST /evv/offline-sync skips the assigned-clinician and visit-window checks, and device_attestation_valid is enforced on no route | `apps/backend/src/modules/18-evv/routes/evv-routes.ts`<br>`apps/backend/src/modules/18-evv/evv-route-service-db.ts` | Run both predicates for each offline event on the server, require evv.check_out for check-out events, and bind device attestation once a client exists. | Inject test: an offline-sync event for a visit not assigned to the caller is rejected with 403. |
+| 56 | GAP-056 | P1 | M18 has no workers: no aggregator submission row is ever created, and there is no late-check sweep, poller or spoof detector | `apps/backend/src/modules/18-evv/jobs/*`<br>`apps/backend/src/index.ts` | Add an 18-evv jobs module with the late-check sweep, aggregator prep (on check_out_recorded), submitter and poller. | Live test: a check-out in a state that requires an aggregator creates a queued submission row. |
+| 57 | GAP-057 | P1 | Only the roster-sync workers exist; shift-open/close, the coverage-gap watchdog and the SLA crons are not built | `apps/backend/src/modules/19-oncall/jobs/*`<br>`apps/backend/src/index.ts` | Add the Tier-1 crons: shift-open/close and the coverage-gap watchdog, then the callback, escalation and close-documented crons. | Live test: a shift past its start time becomes active, and a provider entity with no RN in the next 24h raises coverage_gap. |
+| 58 | GAP-058 | P1 | The triage encounter-signed decider exists but is never bound, so triage calls never reach documented or closed | `apps/backend/src/modules/19-oncall/consumers/*`<br>`apps/backend/src/index.ts`<br>`apps/backend/src/modules/08-encounters/events-by-m8.ts` | Bind an M19 consumer for m8.encounter.signed, declare m19 on the event, add the retry worker, and fix the exception text. | Live test: signing the linked encounter moves the call to documented. |
+| 59 | GAP-059 | P1 | GET /triage-calls lets every triage.read holder see every triage call in the org | `apps/backend/src/modules/19-oncall/routes/read-service-drizzle.ts` | For callers without org-wide scope, add a SQL predicate restricting to caseload patients or calls the actor handled. | Live test: an RN outside the patient's caseload gets no rows for that patient. |
+| 60 | GAP-060 | P1 | The M20 cipher port is not bound: SOS coordinates are dropped and POST /safety/incidents always returns 503 | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/20-field-safety/routes/*` | Bind an M20 cipher and decipher over getTenantKeyProvider(), plus the recipient resolver. | Live test: an incident create returns 201 with a decryptable narrative, and SOS stores encrypted coordinates. |
+| 61 | GAP-061 | P1 | The 30-second overdue check-in detector, the core lone-worker safety control, does not exist | `apps/backend/src/modules/20-field-safety/jobs/cron-workers.ts`<br>`apps/backend/src/index.ts` | Add the overdue-detector cron, the post-visit closer and the coverage-gap watchdog to registerM20CronWorkers. | Live test: a schedule past its window becomes overdue and writes a check_in_overdue outbox row. |
+| 62 | GAP-062 | P1 | None of the M21 §4.6 crons exist: par alerts, the automatic 30-day overdue flip and the 72h auto-confirm never run | `apps/backend/src/modules/21-supplies (new jobs/)`<br>`apps/backend/src/index.ts` | Add a jobs module with the par-monitor and unreturned-kit-monitor crons on the active-org enumerator. | Live test: a row below reorder point emits par.below_threshold, and a return 31 days past due becomes overdue. |
+| 63 | GAP-063 | P1 | invoice_accrued and invoice_reconciled are never emitted and the invoice columns are never written, so the M27 consumer and SupplyCostProvider are dead | `apps/backend/src/modules/21-supplies/routes/write-service-drizzle.ts` | Emit invoice_accrued and set the columns on dispatch or mark-ordered, and build the reconciliation intake. | Live test: a dispatch writes an outbox row, and the M27 consumer produces a vendor_invoice_line. |
+| 64 | GAP-064 | P1 | The controlled-substance dispatcher ABAC check uses a location id supplied in the request body | `apps/backend/src/modules/21-supplies/routes/guards.ts`<br>`apps/backend/src/modules/21-supplies/routes/write-service-drizzle.ts` | Resolve the serving location on the server (admission or supply_request row), reject a mismatched body value, and evaluate ABAC on the server-resolved value. | Live test: a dispatcher in Location A naming A for a patient served by B gets 403/409 and no row is written. |
+| 65 | GAP-065 | P1 | export-phi-bundle returns a made-up tracking id; nothing is stored, queued or produced | `apps/backend/src/modules/22-documents/documents-route-service-db.ts` | Persist the request and enqueue a real bundle job (or delegate to the M34 DSAR worker); return 503 until that exists. | Live test: the returned id maps to a durable request row or job. |
+| 66 | GAP-066 | P1 | Step-up is required by the spec and claimed in route comments, but it is not composed on export-phi-bundle, the overlay PUT or the admin retry route | `apps/backend/src/modules/22-documents/routes/documents-routes.ts` | Add requireStepUp to all three preHandler chains. | Route test: no fresh step-up returns 403, and a fresh step-up passes. |
+| 67 | GAP-067 | P1 | No route composes sud_consent_present; the DocLens workspace returns decrypted SUD content to any intake.review holder | `apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts`<br>`apps/backend/src/modules/22-documents/extraction/review-workspace.ts` | Restrict SUD values and evidence to extraction_reviewer_eligible plus the Part 2 need-to-know check (redact otherwise), and add a gate that flags predicates registered but never composed. | Inject test: an ineligible reviewer sees SUD values redacted or gets 403. |
+| 68 | GAP-068 | P1 | POST /api/v1/documents and POST /documents/:id/versions always return 503 in production | `apps/backend/src/modules/22-documents/documents-route-service-db.ts`<br>`apps/backend/src/modules/22-documents/index.ts` | Implement upload over the bound S3 store: stream, verify size and SHA-256, then insert the document and version 1 in one transaction. Keep the 503 only when no store is configured. | Live test with MinIO: a multipart upload returns 201 and the rows and object exist. |
+| 69 | GAP-069 | P1 | The NOE/NOTR 5-day window-watch and eligibility stale-watch crons are scheduled but throw on every tick | `apps/backend/src/index.ts` | Bind activeOrgs (buildActiveOrgEnumerator with an M23 platform job id) and noticeWindow in buildM23WorkerDeps. | Live test: a NOE more than 3 days old produces a window_warning or breach stamp. |
+| 70 | GAP-070 | P1 | No worker is built for revalidate.consumer, eligibility.refresh or validation-run; the eligibility-check and manual-validate routes always return 503 | `apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts`<br>`apps/backend/src/index.ts`<br>`apps/backend/src/modules/23-billing-medicare/outbox-consumers/submit-requests.ts` | Build Workers for the three queues in the composition root, gated on queueConnection only. Route validation and eligibility enqueues to a real producer. Fix the comments. | Boot test: the Worker set includes the three queue names. Live test: m6.loc.changed leads to a completed job and a validation_run row, and POST validate returns 202. |
+| 71 | GAP-071 | P1 | No production code creates rb_day rows, so Medicaid room-and-board can never be billed | `apps/backend/src/modules/24-billing-medicaid/jobs/index.ts`<br>`apps/backend/src/modules/24-billing-medicaid/jobs/m24-jobs.ts`<br>`apps/backend/src/index.ts` | Implement RbDaySweepStore and EligibilityWatchdogStore and wire both crons; until then, log a boot warning and add a status-matrix note. | Live test: an active arrangement plus one tick produces rb_day rows. |
+| 72 | GAP-072 | P1 | M25's consumers for m23.claim.rejected and m18.evv.aggregator_rejected are never built, so rejections never seed the denial worklist and the rows stay pending | `apps/backend/src/index.ts`<br>`scripts/check-outbox-bindings.ts` | Construct both bindings in index.ts, and add a reachability rule to check-outbox-bindings. | A grep finds both factories in index.ts. Live test: claim.rejected leads to a denial_case row and the outbox row is dispatched. |
+| 73 | GAP-073 | P1 | Manual match binds an unchecked client-supplied claim id, drops the rationale and never posts; adjustment override drops its reason and has no effect | `apps/backend/src/modules/25-remittance/routes/write-service-drizzle.ts` | Look up the claim through M23 ClaimReader (404 if missing or cross-provider-entity), persist the reason, run the posting pipeline, and implement the postAction effects. | Live test: a random UUID returns 404, and a valid match posts and emits claim_paid. |
+| 74 | GAP-074 | P1 | The M25 web UI is read-only: no denial work, appeal lifecycle or ERA manual match | `apps/web/src/modules/25-remittance/*.tsx`<br>`docs/design/DEFERRED_SCREENS.md` | Add denial and appeal detail panels with lifecycle actions, plus manual-match and override; correct DEFERRED_SCREENS. | DOM tests for each action. Work one denial end to end on the Docker stack. |
+| 75 | GAP-075 | P1 | The M26 upstream consumer never records a cap accrual: handlers read organizationId and patientId from payloads that do not carry them | `apps/backend/src/modules/26-cap/consumers/outbox-binding.ts`<br>`apps/backend/src/modules/26-cap/consumers/handlers.ts`<br>`apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts` | Merge the envelope's organizationId into the payload, and make M25 emit per-claim accrual facts (or have M26 read posted lines through a seam). Add a real-publisher live test. | Live test: an 835 through M25 ingest and the dispatcher leads to a cap_beneficiary_accrual_line row and a non-zero CapAccrualReader aggregate. |
+| 76 | GAP-076 | P1 | M26 cron workers are built without an active-org enumerator or alert router, so every tick throws | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/26-cap/wiring.ts` | Bind buildActiveOrgEnumerator with an M26 platform job id (and add it to the allowlist) plus an AlertEmitter-backed alerts port. | Live test: one nightly tick across two orgs writes projection snapshots with no 'enumerator not bound' error. |
+| 77 | GAP-077 | P1 | m23.claim.line_finalized has no producer and its schema does not match the handler, so cap_inpatient_accrual is never written | `apps/backend/src/modules/23-billing-medicare/events-by-m23.ts`<br>`apps/backend/src/modules/26-cap/consumers/handlers.ts`<br>`packages/billing/src/events.ts` | Emit line_finalized on paid 0655/0656 lines with a field set both sides agree on, and take organizationId from the envelope. | Live test: a paid 0656 line increments gip_days. |
+| 78 | GAP-078 | P1 | PS&R import goes nowhere: CSV bytes are discarded, no reconcile worker exists, and no reconciliation rows are written | `apps/backend/src/modules/26-cap/routes/write-service-drizzle.ts`<br>`apps/backend/src/modules/26-cap/jobs/index.ts` | Store the CSV in MinIO with a DEK, enqueue psr-reconcile, write reconciliation rows, and emit variance_raised. | Live test: after import plus the processor run, reconciliation has variance lines and the import is no longer 'queued'. |
+| 79 | GAP-079 | P1 | The M26 cap UI is read-only: no settlement propose or finalize, period close or reopen, PSR resolve or threshold acknowledge | `apps/web/src/modules/26-cap/*.tsx` | Add propose and finalize (with step-up), the period lifecycle, PSR resolve and acknowledge actions. | DOM tests. Propose and finalize on the Docker stack. |
+| 80 | GAP-080 | P1 | Statistics refresh always fails because the M6 and M8 statistics seams are unbound, and statistic_data cannot be filled by hand | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/06-admission (seam)`<br>`apps/backend/src/modules/08-encounters (seam)` | Publish M6 monthly census and M8 visits/FTE seams and bind statisticsSeams (a manual route would need a spec change). | Live test: a refresh fills statistics.monthlyBreakdown. |
+| 81 | GAP-081 | P1 | Approve/submit separation relies on a client-supplied, optional approvedByMembershipId | `apps/backend/src/modules/27-cost-report/routes/write-service-drizzle.ts`<br>`apps/backend/src/modules/27-cost-report/routes/cost-report-typebox.ts`<br>`packages/db/migrations/<new>` | Store approved_by and approved_at, compare with the actor at submit (403 TWO_PERSON_CONTROL_VIOLATION), and take the attester from the actor. | Live test: the same membership approves and then submits with the field omitted, and gets 403. |
+| 82 | GAP-082 | P1 | The M27 cost-report UI is entirely read-only: no import, compute, validate or submit | `docs/design/DEFERRED_SCREENS.md`<br>`apps/web/src/modules/27-cost-report/cost-report-workspace.tsx` | Add an explicit deferral row, then build the import, compute, validate, approve and submit write path. | The deferral row exists. Later, write callers exist under 27-cost-report. |
+| 83 | GAP-083 | P1 | The per-client IP allowlist, BAA check and tier rate limit are stored but never enforced on token mint or FHIR reads | `apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts`<br>`apps/backend/src/modules/28-fhir/routes/token-mint.ts` | Enforce the IP allowlist and BAA in token mint and resolveBearer, and add a Valkey per-client limiter that returns 429. | Live test: a request from an IP outside the allowlist gets 401, and exceeding the rate gets 429. |
+| 84 | GAP-084 | P1 | M28 has no BullMQ workers: $export jobs are accepted and never run, and inbound SLA expiry and payload destruction never happen | `apps/backend/src/modules/28-fhir/jobs/ (new)`<br>`apps/backend/src/index.ts`<br>`apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts` | Add the M28 jobs (bulk export to MinIO NDJSON plus the sweepers); return 501 from $export until then. | Live test: $export, then processor, then poll returns output[] with URLs, and a pending proposal past its SLA becomes expired. |
+| 85 | GAP-085 | P1 | GET /api/clinical/labs/observations ignores caseload and lists every lab result in the org | `apps/backend/src/modules/29-external-interfaces/routes/labs.routes.ts`<br>`apps/backend/src/modules/29-external-interfaces/routes/store-drizzle.ts` | Resolve the caseload through CaseloadProvider, and move the filters and keyset cursor into SQL before LIMIT. | Live test: an RN's list excludes off-caseload patients, and ?patientId=B returns 403 or empty. |
+| 86 | GAP-086 | P1 | The inbound HL7 MLLP listener is never started, so ORU and ADT messages cannot be received | `apps/backend/src/modules/29-external-interfaces/listener/main.ts (new)`<br>`deploy/production/compose.yml` | Add the listener process entry point and the compose service. | Live test: an ORU^R01 frame gets an ACK and creates hl7_message_inbound and lab_observation rows. |
+| 87 | GAP-087 | P1 | CAHPS export returns a fabricated 'queued' job, and every port of the sample and export crons is unbound | `apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts`<br>`apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`<br>`apps/backend/src/index.ts` | Return 501 from R-14 until the pipeline exists, then persist export jobs, bind the vendor adapters, the caregiver-contact cipher, the death-feed reader and the outbox, and catalog export_failed. | Live test: a monthly sample inserts an encrypted row and emits sample_ready, and export emits export_completed. |
+| 88 | GAP-088 | P1 | PIP and SRA closure co-signers are arbitrary membership ids taken from the request body | `apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts`<br>`apps/backend/src/modules/30-quality/routes/qapi.routes.ts`<br>`apps/backend/src/modules/30-quality/routes/sra.routes.ts` | Require the actor to be one of the co-signers and compose the close-authority predicates against the other co-signer, or move to a two-step close. | Live test: closing with two unrelated ids gets 403. |
+| 89 | GAP-089 | P1 | M30 does not consume m6.discharge.death and has no create route, so mortality reviews can never exist | `apps/backend/src/modules/30-quality/outbox-consumers/upstream-events.ts`<br>`apps/backend/src/modules/06-admission/events-by-m6.ts`<br>`apps/backend/src/index.ts` | Split handleDischargeDeath, bind the mortality-draft half, and add m30 as a consumer. | Live test: a death discharge creates a pending mortality_review and a review_created row. |
+| 90 | GAP-090 | P1 | visit_on_time_rate, evv_compliance_rate and opioid_on_admission_rate throw in the worker because their stores require a request context | `apps/backend/src/modules/17-scheduling/seams/drizzle-store.ts`<br>`apps/backend/src/modules/18-evv/seams/drizzle-store.ts`<br>`apps/backend/src/modules/12-dosespot/seams/drizzle-store.ts` | Add org-explicit ...ForOrg store methods, or wrap the calls in runWithRequestContext. | Live test: recompute for the three codes writes quality_measure_value rows with no context error. |
+| 91 | GAP-091 | P1 | The incident list pages within a fixed 200-row window, and no M30 PHI route applies patient scope | `apps/backend/src/modules/30-quality/routes/read-service-drizzle.ts`<br>`apps/backend/src/modules/30-quality/routes/mortality.routes.ts`<br>`apps/backend/src/modules/30-quality/routes/infection.routes.ts` | Push the filters and keyset cursor into the repo, and compose a real patient scope on the PHI routes (or amend the spec). | Live test: seed 250 incidents and page through all of them. RLS-ISE-03 returns caseload-only results. |
+| 92 | GAP-092 | P1 | Several M31 routes return fake success with no side effect, and no production path creates portal accounts or grants | `apps/backend/src/modules/31-portal/routes/write.routes.ts`<br>`apps/backend/src/modules/31-portal/routes/admin.routes.ts`<br>`apps/backend/src/modules/31-portal/routes/store.ts` | Implement the M2 invite primitive and grant creation, and wire M13, M22 and M16. Any route that is not yet backed must return 501/503. | Live tests for each route showing the downstream row or event exists after a 2xx. |
+| 93 | GAP-093 | P1 | Staff telehealth and invitation routes use inOrg instead of caseload ABAC, and the auditor route has no engagement scope | `apps/backend/src/modules/31-portal/routes/guards.ts`<br>`apps/backend/src/modules/31-portal/routes/telehealth.routes.ts`<br>`apps/backend/src/modules/31-portal/routes/admin.routes.ts` | Compose caseload_or_scope with a resolved patientId, enforce starter-only stop-recording, and add an engagement-scope predicate. | Route tests: an off-caseload clinician gets 403 on join and invite, and an auditor outside the engagement gets 403. |
+| 94 | GAP-094 | P1 | Portal telehealth join and leave are not tied to the session's granted patient | `apps/backend/src/modules/31-portal/routes/telehealth.routes.ts`<br>`apps/backend/src/modules/31-portal/abac-predicates.ts` | Add ABAC_GRANT and reject when visit.patientId does not equal the session patient. | Live test: a session for patient A joining patient B's visit gets 403 and the lifecycle is unchanged. |
+| 95 | GAP-095 | P1 | Telehealth join returns a hard-coded fake vendor URL even with an adapter bound; leave, end and recording never reach the vendor | `apps/backend/src/modules/31-portal/routes/telehealth.routes.ts` | Decrypt and return the minted room URL, mint before writing the lifecycle, persist leave, and call endRoom. | Route test with a fake adapter: join returns the adapter URL, and end calls endRoom. |
+| 96 | GAP-096 | P1 | A tenant admin can stop an AI capability for every tenant by minting a role key | `apps/backend/src/modules/03-authorization/role-store.ts`<br>`apps/backend/src/modules/32-ai-platform/abac-predicates.ts` | Reserve the platform role keys and require a NULL-org platform role, and gate clinical_safety_lead behind a single-tenant flag. | Tests: a tenant creating role 'ai_safety_owner' gets 409/422, and a platform-scope kill switch from a tenant gets 403. |
+| 97 | GAP-097 | P1 | Report schedules have no owner or visibility check, although comments claim one exists | `apps/backend/src/modules/33-reporting/routes/schedules.routes.ts`<br>`apps/backend/src/modules/33-reporting/routes/write-service-drizzle.ts`<br>`apps/backend/src/modules/33-reporting/jobs/m33-jobs.ts` | Compose dashboard_visibility, limit mutations to the owner or org_admin, filter lists, and check reportable_scope for each recipient. | Route tests: a non-owner PATCH gets 403/404. Worker test: a recipient without scope is skipped. |
+| 98 | GAP-098 | P1 | The M34 ABAC predicates run on a deny-all resolver in production, so support sessions, feature-flag writes and the kill switch always return 403 | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/34-saas-tenant-platform/abac-resolver-drizzle.ts (new)` | Implement a Drizzle TenantPlatformAbacResolver and bind it at DB boot. | Live test: platform_ops with a valid grant gets 201 on support-sessions, and the kill switch returns 200. |
+| 99 | GAP-099 | P1 | Promo application ignores the validity window and redemption cap and never increments redemption_count | `apps/backend/src/modules/35-subscription/routes/service-drizzle.ts` | SELECT ... FOR UPDATE the promo, enforce the window and cap, increment the count, and map 23505 to 409. | Tests: an expired promo is refused, a capped promo is refused, and success increments the count. |
+| 100 | GAP-100 | P1 | No Stripe dispatcher, webhook ingest, dunning, usage or revenue worker exists, so subscription billing is local state only | `apps/backend/src/modules/35-subscription/`<br>`packages/subscription-billing/src/stripe/`<br>`apps/backend/src/index.ts` | Wire the dispatcher and webhook ingest from packages/subscription-billing, add the crons, and mark M35 as not live until then. | Live test: POST subscription writes a stripe_api_call_audit row through the dispatcher (mocked). |
+| 101 | GAP-101 | P1 | No push, SMS, email or voice dispatcher exists, the vendor webhooks are unmounted, and Tier-1 SOS voice escalation is unbuilt | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/36-messaging/`<br>`packages/messaging/src/jobs/` | Build the fan_out and send_* workers (critical field-safety channels first), implement the webhook service and mount it, and produce delivery_failed. Alternatively, record an ADR deferral. | Live test: field_safety.sos leads to a delivery row going from pending to sent through the worker. arch:route-reachability shows 0 deferred. |
+| 102 | GAP-102 | P1 | A tenant admin can weaken a system_locked alert rule such as SOS (downgrade severity or change the resolver) | `apps/backend/src/modules/36-messaging/messaging-route-service-db.ts`<br>`packages/db/migrations/<new>` | Reject resolver changes and severity downgrades on locked rules (403), and add a DB backstop. | Test: PATCH sos {severityFloor:'info'} returns 403 and no org row is inserted. |
+| 103 | GAP-103 | P1 | Member add and remove routes skip the location ABAC, and their writes record an empty audit actor | `apps/backend/src/modules/36-messaging/routes/messaging-routes.ts`<br>`apps/backend/src/modules/36-messaging/messaging-route-service-db.ts` | Compose location_membership and pass the actor into withOrgContext. | Route test: an out-of-location clinical_lead gets 403. Live test: the audit row has an actor. |
+| 104 | GAP-104 | P1 | Care-team channel membership is only re-synced by portal activity; on-call, bereavement and archive sync return 501 | `apps/backend/src/modules/36-messaging/messaging-route-service-db.ts`<br>`apps/backend/src/modules/36-messaging/messaging-provider-db.ts` | Have channel_visibility consult the CaseloadProvider, or bind an M5 assignment consumer, and implement archive. | Live test: after an assignment is removed, the care_team channel returns 403 with no portal activity involved. |
+| 105 | GAP-105 | P1 | Only one M37 cron exists: census snapshot, IRC day count, restraint and cleaning watchdogs are never built | `apps/backend/src/modules/37-ipu/jobs/`<br>`apps/backend/src/index.ts` | Build the census, IRC day-advance, restraint, cleaning and GIP-staleness crons. | Live test: a census tick writes a snapshot and an event, and an IRC episode at day 6 emits cap_breached. |
+| 106 | GAP-106 | P1 | Body release, GIP attestation and the M6 confirm handshake trust client-supplied facts | `apps/backend/src/modules/37-ipu/routes/service-drizzle.ts`<br>`apps/backend/src/modules/37-ipu/routes/ipu.routes.ts`<br>`apps/backend/src/modules/37-ipu/events-by-m37.ts` | Check the M22 signed body-release document and resolve the funeral home through M40. Compose attester_eligible and store the real step-up assertion id. Make confirm system-internal, driven by M6. | Route tests: a random UUID for body release returns 409/422, a non-MD attester returns 403, and a tenant user calling confirm is rejected. |
+| 107 | GAP-107 | P1 | The IPU IV safety overlay has a reader and an eraser but no writer, and M13 never asks for it | `apps/backend/src/modules/37-ipu/consumers/`<br>`apps/backend/src/modules/13-emar/`<br>`apps/backend/src/index.ts` | Bind a writer on M12 medication-order signing using the overlay-builder, have M13 call the seam and enforce dual witness, and reconcile the spec. | Live test: a signed IV sedation order creates an overlay row, and an administration without a second witness is refused. |
+| 108 | GAP-108 | P1 | There is no production terminology loader or worker; the admin load route only registers a version row | `apps/backend/src/modules/38-terminology/jobs/ (new)`<br>`apps/backend/src/index.ts` | Build load_version (generalizing the ICD loader), refresh_expansions and tenant_deprecation_scan, and have the route enqueue. | Live test: loading an rxnorm fixture creates concept rows and activates the version. |
+| 109 | GAP-109 | P1 | No consent route applies the spec's ABAC (caseload, consent owner or compliance officer, bereavement window) | `apps/backend/src/modules/39-consent/routes/consent-routes.ts`<br>`apps/backend/src/modules/39-consent/abac-predicates.ts` | Compose caseload_or_scope on patient-keyed routes, add a consent_owner_or_compliance predicate for consent-keyed routes, and add the bereavement window. | Route test: an off-caseload clinician gets 404 and a compliance officer passes. |
+| 110 | GAP-110 | P1 | ConsentEvaluator never learns of a patient's death, and m5.patient.deceased has no M39 consumer | `apps/backend/src/modules/39-consent/consent-store-db.ts`<br>`apps/backend/src/modules/05-patient/events-by-m5.ts`<br>`apps/backend/src/index.ts` | Implement isPatientDeceased from patient.status and bind the D13 expiry consumer. | Live test: after a death, evaluate returns patient_deceased_consent_terminated. |
+| 111 | GAP-111 | P1 | Route-level PHI writes call withOrgContext with userId "", so the write-audit trigger records a NULL actor | `packages/tenancy/src/context.ts`<br>`apps/backend/src/modules/0[5-9]-*/*-route-service-db.ts`<br>`apps/backend/src/modules/1[0178]-*/*-route-service-db.ts` | Thread the acting user id into every request-path service, or default withOrgContext to getRequestContext().userId. Keep "" for workers only. | Live test as wardenx_app: one write per module records audit_event.actor_user_id equal to the caller. |
+| 112 | GAP-112 | P1 | Production nginx logs the full request URI, including patient search terms and S3 presigned signatures | `deploy/production/nginx/*.conf`<br>`deploy/production/README.md` | Define a PHI-safe log_format using $uri, disable or limit the storage access log, and document the host nginx.conf. | Run nginx -T on the host, then request ?q=Smith and confirm the log line has no query string. |
+| 113 | GAP-113 | P2 | M1 audit.archive and idempotency.cleanup jobs are not implemented | `apps/backend/src/bootstrap/jobs/`<br>`apps/backend/src/index.ts` | Add an hourly org fan-out purge, and implement audit.archive or defer it. | Live test: one tick purges expired rows. |
+| 114 | GAP-114 | P2 | Foundation routes /health, /ready, /version and /system/feature-flags have no OpenAPI enrichment | `scripts/openapi/enrichments.ts`<br>`audit/openapi-coverage/baseline.json` | Add enrichments with the §4.2 schemas and ratchet the bootstrap deficit to 0. | bun run openapi:coverage reports bootstrap deficit 0. |
+| 115 | GAP-115 | P2 | M2 spec routes are missing: /me/session, step-up overrides, funeral invite, org and provider-entity/location writes | `apps/backend/src/modules/02-identity/routes/identity-routes.ts`<br>`apps/backend/src/modules/02-identity/step-up-override-store.ts` | Implement /me/session and the override admin routes (tighten-only), or record deferrals and reconcile with M34. | Run a route diff; inject-test /me/session. |
+| 116 | GAP-116 | P2 | The admin consoles are read-only against specs that require writes; terminology.admin and mdm.console have no requiredPermission | `apps/web/src/modules/40-mdm/screens.ts`<br>`apps/web/src/modules/38-terminology/screens.ts` | Gate them on real read keys, and build or defer the writes. | ui:parity. |
+| 117 | GAP-117 | P2 | There is no last-required-role guard, and break-glass revoke has no status guard | `apps/backend/src/modules/03-authorization/routes/authz-routes.ts`<br>`apps/backend/src/modules/03-authorization/break-glass-store.ts` | Return 409 LAST_REQUIRED_ROLE, add a status guard, and build reap_breakglass. | Unit tests: revoking the sole MD returns 409, and revoking an expired break-glass returns 409. |
+| 118 | GAP-118 | P2 | The amendment decision has no status guard, does not apply the accepted change, and returns 500 for an unknown id | `apps/backend/src/modules/05-patient/patient-route-service-db.ts`<br>`apps/backend/src/index.ts` | Guard the transition (409), use typed errors, apply the change, and build the SLA worker. | Inject tests: 409, 404 and 422 cases. |
+| 119 | GAP-119 | P2 | Census KPIs and global-search scopes say they are waiting for modules that have shipped | `apps/web/src/modules/05-patient/patient-list-census.tsx`<br>`apps/web/src/modules/05-patient/global-search.tsx` | Compute the KPIs and fix the labels. | Check on the Docker stack. |
+| 120 | GAP-120 | P2 | Patient admit does not apply the location_scope ABAC the spec requires; the spec contradicts itself | `apps/backend/src/modules/05-patient/routes/patient-routes.ts` | Resolve a target location from primaryAddress, or amend the spec to say admit is org-wide. | Inject test: L1 admitting into L2 returns 403 (or the spec is amended). |
+| 121 | GAP-121 | P2 | For-cause discharge: the filer and cosigner are not checked to differ, there is no decline or reversal route, and the discharge route has no admission.scope | `apps/backend/src/modules/06-admission/admission-route-service-db.ts`<br>`apps/backend/src/modules/06-admission/routes/admission-routes.ts` | Persist the filer and require filer != cosigner. Add a decline route and admissionScope. | Live test: an MD self-cosign returns 403. |
+| 122 | GAP-122 | P2 | The GIP gate is a 30-character free-text reason instead of the three D12 attestations; the spec contradicts itself | `docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md`<br>`apps/backend/src/modules/06-admission/routes/admission-typebox.ts` | Settle which rule applies in the spec, then implement it in both places. | A route test that matches the decision. |
+| 123 | GAP-123 | P2 | The encounter read screen records assessment scales as raw JSON and offers scales that cannot be scored | `apps/web/src/modules/08-encounters/encounter-read.tsx` | Reuse RecordAssessmentModal. | DOM test. |
+| 124 | GAP-124 | P2 | PUT /hope/assessments/:id and PATCH answers do not apply the discipline predicate | `apps/backend/src/modules/10-hope/routes/hope-routes.ts` | Add ABAC_AUTHOR, and scope regenerate. | Route test: a disallowed discipline gets 403. |
+| 125 | GAP-125 | P2 | Held-transmission recovery, rate tables, wage indexes and med retransmit have no UI | `apps/web/src/modules/11-orders/screens.ts` | Add a held-transmissions queue and the admin screens. | grep for callers. |
+| 126 | GAP-126 | P2 | Any orders.draft holder can edit any draft; indicationText is dropped | `apps/backend/src/modules/11-orders/orders-route-service-db.ts` | Allow edits only by the author or a supervisor, and persist or remove the field. | Test: another RN's PATCH gets 404/403. |
+| 127 | GAP-127 | P2 | M14 PATCH and DELETE routes do not require If-Match or an Idempotency-Key; action-item PATCH has no assignee check and DELETE has no pre-adjourn guard | `apps/backend/src/modules/14-idg/routes/idg-routes.ts`<br>`apps/backend/src/modules/14-idg/idg-route-service-db.ts` | Apply the headers, enforce assignee-or-coordinator, and refuse after adjournment. | Tests returning 428, 403 and 409. |
+| 128 | GAP-128 | P2 | IDG packet reads have no per-patient caseload check, and idg-history (not in the spec) is gated by idg.read only | `apps/backend/src/modules/14-idg/routes/idg-routes.ts` | Add a CaseloadProvider filter and add the history route to the spec. | Test: an off-caseload attendee gets 404. |
+| 129 | GAP-129 | P2 | Every M16 *_cipher column is written as NULL, so contact methods and notes are discarded; the caregiver seed is ignored | `apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts`<br>`apps/backend/src/index.ts` | Bind an M34-backed cipher and the M5 caregiver reader, and return 503 when notes are provided until then. | Live test: a phone number round-trips. |
+| 130 | GAP-130 | P2 | The m8.encounter.signed, m22.document.rendered, m4.legal_hold.* and m39.consent.created subscriptions are not bound (documented exceptions) | `apps/backend/src/modules/16-bereavement/outbox-consumers/*`<br>`scripts/outbox-subscription-exceptions.ts` | Build the m8 and m22 consumers and declare m16 as a consumer on the producers. | arch:outbox-bindings plus a live test. |
+| 131 | GAP-131 | P2 | GET /metrics/visits returns a hard-coded onTimeRate: 1, and route-efficiency returns zeros | `apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts` | Compute the real rate, and return null or 501 for efficiency. | Unit test: a late visit lowers the rate. |
+| 132 | GAP-132 | P2 | Portal upcoming-visit and arrival routes trust the patient or visit id in the request, with no session or consent binding (latent) | `apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts`<br>`apps/backend/src/modules/18-evv/routes/evv-routes.ts` | Bind sessionPatientId plus M39 consent, or retire the M17 duplicate route. | Inject test: A requesting B gets 403/404. |
+| 133 | GAP-133 | P2 | EVV coordinates are stored as base64('lat,lng') in coords_cipher, stamped with dek_version=1 | `apps/backend/src/modules/18-evv/coords.ts` | Bind the M34 envelope cipher and stop stamping a DEK version. | Live test: the value does not decode as base64. |
+| 134 | GAP-134 | P2 | The verbal-order disposition accepts an unchecked orderRecordId, and the link effect never runs | `apps/backend/src/modules/19-oncall/routes/write-service-drizzle.ts` | Resolve the id through M11 and append the link in the same transaction. | Test: a fabricated id returns 422. |
+| 135 | GAP-135 | P2 | M20 does not consume m5.patient.deceased, so safety obligations stay open after death | `apps/backend/src/modules/20-field-safety/consumers/` | Write and bind the consumer. | arch:outbox-bindings with the exception removed. |
+| 136 | GAP-136 | P2 | No live test exercises the M20 Drizzle route services (about 2,870 lines) or either M16 Drizzle service | `apps/backend/__tests__/*`<br>`package.json`<br>`.github/workflows/ci.yml` | Add m20 and m16 route live suites plus the package and CI rows. | bun run arch:live-suites. |
+| 137 | GAP-137 | P2 | M21 has no AI block, and M23's validateAiBlockForBilling is never called at boot | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/21-supplies/routes/guards.ts` | Add both validators at boot and reject AI actors on controlled-substance routes. | Boot test plus route test. |
+| 138 | GAP-138 | P2 | The docling-worker sidecar is missing from production compose and deploy.yml, so DocLens returns 503 | `deploy/production/compose.yml`<br>`.github/workflows/deploy.yml` | Add the image build and service, or record a deferral. | docker compose config --services. |
+| 139 | GAP-139 | P2 | The backend and worker use the MinIO root account as their S3 credential | `deploy/production/compose.yml`<br>`deploy/production/bootstrap-vps.sh` | Provision a scoped service account. | mc admin user info. |
+| 140 | GAP-140 | P2 | Several M22 writes return success but discard their payload | `apps/backend/src/modules/22-documents/documents-route-service-db.ts` | Persist the payloads or return 501, and guard the transitions. | Route and live tests. |
+| 141 | GAP-141 | P2 | The M22 retention-rotation, ai-block-validator and MinIO access-log queues are never built | `apps/backend/src/modules/22-documents`<br>`apps/backend/src/index.ts` | Implement retention-rotation and the boot ai-block validator, or defer them in the spec. | Live test: a rotation tick runs. |
+| 142 | GAP-142 | P2 | About 27 implemented routes appear only in OpenAPI and in no spec (rate-tables, wage-indexes and others) | `docs/modules/WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md` | Add the routes to the §4 inventories. | Route-to-spec cross-check. |
+| 143 | GAP-143 | P2 | The M23 cron jurisdiction list is hard-coded to 'ngs_j6' | `apps/backend/src/index.ts` | Bind it to the provider-entity MACs, or defer with a boot assertion. | Unit test. |
+| 144 | GAP-144 | P2 | M23 is missing the validation-overrides audit, mac-credentials test and platform-rules routes; several paths differ from the spec | `apps/backend/src/modules/23-billing-medicare/routes/validation.routes.ts` | Add the routes or defer them, and align the paths. | Route diff. |
+| 145 | GAP-145 | P2 | M24 claim and R&B authorization is org-wide | `apps/backend/src/modules/24-billing-medicaid/abac-predicates.ts`<br>`apps/backend/src/modules/24-billing-medicaid/routes/claims.routes.ts` | Add a provider-entity check, derive the scope on the server, and apply ABAC to rb-days. | Live test: an actor on PE-A gets 404 for PE-B data. |
+| 146 | GAP-146 | P2 | M24_LAUNCH_GATEWAY_ENABLED is opt-in, so Medicaid submit and poll workers are silently not built | `.env.example`<br>`apps/backend/src/bootstrap/env.ts` | Add it to INTEGRATION_SWITCHES or document it, and add it to .env.example. | Unit test with collectEnvProblems. |
+| 147 | GAP-147 | P2 | POST /appeals/:id/submit-late-good-cause (M25-F03) is not implemented | `apps/backend/src/modules/25-remittance/routes/appeals.routes.ts` | Add the route with step-up and a reason of at least 40 characters. | Route test. |
+| 148 | GAP-148 | P2 | M25 reads are not limited to the actor's provider entities | `apps/backend/src/modules/25-remittance/routes/read-service-drizzle.ts` | Resolve the provider-entity scope from the request context. | Live test: PE-A gets an empty list for PE-B. |
+| 149 | GAP-149 | P2 | CapAccrualReader.aggregateForCostReport ignores CCN (it takes the first row for the cap year) | `apps/backend/src/modules/26-cap/seam-impls.ts`<br>`apps/backend/src/modules/27-cost-report/routes/cap-context.ts` | Add a CCN or provider-entity parameter and filter on it. | Two-CCN live test. |
+| 150 | GAP-150 | P2 | m26.cap.accrual_recorded and psr_variance_raised are catalogued but never emitted | `apps/backend/src/modules/26-cap/consumers/drizzle-store.ts` | Publish accrual_recorded inside recordAccrualLine. | Real-publisher live test. |
+| 151 | GAP-151 | P2 | Bulk-export poll and cancel are scoped by org only, so another client in the same tenant can read or cancel a job | `apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts` | Return 404 unless job.clientId matches ctx.clientId. | Live test. |
+| 152 | GAP-152 | P2 | Acknowledge-abnormal returns success without storing anything or clearing the M36 badge | `apps/backend/src/modules/29-external-interfaces/routes/labs.routes.ts` | Persist the acknowledgement and emit an event. | Live test. |
+| 153 | GAP-153 | P2 | Feed-revoke dual approval trusts an optional primaryApproverId supplied in the request body | `apps/backend/src/modules/29-external-interfaces/abac-predicates.ts`<br>`apps/backend/src/modules/29-external-interfaces/routes/store-drizzle.ts` | Store the pending revoke and its approver, require a second distinct approver, and cascade credentials. | Test: a single actor's revoke returns 403 or stays pending. |
+| 154 | GAP-154 | P2 | M30 writes are stamped with the org's 'primary' provider entity | `apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts` | Derive the provider entity from the subject (the admission). | Two-PE live test. |
+| 155 | GAP-155 | P2 | The SRA reminder cron throws on every run, and m30.incident.cap_overdue has no producer | `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`<br>`apps/backend/src/index.ts` | Bind the scan plus the AlertEmitter, and add a CAP-overdue cron. | Cron live test. |
+| 156 | GAP-156 | P2 | SRA finding and remediation mutations skip ownsSraCycle, although the comment says the check is enforced | `apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts` | Load the cycle and require the owner or sra.admin. | Live test. |
+| 157 | GAP-157 | P2 | The M30 QAPI incidents screen cannot report, investigate or close an incident | `apps/web/src/modules/30-quality/qapi-incidents.tsx`<br>`docs/design/DEFERRED_SCREENS.md` | Add the lifecycle actions and an explicit deferral row. | DOM tests. |
+| 158 | GAP-158 | P2 | PatientCaregiverReader and ExternalGriefResourceReader are deny-stubs only | `apps/backend/src/modules/05-patient/seams/index.ts`<br>`apps/backend/src/modules/31-portal/seams/registration.ts` | Add the caregiver-to-user link, and build the M40 grief catalog. | Live portal ABAC test. |
+| 159 | GAP-159 | P2 | Six M31 §4.8 queues are missing, M31 publishes none of its 22 events, and the post-discharge read-only gate is dead code | `apps/backend/src/modules/31-portal/jobs/`<br>`apps/backend/src/modules/31-portal/routes/write.routes.ts` | Add events-by-m31.ts, implement the discharged reader, and build or drop the crons. | arch:outbox-bindings plus a unit test. |
+| 160 | GAP-160 | P2 | Clinicians have no web UI to join or end a telehealth visit | `apps/web/src/modules/17-scheduling/screens.ts` | Add a staff room or an explicit deferral. | grep for the caller. |
+| 161 | GAP-161 | P2 | M32 catalogs 21 outbox events but publishes none, and no §4.8 workers exist | `apps/backend/src/modules/32-ai-platform/safety/service.ts`<br>`apps/backend/src/index.ts` | Publish at the write sites and build the workers, or defer them. | Live test: an outbox row for kill_switch.activated. |
+| 162 | GAP-162 | P2 | M33 platform and compliance admin routes check permission only; tile_warm_cache has no worker | `apps/backend/src/modules/33-reporting/routes/admin.routes.ts` | Register platform and compliance scope predicates. | Route test: a tenant role gets 403. |
+| 163 | GAP-163 | P2 | M34 onboarding_advance and the bundle-expiry, BAA-expiry and support-session-close crons are never built | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts` | Register the four queues, bundle_expiry first. | Live test: an expired bundle is deleted. |
+| 164 | GAP-164 | P2 | Six M34 §4.1 routes are missing, including tenant/account and tenant feature-flags | `apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/` | Implement the routes or record their removal. | openapi:coverage. |
+| 165 | GAP-165 | P2 | The spec route GET /admin/messaging/alert-deliveries is not implemented | `apps/backend/src/modules/36-messaging/routes/messaging-routes.ts` | Implement it behind a platform-ops ABAC check, or defer it. | openapi:coverage. |
+| 166 | GAP-166 | P2 | Endpoint verification accepts any token | `apps/backend/src/modules/36-messaging/messaging-route-service-db.ts`<br>`packages/db/migrations/<new>` | Add a token-hash column and do a constant-time comparison. | Route test: a wrong token returns 422. |
+| 167 | GAP-167 | P2 | alert_receipt has no live test, although it caused a production 42501 incident | `packages/db/migrations/__tests__/m36-rls-isolation.live.test.ts` | Add the table to the m36 live suite. | bun run test:rls:live:m36. |
+| 168 | GAP-168 | P2 | The M36 THREAT_MODEL cites an assertChannelVisible caseload guard that does not exist | `apps/backend/src/modules/36-messaging/THREAT_MODEL.md` | Correct T-2 and E-1 and record the residual risk. | grep. |
+| 169 | GAP-169 | P2 | None of the five registered M37 ABAC predicates is applied on any route | `apps/backend/src/modules/37-ipu/routes/service-drizzle.ts` | Enforce them in the service, or deregister them through an ADR. | Unit tests. |
+| 170 | GAP-170 | P2 | ipu_rn_break_glass has no cross-tenant RLS proof; the suite claims to cover 'ALL 26' tables | `packages/db/migrations/__tests__/m37-rls-isolation.live.test.ts` | Add it to the COVERED list. | bun run test:rls:live:m37. |
+| 171 | GAP-171 | P2 | Revocation-cascade ACK tracking never updates; there is no retry cron or alert, and the renewal and draft crons are unbuilt | `apps/backend/src/modules/39-consent/jobs/`<br>`apps/backend/src/modules/39-consent/consent-store-db.ts` | Have consumers record ACKs, and add the retry cron and the alert. | Live test: an ACK leads to completed status. |
+| 172 | GAP-172 | P2 | The /admin/mdm/* routes are gated by RBAC alone, with no platform-ops ABAC (unlike M38) | `apps/backend/src/modules/40-mdm/routes/mdm-routes.ts` | Add a platform-ops ABAC check. | Route test: a tenant org_admin gets 403. |
+| 173 | GAP-173 | P2 | None of the eight M40 jobs is built, and merge_request has no writer | `apps/backend/src/modules/40-mdm/jobs/ (new)`<br>`apps/backend/src/index.ts` | Wire fuzzy_dedup, the BAA and license scans, and provisional aging. | Live test. |
+| 174 | GAP-174 | P2 | GET /admin/mdm/nppes/sync-log reads a table the app role has no grant on, so it fails with permission denied (500) | `apps/backend/src/modules/40-mdm/mdm-store-db.ts`<br>`packages/db/migrations/<new>` | Add a SECURITY DEFINER reader. | Live route test returns 200. |
+| 175 | GAP-175 | P2 | 38 route responses bypass the M1 error envelope | `apps/backend/src/modules/02-identity/routes/*.ts` | Throw typed WardenXError subclasses and add a lint rule. | rg returns 0 matches. |
+| 176 | GAP-176 | P2 | .env.production.example is referenced by bootstrap-vps.sh but was never committed | `.gitignore`<br>`deploy/production/.env.production.example` | Commit the template, add a .gitignore exception, and add a sync test. | git ls-files shows the template, and the unit test passes. |
+| 177 | GAP-177 | P2 | Seven catalogued events have no emit site (for example, m6.referral.accepted, triaged and duplicate) | `apps/backend/src/modules/06-admission/admission-route-service-db.ts`<br>`apps/backend/src/modules/09-assessments/assessments-route-service-db.ts` | Emit them at the transitions, or remove them from the catalog and spec. | A real-publisher test for each transition. |
+| 178 | GAP-178 | P2 | 480 FK constraints have no supporting index, and no gate checks for them | `packages/db/migrations/<next>`<br>`scripts/check-fk-index-coverage.ts` | Add an indexing migration and a check-fk-index gate. | EXPLAIN shows an index scan. |
+| 179 | GAP-179 | P2 | Frame-fidelity has 14 of 17 mappings partial and 104 of 120 frames unmapped; its notes are stale | `scripts/frame-fidelity/registry.ts`<br>`audit/frame-fidelity/FRAME_FIDELITY.md` | Re-audit and update the notes, then map the remaining frames. | bun run frame:fidelity:check. |
+| 180 | GAP-180 | P2 | The M22, M25, M05, M11 and M29 specs still prescribe the banned app.tenant_id and withTenantContext | `docs/modules/*.md`<br>`scripts/check-module-docs.ts` | Normalize to app.org_id and withOrgContext, and add a banned-token rule. | grep plus arch:module-docs. |
+| 181 | GAP-181 | P2 | The M9 reassessment-due cron only logs; the M10 alerts, scheduling, validation and retention queues and the M7 snapshot queue have no worker | `apps/backend/src/modules/09-assessments/jobs/cron-workers.ts`<br>`apps/backend/src/modules/10-hope/jobs/cron-workers.ts` | Implement the cadence output and HOPE retention, or retire the queue declarations. | Cron test that checks a side effect. |
+| 182 | GAP-182 | P2 | Org-wide list routes and the patient-keyed /internal routes have no caseload or system-principal gating | `apps/backend/src/modules/08-encounters/routes/encounters-routes.ts`<br>`apps/backend/src/modules/09-assessments/routes/assessments-routes.ts` | Filter lists by caseload, and restrict /internal routes to a system principal. | Route tests: an off-caseload user gets 0 rows and 403 on /internal. |
+| 183 | GAP-183 | P2 | Six org-scoped PHI tables have no cross-tenant live test as wardenx_app | `packages/db/migrations/__tests__/m6-rls-isolation.live.test.ts`<br>`packages/db/migrations/__tests__/m10-rls-isolation.live.test.ts` | Extend the COVERED arrays with seed rows. | bun run test:rls:live:m6, :m7 and :m10. |
+| 184 | GAP-184 | P2 | Spec route inventories differ from the registered routes in 8 modules (M02, M05, M23, M29, M31, M33, M34, M36) | `docs/modules/*.md` | Update to the as-built paths, or mark rows as deferred. | Re-run the comparison. |
+| 185 | GAP-185 | P2 | The SPA is served without CSP, frame-ancestors, HSTS, nosniff or Referrer-Policy | `deploy/production/web-nginx.conf`<br>`deploy/production/smoke.sh` | Add the §9.6 headers to web-nginx.conf and assert them in smoke.sh. | curl -sI shows the headers. |
+| 186 | GAP-186 | P2 | About 15 screen specs have no screen and no deferral row (wound care, prior auth, grievances, accreditation, external portals, OIG and others) | `docs/design/DEFERRED_SCREENS.md`<br>`scripts/report-ui-parity.ts` | Add a per-spec status table or a spec-to-screenId key. | Every spec maps to a screen or a deferral. |
+| 187 | GAP-187 | P2 | Stale UI docs: DEFERRED_SCREENS marks read-only M25 and M26 as 'done', counts and paths are wrong, and main.tsx says nothing is registered | `docs/design/DEFERRED_SCREENS.md`<br>`apps/web/src/main.tsx`<br>`apps/admin/src/main.tsx` | Update the ledger and the comments. | bun run docs:ui. |
+| 188 | GAP-188 | P2 | Comments say the auditor, outbox, KEK, x12 and consumers are unbound when they are live | `apps/backend/src/index.ts` | Rewrite the comments and delete the unused constant. | grep. |
+| 189 | GAP-189 | P3 | migrate.ts does not detect applied migrations whose file was removed, and the drizzle.config 'frozen journal' comment is stale | `scripts/db/migrate.ts`<br>`drizzle.config.ts` | Warn (or fail under --strict) on orphan tracking rows, and fix the comment. | Unit test |
+| 190 | GAP-190 | P3 | M2 spec §3.8 says two_factor and passkey have user-ownership RLS; the implementation intentionally has none (ADR-0010 D2) | `docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md` | Update spec §3.8. | bun run arch:module-docs |
+| 191 | GAP-191 | P3 | Record identifiers are kept in localStorage and never cleared on sign-out | `apps/web/src/modules/10-hope/hope-assessment-detail.tsx`<br>`apps/web/src/shell/session.tsx` | Use sessionStorage, or clear wx.* keys on logout. | DOM test |
+| 192 | GAP-192 | P3 | The M11/M12 PDF renderer and M28 FHIR publisher deny-stubs and their interfaces are exported but never consumed | `apps/backend/src/modules/11-orders/seams/m22-order-pdf.ts`<br>`apps/backend/src/modules/12-dosespot/seams/*.ts` | Delete the stubs and fix the inventories. | bun run build && arch:boundaries |
+| 193 | GAP-193 | P3 | Two M15 JSON GETs, plus the system feature-flags GET, publish no response schema | `scripts/openapi/enrichments.ts` | Add response schemas in enrichments.ts. | bun run openapi:coverage shows GET-no-resp at 8 or fewer |
+| 194 | GAP-194 | P3 | startOutreach ignores expectedVersion (`void expectedVersion`) | `apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts` | Drop the field or guard it in the WHERE clause. | A concurrent start returns 409. |
+| 195 | GAP-195 | P3 | M17 routes /arrive and /memberships/:id/credentials are implemented but missing from spec §4.1 | `docs/modules/WARDENX_MODULE_17_SCHEDULING_SPEC_v0_2.md` | Add the rows to the spec. | arch:module-docs |
+| 196 | GAP-196 | P3 | refreshEligibility records the service state from the first credential found (LIMIT 1) | `apps/backend/src/modules/24-billing-medicaid/routes/write-service-drizzle.ts` | Derive the state from the coverage. | Unit test |
+| 197 | GAP-197 | P3 | The PS&R import path differs from the spec, and the platform cap routes lack a platformOnly guard | `docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md` | Align the spec or add the guard. | arch:module-docs |
+| 198 | GAP-198 | P3 | fhir_inbound_owner_module_match omits caseload_or_scope | `apps/backend/src/modules/28-fhir/abac-predicates.ts` | Add the caseload check. | Unit test |
+| 199 | GAP-199 | P3 | The M31 and M8 mount comments call the M34 key ring a slice deny-stub; it is live on a DB boot | `apps/backend/src/index.ts` | Update both comments. | Re-read the edited lines |
+| 200 | GAP-200 | P3 | M36 spec §8.1.2 says no outbox catalog exists, and the mount comment says writes return 501 | `docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md`<br>`apps/backend/src/modules/36-messaging/index.ts` | Update the spec and comments. | arch:module-docs |
+| 201 | GAP-201 | P3 | Spec routes 25-27 (/portal/consents/*) are absent; this is a documented Phase-2 deferral | — | None for now. | n/a |
+| 202 | GAP-202 | P3 | Route-service docstrings say writes fail closed with 501; no route returns 501 | `apps/backend/src/modules/*/index.ts` | Delete the sentences. | grep |
+| 203 | GAP-203 | P3 | CLAUDE.md says audit-fitness has a --check mode inside arch:fitness; it does not | `CLAUDE.md`<br>`AGENTS.md` | Add a --check mode, or drop the mention (and mirror the change to AGENTS.md). | cmp CLAUDE.md AGENTS.md |
+| 204 | GAP-204 | P3 | Several load-bearing comments describe behavior the code no longer has | `apps/backend/src/index.ts`<br>`apps/backend/src/modules/08-encounters/encounters-route-service-db.ts` | Update or delete the stale comments. | grep the cited lines |
+| 205 | GAP-205 | P3 | registerM23-M27Consumers and the in-memory consumer stores are exported but never called | `apps/backend/src/modules/2[3-7]-*/consumers/index.ts` | Delete them or fold them into the live bindings. | rg |
+| 206 | GAP-206 | P3 | docs/README is incomplete, some counts are stale (35 vs 48 ADRs, 461 vs 502 tables), and some relative links are broken | `docs/README.md`<br>`docs/APP_OVERVIEW.md` | Index all subtrees, point to generated reports instead of counts, and fix the links. | Link resolver reports 0 broken links |
+| 207 | GAP-207 | P3 | The redesign sweep skipped apps/admin and apps/portal | `apps/admin/src/index.css`<br>`apps/portal/src/index.css` | Move the list-chrome styles into a shared stylesheet. | Visual check |
+| 208 | GAP-208 | P3 | Stale seam-status comments and an unused M33 deny-stub bundle mislead seam audits | `apps/backend/src/index.ts`<br>`packages/reporting/src/seam-registration.ts` | Fix the comments and delete or wire the bundle. | git grep bindReportingConsumedSeams |
+
+## 7. Unverified assumptions
+
+**Unverified P0/P1:** none. Every P0/P1 passed verification: P0 by a 3-lens majority, P1 by one independent verifier.
+
+**Refuted findings:** none. All sampled verdicts were `confirmed` or `confirmed_with_corrections`.
+
+**P2/P3 not sampled (70):** GAP-113, GAP-114, GAP-116, GAP-117, GAP-118, GAP-119, GAP-121, GAP-123, GAP-124, GAP-125, GAP-126, GAP-127, GAP-128, GAP-129, GAP-131, GAP-133, GAP-134, GAP-135, GAP-137, GAP-138, GAP-139, GAP-140, GAP-143, GAP-144, GAP-147, GAP-148, GAP-150, GAP-151, GAP-152, GAP-154, GAP-155, GAP-156, GAP-157, GAP-158, GAP-160, GAP-161, GAP-162, GAP-163, GAP-164, GAP-165, GAP-167, GAP-168, GAP-169, GAP-170, GAP-172, GAP-173, GAP-174, GAP-175, GAP-177, GAP-178, GAP-179, GAP-181, GAP-182, GAP-184, GAP-188, GAP-189, GAP-190, GAP-191, GAP-193, GAP-194, GAP-195, GAP-196, GAP-197, GAP-198, GAP-201, GAP-202, GAP-204, GAP-205, GAP-206, GAP-207. Each is shown with `Verified=false`. Their claims rest only on first-pass evidence.
+
+**Severity changed by a verifier (corrections applied):**
+
+- GAP-004: P1→P0
+- GAP-046: P2→P1
+- GAP-091: P2→P1
+- GAP-082: P2→P1
+- GAP-132: P1→P2 (latent: no role grants the keys)
+- GAP-176: P1→P2 (repeat of GAP-152; running prod unaffected)
+- GAP-187: P3→P2
+- GAP-142: P3→P2
+- Many other findings kept their severity but had their gap text or evidence corrected: for example corrected line ranges, the M05 route count changed from 13 to 15, the M26 accrual root cause, and the M36 webhook scope. The corrected versions are what appear in §3.
+
+**Merges (near-duplicates, higher severity kept):**
+
+- GAP-011 ← seams: 'M3 in-memory route deps / boot ledger'
+- GAP-030 ← security: 'caseload_or_scope never composed on M11/M12/M13' (also feeds the M12 and M13 caseload rows)
+- GAP-111 ← batch-2: 'M6–M10 null actor' + batch-4: 'M17/M18 null actor'
+- GAP-070 ← discovered: 'no revalidate.consumer worker'
+- GAP-071 ← discovered: 'rb_day never created'
+- GAP-087 ← seams: 'CAHPS sample/export ports unbound'
+- GAP-089 ← batch-6 P2 'mortality auto-create' (mortality half); SRA half went into GAP-155
+- GAP-101 ← fitness-kit: 'M36 inbound vendor webhooks not mounted'
+- GAP-193 ← batch-3 P3 + fitness-kit P3 OpenAPI response schemas
+- GAP-179 ← fitness-kit P3 'eMAR frame-fidelity note stale'
+- GAP-043 ← prior GAP-023 and GAP-024 (updateDecision + supersede)
+- GAP-106 ← prior GAP-066 and GAP-067
+
+**Worker-reported items that could not be conclusively checked:**
+
+- Live `*.live.test.ts` suites were not executed by any worker. Live RLS and write behavior was inferred from reading the suites.
+- `check:boot:platform` at HEAD was not run end to end. The only evidence is a relay-start log line from a running worker image whose commit is unknown.
+- Whether production sets `WARDENX_INMEM_ASSERT=warn`. It is not in any tracked deploy file, and the untracked `.env.production` could not be read.
+- The host `/etc/nginx/nginx.conf` and TLS/HSTS termination are not in the repo. The access-log finding assumes the default `combined` format.
+- Production `.env.production` contents (M24/DOCLING/M25 switches) are unknown.
+- Which tenant roles hold `prescribing.sign`, `administration.void`, `discipline_plan.sign`, `external_interfaces.lab.read`, `messaging.manage_members`, `portal.*` and `role.manage/role.assign`. Role grants are per tenant, so how widely several findings can be exploited was not measured.
+- Whether tenant custom roles can be granted 'platform'-category keys (`mdm.merge.approve`), which decides whether the M40 admin ABAC finding is P2 or P3.
+- M2: invitation accept does not compare emails (filed under the sign-up finding). Better Auth `/api/auth/*` paths were not traced. Whether the HIBP, session-reap and offboard queues matter was not assessed.
+- M3: the role scope_level ≥ member-scope rule and the requirement that time-bound roles have expires_at were not traced.
+- M4: the `audit.elevated_access` behavior after af4134f94 was not re-traced. Whether `state_retention_override` needs tenant scope was not confirmed.
+- M5: `census-metrics` returns whole-org aggregate counts to caseload-scoped users. It is aggregate-only and was not filed.
+- M6: whether recert rollover leaves two periods active at once was not traced. The R-F2F-03 override actor is contradictory in the spec.
+- M10: the GET route with no response schema is probably the HOPE package ZIP.
+- M14: whether the absent internal routes were superseded by seams (probable doc drift).
+- M15: whether M8's sign gate reads `next_supervisory_due_at`, which would partly mitigate the missing M15 supervisory cron.
+- M17: whether frequency-driven proposals are fully covered by the event consumer. Spec error codes were spot-checked only.
+- M20: whether a staff session with a null membershipId can reach the full-org SOS list.
+- M21: whether AI actors can obtain an M21 session at all, which decides whether the missing AI block is exploitable.
+- M23: whether the NOE/NOTR submit workers run in prod (depends on gateway env). Whether the MAC adapter accepts `ngs_j6`.
+- M25: whether the appeal decide reason must be persisted.
+- M26: what `withOrgContext('')` does at runtime (expected: uuid cast error, then DLQ). Whether `m5.patient.deceased` carries organizationId, which would make M26 freeze the one working path.
+- M27: the `cost_report_approver_for_provider` predicate was only partly read.
+- M28: whether every served resource type goes through the D3 consent gate (only Patient was confirmed). Whether inbound accept applies changes through the owner modules. The prior GAP-049 resource coverage was not re-enumerated.
+- M31: which lay-read routes return empty because upstream readers are unregistered. Support-session TTL at read time.
+- M32: whether the default tenant_admin seed grants `ai.kill_switch.activate`. The worker filed the finding with that caveat, and the verifier confirmed the code path.
+- M35: Stripe `rawBodyOf` falls back to `JSON.stringify(body)`, which would break HMAC. This is moot while ingest is unbound.
+- M36: whether role templates grant `messaging.manage_members` to clinical_lead.
+- M37: whether M23 has an independent IRC day check (only test files were found).
+- M39: whether the 0224 rotation pre-creates `consent_eval_audit` partitions. The verifier says yes.
+- M40: the nppes sync-log 500 is inferred from grants, not reproduced live.
+- UI: the API→UI uncalled-route list is static analysis and may miss dynamically built paths. Screens were not rendered in a browser.
+- Docs: the route-inventory comparison is regex-based. The FK-index counts come from the dev DB (assumed equal to a fresh migrate). The orphan-route list is heuristic.
+- Prior-audit delta: 'not re-found' items were not re-examined. Treat them as open until checked; none is claimed fixed.
+
+## 8. Machine-readable appendix
+
+```json
+{
+  "generated_at": "2026-10-04T22:10:06Z",
+  "repo": "WardenX",
+  "summary": {
+    "p0": 6,
+    "p1": 106,
+    "p2": 76,
+    "p3": 20
+  },
+  "gaps": [
+    {
+      "id": "GAP-001",
+      "severity": "P0",
+      "category": "security",
+      "module": "M02",
+      "title": "A tenant admin can deactivate any user on the platform, including other tenants' users",
+      "evidence": [
+        "apps/backend/src/modules/02-identity/routes/identity-routes.ts:730-755",
+        "apps/backend/src/modules/02-identity/identity-stores-db.ts:248-249",
+        "apps/backend/src/modules/02-identity/session-writer-db.ts:40-45",
+        "scripts/db/sync-permission-catalog.ts:27-28",
+        "docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md:1194"
+      ],
+      "verified": true,
+      "recommended_fix": "For non-platform callers, require that the target has a membership in request.context.organizationId (404 otherwise). Limit org_admin to revoking that org's membership and sessions. Keep global deactivation for platform_ops only. Audit and publish the event under the target's org.",
+      "verification": "Cross-tenant inject test plus a live suite: an org A admin deactivating a user who belongs only to org B gets 404/403, and that user's status and sessions are unchanged."
+    },
+    {
+      "id": "GAP-002",
+      "severity": "P0",
+      "category": "security",
+      "module": "M02",
+      "title": "The server does not enforce the staff 15-min idle or 8h/24h absolute session timeouts",
+      "evidence": [
+        "packages/types/src/policy/session-policy.ts:62-71",
+        "packages/auth/src/identity/auth.ts:270-301",
+        "node_modules/better-auth/dist/context/create-context.mjs:146-148",
+        "packages/auth/src/identity/session-snapshot.ts:18-32",
+        "docs/architecture/WARDENX_ARCHITECTURE_v0_11.md:2760"
+      ],
+      "verified": true,
+      "recommended_fix": "Set Better Auth session.expiresIn to the hard cap and choose updateAge to match. Enforce SESSION_POLICY per session class in the authenticate hook: keep a throttled last-activity timestamp and reject with expired_idle or expired_absolute. Remove the dead sessionTtlSec.",
+      "verification": "Live auth suite: after 16 idle minutes the next API call returns 401 SESSION_EXPIRED. Continuous activity past 8h/24h also returns 401. A unit test shows SESSION_POLICY.byClass drives the decision."
+    },
+    {
+      "id": "GAP-003",
+      "severity": "P0",
+      "category": "security",
+      "module": "M03",
+      "title": "Tenant-minted role keys satisfy platform-operator predicates, so a tenant can suspend or close another tenant",
+      "evidence": [
+        "apps/backend/src/modules/02-identity/abac-predicates.ts:19-21",
+        "packages/auth/src/rbac/drizzle-store.ts:119-161",
+        "apps/backend/src/modules/03-authorization/role-store.ts:184-209",
+        "apps/backend/src/modules/02-identity/organization-lifecycle.ts:107-131",
+        "apps/backend/src/modules/34-saas-tenant-platform/abac-predicates.ts:85,121,158",
+        "scripts/db/seed-scenario-billing.ts:91-115",
+        "packages/db/migrations/0008_authorization_m3_tables.sql:92"
+      ],
+      "verified": true,
+      "recommended_fix": "Resolve platform status server-side from role rows with organization_id IS NULL and category 'platform_staff'. Reject tenant role creation or rename to reserved keys (PLATFORM_OPS_ROLE_KEYS and system template keys) and to category platform_staff, and add a DB CHECK/trigger as a backstop. Apply the same check to M26, M29, M32, M34 and M35.",
+      "verification": "Inject and live tests: POST /api/v1/roles {key:'platform_admin'} returns 422. A tenant-seeded 'platform_admin' role fails organization_lifecycle_platform_ops. A tenant actor calling POST /api/v1/platform/organizations/<other>/status gets 403."
+    },
+    {
+      "id": "GAP-004",
+      "severity": "P0",
+      "category": "security",
+      "module": "M13",
+      "title": "No eMAR route composes caseload_or_scope; any holder can read or modify any patient's MAR",
+      "evidence": [
+        "apps/backend/src/modules/13-emar/routes/emar-routes.ts:11-13,250-310,381-510",
+        "apps/backend/src/modules/13-emar/emar-route-service-db.ts:496",
+        "docs/modules/WARDENX_MODULE_13_EMAR_SPEC_v0_2.md:1275-1295",
+        "docs/history/gates-authz-and-routes.md:13-22",
+        "packages/auth/src/rbac/require-role.ts:127-136"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose caseload_or_scope (notFoundOnDeny) keyed on the patient of the administration or dose on every M13 PHI route, and narrow list queries in SQL through the M5 CaseloadProvider.",
+      "verification": "Route and live tests: an off-caseload RN gets 404 on GET /api/v1/administrations/:id and an empty ?patient=P list. A Medical Director (org-wide scope) still passes."
+    },
+    {
+      "id": "GAP-005",
+      "severity": "P0",
+      "category": "security",
+      "module": "M13",
+      "title": "The controlled-substance witness requirement is keyed on the client-supplied body.medClass",
+      "evidence": [
+        "apps/backend/src/modules/13-emar/emar-route-service-db.ts:714,836,938,1318",
+        "apps/backend/src/modules/13-emar/index.ts:38-53",
+        "apps/backend/src/modules/13-emar/routes/emar-routes.ts:90-93,157",
+        "apps/backend/src/modules/13-emar/routes/emar-typebox.ts:6-8",
+        "packages/types/src/dosespot.ts:350,367"
+      ],
+      "verified": true,
+      "recommended_fix": "Return medClass, isControlledSubstance and deaSchedule from the identity adapter. Derive isControlled from the order on both the administration and refusal paths. Return 422 MED_CLASS_MISMATCH when the body disagrees, or drop the body field. Resolve the ABAC target from the order.",
+      "verification": "Live test in m13-emar-write.live.test.ts: a controlled order sent with body medClass 'standard' and no X-Witness-Attestation returns 422, and no administration_record row is written."
+    },
+    {
+      "id": "GAP-006",
+      "severity": "P0",
+      "category": "stub",
+      "module": "M31",
+      "title": "Portal amendment submit returns 202 'submitted' and throws the request away; the list is always empty",
+      "evidence": [
+        "apps/backend/src/modules/31-portal/routes/write.routes.ts:176-218",
+        "apps/backend/src/modules/31-portal/routes/write.routes.ts:8-11",
+        "apps/portal/src/screens/amendments.tsx:76-85",
+        "apps/backend/src/modules/05-patient/routes/patient-routes.ts:425-433",
+        "docs/modules/WARDENX_MODULE_31_PORTAL_TELEHEALTH_SPEC_v0_2.md:63,799,1360,1754"
+      ],
+      "verified": true,
+      "recommended_fix": "Call M5 submitAmendment (source=portal) inside the route, or publish m31.portal_amendment_request.submitted through a new events-by-m31.ts and an M5 consumer. Back GET /portal/amendments with the portal-submitted M5 rows. Return 503 until either is done.",
+      "verification": "Live test: after a portal submit, an M5 amendment row (or an outbox row) exists and GET /api/v1/portal/amendments returns it."
+    },
+    {
+      "id": "GAP-007",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M01",
+      "title": "Two concurrent requests with the same key both run the handler, and an expired key re-executes on every retry",
+      "evidence": [
+        "apps/backend/src/bootstrap/plugins/idempotency.ts:43-56,101-103",
+        "apps/backend/src/bootstrap/plugins/idempotency-store-db.ts:12-15,68-71,86-104",
+        "docs/modules/WARDENX_MODULE_01_FOUNDATION_SPEC_v0_4.md:65"
+      ],
+      "verified": true,
+      "recommended_fix": "Make putPending return the claim result (RETURNING id; reclaim expired rows with ON CONFLICT DO UPDATE ... WHERE expires_at<=now()). When the claim is lost, reload and return 409 or a replay.",
+      "verification": "Live test: two concurrent POSTs with the same Idempotency-Key run the handler once. Reusing a key after expiry claims fresh and then replays."
+    },
+    {
+      "id": "GAP-008",
+      "severity": "P1",
+      "category": "security",
+      "module": "M02",
+      "title": "Accepting an invite grants any role key and skips the anti-escalation check",
+      "evidence": [
+        "apps/backend/src/modules/02-identity/routes/identity-routes.ts:296-317,451-458",
+        "apps/backend/src/modules/03-authorization/proposed-role-attacher.ts:71-111",
+        "apps/backend/src/modules/03-authorization/routes/authz-routes.ts:258-270"
+      ],
+      "verified": true,
+      "recommended_fix": "When proposedRoleKeys is non-empty, require role.assign plus assertNoEscalation against the inviter's permissions at invite creation. Store the inviter and record them as grantedBy.",
+      "verification": "Unit test: an actor with only member.invite who proposes org_admin gets 403 ESCALATION_BLOCKED. Live accept test: no role above the inviter's ceiling is attached."
+    },
+    {
+      "id": "GAP-009",
+      "severity": "P1",
+      "category": "security",
+      "module": "M02",
+      "title": "Self-registration is open, email is never verified, invite acceptance is not tied to the invitee, and MFA is not mandated server-side",
+      "evidence": [
+        "packages/auth/src/identity/auth.ts:197-224,250",
+        "packages/auth/src/identity/mount.ts:61",
+        "apps/backend/src/modules/02-identity/routes/identity-routes.ts:399-416",
+        "docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md:293,720,729,1246"
+      ],
+      "verified": true,
+      "recommended_fix": "Set disableSignUp (or require an invite token in a hook), set requireEmailVerification, require a verified session email equal to the invitation email on accept, and enforce the MFA matrix before org binding.",
+      "verification": "Auth live suite: sign-up without an invite returns 403. Accept with a mismatched email returns 403. An org_admin without TOTP/passkey cannot select an organization."
+    },
+    {
+      "id": "GAP-010",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M03",
+      "title": "The break-glass Compliance notifier is an in-memory array, and M3 publishes none of its spec'd outbox events",
+      "evidence": [
+        "apps/backend/src/modules/03-authorization/index.ts:89,158",
+        "apps/backend/src/modules/03-authorization/authz-ports.ts:621-634",
+        "apps/backend/src/modules/03-authorization/routes/authz-routes.ts:360-366",
+        "docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md:265-271,801"
+      ],
+      "verified": true,
+      "recommended_fix": "Add events-by-m3.ts (breakglass.invoked/ended, engagement.closed, role.assigned/revoked), publish them in the same transaction, and add an M36 alert rule for breakglass.invoked.",
+      "verification": "Real-publisher live test: POST /api/v1/breakglass writes an m3.breakglass.invoked outbox row and M36 raises an alert. arch:outbox-bindings stays green."
+    },
+    {
+      "id": "GAP-011",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M03",
+      "title": "Auditor engagements and auditor-session minting are in-memory on every DB boot, and auditor_engagement is never written",
+      "evidence": [
+        "apps/backend/src/modules/03-authorization/index.ts:86-87,156-157",
+        "apps/backend/src/modules/02-identity/seams.ts:83,91",
+        "apps/backend/src/index.ts:3136-3142,4132",
+        "apps/backend/src/bootstrap/in-memory-ledger.ts:68-102"
+      ],
+      "verified": true,
+      "recommended_fix": "Back engagements and auditor sessions with Drizzle stores over auditor_engagement, give M2 a durable magic-link issuer, add an engagement_scope predicate and the close_engagements cron. Document the WARDENX_INMEM_ASSERT posture until the ledger is empty.",
+      "verification": "Live test: an engagement survives a restart and is visible to a second instance. Boot test: NODE_ENV=production with DATABASE_URL set and WARDENX_INMEM_ASSERT unset raises no InMemoryBindingError."
+    },
+    {
+      "id": "GAP-012",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M04",
+      "title": "Staff have no UI for accounting of disclosures or for working amendment requests",
+      "evidence": [
+        "apps/backend/src/modules/04-audit/routes/patient-accounting.ts:124",
+        "apps/backend/src/modules/05-patient/routes/patient-routes.ts:425-451",
+        "docs/design/screens/compliance/WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE.md:12-16"
+      ],
+      "verified": true,
+      "recommended_fix": "Build the HIPAA privacy work queue (accounting view, access report, amendment inbox with accept/deny) and add an M5 pending-amendments list route.",
+      "verification": "DOM tests. Then, on the Docker stack, submit an amendment from the portal and decide it in the web app."
+    },
+    {
+      "id": "GAP-013",
+      "severity": "P1",
+      "category": "security",
+      "module": "M04",
+      "title": "No read-audit event is written for Buffer responses (DocLens page image, records-request cover sheet)",
+      "evidence": [
+        "apps/backend/src/bootstrap/plugins/read-audit.ts:155-201",
+        "node_modules/fastify/lib/reply.js:193-200",
+        "apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts:332-351",
+        "apps/backend/src/modules/22-documents/records-request/records-request-routes.ts:205-228"
+      ],
+      "verified": true,
+      "recommended_fix": "Emit read audits from onSend/onResponse (or call auditPhiRead inline in binary handlers), and make the coverage gate reject emission configs on non-JSON routes.",
+      "verification": "Inject/live test: GET page-image and cover-sheet each write one audit_event read row."
+    },
+    {
+      "id": "GAP-014",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M04",
+      "title": "M4's retention, destruction, integrity-sample and export workers are never built, so exports stay 'pending' forever",
+      "evidence": [
+        "apps/backend/src/index.ts:4230-4232",
+        "apps/backend/src/modules/04-audit/routes/audit-exports.ts:5-15",
+        "apps/backend/src/modules/04-audit/routes/destruction-certificates.ts:5-18"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind production AuditJobAdapters (object store, destruction executor, integrity sampler) and construct the workers next to M34 with DLQ alerts.",
+      "verification": "Live test: an export reaches 'ready' with an artifact. The retention scan creates a pending certificate and skips rows under legal hold."
+    },
+    {
+      "id": "GAP-015",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M05",
+      "title": "No production code writes patient_assignment, and the spec'd assignment routes do not exist",
+      "evidence": [
+        "apps/backend/src/modules/05-patient/seams/drizzle-stores.ts:29,415-440",
+        "apps/backend/src/modules/05-patient/outbox-consumers/m17-visit-assignment.ts:1-18",
+        "docs/modules/WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1247-1249,1430-1439",
+        "scripts/db/seed-clinical.ts:261"
+      ],
+      "verified": true,
+      "recommended_fix": "Build POST /patients/:id/assignments and .../end (patient.assign, cache invalidation, assignment events), or amend the spec to make the shift cache the sole source.",
+      "verification": "A grep finds a production insert. A live suite assigns a clinician through the route, and CaseloadProvider.isAssigned returns true under wardenx_app."
+    },
+    {
+      "id": "GAP-016",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M05",
+      "title": "Admit, address, payer and amendment writes publish no m5.* outbox events in production",
+      "evidence": [
+        "apps/backend/src/modules/05-patient/index.ts:331-341",
+        "apps/backend/src/modules/05-patient/patient-route-service-db.ts:8-10,687-723",
+        "apps/backend/src/modules/12-dosespot/consumers/index.ts:73-76"
+      ],
+      "verified": true,
+      "recommended_fix": "Thread the m5 outbox port into the DB service and publish created, address_changed, payer_changed and the amendment_* events in the same withOrgContext transaction.",
+      "verification": "Real-publisher live test: POST /patients/:id/addresses writes an m5.patient.address_changed row, and the M12 consumer receives it."
+    },
+    {
+      "id": "GAP-017",
+      "severity": "P1",
+      "category": "security",
+      "module": "M05",
+      "title": "The payer write skips caseload_or_scope and checks patient.edit instead of patient.edit_payers",
+      "evidence": [
+        "apps/backend/src/modules/05-patient/routes/patient-routes.ts:122,142,307-321,385-387",
+        "apps/backend/src/modules/05-patient/patient-route-service-db.ts:455-480",
+        "docs/modules/WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1244,1546"
+      ],
+      "verified": true,
+      "recommended_fix": "Use preHandler [requirePermission('patient.edit_payers'), chartScope('patient.edit_payers')] and grant the key in the role templates.",
+      "verification": "Inject test: an off-caseload holder of patient.edit gets 404/403 on POST payers."
+    },
+    {
+      "id": "GAP-018",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M05",
+      "title": "15 spec'd M5 routes are missing: status transitions, record-death, caregivers, assignments, match queue, unmerge, statement of disagreement",
+      "evidence": [
+        "apps/backend/src/modules/05-patient/routes/patient-routes.ts:215-451",
+        "docs/modules/WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1229-1262",
+        "audit/implementation-status/IMPLEMENTATION_STATUS.md:17"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement the routes with the spec's permission, caseload ABAC and step-up, or record documented deferrals in the spec's As-built section.",
+      "verification": "Route inventory diff against spec §4.3 shows no missing rows. Add inject tests for each new route."
+    },
+    {
+      "id": "GAP-019",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M05",
+      "title": "Soft-duplicate matches are never queued in production: the patient is created and matchReviewIds is empty",
+      "evidence": [
+        "apps/backend/src/modules/05-patient/patient-route-service-db.ts:353-356",
+        "packages/db/migrations/0021_patient_m5_rls_audit_triggers.sql:112-118",
+        "docs/modules/WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1235,2490"
+      ],
+      "verified": true,
+      "recommended_fix": "Insert one patient_match_review row per soft candidate in the same transaction, return their ids, and build the review queue routes.",
+      "verification": "Live test: admitting a near-duplicate returns 201 with non-empty matchReviewIds, and the review row is visible under RLS."
+    },
+    {
+      "id": "GAP-020",
+      "severity": "P1",
+      "category": "security",
+      "module": "M06",
+      "title": "Patient-keyed admission and election-certification reads, and POST /admissions, have no caseload/patient scope check",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/routes/admission-routes.ts:150-156,507-512,575-608",
+        "docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md:1813"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose requireAbac(action,'caseload_or_scope',{notFoundOnDeny}) on these routes, with target params.patientId or body.patientId.",
+      "verification": "Route test: an off-caseload user gets 404 on both GET routes and on POST."
+    },
+    {
+      "id": "GAP-021",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M06",
+      "title": "There is no UI for ending or moving a hospice episode",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/routes/admission-routes.ts:630,640,1022,1044,1091,1113",
+        "apps/web/src/modules/06-admission/admission-detail.tsx:1055-1069",
+        "apps/web/src/modules/37-ipu/ipu-api.ts:268"
+      ],
+      "verified": true,
+      "recommended_fix": "Build the Discharge/Revocation/Transfer stepper, the death branch and the for-cause cosign queue on admission-detail.",
+      "verification": "DOM test for each reason. On the Docker stack, discharge from the UI and confirm the NOTR/claim cascade runs."
+    },
+    {
+      "id": "GAP-022",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M06",
+      "title": "F2F attestation drops the narrative, takes the performer role from the client, and the MD/NP predicate also admits RNs",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/routes/admission-routes.ts:937-945",
+        "apps/backend/src/modules/06-admission/admission-route-service-db.ts:4550-4561,4669-4710",
+        "apps/backend/src/modules/06-admission/abac-predicates.ts:44,209"
+      ],
+      "verified": true,
+      "recommended_fix": "Persist the narrative and run transitionFaceToFace('attest'). Derive performer_role from the scheduled clinician's membership and credential. Remove the RN roles from MD_OR_NP.",
+      "verification": "Live test: a 20-char narrative returns 422. Scheduling an RN as performer returns 422 F2F_INVALID_PERFORMER. The predicate denies {roles:['rn']}."
+    },
+    {
+      "id": "GAP-023",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M06",
+      "title": "The face-to-face encounter cannot be recorded, attested or completed from the UI",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/routes/admission-routes.ts:896,928,938,948",
+        "apps/web/src/modules/06-admission/election-certification-api.ts:47",
+        "apps/web/src/modules/06-admission/patient-election-cert.tsx:513"
+      ],
+      "verified": true,
+      "recommended_fix": "Add F2F record, attest, complete and override actions to patient-election-cert and the admission-detail F2F section.",
+      "verification": "DOM test. On the Docker stack, attest an F2F and confirm the readiness requirement clears."
+    },
+    {
+      "id": "GAP-024",
+      "severity": "P1",
+      "category": "security",
+      "module": "M06",
+      "title": "F2F schedule and election-statement draft write against a client-supplied electionPeriodId that is never checked against the admission in the path",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/routes/admission-routes.ts:662-684,896-910",
+        "apps/backend/src/modules/06-admission/admission-route-service-db.ts:3883-3923,4541-4549"
+      ],
+      "verified": true,
+      "recommended_fix": "Add eq(EP.admissionId, admissionId) to both lookups and return 404 when they do not match.",
+      "verification": "Live test: posting admission B's electionPeriodId on admission A's routes returns 404 and writes no rows."
+    },
+    {
+      "id": "GAP-025",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M06",
+      "title": "Nothing publishes m6.election.period_ended, so M23's revalidate consumer bound to it never fires",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/admission-route-service-db.ts:602-631,669-704",
+        "apps/backend/src/modules/06-admission/state-machines/election-period.ts:169-175",
+        "apps/backend/src/modules/23-billing-medicare/outbox-consumers/m23-revalidate-triggers.ts:66"
+      ],
+      "verified": true,
+      "recommended_fix": "Publish the event from the cascade with the spec payload, and add a daily per-org job that completes periods at their end date.",
+      "verification": "Real-publisher live test: a discharge produces one period_ended row. A cron test shows a period past its end date becomes completed and emits the event."
+    },
+    {
+      "id": "GAP-026",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M06",
+      "title": "Only F2F windows go overdue: CTI, NOE and NOR windows never escalate, and recert_due_notify has no worker",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/jobs/cron-workers.ts:222-229,303-322",
+        "apps/backend/src/modules/06-admission/jobs/index.ts:261-275",
+        "apps/backend/src/modules/06-admission/events-by-m6.ts:988-1003"
+      ],
+      "verified": true,
+      "recommended_fix": "Wire planWindowAlert and promoteWindowStatus for every window kind, emit the event, bind the M36 consumer, and add the recertDueNotify worker.",
+      "verification": "Cron test: an open cti_signature window past its deadline becomes 'overdue' with severity 'alert' and one outbox row."
+    },
+    {
+      "id": "GAP-027",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M08",
+      "title": "The UI can open an addendum but cannot edit, finalize or sign it",
+      "evidence": [
+        "apps/web/src/modules/08-encounters/encounter-read.tsx:908-926,2324",
+        "apps/backend/src/modules/08-encounters/routes/encounters-routes.ts:625-668",
+        "apps/web/src/modules/08-encounters/screens.ts:31-32"
+      ],
+      "verified": true,
+      "recommended_fix": "Route opened addenda into the compose editor bound to the addenda selections routes, with Sign and Finalize actions.",
+      "verification": "DOM test of open, edit, sign and finalize. Check the state on the Docker stack."
+    },
+    {
+      "id": "GAP-028",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M08",
+      "title": "M8 mutation routes never register or compose is_author*: any encounter.sign holder can sign another clinician's note, and addenda are attributed to the wrong author",
+      "evidence": [
+        "apps/backend/src/modules/08-encounters/routes/encounters-routes.ts:291-669",
+        "apps/backend/src/modules/08-encounters/abac-predicates.ts:48",
+        "apps/backend/src/modules/08-encounters/encounters-route-service-db.ts:1786-1788,2142-2167"
+      ],
+      "verified": true,
+      "recommended_fix": "Register is_author, is_author_or_supervisor and is_addendum_author (membership compared to authored_by_membership_id), compose them together with encounter.scope, and pass the caller's membership into createAddendum.",
+      "verification": "Route tests: membership B acting on A's encounter gets 403/404. Live test: the addendum author equals the caller."
+    },
+    {
+      "id": "GAP-029",
+      "severity": "P1",
+      "category": "security",
+      "module": "M08",
+      "title": "The no-self-cosign check compares a membership id with a user id, so it never fires",
+      "evidence": [
+        "apps/backend/src/modules/08-encounters/abac-predicates.ts:103-111",
+        "apps/backend/src/modules/08-encounters/encounters-route-service-db.ts:2052-2116,2353,2363",
+        "apps/backend/src/modules/10-hope/abac-predicates.ts:190-196"
+      ],
+      "verified": true,
+      "recommended_fix": "Compare membershipIdOf(context) with authoredByMembershipId, and add a service-level guard that the actor is not the author.",
+      "verification": "Route test with distinct user and membership ids: the author cosigning their own encounter gets 403."
+    },
+    {
+      "id": "GAP-030",
+      "severity": "P1",
+      "category": "security",
+      "module": "M11",
+      "title": "No M11 order route enforces caseload_or_scope; the header's claim that a 'default ABAC' binding exists is false",
+      "evidence": [
+        "apps/backend/src/modules/11-orders/routes/orders-routes.ts:9-11,127-134,140-443",
+        "apps/backend/src/modules/11-orders/orders-route-service-db.ts:857-863",
+        "packages/auth/src/rbac/require-role.ts:127-136"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose caseload_or_scope (resolve patientId from the order) on every patient-bearing route, or filter lists through the CaseloadProvider.",
+      "verification": "Tests: an off-caseload RN gets an empty list, 404 on GET /orders/:id and 403/404 on discontinue."
+    },
+    {
+      "id": "GAP-031",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M11",
+      "title": "Cosign requirement and signer discipline are computed from client body fields, so the LPN, NP and escalation cosign rules can be bypassed",
+      "evidence": [
+        "apps/backend/src/modules/11-orders/orders-route-service-db.ts:585-588,746-779,1035-1041,956,1120",
+        "apps/backend/src/modules/11-orders/abac-predicates.ts:83-94",
+        "packages/orders/src/lifecycle/cosign-rules.ts:92-119"
+      ],
+      "verified": true,
+      "recommended_fix": "Derive drafter and signer discipline from the session roles (reject undeclared ones with 422 DISCIPLINE_NOT_HELD), derive levelChange server-side, and compute recorderEligible.",
+      "verification": "Live test: an LPN-only user claiming rn_case_manager is refused, or still gets cosign_required. An NP claiming physician is refused."
+    },
+    {
+      "id": "GAP-032",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M11",
+      "title": "The verbal pre-expiry alert, lab-results-overdue sweep and completion-watcher are never built, and their events have no emitter",
+      "evidence": [
+        "apps/backend/src/modules/11-orders/jobs/index.ts:1-3",
+        "apps/backend/src/index.ts:5404,5430,5463",
+        "apps/backend/src/modules/11-orders/events-by-m11.ts:515,609",
+        "docs/modules/WARDENX_MODULE_11_ORDERS_SPEC_v0_4.md:42,1572-1575"
+      ],
+      "verified": true,
+      "recommended_fix": "Build the three workers on the active-org fan-out, wire them in index.ts with DLQ alerts, and emit the catalogued events.",
+      "verification": "Live test: an overdue lab order flips to results_overdue and emits the event. A verbal order 12h before expiry emits verbal_expiring_soon once."
+    },
+    {
+      "id": "GAP-033",
+      "severity": "P1",
+      "category": "security",
+      "module": "M12",
+      "title": "M12 medication-order and medication-history routes have no caseload check; the refill inbox is the only caseload-aware path",
+      "evidence": [
+        "apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts:10-11,129-145,180-191,380-397",
+        "apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts:426-453",
+        "packages/auth/src/permissions/contributed.ts:1415-1434"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind caseload_or_scope on every M12 patient-bearing route (404 on deny), resolving patientId from the order.",
+      "verification": "Live test: an off-caseload prescriber gets an empty list and 404 on /patients/P/medications/history."
+    },
+    {
+      "id": "GAP-034",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M12",
+      "title": "M12 cosign only flips cosign_status to 'attached': no role check, no status guard, no signature record",
+      "evidence": [
+        "apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts:119-120,745-760",
+        "apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts:267-277",
+        "apps/backend/src/modules/11-orders/abac-predicates.ts:37,95"
+      ],
+      "verified": true,
+      "recommended_fix": "Establish the cosign requirement, route cosign through M11 OrderSignatureProvider (signature_kind='cosignature'), guard on status, and enforce the cosigner role from the session.",
+      "verification": "Live test: a non-MD cosigning an NP order that needs an MD cosign is refused. A valid cosign writes an order_signature cosignature row."
+    },
+    {
+      "id": "GAP-035",
+      "severity": "P1",
+      "category": "security",
+      "module": "M12",
+      "title": "M12 sign decides named-prescriber and signer eligibility from client-supplied fields, and the signer_eligible ABAC is not bound",
+      "evidence": [
+        "apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts:11-14,218-228",
+        "apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts:71-72,597-607",
+        "packages/auth/src/permissions/contributed.ts:1428"
+      ],
+      "verified": true,
+      "recommended_fix": "Remove signerIsOrderingPhysician from the request, compare the caller with prescriberMembershipId or the verbal named prescriber, derive discipline from the session, and bind a signer-eligibility predicate.",
+      "verification": "Live test: user B signing A's verbal order gets 403 VERBAL_SIGNER_NOT_NAMED_PRESCRIBER and the status is unchanged."
+    },
+    {
+      "id": "GAP-036",
+      "severity": "P1",
+      "category": "security",
+      "module": "M12",
+      "title": "The production M12 backend hard-codes the SUD-consent gate to pass (and the allergy gate, a known gap)",
+      "evidence": [
+        "apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts:568-577",
+        "apps/backend/src/modules/12-dosespot/seams/index.ts:96-98",
+        "apps/backend/src/modules/12-dosespot/routes/service.ts:650-653",
+        "docs/history/doclens-pipeline.md:252-253"
+      ],
+      "verified": true,
+      "recommended_fix": "Call the ConsentEvaluator for SUD-treatment medications, failing closed. Add a real allergy check. Derive the signer from the membership.",
+      "verification": "Live test: an SUD medication for a patient without a Part 2 release returns 422 SUD_CONSENT_REQUIRED."
+    },
+    {
+      "id": "GAP-037",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M12",
+      "title": "No outbound e-prescribing transmission and none of the refill-SLA, IAL2, timeout or EPCS crons exist",
+      "evidence": [
+        "apps/backend/src/index.ts:5544-5572",
+        "apps/backend/src/modules/12-dosespot/dosespot-route-service-db.ts:289-296",
+        "docs/history/outbox-248-builds.md:2203-2213",
+        "audit/implementation-status/IMPLEMENTATION_STATUS.md:24"
+      ],
+      "verified": true,
+      "recommended_fix": "Record an explicit per-queue deferral and a status-matrix note, then build the crons together with the vendor ingest that feeds them.",
+      "verification": "The deferral entry lists every §4.8 queue. Later: a pending refill older than 48h emits sla_warn."
+    },
+    {
+      "id": "GAP-038",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M13",
+      "title": "Scheduled doses are materialized for 7 days at activation and never extended; the extend-schedule cron does not exist",
+      "evidence": [
+        "apps/backend/src/modules/13-emar/outbox-consumers/m12-medication-order-active.ts:30-55",
+        "apps/backend/src/index.ts:6576,6599",
+        "docs/modules/WARDENX_MODULE_13_EMAR_SPEC_v0_2.md:41,169,1531-1543"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the daily extend-schedule cron (deduplicating on the materialization pass) plus the reconciliation-warning and kit-return crons.",
+      "verification": "Live test: an order activated 8 days ago still has today's doses after a tick."
+    },
+    {
+      "id": "GAP-039",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M13",
+      "title": "No missed-dose sweep exists and nothing writes missed_dose, so M30 publishes a fabricated 0% missed-dose rate",
+      "evidence": [
+        "apps/backend/src/modules/13-emar/events-by-m13.ts:272-293",
+        "apps/backend/src/modules/13-emar/seams/drizzle-store.ts:174",
+        "apps/backend/src/modules/30-quality/jobs/m30-jobs.ts:735-737",
+        "docs/modules/WARDENX_MODULE_13_EMAR_SPEC_v0_2.md:1535"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement the 15-minute sweep (active-org fan-out with withOrgContext) that inserts missed_dose, sets status and emits the event, and handle late administrations.",
+      "verification": "Live test: a dose past its grace period yields exactly one missed_dose row and one event, and stays idempotent across ticks."
+    },
+    {
+      "id": "GAP-040",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M13",
+      "title": "No module produces the PRN reassessment-overdue signal, so overdue PRN reassessments never alert",
+      "evidence": [
+        "apps/backend/src/modules/13-emar/consumers/index.ts:67",
+        "apps/backend/src/modules/13-emar/events-by-m13.ts:247-254",
+        "scripts/outbox-subscription-exceptions.ts:166-172",
+        "docs/modules/WARDENX_MODULE_13_EMAR_SPEC_v0_2.md:43,196"
+      ],
+      "verified": true,
+      "recommended_fix": "Decide sweep ownership in the specs, add a PRN-to-scale linkage, catalog and emit the event, bind the M36 alert, and drop the exception.",
+      "verification": "arch:outbox-bindings passes with the exception removed. Live test: a PRN deadline passing creates an M36 alert."
+    },
+    {
+      "id": "GAP-041",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M13",
+      "title": "Hard-voiding an administration has no step-up, no supervisor floor and no status guard",
+      "evidence": [
+        "apps/backend/src/modules/13-emar/routes/emar-routes.ts:74,262-268",
+        "apps/backend/src/modules/13-emar/emar-route-service-db.ts:1273-1291",
+        "packages/emar/src/lifecycle/administration-record.ts:95-126"
+      ],
+      "verified": true,
+      "recommended_fix": "Add requireStepUp and a supervisor predicate, and route the void through the lifecycle machine.",
+      "verification": "Route test: a void without step-up returns STEP_UP_REQUIRED, and re-voiding returns 409."
+    },
+    {
+      "id": "GAP-042",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M14",
+      "title": "The review-clock sweep covers only patients who already have an IDG packet, so never-reviewed admissions are invisible",
+      "evidence": [
+        "apps/backend/src/modules/14-idg/jobs/index.ts:11-18",
+        "apps/backend/src/modules/14-idg/jobs/cron-store.ts:35-49",
+        "docs/modules/WARDENX_MODULE_14_IDG_SPEC_v0_4.md:102,1200"
+      ],
+      "verified": true,
+      "recommended_fix": "Use the M6 active-admission seam as the population and fall back to activated_at.",
+      "verification": "Live test: an admission 13 days old with no packet emits a review_clock escalation."
+    },
+    {
+      "id": "GAP-043",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M14",
+      "title": "updateDecision rewrites emitted or superseded decisions, and supersede skips quorum with wasQuorate hard-coded true",
+      "evidence": [
+        "apps/backend/src/modules/14-idg/idg-route-service-db.ts:1797-1854",
+        "apps/backend/src/modules/14-idg/routes/idg-routes.ts:601-622",
+        "packages/db/migrations/0043_idg_m14_rls_audit_triggers.sql:117-124"
+      ],
+      "verified": true,
+      "recommended_fix": "Refuse non-open decisions with 409, add If-Match and meeting scope, require a later quorate meeting for supersede, and store the real quorum.",
+      "verification": "Live test: PATCH on an emitted decision returns 409. Superseding from a non-quorate meeting is refused."
+    },
+    {
+      "id": "GAP-044",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M15",
+      "title": "None of the five M15 crons exist (supervisory overdue, MSW and chaplain initial overdue, volunteer gate-watcher, hour aggregator)",
+      "evidence": [
+        "apps/backend/src/index.ts:1314-1325",
+        "apps/backend/src/modules/15-discipline-care-plans/events-by-m15.ts:134-165",
+        "apps/backend/src/modules/15-discipline-care-plans/volunteer/gates.ts:176-191"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement the five crons on the active-org fan-out, emit the events, and wire them with DLQ alerts.",
+      "verification": "Live test: an overdue aide_poc plan emits m15.aide_supervisory.overdue, and an expired gate flips to expired."
+    },
+    {
+      "id": "GAP-045",
+      "severity": "P1",
+      "category": "security",
+      "module": "M15",
+      "title": "signVersion takes the signer role from the request body, so one member can fill every signer slot",
+      "evidence": [
+        "apps/backend/src/modules/15-discipline-care-plans/routes/write-service-drizzle.ts:373-421",
+        "packages/db/migrations/0098_discipline_plans_m15_enums_tables.sql:119",
+        "apps/backend/src/modules/15-discipline-care-plans/abac-predicates.ts:21-27"
+      ],
+      "verified": true,
+      "recommended_fix": "Refuse roles the actor does not hold (403 SIGNER_ROLE_MISMATCH) and refuse a second signature from the same membership, backed by a unique index.",
+      "verification": "Route test: the same membership signing twice gets 409, and signing as 'msw' without that role gets 403."
+    },
+    {
+      "id": "GAP-046",
+      "severity": "P1",
+      "category": "security",
+      "module": "M15",
+      "title": "M15 write routes (goals, interventions, assessments, finalize, sign, amend, supervisory) have no caseload or discipline scope check",
+      "evidence": [
+        "apps/backend/src/modules/15-discipline-care-plans/routes/plans.routes.ts:119-254",
+        "apps/backend/src/modules/15-discipline-care-plans/routes/write-service-drizzle.ts:147-151",
+        "apps/backend/src/modules/15-discipline-care-plans/routes/read-service-drizzle.ts:253-264"
+      ],
+      "verified": true,
+      "recommended_fix": "Reuse actorMayReadPatient in planOr404 and return 404 off-caseload.",
+      "verification": "authz test: an off-caseload author posting goals gets 404."
+    },
+    {
+      "id": "GAP-047",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M16",
+      "title": "close-early closes the plan immediately and records the closing counselor as the supervisor cosigner",
+      "evidence": [
+        "apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts:934-1017",
+        "apps/backend/src/modules/16-bereavement/lifecycle/plan.ts:338-371",
+        "docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md:187,1722,2101"
+      ],
+      "verified": true,
+      "recommended_fix": "Make close-early record a pending-cosign request only, and have cosign-close (a different supervisor, with step-up) perform the transition. Either defer the closure insert or relax the CHECK in a migration.",
+      "verification": "Live test: after close-early the plan is still active. A cosign by a different supervisor moves it to closed_early, and a self-cosign returns 403."
+    },
+    {
+      "id": "GAP-048",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M16",
+      "title": "M16 has no cron workers: plans never auto-close at 13 months, outreach is never marked missed, and there are no anniversary alerts",
+      "evidence": [
+        "apps/backend/src/modules/16-bereavement/lifecycle/outreach.ts:177-190",
+        "apps/backend/src/modules/16-bereavement/lifecycle/plan.ts:373-392",
+        "apps/backend/src/modules/16-bereavement/seams/drizzle-store.ts:255"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the four §4.9 crons and register them next to M17, M19 and M20.",
+      "verification": "Live test: a plan for a death 14 months ago closes on a tick, and outreach past its grace period becomes missed with an event."
+    },
+    {
+      "id": "GAP-049",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M16",
+      "title": "completeOutreach checks the D15 encounter rule against the client's kind and never verifies the encounter id",
+      "evidence": [
+        "apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts:1437-1496",
+        "apps/backend/src/modules/16-bereavement/routes/m16-typebox.ts:362-377",
+        "packages/db/src/schema/bereavement/bereavement-contact-log.ts:58"
+      ],
+      "verified": true,
+      "recommended_fix": "Reject when the kind mismatches, and resolve sourceEncounterId through an M8 seam (signed, same patient, bereavement_contact).",
+      "verification": "Unit test: kind mismatch returns 409/422. Live test: a fabricated encounter id returns 422."
+    },
+    {
+      "id": "GAP-050",
+      "severity": "P1",
+      "category": "security",
+      "module": "M17",
+      "title": "visit.start holders can mark a visit evv_present with no EVV event, skipping step-up and the reason requirement",
+      "evidence": [
+        "apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts:91,238-265",
+        "apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts:986-1067",
+        "packages/scheduling/src/lifecycle/visit-machine.ts:32-41,109-112"
+      ],
+      "verified": true,
+      "recommended_fix": "Always use via:'self_attest' on the HTTP routes and require a reason. Advance via:'evv' only from the M18 consumers. Bind an assigned-clinician check.",
+      "verification": "Inject test: an empty-body start returns 422 and a non-assignee gets 403. Live test: M18 check-in still advances the visit."
+    },
+    {
+      "id": "GAP-051",
+      "severity": "P1",
+      "category": "security",
+      "module": "M17",
+      "title": "Availability and PTO routes check only the *_own keys and the services ignore the caller",
+      "evidence": [
+        "apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts:101-106,412-470",
+        "apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts:1871-2059",
+        "docs/modules/WARDENX_MODULE_17_SCHEDULING_SPEC_v0_2.md:710-715"
+      ],
+      "verified": true,
+      "recommended_fix": "Require membershipId to equal the actor unless the caller holds edit_any, read_team or approve. Resolve user to membership before checking self-approval.",
+      "verification": "Inject tests: A editing B's availability gets 403, A cancelling B's PTO gets 403, and self-approval gets 409."
+    },
+    {
+      "id": "GAP-052",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M17",
+      "title": "Approving PTO never runs the reassignment scan; the reassignment-scan and caregiver-reminder crons are missing",
+      "evidence": [
+        "apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts:1976-2001",
+        "apps/backend/src/modules/17-scheduling/outbox-consumers/m15-volunteer-assignment-inactivated.ts:17-21",
+        "apps/backend/src/modules/22-documents/outbox-consumers/render-consumer.ts:300-305"
+      ],
+      "verified": true,
+      "recommended_fix": "Query published visits in the PTO window, emit m17.reassignment_needed, and add the caregiver-reminder cron.",
+      "verification": "Live test: PTO overlapping a published visit yields a reassignment_needed row and a non-zero count."
+    },
+    {
+      "id": "GAP-053",
+      "severity": "P1",
+      "category": "security",
+      "module": "M17",
+      "title": "Visit list, detail, day, week and map views and proposal reads check RBAC only; listVisits applies no caseload filter",
+      "evidence": [
+        "apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts:87,164-191,311-321,474-510",
+        "apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts:852-885,2061-2080",
+        "packages/db/migrations/0045_scheduling_m17_rls_audit_triggers.sql:181-210"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose caseload_or_scope on the detail routes, add SQL caseload or own-assignment filters on lists, and require visit.read_team for org-wide views.",
+      "verification": "Live test: a clinician with an empty caseload gets [] from GET /visits and 404 on another patient's visit."
+    },
+    {
+      "id": "GAP-054",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M18",
+      "title": "EVV marks a visit as at the patient's address based only on GPS accuracy; a client flag turns a failed accuracy check into a pass",
+      "evidence": [
+        "apps/backend/src/modules/18-evv/evv-route-service-db.ts:306-315,357,372-388",
+        "apps/backend/src/modules/18-evv/evv-route-service-db.ts:29-31",
+        "docs/modules/WARDENX_MODULE_18_EVV_SPEC_v0_2.md:39,1720"
+      ],
+      "verified": true,
+      "recommended_fix": "Compute haversine distance to the M5 address coordinate. Treat degraded_attested as an advisory breach, not a pass. Stop emitting fabricated distances.",
+      "verification": "Live test: a capture 5 km from the address with good GPS accuracy produces a breach and no at_patient_address event."
+    },
+    {
+      "id": "GAP-055",
+      "severity": "P1",
+      "category": "security",
+      "module": "M18",
+      "title": "POST /evv/offline-sync skips the assigned-clinician and visit-window checks, and device_attestation_valid is enforced on no route",
+      "evidence": [
+        "apps/backend/src/modules/18-evv/routes/evv-routes.ts:97-115,156-174",
+        "apps/backend/src/modules/18-evv/evv-route-service-db.ts:205-218,738-748",
+        "docs/modules/WARDENX_MODULE_18_EVV_SPEC_v0_2.md:1476-1478"
+      ],
+      "verified": true,
+      "recommended_fix": "Run both predicates for each offline event on the server, require evv.check_out for check-out events, and bind device attestation once a client exists.",
+      "verification": "Inject test: an offline-sync event for a visit not assigned to the caller is rejected with 403."
+    },
+    {
+      "id": "GAP-056",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M18",
+      "title": "M18 has no workers: no aggregator submission row is ever created, and there is no late-check sweep, poller or spoof detector",
+      "evidence": [
+        "apps/backend/src/modules/18-evv/evv-route-service-db.ts:320,349,660,731,916,972",
+        "apps/backend/src/modules/18-evv/submission-flow.ts:38,77",
+        "docs/modules/WARDENX_MODULE_18_EVV_SPEC_v0_2.md:26,1199-1210"
+      ],
+      "verified": true,
+      "recommended_fix": "Add an 18-evv jobs module with the late-check sweep, aggregator prep (on check_out_recorded), submitter and poller.",
+      "verification": "Live test: a check-out in a state that requires an aggregator creates a queued submission row."
+    },
+    {
+      "id": "GAP-057",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M19",
+      "title": "Only the roster-sync workers exist; shift-open/close, the coverage-gap watchdog and the SLA crons are not built",
+      "evidence": [
+        "apps/backend/src/modules/19-oncall/jobs/worker.ts:151-161",
+        "apps/backend/src/modules/19-oncall/jobs/index.ts:19-22",
+        "docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md:1340-1356"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the Tier-1 crons: shift-open/close and the coverage-gap watchdog, then the callback, escalation and close-documented crons.",
+      "verification": "Live test: a shift past its start time becomes active, and a provider entity with no RN in the next 24h raises coverage_gap."
+    },
+    {
+      "id": "GAP-058",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M19",
+      "title": "The triage encounter-signed decider exists but is never bound, so triage calls never reach documented or closed",
+      "evidence": [
+        "apps/backend/src/modules/19-oncall/clinical/m8-encounter-signed.ts:96-131",
+        "apps/backend/src/modules/19-oncall/lifecycle/triage-call.ts:104-105",
+        "scripts/outbox-subscription-exceptions.ts:128-134"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind an M19 consumer for m8.encounter.signed, declare m19 on the event, add the retry worker, and fix the exception text.",
+      "verification": "Live test: signing the linked encounter moves the call to documented."
+    },
+    {
+      "id": "GAP-059",
+      "severity": "P1",
+      "category": "security",
+      "module": "M19",
+      "title": "GET /triage-calls lets every triage.read holder see every triage call in the org",
+      "evidence": [
+        "apps/backend/src/modules/19-oncall/routes/guards.ts:113-126",
+        "apps/backend/src/modules/07-care-plan/abac-predicates.ts:296-314",
+        "apps/backend/src/modules/19-oncall/routes/read-service-drizzle.ts:220-273"
+      ],
+      "verified": true,
+      "recommended_fix": "For callers without org-wide scope, add a SQL predicate restricting to caseload patients or calls the actor handled.",
+      "verification": "Live test: an RN outside the patient's caseload gets no rows for that patient."
+    },
+    {
+      "id": "GAP-060",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M20",
+      "title": "The M20 cipher port is not bound: SOS coordinates are dropped and POST /safety/incidents always returns 503",
+      "evidence": [
+        "apps/backend/src/index.ts:3869-3896",
+        "apps/backend/src/modules/20-field-safety/routes/write-service-drizzle.ts:121-124,337-347",
+        "packages/saas-tenant-platform/src/seam-bootstrap.ts:117"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind an M20 cipher and decipher over getTenantKeyProvider(), plus the recipient resolver.",
+      "verification": "Live test: an incident create returns 201 with a decryptable narrative, and SOS stores encrypted coordinates."
+    },
+    {
+      "id": "GAP-061",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M20",
+      "title": "The 30-second overdue check-in detector, the core lone-worker safety control, does not exist",
+      "evidence": [
+        "apps/backend/src/modules/20-field-safety/jobs/cron-workers.ts:645-671",
+        "apps/backend/src/modules/20-field-safety/lifecycle/check-in-overdue.ts:206",
+        "docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md:17,1398-1410"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the overdue-detector cron, the post-visit closer and the coverage-gap watchdog to registerM20CronWorkers.",
+      "verification": "Live test: a schedule past its window becomes overdue and writes a check_in_overdue outbox row."
+    },
+    {
+      "id": "GAP-062",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M21",
+      "title": "None of the M21 §4.6 crons exist: par alerts, the automatic 30-day overdue flip and the 72h auto-confirm never run",
+      "evidence": [
+        "apps/backend/src/modules/21-supplies/lifecycle/par-stock.ts:56,72",
+        "apps/backend/src/modules/21-supplies/lifecycle/return.ts:409",
+        "apps/backend/src/modules/21-supplies/routes/operations.routes.ts:128-130"
+      ],
+      "verified": true,
+      "recommended_fix": "Add a jobs module with the par-monitor and unreturned-kit-monitor crons on the active-org enumerator.",
+      "verification": "Live test: a row below reorder point emits par.below_threshold, and a return 31 days past due becomes overdue."
+    },
+    {
+      "id": "GAP-063",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M21",
+      "title": "invoice_accrued and invoice_reconciled are never emitted and the invoice columns are never written, so the M27 consumer and SupplyCostProvider are dead",
+      "evidence": [
+        "apps/backend/src/modules/21-supplies/events-by-m21.ts:276-305",
+        "apps/backend/src/modules/21-supplies/seams/store-drizzle.ts:193-197,334-349",
+        "apps/backend/src/modules/27-cost-report/outbox-consumers/m21-vendor-invoice.ts:46-47"
+      ],
+      "verified": true,
+      "recommended_fix": "Emit invoice_accrued and set the columns on dispatch or mark-ordered, and build the reconciliation intake.",
+      "verification": "Live test: a dispatch writes an outbox row, and the M27 consumer produces a vendor_invoice_line."
+    },
+    {
+      "id": "GAP-064",
+      "severity": "P1",
+      "category": "security",
+      "module": "M21",
+      "title": "The controlled-substance dispatcher ABAC check uses a location id supplied in the request body",
+      "evidence": [
+        "apps/backend/src/modules/21-supplies/routes/guards.ts:60-88",
+        "apps/backend/src/modules/21-supplies/routes/write-service-drizzle.ts:503-581,992-1075",
+        "apps/backend/src/modules/21-supplies/abac-predicates.ts:255-275"
+      ],
+      "verified": true,
+      "recommended_fix": "Resolve the serving location on the server (admission or supply_request row), reject a mismatched body value, and evaluate ABAC on the server-resolved value.",
+      "verification": "Live test: a dispatcher in Location A naming A for a patient served by B gets 403/409 and no row is written."
+    },
+    {
+      "id": "GAP-065",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M22",
+      "title": "export-phi-bundle returns a made-up tracking id; nothing is stored, queued or produced",
+      "evidence": [
+        "apps/backend/src/modules/22-documents/documents-route-service-db.ts:719-722",
+        "apps/backend/src/modules/22-documents/routes/documents-routes.ts:390-403",
+        "docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:2926-2940"
+      ],
+      "verified": true,
+      "recommended_fix": "Persist the request and enqueue a real bundle job (or delegate to the M34 DSAR worker); return 503 until that exists.",
+      "verification": "Live test: the returned id maps to a durable request row or job."
+    },
+    {
+      "id": "GAP-066",
+      "severity": "P1",
+      "category": "security",
+      "module": "M22",
+      "title": "Step-up is required by the spec and claimed in route comments, but it is not composed on export-phi-bundle, the overlay PUT or the admin retry route",
+      "evidence": [
+        "apps/backend/src/modules/22-documents/routes/documents-routes.ts:10,390-393,736-739,762-765",
+        "apps/backend/src/modules/22-documents/abac-predicates.ts:254",
+        "docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:1506,1526,1865-1872"
+      ],
+      "verified": true,
+      "recommended_fix": "Add requireStepUp to all three preHandler chains.",
+      "verification": "Route test: no fresh step-up returns 403, and a fresh step-up passes."
+    },
+    {
+      "id": "GAP-067",
+      "severity": "P1",
+      "category": "security",
+      "module": "M22",
+      "title": "No route composes sud_consent_present; the DocLens workspace returns decrypted SUD content to any intake.review holder",
+      "evidence": [
+        "apps/backend/src/modules/39-consent/abac-predicates.ts:5,37",
+        "apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts:268-356",
+        "apps/backend/src/modules/22-documents/extraction/review-workspace.ts:537-604",
+        "docs/modules/WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:1227"
+      ],
+      "verified": true,
+      "recommended_fix": "Restrict SUD values and evidence to extraction_reviewer_eligible plus the Part 2 need-to-know check (redact otherwise), and add a gate that flags predicates registered but never composed.",
+      "verification": "Inject test: an ineligible reviewer sees SUD values redacted or gets 403."
+    },
+    {
+      "id": "GAP-068",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M22",
+      "title": "POST /api/v1/documents and POST /documents/:id/versions always return 503 in production",
+      "evidence": [
+        "apps/backend/src/modules/22-documents/documents-route-service-db.ts:12-13,614-625",
+        "apps/backend/src/modules/22-documents/index.ts:75-93",
+        "docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:1496-1497"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement upload over the bound S3 store: stream, verify size and SHA-256, then insert the document and version 1 in one transaction. Keep the 503 only when no store is configured.",
+      "verification": "Live test with MinIO: a multipart upload returns 201 and the rows and object exist."
+    },
+    {
+      "id": "GAP-069",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M23",
+      "title": "The NOE/NOTR 5-day window-watch and eligibility stale-watch crons are scheduled but throw on every tick",
+      "evidence": [
+        "apps/backend/src/index.ts:4728-4759",
+        "apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts:566-576,1361,1432,1494",
+        "apps/backend/src/index.ts:4940-4945"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind activeOrgs (buildActiveOrgEnumerator with an M23 platform job id) and noticeWindow in buildM23WorkerDeps.",
+      "verification": "Live test: a NOE more than 3 days old produces a window_warning or breach stamp."
+    },
+    {
+      "id": "GAP-070",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M23",
+      "title": "No worker is built for revalidate.consumer, eligibility.refresh or validation-run; the eligibility-check and manual-validate routes always return 503",
+      "evidence": [
+        "apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts:1650-1762",
+        "apps/backend/src/index.ts:2470,3601,4751-4759,6814",
+        "apps/backend/src/modules/23-billing-medicare/outbox-consumers/submit-requests.ts:100-112",
+        "docs/history/outbox-248-builds.md:282"
+      ],
+      "verified": true,
+      "recommended_fix": "Build Workers for the three queues in the composition root, gated on queueConnection only. Route validation and eligibility enqueues to a real producer. Fix the comments.",
+      "verification": "Boot test: the Worker set includes the three queue names. Live test: m6.loc.changed leads to a completed job and a validation_run row, and POST validate returns 202."
+    },
+    {
+      "id": "GAP-071",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M24",
+      "title": "No production code creates rb_day rows, so Medicaid room-and-board can never be billed",
+      "evidence": [
+        "apps/backend/src/modules/24-billing-medicaid/jobs/index.ts:8-10,37-74",
+        "apps/backend/src/modules/24-billing-medicaid/routes/write-service-drizzle.ts:609-645,1349-1363",
+        "audit/implementation-status/IMPLEMENTATION_STATUS.md:36"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement RbDaySweepStore and EligibilityWatchdogStore and wire both crons; until then, log a boot warning and add a status-matrix note.",
+      "verification": "Live test: an active arrangement plus one tick produces rb_day rows."
+    },
+    {
+      "id": "GAP-072",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M25",
+      "title": "M25's consumers for m23.claim.rejected and m18.evv.aggregator_rejected are never built, so rejections never seed the denial worklist and the rows stay pending",
+      "evidence": [
+        "apps/backend/src/modules/25-remittance/outbox-consumers/m23-claim-rejected.ts:44-47",
+        "apps/backend/src/index.ts:717,6688",
+        "apps/backend/src/bootstrap/outbox-dispatcher.ts:287-290,438-446",
+        "scripts/check-outbox-bindings.ts:157-210"
+      ],
+      "verified": true,
+      "recommended_fix": "Construct both bindings in index.ts, and add a reachability rule to check-outbox-bindings.",
+      "verification": "A grep finds both factories in index.ts. Live test: claim.rejected leads to a denial_case row and the outbox row is dispatched."
+    },
+    {
+      "id": "GAP-073",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M25",
+      "title": "Manual match binds an unchecked client-supplied claim id, drops the rationale and never posts; adjustment override drops its reason and has no effect",
+      "evidence": [
+        "apps/backend/src/modules/25-remittance/routes/write-service-drizzle.ts:125-178",
+        "packages/db/migrations/0082_remittance_m25_partitioned_lines.sql:21",
+        "docs/modules/WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md:971-972,1668-1670"
+      ],
+      "verified": true,
+      "recommended_fix": "Look up the claim through M23 ClaimReader (404 if missing or cross-provider-entity), persist the reason, run the posting pipeline, and implement the postAction effects.",
+      "verification": "Live test: a random UUID returns 404, and a valid match posts and emits claim_paid."
+    },
+    {
+      "id": "GAP-074",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M25",
+      "title": "The M25 web UI is read-only: no denial work, appeal lifecycle or ERA manual match",
+      "evidence": [
+        "apps/web/src/modules/25-remittance/denial-worklist.tsx:59",
+        "apps/backend/src/modules/25-remittance/routes/denials.routes.ts:88-194",
+        "docs/design/DEFERRED_SCREENS.md:471"
+      ],
+      "verified": true,
+      "recommended_fix": "Add denial and appeal detail panels with lifecycle actions, plus manual-match and override; correct DEFERRED_SCREENS.",
+      "verification": "DOM tests for each action. Work one denial end to end on the Docker stack."
+    },
+    {
+      "id": "GAP-075",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M26",
+      "title": "The M26 upstream consumer never records a cap accrual: handlers read organizationId and patientId from payloads that do not carry them",
+      "evidence": [
+        "apps/backend/src/modules/26-cap/consumers/outbox-binding.ts:68-72",
+        "apps/backend/src/modules/26-cap/consumers/handlers.ts:55-59,90,114",
+        "apps/backend/src/modules/25-remittance/events-by-m25.ts:65-72",
+        "apps/backend/src/modules/26-cap/consumers/drizzle-store.ts:91-107,186"
+      ],
+      "verified": true,
+      "recommended_fix": "Merge the envelope's organizationId into the payload, and make M25 emit per-claim accrual facts (or have M26 read posted lines through a seam). Add a real-publisher live test.",
+      "verification": "Live test: an 835 through M25 ingest and the dispatcher leads to a cap_beneficiary_accrual_line row and a non-zero CapAccrualReader aggregate."
+    },
+    {
+      "id": "GAP-076",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M26",
+      "title": "M26 cron workers are built without an active-org enumerator or alert router, so every tick throws",
+      "evidence": [
+        "apps/backend/src/modules/26-cap/jobs/index.ts:49-56,127-182",
+        "apps/backend/src/index.ts:4988-4995",
+        "apps/backend/src/index.ts:4940,4970"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind buildActiveOrgEnumerator with an M26 platform job id (and add it to the allowlist) plus an AlertEmitter-backed alerts port.",
+      "verification": "Live test: one nightly tick across two orgs writes projection snapshots with no 'enumerator not bound' error."
+    },
+    {
+      "id": "GAP-077",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M26",
+      "title": "m23.claim.line_finalized has no producer and its schema does not match the handler, so cap_inpatient_accrual is never written",
+      "evidence": [
+        "apps/backend/src/modules/23-billing-medicare/events-by-m23.ts:272-285",
+        "apps/backend/src/modules/26-cap/consumers/handlers.ts:104-123",
+        "apps/backend/src/modules/26-cap/seam-impls.ts:130-158"
+      ],
+      "verified": true,
+      "recommended_fix": "Emit line_finalized on paid 0655/0656 lines with a field set both sides agree on, and take organizationId from the envelope.",
+      "verification": "Live test: a paid 0656 line increments gip_days."
+    },
+    {
+      "id": "GAP-078",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M26",
+      "title": "PS&R import goes nowhere: CSV bytes are discarded, no reconcile worker exists, and no reconciliation rows are written",
+      "evidence": [
+        "apps/backend/src/modules/26-cap/routes/write-service-drizzle.ts:334-363",
+        "apps/backend/src/modules/26-cap/jobs/index.ts:127-181",
+        "docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md:416,1570,2322"
+      ],
+      "verified": true,
+      "recommended_fix": "Store the CSV in MinIO with a DEK, enqueue psr-reconcile, write reconciliation rows, and emit variance_raised.",
+      "verification": "Live test: after import plus the processor run, reconciliation has variance lines and the import is no longer 'queued'."
+    },
+    {
+      "id": "GAP-079",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M26",
+      "title": "The M26 cap UI is read-only: no settlement propose or finalize, period close or reopen, PSR resolve or threshold acknowledge",
+      "evidence": [
+        "apps/web/src/modules/26-cap/cap-settlement.tsx:14-17,80,92,302",
+        "apps/backend/src/modules/26-cap/routes/settlement.routes.ts:43,54",
+        "docs/design/DEFERRED_SCREENS.md:471"
+      ],
+      "verified": true,
+      "recommended_fix": "Add propose and finalize (with step-up), the period lifecycle, PSR resolve and acknowledge actions.",
+      "verification": "DOM tests. Propose and finalize on the Docker stack."
+    },
+    {
+      "id": "GAP-080",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M27",
+      "title": "Statistics refresh always fails because the M6 and M8 statistics seams are unbound, and statistic_data cannot be filled by hand",
+      "evidence": [
+        "apps/backend/src/modules/27-cost-report/jobs/m27-jobs.ts:365-391,1207-1213",
+        "apps/backend/src/index.ts:4642-4685",
+        "apps/backend/src/modules/27-cost-report/routes/statistics.routes.ts:31-46"
+      ],
+      "verified": true,
+      "recommended_fix": "Publish M6 monthly census and M8 visits/FTE seams and bind statisticsSeams (a manual route would need a spec change).",
+      "verification": "Live test: a refresh fills statistics.monthlyBreakdown."
+    },
+    {
+      "id": "GAP-081",
+      "severity": "P1",
+      "category": "security",
+      "module": "M27",
+      "title": "Approve/submit separation relies on a client-supplied, optional approvedByMembershipId",
+      "evidence": [
+        "apps/backend/src/modules/27-cost-report/routes/write-service-drizzle.ts:1107-1156",
+        "apps/backend/src/modules/27-cost-report/routes/cost-report-typebox.ts:150-159",
+        "docs/modules/WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md:1497,1554,1599"
+      ],
+      "verified": true,
+      "recommended_fix": "Store approved_by and approved_at, compare with the actor at submit (403 TWO_PERSON_CONTROL_VIOLATION), and take the attester from the actor.",
+      "verification": "Live test: the same membership approves and then submits with the field omitted, and gets 403."
+    },
+    {
+      "id": "GAP-082",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M27",
+      "title": "The M27 cost-report UI is entirely read-only: no import, compute, validate or submit",
+      "evidence": [
+        "apps/web/src/modules/27-cost-report/cost-report-workspace.tsx:14",
+        "apps/backend/src/modules/27-cost-report/routes/cost-reports.routes.ts:66,119",
+        "audit/ui-parity/UI_PARITY.md:249-254"
+      ],
+      "verified": true,
+      "recommended_fix": "Add an explicit deferral row, then build the import, compute, validate, approve and submit write path.",
+      "verification": "The deferral row exists. Later, write callers exist under 27-cost-report."
+    },
+    {
+      "id": "GAP-083",
+      "severity": "P1",
+      "category": "security",
+      "module": "M28",
+      "title": "The per-client IP allowlist, BAA check and tier rate limit are stored but never enforced on token mint or FHIR reads",
+      "evidence": [
+        "apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts:158-186",
+        "apps/backend/src/modules/28-fhir/routes/token-mint.ts:293-305,395",
+        "apps/backend/src/index.ts:1810-1817",
+        "docs/modules/WARDENX_MODULE_28_FHIR_GATEWAY_SPEC_v0_4.md:43,317,1311"
+      ],
+      "verified": true,
+      "recommended_fix": "Enforce the IP allowlist and BAA in token mint and resolveBearer, and add a Valkey per-client limiter that returns 429.",
+      "verification": "Live test: a request from an IP outside the allowlist gets 401, and exceeding the rate gets 429."
+    },
+    {
+      "id": "GAP-084",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M28",
+      "title": "M28 has no BullMQ workers: $export jobs are accepted and never run, and inbound SLA expiry and payload destruction never happen",
+      "evidence": [
+        "apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts:388-478",
+        "apps/backend/src/modules/28-fhir/routes/store-drizzle.ts:513-545",
+        "docs/history/m28-fhir-gateway.md (F-035)",
+        "docs/modules/WARDENX_MODULE_28_FHIR_GATEWAY_SPEC_v0_4.md:27,1316-1326"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the M28 jobs (bulk export to MinIO NDJSON plus the sweepers); return 501 from $export until then.",
+      "verification": "Live test: $export, then processor, then poll returns output[] with URLs, and a pending proposal past its SLA becomes expired."
+    },
+    {
+      "id": "GAP-085",
+      "severity": "P1",
+      "category": "security",
+      "module": "M29",
+      "title": "GET /api/clinical/labs/observations ignores caseload and lists every lab result in the org",
+      "evidence": [
+        "apps/backend/src/modules/29-external-interfaces/routes/labs.routes.ts:33-78",
+        "apps/backend/src/modules/29-external-interfaces/routes/store-drizzle.ts:853-869",
+        "packages/db/migrations/0148_external_interfaces_m29_rls_audit_triggers.sql:103"
+      ],
+      "verified": true,
+      "recommended_fix": "Resolve the caseload through CaseloadProvider, and move the filters and keyset cursor into SQL before LIMIT.",
+      "verification": "Live test: an RN's list excludes off-caseload patients, and ?patientId=B returns 403 or empty."
+    },
+    {
+      "id": "GAP-086",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M29",
+      "title": "The inbound HL7 MLLP listener is never started, so ORU and ADT messages cannot be received",
+      "evidence": [
+        "apps/backend/src/modules/29-external-interfaces/listener/index.ts:1-11",
+        "apps/backend/src/index.ts:800-824",
+        "deploy/production/compose.yml",
+        "docs/modules/WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md:1801"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the listener process entry point and the compose service.",
+      "verification": "Live test: an ORU^R01 frame gets an ACK and creates hl7_message_inbound and lab_observation rows."
+    },
+    {
+      "id": "GAP-087",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M30",
+      "title": "CAHPS export returns a fabricated 'queued' job, and every port of the sample and export crons is unbound",
+      "evidence": [
+        "apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts:716-740",
+        "apps/backend/src/modules/30-quality/jobs/m30-jobs.ts:1799-1857,2076-2107",
+        "apps/backend/src/index.ts:4578-4613",
+        "apps/backend/src/modules/30-quality/events-by-m30.ts:120-165"
+      ],
+      "verified": true,
+      "recommended_fix": "Return 501 from R-14 until the pipeline exists, then persist export jobs, bind the vendor adapters, the caregiver-contact cipher, the death-feed reader and the outbox, and catalog export_failed.",
+      "verification": "Live test: a monthly sample inserts an encrypted row and emits sample_ready, and export emits export_completed."
+    },
+    {
+      "id": "GAP-088",
+      "severity": "P1",
+      "category": "security",
+      "module": "M30",
+      "title": "PIP and SRA closure co-signers are arbitrary membership ids taken from the request body",
+      "evidence": [
+        "apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts:1002-1034,1228-1247",
+        "apps/backend/src/modules/30-quality/abac-predicates.ts:578-640",
+        "apps/backend/__tests__/quality-inject.test.ts:17-20"
+      ],
+      "verified": true,
+      "recommended_fix": "Require the actor to be one of the co-signers and compose the close-authority predicates against the other co-signer, or move to a two-step close.",
+      "verification": "Live test: closing with two unrelated ids gets 403."
+    },
+    {
+      "id": "GAP-089",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M30",
+      "title": "M30 does not consume m6.discharge.death and has no create route, so mortality reviews can never exist",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/events-by-m6.ts:854-886",
+        "apps/backend/src/modules/30-quality/outbox-consumers/upstream-consumer-ports.ts:8-21,109-111",
+        "apps/backend/src/modules/30-quality/routes/mortality.routes.ts:63,78,92,109"
+      ],
+      "verified": true,
+      "recommended_fix": "Split handleDischargeDeath, bind the mortality-draft half, and add m30 as a consumer.",
+      "verification": "Live test: a death discharge creates a pending mortality_review and a review_created row."
+    },
+    {
+      "id": "GAP-090",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M30",
+      "title": "visit_on_time_rate, evv_compliance_rate and opioid_on_admission_rate throw in the worker because their stores require a request context",
+      "evidence": [
+        "apps/backend/src/modules/30-quality/jobs/m30-jobs.ts:648-650,1714-1717,2218-2241",
+        "apps/backend/src/modules/17-scheduling/seams/drizzle-store.ts:302-303",
+        "apps/backend/src/modules/18-evv/seams/drizzle-store.ts:260-261",
+        "packages/tenancy/src/context.ts:195-210"
+      ],
+      "verified": true,
+      "recommended_fix": "Add org-explicit ...ForOrg store methods, or wrap the calls in runWithRequestContext.",
+      "verification": "Live test: recompute for the three codes writes quality_measure_value rows with no context error."
+    },
+    {
+      "id": "GAP-091",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M30",
+      "title": "The incident list pages within a fixed 200-row window, and no M30 PHI route applies patient scope",
+      "evidence": [
+        "apps/backend/src/modules/30-quality/routes/read-service-drizzle.ts:795-829",
+        "packages/db/migrations/0067_quality_m30_rls.sql:113-133",
+        "apps/backend/src/modules/30-quality/routes/infection.routes.ts:15-19,67,87"
+      ],
+      "verified": true,
+      "recommended_fix": "Push the filters and keyset cursor into the repo, and compose a real patient scope on the PHI routes (or amend the spec).",
+      "verification": "Live test: seed 250 incidents and page through all of them. RLS-ISE-03 returns caseload-only results."
+    },
+    {
+      "id": "GAP-092",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M31",
+      "title": "Several M31 routes return fake success with no side effect, and no production path creates portal accounts or grants",
+      "evidence": [
+        "apps/backend/src/modules/31-portal/routes/write.routes.ts:72-125,155-173,248-280",
+        "apps/backend/src/modules/31-portal/routes/admin.routes.ts:56-119,214-229",
+        "apps/backend/src/modules/31-portal/outbox-consumers/m16-bereavement-contact-active.ts:33-37"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement the M2 invite primitive and grant creation, and wire M13, M22 and M16. Any route that is not yet backed must return 501/503.",
+      "verification": "Live tests for each route showing the downstream row or event exists after a 2xx."
+    },
+    {
+      "id": "GAP-093",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M31",
+      "title": "Staff telehealth and invitation routes use inOrg instead of caseload ABAC, and the auditor route has no engagement scope",
+      "evidence": [
+        "apps/backend/src/modules/31-portal/routes/guards.ts:92-101",
+        "apps/backend/src/modules/05-patient/seams/caseload-provider.ts:47-70",
+        "apps/backend/src/modules/31-portal/routes/admin.routes.ts:280-296"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose caseload_or_scope with a resolved patientId, enforce starter-only stop-recording, and add an engagement-scope predicate.",
+      "verification": "Route tests: an off-caseload clinician gets 403 on join and invite, and an auditor outside the engagement gets 403."
+    },
+    {
+      "id": "GAP-094",
+      "severity": "P1",
+      "category": "security",
+      "module": "M31",
+      "title": "Portal telehealth join and leave are not tied to the session's granted patient",
+      "evidence": [
+        "apps/backend/src/modules/31-portal/routes/telehealth.routes.ts:46-127",
+        "apps/backend/src/modules/31-portal/abac-predicates.ts:271-279,344-355",
+        "apps/backend/src/modules/31-portal/routes/guards.ts:80-85"
+      ],
+      "verified": true,
+      "recommended_fix": "Add ABAC_GRANT and reject when visit.patientId does not equal the session patient.",
+      "verification": "Live test: a session for patient A joining patient B's visit gets 403 and the lifecycle is unchanged."
+    },
+    {
+      "id": "GAP-095",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M31",
+      "title": "Telehealth join returns a hard-coded fake vendor URL even with an adapter bound; leave, end and recording never reach the vendor",
+      "evidence": [
+        "apps/backend/src/modules/31-portal/routes/telehealth.routes.ts:23-39,70-103,164-219",
+        "apps/backend/src/modules/31-portal/telehealth/room-mint.ts:103-122",
+        "apps/backend/src/index.ts:3897-3919"
+      ],
+      "verified": true,
+      "recommended_fix": "Decrypt and return the minted room URL, mint before writing the lifecycle, persist leave, and call endRoom.",
+      "verification": "Route test with a fake adapter: join returns the adapter URL, and end calls endRoom."
+    },
+    {
+      "id": "GAP-096",
+      "severity": "P1",
+      "category": "security",
+      "module": "M32",
+      "title": "A tenant admin can stop an AI capability for every tenant by minting a role key",
+      "evidence": [
+        "apps/backend/src/modules/32-ai-platform/abac-predicates.ts:91-95,218-228",
+        "apps/backend/src/modules/32-ai-platform/routes/guards.ts:126-138",
+        "apps/backend/src/modules/32-ai-platform/safety/store-drizzle.ts:~180-235"
+      ],
+      "verified": true,
+      "recommended_fix": "Reserve the platform role keys and require a NULL-org platform role, and gate clinical_safety_lead behind a single-tenant flag.",
+      "verification": "Tests: a tenant creating role 'ai_safety_owner' gets 409/422, and a platform-scope kill switch from a tenant gets 403."
+    },
+    {
+      "id": "GAP-097",
+      "severity": "P1",
+      "category": "security",
+      "module": "M33",
+      "title": "Report schedules have no owner or visibility check, although comments claim one exists",
+      "evidence": [
+        "apps/backend/src/modules/33-reporting/routes/schedules.routes.ts:6-10,37-45",
+        "apps/backend/src/modules/33-reporting/routes/write-service-drizzle.ts:510-602",
+        "apps/backend/src/modules/33-reporting/jobs/m33-jobs.ts:376-398"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose dashboard_visibility, limit mutations to the owner or org_admin, filter lists, and check reportable_scope for each recipient.",
+      "verification": "Route tests: a non-owner PATCH gets 403/404. Worker test: a recipient without scope is skipped."
+    },
+    {
+      "id": "GAP-098",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M34",
+      "title": "The M34 ABAC predicates run on a deny-all resolver in production, so support sessions, feature-flag writes and the kill switch always return 403",
+      "evidence": [
+        "apps/backend/src/index.ts:1703-1708,1965-1976",
+        "apps/backend/src/modules/34-saas-tenant-platform/abac-predicates.ts:124-180",
+        "apps/backend/src/modules/34-saas-tenant-platform/routes/platform/feature-flags-admin.ts:60-115"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement a Drizzle TenantPlatformAbacResolver and bind it at DB boot.",
+      "verification": "Live test: platform_ops with a valid grant gets 201 on support-sessions, and the kill switch returns 200."
+    },
+    {
+      "id": "GAP-099",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M35",
+      "title": "Promo application ignores the validity window and redemption cap and never increments redemption_count",
+      "evidence": [
+        "apps/backend/src/modules/35-subscription/routes/service-drizzle.ts:844-889,1304-1310",
+        "apps/backend/src/modules/35-subscription/routes/guards.ts:14-17",
+        "packages/db/migrations/0141_subscription_billing_m35_tenant_tables.sql:240"
+      ],
+      "verified": true,
+      "recommended_fix": "SELECT ... FOR UPDATE the promo, enforce the window and cap, increment the count, and map 23505 to 409.",
+      "verification": "Tests: an expired promo is refused, a capped promo is refused, and success increments the count."
+    },
+    {
+      "id": "GAP-100",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M35",
+      "title": "No Stripe dispatcher, webhook ingest, dunning, usage or revenue worker exists, so subscription billing is local state only",
+      "evidence": [
+        "apps/backend/src/modules/35-subscription/routes/service-drizzle.ts:8-10,891-895",
+        "apps/backend/src/modules/35-subscription/routes/webhooks.routes.ts:43-50",
+        "apps/backend/src/index.ts:3488-3522,6855-6863"
+      ],
+      "verified": true,
+      "recommended_fix": "Wire the dispatcher and webhook ingest from packages/subscription-billing, add the crons, and mark M35 as not live until then.",
+      "verification": "Live test: POST subscription writes a stripe_api_call_audit row through the dispatcher (mocked)."
+    },
+    {
+      "id": "GAP-101",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M36",
+      "title": "No push, SMS, email or voice dispatcher exists, the vendor webhooks are unmounted, and Tier-1 SOS voice escalation is unbuilt",
+      "evidence": [
+        "packages/messaging/src/jobs/queues.ts:1-9,35-48",
+        "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts:776-800",
+        "scripts/check-route-reachability.ts:53-67",
+        "apps/backend/src/modules/20-field-safety/alert-rules.ts:72"
+      ],
+      "verified": true,
+      "recommended_fix": "Build the fan_out and send_* workers (critical field-safety channels first), implement the webhook service and mount it, and produce delivery_failed. Alternatively, record an ADR deferral.",
+      "verification": "Live test: field_safety.sos leads to a delivery row going from pending to sent through the worker. arch:route-reachability shows 0 deferred."
+    },
+    {
+      "id": "GAP-102",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M36",
+      "title": "A tenant admin can weaken a system_locked alert rule such as SOS (downgrade severity or change the resolver)",
+      "evidence": [
+        "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts:982-1027",
+        "packages/db/migrations/0017_messaging_m36_rls_audit_triggers.sql:57-66",
+        "apps/backend/src/modules/36-messaging/alert-emitter-drizzle.ts:165-167"
+      ],
+      "verified": true,
+      "recommended_fix": "Reject resolver changes and severity downgrades on locked rules (403), and add a DB backstop.",
+      "verification": "Test: PATCH sos {severityFloor:'info'} returns 403 and no org row is inserted."
+    },
+    {
+      "id": "GAP-103",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M36",
+      "title": "Member add and remove routes skip the location ABAC, and their writes record an empty audit actor",
+      "evidence": [
+        "apps/backend/src/modules/36-messaging/routes/messaging-routes.ts:10-12,89,199-226",
+        "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts:337-362,508,535,967",
+        "docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md:1720"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose location_membership and pass the actor into withOrgContext.",
+      "verification": "Route test: an out-of-location clinical_lead gets 403. Live test: the audit row has an actor."
+    },
+    {
+      "id": "GAP-104",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M36",
+      "title": "Care-team channel membership is only re-synced by portal activity; on-call, bereavement and archive sync return 501",
+      "evidence": [
+        "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts:337-366",
+        "apps/backend/src/modules/36-messaging/messaging-provider-db.ts:67-82,205-304",
+        "apps/backend/src/modules/31-portal/routes/read.routes.ts:357"
+      ],
+      "verified": true,
+      "recommended_fix": "Have channel_visibility consult the CaseloadProvider, or bind an M5 assignment consumer, and implement archive.",
+      "verification": "Live test: after an assignment is removed, the care_team channel returns 403 with no portal activity involved."
+    },
+    {
+      "id": "GAP-105",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M37",
+      "title": "Only one M37 cron exists: census snapshot, IRC day count, restraint and cleaning watchdogs are never built",
+      "evidence": [
+        "apps/backend/src/modules/37-ipu/jobs/index.ts:22-34",
+        "apps/backend/src/modules/37-ipu/jobs/cron-workers.ts:266-275",
+        "packages/inpatient/src/machines/irc-episode.ts:79-90"
+      ],
+      "verified": true,
+      "recommended_fix": "Build the census, IRC day-advance, restraint, cleaning and GIP-staleness crons.",
+      "verification": "Live test: a census tick writes a snapshot and an event, and an IRC episode at day 6 emits cap_breached."
+    },
+    {
+      "id": "GAP-106",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M37",
+      "title": "Body release, GIP attestation and the M6 confirm handshake trust client-supplied facts",
+      "evidence": [
+        "apps/backend/src/modules/37-ipu/routes/service-drizzle.ts:1117-1145,1206-1243,2310-2321",
+        "apps/backend/src/modules/37-ipu/routes/ipu.routes.ts:289-298,322-326",
+        "docs/modules/WARDENX_MODULE_37_IPU_SPEC_v0_2.md:231,354-363,1386"
+      ],
+      "verified": true,
+      "recommended_fix": "Check the M22 signed body-release document and resolve the funeral home through M40. Compose attester_eligible and store the real step-up assertion id. Make confirm system-internal, driven by M6.",
+      "verification": "Route tests: a random UUID for body release returns 409/422, a non-MD attester returns 403, and a tenant user calling confirm is rejected."
+    },
+    {
+      "id": "GAP-107",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M37",
+      "title": "The IPU IV safety overlay has a reader and an eraser but no writer, and M13 never asks for it",
+      "evidence": [
+        "apps/backend/src/modules/37-ipu/seams.ts:186-200,356",
+        "apps/backend/src/modules/11-orders/events-by-m11.ts:21-30",
+        "apps/backend/src/modules/13-emar/index.ts:44-50"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind a writer on M12 medication-order signing using the overlay-builder, have M13 call the seam and enforce dual witness, and reconcile the spec.",
+      "verification": "Live test: a signed IV sedation order creates an overlay row, and an administration without a second witness is refused."
+    },
+    {
+      "id": "GAP-108",
+      "severity": "P1",
+      "category": "stub",
+      "module": "M38",
+      "title": "There is no production terminology loader or worker; the admin load route only registers a version row",
+      "evidence": [
+        "apps/backend/src/modules/38-terminology/routes/admin-terminology-routes.ts:16-21,117,141",
+        "packages/terminology/src/jobs/queues.ts:1-31",
+        "scripts/db/load-icd10cm.ts:1-27"
+      ],
+      "verified": true,
+      "recommended_fix": "Build load_version (generalizing the ICD loader), refresh_expansions and tenant_deprecation_scan, and have the route enqueue.",
+      "verification": "Live test: loading an rxnorm fixture creates concept rows and activates the version."
+    },
+    {
+      "id": "GAP-109",
+      "severity": "P1",
+      "category": "spec-drift",
+      "module": "M39",
+      "title": "No consent route applies the spec's ABAC (caseload, consent owner or compliance officer, bereavement window)",
+      "evidence": [
+        "apps/backend/src/modules/39-consent/routes/consent-routes.ts:1,78-95,150-161",
+        "docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md:1050-1077,1711-1727",
+        "packages/auth/src/permissions/contributed.ts:571"
+      ],
+      "verified": true,
+      "recommended_fix": "Compose caseload_or_scope on patient-keyed routes, add a consent_owner_or_compliance predicate for consent-keyed routes, and add the bereavement window.",
+      "verification": "Route test: an off-caseload clinician gets 404 and a compliance officer passes."
+    },
+    {
+      "id": "GAP-110",
+      "severity": "P1",
+      "category": "seam",
+      "module": "M39",
+      "title": "ConsentEvaluator never learns of a patient's death, and m5.patient.deceased has no M39 consumer",
+      "evidence": [
+        "apps/backend/src/modules/39-consent/consent-store-db.ts:168-173",
+        "packages/consent/src/seams/consent-evaluator.ts:326-336",
+        "apps/backend/src/modules/05-patient/events-by-m5.ts:141-142"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement isPatientDeceased from patient.status and bind the D13 expiry consumer.",
+      "verification": "Live test: after a death, evaluate returns patient_deceased_consent_terminated."
+    },
+    {
+      "id": "GAP-111",
+      "severity": "P1",
+      "category": "security",
+      "module": "global",
+      "title": "Route-level PHI writes call withOrgContext with userId \"\", so the write-audit trigger records a NULL actor",
+      "evidence": [
+        "packages/tenancy/src/context.ts:56-66",
+        "packages/db/migrations/0317_m6_referral_payer_numbers.sql:39-40",
+        "apps/backend/src/modules/08-encounters/encounters-route-service-db.ts:14-16,1774-1775",
+        "apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts:23-24"
+      ],
+      "verified": true,
+      "recommended_fix": "Thread the acting user id into every request-path service, or default withOrgContext to getRequestContext().userId. Keep \"\" for workers only.",
+      "verification": "Live test as wardenx_app: one write per module records audit_event.actor_user_id equal to the caller."
+    },
+    {
+      "id": "GAP-112",
+      "severity": "P1",
+      "category": "security",
+      "module": "global",
+      "title": "Production nginx logs the full request URI, including patient search terms and S3 presigned signatures",
+      "evidence": [
+        "deploy/production/nginx/wardenx-frontend.conf:1-31",
+        "deploy/production/nginx/wardenx-storage.conf:1-20",
+        "apps/backend/src/bootstrap/plugins/logger.ts:3-7,26-30"
+      ],
+      "verified": true,
+      "recommended_fix": "Define a PHI-safe log_format using $uri, disable or limit the storage access log, and document the host nginx.conf.",
+      "verification": "Run nginx -T on the host, then request ?q=Smith and confirm the log line has no query string."
+    },
+    {
+      "id": "GAP-113",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M01",
+      "title": "M1 audit.archive and idempotency.cleanup jobs are not implemented",
+      "evidence": [
+        "apps/backend/src/bootstrap/plugins/idempotency-store-db.ts:68-71",
+        "packages/audit/src/jobs/queues.ts:12",
+        "docs/modules/WARDENX_MODULE_01_FOUNDATION_SPEC_v0_4.md:2531-2548"
+      ],
+      "verified": false,
+      "recommended_fix": "Add an hourly org fan-out purge, and implement audit.archive or defer it.",
+      "verification": "Live test: one tick purges expired rows."
+    },
+    {
+      "id": "GAP-114",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "M01",
+      "title": "Foundation routes /health, /ready, /version and /system/feature-flags have no OpenAPI enrichment",
+      "evidence": [
+        "audit/openapi-coverage/OPENAPI_COVERAGE.md:53",
+        "audit/openapi-coverage/baseline.json:199-203",
+        "apps/backend/src/bootstrap/routes/health.ts:30-47"
+      ],
+      "verified": false,
+      "recommended_fix": "Add enrichments with the §4.2 schemas and ratchet the bootstrap deficit to 0.",
+      "verification": "bun run openapi:coverage reports bootstrap deficit 0."
+    },
+    {
+      "id": "GAP-115",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M02",
+      "title": "M2 spec routes are missing: /me/session, step-up overrides, funeral invite, org and provider-entity/location writes",
+      "evidence": [
+        "apps/backend/src/modules/02-identity/step-up-override-store.ts:21-27",
+        "apps/backend/src/bootstrap/routes/provider-entities.ts:28",
+        "docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md:716-756,1613"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement /me/session and the override admin routes (tighten-only), or record deferrals and reconcile with M34.",
+      "verification": "Run a route diff; inject-test /me/session."
+    },
+    {
+      "id": "GAP-116",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M03",
+      "title": "The admin consoles are read-only against specs that require writes; terminology.admin and mdm.console have no requiredPermission",
+      "evidence": [
+        "apps/web/src/modules/03-authorization/roles-permissions.tsx:15",
+        "apps/web/src/modules/40-mdm/screens.ts:11-16"
+      ],
+      "verified": false,
+      "recommended_fix": "Gate them on real read keys, and build or defer the writes.",
+      "verification": "ui:parity."
+    },
+    {
+      "id": "GAP-117",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M03",
+      "title": "There is no last-required-role guard, and break-glass revoke has no status guard",
+      "evidence": [
+        "apps/backend/src/modules/03-authorization/routes/authz-routes.ts:294-310",
+        "apps/backend/src/modules/03-authorization/break-glass-store.ts:139-148"
+      ],
+      "verified": false,
+      "recommended_fix": "Return 409 LAST_REQUIRED_ROLE, add a status guard, and build reap_breakglass.",
+      "verification": "Unit tests: revoking the sole MD returns 409, and revoking an expired break-glass returns 409."
+    },
+    {
+      "id": "GAP-118",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M05",
+      "title": "The amendment decision has no status guard, does not apply the accepted change, and returns 500 for an unknown id",
+      "evidence": [
+        "apps/backend/src/modules/05-patient/patient-route-service-db.ts:760-788",
+        "apps/backend/src/modules/05-patient/jobs/index.ts:8-17"
+      ],
+      "verified": false,
+      "recommended_fix": "Guard the transition (409), use typed errors, apply the change, and build the SLA worker.",
+      "verification": "Inject tests: 409, 404 and 422 cases."
+    },
+    {
+      "id": "GAP-119",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M05",
+      "title": "Census KPIs and global-search scopes say they are waiting for modules that have shipped",
+      "evidence": [
+        "apps/web/src/modules/05-patient/patient-list-census.tsx:69-82",
+        "apps/web/src/modules/05-patient/global-search.tsx:60-63"
+      ],
+      "verified": false,
+      "recommended_fix": "Compute the KPIs and fix the labels.",
+      "verification": "Check on the Docker stack."
+    },
+    {
+      "id": "GAP-120",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M05",
+      "title": "Patient admit does not apply the location_scope ABAC the spec requires; the spec contradicts itself",
+      "evidence": [
+        "apps/backend/src/modules/05-patient/routes/patient-routes.ts:121,352",
+        "docs/modules/WARDENX_MODULE_05_PATIENT_SPEC_v0_4.md:16,494-499,1235,1542"
+      ],
+      "verified": true,
+      "recommended_fix": "Resolve a target location from primaryAddress, or amend the spec to say admit is org-wide.",
+      "verification": "Inject test: L1 admitting into L2 returns 403 (or the spec is amended)."
+    },
+    {
+      "id": "GAP-121",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M06",
+      "title": "For-cause discharge: the filer and cosigner are not checked to differ, there is no decline or reversal route, and the discharge route has no admission.scope",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/admission-route-service-db.ts:5432-5536",
+        "apps/backend/src/modules/06-admission/routes/admission-routes.ts:1090-1093"
+      ],
+      "verified": false,
+      "recommended_fix": "Persist the filer and require filer != cosigner. Add a decline route and admissionScope.",
+      "verification": "Live test: an MD self-cosign returns 403."
+    },
+    {
+      "id": "GAP-122",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M06",
+      "title": "The GIP gate is a 30-character free-text reason instead of the three D12 attestations; the spec contradicts itself",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/state-machines/level-of-care.ts:75-80",
+        "apps/backend/src/modules/06-admission/routes/service.ts:2258-2262",
+        "docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md:593,2082,2962"
+      ],
+      "verified": true,
+      "recommended_fix": "Settle which rule applies in the spec, then implement it in both places.",
+      "verification": "A route test that matches the decision."
+    },
+    {
+      "id": "GAP-123",
+      "severity": "P2",
+      "category": "discovered",
+      "module": "M08",
+      "title": "The encounter read screen records assessment scales as raw JSON and offers scales that cannot be scored",
+      "evidence": [
+        "apps/web/src/modules/08-encounters/encounter-read.tsx:2255-2265",
+        "apps/web/src/modules/15-discipline-care-plans/assessment-editor.tsx:114"
+      ],
+      "verified": false,
+      "recommended_fix": "Reuse RecordAssessmentModal.",
+      "verification": "DOM test."
+    },
+    {
+      "id": "GAP-124",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M10",
+      "title": "PUT /hope/assessments/:id and PATCH answers do not apply the discipline predicate",
+      "evidence": [
+        "apps/backend/src/modules/10-hope/routes/hope-routes.ts:269-272,375-378,601-608"
+      ],
+      "verified": false,
+      "recommended_fix": "Add ABAC_AUTHOR, and scope regenerate.",
+      "verification": "Route test: a disallowed discipline gets 403."
+    },
+    {
+      "id": "GAP-125",
+      "severity": "P2",
+      "category": "discovered",
+      "module": "M11",
+      "title": "Held-transmission recovery, rate tables, wage indexes and med retransmit have no UI",
+      "evidence": [
+        "openapi uncalled: /api/v1/orders/held-transmissions, /billing/rate-tables, /medication-orders/{id}/retransmit"
+      ],
+      "verified": false,
+      "recommended_fix": "Add a held-transmissions queue and the admin screens.",
+      "verification": "grep for callers."
+    },
+    {
+      "id": "GAP-126",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M11",
+      "title": "Any orders.draft holder can edit any draft; indicationText is dropped",
+      "evidence": [
+        "apps/backend/src/modules/11-orders/orders-route-service-db.ts:1002-1017",
+        "apps/backend/src/modules/11-orders/routes/orders-typebox.ts:87-91"
+      ],
+      "verified": false,
+      "recommended_fix": "Allow edits only by the author or a supervisor, and persist or remove the field.",
+      "verification": "Test: another RN's PATCH gets 404/403."
+    },
+    {
+      "id": "GAP-127",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M14",
+      "title": "M14 PATCH and DELETE routes do not require If-Match or an Idempotency-Key; action-item PATCH has no assignee check and DELETE has no pre-adjourn guard",
+      "evidence": [
+        "apps/backend/src/modules/14-idg/routes/idg-routes.ts:133-134,210-692",
+        "apps/backend/src/modules/14-idg/idg-route-service-db.ts:1894-1940"
+      ],
+      "verified": false,
+      "recommended_fix": "Apply the headers, enforce assignee-or-coordinator, and refuse after adjournment.",
+      "verification": "Tests returning 428, 403 and 409."
+    },
+    {
+      "id": "GAP-128",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M14",
+      "title": "IDG packet reads have no per-patient caseload check, and idg-history (not in the spec) is gated by idg.read only",
+      "evidence": [
+        "apps/backend/src/modules/14-idg/routes/idg-routes.ts:460-533",
+        "apps/backend/src/modules/14-idg/abac-predicates.ts:126-131"
+      ],
+      "verified": false,
+      "recommended_fix": "Add a CaseloadProvider filter and add the history route to the spec.",
+      "verification": "Test: an off-caseload attendee gets 404."
+    },
+    {
+      "id": "GAP-129",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M16",
+      "title": "Every M16 *_cipher column is written as NULL, so contact methods and notes are discarded; the caregiver seed is ignored",
+      "evidence": [
+        "apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts:22-35,1392,1457"
+      ],
+      "verified": false,
+      "recommended_fix": "Bind an M34-backed cipher and the M5 caregiver reader, and return 503 when notes are provided until then.",
+      "verification": "Live test: a phone number round-trips."
+    },
+    {
+      "id": "GAP-130",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M16",
+      "title": "The m8.encounter.signed, m22.document.rendered, m4.legal_hold.* and m39.consent.created subscriptions are not bound (documented exceptions)",
+      "evidence": [
+        "scripts/outbox-subscription-exceptions.ts:107-128",
+        "apps/backend/src/index.ts:5845-5897",
+        "packages/types/src/bereavement.ts:313-317"
+      ],
+      "verified": true,
+      "recommended_fix": "Build the m8 and m22 consumers and declare m16 as a consumer on the producers.",
+      "verification": "arch:outbox-bindings plus a live test."
+    },
+    {
+      "id": "GAP-131",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M17",
+      "title": "GET /metrics/visits returns a hard-coded onTimeRate: 1, and route-efficiency returns zeros",
+      "evidence": [
+        "apps/backend/src/modules/17-scheduling/scheduling-route-service-db.ts:2096-2106"
+      ],
+      "verified": false,
+      "recommended_fix": "Compute the real rate, and return null or 501 for efficiency.",
+      "verification": "Unit test: a late visit lowers the rate."
+    },
+    {
+      "id": "GAP-132",
+      "severity": "P2",
+      "category": "security",
+      "module": "M17",
+      "title": "Portal upcoming-visit and arrival routes trust the patient or visit id in the request, with no session or consent binding (latent)",
+      "evidence": [
+        "apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts:524-533",
+        "apps/backend/src/modules/18-evv/routes/evv-routes.ts:481-496",
+        "apps/backend/src/modules/31-portal/routes/read.routes.ts:158-165"
+      ],
+      "verified": true,
+      "recommended_fix": "Bind sessionPatientId plus M39 consent, or retire the M17 duplicate route.",
+      "verification": "Inject test: A requesting B gets 403/404."
+    },
+    {
+      "id": "GAP-133",
+      "severity": "P2",
+      "category": "security",
+      "module": "M18",
+      "title": "EVV coordinates are stored as base64('lat,lng') in coords_cipher, stamped with dek_version=1",
+      "evidence": [
+        "apps/backend/src/modules/18-evv/coords.ts:13-26"
+      ],
+      "verified": false,
+      "recommended_fix": "Bind the M34 envelope cipher and stop stamping a DEK version.",
+      "verification": "Live test: the value does not decode as base64."
+    },
+    {
+      "id": "GAP-134",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M19",
+      "title": "The verbal-order disposition accepts an unchecked orderRecordId, and the link effect never runs",
+      "evidence": [
+        "apps/backend/src/modules/19-oncall/lifecycle/disposition.ts:176-180",
+        "apps/backend/src/modules/19-oncall/clinical/verbal-order.ts:185-205"
+      ],
+      "verified": false,
+      "recommended_fix": "Resolve the id through M11 and append the link in the same transaction.",
+      "verification": "Test: a fabricated id returns 422."
+    },
+    {
+      "id": "GAP-135",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M20",
+      "title": "M20 does not consume m5.patient.deceased, so safety obligations stay open after death",
+      "evidence": [
+        "apps/backend/src/modules/20-field-safety/consumers/index.ts:31-32",
+        "scripts/outbox-subscription-exceptions.ts:136-141"
+      ],
+      "verified": false,
+      "recommended_fix": "Write and bind the consumer.",
+      "verification": "arch:outbox-bindings with the exception removed."
+    },
+    {
+      "id": "GAP-136",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "M20",
+      "title": "No live test exercises the M20 Drizzle route services (about 2,870 lines) or either M16 Drizzle service",
+      "evidence": [
+        "apps/backend/src/modules/20-field-safety/routes/write-service-drizzle.ts",
+        "apps/backend/src/modules/16-bereavement/outbox-consumers/m39-consent-signed.ts:62-76"
+      ],
+      "verified": true,
+      "recommended_fix": "Add m20 and m16 route live suites plus the package and CI rows.",
+      "verification": "bun run arch:live-suites."
+    },
+    {
+      "id": "GAP-137",
+      "severity": "P2",
+      "category": "security",
+      "module": "M21",
+      "title": "M21 has no AI block, and M23's validateAiBlockForBilling is never called at boot",
+      "evidence": [
+        "apps/backend/src/modules/23-billing-medicare/ai-block.ts:26-29,115",
+        "apps/backend/src/index.ts:4163"
+      ],
+      "verified": false,
+      "recommended_fix": "Add both validators at boot and reject AI actors on controlled-substance routes.",
+      "verification": "Boot test plus route test."
+    },
+    {
+      "id": "GAP-138",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M22",
+      "title": "The docling-worker sidecar is missing from production compose and deploy.yml, so DocLens returns 503",
+      "evidence": [
+        "deploy/production/compose.yml:11-165",
+        "apps/backend/src/modules/22-documents/extraction/docling-client.ts:247-256"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the image build and service, or record a deferral.",
+      "verification": "docker compose config --services."
+    },
+    {
+      "id": "GAP-139",
+      "severity": "P2",
+      "category": "security",
+      "module": "M22",
+      "title": "The backend and worker use the MinIO root account as their S3 credential",
+      "evidence": [
+        "deploy/production/compose.yml:47,103,135"
+      ],
+      "verified": false,
+      "recommended_fix": "Provision a scoped service account.",
+      "verification": "mc admin user info."
+    },
+    {
+      "id": "GAP-140",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M22",
+      "title": "Several M22 writes return success but discard their payload",
+      "evidence": [
+        "apps/backend/src/modules/22-documents/documents-route-service-db.ts:771-795,1074-1131",
+        "apps/backend/src/modules/22-documents/routes/documents-routes.ts:741-745"
+      ],
+      "verified": false,
+      "recommended_fix": "Persist the payloads or return 501, and guard the transitions.",
+      "verification": "Route and live tests."
+    },
+    {
+      "id": "GAP-141",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M22",
+      "title": "The M22 retention-rotation, ai-block-validator and MinIO access-log queues are never built",
+      "evidence": [
+        "apps/backend/src/index.ts:5485-5501",
+        "docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:737-757,1902-1918"
+      ],
+      "verified": true,
+      "recommended_fix": "Implement retention-rotation and the boot ai-block validator, or defer them in the spec.",
+      "verification": "Live test: a rotation tick runs."
+    },
+    {
+      "id": "GAP-142",
+      "severity": "P2",
+      "category": "doc",
+      "module": "M23",
+      "title": "About 27 implemented routes appear only in OpenAPI and in no spec (rate-tables, wage-indexes and others)",
+      "evidence": [
+        "apps/backend/src/modules/23-billing-medicare/routes/rule-config.routes.ts:48-128",
+        "docs/modules/WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md:1475-1490,1499"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the routes to the §4 inventories.",
+      "verification": "Route-to-spec cross-check."
+    },
+    {
+      "id": "GAP-143",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M23",
+      "title": "The M23 cron jurisdiction list is hard-coded to 'ngs_j6'",
+      "evidence": [
+        "apps/backend/src/index.ts:~4740",
+        "apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts:1214,1280,1580"
+      ],
+      "verified": false,
+      "recommended_fix": "Bind it to the provider-entity MACs, or defer with a boot assertion.",
+      "verification": "Unit test."
+    },
+    {
+      "id": "GAP-144",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M23",
+      "title": "M23 is missing the validation-overrides audit, mac-credentials test and platform-rules routes; several paths differ from the spec",
+      "evidence": [
+        "docs/modules/WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md:1474,1493,1498"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the routes or defer them, and align the paths.",
+      "verification": "Route diff."
+    },
+    {
+      "id": "GAP-145",
+      "severity": "P2",
+      "category": "security",
+      "module": "M24",
+      "title": "M24 claim and R&B authorization is org-wide",
+      "evidence": [
+        "apps/backend/src/modules/24-billing-medicaid/abac-predicates.ts:152-159",
+        "apps/backend/src/modules/24-billing-medicaid/routes/guards.ts:66-71",
+        "apps/backend/src/modules/24-billing-medicaid/routes/rb.routes.ts:175-186"
+      ],
+      "verified": true,
+      "recommended_fix": "Add a provider-entity check, derive the scope on the server, and apply ABAC to rb-days.",
+      "verification": "Live test: an actor on PE-A gets 404 for PE-B data."
+    },
+    {
+      "id": "GAP-146",
+      "severity": "P2",
+      "category": "discovered",
+      "module": "M24",
+      "title": "M24_LAUNCH_GATEWAY_ENABLED is opt-in, so Medicaid submit and poll workers are silently not built",
+      "evidence": [
+        "packages/medicaid-adapters/src/oregon/launch-gateway.ts:333-342",
+        "apps/backend/src/index.ts:4790-4808",
+        "apps/backend/src/bootstrap/env.ts:29-49"
+      ],
+      "verified": true,
+      "recommended_fix": "Add it to INTEGRATION_SWITCHES or document it, and add it to .env.example.",
+      "verification": "Unit test with collectEnvProblems."
+    },
+    {
+      "id": "GAP-147",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M25",
+      "title": "POST /appeals/:id/submit-late-good-cause (M25-F03) is not implemented",
+      "evidence": [
+        "docs/modules/WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md:1719-1724"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the route with step-up and a reason of at least 40 characters.",
+      "verification": "Route test."
+    },
+    {
+      "id": "GAP-148",
+      "severity": "P2",
+      "category": "security",
+      "module": "M25",
+      "title": "M25 reads are not limited to the actor's provider entities",
+      "evidence": [
+        "apps/backend/src/modules/25-remittance/routes/read-service-drizzle.ts:62,134-140,168"
+      ],
+      "verified": false,
+      "recommended_fix": "Resolve the provider-entity scope from the request context.",
+      "verification": "Live test: PE-A gets an empty list for PE-B."
+    },
+    {
+      "id": "GAP-149",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M26",
+      "title": "CapAccrualReader.aggregateForCostReport ignores CCN (it takes the first row for the cap year)",
+      "evidence": [
+        "apps/backend/src/modules/26-cap/seam-impls.ts:124-133",
+        "apps/backend/src/modules/27-cost-report/jobs/validation-context-builder.ts:105"
+      ],
+      "verified": true,
+      "recommended_fix": "Add a CCN or provider-entity parameter and filter on it.",
+      "verification": "Two-CCN live test."
+    },
+    {
+      "id": "GAP-150",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M26",
+      "title": "m26.cap.accrual_recorded and psr_variance_raised are catalogued but never emitted",
+      "evidence": [
+        "apps/backend/src/modules/26-cap/consumers/drizzle-store.ts:175-207"
+      ],
+      "verified": false,
+      "recommended_fix": "Publish accrual_recorded inside recordAccrualLine.",
+      "verification": "Real-publisher live test."
+    },
+    {
+      "id": "GAP-151",
+      "severity": "P2",
+      "category": "security",
+      "module": "M28",
+      "title": "Bulk-export poll and cancel are scoped by org only, so another client in the same tenant can read or cancel a job",
+      "evidence": [
+        "apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts:445-496"
+      ],
+      "verified": false,
+      "recommended_fix": "Return 404 unless job.clientId matches ctx.clientId.",
+      "verification": "Live test."
+    },
+    {
+      "id": "GAP-152",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M29",
+      "title": "Acknowledge-abnormal returns success without storing anything or clearing the M36 badge",
+      "evidence": [
+        "apps/backend/src/modules/29-external-interfaces/routes/labs.routes.ts:140-168"
+      ],
+      "verified": false,
+      "recommended_fix": "Persist the acknowledgement and emit an event.",
+      "verification": "Live test."
+    },
+    {
+      "id": "GAP-153",
+      "severity": "P2",
+      "category": "security",
+      "module": "M29",
+      "title": "Feed-revoke dual approval trusts an optional primaryApproverId supplied in the request body",
+      "evidence": [
+        "apps/backend/src/modules/29-external-interfaces/abac-predicates.ts:232-240",
+        "apps/backend/src/modules/29-external-interfaces/routes/store-drizzle.ts:459-472"
+      ],
+      "verified": true,
+      "recommended_fix": "Store the pending revoke and its approver, require a second distinct approver, and cascade credentials.",
+      "verification": "Test: a single actor's revoke returns 403 or stays pending."
+    },
+    {
+      "id": "GAP-154",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M30",
+      "title": "M30 writes are stamped with the org's 'primary' provider entity",
+      "evidence": [
+        "apps/backend/src/bootstrap/provider-entity-resolver.ts:29-46",
+        "apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts:746,818,1286,1685"
+      ],
+      "verified": false,
+      "recommended_fix": "Derive the provider entity from the subject (the admission).",
+      "verification": "Two-PE live test."
+    },
+    {
+      "id": "GAP-155",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M30",
+      "title": "The SRA reminder cron throws on every run, and m30.incident.cap_overdue has no producer",
+      "evidence": [
+        "apps/backend/src/modules/30-quality/jobs/m30-jobs.ts:2136-2152",
+        "packages/quality/src/alert-defs.ts:146-151"
+      ],
+      "verified": false,
+      "recommended_fix": "Bind the scan plus the AlertEmitter, and add a CAP-overdue cron.",
+      "verification": "Cron live test."
+    },
+    {
+      "id": "GAP-156",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M30",
+      "title": "SRA finding and remediation mutations skip ownsSraCycle, although the comment says the check is enforced",
+      "evidence": [
+        "apps/backend/src/modules/30-quality/routes/write-service-drizzle.ts:1152-1172"
+      ],
+      "verified": false,
+      "recommended_fix": "Load the cycle and require the owner or sra.admin.",
+      "verification": "Live test."
+    },
+    {
+      "id": "GAP-157",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M30",
+      "title": "The M30 QAPI incidents screen cannot report, investigate or close an incident",
+      "evidence": [
+        "apps/web/src/modules/30-quality/qapi-incidents.tsx"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the lifecycle actions and an explicit deferral row.",
+      "verification": "DOM tests."
+    },
+    {
+      "id": "GAP-158",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M31",
+      "title": "PatientCaregiverReader and ExternalGriefResourceReader are deny-stubs only",
+      "evidence": [
+        "apps/backend/src/bootstrap/seams/registry.ts:227-259",
+        "apps/backend/src/modules/31-portal/abac-predicates.ts:193-198"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the caregiver-to-user link, and build the M40 grief catalog.",
+      "verification": "Live portal ABAC test."
+    },
+    {
+      "id": "GAP-159",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M31",
+      "title": "Six M31 §4.8 queues are missing, M31 publishes none of its 22 events, and the post-discharge read-only gate is dead code",
+      "evidence": [
+        "apps/backend/src/modules/31-portal/jobs/queues.ts:9-11",
+        "apps/backend/src/modules/31-portal/routes/write.routes.ts:56-67",
+        "packages/types/src/admission.ts:351-364"
+      ],
+      "verified": true,
+      "recommended_fix": "Add events-by-m31.ts, implement the discharged reader, and build or drop the crons.",
+      "verification": "arch:outbox-bindings plus a unit test."
+    },
+    {
+      "id": "GAP-160",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M31",
+      "title": "Clinicians have no web UI to join or end a telehealth visit",
+      "evidence": [
+        "apps/backend/src/modules/31-portal/routes/telehealth.routes.ts:131",
+        "docs/design/DEFERRED_SCREENS.md:747"
+      ],
+      "verified": false,
+      "recommended_fix": "Add a staff room or an explicit deferral.",
+      "verification": "grep for the caller."
+    },
+    {
+      "id": "GAP-161",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M32",
+      "title": "M32 catalogs 21 outbox events but publishes none, and no §4.8 workers exist",
+      "evidence": [
+        "apps/backend/src/modules/32-ai-platform/events-by-m32.ts:71-449",
+        "apps/backend/src/modules/32-ai-platform/routes/kill-switch.routes.ts:20-23"
+      ],
+      "verified": false,
+      "recommended_fix": "Publish at the write sites and build the workers, or defer them.",
+      "verification": "Live test: an outbox row for kill_switch.activated."
+    },
+    {
+      "id": "GAP-162",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M33",
+      "title": "M33 platform and compliance admin routes check permission only; tile_warm_cache has no worker",
+      "evidence": [
+        "apps/backend/src/modules/33-reporting/routes/admin.routes.ts:1-9,30-36"
+      ],
+      "verified": false,
+      "recommended_fix": "Register platform and compliance scope predicates.",
+      "verification": "Route test: a tenant role gets 403."
+    },
+    {
+      "id": "GAP-163",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M34",
+      "title": "M34 onboarding_advance and the bundle-expiry, BAA-expiry and support-session-close crons are never built",
+      "evidence": [
+        "apps/backend/src/index.ts:4361-4390",
+        "apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts:984-1015"
+      ],
+      "verified": false,
+      "recommended_fix": "Register the four queues, bundle_expiry first.",
+      "verification": "Live test: an expired bundle is deleted."
+    },
+    {
+      "id": "GAP-164",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M34",
+      "title": "Six M34 §4.1 routes are missing, including tenant/account and tenant feature-flags",
+      "evidence": [
+        "apps/backend/src/modules/34-saas-tenant-platform/routes/typebox.ts:160-163,263-266"
+      ],
+      "verified": false,
+      "recommended_fix": "Implement the routes or record their removal.",
+      "verification": "openapi:coverage."
+    },
+    {
+      "id": "GAP-165",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "M36",
+      "title": "The spec route GET /admin/messaging/alert-deliveries is not implemented",
+      "evidence": [
+        "docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md:1553"
+      ],
+      "verified": false,
+      "recommended_fix": "Implement it behind a platform-ops ABAC check, or defer it.",
+      "verification": "openapi:coverage."
+    },
+    {
+      "id": "GAP-166",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M36",
+      "title": "Endpoint verification accepts any token",
+      "evidence": [
+        "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts:750-756"
+      ],
+      "verified": true,
+      "recommended_fix": "Add a token-hash column and do a constant-time comparison.",
+      "verification": "Route test: a wrong token returns 422."
+    },
+    {
+      "id": "GAP-167",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "M36",
+      "title": "alert_receipt has no live test, although it caused a production 42501 incident",
+      "evidence": [
+        "packages/db/migrations/0247_alert_receipt_rls_and_grants.sql:1-21"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the table to the m36 live suite.",
+      "verification": "bun run test:rls:live:m36."
+    },
+    {
+      "id": "GAP-168",
+      "severity": "P2",
+      "category": "doc",
+      "module": "M36",
+      "title": "The M36 THREAT_MODEL cites an assertChannelVisible caseload guard that does not exist",
+      "evidence": [
+        "apps/backend/src/modules/36-messaging/THREAT_MODEL.md:19,26,31"
+      ],
+      "verified": false,
+      "recommended_fix": "Correct T-2 and E-1 and record the residual risk.",
+      "verification": "grep."
+    },
+    {
+      "id": "GAP-169",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "M37",
+      "title": "None of the five registered M37 ABAC predicates is applied on any route",
+      "evidence": [
+        "apps/backend/src/modules/37-ipu/abac/predicates.ts:21-52"
+      ],
+      "verified": false,
+      "recommended_fix": "Enforce them in the service, or deregister them through an ADR.",
+      "verification": "Unit tests."
+    },
+    {
+      "id": "GAP-170",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "M37",
+      "title": "ipu_rn_break_glass has no cross-tenant RLS proof; the suite claims to cover 'ALL 26' tables",
+      "evidence": [
+        "packages/db/migrations/__tests__/m37-rls-isolation.live.test.ts:7"
+      ],
+      "verified": false,
+      "recommended_fix": "Add it to the COVERED list.",
+      "verification": "bun run test:rls:live:m37."
+    },
+    {
+      "id": "GAP-171",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M39",
+      "title": "Revocation-cascade ACK tracking never updates; there is no retry cron or alert, and the renewal and draft crons are unbuilt",
+      "evidence": [
+        "apps/backend/src/modules/39-consent/consent-store-db.ts:721-722,1380-1392",
+        "apps/backend/src/modules/39-consent/jobs/cron-workers.ts:57-75",
+        "apps/backend/src/modules/39-consent/alerts-by-m39.ts:36"
+      ],
+      "verified": true,
+      "recommended_fix": "Have consumers record ACKs, and add the retry cron and the alert.",
+      "verification": "Live test: an ACK leads to completed status."
+    },
+    {
+      "id": "GAP-172",
+      "severity": "P2",
+      "category": "security",
+      "module": "M40",
+      "title": "The /admin/mdm/* routes are gated by RBAC alone, with no platform-ops ABAC (unlike M38)",
+      "evidence": [
+        "apps/backend/src/modules/40-mdm/routes/mdm-routes.ts:70-73,215-263"
+      ],
+      "verified": false,
+      "recommended_fix": "Add a platform-ops ABAC check.",
+      "verification": "Route test: a tenant org_admin gets 403."
+    },
+    {
+      "id": "GAP-173",
+      "severity": "P2",
+      "category": "stub",
+      "module": "M40",
+      "title": "None of the eight M40 jobs is built, and merge_request has no writer",
+      "evidence": [
+        "packages/mdm/src/jobs/queues.ts:9-20"
+      ],
+      "verified": false,
+      "recommended_fix": "Wire fuzzy_dedup, the BAA and license scans, and provisional aging.",
+      "verification": "Live test."
+    },
+    {
+      "id": "GAP-174",
+      "severity": "P2",
+      "category": "seam",
+      "module": "M40",
+      "title": "GET /admin/mdm/nppes/sync-log reads a table the app role has no grant on, so it fails with permission denied (500)",
+      "evidence": [
+        "apps/backend/src/modules/40-mdm/mdm-store-db.ts:519-530",
+        "packages/db/migrations/0019_mdm_m40_rls_audit_triggers.sql:77-78"
+      ],
+      "verified": false,
+      "recommended_fix": "Add a SECURITY DEFINER reader.",
+      "verification": "Live route test returns 200."
+    },
+    {
+      "id": "GAP-175",
+      "severity": "P2",
+      "category": "discovered",
+      "module": "global",
+      "title": "38 route responses bypass the M1 error envelope",
+      "evidence": [
+        "apps/backend/src/modules/02-identity/routes/session-step-up.ts:68,178",
+        "apps/backend/src/modules/29-external-interfaces/routes/labs.routes.ts:85,154"
+      ],
+      "verified": false,
+      "recommended_fix": "Throw typed WardenXError subclasses and add a lint rule.",
+      "verification": "rg returns 0 matches."
+    },
+    {
+      "id": "GAP-176",
+      "severity": "P2",
+      "category": "build",
+      "module": "global",
+      "title": ".env.production.example is referenced by bootstrap-vps.sh but was never committed",
+      "evidence": [
+        "deploy/production/bootstrap-vps.sh:9,39-51",
+        ".gitignore:25-26",
+        "apps/backend/src/bootstrap/env.ts:52-241"
+      ],
+      "verified": true,
+      "recommended_fix": "Commit the template, add a .gitignore exception, and add a sync test.",
+      "verification": "git ls-files shows the template, and the unit test passes."
+    },
+    {
+      "id": "GAP-177",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "global",
+      "title": "Seven catalogued events have no emit site (for example, m6.referral.accepted, triaged and duplicate)",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/admission-route-service-db.ts:2556-2577,2950",
+        "apps/backend/src/modules/09-assessments/events-by-m9.ts:124,194"
+      ],
+      "verified": false,
+      "recommended_fix": "Emit them at the transitions, or remove them from the catalog and spec.",
+      "verification": "A real-publisher test for each transition."
+    },
+    {
+      "id": "GAP-178",
+      "severity": "P2",
+      "category": "discovered",
+      "module": "global",
+      "title": "480 FK constraints have no supporting index, and no gate checks for them",
+      "evidence": [
+        "packages/db/migrations/0042_idg_m14_tables.sql:196",
+        "scripts/check-org-index-coverage.ts:1-40"
+      ],
+      "verified": false,
+      "recommended_fix": "Add an indexing migration and a check-fk-index gate.",
+      "verification": "EXPLAIN shows an index scan."
+    },
+    {
+      "id": "GAP-179",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "global",
+      "title": "Frame-fidelity has 14 of 17 mappings partial and 104 of 120 frames unmapped; its notes are stale",
+      "evidence": [
+        "scripts/frame-fidelity/registry.ts:108-109,144,189",
+        "apps/web/src/modules/13-emar/patient-emar.tsx:51,387"
+      ],
+      "verified": false,
+      "recommended_fix": "Re-audit and update the notes, then map the remaining frames.",
+      "verification": "bun run frame:fidelity:check."
+    },
+    {
+      "id": "GAP-180",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "global",
+      "title": "The M22, M25, M05, M11 and M29 specs still prescribe the banned app.tenant_id and withTenantContext",
+      "evidence": [
+        "docs/adr/ADR-0010-tenancy-rls-invariants.md:32-36",
+        "docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:2825-2826",
+        "docs/modules/WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md:1802"
+      ],
+      "verified": true,
+      "recommended_fix": "Normalize to app.org_id and withOrgContext, and add a banned-token rule.",
+      "verification": "grep plus arch:module-docs."
+    },
+    {
+      "id": "GAP-181",
+      "severity": "P2",
+      "category": "stub",
+      "module": "global",
+      "title": "The M9 reassessment-due cron only logs; the M10 alerts, scheduling, validation and retention queues and the M7 snapshot queue have no worker",
+      "evidence": [
+        "apps/backend/src/modules/09-assessments/jobs/cron-workers.ts:205-232",
+        "apps/backend/src/index.ts:5203-5205"
+      ],
+      "verified": false,
+      "recommended_fix": "Implement the cadence output and HOPE retention, or retire the queue declarations.",
+      "verification": "Cron test that checks a side effect."
+    },
+    {
+      "id": "GAP-182",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "global",
+      "title": "Org-wide list routes and the patient-keyed /internal routes have no caseload or system-principal gating",
+      "evidence": [
+        "apps/backend/src/modules/08-encounters/routes/encounters-routes.ts:166-170",
+        "apps/backend/src/modules/09-assessments/routes/assessments-routes.ts:340-365",
+        "apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts:510-512"
+      ],
+      "verified": false,
+      "recommended_fix": "Filter lists by caseload, and restrict /internal routes to a system principal.",
+      "verification": "Route tests: an off-caseload user gets 0 rows and 403 on /internal."
+    },
+    {
+      "id": "GAP-183",
+      "severity": "P2",
+      "category": "coverage",
+      "module": "global",
+      "title": "Six org-scoped PHI tables have no cross-tenant live test as wardenx_app",
+      "evidence": [
+        "packages/db/migrations/__tests__/m6-rls-isolation.live.test.ts:7,53-66",
+        "packages/db/migrations/__tests__/m10-rls-isolation.live.test.ts:57-63",
+        "packages/db/migrations/0233_rls_force_and_hope_result_event_rls.sql:21-27"
+      ],
+      "verified": true,
+      "recommended_fix": "Extend the COVERED arrays with seed rows.",
+      "verification": "bun run test:rls:live:m6, :m7 and :m10."
+    },
+    {
+      "id": "GAP-184",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "global",
+      "title": "Spec route inventories differ from the registered routes in 8 modules (M02, M05, M23, M29, M31, M33, M34, M36)",
+      "evidence": [
+        "docs/modules/WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md:615-622"
+      ],
+      "verified": false,
+      "recommended_fix": "Update to the as-built paths, or mark rows as deferred.",
+      "verification": "Re-run the comparison."
+    },
+    {
+      "id": "GAP-185",
+      "severity": "P2",
+      "category": "security",
+      "module": "global",
+      "title": "The SPA is served without CSP, frame-ancestors, HSTS, nosniff or Referrer-Policy",
+      "evidence": [
+        "deploy/production/web-nginx.conf:1-21",
+        "Dockerfile.web:20",
+        "docs/architecture/WARDENX_SECURITY_HARDENING_v0_2.md:1139-1162"
+      ],
+      "verified": true,
+      "recommended_fix": "Add the §9.6 headers to web-nginx.conf and assert them in smoke.sh.",
+      "verification": "curl -sI shows the headers."
+    },
+    {
+      "id": "GAP-186",
+      "severity": "P2",
+      "category": "spec-drift",
+      "module": "global",
+      "title": "About 15 screen specs have no screen and no deferral row (wound care, prior auth, grievances, accreditation, external portals, OIG and others)",
+      "evidence": [
+        "docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md:25,62,77,93-111",
+        "audit/ui-parity/UI_PARITY.md:13"
+      ],
+      "verified": true,
+      "recommended_fix": "Add a per-spec status table or a spec-to-screenId key.",
+      "verification": "Every spec maps to a screen or a deferral."
+    },
+    {
+      "id": "GAP-187",
+      "severity": "P2",
+      "category": "doc",
+      "module": "global",
+      "title": "Stale UI docs: DEFERRED_SCREENS marks read-only M25 and M26 as 'done', counts and paths are wrong, and main.tsx says nothing is registered",
+      "evidence": [
+        "docs/design/DEFERRED_SCREENS.md:115,471,745-746",
+        "apps/web/src/main.tsx:13",
+        "apps/admin/src/main.tsx:8-9"
+      ],
+      "verified": true,
+      "recommended_fix": "Update the ledger and the comments.",
+      "verification": "bun run docs:ui."
+    },
+    {
+      "id": "GAP-188",
+      "severity": "P2",
+      "category": "doc",
+      "module": "global",
+      "title": "Comments say the auditor, outbox, KEK, x12 and consumers are unbound when they are live",
+      "evidence": [
+        "apps/backend/src/index.ts:1854,3366-3368,4704-4711",
+        "apps/backend/src/modules/05-patient/privacy/index.ts:102-104"
+      ],
+      "verified": false,
+      "recommended_fix": "Rewrite the comments and delete the unused constant.",
+      "verification": "grep."
+    },
+    {
+      "id": "GAP-189",
+      "severity": "P3",
+      "category": "discovered",
+      "module": "M01",
+      "title": "migrate.ts does not detect applied migrations whose file was removed, and the drizzle.config 'frozen journal' comment is stale",
+      "evidence": [
+        "scripts/db/migrate.ts:177-202",
+        "drizzle.config.ts:5-12"
+      ],
+      "verified": false,
+      "recommended_fix": "Warn (or fail under --strict) on orphan tracking rows, and fix the comment.",
+      "verification": "Unit test"
+    },
+    {
+      "id": "GAP-190",
+      "severity": "P3",
+      "category": "doc",
+      "module": "M02",
+      "title": "M2 spec §3.8 says two_factor and passkey have user-ownership RLS; the implementation intentionally has none (ADR-0010 D2)",
+      "evidence": [
+        "packages/db/migrations/0006_identity_m2_rls_audit_triggers.sql:6-28",
+        "docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md:541-549"
+      ],
+      "verified": false,
+      "recommended_fix": "Update spec §3.8.",
+      "verification": "bun run arch:module-docs"
+    },
+    {
+      "id": "GAP-191",
+      "severity": "P3",
+      "category": "security",
+      "module": "M10",
+      "title": "Record identifiers are kept in localStorage and never cleared on sign-out",
+      "evidence": [
+        "apps/web/src/modules/10-hope/hope-assessment-detail.tsx:355-402",
+        "apps/web/src/modules/04-audit/audit-exports.tsx:47-89"
+      ],
+      "verified": false,
+      "recommended_fix": "Use sessionStorage, or clear wx.* keys on logout.",
+      "verification": "DOM test"
+    },
+    {
+      "id": "GAP-192",
+      "severity": "P3",
+      "category": "discovered",
+      "module": "M11",
+      "title": "The M11/M12 PDF renderer and M28 FHIR publisher deny-stubs and their interfaces are exported but never consumed",
+      "evidence": [
+        "apps/backend/src/modules/11-orders/seams/m22-order-pdf.ts:47",
+        "apps/backend/src/modules/12-dosespot/seams/m22-medication-order-pdf.ts:49",
+        "apps/backend/src/modules/11-orders/M11_DR_INT_INVENTORY.md:64"
+      ],
+      "verified": true,
+      "recommended_fix": "Delete the stubs and fix the inventories.",
+      "verification": "bun run build && arch:boundaries"
+    },
+    {
+      "id": "GAP-193",
+      "severity": "P3",
+      "category": "coverage",
+      "module": "M15",
+      "title": "Two M15 JSON GETs, plus the system feature-flags GET, publish no response schema",
+      "evidence": [
+        "audit/openapi-coverage/OPENAPI_COVERAGE.md:8,27"
+      ],
+      "verified": false,
+      "recommended_fix": "Add response schemas in enrichments.ts.",
+      "verification": "bun run openapi:coverage shows GET-no-resp at 8 or fewer"
+    },
+    {
+      "id": "GAP-194",
+      "severity": "P3",
+      "category": "spec-drift",
+      "module": "M16",
+      "title": "startOutreach ignores expectedVersion (`void expectedVersion`)",
+      "evidence": [
+        "apps/backend/src/modules/16-bereavement/routes/write-service-drizzle.ts:1415-1418"
+      ],
+      "verified": false,
+      "recommended_fix": "Drop the field or guard it in the WHERE clause.",
+      "verification": "A concurrent start returns 409."
+    },
+    {
+      "id": "GAP-195",
+      "severity": "P3",
+      "category": "doc",
+      "module": "M17",
+      "title": "M17 routes /arrive and /memberships/:id/credentials are implemented but missing from spec §4.1",
+      "evidence": [
+        "apps/backend/src/modules/17-scheduling/routes/scheduling-routes.ts:253,574-620"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the rows to the spec.",
+      "verification": "arch:module-docs"
+    },
+    {
+      "id": "GAP-196",
+      "severity": "P3",
+      "category": "spec-drift",
+      "module": "M24",
+      "title": "refreshEligibility records the service state from the first credential found (LIMIT 1)",
+      "evidence": [
+        "apps/backend/src/modules/24-billing-medicaid/routes/write-service-drizzle.ts:1153-1160"
+      ],
+      "verified": false,
+      "recommended_fix": "Derive the state from the coverage.",
+      "verification": "Unit test"
+    },
+    {
+      "id": "GAP-197",
+      "severity": "P3",
+      "category": "spec-drift",
+      "module": "M26",
+      "title": "The PS&R import path differs from the spec, and the platform cap routes lack a platformOnly guard",
+      "evidence": [
+        "apps/backend/src/modules/26-cap/routes/psr.routes.ts:34-36",
+        "apps/backend/src/modules/26-cap/routes/platform.routes.ts:24-28"
+      ],
+      "verified": false,
+      "recommended_fix": "Align the spec or add the guard.",
+      "verification": "arch:module-docs"
+    },
+    {
+      "id": "GAP-198",
+      "severity": "P3",
+      "category": "spec-drift",
+      "module": "M28",
+      "title": "fhir_inbound_owner_module_match omits caseload_or_scope",
+      "evidence": [
+        "apps/backend/src/modules/28-fhir/abac-predicates.ts:188-203"
+      ],
+      "verified": false,
+      "recommended_fix": "Add the caseload check.",
+      "verification": "Unit test"
+    },
+    {
+      "id": "GAP-199",
+      "severity": "P3",
+      "category": "doc",
+      "module": "M31",
+      "title": "The M31 and M8 mount comments call the M34 key ring a slice deny-stub; it is live on a DB boot",
+      "evidence": [
+        "apps/backend/src/index.ts:3259-3267,3904-3907",
+        "apps/backend/src/index.ts:1855-1872"
+      ],
+      "verified": true,
+      "recommended_fix": "Update both comments.",
+      "verification": "Re-read the edited lines"
+    },
+    {
+      "id": "GAP-200",
+      "severity": "P3",
+      "category": "doc",
+      "module": "M36",
+      "title": "M36 spec §8.1.2 says no outbox catalog exists, and the mount comment says writes return 501",
+      "evidence": [
+        "docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md:2369",
+        "apps/backend/src/modules/36-messaging/index.ts:132-137"
+      ],
+      "verified": true,
+      "recommended_fix": "Update the spec and comments.",
+      "verification": "arch:module-docs"
+    },
+    {
+      "id": "GAP-201",
+      "severity": "P3",
+      "category": "doc",
+      "module": "M39",
+      "title": "Spec routes 25-27 (/portal/consents/*) are absent; this is a documented Phase-2 deferral",
+      "evidence": [
+        "docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md:1072-1074,2294"
+      ],
+      "verified": false,
+      "recommended_fix": "None for now.",
+      "verification": "n/a"
+    },
+    {
+      "id": "GAP-202",
+      "severity": "P3",
+      "category": "doc",
+      "module": "global",
+      "title": "Route-service docstrings say writes fail closed with 501; no route returns 501",
+      "evidence": [
+        "apps/backend/src/modules/06-admission/index.ts:26-31",
+        "apps/backend/src/modules/36-messaging/index.ts:136"
+      ],
+      "verified": false,
+      "recommended_fix": "Delete the sentences.",
+      "verification": "grep"
+    },
+    {
+      "id": "GAP-203",
+      "severity": "P3",
+      "category": "doc",
+      "module": "global",
+      "title": "CLAUDE.md says audit-fitness has a --check mode inside arch:fitness; it does not",
+      "evidence": [
+        "CLAUDE.md:66",
+        "scripts/audit-fitness.ts:1-15",
+        "scripts/run-fitness-gates.ts:30-79"
+      ],
+      "verified": true,
+      "recommended_fix": "Add a --check mode, or drop the mention (and mirror the change to AGENTS.md).",
+      "verification": "cmp CLAUDE.md AGENTS.md"
+    },
+    {
+      "id": "GAP-204",
+      "severity": "P3",
+      "category": "doc",
+      "module": "global",
+      "title": "Several load-bearing comments describe behavior the code no longer has",
+      "evidence": [
+        "apps/backend/src/index.ts:3258-3263,5201-5205",
+        "apps/backend/src/modules/08-encounters/encounters-route-service-db.ts:19-21"
+      ],
+      "verified": false,
+      "recommended_fix": "Update or delete the stale comments.",
+      "verification": "grep the cited lines"
+    },
+    {
+      "id": "GAP-205",
+      "severity": "P3",
+      "category": "discovered",
+      "module": "global",
+      "title": "registerM23-M27Consumers and the in-memory consumer stores are exported but never called",
+      "evidence": [
+        "apps/backend/src/modules/25-remittance/consumers/index.ts:85-91",
+        "apps/backend/src/modules/26-cap/consumers/index.ts:72-78"
+      ],
+      "verified": false,
+      "recommended_fix": "Delete them or fold them into the live bindings.",
+      "verification": "rg"
+    },
+    {
+      "id": "GAP-206",
+      "severity": "P3",
+      "category": "doc",
+      "module": "global",
+      "title": "docs/README is incomplete, some counts are stale (35 vs 48 ADRs, 461 vs 502 tables), and some relative links are broken",
+      "evidence": [
+        "docs/README.md:95",
+        "docs/APP_OVERVIEW.md:160",
+        "docs/REMEDIATION_SUMMARY.md:40-41",
+        "docs/audits/GAP_ANALYSIS_AUDIT_PROMPT.md:5,115"
+      ],
+      "verified": false,
+      "recommended_fix": "Index all subtrees, point to generated reports instead of counts, and fix the links.",
+      "verification": "Link resolver reports 0 broken links"
+    },
+    {
+      "id": "GAP-207",
+      "severity": "P3",
+      "category": "discovered",
+      "module": "global",
+      "title": "The redesign sweep skipped apps/admin and apps/portal",
+      "evidence": [
+        "packages/ui/src/web/layouts/regions.tsx:29,83,238",
+        "apps/admin/src/modules/34-saas-platform/feature-flags.tsx:268"
+      ],
+      "verified": false,
+      "recommended_fix": "Move the list-chrome styles into a shared stylesheet.",
+      "verification": "Visual check"
+    },
+    {
+      "id": "GAP-208",
+      "severity": "P3",
+      "category": "doc",
+      "module": "global",
+      "title": "Stale seam-status comments and an unused M33 deny-stub bundle mislead seam audits",
+      "evidence": [
+        "apps/backend/src/index.ts:1201-1203,4557-4558",
+        "packages/reporting/src/seam-registration.ts:149-178",
+        "apps/backend/src/bootstrap/seams/registry.ts:591-648"
+      ],
+      "verified": true,
+      "recommended_fix": "Fix the comments and delete or wire the bundle.",
+      "verification": "git grep bindReportingConsumedSeams"
+    }
+  ],
+  "test_infra_failures": [
+    {
+      "suite": "bun run check:boot:platform",
+      "error": "DATABASE_PLATFORM_URL is required — this check exists to exercise the platform-credential boot. (exit 1)",
+      "remediation": "Run against a throwaway migrated DB with a provisioned wardenx_platform_login (as ci.yml outbox-boot does, .github/workflows/ci.yml:1026-1042) or document a local value; do not point at the shared dev DB."
+    }
+  ]
+}
+```

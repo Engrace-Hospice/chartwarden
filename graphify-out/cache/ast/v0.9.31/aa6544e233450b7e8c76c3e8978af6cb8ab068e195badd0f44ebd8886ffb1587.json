@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_scripts_fixtures_tenancy_audit_exemption_packages_db_migrations_0002_fixture_superseded_org_scope_sql", "label": "0002_fixture_superseded_org_scope.sql", "file_type": "code", "source_file": "scripts/__fixtures__/tenancy-audit-exemption/packages/db/migrations/0002_fixture_superseded_org_scope.sql", "source_location": null}], "edges": []}

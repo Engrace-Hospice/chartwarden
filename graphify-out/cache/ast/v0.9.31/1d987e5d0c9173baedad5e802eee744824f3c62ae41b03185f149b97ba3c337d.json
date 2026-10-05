@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0252_document_aggregate_type_care_plan_sql", "label": "0252_document_aggregate_type_care_plan.sql", "file_type": "code", "source_file": "packages/db/migrations/0252_document_aggregate_type_care_plan.sql", "source_location": null}], "edges": []}

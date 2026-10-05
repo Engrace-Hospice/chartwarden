@@ -83,3 +83,27 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
 - **Issue tracker:** GitHub Issues on `Engrace-Hospice/wardenx` via `gh` — `docs/agents/issue-tracker.md`.
 - **Triage labels:** five canonical roles, label string = name — `docs/agents/triage-labels.md`.
 - **Domain docs:** single-context; repo-root `CONTEXT.md` (not yet created) plus `docs/adr/` — `docs/agents/domain.md`.
+
+## Using ECC
+
+[ECC](https://github.com/affaan-m/ECC) is an optional per-user Claude Code plugin (`ecc@ecc`); these notes
+apply only when it is installed. **This file and the repo's own gates win over ECC's generic rules**
+(its 80% coverage target, commit-and-push habit and PR flow included).
+
+- **Plan first:** `/ecc:plan <task>` before any multi-file change — it grounds the plan in the code and
+  waits for approval; `/ecc:plan-canvas` approves in the browser. Use `/ecc:plan-prd` only for
+  multi-day module work.
+- **Implement test-first** with the `tdd-workflow` skill (vitest); `/ecc:build-fix` after a failing
+  `bun run typecheck`. The real gate is `bun run typecheck && bun run arch:fitness && bun run test`,
+  not `/ecc:quality-gate` (it does not know `arch:fitness`).
+- **Review before the PR** in a fresh agent: `/ecc:code-review` (prefixed — the built-in
+  `/code-review` is a different command), `/ecc:react-review` for `apps/web`, `/ecc:security-scan` for
+  auth/PHI/RLS code. `database-migrations` / `postgres-patterns` are advice only; the custom migration
+  runner, `arch:tenancy` and `arch:migration-numbering` decide.
+- **Long work:** `/ecc:save-session` / `/ecc:resume-session` to hand context across sessions.
+- **Avoid:** the multi-agent commands (`orch-*`, `multi-*`, `gan-*`, `epic-*`, `loop-start`,
+  `santa-loop`) and `/ecc:pr` / `/ecc:prp-pr` — they push per round, which defeats the batching rule
+  above and burns metered Actions minutes.
+- **GateGuard** (an ECC hook) blocks a first-time file write until the importers, affected API, data
+  shapes and the user's instruction are stated; answer it rather than disabling it
+  (`ECC_GATEGUARD=off` / `GATEGUARD_EXEMPT_GLOBS` exist).

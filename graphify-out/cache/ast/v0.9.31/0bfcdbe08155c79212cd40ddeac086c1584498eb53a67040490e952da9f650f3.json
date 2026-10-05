@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_scripts_fixtures_tenancy_dynamic_policy_packages_db_migrations_0001_fixture_dynamic_policy_sql", "label": "0001_fixture_dynamic_policy.sql", "file_type": "code", "source_file": "scripts/__fixtures__/tenancy-dynamic-policy/packages/db/migrations/0001_fixture_dynamic_policy.sql", "source_location": null}], "edges": []}
