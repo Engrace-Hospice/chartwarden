@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_packages_db_migrations_0025_authz_template_read_policy_sql", "label": "0025_authz_template_read_policy.sql", "file_type": "code", "source_file": "packages/db/migrations/0025_authz_template_read_policy.sql", "source_location": null}], "edges": []}

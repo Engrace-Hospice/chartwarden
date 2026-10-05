@@ -17,15 +17,34 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  createDbActorEnrichmentReader,
+  createPredicateRegistry,
+  registerAbacRegistry,
+  registerDbEffectivePermissionResolver,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
+import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { userLifecyclePlatformOpsPredicate } from "../src/modules/02-identity/abac-predicates";
+import {
+  createContextActorResolver,
+  createOrgScopedAuditExecutor,
+  createOrgScopedIdentityOutbox,
+} from "../src/modules/02-identity/identity-ports";
+import { createDbUserDirectory } from "../src/modules/02-identity/identity-stores-db";
 import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import {
   type OrganizationLifecycleOutboxPort,
   createDrizzleOrganizationLifecycleWriter,
 } from "../src/modules/02-identity/organization-lifecycle";
+import { registerPlatformUserRoutes } from "../src/modules/02-identity/routes/platform-user-routes";
+import { createDbSessionWriter } from "../src/modules/02-identity/session-writer-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -196,5 +215,271 @@ describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real ward
     expect(await reader.getStatus(ORG_A)).toBe("closed");
     expect(await reader.getStatus(ORG_B)).toBe("active");
     expect(await reader.getStatus("00000000-0000-4000-8000-000000000000")).toBeNull();
+  });
+
+  // §4.7 `user.deactivate` "platform_ops (any)" — POST /api/v1/platform/users/:id/deactivate, driven
+  // through the route with the REAL directory / session writer / org-scoped audit + outbox, and the REAL
+  // RBAC store + actor-enrichment reader, all as `wardenx_app`. Only session authentication (a header
+  // shim naming the user + bound org) and the step-up ceremony are stood in for.
+  describe("platform user deactivate (§4.7 platform_ops any)", () => {
+    const ORG_OPS = "55555555-5555-4555-8555-5555f2050105";
+    const OPERATOR = "66666666-6666-4666-8666-6666f2050106";
+    const SPOOFER = "77777777-7777-4777-8777-7777f2050107";
+    const TARGET = "88888888-8888-4888-8888-8888f2050108";
+
+    async function bindRole(input: {
+      roleOrg: string | null;
+      key: string;
+      category: string;
+      membershipId: string;
+      membershipOrg: string;
+    }): Promise<void> {
+      const role = await admin.query<{ id: string }>(
+        `INSERT INTO role (organization_id,key,name,category) VALUES ($1,$2,$2,$3) RETURNING id`,
+        [input.roleOrg, input.key, input.category],
+      );
+      const roleId = role.rows[0]?.id;
+      await admin.query(
+        `INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'user.deactivate')`,
+        [input.roleOrg, roleId],
+      );
+      await admin.query(
+        `INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)`,
+        [input.membershipOrg, input.membershipId, roleId],
+      );
+    }
+
+    beforeAll(async () => {
+      await admin.query(
+        `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES
+           ($1,'f11d19-ops','Platform Ops LLC','Platform Ops','active')`,
+        [ORG_OPS],
+      );
+      await admin.query(
+        `INSERT INTO "user" (id,email,name) VALUES
+           ($1,'operator@f11d19.test','Op Erator'),($2,'spoofer@f11d19.test','Spoo Fer'),
+           ($3,'target@f11d19.test','Tar Get')`,
+        [OPERATOR, SPOOFER, TARGET],
+      );
+      const m = await admin.query<{ id: string; user_id: string; organization_id: string }>(
+        `INSERT INTO membership (user_id,organization_id,status) VALUES
+           ($1,$4,'active'),($2,$5,'active'),($3,$5,'active'),($3,$4,'active')
+         RETURNING id,user_id,organization_id`,
+        [OPERATOR, SPOOFER, TARGET, ORG_OPS, ORG_B],
+      );
+      const membershipOf = (user: string, org: string) =>
+        m.rows.find((r) => r.user_id === user && r.organization_id === org)?.id as string;
+      await admin.query(
+        `INSERT INTO permission (key,resource,action,category) VALUES ('user.deactivate','user','deactivate','admin')
+         ON CONFLICT (key) DO NOTHING`,
+      );
+      // The operator: a PLATFORM-OWNED platform_ops row (organization_id NULL), as scripts/db/platform-role.ts grants it.
+      await bindRole({
+        roleOrg: null,
+        key: "platform_ops",
+        category: "platform_staff",
+        membershipId: membershipOf(OPERATOR, ORG_OPS),
+        membershipOrg: ORG_OPS,
+      });
+      // The spoofer is ORG_B's org_admin and so legitimately holds `user.deactivate` there — RBAC passes and
+      // the platform-role ABAC predicate is what must refuse.
+      await bindRole({
+        roleOrg: ORG_B,
+        key: "org_admin",
+        category: "admin_executive",
+        membershipId: membershipOf(SPOOFER, ORG_B),
+        membershipOrg: ORG_B,
+      });
+      // ...plus a TENANT-owned `platform_ops` row in ORG_B. Migration 0318's CHECK refuses writing one
+      // now, so it is staged the way a pre-0318 legacy row exists: with the constraint briefly lifted.
+      const reserved = await admin.query<{ name: string; def: string }>(
+        `SELECT conname AS name, pg_get_constraintdef(oid) AS def FROM pg_constraint
+          WHERE conrelid = 'role'::regclass AND contype = 'c' AND conname LIKE 'role_platform%'`,
+      );
+      for (const c of reserved.rows)
+        await admin.query(`ALTER TABLE role DROP CONSTRAINT ${c.name}`);
+      await bindRole({
+        roleOrg: ORG_B,
+        key: "platform_ops",
+        category: "admin_executive",
+        membershipId: membershipOf(SPOOFER, ORG_B),
+        membershipOrg: ORG_B,
+      });
+      // Restored verbatim (pg_get_constraintdef keeps NOT VALID), so later suites see the real backstop.
+      for (const c of reserved.rows)
+        await admin.query(`ALTER TABLE role ADD CONSTRAINT ${c.name} ${c.def}`);
+      for (const [id, org] of [
+        ["sess-target-b", ORG_B],
+        ["sess-target-ops", ORG_OPS],
+      ]) {
+        await admin.query(
+          `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
+          [id, TARGET, org, `tok-${id}`],
+        );
+      }
+    });
+
+    afterAll(() => {
+      resetAuthorizationContract();
+      resetRbacEngine();
+    });
+
+    function server() {
+      resetAuthorizationContract();
+      resetRbacEngine();
+      registerDbEffectivePermissionResolver(handle.db);
+      const registry = createPredicateRegistry();
+      registry.register("user_lifecycle_platform_ops", userLifecyclePlatformOpsPredicate);
+      registry.register("step_up_recent", async () => true); // the ceremony is not under test here
+      registerAbacRegistry(registry);
+      const enrichment = createDbActorEnrichmentReader(handle.db);
+      const app = buildServer({
+        authenticate: async (request: FastifyRequest) => {
+          const user = request.headers["x-test-user"];
+          const org = request.headers["x-test-org"];
+          if (typeof user !== "string" || typeof org !== "string") return;
+          request.context.userId = user;
+          request.context.organizationId = org;
+          request.context.roles = [...((await enrichment.read({ orgId: org }, user))?.roles ?? [])];
+        },
+        security: { rateLimitEnabled: false },
+      });
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
+      registerPlatformUserRoutes(app, {
+        actors: createContextActorResolver(),
+        users: createDbUserDirectory(handle.db),
+        sessions: createDbSessionWriter(handle.db),
+        audit: createOrgScopedAuditExecutor(handle.db),
+        outbox: createOrgScopedIdentityOutbox(handle.db, {
+          publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
+        }),
+      });
+      return app;
+    }
+
+    const deactivate = (app: ReturnType<typeof server>, actor: string, actorOrg: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/platform/users/${TARGET}/deactivate`,
+        headers: { "x-test-user": actor, "x-test-org": actorOrg },
+        payload: { reason: "platform offboard — compromised credential" },
+      });
+
+    async function targetStatus(): Promise<string | undefined> {
+      const r = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [
+        TARGET,
+      ]);
+      return r.rows[0]?.status;
+    }
+
+    it("a tenant org_admin with a tenant-owned platform_ops (legacy spoof row) → 403 at the ABAC gate, nothing touched", async () => {
+      const app = server();
+      const res = await deactivate(app, SPOOFER, ORG_B);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.message).toContain("user_lifecycle_platform_ops");
+      expect(await targetStatus()).toBe("active");
+      const s = await admin.query(`SELECT id FROM "session" WHERE user_id=$1`, [TARGET]);
+      expect(s.rows).toHaveLength(2);
+      await app.close();
+    });
+
+    it("a platform-owned platform_ops deactivates a member of TWO orgs: status, memberships, sessions, audit, outbox", async () => {
+      const app = server();
+      const res = await deactivate(app, OPERATOR, ORG_OPS);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        deactivated: true,
+        alreadyDeactivated: false,
+        sessionsRevoked: 2,
+        membershipsRevoked: 2,
+      });
+      expect(await targetStatus()).toBe("deactivated");
+      // §2.2.1 "All memberships revoked" — in BOTH orgs, written as wardenx_app (RLS re-pointed per org);
+      // the operator's own membership in ORG_OPS is untouched.
+      const ms = await admin.query<{ organization_id: string; status: string }>(
+        `SELECT organization_id, status FROM membership WHERE user_id=$1 ORDER BY organization_id`,
+        [TARGET],
+      );
+      expect(ms.rows.map((r) => r.status)).toEqual(["revoked", "revoked"]);
+      const op = await admin.query<{ status: string }>(
+        `SELECT status FROM membership WHERE user_id=$1`,
+        [OPERATOR],
+      );
+      expect(op.rows.map((r) => r.status)).toEqual(["active"]);
+      const s = await admin.query(`SELECT id FROM "session" WHERE user_id=$1`, [TARGET]);
+      expect(s.rows).toHaveLength(0);
+
+      const audit = await admin.query(
+        `SELECT organization_id, context FROM audit_event WHERE resource_id=$1 AND event_type='m2.user.deactivated'`,
+        [TARGET],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0].organization_id).toBe(ORG_OPS);
+      expect(audit.rows[0].context).toMatchObject({
+        scope: "platform",
+        memberOrganizationIds: [ORG_B, ORG_OPS].sort(),
+      });
+      expect(audit.rows[0].context.revokedMembershipIds).toHaveLength(2);
+      const outbox = await admin.query(
+        `SELECT organization_id, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m2.user.deactivated'`,
+        [TARGET],
+      );
+      expect(outbox.rows).toHaveLength(1);
+      expect(outbox.rows[0].payload).toMatchObject({ userId: TARGET, scope: "platform" });
+      await app.close();
+    });
+
+    it("a repeat call is idempotent: 200 alreadyDeactivated, no second audit row or event", async () => {
+      const app = server();
+      const res = await deactivate(app, OPERATOR, ORG_OPS);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        alreadyDeactivated: true,
+        sessionsRevoked: 0,
+        membershipsRevoked: 0,
+      });
+      const audit = await admin.query(
+        `SELECT id FROM audit_event WHERE resource_id=$1 AND event_type='m2.user.deactivated'`,
+        [TARGET],
+      );
+      expect(audit.rows).toHaveLength(1);
+      await app.close();
+    });
+
+    it("the tenant path (deactivateFromOrg) revokes the sole membership too, as wardenx_app", async () => {
+      const SOLE = "99999999-9999-4999-8999-9999f2050109";
+      await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'sole@f11d19.test','So Le')`, [
+        SOLE,
+      ]);
+      await admin.query(
+        `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')`,
+        [SOLE, ORG_A],
+      );
+      const outcome = await createDbUserDirectory(handle.db).deactivateFromOrg({
+        userId: SOLE,
+        organizationId: ORG_A,
+        reason: "left the agency",
+      });
+      expect(outcome).toBe("deactivated");
+      const u = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [SOLE]);
+      expect(u.rows[0]?.status).toBe("deactivated");
+      const m = await admin.query<{ status: string }>(
+        `SELECT status FROM membership WHERE user_id=$1`,
+        [SOLE],
+      );
+      expect(m.rows.map((r) => r.status)).toEqual(["revoked"]);
+    });
+
+    it("an unknown user → 404", async () => {
+      const app = server();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/platform/users/99999999-9999-4999-8999-9999f20501ff/deactivate",
+        headers: { "x-test-user": OPERATOR, "x-test-org": ORG_OPS },
+        payload: { reason: "nobody" },
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
   });
 });

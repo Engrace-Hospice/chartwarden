@@ -20,6 +20,8 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  type EmarAbacResolver,
+  type RecordAdministrationArgs,
   buildEmarAbacPredicates,
   createInMemoryEmarBackend,
   registerEmarRoutes,
@@ -35,14 +37,30 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // A portal session pinned to one patient (M31) — what `emar.scope` reads as `sessionPatientId`.
+  const sessionPatient = request.headers["x-test-session-patient"];
+  if (typeof sessionPatient === "string")
+    request.context.attributes.sessionPatientId = sessionPatient;
 }
 
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ORDER = "00000000-0000-4000-8000-0000000000a1";
+const CONTROLLED_ORDER = "00000000-0000-4000-8000-0000000000a2";
 const WORKSHEET = "22222222-2222-4222-8222-222222222222";
 const CAREGIVER_ADMIN = "33333333-3333-4333-8333-333333333333";
 const ADMIN_MEMBERSHIP = "00000000-0000-4000-8000-0000000000c1";
+/** GAP-004 — a second patient nobody here has on caseload, and that patient's comfort kit. */
+const OTHER_PATIENT = "44444444-4444-4444-8444-444444444444";
+const OTHER_KIT = "55555555-5555-4555-8555-555555555555";
+/** GAP-004 — OTHER_PATIENT's own order and scheduled dose (for the patient-consistency refusals). */
+const OTHER_ORDER = "00000000-0000-4000-8000-0000000000a3";
+const OTHER_DOSE = "66666666-6666-4666-8666-666666666666";
+/** An order seeded for ANOTHER tenant: the slice must not resolve it for ORG (fail-closed, like M12). */
+const FOREIGN_ORDER = "00000000-0000-4000-8000-0000000000a4";
+/** Membership ids the witness flow names on the wire (uuid-validated there). */
+const MEM_MD = "00000000-0000-4000-8000-0000000000c3";
+const MEM_RN_OFF = "00000000-0000-4000-8000-0000000000c4";
 const NOW = "2026-06-08T12:00:00.000Z";
 
 const READ = [
@@ -83,18 +101,83 @@ const PERMISSION_SEED = [
   },
   { userId: "chap_1", permissions: [...READ, "administration.record"] },
   { userId: "viewer_1", permissions: READ },
+  // GAP-004 — a caregiver portal session: may attest, holds no caseload.
+  { userId: "cg_1", permissions: ["administration.caregiver_record"] },
+  // GAP-004 — an RN with the full RN key set who is NOT on PATIENT's caseload.
+  {
+    userId: "rn_off",
+    permissions: [
+      ...READ,
+      "administration.record",
+      "administration.correct",
+      "reconciliation.decide",
+      "administration.witness_attest",
+    ],
+  },
 ];
 
-function makeServer() {
+/** GAP-004 — who is on PATIENT's caseload (stands in for M5's CaseloadProvider). */
+const CASELOAD = new Set(["md_1", "rn_1", "chap_1", "viewer_1"]);
+
+/** How many times the §4.7 predicates asked the resolver for an order fact (offline-sync batching). */
+interface ResolverCalls {
+  loadOrderMedClass: number;
+  loadScopePatientId: number;
+}
+
+function makeServer(opts: { calls?: ResolverCalls } = {}) {
   const backend = createInMemoryEmarBackend({
     now: () => NOW,
     memberships: [
-      { userId: "md_1", membershipId: "mem_md", organizationId: ORG, discipline: "md" },
+      { userId: "md_1", membershipId: MEM_MD, organizationId: ORG, discipline: "md" },
       { userId: "rn_1", membershipId: "mem_rn", organizationId: ORG, discipline: "rn" },
       { userId: "chap_1", membershipId: "mem_chap", organizationId: ORG, discipline: "chaplain" },
       { userId: "viewer_1", membershipId: "mem_view", organizationId: ORG, discipline: "auditor" },
+      { userId: "rn_off", membershipId: MEM_RN_OFF, organizationId: ORG, discipline: "rn" },
+    ],
+    orders: [
+      {
+        medicationOrderId: ORDER,
+        organizationId: ORG,
+        patientId: PATIENT,
+        route: "oral",
+        medClass: "standard",
+      },
+      {
+        medicationOrderId: CONTROLLED_ORDER,
+        organizationId: ORG,
+        patientId: PATIENT,
+        route: "oral",
+        medClass: "controlled_substance",
+      },
+      {
+        medicationOrderId: OTHER_ORDER,
+        organizationId: ORG,
+        patientId: OTHER_PATIENT,
+        route: "oral",
+        medClass: "standard",
+      },
+      {
+        medicationOrderId: FOREIGN_ORDER,
+        organizationId: "org_b",
+        patientId: PATIENT,
+        route: "oral",
+        medClass: "standard",
+      },
+    ],
+    scheduledDoses: [
+      {
+        id: OTHER_DOSE,
+        organizationId: ORG,
+        patientId: OTHER_PATIENT,
+        medicationOrderId: OTHER_ORDER,
+        dueAt: NOW,
+      },
     ],
     caseManagers: { [PATIENT]: "rn_1" },
+    deployments: [
+      { id: OTHER_KIT, organizationId: ORG, patientId: OTHER_PATIENT, admissionId: "adm-2" },
+    ],
     administrations: [
       {
         id: CAREGIVER_ADMIN,
@@ -129,7 +212,27 @@ function makeServer() {
   // A FRESH predicate registry per server (the shared `abacRegistry` would otherwise persist a predicate
   // closed over a prior test's backend across the file).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildEmarAbacPredicates({ resolver: backend }))) {
+  const isInCaseload = async (q: { userId: string; patientId: string }) =>
+    q.patientId === PATIENT && CASELOAD.has(q.userId);
+  const { calls } = opts;
+  const resolver: EmarAbacResolver = calls
+    ? {
+        loadWitnessFacts: (...a) => backend.loadWitnessFacts(...a),
+        loadCaregiverReviewFacts: (...a) => backend.loadCaregiverReviewFacts(...a),
+        loadWorksheetTriggerKind: (...a) => backend.loadWorksheetTriggerKind(...a),
+        loadScopePatientId: (...a) => {
+          calls.loadScopePatientId++;
+          return backend.loadScopePatientId(...a);
+        },
+        loadOrderMedClass: (...a) => {
+          calls.loadOrderMedClass++;
+          return backend.loadOrderMedClass(...a);
+        },
+      }
+    : backend;
+  for (const [name, predicate] of Object.entries(
+    buildEmarAbacPredicates({ resolver, isInCaseload }),
+  )) {
     reg.register(name, predicate);
   }
   registerAbacRegistry(reg);
@@ -143,6 +246,14 @@ const MD = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "md" };
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const CHAPLAIN = { "x-test-user": "chap_1", "x-test-org": ORG, "x-test-roles": "chaplain" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
+const RN_OFF = { "x-test-user": "rn_off", "x-test-org": ORG, "x-test-roles": "rn" };
+/** A caregiver whose portal session is pinned to PATIENT. */
+const CAREGIVER = {
+  "x-test-user": "cg_1",
+  "x-test-org": ORG,
+  "x-test-roles": "caregiver",
+  "x-test-session-patient": PATIENT,
+};
 
 const recordBody = (over: Record<string, unknown> = {}) => ({
   medicationOrderId: ORDER,
@@ -299,6 +410,352 @@ describe("M13-T08 — §2.8 reconciliation finalize gate", () => {
       payload: { attestation: "reviewed" },
     });
     expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+describe("GAP-004 — §4.1 caseload_or_scope (emar.scope) on M13 PHI routes", () => {
+  it.each([
+    ["GET", `/api/v1/administrations/${CAREGIVER_ADMIN}`],
+    ["GET", `/api/v1/administrations?patient=${PATIENT}`],
+    ["GET", `/api/v1/scheduled-doses?patient=${PATIENT}`],
+    ["GET", `/api/v1/missed-doses?patient=${PATIENT}`],
+    ["GET", `/api/v1/reconciliation/worksheets?patient=${PATIENT}`],
+    ["GET", `/api/v1/reconciliation/worksheets/${WORKSHEET}`],
+    ["GET", `/api/v1/comfort-kits/deployments?patient=${PATIENT}`],
+  ] as const)("an off-caseload RN gets 404 on %s %s", async (method, url) => {
+    const { app } = makeServer();
+    const res = await app.inject({ method, url, headers: RN_OFF });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("an off-caseload RN cannot record, correct or decide for the patient (404)", async () => {
+    const { app } = makeServer();
+    const record = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: RN_OFF,
+      payload: recordBody(),
+    });
+    expect(record.statusCode).toBe(404);
+    const correct = await app.inject({
+      method: "POST",
+      url: `/api/v1/administrations/${CAREGIVER_ADMIN}/correct`,
+      headers: RN_OFF,
+      payload: { reason: "wrong dose entered" },
+    });
+    expect(correct.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("an on-caseload RN cannot draw down another patient's comfort kit against their own order (404)", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: RN,
+      payload: recordBody({ comfortKitDeploymentId: OTHER_KIT }),
+    });
+    expect(res.statusCode).toBe(404);
+    expect(await backend.listAdministrations(ORG, { patient: OTHER_PATIENT })).toEqual([]);
+    await app.close();
+  });
+
+  it("a caregiver session pinned to one patient cannot attest for another (404); its own patient → 201", async () => {
+    const { app } = makeServer();
+    const attest = (patientId: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/administrations/caregiver-attested",
+        headers: CAREGIVER,
+        payload: {
+          patientId,
+          medicationOrderId: ORDER,
+          administeredAt: NOW,
+          administeredAmount: 5,
+          administeredUnit: "mg",
+          route: "oral",
+          caregiverAttestationText: "gave the evening dose",
+        },
+      });
+    expect((await attest(OTHER_PATIENT)).statusCode).toBe(404);
+    expect((await attest(PATIENT)).statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("an on-caseload RN reads the same administration (200)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/administrations/${CAREGIVER_ADMIN}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("an org-wide role (medical_director) passes without a caseload assignment", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/administrations?patient=${PATIENT}`,
+      headers: { ...RN_OFF, "x-test-roles": "medical_director" },
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a list with no patient named is refused rather than org-wide", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/administrations", headers: RN });
+    expect([400, 404]).toContain(res.statusCode);
+    await app.close();
+  });
+});
+
+describe("GAP-005 — the controlled-substance witness keys on the ORDER, not the body", () => {
+  it("a Schedule II order sent as medClass 'standard' with no witness is refused (422 MED_CLASS_MISMATCH)", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
+      payload: recordBody({ medicationOrderId: CONTROLLED_ORDER, medClass: "standard" }),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json())).toContain("MED_CLASS_MISMATCH");
+    const list = await backend.listAdministrations(ORG, { patient: PATIENT });
+    expect(list.some((a) => a.medicationOrderId === CONTROLLED_ORDER)).toBe(false);
+    await app.close();
+  });
+
+  it("the same order declared honestly still demands the witness token", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
+      payload: recordBody({
+        medicationOrderId: CONTROLLED_ORDER,
+        medClass: "controlled_substance",
+      }),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json())).not.toContain("MED_CLASS_MISMATCH");
+    await app.close();
+  });
+});
+
+describe("GAP-004 — witness-attest is unscoped by design; the token is bound to the order's patient", () => {
+  const attest = (over: Record<string, unknown> = {}) => ({
+    patientId: PATIENT,
+    medicationOrderId: CONTROLLED_ORDER,
+    administeringClinicianMembershipId: MEM_MD,
+    attestationText: "I witnessed the dose",
+    ...over,
+  });
+
+  it("a witness naming a patient the order is not for is refused (422 PATIENT_ORDER_MISMATCH); an unknown order 422", async () => {
+    const { app } = makeServer();
+    const wrongPatient = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/witness-attest",
+      headers: RN,
+      payload: attest({ patientId: OTHER_PATIENT }),
+    });
+    expect(wrongPatient.statusCode).toBe(422);
+    expect(JSON.stringify(wrongPatient.json())).toContain("PATIENT_ORDER_MISMATCH");
+    const unknownOrder = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/witness-attest",
+      headers: RN,
+      payload: attest({ medicationOrderId: FOREIGN_ORDER }),
+    });
+    expect(unknownOrder.statusCode).toBe(422);
+    expect(JSON.stringify(unknownOrder.json())).toContain("MEDICATION_ORDER_UNRESOLVED");
+    await app.close();
+  });
+
+  it("an off-caseload witness may mint, but the token is honoured only for the named clinician on that order", async () => {
+    const { app } = makeServer();
+    // rn_off is NOT on PATIENT's caseload and still mints: witnessing is not caseload work.
+    const grant = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/witness-attest",
+      headers: RN_OFF,
+      payload: attest(),
+    });
+    expect(grant.statusCode).toBe(201);
+    // A token minted for a DIFFERENT administering clinician is refused when MD presents it.
+    const forSomeoneElse = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/witness-attest",
+      headers: RN_OFF,
+      payload: attest({ administeringClinicianMembershipId: ADMIN_MEMBERSHIP }),
+    });
+    expect(forSomeoneElse.statusCode).toBe(201);
+    const record = (token: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/administrations",
+        headers: { ...MD, "x-witness-attestation": token },
+        payload: recordBody({
+          medicationOrderId: CONTROLLED_ORDER,
+          medClass: "controlled_substance",
+        }),
+      });
+    const refused = await record(forSomeoneElse.json().token);
+    expect(refused.statusCode).toBe(422);
+    expect(JSON.stringify(refused.json())).toContain("WITNESS_TOKEN_SCOPE_MISMATCH");
+    const ok = await record(grant.json().token);
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().witnessMembershipId).toBe(MEM_RN_OFF);
+    await app.close();
+  });
+});
+
+describe("in-memory slice parity — fails closed and refuses cross-patient ids like the DB backend", () => {
+  /** The service-level args the record route would hand the slice. */
+  const serviceArgs = (over: Partial<RecordAdministrationArgs> = {}): RecordAdministrationArgs => ({
+    medicationOrderId: ORDER,
+    medClass: "standard",
+    mode: "single_dose",
+    administeredAt: NOW,
+    data: {},
+    ...over,
+  });
+
+  it("an unseeded or other-tenant order resolves to nothing (the §4.7 resolvers deny)", async () => {
+    const { backend } = makeServer();
+    const unseeded = "00000000-0000-4000-8000-0000000000ff";
+    expect(await backend.loadOrderMedClass(ORG, unseeded)).toBeNull();
+    expect(await backend.loadScopePatientId(ORG, "medicationOrderId", unseeded)).toBeNull();
+    expect(await backend.loadOrderMedClass(ORG, FOREIGN_ORDER)).toBeNull();
+    expect(await backend.loadScopePatientId(ORG, "medicationOrderId", FOREIGN_ORDER)).toBeNull();
+    expect(await backend.loadOrderMedClass("org_b", FOREIGN_ORDER)).toBe("standard");
+  });
+
+  it("recording against an unresolvable order is refused at the route (403) and in the service (422)", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
+      payload: recordBody({ medicationOrderId: FOREIGN_ORDER }),
+    });
+    expect(res.statusCode).toBe(403);
+    await expect(
+      backend.recordAdministration(ORG, "md_1", serviceArgs({ medicationOrderId: FOREIGN_ORDER })),
+    ).rejects.toMatchObject({
+      statusCode: 422,
+      details: [{ code: "MEDICATION_ORDER_UNRESOLVED" }],
+    });
+  });
+
+  it("a dose, IV session or comfort kit of another patient is refused against this order (422 PATIENT_ORDER_MISMATCH)", async () => {
+    const { backend } = makeServer();
+    const mismatch = { statusCode: 422, details: [{ code: "PATIENT_ORDER_MISMATCH" }] };
+    const record = (over: Partial<RecordAdministrationArgs>) =>
+      backend.recordAdministration(ORG, "md_1", serviceArgs(over));
+    await expect(record({ scheduledDoseId: OTHER_DOSE })).rejects.toMatchObject(mismatch);
+    await expect(record({ comfortKitDeploymentId: OTHER_KIT })).rejects.toMatchObject(mismatch);
+    const otherStart = await record({
+      medicationOrderId: OTHER_ORDER,
+      mode: "iv_continuous_start",
+      data: { infusionRate: 4, rateUnit: "mg/hr" },
+    });
+    expect(otherStart.patientId).toBe(OTHER_PATIENT);
+    await expect(
+      record({ mode: "iv_continuous_pause", ivSessionId: otherStart.ivSessionId ?? undefined }),
+    ).rejects.toMatchObject(mismatch);
+    expect(await backend.listAdministrations(ORG, { patient: PATIENT })).toHaveLength(1); // the seed
+  });
+
+  it("a caregiver attestation or a refusal naming another patient than the order's is refused", async () => {
+    const { backend } = makeServer();
+    const mismatch = { statusCode: 422, details: [{ code: "PATIENT_ORDER_MISMATCH" }] };
+    await expect(
+      backend.recordCaregiverAttested(ORG, {
+        patientId: OTHER_PATIENT,
+        medicationOrderId: ORDER,
+        administeredAt: NOW,
+        caregiverSessionId: "cg-session-1",
+        route: "oral",
+        doseAmount: 5,
+        doseUnit: "mg",
+      }),
+    ).rejects.toMatchObject(mismatch);
+    await expect(
+      backend.recordRefusal(ORG, "md_1", {
+        patientId: OTHER_PATIENT,
+        medicationOrderId: ORDER,
+        medClass: "standard",
+        refusedAt: NOW,
+      }),
+    ).rejects.toMatchObject(mismatch);
+    expect(await backend.listAdministrations(ORG, { patient: OTHER_PATIENT })).toEqual([]);
+  });
+});
+
+describe("offline-sync — per-row ABAC evaluated once per distinct target, batch still refused whole", () => {
+  const ROWS = 50;
+  const row = (over: Record<string, unknown> = {}) =>
+    recordBody({
+      offlineCapture: {
+        deviceId: "77777777-7777-4777-8777-777777777777",
+        localId: "88888888-8888-4888-8888-888888888888",
+        capturedAt: NOW,
+      },
+      ...over,
+    });
+
+  it(`${ROWS} rows on one order ask the resolver once per predicate, not once per row`, async () => {
+    const calls: ResolverCalls = { loadOrderMedClass: 0, loadScopePatientId: 0 };
+    const { app } = makeServer({ calls });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/offline-sync",
+      headers: MD,
+      payload: { rows: Array.from({ length: ROWS }, () => row()) },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().synced).toBe(ROWS);
+    expect(calls).toEqual({ loadOrderMedClass: 1, loadScopePatientId: 1 });
+    await app.close();
+  });
+
+  it("one off-scope row among many refuses the whole batch (404) and writes nothing", async () => {
+    const calls: ResolverCalls = { loadOrderMedClass: 0, loadScopePatientId: 0 };
+    const { app, backend } = makeServer({ calls });
+    const rows = Array.from({ length: ROWS }, () => row());
+    rows.splice(30, 0, row({ comfortKitDeploymentId: OTHER_KIT }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/offline-sync",
+      headers: MD,
+      payload: { rows },
+    });
+    expect(res.statusCode).toBe(404);
+    // Only the seeded caregiver row: none of the 50 good rows was written.
+    expect(await backend.listAdministrations(ORG, { patient: PATIENT })).toHaveLength(1);
+    // Two distinct scope targets (order alone; order + kit), one distinct order.
+    expect(calls.loadOrderMedClass).toBe(1);
+    await app.close();
+  });
+
+  it("one row whose order the caller's discipline may not administer refuses the batch (403)", async () => {
+    const { app, backend } = makeServer();
+    const rows = Array.from({ length: 5 }, () => row());
+    rows.push(row({ medicationOrderId: FOREIGN_ORDER }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/offline-sync",
+      headers: MD,
+      payload: { rows },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await backend.listAdministrations(ORG, { patient: PATIENT })).toHaveLength(1);
     await app.close();
   });
 });

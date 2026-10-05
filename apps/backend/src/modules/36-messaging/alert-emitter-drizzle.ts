@@ -27,6 +27,7 @@
 // have, and no platform-default alert_rule uses the `discipline` resolver today). A silent `[]` would
 // make a tenant-configured `discipline` rule notify NOBODY forever with no error — the exact
 // WIRED-but-fake-predicate trap GAP-020 already taught this codebase to avoid.
+import { roleConfersKey } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import type {
   AlertEmitter,
@@ -77,8 +78,16 @@ function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
   const activeMembershipUserIds = (orgId: string, roleKeys: readonly string[]) =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx: Tx) => {
       if (roleKeys.length === 0) return [] as string[];
+      // GAP-096 — a tenant-owned row carrying a reserved platform key (e.g. a legacy
+      // `platform_security_owner`) confers nothing, so it must not pull a tenant user into a platform
+      // alert either: the same `roleConfersKey` rule the enrichment reader applies.
       const rows = await tx
-        .selectDistinct({ userId: M.userId })
+        .selectDistinct({
+          userId: M.userId,
+          organizationId: R.organizationId,
+          key: R.key,
+          category: R.category,
+        })
         .from(MR)
         .innerJoin(R, eq(R.id, MR.roleId))
         .innerJoin(M, eq(M.id, MR.membershipId))
@@ -91,7 +100,7 @@ function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
             or(isNull(MR.expiresAt), gt(MR.expiresAt, new Date())),
           ),
         );
-      return rows.map((r) => r.userId);
+      return [...new Set(rows.filter(roleConfersKey).map((r) => r.userId))];
     });
 
   return {

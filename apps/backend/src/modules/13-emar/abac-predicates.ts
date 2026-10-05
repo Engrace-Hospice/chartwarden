@@ -4,9 +4,10 @@
 // Each is a typed `(context, target) => boolean` evaluated server-side AFTER RBAC passes:
 //
 //   administering_clinician_eligible[:medClass]  — §4.7: does ANY of the caller's session-assembled disciplines
-//        satisfy the medication-class administration matrix? The target's `medClass` is lifted from the request
-//        body by the record route's `getTarget`; the SUBJECT (the caller's discipline set) is never read from
-//        the body. A discipline outside the class's matrix is a structural floor (per-state SOP overrides may
+//        satisfy the medication-class administration matrix? The class is resolved from the ORDER the target
+//        names (`medicationOrderId`) through the resolver — never from the request body (GAP-005: a body
+//        `medClass` of `standard` on a Schedule II order used to pick the matrix AND skip the witness). The
+//        SUBJECT (the caller's discipline set) is never read from the body either. A discipline outside the class's matrix is a structural floor (per-state SOP overrides may
 //        further restrict via `administration_policy.state_overrides`, layered in the service — not relaxed here).
 //   controlled_substance_witness_eligible  — §2.6 D7 / §4.7: the witness (the caller minting the attestation
 //        token) is a DIFFERENT active clinical-discipline membership from the administering clinician (lifted
@@ -21,12 +22,29 @@
 //        clinical_supervisor for discharge). The worksheet id is the `:id` route param; the trigger kind loads
 //        through the resolver.
 //
-// The §4.7 `caseload_or_scope` predicate is SHARED (registered by M5/M6/M7) — M13 binds it by USING the name at
-// the route (it is each clinical key's default ABAC), not by re-registering it. Registration is idempotent: the
-// shared registry is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+//   emar.scope  — GAP-004 / §4.1 `caseload_or_scope` on every M13 PHI route. The routes are keyed by an
+//        administration / IV session / scheduled or missed dose / worksheet / deployment / order id, or a
+//        `?patient=` query, and `requireAbac`'s `getTarget` is synchronous — so, like M9's `assessment.scope`,
+//        this M13-owned predicate resolves each named id to its patient INSIDE the evaluator and applies the
+//        same org-wide-role ∨ session-pinned-patient ∨ caseload composition the shared `caseload_or_scope`
+//        uses. Every id the target names must resolve and be in scope (a refusal naming patient A and an
+//        order for patient B is refused). Nothing named, or anything unresolvable → deny (fail-closed).
+//        The one unscoped M13 write is the witness-attest mint (see emar-routes.ts route 2): it touches no
+//        row, and the token it signs is only honoured on the scoped record route for the order's patient.
+//        The header used to claim `caseload_or_scope` was "bound by the §4.6 default ABAC" — it was not:
+//        `requirePermission` never reads `PermissionDef.abac`, so no M13 route had any patient scope.
+//
+// Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is idempotent
+// via `registerPredicateIdempotent`.
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import { controlledSubstanceWitnessEligible } from "@wardenx/emar";
 import type { ReconciliationTriggerKind } from "@wardenx/types";
+import { getSeam } from "../../bootstrap/index";
 
 /** The §4.7 predicate names M13 owns (registered into M3). Single-owner across the platform registry. */
 export const M13_ABAC_PREDICATES = [
@@ -34,7 +52,20 @@ export const M13_ABAC_PREDICATES = [
   "controlled_substance_witness_eligible",
   "caregiver_attested_review_required",
   "reconciliation_authoring_eligible",
+  "emar.scope",
 ] as const;
+
+/** The id kinds `emar.scope` resolves to a patient (each is a target field of the same name). */
+export const EMAR_SCOPE_REF_KINDS = [
+  "administrationId",
+  "ivSessionId",
+  "scheduledDoseId",
+  "missedDoseId",
+  "worksheetId",
+  "deploymentId",
+  "medicationOrderId",
+] as const;
+export type EmarScopeRefKind = (typeof EMAR_SCOPE_REF_KINDS)[number];
 
 /** §4.7 — the disciplines that may administer a given medication class (the administering-clinician matrix). */
 export const ADMINISTERING_ELIGIBLE_DISCIPLINES: Readonly<Record<string, readonly string[]>> = {
@@ -104,11 +135,30 @@ export interface EmarAbacResolver {
     orgId: string,
     worksheetId: string,
   ): Promise<ReconciliationTriggerKind | null>;
+  /** GAP-004 — the patient an M13 row (or the order) belongs to; null when absent / cross-tenant. */
+  loadScopePatientId(orgId: string, kind: EmarScopeRefKind, id: string): Promise<string | null>;
+  /** GAP-005 — the order's medication class (M12's, never the request's); null when unresolvable. */
+  loadOrderMedClass(orgId: string, medicationOrderId: string): Promise<string | null>;
 }
+
+/** Caseload membership check — the M5 `CaseloadProvider.isInCaseload` shape. */
+export type EmarCaseloadCheck = (q: {
+  organizationId: string;
+  userId: string;
+  patientId: string;
+}) => Promise<boolean>;
 
 /** Deps for M13's ABAC predicate resolvers (the slice injects an in-memory resolver over its dataset). */
 export interface EmarAbacDeps {
   readonly resolver: EmarAbacResolver;
+  /** Caseload membership (defaults to the boot-registered M5 `CaseloadProvider` seam, resolved per call). */
+  readonly isInCaseload?: EmarCaseloadCheck;
+}
+
+/** The patient a collaborator / funeral / portal session is pinned to (server-assembled, M7 precedent). */
+function sessionScopePatientId(context: AbacContext): string | null {
+  const raw = context.attributes.sessionPatientId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
 /**
@@ -122,10 +172,26 @@ export function buildEmarAbacPredicates(
   deps: EmarAbacDeps,
 ): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
   const { resolver } = deps;
+  const isInCaseload: EmarCaseloadCheck =
+    deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
+
+  const patientInScope = async (context: AbacContext, patientId: string): Promise<boolean> => {
+    if (hasOrgWideScope(context.roles)) return true;
+    if (sessionScopePatientId(context) === patientId) return true;
+    if (!context.userId) return false;
+    return isInCaseload({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      patientId,
+    });
+  };
+
   return {
     administering_clinician_eligible: async (context, target) => {
-      const medClass = targetStr(target, "medClass");
-      if (!medClass) return false; // no class named → deny (fail-closed)
+      const medicationOrderId = targetStr(target, "medicationOrderId");
+      if (!medicationOrderId) return false; // no order named → deny (fail-closed)
+      const medClass = await resolver.loadOrderMedClass(context.organizationId, medicationOrderId);
+      if (!medClass) return false; // unresolvable order → deny (fail-closed)
       const matrix = ADMINISTERING_ELIGIBLE_DISCIPLINES[medClass];
       if (!matrix) return false; // unknown class → deny (fail-closed)
       return actorDisciplinesOf(context).some((d) => (matrix as readonly string[]).includes(d));
@@ -170,6 +236,23 @@ export function buildEmarAbacPredicates(
       if (!triggerKind) return false; // absent / cross-tenant (fail-closed)
       const matrix = RECONCILIATION_AUTHORING_DISCIPLINES[triggerKind];
       return actorDisciplinesOf(context).some((d) => (matrix as readonly string[]).includes(d));
+    },
+    "emar.scope": async (context, target) => {
+      const patientIds: string[] = [];
+      const named = targetStr(target, "patientId");
+      if (named) patientIds.push(named);
+      for (const kind of EMAR_SCOPE_REF_KINDS) {
+        const id = targetStr(target, kind);
+        if (!id) continue;
+        const patientId = await resolver.loadScopePatientId(context.organizationId, kind, id);
+        if (!patientId) return false; // absent / cross-tenant row (fail-closed)
+        patientIds.push(patientId);
+      }
+      if (patientIds.length === 0) return false; // nothing named → deny (fail-closed)
+      for (const patientId of new Set(patientIds)) {
+        if (!(await patientInScope(context, patientId))) return false;
+      }
+      return true;
     },
   };
 }

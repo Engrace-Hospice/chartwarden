@@ -725,6 +725,29 @@ describe("M32-ai-platform-inject — R7-R9: kill switch", () => {
   });
 });
 
+describe("GAP-096 — a platform-scope kill switch from a tenant-side actor is 403", () => {
+  // The `platform` row stops a capability for EVERY agency, so only the safety-owner arm may satisfy it.
+  // A tenant clinical_safety_lead (a key any tenant admin can mint) is the safety owner only on a
+  // single-tenant deployment; on the default multi-tenant one it holds every §4.6 key and is still refused.
+  const TENANT_LEAD = { ...SUPER, "x-test-roles": "clinical_safety_lead,org_admin" };
+  const body = {
+    scope: "platform",
+    reason: "manual_safety_pause",
+    actorKind: "ai_safety_owner",
+    activationMessage: "tenant attempting a platform-wide stop",
+  };
+
+  it("refuses the tenant designee (403) and still admits the platform operator (201)", async () => {
+    const { app, capA } = makeServer();
+    const url = `/api/v1/ai/capabilities/${capA.id}/kill-switch`;
+    const tenant = await app.inject({ method: "POST", url, headers: TENANT_LEAD, payload: body });
+    expect(tenant.statusCode).toBe(403);
+    const platform = await app.inject({ method: "POST", url, headers: SUPER, payload: body });
+    expect(platform.statusCode).toBe(201);
+    await app.close();
+  });
+});
+
 // ── R10-R12 — the tenant opt-in (needs a PILOT capability — capB, walked by R4 above in a fresh server) ─
 describe("M32-ai-platform-inject — R10-R12: tenant opt-in", () => {
   async function walkToPilot(

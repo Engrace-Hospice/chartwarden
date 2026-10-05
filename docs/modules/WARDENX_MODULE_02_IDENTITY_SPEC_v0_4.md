@@ -749,7 +749,8 @@ Most primitives are mounted by Better Auth at `/api/auth/*`; this section docume
 | GET | `/api/v1/orgs/:id/members` | admin | `org_admin` | yes | list memberships in org |
 | PATCH | `/api/v1/orgs/:id/members/:mId` | admin | `org_admin` | yes | suspend/reinstate/update default scope |
 | DELETE | `/api/v1/orgs/:id/members/:mId` | admin | `org_admin` | yes | revoke membership |
-| POST | `/api/v1/users/:id/deactivate` | admin | `org_admin`/`platform_ops` | yes | full offboard |
+| POST | `/api/v1/users/:id/deactivate` | admin | `org_admin` | yes | full offboard, **own org only**: the target must be a live member of the caller's org and of no other (404 / 409 `USER_IN_OTHER_ORGS` otherwise — GAP-001) |
+| POST | `/api/v1/platform/users/:id/deactivate` | admin | `platform_ops`/`platform_admin`/`platform_owner` (platform-owned role, ABAC `user_lifecycle_platform_ops`) | yes | cross-org full offboard (§4.7 `platform_ops (any)`); step-up `user.deactivate_platform`; revokes every live membership in every org, reaps all sessions, audits `m2.user.deactivated` with `scope: "platform"` |
 | GET/POST/PATCH | `/api/v1/orgs` , `/api/v1/orgs/:id` | admin | `org_admin`/`platform_ops` | yes | Organization mgmt incl. HearthNote opt-in flag |
 | GET/POST/PATCH | `/api/v1/provider-entities[...]` | admin | `org_admin` | yes | CCN/NPI/MAC management |
 | GET/POST/PATCH | `/api/v1/locations[...]` | admin | `org_admin` | yes | Location management |

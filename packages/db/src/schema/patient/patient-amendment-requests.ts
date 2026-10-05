@@ -3,7 +3,16 @@
 // 60 days (`sla_due_at` = received_at + 60d). A denial requires a reason; the requester may file a
 // statement of disagreement. PHI-bearing → three-column tenancy rule.
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { patientAmendmentStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -44,6 +53,13 @@ export const patientAmendmentRequests = pgTable(
     slaIdx: index("patient_amendment_request_sla_idx")
       .on(t.slaDueAt)
       .where(sql`${t.status} = 'pending'`),
+    // GAP-006 (0323) — one OPEN portal request per patient per requested change; the portal intake
+    // inserts ON CONFLICT DO NOTHING and reads the open row back. Decided/withdrawn rows leave the index.
+    portalOpenDedupeUq: uniqueIndex("patient_amendment_request_portal_open_dedupe_uq")
+      .on(t.organizationId, t.patientId, sql`(${t.requestedChanges} ->> 'portalDedupeKey')`)
+      .where(
+        sql`${t.status} = 'pending' AND (${t.requestedChanges} ->> 'portalDedupeKey') IS NOT NULL`,
+      ),
     denialReasonRequired: check(
       "patient_amendment_request_denial_reason_required",
       sql`(${t.status} <> 'denied') OR (${t.denialReason} IS NOT NULL)`,

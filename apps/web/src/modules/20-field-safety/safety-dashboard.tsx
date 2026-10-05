@@ -56,12 +56,16 @@ export function SafetyDashboardScreen(): JSX.Element {
   const load = useCallback(
     async (background = false) => {
       if (!background) setLoading(true);
-      const res = await getDashboard(client, {
-        ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
-        ...(supervisorMembershipId.trim()
-          ? { supervisorMembershipId: supervisorMembershipId.trim() }
-          : {}),
-      });
+      const res = await getDashboard(
+        client,
+        {
+          ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
+          ...(supervisorMembershipId.trim()
+            ? { supervisorMembershipId: supervisorMembershipId.trim() }
+            : {}),
+        },
+        { background },
+      );
       if (res.error || !res.board) {
         setState("unknown");
         setError(errorMessage(res.error, "The safety board could not be read."));

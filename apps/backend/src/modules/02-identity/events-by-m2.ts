@@ -148,10 +148,11 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m2.user.deactivated",
     moduleOwner: "m2",
     description:
-      "A user was fully offboarded (credentials disabled everywhere, all sessions reaped in the same route).",
+      "A user was fully offboarded (credentials disabled everywhere, all sessions reaped in the same route). `scope: 'platform'` marks the §4.7 cross-org platform offboard (POST /api/v1/platform/users/:id/deactivate); absent for the org-bounded tenant route.",
     payloadSchema: Type.Object({
       userId: nonEmptyString,
       reason: nonEmptyString,
+      scope: Type.Optional(Type.Literal("platform")),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,

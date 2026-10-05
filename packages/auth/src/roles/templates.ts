@@ -133,19 +133,31 @@ const PLATFORM_WRITE_ROLES: readonly PlatformOpsRoleKey[] = [
   "platform_owner",
 ];
 const PLATFORM_APPROVE_ROLES: readonly PlatformOpsRoleKey[] = ["platform_admin", "platform_owner"];
+/**
+ * GAP-001 follow-up — the platform user-lifecycle grant. `POST /api/v1/platform/users/:id/deactivate`
+ * gates on `user.deactivate` AND the M2 `user_lifecycle_platform_ops` ABAC predicate, which admits exactly
+ * these roles; without the grant a pure platform operator failed the RBAC check first.
+ */
+export const PLATFORM_USER_LIFECYCLE_KEY = "user.deactivate" as const;
+const PLATFORM_USER_LIFECYCLE_ROLES: readonly PlatformOpsRoleKey[] = [
+  "platform_ops",
+  "platform_admin",
+  "platform_owner",
+];
 
-/** Build a platform-ops role's default `billing_admin.*` grant per the §4.7 binding rule above. */
+/** Build a platform-ops role's default grant: `billing_admin.*` per the §4.7 binding rule, plus user lifecycle. */
 function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
   const keys: string[] = [];
   if (PLATFORM_READ_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_READ_KEYS);
   if (PLATFORM_WRITE_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_WRITE_KEYS);
   if (PLATFORM_APPROVE_ROLES.includes(role)) keys.push(M35_REFUND_APPROVE_KEY);
+  if (PLATFORM_USER_LIFECYCLE_ROLES.includes(role)) keys.push(PLATFORM_USER_LIFECYCLE_KEY);
   return keys;
 }
 
 /**
- * Default `billing_admin.*` grant per platform-ops role (§4.7). `platform_sales` and `platform_ops` carry
- * NO `billing_admin.*` keys under this wave's binding rule — they are still registered (they satisfy the
+ * Default grant per platform-ops role: `billing_admin.*` (§4.7) plus `user.deactivate` for the user-lifecycle
+ * roles. `platform_sales` and `platform_ops` carry NO `billing_admin.*` keys under this wave's binding rule — they are still registered (they satisfy the
  * `platform_billing_scope` ABAC gate) but hold no RBAC grant here, so they fail closed at `requirePermission`
  * until a later wave binds their surface. `platform_billing_admin` deliberately lacks `refund.approve`.
  */

@@ -25,4 +25,9 @@ describe("createIdentityAuth — plugin wiring (AUTH-T05)", () => {
     expect(auth.options.emailAndPassword?.minPasswordLength).toBe(12);
     expect(typeof auth.options.emailAndPassword?.password?.hash).toBe("function");
   });
+
+  it("GAP-002: a fixed 72-h outer lifetime, never refreshed on use (SESSION_POLICY decides the rest)", () => {
+    expect(auth.options.session?.expiresIn).toBe(72 * 60 * 60);
+    expect(auth.options.session?.disableSessionRefresh).toBe(true);
+  });
 });

@@ -29,6 +29,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createDbMessagingRouteService,
   createDrizzleAlertEmitter,
+  createDrizzleAlertEmitterPorts,
 } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -243,5 +244,42 @@ describe.skipIf(!DB_URL)("F-109 — alert outcome + §2.4.4 settlement, LIVE Pos
     const email = rows.find((r) => r.channel === "email");
     expect(email?.status).toBe("pending"); // untouched: the read settles in-app only
     expect((await alertRow(alertId)).outcome).toBe("pending");
+  });
+  it("GAP-096: a legacy tenant-owned platform_* row does not make its holder a platform-alert recipient", async () => {
+    const membershipOf = async (u: string) =>
+      (await admin.query("SELECT id FROM membership WHERE user_id=$1", [u])).rows[0].id as string;
+    // A row that predates migration 0318: the NOT VALID CHECK refuses it today, so it is planted the
+    // way history left it (constraint lifted for the insert, then restored as it was, NOT VALID).
+    const checkDef = (
+      await admin.query(
+        "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname='role_platform_authority_platform_owned'",
+      )
+    ).rows[0].def as string;
+    await admin.query("ALTER TABLE role DROP CONSTRAINT role_platform_authority_platform_owned");
+    const legacy = (
+      await admin.query(
+        "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'platform_security_owner','Legacy','operations',true) RETURNING id",
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `ALTER TABLE role ADD CONSTRAINT role_platform_authority_platform_owned ${checkDef}`,
+    );
+    const platform = (
+      await admin.query(
+        "INSERT INTO role (organization_id,key,name,category,enabled) VALUES (NULL,'platform_security_owner','Platform Security Owner','platform_staff',true) RETURNING id",
+      )
+    ).rows[0].id as string;
+    for (const [u, roleId] of [
+      [USER_A1, legacy],
+      [USER_A2, platform],
+    ] as const)
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [ORG_A, await membershipOf(u), roleId],
+      );
+
+    const { recipients } = createDrizzleAlertEmitterPorts(handle.db);
+    expect(await recipients.roleSetMembers(ORG_A, ["platform_security_owner"])).toEqual([USER_A2]);
   });
 });

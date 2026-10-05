@@ -48,6 +48,9 @@ export const sessions = pgTable(
     // would tie session deletion to an org-RLS'd row. The resolver re-reads the attestation and re-checks
     // it is live, so a dangling pointer denies rather than admits.
     deviceAttestationId: uuid("device_attestation_id"),
+    // GAP-002 (0319) — throttled last-request stamp the server idle timeout reads (SESSION_POLICY).
+    // NULL until the first authenticated request; the evaluator then falls back to `created_at`.
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -14184,6 +14184,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/users/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate a user platform-wide, regardless of org (platform_ops/admin/owner + step-up, §4.7) */
+        post: operations["postApiV1PlatformUsersByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/administrations/caregiver-attested": {
         parameters: {
             query?: never;
@@ -60596,6 +60613,42 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         status: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformUsersByIdDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        deactivated: true;
+                        alreadyDeactivated: boolean;
+                        sessionsRevoked: number;
+                        membershipsRevoked: number;
                     };
                 };
             };

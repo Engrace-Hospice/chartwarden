@@ -6,12 +6,14 @@
 // It lives in M3's directory because `membership_role` / `role` are authorization's rows; the consumer gets it injected
 // as a locally-declared PORT at the composition root (apps/backend/src/index.ts) and imports no authorization code or
 // schema — the `membershipDisplayForOrg` (M2) / `idgRecertWindowsForOrg` (M6) shape. The result is the SAME authority
-// `request.context.roles` and M17's `resolveDisciplinesTx` derive from: ENABLED roles on UNEXPIRED assignments.
+// `request.context.roles` and M17's `resolveDisciplinesTx` derive from: ENABLED roles on UNEXPIRED assignments, minus
+// a reserved platform key carried by a TENANT-owned row (GAP-003/GAP-096 `roleConfersKey`, as the enrichment reader).
 //
 // MINIMUM NECESSARY: role KEY strings only (no ids, permissions, scopes, names). A membership that exists in the
 // organization but holds no live role maps to an EMPTY array; an unknown / cross-tenant / revoked membership is ABSENT,
 // so a caller can tell "no such staff member" from "staff member with no discipline". RLS (`app.org_id`) is the wall;
 // the explicit `organization_id` predicate is the belt behind it. ONE query for the whole id set, never N+1.
+import { roleConfersKey } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
@@ -45,7 +47,12 @@ export async function membershipRoleKeysForOrg(
   const now = new Date();
   const rows = await withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, (tx) =>
     tx
-      .select({ membershipId: MB.id, roleKey: RO.key })
+      .select({
+        membershipId: MB.id,
+        roleKey: RO.key,
+        roleOrganizationId: RO.organizationId,
+        roleCategory: RO.category,
+      })
       .from(MB)
       .leftJoin(
         MR,
@@ -63,7 +70,18 @@ export async function membershipRoleKeysForOrg(
   const out = new Map<string, Set<string>>();
   for (const r of rows) {
     const set = out.get(r.membershipId) ?? new Set<string>();
-    if (r.roleKey !== null) set.add(r.roleKey);
+    // A left-joined role: absent (no live grant) or a tenant-owned reserved platform row adds nothing.
+    if (
+      r.roleKey !== null &&
+      r.roleCategory !== null &&
+      roleConfersKey({
+        organizationId: r.roleOrganizationId,
+        key: r.roleKey,
+        category: r.roleCategory,
+      })
+    ) {
+      set.add(r.roleKey);
+    }
     out.set(r.membershipId, set);
   }
   return new Map([...out].map(([k, v]) => [k, [...v].sort()]));

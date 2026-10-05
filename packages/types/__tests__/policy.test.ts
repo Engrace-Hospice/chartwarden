@@ -69,12 +69,29 @@ describe("SESSION_POLICY (§2.2.4 / D1)", () => {
     expect(SESSION_POLICY.byClass.funeral_home.absoluteSec).toBe(72 * HR);
   });
 
-  it("covers exactly the four session classes", () => {
+  it("M31 portal classes: 30-min idle, 8-hr hard cap from mint (M31 §6.4 / D3)", () => {
+    for (const c of ["patient_portal", "caregiver_portal", "bereaved_portal"] as const) {
+      expect(SESSION_POLICY.byClass[c]).toEqual({ idleSec: 30 * MIN, absoluteSec: 8 * HR });
+    }
+  });
+
+  it("M19 triage classes: 15-min idle, 8-hr single absolute", () => {
+    for (const c of ["external_triage_vendor", "external_triage_operator"] as const) {
+      expect(SESSION_POLICY.byClass[c]).toEqual({ idleSec: 15 * MIN, absoluteSec: 8 * HR });
+    }
+  });
+
+  it("covers exactly the nine session classes", () => {
     const classes: SessionClassName[] = [
       "staff",
       "auditor",
       "external_collaborator",
       "funeral_home",
+      "patient_portal",
+      "caregiver_portal",
+      "bereaved_portal",
+      "external_triage_vendor",
+      "external_triage_operator",
     ];
     expect(Object.keys(SESSION_POLICY.byClass).sort()).toEqual([...classes].sort());
   });

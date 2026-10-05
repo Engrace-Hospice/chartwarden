@@ -327,7 +327,438 @@ describe.skipIf(!DB_URL)(
       // A user with no active membership in the org → null (no actor context).
       expect(await reader.read({ orgId: org }, crypto.randomUUID())).toBeNull();
 
+      // GAP-003 — platform authority comes only from a PLATFORM-OWNED row. The DB refuses a
+      // tenant-owned `platform_*` key or `platform_staff` category (migration 0318)...
+      for (const [key, category] of [
+        ["platform_admin", "admin_executive"],
+        ["helpdesk", "platform_staff"],
+        ["ai_safety_owner", "clinical_staff"], // 0321
+      ]) {
+        await expect(
+          admin.query(
+            "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,$2,'Spoof',$3,true)",
+            [org, key, category],
+          ),
+        ).rejects.toThrow(/role_platform_authority_platform_owned/);
+      }
+      // ...and an assigned platform-owned (organization_id NULL) row does reach `roles`.
+      const platformRole = (
+        await admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES (NULL,'platform_admin','Platform Admin','platform_staff',true) RETURNING id",
+        )
+      ).rows[0].id as string;
+      // 0320 — one platform-owned row per key (NULLs are distinct in `role_org_key_idx`).
+      await expect(
+        admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES (NULL,'platform_admin','Dup','platform_staff',true)",
+        ),
+      ).rejects.toThrow(/role_platform_key_idx/);
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [org, membership, platformRole],
+      );
+      const withPlatform = await reader.read({ orgId: org }, userId);
+      expect([...(withPlatform?.roles ?? [])].sort()).toEqual(["en-rn", "platform_admin"]);
+      await admin.query("DELETE FROM membership_role WHERE role_id = $1", [platformRole]);
+      await admin.query("DELETE FROM role WHERE id = $1", [platformRole]);
+
       await handle4.close();
+    });
+
+    it("GAP-096: every authority read drops a reserved key on a tenant-owned row (wardenx_app)", async () => {
+      const { createDbClient: mkDbR } = await import("@wardenx/db");
+      const { createDbActorEnrichmentReader, createDbEffectivePermissionStore } = await import(
+        "@wardenx/auth"
+      );
+      const { membershipRoleKeysForOrg } = await import(
+        "../src/modules/03-authorization/membership-role-keys-for-org"
+      );
+      const { createDbProposedRoleAttacher } = await import(
+        "../src/modules/03-authorization/proposed-role-attacher"
+      );
+      const { createDrizzleAiSeamActorResolver } = await import(
+        "../src/modules/32-ai-platform/seams/actor-resolver-drizzle"
+      );
+      const { buildDrizzleAiPlatformAbacResolver } = await import(
+        "../src/modules/32-ai-platform/abac-resolver-drizzle"
+      );
+      const handleR = mkDbR({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const db = handleR.db as never;
+
+      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const org = (
+        await admin.query(
+          "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'G96','G96') RETURNING id",
+          [`g96-${stamp}`],
+        )
+      ).rows[0].id as string;
+      const newUser = async (tag: string) =>
+        (
+          await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,$2) RETURNING id`, [
+            `${tag}-${stamp}@example.test`,
+            tag,
+          ])
+        ).rows[0].id as string;
+      const newMembership = async (userId: string) =>
+        (
+          await admin.query(
+            "INSERT INTO membership (user_id,organization_id,status,default_provider_entity_id) VALUES ($1,$2,'active',$3) RETURNING id",
+            [userId, org, crypto.randomUUID()],
+          )
+        ).rows[0].id as string;
+      const newRole = async (key: string, category: string) =>
+        (
+          await admin.query(
+            "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,$2,$2,$3,true) RETURNING id",
+            [org, key, category],
+          )
+        ).rows[0].id as string;
+      const grant = (membershipId: string, roleId: string) =>
+        admin.query(
+          "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+          [org, membershipId, roleId],
+        );
+      for (const key of ["g96.spoof", "g96.legacy", "g96.real"]) {
+        await admin.query(
+          "INSERT INTO permission (key,resource,action,category) VALUES ($1,'g96','x','clinical') ON CONFLICT (key) DO NOTHING",
+          [key],
+        );
+      }
+
+      // A tenant-owned `ai_safety_owner` row and a tenant `platform_ops` row, both LEGACY: 0318/0321's
+      // NOT VALID CHECK refuses them today, so they are planted as history left them (constraint lifted,
+      // then restored exactly as it was).
+      const checkDef = (
+        await admin.query(
+          "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname='role_platform_authority_platform_owned'",
+        )
+      ).rows[0].def as string;
+      await admin.query("ALTER TABLE role DROP CONSTRAINT role_platform_authority_platform_owned");
+      const spoof = await newRole("ai_safety_owner", "clinical_staff");
+      const legacy = await newRole("platform_ops", "admin_executive");
+      await admin.query(
+        `ALTER TABLE role ADD CONSTRAINT role_platform_authority_platform_owned ${checkDef}`,
+      );
+      const real = await newRole("registered_nurse", "clinical_staff");
+      for (const [roleId, perm] of [
+        [spoof, "g96.spoof"],
+        [legacy, "g96.legacy"],
+        [real, "g96.real"],
+      ] as const) {
+        await admin.query(
+          "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,$3)",
+          [org, roleId, perm],
+        );
+      }
+      const userId = await newUser("g96");
+      const membership = await newMembership(userId);
+      for (const roleId of [spoof, legacy, real]) await grant(membership, roleId);
+
+      // M3 effective-permission store: neither the reserved KEY nor the spoof row's PERMISSIONS survive.
+      const grants = await createDbEffectivePermissionStore(db).loadGrants(org, userId);
+      expect(grants.map((g) => g.roleKey)).toEqual(["registered_nurse"]);
+      expect(grants.flatMap((g) => g.permissionKeys)).toEqual(["g96.real"]);
+      // M2/M3 enrichment (already GAP-003) — now covers the exact reserved key too.
+      expect((await createDbActorEnrichmentReader(db).read({ orgId: org }, userId))?.roles).toEqual(
+        ["registered_nurse"],
+      );
+      // M3 batched role-key read (M14 attendance trust) claims parity with `context.roles`.
+      expect((await membershipRoleKeysForOrg(db, org, [membership])).get(membership)).toEqual([
+        "registered_nurse",
+      ]);
+      // M32 resolver fallback rides the M3 store.
+      const m32 = buildDrizzleAiPlatformAbacResolver({
+        db,
+        roleGrants: createDbEffectivePermissionStore(db),
+      });
+      expect(await m32.roleKeysOf(org, membership)).toEqual(["registered_nurse"]);
+      // M32 `actor_role`: `ai_safety_owner` sorts first, and is skipped like the reader skips it.
+      const actor = await createDrizzleAiSeamActorResolver(db).resolve(org, userId);
+      expect(actor?.actorRole).toBe("registered_nurse");
+      // ...and a membership whose ONLY role is a reserved tenant row has no actor_role at all.
+      const spoofOnlyUser = await newUser("g96-spoof-only");
+      await grant(await newMembership(spoofOnlyUser), spoof);
+      expect(await createDrizzleAiSeamActorResolver(db).resolve(org, spoofOnlyUser)).toBeNull();
+
+      // M2→M3 invitation accept: a reserved tenant row is never attached; it is reported unresolved.
+      const inviteeMembership = await newMembership(await newUser("g96-invitee"));
+      const attached = await createDbProposedRoleAttacher(db).attach({
+        organizationId: org,
+        membershipId: inviteeMembership,
+        roleKeys: ["ai_safety_owner", "platform_ops", "registered_nurse"],
+        grantedByUserId: userId,
+      });
+      expect(attached).toEqual({
+        attached: ["registered_nurse"],
+        unresolved: ["ai_safety_owner", "platform_ops"],
+      });
+
+      await handleR.close();
+    });
+
+    it("platform-role CLI: idempotent grant, refusals, audit trail and revoke (GAP-003 follow-up)", async () => {
+      const { createDbClient: mkDbC } = await import("@wardenx/db");
+      const { createDbActorEnrichmentReader, PLATFORM_OPS_ROLE_GRANTS } = await import(
+        "@wardenx/auth"
+      );
+      const { runPlatformRoleCommand } = await import("../../../scripts/db/lib/platform-role-cli");
+      const { grantPlatformRole } = await import("../../../scripts/db/lib/platform-role");
+      const handleC = mkDbC({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const reader = createDbActorEnrichmentReader(handleC.db as never);
+
+      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const slug = `ops-${stamp}`;
+      const org = (
+        await admin.query(
+          "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'OPS','OPS') RETURNING id",
+          [slug],
+        )
+      ).rows[0].id as string;
+      const email = `ops-${stamp}@example.test`;
+      const userId = (
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'Ops') RETURNING id`, [email])
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+          [userId, org],
+        )
+      ).rows[0].id as string;
+      const billingKey = PLATFORM_OPS_ROLE_GRANTS.platform_billing_admin[0] as string;
+      await admin.query(
+        "INSERT INTO permission (key,resource,action,category) VALUES ($1,'billing_admin','x','billing_admin') ON CONFLICT (key) DO NOTHING",
+        [billingKey],
+      );
+
+      const lines: string[] = [];
+      const run = (action: "grant" | "revoke", role: "platform_ops" | "platform_billing_admin") =>
+        runPlatformRoleCommand(
+          admin,
+          { action, email, org: slug, role, ticket: `CHG-${stamp}` },
+          (line) => lines.push(line),
+        );
+      const bindings = async (key: string) =>
+        Number(
+          (
+            await admin.query(
+              `SELECT count(*)::int AS n FROM membership_role mr JOIN role r ON r.id = mr.role_id
+                WHERE mr.membership_id = $1 AND r.key = $2 AND r.organization_id IS NULL`,
+              [membership, key],
+            )
+          ).rows[0].n,
+        );
+      const audits = async (op: string) =>
+        Number(
+          (
+            await admin.query(
+              `SELECT count(*)::int AS n FROM audit_event
+                WHERE event_type = $1 AND organization_id = $2 AND correlation_id LIKE $3`,
+              [`membership_role.${op}`, org, `ops-cli:platform-role:%:CHG-${stamp}:%`],
+            )
+          ).rows[0].n,
+        );
+
+      // Grant is idempotent: one platform-owned row, one binding, one audited insert across two runs.
+      await run("grant", "platform_ops");
+      await run("grant", "platform_ops");
+      expect(lines.filter((l) => l.startsWith("granted:"))).toHaveLength(1);
+      expect(lines.filter((l) => l.startsWith("already granted:"))).toHaveLength(1);
+      expect(await bindings("platform_ops")).toBe(1);
+      expect(
+        Number(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM role WHERE key = 'platform_ops' AND organization_id IS NULL",
+            )
+          ).rows[0].n,
+        ),
+      ).toBe(1);
+      expect(await audits("insert")).toBe(1);
+      // ...and the re-run wrote no audit row at all (no no-op upsert of the platform role).
+      expect(
+        Number(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM audit_event WHERE event_type = 'role.update' AND correlation_id LIKE $1",
+              [`ops-cli:platform-role:%:CHG-${stamp}:%`],
+            )
+          ).rows[0].n,
+        ),
+      ).toBe(0);
+      expect([...((await reader.read({ orgId: org }, userId))?.roles ?? [])]).toContain(
+        "platform_ops",
+      );
+
+      // A template grant is materialized onto the platform-owned row and reaches the effective set.
+      await run("grant", "platform_billing_admin");
+      const { createDbEffectivePermissionStore } = await import("@wardenx/auth");
+      const grants = await createDbEffectivePermissionStore(handleC.db as never).loadGrants(
+        org,
+        userId,
+      );
+      expect(grants.find((g) => g.roleKey === "platform_billing_admin")?.permissionKeys).toContain(
+        billingKey,
+      );
+
+      // Refusals: a tenant key / unknown key, and a membership that is not ACTIVE. Nothing is written.
+      await expect(
+        grantPlatformRole(admin, {
+          organizationId: org,
+          membershipId: membership,
+          key: "org_admin" as never,
+          name: "x",
+          description: "x",
+        }),
+      ).rejects.toThrow(/not a platform role/);
+      expect(
+        Number(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM role WHERE key = 'org_admin' AND organization_id IS NULL AND name = 'x'",
+            )
+          ).rows[0].n,
+        ),
+      ).toBe(0);
+      const pendingEmail = `pending-${stamp}@example.test`;
+      const pendingUser = (
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'P') RETURNING id`, [
+          pendingEmail,
+        ])
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'pending')",
+        [pendingUser, org],
+      );
+      await expect(
+        runPlatformRoleCommand(
+          admin,
+          {
+            action: "grant",
+            email: pendingEmail,
+            org: slug,
+            role: "platform_ops",
+            ticket: "CHG-p",
+          },
+          () => {},
+        ),
+      ).rejects.toThrow(/pending, not active/);
+      await expect(
+        runPlatformRoleCommand(
+          admin,
+          { action: "grant", email, org: "no-such-org", role: "platform_ops", ticket: "CHG-p" },
+          () => {},
+        ),
+      ).rejects.toThrow(/no organization/);
+
+      // Revoke removes the binding (audited), leaves the platform row, and is idempotent.
+      await run("revoke", "platform_ops");
+      await run("revoke", "platform_ops");
+      expect(lines.filter((l) => l.startsWith("revoked:"))).toHaveLength(1);
+      expect(lines.filter((l) => l.startsWith("not granted"))).toHaveLength(1);
+      expect(await bindings("platform_ops")).toBe(0);
+      expect(await audits("delete")).toBe(1);
+      expect([...((await reader.read({ orgId: org }, userId))?.roles ?? [])]).not.toContain(
+        "platform_ops",
+      );
+
+      await handleC.close();
+    });
+
+    it("GAP-002: the live enforcer expires idle/absolute sessions and stamps activity (wardenx_app)", async () => {
+      const { createDbClient: mkDbT } = await import("@wardenx/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const handleT = mkDbT({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const enforcer = createDbSessionTimeoutEnforcer(handleT.db as never);
+      const userId = (
+        await admin.query(
+          `INSERT INTO "user" (email,name) VALUES ($1,'Timeout User') RETURNING id`,
+          [`to${Date.now()}@example.test`],
+        )
+      ).rows[0].id as string;
+      const mint = async (id: string, createdAgo: string, activityAgo: string | null) =>
+        admin.query(
+          `INSERT INTO session (id,user_id,token,expires_at,created_at,last_activity_at)
+           VALUES ($1,$2,$1,now() + interval '3 days',now() - $3::interval,
+                   CASE WHEN $4::text IS NULL THEN NULL ELSE now() - $4::interval END)`,
+          [id, userId, createdAgo, activityAgo],
+        );
+      const exists = async (id: string) =>
+        (await admin.query("SELECT 1 FROM session WHERE id = $1", [id])).rowCount === 1;
+
+      await mint("gap002-idle", "2 hours", "16 minutes");
+      await mint("gap002-absolute", "8 hours 5 minutes", "1 minute");
+      await mint("gap002-live", "1 hour", "5 minutes");
+
+      expect(await enforcer.enforce("gap002-idle")).toBe("expired_idle");
+      expect(await exists("gap002-idle")).toBe(false); // terminal: the row is gone
+      expect(await enforcer.enforce("gap002-absolute")).toBe("expired_absolute");
+      expect(await exists("gap002-absolute")).toBe(false);
+
+      expect(await enforcer.enforce("gap002-live")).toBe("active");
+      const touched = await admin.query(
+        "SELECT now() - last_activity_at < interval '30 seconds' AS fresh FROM session WHERE id = $1",
+        ["gap002-live"],
+      );
+      expect(touched.rows[0].fresh).toBe(true);
+      expect(await enforcer.enforce("gap002-gone")).toBe("revoked");
+
+      await admin.query("DELETE FROM session WHERE id = 'gap002-live'");
+      await handleT.close();
+    });
+
+    it("GAP-001: a deactivated or suspended user cannot sign in, and a surviving session is revoked on use", async () => {
+      const { createDbClient: mkDbD } = await import("@wardenx/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const handleD = mkDbD({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const enforcer = createDbSessionTimeoutEnforcer(handleD.db as never);
+      const email = `inactive${Date.now()}@example.test`;
+      const password = "correct-horse-battery-staple-9";
+      await auth.api.signUpEmail({ body: { email, password, name: "Inactive User" } });
+      const userId = (await admin.query(`SELECT id FROM "user" WHERE email=$1`, [email])).rows[0]
+        .id as string;
+      const sessionIdOf = async () =>
+        (
+          await admin.query(
+            "SELECT id FROM session WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1",
+            [userId],
+          )
+        ).rows[0]?.id as string | undefined;
+      const surviving = (await sessionIdOf()) as string;
+
+      for (const status of ["deactivated", "suspended"]) {
+        await admin.query(`UPDATE "user" SET status=$2 WHERE id=$1`, [userId, status]);
+        const before = Number(
+          (await admin.query("SELECT count(*) FROM session WHERE user_id=$1", [userId])).rows[0]
+            .count,
+        );
+        await expect(auth.api.signInEmail({ body: { email, password } })).rejects.toThrow(
+          /USER_INACTIVE/,
+        );
+        const after = Number(
+          (await admin.query("SELECT count(*) FROM session WHERE user_id=$1", [userId])).rows[0]
+            .count,
+        );
+        expect(after).toBe(before); // no session row was minted
+      }
+      // A session minted before the deactivation (here: the sign-up session) is revoked on its next use.
+      expect(await enforcer.enforce(surviving)).toBe("revoked");
+      expect((await admin.query("SELECT 1 FROM session WHERE id=$1", [surviving])).rowCount).toBe(
+        0,
+      );
+
+      // Reactivated, the same credentials work again.
+      await admin.query(`UPDATE "user" SET status='active' WHERE id=$1`, [userId]);
+      await expect(auth.api.signInEmail({ body: { email, password } })).resolves.toBeTruthy();
+      expect(await enforcer.enforce((await sessionIdOf()) as string)).toBe("active");
+      await handleD.close();
     });
 
     it("M3 RBAC: the live RoleStore lists the org's catalog (templates + own roles) with permission keys", async () => {
@@ -1054,7 +1485,116 @@ describe.skipIf(!DB_URL)(
         "accepted",
       );
 
+      // GAP-006 — the portal submit lands as a real M5 row (60-day clock started), and the requester's
+      // own list returns it — portal-origin rows only, never the staff-submitted amendment above.
+      const { createDbPortalAmendmentIntake } = await import("../src/modules/05-patient/index");
+      const intake = createDbPortalAmendmentIntake(asTenantRole(handle10.db) as never);
+      const portalReq = await intake.submit({
+        organizationId: org,
+        patientId,
+        requestedByUserId: actor,
+        portalAccountId: crypto.randomUUID(),
+        targetKind: "patient_demographic",
+        targetRef: "dateOfBirth",
+        requestedChange: "Date of birth should be 1960-01-01",
+      });
+      expect(portalReq.status).toBe("pending");
+      expect(new Date(portalReq.slaDueAt).getTime()).toBeGreaterThan(Date.now());
+      const mine = await intake.listOwn({
+        organizationId: org,
+        patientId,
+        requestedByUserId: actor,
+      });
+      expect(mine.map((r) => r.id)).toEqual([portalReq.id]);
+      expect(mine[0]).toMatchObject({
+        targetKind: "patient_demographic",
+        targetRef: "dateOfBirth",
+      });
+      expect(
+        await intake.listOwn({
+          organizationId: org,
+          patientId,
+          requestedByUserId: crypto.randomUUID(),
+        }),
+      ).toEqual([]);
+
+      // GAP-006 dedupe (0323) — a resubmit under a new key returns the OPEN request, never a second one.
+      // Two CONCURRENT submits of the same change (whitespace differs) as wardenx_app → exactly one row.
+      const sameChange = {
+        organizationId: org,
+        patientId,
+        requestedByUserId: actor,
+        portalAccountId: crypto.randomUUID(),
+        targetKind: "patient_demographic" as const,
+        targetRef: "legalName",
+        requestedChange: "Legal name is Jane Q. Nguyen",
+      };
+      const [r1, r2] = await Promise.all([
+        intake.submit(sameChange),
+        intake.submit({ ...sameChange, requestedChange: "  Legal name is   Jane Q.\nNguyen " }),
+      ]);
+      expect(r2.id).toBe(r1.id);
+      const openDupRows = async () =>
+        (
+          await admin.query(
+            `SELECT id FROM patient_amendment_request
+              WHERE patient_id = $1 AND status = 'pending'
+                AND requested_changes ->> 'targetRef' = 'legalName'`,
+            [patientId],
+          )
+        ).rows;
+      expect(await openDupRows()).toHaveLength(1);
+      expect((await intake.submit(sameChange)).id).toBe(r1.id); // sequential resubmit too
+      // Different text is a different request.
+      const other = await intake.submit({
+        ...sameChange,
+        requestedChange: "Legal name is Jane R. Nguyen",
+      });
+      expect(other.id).not.toBe(r1.id);
+      // Once decided, the same change may be requested again.
+      await svc.decideAmendment(org, r1.id, { accept: true }, actor);
+      const reopened = await intake.submit(sameChange);
+      expect(reopened.id).not.toBe(r1.id);
+      expect(reopened.status).toBe("pending");
+
       await handle10.close();
+    });
+
+    it("GAP-002 LOW: a pre-deploy row (7-day expires_at) and a portal session are bounded by policy, not expires_at", async () => {
+      const { createDbClient: mkDbP } = await import("@wardenx/db");
+      const { createDbSessionTimeoutEnforcer } = await import("@wardenx/auth");
+      const handleP = mkDbP({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const enforcer = createDbSessionTimeoutEnforcer(handleP.db as never);
+      const userId = (
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'Pre Deploy') RETURNING id`, [
+          `predeploy${Date.now()}@example.test`,
+        ])
+      ).rows[0].id as string;
+      // Minted 9 h before deploy under Better Auth's old 7-day rolling expiry; migration 0319 then
+      // backfilled last_activity_at = now(). Only created_at can bound it — and must.
+      await admin.query(
+        `INSERT INTO session (id,user_id,token,expires_at,created_at,last_activity_at)
+         VALUES ('gap002-predeploy',$1,'gap002-predeploy',now() + interval '6 days',
+                 now() - interval '9 hours',now())`,
+        [userId],
+      );
+      // An M31 portal session idle 31 min (portal floor: 30 min) — before this it had no server idle bound.
+      await admin.query(
+        `INSERT INTO session (id,user_id,token,expires_at,created_at,last_activity_at,session_class,scope)
+         VALUES ('gap002-portal',$1,'gap002-portal',now() + interval '3 days',now() - interval '2 hours',
+                 now() - interval '31 minutes','caregiver_portal','{"portalAccountId":"acct-predeploy"}')`,
+        [userId],
+      );
+      const exists = async (id: string) =>
+        (await admin.query("SELECT 1 FROM session WHERE id = $1", [id])).rowCount === 1;
+
+      expect(await enforcer.enforce("gap002-predeploy")).toBe("expired_absolute");
+      expect(await exists("gap002-predeploy")).toBe(false);
+      expect(await enforcer.enforce("gap002-portal")).toBe("expired_idle");
+      expect(await exists("gap002-portal")).toBe(false);
+      await handleP.close();
     });
   },
 );

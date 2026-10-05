@@ -2,8 +2,9 @@
  * M24 Billing — Medicaid — per-line claim assembly, proven against real Postgres (WX-PR-011 follow-up).
  *
  * Drives the production `buildDrizzleM24WriteService(...).assembleClaim` as the NOBYPASSRLS `wardenx_app`
- * role, with FAKE `coverage`/`ccnReader`/`locPeriodReader`/`signedEncounters` ports (the composition root's
- * own escape-valve/seam reads are exercised elsewhere; this suite's job is the REAL Drizzle writes inside
+ * role, with FAKE `coverage`/`ccnReader`/`locPeriodReader`/`signedEncounters` ports (the last describe block
+ * drives the REAL `ccnReader`/`locPeriodReader` production binds — M1's `buildProviderEntityCcnResolver` and
+ * M6's `createAdmissionLocPeriodsReader`; the rest of this suite's job is the REAL Drizzle writes inside
  * assembleClaim — the segment-per-LOC-period walk, the rate-schedule resolution, the R&B day walk, and the
  * `medicaid_claim_line`/`medicaid_claim_line_encounter` inserts). Real DB rows: organization, provider_entity
  * (a real FK), state_medicaid_trading_partner_credential (resolves service_state). Oregon's
@@ -18,6 +19,8 @@ import { createDbClient } from "@wardenx/db";
 import type { PlaceOfServiceFacilityKind } from "@wardenx/medicaid-adapters";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildProviderEntityCcnResolver } from "../src/bootstrap/provider-entity-resolver";
+import { createAdmissionLocPeriodsReader } from "../src/modules/06-admission";
 import {
   type LevelOfCarePeriodReaderPort,
   type SignedEncounterWindowReaderPort,
@@ -549,6 +552,68 @@ describe.skipIf(!DB_URL)(
           },
         ),
       ).rejects.toMatchObject({ code: "MEDICAID_STATE_RATE_SCHEDULE_MISSING" });
+    });
+    describe("the real ccnReader / locPeriodReader production binds (M1 / M6 readers)", () => {
+      const OTHER_ORG = "22222222-2222-2222-2222-222222222222";
+      const ESC_PATIENT = "88888888-8888-8888-8888-888888888888";
+      const ESC_ADMISSION = "99999999-9999-9999-9999-999999999999";
+      const ESC_LOC = "abababab-abab-abab-abab-abababababab";
+      const ESC_LOC_ASSIGNING = "cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd";
+
+      beforeAll(async () => {
+        // `level_of_care_period` FKs an admission this suite never builds; replica mode skips the FK
+        // triggers for the fixture rows only — the reads under test still run as `wardenx_app` under RLS.
+        await admin.query("SET session_replication_role = replica");
+        await admin.query(
+          `INSERT INTO level_of_care_period (id, organization_id, admission_id, level_of_care, effective_at, ended_at, status)
+           VALUES ($1,$3,$4,'routine_home_care','2026-03-01','2026-03-31','active'),
+                  ($2,$3,$4,'general_inpatient_care','2026-03-15',NULL,'assigning')`,
+          [ESC_LOC, ESC_LOC_ASSIGNING, ORG, ESC_ADMISSION],
+        );
+        await admin.query("SET session_replication_role = DEFAULT");
+      });
+
+      it("ccnReader reads provider_entity under the org's RLS context (was a 22P02 500 with no app.org_id)", async () => {
+        const reader = { ccnForProviderEntity: buildProviderEntityCcnResolver(handle.db).ccnFor };
+        await expect(reader.ccnForProviderEntity(ORG, peId)).resolves.toBe("123456");
+        await expect(reader.ccnForProviderEntity(OTHER_ORG, peId)).resolves.toBeNull();
+      });
+
+      it("locPeriodReader reads level_of_care_period under RLS, skipping 'assigning' periods", async () => {
+        const reader = createAdmissionLocPeriodsReader(handle.db);
+        const periods = await reader.periodsForAdmission(ORG, ESC_ADMISSION);
+        expect(periods.map((p) => p.id)).toEqual([ESC_LOC]);
+        expect(periods[0]).toMatchObject({ levelOfCare: "routine_home_care", facilityId: null });
+        await expect(reader.periodsForAdmission(OTHER_ORG, ESC_ADMISSION)).resolves.toEqual([]);
+      });
+
+      it("assembleClaim with both real readers writes the line (the dev-seed M24 assemble 500)", async () => {
+        const svc = buildDrizzleM24WriteService(
+          handle.db,
+          NOOP_OUTBOX,
+          OPEN_CIPHER,
+          coverage,
+          { ccnForProviderEntity: buildProviderEntityCcnResolver(handle.db).ccnFor },
+          createAdmissionLocPeriodsReader(handle.db),
+          noEncounters(),
+        );
+        const claim = await svc.assembleClaim(
+          { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+          {
+            patientId: ESC_PATIENT,
+            admissionId: ESC_ADMISSION,
+            providerEntityId: peId,
+            serviceFrom: "2026-03-01",
+            serviceTo: "2026-03-31",
+            kind: "hospice_only",
+          },
+        );
+        const lines = await admin.query(
+          "SELECT level_of_care, units FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
+          [claim.id],
+        );
+        expect(lines.rows).toEqual([{ level_of_care: "RHC", units: 31 }]);
+      });
     });
   },
 );

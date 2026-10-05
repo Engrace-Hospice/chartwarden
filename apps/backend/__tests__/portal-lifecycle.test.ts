@@ -4,13 +4,16 @@
 // injected. The cases that matter most pin the fail-CLOSED direction the §8 threat model turns on: an
 // unreachable patient is a 403 not a leak, an expired invite is a 410 not a silent re-issue, a tenant
 // overlay may tighten but never loosen the floor, and a bereaved flip refuses when M16 says out-of-window.
-import type { PortalAccessGrantKind, PortalAccountRelationship } from "@wardenx/types";
+import {
+  type PortalAccessGrantKind,
+  type PortalAccountRelationship,
+  SESSION_POLICY,
+} from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
   type FlipCandidateGrant,
   INVITATION_TTL_CEILING_MS,
   INVITATION_TTL_FLOOR_MS,
-  PORTAL_SESSION_POLICY_FLOOR,
   type PortalInvitation,
   PortalStateError,
   type SessionReachableGrant,
@@ -149,7 +152,7 @@ describe("session expiry / step-up / org-switch (§8.1)", () => {
   const policy = resolvePortalSessionPolicy();
 
   it("idle window is 30min, hard cap 8h, step-up 15min (platform floor)", () => {
-    expect(policy.idleTimeoutMs).toBe(PORTAL_SESSION_POLICY_FLOOR.idleTimeoutMs);
+    expect(policy.idleTimeoutMs).toBe(SESSION_POLICY.byClass.patient_portal.idleSec * 1000);
     expect(policy.idleTimeoutMs).toBe(30 * 60_000);
     expect(policy.hardTimeoutMs).toBe(8 * 60 * 60_000);
     expect(policy.stepUpWindowMs).toBe(15 * 60_000);

@@ -3,9 +3,10 @@
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` →
 // M1's VALIDATION_FAILED envelope (422). The per-mode `data` payload is carried opaquely as `Type.Unknown()`
 // at this boundary (the server discriminates on `mode` and validates against the per-mode TypeBox); the
-// lifecycle-bearing envelope fields are pinned here. `medClass` rides the record/refusal bodies so the route's
-// `administering_clinician_eligible[:medClass]` ABAC floor resolves at authz time (the service re-verifies it
-// against M12's `getAdministrationContext`).
+// lifecycle-bearing envelope fields are pinned here. `medClass` still rides the record/refusal bodies, but it
+// decides nothing (GAP-005): the `administering_clinician_eligible` floor and the D7 witness requirement both
+// key on the ORDER's class from M12's `getAdministrationContext`, and a body value that disagrees with it is
+// refused (422 MED_CLASS_MISMATCH).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";

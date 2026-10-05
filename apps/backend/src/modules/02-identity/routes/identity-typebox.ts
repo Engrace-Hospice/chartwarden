@@ -302,6 +302,19 @@ export const OrganizationTransitionResponseSchema = Type.Object({
   sessionsRevoked: Type.Integer({ minimum: 0 }),
 });
 
+/** POST /api/v1/platform/users/:id/deactivate — §4.7 `platform_ops (any)` cross-org offboard. */
+export const PlatformUserDeactivateRequestSchema = Type.Object({
+  reason: Type.String({ minLength: 1 }),
+});
+export const PlatformUserDeactivatedResponseSchema = Type.Object({
+  deactivated: Type.Literal(true),
+  /** True when the user was already deactivated — nothing was re-audited (idempotent repeat). */
+  alreadyDeactivated: Type.Boolean(),
+  sessionsRevoked: Type.Integer({ minimum: 0 }),
+  /** Live memberships revoked in this call, across every org (§2.2.1). */
+  membershipsRevoked: Type.Integer({ minimum: 0 }),
+});
+
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (the service view).
 type Conforms<T extends V, V> = T;
 type _MembershipView = Conforms<Static<typeof MembershipViewSchema>, MembershipView>;

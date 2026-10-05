@@ -156,8 +156,9 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   // Three classes rather than one, matching what M16/M19/M31's predicates have always compared
   // against. The distinction is the RELATIONSHIP, which is a durable fact of the grant, not of the
   // session: `patient_self` mints `patient_portal`, any delegated grant mints `caregiver_portal`, and
-  // a grant in `bereaved_mode` mints `bereaved_portal`. All three share one policy — the timeouts are
-  // `PORTAL_SESSION_POLICY_FLOOR` (M31's own evaluator), not the staff screen-lock lifecycle.
+  // a grant in `bereaved_mode` mints `bereaved_portal`. All three share one policy — M31's §6.4 floor
+  // (30-min idle / 8-h hard), enforced server-side from `SESSION_POLICY.byClass` (packages/types) by ./session-timeout — not
+  // the staff screen-lock lifecycle.
   patient_portal: {
     requiresPortalAccount: true,
     requiresExternalActor: false,

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/31-portal/lifecycle/session.ts — M31-T03 (§2.2.1, §2.3, §8.1).
 //
-// The portal session class (`SESSION_POLICY.portal`, §8.1 D3) as a PURE evaluator: the platform-floor
+// The portal session class (`SESSION_POLICY.byClass.patient_portal` et al., §8.1 D3) as a PURE evaluator: the platform-floor
 // timeouts (§6.4), the session-mint scope check (§2.3 — the requested patient must be reachable via an
 // active grant on the CURRENT account), idle / hard expiry, the TOTP step-up window, the one-active-patient
 // scoping (§8.1 multi-account-same-person), and the no-org-switch invariant.
@@ -10,23 +10,33 @@
 // session *policy + evaluator* the route layer (M31-T07) binds onto the live M2 session per request: facts
 // in (minted-at, last-active-at, step-up-at, the account status, the reachable grants), a decision out. No
 // clock is captured here — the caller passes `nowMs`, so every decision is reproducible in a unit test.
-import type { PatientId, PortalAccessGrantKind, PortalAccountStatus } from "@wardenx/types";
+import {
+  type PatientId,
+  type PortalAccessGrantKind,
+  type PortalAccountStatus,
+  SESSION_POLICY,
+} from "@wardenx/types";
 import { requirePortal } from "./errors";
 
+/** §6.4 / D3 — TOTP step-up is valid for 15 minutes after it is satisfied (M31-local; not a timeout). */
+const PORTAL_STEP_UP_WINDOW_MS = 15 * 60_000;
+
 /**
- * §6.4 / §8.1 `SESSION_POLICY.portal` platform-floor timeouts. Tenants may TIGHTEN (shorten) but never
- * loosen — `resolvePortalSessionPolicy` enforces that. Milliseconds so the evaluator does integer math.
+ * §6.4 / §8.1 platform-floor windows, in ms. The idle / hard numbers are NOT declared here: they are the
+ * portal entry of the shared `SESSION_POLICY.byClass` (packages/types) — the same table the M2 server
+ * enforcer reads — so M31 and the authenticate hook cannot drift. All three portal classes share it.
  */
-export const PORTAL_SESSION_POLICY_FLOOR = {
-  /** §6.4 — 30-minute idle window since `last_active_at`. */
-  idleTimeoutMs: 30 * 60_000,
-  /** §6.4 — 8-hour hard cap since `minted_at`, idle or not. */
-  hardTimeoutMs: 8 * 60 * 60_000,
-  /** §6.4 / D3 — TOTP step-up is valid for 15 minutes after it is satisfied. */
-  stepUpWindowMs: 15 * 60_000,
-  /** §8.1 — a portal session may never switch organizations. */
-  allowOrgSwitch: false,
-} as const;
+function portalSessionFloor(): PortalSessionPolicy {
+  const { idleSec, absoluteSec } = SESSION_POLICY.byClass.patient_portal;
+  if (absoluteSec === null)
+    throw new Error("SESSION_POLICY.patient_portal must declare a fixed absolute");
+  return {
+    idleTimeoutMs: idleSec * 1000,
+    hardTimeoutMs: absoluteSec * 1000,
+    stepUpWindowMs: PORTAL_STEP_UP_WINDOW_MS,
+    allowOrgSwitch: false,
+  };
+}
 
 export type PortalSessionPolicy = {
   readonly idleTimeoutMs: number;
@@ -46,7 +56,7 @@ export function resolvePortalSessionPolicy(tenant?: {
   hardTimeoutMs?: number;
   stepUpWindowMs?: number;
 }): PortalSessionPolicy {
-  const floor = PORTAL_SESSION_POLICY_FLOOR;
+  const floor = portalSessionFloor();
   const tighten = (want: number | undefined, floorMs: number): number =>
     want === undefined ? floorMs : Math.min(want, floorMs);
   return {

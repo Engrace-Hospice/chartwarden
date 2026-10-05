@@ -31,7 +31,10 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import { buildEmarAbacPredicates } from "../src/modules/13-emar/abac-predicates";
-import { createDbEmarBackend } from "../src/modules/13-emar/emar-route-service-db";
+import {
+  type EmarMedicationOrderPort,
+  createDbEmarBackend,
+} from "../src/modules/13-emar/emar-route-service-db";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -54,7 +57,14 @@ const PATIENT_A = "33333333-3333-4333-8333-3333330022c1";
 /** Has NO open assignments at all — the "unassigned patient" branch. */
 const PATIENT_UNASSIGNED = "33333333-3333-4333-8333-3333330022c2";
 const PATIENT_B = "33333333-3333-4333-8333-3333330022c3";
-const MED_ORDER = "44444444-4444-4444-8444-4444440022d1";
+/** GAP-004 — a caregiver attestation must name the order's own patient, so each patient has an order. */
+const ORDER_PATIENT: Readonly<Record<string, string>> = {
+  "44444444-4444-4444-8444-4444440022d1": PATIENT_A,
+  "44444444-4444-4444-8444-4444440022d2": PATIENT_UNASSIGNED,
+  "44444444-4444-4444-8444-4444440022d3": PATIENT_B,
+};
+const orderFor = (patientId: string): string =>
+  Object.keys(ORDER_PATIENT).find((o) => ORDER_PATIENT[o] === patientId) as string;
 
 describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postgres", () => {
   let admin: Client;
@@ -91,7 +101,7 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
   async function caregiverAttested(orgId: string, patientId: string) {
     return backend.recordCaregiverAttested(orgId, {
       patientId,
-      medicationOrderId: MED_ORDER,
+      medicationOrderId: orderFor(patientId),
       administeredAt: new Date().toISOString(),
       caregiverSessionId: "55555555-5555-4555-8555-5555550022e1",
       route: "oral",
@@ -175,7 +185,30 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
     // THE WIRING UNDER TEST: the real M5 Drizzle care-team store behind the real CareTeamProvider,
     // handed to M13 as the thunk `mountEmarRoutes` binds in production.
     const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
-    backend = createDbEmarBackend(handle.db, outbox as never, () => careTeam);
+    // M12's identity reader (production binds `getAdministrationContext`): each order resolves to its patient.
+    const medicationOrder: EmarMedicationOrderPort = {
+      async administrationIdentity({ medicationOrderId }) {
+        const patientId = ORDER_PATIENT[medicationOrderId];
+        if (!patientId) return null;
+        return {
+          patientId,
+          admissionId: "66666666-6666-4666-8666-6666660022f1",
+          drugName: "Morphine Sulfate Oral Solution",
+          route: "oral",
+          ivContinuousPolicy: null,
+          allowAdministration: true,
+          blockedReasons: [],
+          medClass: "standard",
+          isControlledSubstance: false,
+        };
+      },
+    };
+    backend = createDbEmarBackend(
+      handle.db,
+      outbox as never,
+      () => careTeam,
+      () => medicationOrder,
+    );
     predicates = buildEmarAbacPredicates({ resolver: backend });
   }, 180_000);
 

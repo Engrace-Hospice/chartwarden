@@ -22,6 +22,7 @@
 // unknown key means, and run N transactions with no atomicity across them. Accept is a one-shot,
 // idempotent, at-least-once path (the invitation consume already races), so the resolution and the
 // grants belong in ONE transaction that can be replayed.
+import { isTenantRoleReserved } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -75,8 +76,8 @@ export function createDbProposedRoleAttacher(db: DbClient): ProposedRoleAttacher
       if (wanted.length === 0) return { attached: [], unresolved: [] };
 
       return withOrgContext(db, { organizationId, userId: grantedByUserId }, async (tx) => {
-        const rows = await tx
-          .select({ id: schema.roles.id, key: schema.roles.key })
+        const candidates = await tx
+          .select({ id: schema.roles.id, key: schema.roles.key, category: schema.roles.category })
           .from(schema.roles)
           .where(
             and(
@@ -85,6 +86,10 @@ export function createDbProposedRoleAttacher(db: DbClient): ProposedRoleAttacher
               eq(schema.roles.enabled, true),
             ),
           );
+        // GAP-003/GAP-096: a tenant-owned row carrying a reserved platform key/category confers nothing
+        // and the M3 assign route refuses it (422 RESERVED_ROLE); accept must not be a way around that.
+        // It is reported `unresolved`, like a key the org has no role for.
+        const rows = candidates.filter((row) => !isTenantRoleReserved(row));
         const byKey = new Map(rows.map((row) => [row.key, row.id]));
         if (rows.length > 0) {
           await tx

@@ -41,6 +41,7 @@ import {
   M32_ABAC_PREDICATES,
   buildAiPlatformAbacPredicates,
   denyStubAiPlatformAbacResolver,
+  isSingleTenantDeployment,
 } from "../src/modules/32-ai-platform/abac-predicates";
 import {
   type M32AlertPayload,
@@ -191,11 +192,39 @@ describe("M32-T07 §4.7 — the six registered predicates", () => {
       ).resolves.toBe(true);
     });
 
-    it("falls back to the resolver for a tenant-side designee", async () => {
+    it("falls back to the resolver for a tenant-side designee in a SINGLE-TENANT deployment", async () => {
       const p = buildAiPlatformAbacPredicates({
         resolver: resolverOf({ roleKeysOf: async () => ["clinical_safety_lead"] }),
+        singleTenantDeployment: true,
       });
       await expect(p.ai_safety_owner(contextOf(), {})).resolves.toBe(true);
+    });
+
+    it("GAP-096 — a tenant clinical_safety_lead is NOT a safety owner on a multi-tenant deployment", async () => {
+      // §4.7's second population is "tenant clinical safety leads in single-tenant deployments". On a
+      // shared deployment the safety owner's writes (a platform kill switch, lifecycle, prompts) reach
+      // every tenant, so a role a tenant admin can mint must not carry them. Multi-tenant is the default.
+      const viaResolver = buildAiPlatformAbacPredicates({
+        resolver: resolverOf({ roleKeysOf: async () => ["clinical_safety_lead"] }),
+      });
+      await expect(viaResolver.ai_safety_owner(contextOf(), {})).resolves.toBe(false);
+      const viaSession = buildAiPlatformAbacPredicates({
+        resolver: denyStubAiPlatformAbacResolver,
+      });
+      await expect(
+        viaSession.ai_safety_owner(contextOf({ roles: ["clinical_safety_lead"] }), {}),
+      ).resolves.toBe(false);
+      // The platform-issued keys still pass (the reader only lets them through on a platform-owned row).
+      await expect(
+        viaSession.ai_safety_owner(contextOf({ roles: ["ai_safety_owner"] }), {}),
+      ).resolves.toBe(true);
+    });
+
+    it("reads the single-tenant flag from WARDENX_SINGLE_TENANT_DEPLOYMENT, default off", () => {
+      expect(isSingleTenantDeployment({})).toBe(false);
+      expect(isSingleTenantDeployment({ WARDENX_SINGLE_TENANT_DEPLOYMENT: "false" })).toBe(false);
+      expect(isSingleTenantDeployment({ WARDENX_SINGLE_TENANT_DEPLOYMENT: "1" })).toBe(false);
+      expect(isSingleTenantDeployment({ WARDENX_SINGLE_TENANT_DEPLOYMENT: "true" })).toBe(true);
     });
 
     it("denies an unreadable resolver and a role set that carries no safety authority", async () => {

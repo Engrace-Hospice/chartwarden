@@ -31,7 +31,7 @@ import {
   planIvSegment,
 } from "@wardenx/emar";
 import { describe, expect, it } from "vitest";
-import { createInMemoryEmarBackend } from "../src/modules/13-emar/index";
+import { type EmarOrderSeed, createInMemoryEmarBackend } from "../src/modules/13-emar/index";
 
 const ORG = "org_a";
 const ORG_B = "org_b";
@@ -43,6 +43,23 @@ const RN_MEM = "00000000-0000-4000-8000-0000000000c1";
 const WITNESS_USER = "rn_2";
 const WITNESS_MEM = "00000000-0000-4000-8000-0000000000c2";
 const NOW = "2026-06-22T14:35:00.000Z";
+/** The slice resolves only SEEDED, same-org orders (fail-closed, like M12 for the DB backend). */
+const CONTROLLED_ORDER_SEED: EmarOrderSeed = {
+  medicationOrderId: ORDER,
+  organizationId: ORG,
+  patientId: PATIENT,
+  medClass: "controlled_substance",
+  route: "SL",
+};
+const SL_ORDER_SEED: EmarOrderSeed = {
+  medicationOrderId: ORDER,
+  organizationId: ORG,
+  patientId: PATIENT,
+  medClass: "standard",
+  route: "SL",
+  doseAmount: 5,
+  doseUnit: "mg",
+};
 
 function eventNames(events: ReadonlyArray<{ eventName: string }>): string[] {
   return events.map((e) => e.eventName);
@@ -52,6 +69,7 @@ describe("M13-T11 §5 workflow acceptance", () => {
   it("W-EMAR-02 — controlled PRN administration mints the effectiveness-reassessment trigger", async () => {
     const svc = createInMemoryEmarBackend({
       now: () => NOW,
+      orders: [CONTROLLED_ORDER_SEED],
       memberships: [
         {
           userId: WITNESS_USER,
@@ -167,7 +185,7 @@ describe("M13-T11 §5 workflow acceptance", () => {
   });
 
   it("W-EMAR-05 — caregiver-attested administration enters the cosign queue, then RN acknowledges", async () => {
-    const svc = createInMemoryEmarBackend({ now: () => NOW });
+    const svc = createInMemoryEmarBackend({ now: () => NOW, orders: [SL_ORDER_SEED] });
     const recorded = await svc.recordCaregiverAttested(ORG, {
       patientId: PATIENT,
       medicationOrderId: ORDER,
@@ -192,7 +210,7 @@ describe("M13-T11 §5 workflow acceptance", () => {
   });
 
   it("W-EMAR-05 edge — the RN disputes the caregiver entry instead of acknowledging", async () => {
-    const svc = createInMemoryEmarBackend({ now: () => NOW });
+    const svc = createInMemoryEmarBackend({ now: () => NOW, orders: [SL_ORDER_SEED] });
     const recorded = await svc.recordCaregiverAttested(ORG, {
       patientId: PATIENT,
       medicationOrderId: ORDER,
@@ -477,7 +495,9 @@ describe("M13-T11 §5 workflow acceptance", () => {
       orders: [
         {
           medicationOrderId: ORDER,
+          organizationId: ORG,
           patientId: PATIENT,
+          medClass: "standard",
           route: "PO",
           doseAmount: 0.5,
           doseUnit: "mg",
@@ -515,7 +535,7 @@ describe("M13-T11 §5 workflow acceptance", () => {
 
 describe("M13-T11 §9.3 security & authorization (controlled-witness, M12 D6 block, non-leaking cross-tenant)", () => {
   it("a controlled-substance administration without a witness attestation is rejected", async () => {
-    const svc = createInMemoryEmarBackend({ now: () => NOW });
+    const svc = createInMemoryEmarBackend({ now: () => NOW, orders: [CONTROLLED_ORDER_SEED] });
     await expect(
       svc.recordAdministration(ORG, RN_USER, {
         medicationOrderId: ORDER,
@@ -532,7 +552,9 @@ describe("M13-T11 §9.3 security & authorization (controlled-witness, M12 D6 blo
       orders: [
         {
           medicationOrderId: ORDER,
+          organizationId: ORG,
           patientId: PATIENT,
+          medClass: "standard",
           route: "PO",
           administerable: false,
           blockedReasons: ["discontinued"],

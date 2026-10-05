@@ -19,6 +19,7 @@
     "db:migrate:baseline": "bun run scripts/db/migrate.ts --baseline",
     "db:migrate:deploy": "bun run scripts/db/migrate.ts --strict --schema-only",
     "db:provision-roles": "bun run scripts/db/provision-runtime-roles.ts",
+    "db:platform-role": "bun run scripts/db/platform-role.ts",
     "backup:restore-drill": "bun run scripts/db/backup-restore-drill.ts",
     "storage:reconcile-tenants": "bun run scripts/storage/reconcile-tenant-storage.ts",
     "db:seed": "bun run scripts/db/seed.ts",

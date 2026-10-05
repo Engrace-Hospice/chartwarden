@@ -71,7 +71,7 @@
  */
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
-import { firstRow } from "./lib/query-rows";
+import { grantPlatformRole } from "./lib/platform-role";
 import { stepUpSession } from "./lib/step-up";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -101,26 +101,15 @@ async function grantBillingScope(organizationId: string, membershipId: string): 
     `UPDATE membership SET default_provider_entity_id = $2, default_location_ids = $3::jsonb WHERE id = $1`,
     [membershipId, PROVIDER_ENTITY_ID, JSON.stringify([LOCATION_MAIN_ID])],
   );
-  const prior = await db.query<{ id: string }>(
-    `SELECT id FROM role WHERE organization_id = $1 AND key = 'platform_admin'`,
-    [organizationId],
-  );
-  if (prior.rows[0]) {
-    await db.query(`DELETE FROM membership_role WHERE role_id = $1`, [prior.rows[0].id]);
-    await db.query(`DELETE FROM role WHERE id = $1`, [prior.rows[0].id]);
-  }
-  const role = await db.query<{ id: string }>(
-    `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
-     VALUES ($1,'platform_admin','Platform Administrator (dev seed)','admin_executive'::role_category,'organization',true,
-             'Grants cap_platform_admin ABAC for the M26 platform cap-constant surface (dev seed only)')
-     RETURNING id`,
-    [organizationId],
-  );
-  await db.query(
-    `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)
-     ON CONFLICT DO NOTHING`,
-    [organizationId, membershipId, firstRow(role, "seed-scenario-billing: role lookup").id],
-  );
+  // Platform-owned since GAP-003: a tenant `platform_admin` row confers nothing and 0318 refuses it.
+  await grantPlatformRole(db, {
+    organizationId,
+    membershipId,
+    key: "platform_admin",
+    name: "Platform Administrator (dev seed)",
+    description:
+      "Grants cap_platform_admin ABAC for the M26 platform cap-constant surface (dev seed only)",
+  });
   await db.end();
 }
 

@@ -372,9 +372,79 @@ export interface CollaboratorLinkStore {
   consume(token: string): Promise<CollaboratorScope> | CollaboratorScope;
 }
 
+/**
+ * Outcome of an org-bounded global deactivation (GAP-001):
+ *   `deactivated`      — the user's only live membership is in the caller's org; credentials disabled.
+ *   `not_member`       — no NON-revoked membership in the caller's org (a former member is not the org's
+ *                        to offboard globally) — the route answers 404, no existence oracle.
+ *   `member_elsewhere` — still a non-revoked member of another org — the route answers 409.
+ */
+export type OrgBoundedDeactivation = "deactivated" | "not_member" | "member_elsewhere";
+
+/** The membership facts the GAP-001 decision reads. */
+export type MembershipStanding = Pick<MembershipRecord, "organizationId" | "status">;
+
+/** The GAP-001 decision, pure — shared by the DB and in-memory directories so they cannot drift. */
+export function decideOrgBoundedDeactivation(
+  memberships: readonly MembershipStanding[],
+  organizationId: string,
+): OrgBoundedDeactivation {
+  const live = memberships.filter((m) => m.status !== "revoked");
+  if (!live.some((m) => m.organizationId === organizationId)) return "not_member";
+  if (live.some((m) => m.organizationId !== organizationId)) return "member_elsewhere";
+  return "deactivated";
+}
+
 /** Disables a user's credentials everywhere (full offboard §7.5). */
 export interface UserDirectory {
-  deactivate(userId: string, reason: string): Promise<void> | void;
+  /**
+   * GAP-001 — deactivate `userId` only when their sole live membership is in `organizationId`. The
+   * membership check and the status flip are ONE atomic step, so an invite accepted in another org
+   * concurrently cannot slip between the check and the write.
+   */
+  deactivateFromOrg(input: {
+    userId: string;
+    organizationId: string;
+    reason: string;
+  }): Promise<OrgBoundedDeactivation> | OrgBoundedDeactivation;
+  /**
+   * §4.7 `platform_ops (any)` — deactivate `userId` platform-wide, regardless of org (the platform route
+   * only; the tenant route stays org-bounded). Atomic under the same user-row lock `deactivateFromOrg`
+   * takes. Reports the orgs the user was still a live (non-revoked) member of, for the audit record.
+   */
+  deactivateGlobally(input: { userId: string }): Promise<GlobalDeactivation> | GlobalDeactivation;
+}
+
+/**
+ * Outcome of a platform-wide deactivation:
+ *   `deactivated`         — the user's status flipped to `deactivated` in this call.
+ *   `already_deactivated` — it was already `deactivated`; nothing written (the route stays idempotent).
+ *   `not_found`           — no such user (the route answers 404).
+ */
+export interface GlobalDeactivation {
+  readonly outcome: "deactivated" | "already_deactivated" | "not_found";
+  /** Orgs where the user held a non-revoked membership at the moment of the decision. */
+  readonly memberOrganizationIds: readonly string[];
+  /**
+   * The memberships this call revoked (§2.2.1 "all memberships revoked"). Swept on a repeat call too, so
+   * an `already_deactivated` user still holding a live membership is brought to the same end state.
+   */
+  readonly revokedMemberships: readonly RevokedMembership[];
+}
+
+/** One membership a deactivation revoked. */
+export interface RevokedMembership {
+  readonly membershipId: string;
+  readonly organizationId: string;
+}
+
+/** Live (non-revoked) membership orgs, sorted — shared by the DB and in-memory directories. */
+export function liveMembershipOrganizationIds(
+  memberships: readonly MembershipStanding[],
+): readonly string[] {
+  return [
+    ...new Set(memberships.filter((m) => m.status !== "revoked").map((m) => m.organizationId)),
+  ].sort();
 }
 
 /**
@@ -418,8 +488,6 @@ export interface IdentityRouteDeps {
   /** The `m2.*` transactional-outbox publisher. Omitted → record-only, no-op (the M28 `NOOP_FHIR_OUTBOX`
    *  precedent) — every existing route keeps working without it. */
   outbox?: IdentityOutboxPort;
-  /** Org-binding session TTL in seconds (spec §SESSION_POLICY); default 12h. */
-  sessionTtlSec?: number;
   /** External-collaborator session TTL in seconds (spec §7.6, up to 8h); default 8h. */
   collaboratorSessionTtlSec?: number;
   /**
@@ -741,16 +809,52 @@ export function createInMemoryCollaboratorLinkStore(): {
   };
 }
 
-/** In-memory user directory exposing deactivated ids for assertions. */
-export function createInMemoryUserDirectory(): {
+/**
+ * In-memory user directory exposing deactivated ids for assertions. It reads memberships from the
+ * same repository the routes use (single-threaded, so the check-then-write is trivially atomic).
+ */
+export function createInMemoryUserDirectory(
+  memberships: Pick<MembershipRepository, "listForUser" | "setStatus">,
+): {
   directory: UserDirectory;
   isDeactivated(userId: string): boolean;
 } {
   const deactivated = new Set<string>();
+  const revokeLive = async (
+    userId: string,
+    organizationIds: readonly string[],
+  ): Promise<RevokedMembership[]> => {
+    const live = (await memberships.listForUser(userId)).filter(
+      (m) => m.status !== "revoked" && organizationIds.includes(m.organizationId),
+    );
+    for (const m of live) await memberships.setStatus(m.membershipId, "revoked");
+    return live.map((m) => ({ membershipId: m.membershipId, organizationId: m.organizationId }));
+  };
   return {
     directory: {
-      deactivate(userId) {
+      async deactivateFromOrg({ userId, organizationId }) {
+        const outcome = decideOrgBoundedDeactivation(
+          await memberships.listForUser(userId),
+          organizationId,
+        );
+        if (outcome !== "deactivated") return outcome;
         deactivated.add(userId);
+        await revokeLive(userId, [organizationId]);
+        return outcome;
+      },
+      // The slice has no `user` table: a user "exists" when they hold any membership row (any status).
+      async deactivateGlobally({ userId }) {
+        const rows = await memberships.listForUser(userId);
+        const memberOrganizationIds = liveMembershipOrganizationIds(rows);
+        if (rows.length === 0) {
+          return { outcome: "not_found", memberOrganizationIds, revokedMemberships: [] };
+        }
+        const revokedMemberships = await revokeLive(userId, memberOrganizationIds);
+        if (deactivated.has(userId)) {
+          return { outcome: "already_deactivated", memberOrganizationIds, revokedMemberships };
+        }
+        deactivated.add(userId);
+        return { outcome: "deactivated", memberOrganizationIds, revokedMemberships };
       },
     },
     isDeactivated: (userId) => deactivated.has(userId),

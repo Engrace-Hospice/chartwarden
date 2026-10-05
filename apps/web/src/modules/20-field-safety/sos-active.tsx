@@ -74,7 +74,7 @@ export function ActiveSosScreen(): JSX.Element {
   const load = useCallback(
     async (background = false) => {
       if (!background) setLoading(true);
-      const res = await listActiveSos(client);
+      const res = await listActiveSos(client, { background });
       if (res.error || !res.active) {
         setBoard("unknown");
         setError(errorMessage(res.error, "The active-SOS board could not be read."));

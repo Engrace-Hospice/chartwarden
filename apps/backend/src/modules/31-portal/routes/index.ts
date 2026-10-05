@@ -90,6 +90,36 @@ export interface PortalRouteDeps {
   readonly visitReader?: M17VisitRoomReaderPort;
   /** F-220 — seals the two vendor-room columns at the lazy mint (per-tenant DEK envelope). */
   readonly roomCipher?: PortalRoomCipher;
+  /**
+   * GAP-006 — M5's §164.526 amendment intake (M5 owns `patient_amendment_request`; the composition root binds
+   * M5's Drizzle intake here). ABSENT ⇒ submit refuses 503 and the list refuses 503: a portal that tells a
+   * patient "submitted" must have started M5's 60-day clock, so there is no fake-success fallback.
+   */
+  readonly amendmentIntake?: PortalAmendmentIntakePort;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */
   readonly now?: () => Date;
+}
+
+/** The M5 amendment intake as M31 calls it (structurally satisfied by M5's `createDbPortalAmendmentIntake`). */
+export interface PortalAmendmentIntakePort {
+  submit(input: {
+    organizationId: string;
+    patientId: string;
+    requestedByUserId: string;
+    portalAccountId: string;
+    targetKind: "patient_demographic" | "encounter_narrative";
+    targetRef: string;
+    requestedChange: string;
+  }): Promise<{ id: string; status: string }>;
+  listOwn(q: { organizationId: string; patientId: string; requestedByUserId: string }): Promise<
+    ReadonlyArray<{
+      id: string;
+      targetKind: string;
+      requestedChange: string;
+      status: string;
+      submittedAt: string;
+      slaDueAt: string;
+      decidedAt: string | null;
+    }>
+  >;
 }

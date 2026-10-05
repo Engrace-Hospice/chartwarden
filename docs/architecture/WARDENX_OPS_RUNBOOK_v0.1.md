@@ -2054,6 +2054,50 @@ Every admin (wardenx_admin role, platform_ops user) action audited:
 - Reviewed monthly by compliance officer
 - Anomalies investigated
 
+### 16.5 Platform Role Grants (platform operators, AI Safety Owner)
+
+Platform authority is a role KEY that only confers anything on a **platform-owned** role row
+(`organization_id IS NULL`): the `platform_*` keys and `ai_safety_owner` (GAP-003 / GAP-096). A
+tenant-owned row carrying one confers nothing, migration 0318 refuses to insert a `platform_*` one, and
+the M3 role routes refuse to create or assign any of them (`422 RESERVED_ROLE`). The M34 platform-ops
+console therefore cannot bootstrap its own first operator. The one production path is the operator CLI
+`scripts/db/platform-role.ts`:
+
+```bash
+# Grant (idempotent: a re-run reports "already granted" and writes nothing)
+DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role grant \
+  --email ops@example.com --org <org slug or id> --role platform_ops --ticket CHG-1234
+
+# Revoke (idempotent: "not granted (nothing to revoke)" when there is no binding)
+DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
+  --email ops@example.com --org <org slug or id> --role platform_ops --ticket CHG-1235
+```
+
+- **Allowed keys** are exactly the platform keys a predicate reads (`PLATFORM_GRANTABLE_ROLE_KEYS` in
+  `packages/auth/src/roles/platform-reserved.ts`): `platform_owner`, `platform_admin`,
+  `platform_billing_admin`, `platform_support_t2`, `platform_sales`, `platform_ops`,
+  `platform_security_owner`, `ai_safety_owner`. Any other key is refused before the database is touched.
+- **The user must already hold an ACTIVE membership** in the named org. A platform role is bound to a
+  membership; the CLI never creates users or memberships.
+- **Connection.** Use the owner connection the migration runner uses (`DATABASE_ADMIN_URL`, else
+  `DATABASE_URL`). `wardenx_app` cannot write platform-owned rows.
+- **What it writes.** It upserts the platform-owned role row (one per key, `role_platform_key_idx`), adds
+  the key's M35 template permission grants (`PLATFORM_OPS_ROLE_GRANTS`) for keys already in the
+  `permission` mirror (it warns about missing ones; run `bun run db:sync:permissions` first), deletes any
+  legacy tenant-owned row with the same key in that org, and binds the role to the membership. Revoke
+  deletes only the binding; the platform-owned row stays for other holders.
+- **Audit.** All writes run in one transaction with the M4 write-audit triggers live. Each `role`,
+  `role_permission` and `membership_role` change lands in `audit_event` with
+  `correlation_id = ops-cli:platform-role:<grant|revoke>:<ticket>:<uuid>`. The CLI prints that id; record
+  it on the change ticket. `actor_user_id` is NULL because the operator acts on a database connection,
+  so the ticket is the attribution. Find the rows with
+  `SELECT * FROM audit_event WHERE correlation_id LIKE 'ops-cli:platform-role:%:CHG-1234:%'`.
+- **Effect.** Role keys are re-read on every request. Cached permission sets expire within 5 minutes.
+- **`clinical_safety_lead` is not granted here.** It is a tenant role. It carries the AI Safety Owner
+  authority only on a deployment started with `WARDENX_SINGLE_TENANT_DEPLOYMENT=true` (M32 §4.7).
+- Review platform-role holders in the §12.2 quarterly access review:
+  `SELECT u.email, r.key FROM membership_role mr JOIN role r ON r.id = mr.role_id JOIN membership m ON m.id = mr.membership_id JOIN "user" u ON u.id = m.user_id WHERE r.organization_id IS NULL AND r.category = 'platform_staff'`.
+
 ---
 
 ## 17. Document Maintenance

@@ -50,6 +50,10 @@ export function mountEmarRoutes(
           ivContinuousPolicy: policy ? { minRate: policy.minRate, maxRate: policy.maxRate } : null,
           allowAdministration: ctx.allowAdministration,
           blockedReasons: ctx.blockedReasons,
+          // GAP-005 — this adapter used to drop both, leaving the request body as the only answer to
+          // "is this a controlled substance?". M12's order is the authority.
+          medClass: ctx.order.medClass,
+          isControlledSubstance: ctx.order.isControlledSubstance,
         };
       },
     }),

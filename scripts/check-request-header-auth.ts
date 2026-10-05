@@ -86,6 +86,11 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "Replay collapsing (§4.1.1). Scoped to the caller's own prior request; it grants nothing it did not already have.",
   },
+  "x-wardenx-background": {
+    classification: "not-authorization",
+    reason:
+      "GAP-002: marks a timer poll so it does not refresh the session idle clock. The timeout is still enforced; omitting the header only keeps the caller's OWN session alive, which any real request does anyway.",
+  },
   "x-correlation-id": {
     classification: "not-authorization",
     reason: "Trace correlation only. Never read by a guard, a predicate, or a service decision.",

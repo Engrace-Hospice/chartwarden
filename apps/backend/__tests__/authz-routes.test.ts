@@ -21,6 +21,7 @@ import { buildServer } from "../src/bootstrap/index";
 import { createInMemoryAuditExecutor } from "../src/modules/02-identity/index";
 import {
   type AuthzRouteDeps,
+  type RoleView,
   createFixedPermissionResolver,
   createInMemoryAuditorSessionMinter,
   createInMemoryBreakGlassStore,
@@ -66,7 +67,7 @@ const PERMISSION_SEED = [
   },
 ];
 
-function makeServer(opts: { cosignRequired?: boolean } = {}) {
+function makeServer(opts: { cosignRequired?: boolean; extraRoles?: readonly RoleView[] } = {}) {
   const roles = createInMemoryRoleStore();
   const membershipRoles = createInMemoryMembershipRoleStore();
   const breakGlass = createInMemoryBreakGlassStore();
@@ -89,8 +90,10 @@ function makeServer(opts: { cosignRequired?: boolean } = {}) {
   registerBreakGlassContract({ store: breakGlass.store, audit: auditSink.executor });
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  // Rows the in-memory store cannot mint itself (a platform-owned role, a pre-0318 tenant row).
+  const extra = new Map((opts.extraRoles ?? []).map((r) => [r.roleId, r]));
   const deps: AuthzRouteDeps = {
-    roles: roles.store,
+    roles: { ...roles.store, get: (id) => extra.get(id) ?? roles.store.get(id) },
     membershipRoles: membershipRoles.store,
     breakGlass: breakGlass.store,
     engagements: engagements.store,
@@ -125,6 +128,24 @@ const BOTH = { "x-test-user": "both_1", "x-test-org": "org_a", "x-test-roles": "
 // `authz-typebox` at the boundary — so the glass fixtures are real uuids, not opaque handles.
 const TARGET_PATIENT = "11111111-1111-4111-8111-111111111111";
 const OTHER_PATIENT = "22222222-2222-4222-8222-222222222222";
+const MEMBERSHIP = "33333333-3333-4333-8333-333333333333";
+
+/** A role row with the defaults the GAP-003 assign/edit cases do not care about. */
+function roleView(
+  r: Pick<RoleView, "roleId" | "organizationId" | "key"> & Partial<RoleView>,
+): RoleView {
+  return {
+    name: r.key,
+    category: "operations",
+    scopeLevel: "organization",
+    systemDefault: false,
+    systemLocked: false,
+    enabled: true,
+    customized: false,
+    permissionKeys: [],
+    ...r,
+  };
+}
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -204,6 +225,104 @@ describe("M3-T08 authorization route inventory", () => {
       });
       expect(res.statusCode).toBe(403);
       expect(auditSink.rows.some((r) => r.eventType === "m3.authz.escalation_blocked")).toBe(true);
+      await app.close();
+    });
+
+    it.each([
+      { key: "platform_admin", category: "operations" },
+      { key: "platform_ops", category: "operations" },
+      { key: "helpdesk", category: "platform_staff" },
+    ])("GAP-003 a tenant cannot mint platform authority ($key / $category) → 422", async (role) => {
+      const { app, auditSink } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: ADMIN,
+        // Zero permissions: anti-escalation passes trivially, which is exactly how the spoof got in.
+        payload: { ...role, name: "Spoof", permissionKeys: [] },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("RESERVED_ROLE");
+      expect(auditSink.rows.some((r) => r.eventType === "m3.role.created")).toBe(false);
+      await app.close();
+    });
+
+    it.each([
+      {
+        label: "platform-owned platform_admin",
+        organizationId: null,
+        key: "platform_admin",
+        category: "operations",
+      },
+      {
+        label: "platform-owned platform_staff",
+        organizationId: null,
+        key: "helpdesk",
+        category: "platform_staff",
+      },
+    ])("GAP-003 a tenant cannot assign a $label role → 422 RESERVED_ROLE", async (r) => {
+      const platformRole = roleView({ roleId: "plat_1", ...r });
+      const { app, membershipRoles } = makeServer({ extraRoles: [platformRole] });
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/memberships/${MEMBERSHIP}/roles`,
+        headers: ADMIN,
+        // The platform row carries no permissions, so anti-escalation alone let this through.
+        payload: { roleId: "plat_1" },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("RESERVED_ROLE");
+      expect(await membershipRoles.store.listForMembership(MEMBERSHIP)).toEqual([]);
+      await app.close();
+    });
+
+    it("GAP-096 a tenant cannot mint or assign ai_safety_owner (platform authority, no prefix) → 422", async () => {
+      const { app, auditSink, membershipRoles } = makeServer({
+        extraRoles: [
+          roleView({
+            roleId: "aso_1",
+            organizationId: null,
+            key: "ai_safety_owner",
+            category: "operations",
+          }),
+        ],
+      });
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: ADMIN,
+        payload: {
+          key: "ai_safety_owner",
+          category: "clinical_staff",
+          name: "Spoof",
+          permissionKeys: [],
+        },
+      });
+      expect(created.statusCode).toBe(422);
+      expect(created.json().error.code).toBe("RESERVED_ROLE");
+      expect(auditSink.rows.some((r) => r.eventType === "m3.role.created")).toBe(false);
+      const assigned = await app.inject({
+        method: "POST",
+        url: `/api/v1/memberships/${MEMBERSHIP}/roles`,
+        headers: ADMIN,
+        payload: { roleId: "aso_1" },
+      });
+      expect(assigned.statusCode).toBe(422);
+      expect(await membershipRoles.store.listForMembership(MEMBERSHIP)).toEqual([]);
+      await app.close();
+    });
+
+    it("GAP-003 a legacy tenant platform_* row cannot be edited → 422, not a raw 23514", async () => {
+      const legacy = roleView({ roleId: "legacy_1", organizationId: "org_a", key: "platform_ops" });
+      const { app } = makeServer({ extraRoles: [legacy] });
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/roles/legacy_1",
+        headers: ADMIN,
+        payload: { name: "Renamed" },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("RESERVED_ROLE");
       await app.close();
     });
 

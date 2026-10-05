@@ -23,6 +23,7 @@ import type {
   OrgScope,
 } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
+import { roleConfersKey } from "../roles/platform-reserved";
 import {
   type EffectivePermissionStore,
   type RbacEngineHandle,
@@ -39,12 +40,14 @@ export function createDbEffectivePermissionStore(db: DbClient): EffectivePermiss
   return {
     async loadGrants(orgId: string, userId: string): Promise<RoleGrant[]> {
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
-        // One grant row per membership_role: the role (key + enabled) and the grant's expiry. RLS +
-        // the explicit predicates scope this to the actor's active membership in this org.
-        const grantRows = await tx
+        // One grant row per membership_role: the role (key + enabled + ownership) and the grant's
+        // expiry. RLS + the explicit predicates scope this to the actor's active membership in this org.
+        const rawGrantRows = await tx
           .select({
             roleId: schema.roles.id,
             roleKey: schema.roles.key,
+            roleOrganizationId: schema.roles.organizationId,
+            roleCategory: schema.roles.category,
             enabled: schema.roles.enabled,
             expiresAt: schema.membershipRoles.expiresAt,
           })
@@ -61,6 +64,16 @@ export function createDbEffectivePermissionStore(db: DbClient): EffectivePermiss
               eq(schema.memberships.status, "active"),
             ),
           );
+        // GAP-003/GAP-096: a tenant-owned row carrying a reserved platform key or category confers
+        // NOTHING — neither its key nor its role_permission rows (the same rule as the enrichment reader
+        // below; such rows only exist where they predate migration 0318's NOT VALID backstop).
+        const grantRows = rawGrantRows.filter((g) =>
+          roleConfersKey({
+            organizationId: g.roleOrganizationId,
+            key: g.roleKey,
+            category: g.roleCategory,
+          }),
+        );
         if (grantRows.length === 0) return [];
 
         // The permission keys each granted role confers (`role_permission` → `permission.key`).
@@ -141,6 +154,8 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
         const roleRows = await tx
           .select({
             roleKey: schema.roles.key,
+            roleOrganizationId: schema.roles.organizationId,
+            roleCategory: schema.roles.category,
             enabled: schema.roles.enabled,
             expiresAt: schema.membershipRoles.expiresAt,
           })
@@ -153,6 +168,15 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
           ...new Set(
             roleRows
               .filter((r) => r.enabled && (r.expiresAt === null || r.expiresAt.getTime() > now))
+              // GAP-003/GAP-096: a tenant-owned row never confers platform authority (`platform_*` or
+              // `ai_safety_owner` key, `platform_staff` category) — only a platform-owned row does.
+              .filter((r) =>
+                roleConfersKey({
+                  organizationId: r.roleOrganizationId,
+                  key: r.roleKey,
+                  category: r.roleCategory,
+                }),
+              )
               .map((r) => r.roleKey),
           ),
         ];

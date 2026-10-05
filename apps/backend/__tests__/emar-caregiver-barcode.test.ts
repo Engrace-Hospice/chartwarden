@@ -60,7 +60,9 @@ function makeServer() {
       // The active order authorizes morphine 5 mg PO; the BCMA RxCUI/NDC + the patient wristband identify it.
       {
         medicationOrderId: ORDER,
+        organizationId: ORG,
         patientId: PATIENT,
+        medClass: "standard",
         route: "PO",
         doseAmount: 5,
         doseUnit: "mg",
@@ -69,7 +71,9 @@ function makeServer() {
       },
       {
         medicationOrderId: DISCONTINUED_ORDER,
+        organizationId: ORG,
         patientId: PATIENT,
+        medClass: "standard",
         route: "PO",
         doseAmount: 5,
         doseUnit: "mg",
@@ -89,7 +93,11 @@ function makeServer() {
   );
   registerEffectivePermissionResolver(grantStore.store);
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildEmarAbacPredicates({ resolver: backend })))
+  // Caseload scope (GAP-004) is not under test here: every actor is on the patient's caseload.
+  const isInCaseload = async () => true;
+  for (const [name, predicate] of Object.entries(
+    buildEmarAbacPredicates({ resolver: backend, isInCaseload }),
+  ))
     reg.register(name, predicate);
   registerAbacRegistry(reg);
 

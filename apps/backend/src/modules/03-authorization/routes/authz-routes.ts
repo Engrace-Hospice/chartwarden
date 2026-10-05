@@ -21,7 +21,12 @@
 // route's existing existence lookup, so the §9.3 IDOR semantics are unchanged: an unauthorized
 // actor still sees 403 (never 422) and an authorized actor still sees 404 for an absent object.
 import type { AuditContext } from "@wardenx/audit";
-import { allPermissionMirrorRows, requirePermission, requireSession } from "@wardenx/auth";
+import {
+  allPermissionMirrorRows,
+  isTenantRoleReserved,
+  requirePermission,
+  requireSession,
+} from "@wardenx/auth";
 import {
   ForbiddenError,
   type HttpRequestContext,
@@ -107,6 +112,14 @@ function cosignRefusedToHttp(err: BreakGlassCosignError): WardenXError {
 }
 
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
+/** GAP-003/GAP-096 — platform authority is neither mintable nor assignable through a tenant's role
+ *  surface. Operators grant it out of band (`bun run db:platform-role`, OPS_RUNBOOK §16.5). */
+const reservedRole = () =>
+  new WardenXError(
+    "RESERVED_ROLE",
+    "platform role keys (platform_*, ai_safety_owner) and the platform_staff category are reserved to the platform",
+    422,
+  );
 
 export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRouteDeps): void {
   const breakGlassTtlSec = deps.breakGlassTtlSec ?? DEFAULT_BREAK_GLASS_TTL_SEC;
@@ -152,6 +165,10 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       const { organizationId, userId } = actorOf(request.context);
       const body = parse(CreateRoleBody, request.body);
       const permissionKeys = body.permissionKeys ?? [];
+      // GAP-003: platform authority (`platform_*` keys, `platform_staff`) lives only on platform-owned
+      // rows. Refused before anti-escalation, which a zero-permission spoof passes trivially. The
+      // enrichment reader and the migration 0318 CHECK enforce the same rule below this route.
+      if (isTenantRoleReserved(body)) throw reservedRole();
 
       await assertNoEscalation(request, organizationId, userId, permissionKeys);
 
@@ -183,6 +200,9 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       const { id: roleId } = parse(RoleIdParams, request.params);
       const existing = await deps.roles.get(roleId);
       if (!existing) throw notFound("role");
+      // A tenant row carrying a reserved key predates migration 0318, whose NOT VALID CHECK refuses any
+      // new tuple for it — an UPDATE would surface as a raw 23514. It confers nothing; delete it instead.
+      if (existing.organizationId !== null && isTenantRoleReserved(existing)) throw reservedRole();
 
       const body = parse(UpdateRoleBody, request.body);
       const patch: { name?: string; enabled?: boolean; permissionKeys?: string[] } = {};
@@ -265,6 +285,10 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
 
       const role = await deps.roles.get(body.roleId);
       if (!role) throw notFound("role");
+      // GAP-003/GAP-096: a platform-owned reserved role is visible to every tenant, and anti-escalation
+      // only compares permission keys, so it cannot stand in for this check. Platform authority is
+      // granted out of band (`bun run db:platform-role`), never through a tenant's assignment surface.
+      if (isTenantRoleReserved(role)) throw reservedRole();
       // Anti-escalation: an admin may not confer permissions they do not themselves hold.
       await assertNoEscalation(request, organizationId, userId, role.permissionKeys);
 

@@ -74,6 +74,10 @@ export interface AttributeEntry {
  */
 export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
   // ── produced ────────────────────────────────────────────────────────────────────────────────────
+  sessionExpired: {
+    producer:
+      "authenticate hook — set to the SessionTimeoutEnforcer verdict (expired_idle / expired_absolute / revoked) when it ends the session; read by the error handler to answer 401 SESSION_EXPIRED (GAP-002, bootstrap/plugins/authenticate.ts).",
+  },
   sessionId: {
     producer:
       "authenticate hook — the real Better Auth session id, from the session snapshot (bootstrap/plugins/authenticate.ts).",

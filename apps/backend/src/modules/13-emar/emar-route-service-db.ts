@@ -74,9 +74,14 @@ import {
   witnessTokenDigest,
 } from "@wardenx/emar";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { type MedClass, NotFoundError, ValidationError } from "@wardenx/types";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
-import type { CaregiverReviewAbacFacts, WitnessAbacFacts } from "./abac-predicates";
+import type {
+  CaregiverReviewAbacFacts,
+  EmarScopeRefKind,
+  WitnessAbacFacts,
+} from "./abac-predicates";
+import { assertMedClassAgrees, assertOrderPatient, unresolvedOrder } from "./order-consistency";
 import type {
   AdministrationPolicyView,
   AdministrationView,
@@ -94,7 +99,7 @@ import type {
   WorksheetView,
 } from "./routes/service";
 
-/** Sentinel patient/admission anchors when no scheduled dose supplies them (the in-mem `findPatient` values). */
+/** Sentinel patient/admission anchors (historical: the order now resolves the patient; see compromise #2). */
 const PATIENT_SENTINEL = "00000000-0000-4000-8000-0000000000aa";
 const ADMISSION_SENTINEL = "00000000-0000-4000-8000-0000000000bb";
 /**
@@ -187,6 +192,14 @@ export interface EmarMedicationOrderPort {
     readonly allowAdministration: boolean;
     /** The reasons behind a `false` verdict, echoed to the caller so the refusal names itself. */
     readonly blockedReasons: readonly string[];
+    /**
+     * GAP-005 — the order's medication class and controlled-substance flag (M12 `MedicationOrderDto`).
+     * The ONLY source of "is this a controlled administration": the D7 witness requirement, the stored
+     * `is_controlled_substance`, and the administering-clinician matrix all key on these, never on the
+     * request body.
+     */
+    readonly medClass: MedClass;
+    readonly isControlledSubstance: boolean;
   } | null>;
 }
 
@@ -491,6 +504,41 @@ export function createDbEmarBackend(
         return w ? w.triggerKind : null;
       });
     },
+    // GAP-004 — `emar.scope`: the patient each M13 id belongs to, read under RLS (a cross-tenant id is
+    // simply absent). The order's patient comes through M12's seam, like every other order fact here.
+    async loadScopePatientId(orgId, kind: EmarScopeRefKind, id) {
+      if (kind === "medicationOrderId") {
+        const identity = await medOrder().administrationIdentity({
+          organizationId: orgId,
+          medicationOrderId: id,
+        });
+        return identity?.patientId ?? null;
+      }
+      const table = {
+        administrationId: { t: ADM, col: ADM.id },
+        ivSessionId: { t: ADM, col: ADM.ivSessionId },
+        scheduledDoseId: { t: SD, col: SD.id },
+        missedDoseId: { t: MD, col: MD.id },
+        worksheetId: { t: WS, col: WS.id },
+        deploymentId: { t: CKD, col: CKD.id },
+      }[kind];
+      return withOrg(orgId, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: table.t.patientId })
+          .from(table.t)
+          .where(eq(table.col, id))
+          .limit(1);
+        return r?.patientId ?? null;
+      });
+    },
+    // GAP-005 — the administering-clinician matrix keys on the ORDER's class.
+    async loadOrderMedClass(orgId, medicationOrderId) {
+      const identity = await medOrder().administrationIdentity({
+        organizationId: orgId,
+        medicationOrderId,
+      });
+      return identity?.medClass ?? null;
+    },
 
     // ── administration reads ─────────────────────────────────────────────────────────────────────────
     async getAdministration(orgId, id): Promise<AdministrationView> {
@@ -711,7 +759,6 @@ export function createDbEmarBackend(
       return withOrg(orgId, async (tx) => {
         const recordedAt = new Date();
         const lateEntryTier = resolveLateEntryTier(args.administeredAt, recordedAt.toISOString());
-        const isControlled = args.medClass === "controlled_substance";
         const isComfortKitDrawdown = Boolean(args.comfortKitDeploymentId);
 
         // Siting + patient/admission anchor come from the scheduled dose when named; else null siting +
@@ -730,18 +777,12 @@ export function createDbEmarBackend(
           organizationId: orgId,
           medicationOrderId: args.medicationOrderId,
         });
-        if (!sched && identity === null)
-          throw new ValidationError(
-            "the medication order for this administration is unresolvable",
-            [
-              {
-                field: "medicationOrderId",
-                code: "MEDICATION_ORDER_UNRESOLVED",
-                message:
-                  "no scheduled dose was named and the medication order could not be read, so the patient this dose was given to is unknown",
-              },
-            ],
-          );
+        // GAP-005 — refused even when a scheduled dose names the patient: without the order, whether this
+        // is a controlled administration (and so whether the D7 witness applies) is unknown.
+        if (identity === null) throw unresolvedOrder();
+        assertMedClassAgrees(args.medClass, identity.medClass);
+        const isControlled =
+          identity.isControlledSubstance || identity.medClass === "controlled_substance";
         // §2.9 D6 — is this order administrable at all? ARMED (F-058). It was threaded for the identity
         // facts and deliberately left off, because only `status = "active"` clears M12's verdict and
         // nothing in the platform activated an order — so arming it would have refused every
@@ -754,6 +795,27 @@ export function createDbEmarBackend(
             "ADMINISTRATION_BLOCKED",
             `the medication order is not administrable: ${identity.blockedReasons.join(", ") || "not_active"}`,
           );
+        if (sched)
+          assertOrderPatient(
+            "scheduledDoseId",
+            sched.patientId,
+            identity.patientId,
+            "the scheduled dose belongs to a different patient than the order",
+          );
+        if (args.comfortKitDeploymentId) {
+          const [kit] = await tx
+            .select({ patientId: CKD.patientId })
+            .from(CKD)
+            .where(eq(CKD.id, args.comfortKitDeploymentId))
+            .limit(1);
+          if (!kit) throw new NotFoundError("comfort kit deployment not found");
+          assertOrderPatient(
+            "comfortKitDeploymentId",
+            kit.patientId,
+            identity.patientId,
+            "the comfort kit was deployed for a different patient than the order",
+          );
+        }
         const patientId = sched?.patientId ?? identity?.patientId ?? PATIENT_SENTINEL;
         const admissionId = sched?.admissionId ?? identity?.admissionId ?? ADMISSION_SENTINEL;
 
@@ -807,21 +869,27 @@ export function createDbEmarBackend(
           // session state was a coin flip, and `composeIvSession` could refuse a perfectly good session
           // for "not beginning with a start". When two segments share an instant, the order they were
           // RECORDED in is the only evidence of sequence there is.
-          const priorSegments: IvSegment[] = args.ivSessionId
-            ? (
-                await tx
-                  .select()
-                  .from(ADM)
-                  .where(and(eq(ADM.ivSessionId, args.ivSessionId), ne(ADM.status, "voided")))
-                  .orderBy(asc(ADM.administeredAt), asc(ADM.id))
-              ).map((r) => ({
-                mode: r.mode as IvSegmentMode,
-                administeredAt: iso(r.administeredAt) as string,
-                ...ivRateOf(r.data),
-              }))
+          const priorRows = args.ivSessionId
+            ? await tx
+                .select()
+                .from(ADM)
+                .where(and(eq(ADM.ivSessionId, args.ivSessionId), ne(ADM.status, "voided")))
+                .orderBy(asc(ADM.administeredAt), asc(ADM.id))
             : [];
-          if (args.ivSessionId && priorSegments.length === 0)
+          if (args.ivSessionId && priorRows.length === 0)
             throw new NotFoundError("iv session not found");
+          for (const r of priorRows)
+            assertOrderPatient(
+              "ivSessionId",
+              r.patientId,
+              identity.patientId,
+              "the IV session belongs to a different patient than the order",
+            );
+          const priorSegments: IvSegment[] = priorRows.map((r) => ({
+            mode: r.mode as IvSegmentMode,
+            administeredAt: iso(r.administeredAt) as string,
+            ...ivRateOf(r.data),
+          }));
           const body = ivBodyOf(args.data);
           ivPlan = planIvSegment(deriveIvSessionState(priorSegments), {
             mode: ivMode,
@@ -1095,7 +1163,25 @@ export function createDbEmarBackend(
       args: WitnessAttestArgs,
     ): Promise<{ token: string; expiresInSeconds: number }> {
       // Stateless HMAC token (compromise #5): mint + verify share the process-fixed secret; the witness's
-      // membership is the passed `userId`. No DB write (the single-use Valkey burn is deferred).
+      // membership is the passed `userId`. No DB write here — the single-use burn is the
+      // `administration_witness` digest index, enforced when the token is consumed (TASK-008).
+      //
+      // GAP-004 — the body's `patientId` is a claim, so it is checked against the ORDER before it is
+      // signed. Consumption would never honour a mismatched token anyway (`recordAdministration` verifies
+      // the scope against the order's resolved patient, the order id and the acting clinician), but a
+      // witness should be told now, at the bedside, rather than the administering clinician discovering a
+      // dead token at commit time — and an attestation naming a patient the order is not for is never minted.
+      const identity = await medOrder().administrationIdentity({
+        organizationId: orgId,
+        medicationOrderId: args.medicationOrderId,
+      });
+      if (identity === null) throw unresolvedOrder();
+      assertOrderPatient(
+        "patientId",
+        args.patientId,
+        identity.patientId,
+        "the witness attestation names a different patient than the order",
+      );
       const token = buildWitnessAttestationToken(
         {
           patientId: args.patientId,
@@ -1118,6 +1204,18 @@ export function createDbEmarBackend(
       // witness rule does not apply and encounter_id stays null (D9). The M12 five-rights gate is skipped
       // (compromise #3, no order projection threaded).
       return withOrg(orgId, async (tx) => {
+        // GAP-004 — the caregiver names the patient; the order must be that patient's own.
+        const identity = await medOrder().administrationIdentity({
+          organizationId: orgId,
+          medicationOrderId: args.medicationOrderId,
+        });
+        if (identity === null) throw unresolvedOrder();
+        assertOrderPatient(
+          "patientId",
+          args.patientId,
+          identity.patientId,
+          "the caregiver attestation names a different patient than the order",
+        );
         const inserted = (
           await tx
             .insert(ADM)
@@ -1301,21 +1399,32 @@ export function createDbEmarBackend(
           organizationId: orgId,
           medicationOrderId: args.medicationOrderId,
         });
+        // GAP-005 — the controlled flag comes from the order, and the refusal is filed only under the
+        // order's own patient (a body patientId naming someone else is refused, not trusted).
+        if (identity === null) throw unresolvedOrder();
+        assertMedClassAgrees(args.medClass, identity.medClass);
+        assertOrderPatient(
+          "patientId",
+          args.patientId,
+          identity.patientId,
+          "the refusal names a different patient than the order it refuses",
+        );
         const inserted = (
           await tx
             .insert(ADM)
             .values({
               organizationId: orgId,
               patientId: args.patientId,
-              admissionId: identity?.admissionId ?? ADMISSION_SENTINEL,
+              admissionId: identity.admissionId,
               medicationOrderId: args.medicationOrderId,
               scheduledDoseId: args.scheduledDoseId ?? null,
               mode: "single_dose",
               status: "committed",
               data: {},
-              drugNameSnapshot: identity?.drugName ?? "",
-              routeSnapshot: identity?.route ?? "",
-              isControlledSubstance: args.medClass === "controlled_substance",
+              drugNameSnapshot: identity.drugName,
+              routeSnapshot: identity.route,
+              isControlledSubstance:
+                identity.isControlledSubstance || identity.medClass === "controlled_substance",
               refused: true,
               administeredAt: new Date(args.refusedAt),
               actorKind: "clinician",
