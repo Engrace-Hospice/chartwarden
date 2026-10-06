@@ -119,8 +119,9 @@ export function buildM23PatientPayerAdapter(
  * mac-submitter-credential.ts`), unique per `providerEntityId`, with a real repository
  * (`MacSubmitterCredentialRepository.findByProviderEntity`) already reading the safe (cipher-free)
  * projection. A provider entity that has not yet been onboarded with a MAC submitter credential has no
- * jurisdiction to report — `null` overall, which the caller already turns into `PROVIDER_ENTITY_UNRESOLVED`
- * (422) at `claim-assembly.ts` line ~454-461, an accurate reading of that outcome, not a repurposing of it.
+ * jurisdiction to report — that is a named 422 `MAC_SUBMITTER_CREDENTIAL_MISSING` (it used to be `null`,
+ * which the caller turned into `PROVIDER_ENTITY_UNRESOLVED` and so blamed the provider entity itself).
+ * `null` stays reserved for a provider entity that is absent or invisible in this org.
  *
  * `cbsaCode` is set to `null` unconditionally: traced every read of `pe.cbsaCode` in `claim-assembly.ts` —
  * there are none. The claim's actual CBSA comes from `wageIndex.cbsaCode` (the `wage_index_factor` row),
@@ -141,6 +142,15 @@ export function buildM23PatientPayerAdapter(
 // `withOrgContext(db, {organizationId: orgId, ...})` — the exact `admissionSchedulingContextForOrg` /
 // `electionPeriodContextForOrg` (M6) "second wall behind RLS, org-explicit rather than ambient" pattern —
 // instead of assuming the caller's ambient request context reaches an object built at boot time.
+/** No MAC submitter credential (hence no MAC jurisdiction) is on file for a resolved provider entity. */
+function macSubmitterCredentialMissing(ccn: string): WardenXError {
+  return new WardenXError(
+    "MAC_SUBMITTER_CREDENTIAL_MISSING",
+    `provider entity CCN ${ccn} has no MAC submitter credential on file, so its MAC jurisdiction is unknown; onboard the provider entity's MAC portal credential and retry`,
+    422,
+  );
+}
+
 export function buildM23MdmProviderEntityAdapter(
   db: BillingDb,
   providerCcn: ProviderCcnPort,
@@ -159,7 +169,10 @@ export function buildM23MdmProviderEntityAdapter(
 
         const macCredentials = new repositories.MacSubmitterCredentialRepository(tx);
         const credential = await macCredentials.findByProviderEntity(providerEntityId);
-        if (!credential) return null;
+        // A real, visible provider entity with no MAC submitter credential is NOT "unresolved": it is a
+        // named, fixable onboarding gap. Collapsing it into PROVIDER_ENTITY_UNRESOLVED told the biller the
+        // provider entity itself was missing (and the wizard could only say "check the inputs").
+        if (!credential) throw macSubmitterCredentialMissing(ccn);
 
         const entry: ProviderEntityDirectoryEntry = {
           ccn,

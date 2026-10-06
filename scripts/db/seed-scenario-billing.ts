@@ -240,6 +240,28 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
   await db.end();
 }
 
+/** Upserts the demo provider entity's MAC submitter credential through the real (step-up) route. */
+async function seedMacSubmitterCredential(
+  admin: Awaited<ReturnType<typeof signIn>>,
+): Promise<void> {
+  await stepUpSession(admin.userId);
+  const res = await admin.client.POST("/api/v1/billing/mac-credentials", {
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+    body: {
+      providerEntityId: PROVIDER_ENTITY_ID,
+      macJurisdiction: "cgs_j15",
+      submitterId: "DEV-SUBMITTER-0001",
+      tradingPartnerId: "DEV-TP-0001",
+      clientId: "wardenx-dev-client",
+      clientSecret: "dev-only-not-a-real-secret",
+    },
+  });
+  // An existing credential answers 428 IF_MATCH_REQUIRED — already seeded is fine on a re-run.
+  if (res.error && res.response.status !== 428) {
+    throw new Error(`MAC submitter credential upsert failed: ${JSON.stringify(res.error)}`);
+  }
+}
+
 async function main(): Promise<void> {
   const admin = await signIn("orgadmin@wardenx.local");
   const log = new ScenarioLog("billing (Whitfield / org-wide)");
@@ -271,9 +293,14 @@ async function main(): Promise<void> {
   const serviceFrom = isoDate(daysAgo(7));
   const serviceTo = isoDate(today);
 
-  // ── M23 — Billing Medicare: SKIPPED, assemble itself is unreachable (see file header) ──────────────
+  // ── M23 — Billing Medicare: the provider entity's MAC submitter credential ─────────────────────────
+  // Claim assembly resolves the provider entity's MAC jurisdiction from this credential; without one every
+  // Medicare assemble for the demo org fails (it used to surface as PROVIDER_ENTITY_UNRESOLVED, now as
+  // MAC_SUBMITTER_CREDENTIAL_MISSING). Oregon's home health & hospice MAC is CGS (J15). Dev credential
+  // only — no clearinghouse is configured locally, so nothing is ever submitted with it.
+  await seedMacSubmitterCredential(admin);
   log.dup(
-    "Medicare (M23): skipped — 4 of 11 reader seams are now real (#250), assemble still SEAM_UNBOUNDs at admission.resolveForRange (M6)",
+    "Medicare (M23): MAC submitter credential seeded; rate tables / wage indexes / sequestration are tenant-entered (assemble names whichever is missing)",
   );
 
   // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────
