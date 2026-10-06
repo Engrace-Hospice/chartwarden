@@ -374,6 +374,7 @@ describe.skipIf(!DB_URL)(
         {
           effectiveDate: "2026-05-04",
           otherHospiceName: "Receiving Hospice",
+          receivingCareSetting: "home",
           narrative: "Beneficiary transferred at family request.",
         } as never,
         USER,

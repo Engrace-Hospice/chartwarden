@@ -320,6 +320,7 @@ describe.skipIf(!DB_URL)("F-192 — M6 transfer summary renders + back-refs, LIV
       {
         effectiveDate: "2026-06-15",
         otherHospiceName: "Sunrise Hospice",
+        receivingCareSetting: "home",
         otherHospiceCcn: "391234",
         narrative: "patient relocated closer to family; care transferred by mutual agreement",
       },
@@ -393,6 +394,7 @@ describe.skipIf(!DB_URL)("F-192 — M6 transfer summary renders + back-refs, LIV
       {
         effectiveDate: "2026-07-01",
         otherHospiceName: "Second Hospice",
+        receivingCareSetting: "home",
         narrative: "patient relocated for a second, independent transfer scenario",
       },
       USER,

@@ -86,7 +86,17 @@ function recordingStateService(): {
 function constantContextPort(): ValidationContextPort {
   return {
     build: async (_tx, _actor, claim) => ({
-      context: { claimId: claim.id } as unknown as ValidationContext,
+      context: {
+        claimId: claim.id,
+        claim: {
+          dischargeClaimCodes: {
+            patientStatus: "30",
+            conditionCodes: [],
+            occurrenceCodes: [],
+            unresolved: null,
+          },
+        },
+      } as unknown as ValidationContext,
       overlays: {},
     }),
   };

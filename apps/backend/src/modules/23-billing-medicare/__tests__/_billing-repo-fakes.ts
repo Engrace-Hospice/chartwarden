@@ -107,6 +107,16 @@ export function buildFakeRepositories(): {
       store.claims.set(id, row);
       return { ok: true, row, currentVersion: row.version };
     }
+    /** Mirrors the real repo: refresh the derived discharge codes without bumping `version`. */
+    async refreshDischargeCodes(
+      id: string,
+      codes: { patientStatusCode: string | null; conditionCodes: string[]; occurrenceCodes: any[] },
+    ): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c) return false;
+      store.claims.set(id, { ...c, ...codes, updatedAt: new Date() });
+      return true;
+    }
   }
 
   class ClaimLineRepository {

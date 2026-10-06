@@ -44,7 +44,8 @@ const CODE_RE = /^[0-9A-Z]{2}$/;
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function assertCode(kind: string, code: string): void {
-  if (!CODE_RE.test(code)) throw new Error(`invalid ${kind} code '${code}' (expected 2 chars [0-9A-Z])`);
+  if (!CODE_RE.test(code))
+    throw new Error(`invalid ${kind} code '${code}' (expected 2 chars [0-9A-Z])`);
 }
 
 function d8(date: string): string {

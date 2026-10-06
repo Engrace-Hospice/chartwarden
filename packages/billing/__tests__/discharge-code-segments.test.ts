@@ -12,7 +12,11 @@ import { describe, expect, it } from "vitest";
 describe("837I discharge-code segments", () => {
   it("CL1 carries the patient status in CL103", () => {
     expect(
-      buildCl1Segment({ admissionTypeCode: "1", admissionSourceCode: "1", patientStatusCode: "40" }),
+      buildCl1Segment({
+        admissionTypeCode: "1",
+        admissionSourceCode: "1",
+        patientStatusCode: "40",
+      }),
     ).toBe("CL1*1*1*40~");
     expect(buildCl1Segment({ admissionTypeCode: "1", patientStatusCode: "30" })).toBe("CL1*1**30~");
   });

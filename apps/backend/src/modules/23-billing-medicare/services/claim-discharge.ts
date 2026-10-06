@@ -27,7 +27,10 @@ const SETTINGS: readonly string[] = ["home", "facility"];
 /** The stay-ending fact for the admission, or `null` while the patient is still on service. */
 export function resolveClaimDischarge(
   admission: AdmissionContext,
-  electionPeriods: readonly { readonly revoked: boolean; readonly revocationDate: IsoDate | null }[],
+  electionPeriods: readonly {
+    readonly revoked: boolean;
+    readonly revocationDate: IsoDate | null;
+  }[],
 ): ClaimDischargeFact | null {
   if (admission.dischargeDate !== null && admission.dischargeReason !== null) {
     const isDeath = admission.dischargeReason === "death";
@@ -56,7 +59,9 @@ export function resolveClaimDischarge(
     .map((p) => p.revocationDate as IsoDate)
     .sort()[0];
   if (revocation !== undefined) candidates.push({ kind: "revocation", effectiveDate: revocation });
-  candidates.sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0));
+  candidates.sort((a, b) =>
+    a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0,
+  );
   return candidates[0] ?? null;
 }
 
@@ -76,7 +81,10 @@ export function claimDischargeCodeColumns(codes: DischargeClaimCodes): {
 /** The discharge codes for a claim whose window ends on `serviceTo`. */
 export function claimDischargeCodes(
   admission: AdmissionContext,
-  electionPeriods: readonly { readonly revoked: boolean; readonly revocationDate: IsoDate | null }[],
+  electionPeriods: readonly {
+    readonly revoked: boolean;
+    readonly revocationDate: IsoDate | null;
+  }[],
   serviceTo: IsoDate,
 ): { readonly discharge: ClaimDischargeFact | null; readonly codes: DischargeClaimCodes } {
   const discharge = resolveClaimDischarge(admission, electionPeriods);

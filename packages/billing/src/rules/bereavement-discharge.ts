@@ -71,7 +71,9 @@ export const bereavementDischargeLegitimacy: Rule = {
         defects.push(`discharge bill ${c.tob} carries patient status ${codes.patientStatus}`);
       }
       if (INTERIM_TOBS.includes(c.tob) && discharged) {
-        defects.push(`interim bill ${c.tob} carries discharge patient status ${codes.patientStatus}`);
+        defects.push(
+          `interim bill ${c.tob} carries discharge patient status ${codes.patientStatus}`,
+        );
       }
     }
 

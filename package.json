@@ -89,6 +89,7 @@
     "test:m6:t5:write:live": "vitest run apps/backend/__tests__/m6-compliance-window-write.live.test.ts",
     "test:m6:t5:counts:live": "vitest run apps/backend/__tests__/m6-compliance-window-counts.live.test.ts",
     "test:m6:abac-scope:live": "vitest run apps/backend/__tests__/m6-abac-scope-resolver.live.test.ts",
+    "test:m6:claim-discharge-seam:live": "vitest run apps/backend/__tests__/m6-claim-discharge-seam.live.test.ts",
     "test:m7:read:live": "vitest run apps/backend/__tests__/m7-care-plan-read-service.live.test.ts",
     "test:m7:write:live": "vitest run apps/backend/__tests__/m7-care-plan-write.live.test.ts",
     "test:m9:read:live": "vitest run apps/backend/__tests__/m9-assessments-read-service.live.test.ts",

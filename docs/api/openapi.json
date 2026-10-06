@@ -20388,6 +20388,22 @@
                   "deathCertifierId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "placeOfDeath": {
+                    "anyOf": [
+                      {
+                        "const": "home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "facility",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -21669,6 +21685,7 @@
                   "direction",
                   "effectiveDate",
                   "otherHospiceName",
+                  "receivingCareSetting",
                   "narrative"
                 ],
                 "properties": {
@@ -21688,6 +21705,18 @@
                   "otherHospiceCcn": {
                     "pattern": "^[0-9A-Z]{6}$",
                     "type": "string"
+                  },
+                  "receivingCareSetting": {
+                    "anyOf": [
+                      {
+                        "const": "home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "facility",
+                        "type": "string"
+                      }
+                    ]
                   },
                   "narrative": {
                     "minLength": 10,
@@ -44363,6 +44392,7 @@
                     "latestValidationRunId",
                     "latestSubmissionId",
                     "acknowledgmentDocumentId",
+                    "dischargeCodes",
                     "latestValidation",
                     "pricing",
                     "createdAt",
@@ -44573,6 +44603,50 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "dischargeCodes": {
+                      "type": "object",
+                      "required": [
+                        "patientStatusCode",
+                        "conditionCodes",
+                        "occurrenceCodes"
+                      ],
+                      "properties": {
+                        "patientStatusCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "conditionCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "occurrenceCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "code",
+                              "date"
+                            ],
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "date": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
                     },
                     "latestValidation": {
                       "anyOf": [

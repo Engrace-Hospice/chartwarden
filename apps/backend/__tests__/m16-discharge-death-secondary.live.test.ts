@@ -140,6 +140,7 @@ describe.skipIf(!DB_URL)("F-134 — M16's discharge-death secondary verifier, LI
         dischargeDate: at,
         narrative: "Patient died at home, family present.",
         deathCertifierId: MD,
+        placeOfDeath: "home",
       } as never,
       USER,
     );

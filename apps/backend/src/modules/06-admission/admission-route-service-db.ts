@@ -75,6 +75,7 @@ import {
   checkDischargeNarrative,
   checkPlaceOfDeath,
   dischargeRequiresCosign,
+  resolvePlaceOfDeath,
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
 import { completeActiveElectionPeriod } from "./election-period-completion";
@@ -5390,12 +5391,12 @@ export function createDbAdmissionRouteService(
           input.externalSource ? "external-facility" : input.deathCertifierId,
         );
         if (issue) throw new AdmissionStateError(issue.code, issue.message);
-        // Claim patient status 40/41/42 (CMS Pub. 100-04 Ch. 11 §30.3) needs the place of death. An external
-        // (HL7) death that does not carry it records `unknown` (status 42) rather than blocking the intake.
-        const placeOfDeath =
-          input.reason === "death" && input.externalSource
-            ? (input.placeOfDeath ?? "unknown")
-            : input.placeOfDeath;
+        // Claim patient status 40/41/42 (CMS Pub. 100-04 Ch. 11 §30.3) needs the place of death.
+        const placeOfDeath = resolvePlaceOfDeath(
+          input.reason,
+          input.placeOfDeath,
+          input.externalSource !== undefined,
+        );
         const placeIssue = checkPlaceOfDeath(input.reason, placeOfDeath);
         if (placeIssue) throw new AdmissionStateError(placeIssue.code, placeIssue.message);
         const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);

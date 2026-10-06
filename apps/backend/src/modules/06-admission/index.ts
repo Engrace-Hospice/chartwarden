@@ -213,6 +213,8 @@ export {
   deriveDischargePermissionKey,
   dischargeRequiresCosign,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
+  resolvePlaceOfDeath,
   decideBereavementEligibility,
   fileForCauseDischarge,
   resolveForCauseDischarge,

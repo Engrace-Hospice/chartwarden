@@ -104,14 +104,6 @@ export interface DischargeNarrativeIssue {
   readonly message: string;
 }
 
-/**
- * §6.3 — validate the discharge capture body against the per-reason gates. Returns the first issue or
- * `null`. The `for_cause` reason requires a `forCauseReason` of ≥20 chars (412); `death` requires an
- * identified `deathCertifierId` (R-DC-01, reuses the same `DEATH_CERTIFIER_INVALID` code
- * `checkDeathCertifier` uses for the date-order half of the same rule — one coherent guard, two
- * places it can fail); every reason requires a narrative of at least the reason's minimum (D11
- * tightens `no_longer_terminal`/`other`) (422).
- */
 /** Where the patient died (`discharge_event.place_of_death`) — drives claim patient status 40/41/42. */
 export const PLACES_OF_DEATH = ["home", "facility", "unknown"] as const;
 export type PlaceOfDeath = (typeof PLACES_OF_DEATH)[number];
@@ -126,7 +118,10 @@ export function checkPlaceOfDeath(
   placeOfDeath: string | undefined,
 ): DischargeNarrativeIssue | null {
   if (reason === "death") {
-    if (placeOfDeath === undefined || !(PLACES_OF_DEATH as readonly string[]).includes(placeOfDeath)) {
+    if (
+      placeOfDeath === undefined ||
+      !(PLACES_OF_DEATH as readonly string[]).includes(placeOfDeath)
+    ) {
       return {
         code: "PLACE_OF_DEATH_REQUIRED",
         message: "death discharge requires placeOfDeath (home, facility or unknown)",
@@ -143,6 +138,28 @@ export function checkPlaceOfDeath(
   return null;
 }
 
+/**
+ * The place of death a discharge records. An external (HL7, W-M6-31) death that does not carry it records
+ * `unknown` (status 42) rather than blocking the intake; every other path keeps what the caller sent so
+ * `checkPlaceOfDeath` can refuse a missing value.
+ */
+export function resolvePlaceOfDeath(
+  reason: DischargeReason,
+  placeOfDeath: PlaceOfDeath | undefined,
+  isExternalSource: boolean,
+): PlaceOfDeath | undefined {
+  if (reason === "death" && isExternalSource) return placeOfDeath ?? "unknown";
+  return placeOfDeath;
+}
+
+/**
+ * §6.3 — validate the discharge capture body against the per-reason gates. Returns the first issue or
+ * `null`. The `for_cause` reason requires a `forCauseReason` of ≥20 chars (412); `death` requires an
+ * identified `deathCertifierId` (R-DC-01, reuses the same `DEATH_CERTIFIER_INVALID` code
+ * `checkDeathCertifier` uses for the date-order half of the same rule — one coherent guard, two
+ * places it can fail); every reason requires a narrative of at least the reason's minimum (D11
+ * tightens `no_longer_terminal`/`other`) (422).
+ */
 export function checkDischargeNarrative(
   reason: DischargeReason,
   narrative: string,

@@ -71,13 +71,17 @@ describe.skipIf(!DB_URL)(
       withBlockingFailure: boolean;
     }): Promise<{ claimId: string; submissionId: string; ccn: string }> {
       const placeholderCcn = `pending-${opts.patient}`;
+      // `patient_status_code` (migration 0371): a validated claim always carries its derived discharge
+      // status, and the 837I claim document refuses to send one without it.
       const claimId = (
         await admin.query(
           `INSERT INTO claim (organization_id, provider_entity_id, patient_id, admission_id,
            election_period_id_from, election_period_id_to, patient_payer_id, tob, service_from, service_to,
            state, claim_control_number, mac_jurisdiction, total_expected_payment_cents,
-           sequestration_applied_pct, sequestration_policy_id, created_by_membership_id)
-         VALUES ($1,$2,$3,$2,$2,$2,$2,'811','2026-01-01','2026-01-31','READY',$4,'ngs_j6',100000,'2.00',$2,$2)
+           sequestration_applied_pct, sequestration_policy_id, created_by_membership_id,
+           patient_status_code)
+         VALUES ($1,$2,$3,$2,$2,$2,$2,'811','2026-01-01','2026-01-31','READY',$4,'ngs_j6',100000,'2.00',$2,$2,
+           '01')
          RETURNING id`,
           [ORG, PE, opts.patient, placeholderCcn],
         )

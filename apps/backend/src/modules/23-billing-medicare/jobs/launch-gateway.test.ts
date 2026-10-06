@@ -9,7 +9,6 @@ const config = {
   timeoutMs: 5000,
 };
 
-
 const CLAIM_DOCUMENT = {
   claimId: "claim-1",
   claimControlNumber: "control-1",

@@ -622,6 +622,7 @@ describe.skipIf(!DB_URL)(
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "expired peacefully",
           deathCertifierId: MD,
+          placeOfDeath: "home",
         },
         USER,
       );
@@ -669,6 +670,7 @@ describe.skipIf(!DB_URL)(
             dischargeDate: future,
             narrative: "expired peacefully",
             deathCertifierId: MD,
+            placeOfDeath: "home",
           },
           USER,
         ),
@@ -792,6 +794,7 @@ describe.skipIf(!DB_URL)(
         {
           effectiveDate: "2026-06-15",
           otherHospiceName: "Sunrise Hospice",
+          receivingCareSetting: "home",
           otherHospiceCcn: "391234",
           narrative: "patient relocated closer to family; care transferred by mutual agreement",
         },
@@ -832,6 +835,7 @@ describe.skipIf(!DB_URL)(
           {
             effectiveDate: "2026-06-15",
             otherHospiceName: "Sunrise Hospice",
+            receivingCareSetting: "home",
             narrative: "second attempt for the same period",
           },
           USER,

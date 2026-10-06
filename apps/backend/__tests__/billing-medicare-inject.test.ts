@@ -243,6 +243,7 @@ function createM23TestBackend(): {
     acknowledgmentDocumentId: null,
     latestValidation: null,
     pricing: { hipps: null, sia: null },
+    dischargeCodes: { patientStatusCode: "30", conditionCodes: [], occurrenceCodes: [] },
     createdAt: NOW,
     updatedAt: NOW,
   });

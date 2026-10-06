@@ -1,3 +1,4 @@
+import type { DischargeClaimCodes } from "../claim-codes";
 // @wardenx/billing — M23 §11.A Pre-Submission Validation Framework RULE MODEL (D1, spec §4.5). The
 // configurable rule library is the architectural answer to the ">99% claim acceptance" / "31-point audit
 // equivalent" promise: every claim is run through a set of typed predicates before it can leave READY.
@@ -32,7 +33,6 @@ import type {
   ValidationSeverity,
 } from "../contracts";
 import type { Cents } from "../domain/money";
-import type { DischargeClaimCodes } from "../claim-codes";
 
 // ── severity / category unions (mirror the §3.3 pgEnums) ───────────────────────────────────────────────
 

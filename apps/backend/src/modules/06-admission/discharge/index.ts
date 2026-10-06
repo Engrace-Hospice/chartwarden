@@ -17,6 +17,7 @@ export {
   dischargeRequiresCosign,
   checkDischargeNarrative,
   checkPlaceOfDeath,
+  resolvePlaceOfDeath,
   PLACES_OF_DEATH,
   type PlaceOfDeath,
 } from "./permission-map";

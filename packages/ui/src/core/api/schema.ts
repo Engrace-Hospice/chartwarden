@@ -25956,6 +25956,7 @@ export interface operations {
                     forCauseReason?: string;
                     /** Format: uuid */
                     deathCertifierId?: string;
+                    placeOfDeath?: "home" | "facility" | "unknown";
                 };
             };
         };
@@ -26467,6 +26468,7 @@ export interface operations {
                     effectiveDate: string;
                     otherHospiceName: string;
                     otherHospiceCcn?: string;
+                    receivingCareSetting: "home" | "facility";
                     narrative: string;
                 };
             };
@@ -31056,6 +31058,14 @@ export interface operations {
                         latestValidationRunId: string | null;
                         latestSubmissionId: string | null;
                         acknowledgmentDocumentId: string | null;
+                        dischargeCodes: {
+                            patientStatusCode: string | null;
+                            conditionCodes: string[];
+                            occurrenceCodes: {
+                                code: string;
+                                date: string;
+                            }[];
+                        };
                         latestValidation: {
                             validationRunId: string;
                             claimId: string;

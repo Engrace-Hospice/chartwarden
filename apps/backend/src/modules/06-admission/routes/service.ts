@@ -23,6 +23,7 @@ import {
   fileForCauseDischarge,
   planTransferIn,
   resolveForCauseDischarge,
+  resolvePlaceOfDeath,
 } from "../discharge";
 import {
   type ActivationGap,
@@ -2443,7 +2444,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         input.deathCertifierId,
       );
       if (issue) throw new AdmissionStateError(issue.code, issue.message);
-      const placeIssue = checkPlaceOfDeath(input.reason, input.placeOfDeath);
+      const placeOfDeath = resolvePlaceOfDeath(
+        input.reason,
+        input.placeOfDeath,
+        input.externalSource !== undefined,
+      );
+      const placeIssue = checkPlaceOfDeath(input.reason, placeOfDeath);
       if (placeIssue) throw new AdmissionStateError(placeIssue.code, placeIssue.message);
       const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
       events.push("m6.discharge.created");
