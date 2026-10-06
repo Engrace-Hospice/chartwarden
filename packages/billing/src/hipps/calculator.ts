@@ -9,9 +9,8 @@
 // CUMULATIVE COUNT: ADR-0001's day counter is the beneficiary's CUMULATIVE hospice day count across
 // sequential stays, reset by a >60-day gap (Claims Processing Manual ch. 11, two-tier RHC). The current
 // stay's days count from `hospiceAdmissionDate`; `priorHospiceDays` carries the earlier stays a
-// readmission within 60 days continues (M6 computes it from its own history — readmission workflow).
-// KNOWN LIMITATION (recorded, not silent): days at ANOTHER hospice are not in any table (they would come
-// from HETS / eligibility data), so a patient arriving from elsewhere still under-counts.
+// readmission within 60 days continues — ours AND other hospices' (per the HETS 271 history), merged by
+// `computeRhcCarryOver` (./rhc-carry-over.ts), the same count CWF feeds the Pricer (ch. 11 Pricer input 65-66).
 //
 // Each resolved rate is the wage-index-ADJUSTED CMS base rate; the wage index factor is PASSED IN
 // and SNAPSHOTTED into the result (the Phase-3 service persists it onto the `hipps_calculation` row so

@@ -374,6 +374,20 @@ export interface EligibilitySnapshot {
   readonly ageDays: number;
 }
 
+/**
+ * The two-tier RHC carry-over the claim was priced with (`computeRhcCarryOver`) + what the
+ * `rhc_carry_over_hets_fresh` rule needs to judge it. PHI-free: dates, counts, codes.
+ */
+export interface RhcCarryOverSnapshot {
+  readonly priorDays: number;
+  readonly basis: "internal_only" | "hets_merged" | "hets_stale";
+  /** True when this stay began within 60 days of the end of an earlier hospice stay (ours or HETS-known). */
+  readonly readmittedWithin60Days: boolean;
+  /** Age in whole days of the HETS check the carry read; null when no resolved check is on file. */
+  readonly hetsCheckAgeDays: number | null;
+  readonly warningCodes: readonly string[];
+}
+
 /** The admission's NOE status (D3) for the `noe_timeliness_5d` rule. */
 export interface NoeStatusSnapshot {
   readonly state: NoticeState;
@@ -449,6 +463,8 @@ export interface ValidationContext {
   readonly eligibility: EligibilitySnapshot | null;
   /** `null` when the admission has no NOE row yet. */
   readonly noe: NoeStatusSnapshot | null;
+  /** The RHC carry-over the claim was priced with; absent/null when not materialized (the rule skips). */
+  readonly rhcCarryOver?: RhcCarryOverSnapshot | null;
   readonly sequestration: SequestrationSnapshot | null;
   /** `null` when the wage-index file for this CCN/FY is not loaded. */
   readonly wageIndex: WageIndexSnapshot | null;
