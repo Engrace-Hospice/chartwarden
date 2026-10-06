@@ -292,9 +292,9 @@ describe("rhcCarryOver — two-tier RHC day count across a readmission", () => {
     expect(r).toEqual({
       applies: true,
       daysSinceDischarge: 29,
-      priorHospiceDays: 30, // Jan 1 – Jan 30; the live-discharge day is not a billed day
-      startsAtDay: 31,
-      highRateDaysRemaining: 30,
+      priorHospiceDays: 31, // Jan 1 – Jan 31: both ends inclusive (ch. 11 §30.2: 01/10–01/30 = 21 days)
+      startsAtDay: 32,
+      highRateDaysRemaining: 29,
     });
   });
 
@@ -314,8 +314,8 @@ describe("rhcCarryOver — two-tier RHC day count across a readmission", () => {
       ],
       "2026-03-20",
     );
-    expect(r.priorHospiceDays).toBe(10 + 30);
-    expect(r.highRateDaysRemaining).toBe(20);
+    expect(r.priorHospiceDays).toBe(11 + 31);
+    expect(r.highRateDaysRemaining).toBe(18);
   });
 });
 

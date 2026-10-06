@@ -320,10 +320,13 @@ export interface RhcCarryOver {
   readonly highRateDaysRemaining: number;
 }
 
-/** Hospice days of one stay: start inclusive, the (live) discharge day exclusive — it is not a billed day. */
+/**
+ * Hospice days of one stay, BOTH ends inclusive: the discharge / revocation / transfer day is a hospice day
+ * (Claims Processing Manual ch. 11 §30.2 example: elected 01/10, revoked 01/30 "accounts for 21 days").
+ */
 function episodeDays(p: PriorEpisodeFacts): number {
   if (!p.startedOn || !p.endedOn) return 0;
-  return Math.max(0, daysBetween(p.startedOn, p.endedOn));
+  return Math.max(0, daysBetween(p.startedOn, p.endedOn) + 1);
 }
 
 /**
