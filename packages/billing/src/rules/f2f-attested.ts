@@ -62,7 +62,7 @@ export const f2fAttestedForRecert: Rule = {
     let deemed = 0;
     for (const p of recertPeriods) {
       const f2f = ctx.faceToFace.find((f) => f.electionPeriodSequence === p.sequence);
-      if (f2f !== undefined && f2f.attested) continue;
+      if (f2f?.attested) continue;
       if (deemedCompleteByDeath(p, ctx.claim.deathDate)) {
         deemed += 1;
         continue;
