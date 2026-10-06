@@ -240,6 +240,7 @@
     "test:m23:noe-draft:live": "vitest run apps/backend/__tests__/m23-noe-draft.live.test.ts",
     "test:m23:hets-eligibility:live": "vitest run apps/backend/__tests__/m23-hets-eligibility.live.test.ts",
     "test:m23:notr-draft:live": "vitest run apps/backend/__tests__/m23-notr-draft.live.test.ts",
+    "test:m23:transfer-notice:live": "vitest run apps/backend/__tests__/m23-transfer-notice.live.test.ts",
     "test:m33:schedule-cron:live": "vitest run apps/backend/__tests__/gap-050-m33-schedule-cron.live.test.ts",
     "test:m33:export-render:live": "vitest run apps/backend/__tests__/gap-051-m33-export-render.live.test.ts",
     "test:m33:read-path:live": "vitest run apps/backend/__tests__/m33-reporting-read-path.live.test.ts",

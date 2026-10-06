@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1372,
-    "coveredRoutes": 1372,
+    "routes": 1380,
+    "coveredRoutes": 1380,
     "directRoutesReferenced": 1329
   },
   "modules": [
@@ -285,7 +285,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 57,
+      "routes": 65,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/billing-medicare-inject.test.ts",

@@ -32,6 +32,8 @@ export const M23_QUEUES = {
   noeSubmit: "noe.submit",
   /** Drain `m23.notr.submit_requested`: parallel to NOE. */
   notrSubmit: "notr.submit",
+  /** Drain `m23.transfer_notice.submit_requested`: generate the 8xC / 8xD, upload, READY→SUBMITTED. */
+  transferNoticeSubmit: "transfer_notice.submit",
   /** Drain `m23.eligibility.refresh_requested`: unlock MBI, run HETS 270/271, append eligibility_check row. */
   eligibilityRefresh: "eligibility.refresh",
   /** Drain a validation-run job (validateClaim route + revalidate consumer enqueue this): run rules, transition. */
@@ -101,6 +103,8 @@ export const M23_QUEUE_PARAMS = {
   noeSubmit: { concurrency: 2, attempts: 3, backoff: EXPONENTIAL() },
   // 2 per org
   notrSubmit: { concurrency: 2, attempts: 3, backoff: EXPONENTIAL() },
+  // 2 per org | a failed generate/upload is recorded on the attempt row (no BullMQ retry; staff resubmit)
+  transferNoticeSubmit: { concurrency: 2, attempts: 1, backoff: EXPONENTIAL() },
   // 4 per org
   eligibilityRefresh: { concurrency: 4, attempts: 4, backoff: EXPONENTIAL() },
   // 4 per org | the validation rule library run

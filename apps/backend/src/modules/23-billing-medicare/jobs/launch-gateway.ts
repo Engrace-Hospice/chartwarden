@@ -106,6 +106,7 @@ export function createM23LaunchGateway(
     generate837i: (input) => generated("/generate-837i", input),
     generateNoe: (input) => generated("/generate-noe", input),
     generateNotr: (input) => generated("/generate-notr", input),
+    generateTransferNotice: (input) => generated("/generate-transfer-notice", input),
     async parse999(input) {
       const body = await x12Request("/parse-999", input);
       if (!Array.isArray(body) || !body.every(isParsed999)) {

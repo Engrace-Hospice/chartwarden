@@ -17,7 +17,8 @@
 // into a single "(mirror of NOE)" table row. This file ships the COMPLETE concrete contract: the NOTR family
 // is expanded into its 7 real events (the §4.8 `m23.notr.submit` / `m23.notr.window-watch` queues + the §4.9
 // `m23.notr.window_*` alerts require them), yielding 40 events (18 claim + 7 noe + 7 notr + 3 eligibility +
-// 1 mac_credential + 2 mac_portal + 1 billing-render + 1 abn). Severity (§4.10 col 2) and alert routing
+// 1 mac_credential + 2 mac_portal + 1 billing-render + 1 abn), plus the 5 `m23.transfer_notice.*` events
+// (8xC / 8xD, migration 0375) added after this count was taken. Severity (§4.10 col 2) and alert routing
 // (§4.9) are NOT part of the OutboxEventEntry shape — they live in `@wardenx/billing`'s alerts.ts.
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
@@ -503,6 +504,69 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // — a real M33-side asymmetry, out of scope for this pass, reported not fixed.
     declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  // ── transfer notice (TOB 8xC / corrected 8xC / 8xD void) — CMS Pub. 100-04 ch. 11 §20.1.3 / §20.1.4 ────
+  // The receiving hospice's notice of a change of hospice. No 5-day window (CGS CR 8877 FAQ: 8XC transactions
+  // are not subject to the 5-day timely filing requirement), so there are no window_* events; the hold is the
+  // staff confirmation that the transferring hospice finalized its billing (`transfer_notice_record`).
+  {
+    eventName: "m23.transfer_notice.draft_created",
+    moduleOwner: "m23",
+    description:
+      "A transfer notice (8xC original, 8xC correction or 8xD void) was drafted for a transfer-in.",
+    payloadSchema: Type.Object({
+      transferNoticeId: id,
+      providerEntityId: id,
+      admissionId: id,
+      transferEventId: id,
+      action: Type.Union([
+        Type.Literal("original"),
+        Type.Literal("correction"),
+        Type.Literal("void"),
+      ]),
+      tob: str,
+      statementFromDate: isoInstant,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.transfer_notice.submit_requested",
+    moduleOwner: "m23",
+    description:
+      "A transfer notice became READY and was submitted by staff; the same-transaction emit that drives the transfer-notice.submit worker.",
+    payloadSchema: Type.Object({ transferNoticeId: id, submissionId: id, controlNumber: str }),
+    declaredConsumers: ["m23"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.transfer_notice.submitted",
+    moduleOwner: "m23",
+    description: "The worker uploaded the transfer notice to the MAC; READY → SUBMITTED.",
+    payloadSchema: Type.Object({ transferNoticeId: id, submissionId: id, submittedAt: isoInstant }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.transfer_notice.accepted",
+    moduleOwner: "m23",
+    description: "Medicare accepted the transfer notice (277CA); ACK_PENDING → ACK_ACCEPTED.",
+    payloadSchema: Type.Object({
+      transferNoticeId: id,
+      acknowledgmentId: id,
+      payerControlNumber: str,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.transfer_notice.rejected",
+    moduleOwner: "m23",
+    description:
+      "The transfer notice was rejected (999 or 277CA); the rejection codes are attached.",
+    payloadSchema: Type.Object({ transferNoticeId: id, rejectionCodes: Type.Array(str) }),
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── eligibility (§4.8 / §4.10) ────────────────────────────────────────────────────────────────────

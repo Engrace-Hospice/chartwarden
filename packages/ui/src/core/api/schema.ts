@@ -4272,6 +4272,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/transfer-notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Transfer-notice worklist (8xC / 8xD) with each notice's §20.1.3 blockers and allowed actions */
+        get: operations["getApiV1BillingTransfernotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Transfer notice detail — blockers, derived occurrence/condition codes, allowed actions */
+        get: operations["getApiV1BillingTransfernoticesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a DRAFT/READY transfer notice with a reason (a submitted one is voided instead) */
+        post: operations["postApiV1BillingTransfernoticesByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/confirm-prior-billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the transferring hospice finalized its billing (its final claim's Through date + status 50/51) */
+        post: operations["postApiV1BillingTransfernoticesByIdConfirmpriorbilling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/correct-date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft a corrected 8xC for an accepted notice: From = corrected date, OC 56 = date on file, CC D0 */
+        post: operations["postApiV1BillingTransfernoticesByIdCorrectdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/redraft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redraft a rejected or cancelled original transfer notice */
+        post: operations["postApiV1BillingTransfernoticesByIdRedraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File the transfer notice with Medicare — re-checks every blocker; emits m23.transfer_notice.submit_requested (step-up; 202) */
+        post: operations["postApiV1BillingTransfernoticesByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/transfer-notices/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft the 8xD that removes an accepted transfer submitted in error (§20.1.4) */
+        post: operations["postApiV1BillingTransfernoticesByIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/wage-indexes": {
         parameters: {
             query?: never;
@@ -26710,10 +26846,16 @@ export interface operations {
                 "application/json": {
                     /** @constant */
                     direction: "in";
-                    /** Format: date */
+                    /**
+                     * Format: date
+                     * @description The date the change of hospice is effective. The transferring hospice bills through and including this date and the receiving hospice's transfer notice (TOB 8xC) reports it as the Statement From date (CMS Pub. 100-04 ch. 11 §20.1.3).
+                     */
                     effectiveDate: string;
                     otherHospiceName: string;
+                    /** @description The transferring hospice's CMS Certification Number. Our own CCN is refused (422 TRANSFER_SAME_PROVIDER): a move between locations of one hospice is not a transfer (§20.1.3). The 8xC transfer notice cannot be filed until it is known. */
                     otherHospiceCcn?: string;
+                    /** @description The transferring hospice's NPI (10 digits, check digit validated → 422 TRANSFER_IN_SOURCE_INVALID). */
+                    otherHospiceNpi?: string;
                     priorBenefitPeriodSequence: number;
                     /** Format: date */
                     priorElectionStartDate: string;
@@ -31687,10 +31829,11 @@ export interface operations {
                     "application/json": {
                         submissionId: string;
                         providerEntityId: string;
-                        kind: "claim_837i" | "noe" | "notr";
+                        kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
                         claimId: string | null;
                         noeId: string | null;
                         notrId: string | null;
+                        transferNoticeId: string | null;
                         claimControlNumber: string;
                         attemptIndex: number;
                         outcome: "queued" | "generated" | "submitted" | "failed_worker" | "failed_portal";
@@ -32935,6 +33078,695 @@ export interface operations {
                         daysUntilSuspension: number | null;
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingTransfernotices: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                patientId?: string;
+                admissionId?: string;
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            transferEventId: string;
+                            action: "original" | "correction" | "void";
+                            supersedesNoticeId: string | null;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                            tob: string;
+                            statementFromDate: string;
+                            originalTransferDate: string | null;
+                            admissionDate: string | null;
+                            benefitPeriodSequence: number;
+                            benefitPeriodStartDate: string | null;
+                            priorHospiceName: string;
+                            priorHospiceCcn: string | null;
+                            priorHospiceNpi: string | null;
+                            providerCcn: string;
+                            priorBillingConfirmedAt: string | null;
+                            priorHospiceThroughDate: string | null;
+                            priorHospicePatientStatus: ("50" | "51") | null;
+                            controlNumber: string;
+                            payerControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestSubmissionOutcome: string | null;
+                            cancelReason: string | null;
+                            blockers: {
+                                code: string;
+                                message: string;
+                                citation: string;
+                            }[];
+                            warnings: {
+                                code: string;
+                                message: string;
+                                citation: string;
+                            }[];
+                            conditionCodes: string[];
+                            occurrenceCodes: {
+                                code: string;
+                                date: string;
+                            }[];
+                            allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                            followUp: {
+                                /** Format: uuid */
+                                transferNoticeId: string;
+                                action: "original" | "correction" | "void";
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingTransfernoticesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdCancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdConfirmpriorbilling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                    /**
+                     * Format: date
+                     * @description The Through date on the transferring hospice's final claim. It must equal the transfer date, or Medicare rejects the transfer as a gap in care (§20.1.3).
+                     */
+                    priorHospiceThroughDate: string;
+                    /** @description The patient status on that final claim: 50 discharged to hospice (home), 51 to hospice (medical facility). */
+                    priorHospicePatientStatus: "50" | "51";
+                    /** @description The transferring hospice's CCN, when the transfer-in recorded none. */
+                    priorHospiceCcn?: string;
+                    /** @description The transferring hospice's NPI, when the transfer-in recorded none. */
+                    priorHospiceNpi?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdCorrectdate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: date
+                     * @description The correct effective date of the transfer — the corrected notice's From date; the date on file is reported with occurrence code 56 and condition code D0 (§20.1.3).
+                     */
+                    correctedTransferDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdRedraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdSubmit: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        submissionId: string;
+                        jobId: string;
+                        /** @constant */
+                        kind: "transfer_notice";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingTransfernoticesByIdVoid: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        transferNoticeId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        transferEventId: string;
+                        action: "original" | "correction" | "void";
+                        supersedesNoticeId: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        /** @description 81C / 82C (transfer notice) or 81D / 82D (void). */
+                        tob: string;
+                        statementFromDate: string;
+                        originalTransferDate: string | null;
+                        admissionDate: string | null;
+                        benefitPeriodSequence: number;
+                        benefitPeriodStartDate: string | null;
+                        priorHospiceName: string;
+                        priorHospiceCcn: string | null;
+                        priorHospiceNpi: string | null;
+                        providerCcn: string;
+                        priorBillingConfirmedAt: string | null;
+                        priorHospiceThroughDate: string | null;
+                        priorHospicePatientStatus: ("50" | "51") | null;
+                        controlNumber: string;
+                        payerControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestSubmissionOutcome: string | null;
+                        cancelReason: string | null;
+                        blockers: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        warnings: {
+                            code: string;
+                            message: string;
+                            citation: string;
+                        }[];
+                        conditionCodes: string[];
+                        occurrenceCodes: {
+                            code: string;
+                            date: string;
+                        }[];
+                        allowedActions: ("confirm_prior_billing" | "submit" | "cancel" | "correct_date" | "void" | "redraft")[];
+                        followUp: {
+                            /** Format: uuid */
+                            transferNoticeId: string;
+                            action: "original" | "correction" | "void";
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };

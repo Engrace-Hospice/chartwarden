@@ -180,6 +180,23 @@ export {
   planNotrDraft,
 } from "./outbox-consumers/m6-notr-triggers";
 
+// The receiving hospice's Medicare transfer notice (TOB 8xC): the draft consumer off `m6.transfer.created`
+// direction `in`, and the worklist service (confirm prior billing / submit / cancel / correct / void / redraft).
+export {
+  type M23TransferNoticeDraftConsumerDeps,
+  type TransferInFacts,
+  type TransferInFactsResolver,
+  M23_TRANSFER_NOTICE_DRAFT_CONSUMER,
+  buildM23TransferNoticeDraftConsumer,
+  planTransferNoticeDraft,
+} from "./outbox-consumers/m6-transfer-in-notice";
+export {
+  type TransferNoticeService,
+  type TransferNoticeView,
+  TRANSFER_NOTICE_SUBMIT_QUEUE,
+  buildTransferNoticeService,
+} from "./services/transfer-notice-service";
+
 // GAP-037 — M23's live `m25.remittance.claim_*` consumer: the 835 → claim-adjudication feedback loop.
 export {
   buildM23RemittanceConsumer,

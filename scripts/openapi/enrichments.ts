@@ -382,6 +382,16 @@ import {
   SupersedeSequestrationPolicyBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-typebox";
 import {
+  CancelTransferNoticeBodySchema,
+  ConfirmPriorBillingBodySchema,
+  CorrectTransferDateBodySchema,
+  SubmitTransferNoticeBodySchema,
+  TransferNoticeListQuerySchema,
+  TransferNoticeListResponseSchema,
+  TransferNoticeSubmissionResponseSchema,
+  TransferNoticeViewSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/transfer-notice-typebox";
+import {
   CreateWageIndexBodySchema,
   SupersedeWageIndexBodySchema,
   WageIndexEffectiveQuerySchema,
@@ -2803,6 +2813,60 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/noe-records/:id/cancel": {
     summary: "Cancel a DRAFT/READY NOE — election-reversed guard fact (§4.1 #27)",
     body: CancelNoeBodySchema,
+  },
+  // ── Medicare transfer notice, TOB 8xC / corrected 8xC / 8xD (transfer-notice.routes.ts) ──
+  "GET /api/v1/billing/transfer-notices": {
+    summary:
+      "Transfer-notice worklist (8xC / 8xD) with each notice's §20.1.3 blockers and allowed actions",
+    query: TransferNoticeListQuerySchema,
+    response: TransferNoticeListResponseSchema,
+  },
+  "GET /api/v1/billing/transfer-notices/:id": {
+    summary:
+      "Transfer notice detail — blockers, derived occurrence/condition codes, allowed actions",
+    response: TransferNoticeViewSchema,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/confirm-prior-billing": {
+    summary:
+      "Confirm the transferring hospice finalized its billing (its final claim's Through date + status 50/51)",
+    body: ConfirmPriorBillingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/submit": {
+    summary:
+      "File the transfer notice with Medicare — re-checks every blocker; emits m23.transfer_notice.submit_requested (step-up; 202)",
+    body: SubmitTransferNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeSubmissionResponseSchema,
+    status: 202,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/cancel": {
+    summary:
+      "Cancel a DRAFT/READY transfer notice with a reason (a submitted one is voided instead)",
+    body: CancelTransferNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/correct-date": {
+    summary:
+      "Draft a corrected 8xC for an accepted notice: From = corrected date, OC 56 = date on file, CC D0",
+    body: CorrectTransferDateBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/void": {
+    summary: "Draft the 8xD that removes an accepted transfer submitted in error (§20.1.4)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/billing/transfer-notices/:id/redraft": {
+    summary: "Redraft a rejected or cancelled original transfer notice",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: TransferNoticeViewSchema,
+    status: 201,
   },
   // ── NOTR fast path (notr.routes.ts) ──
   "POST /api/v1/notr-records/:id/submit": {
@@ -9310,6 +9374,7 @@ const M23ClaimSubmissionKind = Type.Union([
   Type.Literal("claim_837i"),
   Type.Literal("noe"),
   Type.Literal("notr"),
+  Type.Literal("transfer_notice"),
 ]);
 const M23ClaimSubmissionOutcome = Type.Union([
   Type.Literal("queued"),
@@ -9506,6 +9571,7 @@ const M23ClaimSubmissionView = Type.Object({
   claimId: Type.Union([Type.String(), Type.Null()]),
   noeId: Type.Union([Type.String(), Type.Null()]),
   notrId: Type.Union([Type.String(), Type.Null()]),
+  transferNoticeId: Type.Union([Type.String(), Type.Null()]),
   claimControlNumber: Type.String(),
   attemptIndex: Type.Integer(),
   outcome: M23ClaimSubmissionOutcome,
