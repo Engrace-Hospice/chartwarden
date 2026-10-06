@@ -16,11 +16,21 @@ import { randomUUID } from "node:crypto";
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { bereavementDischargeLegitimacy, deriveDischargeClaimCodes } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
-import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
+import {
+  type DischargeDetailsService,
+  claimAssemblyRangeContextForOrg,
+  claimStayEndFactsForOrg,
+  createDbDischargeDetailsService,
+} from "../src/modules/06-admission/index";
+import {
+  claimAttention,
+  stayEndDischarge,
+} from "../src/modules/23-billing-medicare/services/claim-attention";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { appRoleConnectionString } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
@@ -66,6 +76,7 @@ describe.skipIf(!DB_URL)("M6 claim-assembly discharge seam — LIVE Postgres", (
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
+  let details: DischargeDetailsService;
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -171,6 +182,7 @@ describe.skipIf(!DB_URL)("M6 claim-assembly discharge seam — LIVE Postgres", (
         },
       },
     );
+    details = createDbDischargeDetailsService(handle.db, validatingM6Outbox());
   }, 120_000);
 
   afterAll(async () => {
@@ -325,5 +337,215 @@ describe.skipIf(!DB_URL)("M6 claim-assembly discharge seam — LIVE Postgres", (
         "UPDATE transfer_event SET receiving_care_setting='hospital' WHERE direction='out'",
       ),
     ).rejects.toThrow(/transfer_event_receiving_care_setting_chk/);
+  });
+
+  // ── after-the-fact discharge details (POST /discharges/:id/place-of-death, /transfers/:id/receiving-care-setting)
+
+  /** A death recorded BEFORE migration 0370 captured the place (the column NULL, as on historic rows). */
+  async function historicDeath(patientId: string) {
+    const admissionId = await activeAdmission(patientId);
+    const de = await svc.discharge(
+      ORG_A,
+      admissionId,
+      {
+        reason: "death",
+        dischargeDate: isoDay(0),
+        narrative: "expired peacefully at home",
+        deathCertifierId: MD,
+        placeOfDeath: "home",
+      },
+      USER,
+    );
+    await admin.query("UPDATE discharge_event SET place_of_death = NULL WHERE id=$1", [de.id]);
+    const { rows } = await admin.query("SELECT version FROM discharge_event WHERE id=$1", [de.id]);
+    return { admissionId, dischargeEventId: de.id, version: Number(rows[0].version) };
+  }
+
+  /** The discharge rule's verdict for a final claim whose window ends today, from the LIVE stay-end facts. */
+  async function ruleFor(admissionId: string) {
+    const [facts] = await claimStayEndFactsForOrg(handle.db, ORG_A, [admissionId]);
+    const discharge = stayEndDischarge(facts!);
+    const serviceTo = isoDay(0);
+    const claim = {
+      claimId: "claim-live",
+      admissionId,
+      tob: "811",
+      dischargeDate: discharge?.effectiveDate ?? null,
+      dischargeReason: discharge?.kind ?? null,
+      dischargeClaimCodes: deriveDischargeClaimCodes({ serviceTo, discharge }),
+      dischargeSourceEventId: discharge?.sourceEventId ?? null,
+    };
+    const result = bereavementDischargeLegitimacy.check(
+      { claim, lines: [] } as never,
+      bereavementDischargeLegitimacy.defaultParameters ?? {},
+    );
+    const attention = claimAttention(
+      { claimId: "claim-live", admissionId, tob: "811", state: "ready", serviceTo },
+      facts,
+    );
+    return { result, attention, codes: claim.dischargeClaimCodes };
+  }
+
+  it("a historic death blocks the claim (PLACE_OF_DEATH_MISSING); recording the place clears it", async () => {
+    const patientId = randomUUID();
+    const { admissionId, dischargeEventId, version } = await historicDeath(patientId);
+
+    const before = await ruleFor(admissionId);
+    expect(before.result.passed).toBe(false);
+    expect(before.result.annotations?.defects?.[0]).toMatchObject({
+      code: "PLACE_OF_DEATH_MISSING",
+      refs: { admissionId, dischargeEventId },
+    });
+    expect(before.attention.flags).toEqual(["missing_discharge_details"]);
+    expect((await details.getForAdmission(ORG_A, admissionId))?.missing).toBe("place_of_death");
+
+    const saved = await details.recordPlaceOfDeath(
+      ORG_A,
+      dischargeEventId,
+      { value: "facility", ifVersion: version },
+      USER,
+    );
+    expect(saved).toMatchObject({ changed: true, previousValue: null, claimPatientStatus: "41" });
+    expect(saved.version).toBe(version + 1);
+
+    const after = await ruleFor(admissionId);
+    expect(after.codes.patientStatus).toBe("41");
+    expect(after.result.passed).toBe(true);
+    expect(after.attention.flags).toEqual([]);
+    // The catalog-validated outbox row M23's revalidate trigger consumes.
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE event_type='m6.discharge.details_recorded' AND aggregate_id=$1",
+      [dischargeEventId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).toMatchObject({
+      admissionId,
+      patientId,
+      detail: "place_of_death",
+      dischargeEventId,
+      value: "facility",
+      previousValue: null,
+      corrected: false,
+    });
+  });
+
+  it("refuses a stale version, and a correction without a reason; stores the reason with a correction", async () => {
+    const { dischargeEventId, version } = await historicDeath(randomUUID());
+    await expect(
+      details.recordPlaceOfDeath(
+        ORG_A,
+        dischargeEventId,
+        { value: "home", ifVersion: version + 5 },
+        USER,
+      ),
+    ).rejects.toMatchObject({ code: "VERSION_MISMATCH" });
+    const first = await details.recordPlaceOfDeath(
+      ORG_A,
+      dischargeEventId,
+      { value: "home", ifVersion: version },
+      USER,
+    );
+    // Same value again: a no-op (no bump, no second event).
+    const again = await details.recordPlaceOfDeath(
+      ORG_A,
+      dischargeEventId,
+      { value: "home", ifVersion: first.version },
+      USER,
+    );
+    expect(again).toMatchObject({ changed: false, version: first.version });
+    await expect(
+      details.recordPlaceOfDeath(
+        ORG_A,
+        dischargeEventId,
+        { value: "unknown", ifVersion: first.version },
+        USER,
+      ),
+    ).rejects.toMatchObject({
+      code: "DISCHARGE_DETAIL_CORRECTION_REASON_REQUIRED",
+      statusCode: 409,
+    });
+    const corrected = await details.recordPlaceOfDeath(
+      ORG_A,
+      dischargeEventId,
+      {
+        value: "unknown",
+        ifVersion: first.version,
+        correctionReason: "family could not confirm where the death occurred",
+      },
+      USER,
+    );
+    expect(corrected).toMatchObject({ changed: true, previousValue: "home" });
+    const { rows } = await admin.query(
+      "SELECT place_of_death, place_of_death_correction_reason FROM discharge_event WHERE id=$1",
+      [dischargeEventId],
+    );
+    expect(rows[0]).toEqual({
+      place_of_death: "unknown",
+      place_of_death_correction_reason: "family could not confirm where the death occurred",
+    });
+  });
+
+  it("records a historic transfer-out's receiving care setting; a death is not a transfer", async () => {
+    const patientId = randomUUID();
+    const admissionId = await activeAdmission(patientId);
+    const xfer = await svc.transferOut(
+      ORG_A,
+      admissionId,
+      {
+        effectiveDate: isoDay(0),
+        otherHospiceName: "Sunrise Hospice",
+        receivingCareSetting: "home",
+        narrative: "patient moved closer to family served by another hospice",
+      },
+      USER,
+    );
+    await admin.query("UPDATE transfer_event SET receiving_care_setting = NULL WHERE id=$1", [
+      xfer.id,
+    ]);
+    const before = await ruleFor(admissionId);
+    expect(before.result.annotations?.defects?.[0]?.code).toBe("RECEIVING_CARE_SETTING_MISSING");
+    expect(before.attention.missingDischargeDetail?.transferEventId).toBe(xfer.id);
+
+    const view = await details.getForAdmission(ORG_A, admissionId);
+    expect(view?.missing).toBe("receiving_care_setting");
+    const saved = await details.recordReceivingCareSetting(
+      ORG_A,
+      xfer.id,
+      { value: "facility", ifVersion: view!.transferOut!.version },
+      USER,
+    );
+    expect(saved.claimPatientStatus).toBe("51");
+    expect((await ruleFor(admissionId)).codes.patientStatus).toBe("51");
+  });
+
+  it("is RLS-scoped: another org cannot see, resolve or update the record", async () => {
+    const { admissionId, dischargeEventId, version } = await historicDeath(randomUUID());
+    expect(await details.getForAdmission(ORG_B, admissionId)).toBeNull();
+    expect(await details.admissionIdForDischarge(ORG_B, dischargeEventId)).toBeNull();
+    await expect(
+      details.recordPlaceOfDeath(
+        ORG_B,
+        dischargeEventId,
+        { value: "home", ifVersion: version },
+        USER,
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(await claimStayEndFactsForOrg(handle.db, ORG_B, [admissionId])).toEqual([
+      expect.objectContaining({ admissionId, dischargeDate: null, transferOut: null }),
+    ]);
+    const { rows } = await admin.query("SELECT place_of_death FROM discharge_event WHERE id=$1", [
+      dischargeEventId,
+    ]);
+    expect(rows[0].place_of_death).toBeNull();
+  });
+
+  it("migration 0372 refuses a correction reason shorter than 20 characters", async () => {
+    const { dischargeEventId } = await historicDeath(randomUUID());
+    await expect(
+      admin.query(
+        "UPDATE discharge_event SET place_of_death_correction_reason='short' WHERE id=$1",
+        [dischargeEventId],
+      ),
+    ).rejects.toThrow(/discharge_event_pod_correction_reason_len_chk/);
   });
 });

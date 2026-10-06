@@ -720,6 +720,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         dischargeReason: null,
         deceasedDate: null,
         placeOfDeath: null,
+        dischargeEventId: null,
         transferOut: null,
         // F-127 (#251) — `activeAdmissionForRange` names M6_MD as the hospice physician.
         hospicePhysicianId: M6_MD,
