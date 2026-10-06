@@ -16,7 +16,7 @@ import {
 // the workflow controls (`.wx-locked-value`), the footer action bar (`.wx-hope-footer`), and the right
 // context rail (admission, what happens on submit, patient summary). Modules may not import each other, so
 // this re-draws the HOPE anatomy on the same global classes rather than importing its components.
-import { type JSX, type ReactNode, useEffect, useState } from "react";
+import { type JSX, type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ChartBanner,
@@ -44,29 +44,39 @@ export type Loadable<T> = T | null | "error";
 /** Loads the admission aggregate once; `null` while loading, `"error"` when it is not visible. */
 export function useEpisodeAdmission(
   admissionId: string | null | undefined,
+  /** Bump to re-read the admission after a write (keeps the current one on screen meanwhile). */
+  refreshKey = 0,
 ): Loadable<EpisodeAdmission> {
   const client = useApiClient();
   const [admission, setAdmission] = useState<Loadable<EpisodeAdmission>>(null);
+  const loadedId = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (!admissionId) {
       setAdmission("error");
       return;
     }
     let active = true;
-    setAdmission(null);
+    const refreshing = loadedId.current === admissionId && refreshKey > 0;
+    loadedId.current = admissionId;
+    if (!refreshing) setAdmission(null);
     void Promise.resolve()
       .then(() => client.GET("/api/v1/admissions/{id}", { params: { path: { id: admissionId } } }))
       .then(({ data, error }) => {
         if (!active) return;
-        setAdmission(error || !data ? "error" : (data as EpisodeAdmission));
+        if (error || !data) {
+          // A failed refresh keeps the admission already on screen; only a first load fails the page.
+          if (!refreshing) setAdmission("error");
+          return;
+        }
+        setAdmission(data as EpisodeAdmission);
       })
       .catch(() => {
-        if (active) setAdmission("error");
+        if (active && !refreshing) setAdmission("error");
       });
     return () => {
       active = false;
     };
-  }, [client, admissionId]);
+  }, [client, admissionId, refreshKey]);
   return admission;
 }
 
@@ -292,6 +302,8 @@ export interface NavStep {
 }
 
 /** Sequential progress: every step before `current` is complete, the rest not started. */
+/** Steps for a linear workflow at step `current`; pass `titles.length` once the final (success) step is
+ *  reached so every step — the success step included — reads Complete. */
 export function linearSteps(titles: readonly string[], current: number): NavStep[] {
   return titles.map((title, i) => ({
     id: String(i),

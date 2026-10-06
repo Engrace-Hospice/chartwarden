@@ -140,6 +140,10 @@ describe("DischargeDetails screen", () => {
     expect(screen.getByText(/^41 — /)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Save place of death" }));
     expect(await screen.findByText("The place of death is recorded")).toBeTruthy();
+    // The "Recorded" step is the finish line: every step reads Complete, none In progress.
+    const nav = screen.getByRole("navigation", { name: "Discharge details progress" });
+    expect(nav.textContent).not.toMatch(/In progress/);
+    expect(nav.textContent?.match(/Complete/g)).toHaveLength(4);
     expect(POST).toHaveBeenCalledWith("/api/v1/discharges/{id}/place-of-death", {
       params: { path: { id: DE } },
       body: { placeOfDeath: "facility", ifVersion: 2 },

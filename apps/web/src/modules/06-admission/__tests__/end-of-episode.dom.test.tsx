@@ -212,6 +212,41 @@ describe("DeathPronouncement submit", () => {
     });
   });
 
+  it("after success shows every step Complete and re-reads the admission (rail shows Bereavement)", async () => {
+    const POST = vi.fn(async () => ok({ id: DE, state: "completed", version: 0 }, 201));
+    let recorded = false;
+    const GET = vi.fn(async (path: string) =>
+      path === "/api/v1/admissions/{id}"
+        ? ok(admission(recorded ? "bereavement" : "active"))
+        : fail(404, "NOT_FOUND"),
+    );
+    POST.mockImplementation(async () => {
+      recorded = true;
+      return ok({ id: DE, state: "completed", version: 0 }, 201);
+    });
+    mount(`/admissions/${ADM}/death`, <DeathPronouncement />, "/admissions/:id/death", {
+      GET,
+      POST,
+    });
+    fireEvent.change(await screen.findByLabelText(/Date of death/), {
+      target: { value: "2026-09-30" },
+    });
+    fireEvent.change(screen.getByLabelText(/Place of death/), { target: { value: "home" } });
+    fireEvent.change(screen.getByLabelText(/Pronouncing physician/), { target: { value: PHYS } });
+    fireEvent.change(screen.getByLabelText(/Pronouncement note/), {
+      target: { value: "Pronounced at 03:10, family present." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sign and record death" }));
+    await screen.findByText("Death recorded");
+
+    const nav = screen.getByRole("navigation", { name: "Death workflow steps" });
+    await waitFor(() => expect(nav.textContent).not.toMatch(/In progress/));
+    expect(nav.textContent?.match(/Complete/g)).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByText("Bereavement").length).toBeGreaterThan(0));
+    expect(screen.queryByText("Active")).toBeNull();
+  });
+
   it("returns to the form on DEATH_CERTIFIER_INVALID", async () => {
     const POST = vi.fn(async () => fail(422, "DEATH_CERTIFIER_INVALID"));
     const client = { GET: getFor(admission("on_hold")), POST };

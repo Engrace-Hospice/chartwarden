@@ -39,6 +39,8 @@ import { authFailureRedirect } from "./write-workflow";
 
 const TITLE = "Death & Pronouncement";
 const STEPS = ["Record death", "Review & sign", "Post-death cascade"] as const;
+/** The success step: reached only once the death is recorded. */
+const DONE_STEP = STEPS.length - 1;
 const MIN_NARRATIVE = 10;
 
 /** Where the patient died — the final claim's patient status 40 (home) / 41 (facility) / 42 (unknown). */
@@ -112,7 +114,8 @@ export function DeathPronouncement(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const client = useApiClient();
   const navigate = useNavigate();
-  const admission = useEpisodeAdmission(id);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const admission = useEpisodeAdmission(id, refreshKey);
   const today = localToday();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<DeathDraft>({
@@ -182,7 +185,9 @@ export function DeathPronouncement(): JSX.Element {
         );
         return;
       }
-      setStep(2);
+      setStep(DONE_STEP);
+      // Re-read the admission so the rail shows its new state (Bereavement), not the pre-death one.
+      setRefreshKey((k) => k + 1);
     } catch {
       setSubmitError("The death could not be recorded. Check your connection and try again.");
     } finally {
@@ -205,8 +210,8 @@ export function DeathPronouncement(): JSX.Element {
         <StepNav
           label="Death workflow steps"
           heading="Death"
-          steps={linearSteps(STEPS, step)}
-          activeId={String(step)}
+          steps={linearSteps(STEPS, step === DONE_STEP ? STEPS.length : step)}
+          activeId={step === DONE_STEP ? null : String(step)}
         />
         <main className="wx-hope-main">
           <WorkflowHead
@@ -214,7 +219,7 @@ export function DeathPronouncement(): JSX.Element {
             stepLine={`Step ${Math.min(step + 1, STEPS.length)} of ${STEPS.length} · ${STEPS[step]}`}
           />
 
-          {!dischargeable && step < 2 ? (
+          {!dischargeable && step < DONE_STEP ? (
             <InlineAlert tone="info">
               This admission is {stateLabel(admission.state).toLowerCase()}. A death can only be
               recorded on an active or on-hold admission.
@@ -256,7 +261,7 @@ export function DeathPronouncement(): JSX.Element {
             </Section>
           ) : null}
 
-          {step === 2 ? (
+          {step === DONE_STEP ? (
             <Section icon="check-circle" title="Death recorded">
               <div style={{ display: "grid", gap: "0.875rem" }}>
                 <InlineAlert tone="success">
@@ -308,7 +313,7 @@ export function DeathPronouncement(): JSX.Element {
                 </button>
               </>
             ) : null}
-            {step === 2 ? (
+            {step === DONE_STEP ? (
               <>
                 {admission.patientId ? (
                   <Link to={`/patients/${admission.patientId}`} className="wx-btn-secondary">

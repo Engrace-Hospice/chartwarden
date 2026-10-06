@@ -226,7 +226,7 @@ export function DischargeDetails(): JSX.Element {
       <StepNav
         label="Discharge details progress"
         heading="Discharge details"
-        steps={linearSteps(STEPS, step)}
+        steps={linearSteps(STEPS, step === 3 ? STEPS.length : step)}
         activeId={step === 3 ? null : String(step)}
       />
       <main className="wx-hope-main">
