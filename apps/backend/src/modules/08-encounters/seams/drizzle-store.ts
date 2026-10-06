@@ -46,6 +46,9 @@ const EVER_SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned", "voided"] 
 /** The `encounter_discipline` values that are SKILLED NURSING for the CMS HCI indicators (2, 8, 9). */
 const SKILLED_NURSING_DISCIPLINES = ["rn", "lpn"] as const;
 
+/** SSVI "skilled visit" disciplines (nursing + MSW; the encounter model has no therapy discipline). */
+const SSVI_SKILLED_VISIT_DISCIPLINES = ["rn", "lpn", "msw"] as const;
+
 /** Encounter statuses that count as a delivered, attested visit (`draft`/`finalized`/`voided` do not). */
 const SIGNED_ENCOUNTER_STATUSES = ["signed", "cosigned"] as const;
 
@@ -197,6 +200,27 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
             visits: Number(r.visits) || 0,
             minutes: Number(r.minutes) || 0,
           }));
+        },
+      );
+    },
+    skilledVisitDaysForOrg(organizationId, window) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const rows = await tx
+            .selectDistinct({ admissionId: E.admissionId, serviceDate: E.serviceDate })
+            .from(E)
+            .where(
+              and(
+                eq(E.organizationId, organizationId),
+                inArray(E.discipline, SSVI_SKILLED_VISIT_DISCIPLINES),
+                inArray(E.status, SIGNED_ENCOUNTER_STATUSES),
+                gte(E.serviceDate, window.from),
+                lt(E.serviceDate, window.to),
+              ),
+            );
+          return rows.map((r) => ({ admissionId: r.admissionId, serviceDate: r.serviceDate }));
         },
       );
     },

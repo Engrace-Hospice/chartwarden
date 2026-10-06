@@ -726,6 +726,9 @@ export const dischargeReaderDenyStub: DischargeReader = {
   liveDischargeTimingCounts() {
     throw new NotImplementedError("DischargeReader");
   },
+  ssviDischargeCounts() {
+    throw new NotImplementedError("DischargeReader");
+  },
 };
 
 /** M6 — admissions started in a period (M30 opioid_on_admission_rate denominator). Denies until M6 registers it. */
@@ -783,6 +786,9 @@ export const signedEncountersReaderDenyStub: SignedEncountersReader = {
     throw new NotImplementedError("SignedEncountersReader");
   },
   skilledNursingDayTotalsForOrg() {
+    throw new NotImplementedError("SignedEncountersReader");
+  },
+  skilledVisitDaysForOrg() {
     throw new NotImplementedError("SignedEncountersReader");
   },
 };

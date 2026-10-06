@@ -356,6 +356,8 @@ import {
   RateTableGetQuerySchema,
   RateTableListQuerySchema,
   RateTableListResponseSchema,
+  RateTableNationalReferenceQuerySchema,
+  RateTableNationalReferenceResponseSchema,
   RateTableViewSchema,
   SupersedeRateTableBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
@@ -9720,6 +9722,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The live hospice rate table claim assembly would price a service date from, or null (F-210)",
     query: RateTableEffectiveQuerySchema,
     response: RateTableEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/rate-tables/national-reference": {
+    summary:
+      "The CMS national hospice per-diem base rates for a fiscal year, HQRP-compliant and non-compliant, with sources (reference only; pricing reads the tenant-entered table)",
+    query: RateTableNationalReferenceQuerySchema,
+    response: RateTableNationalReferenceResponseSchema,
   },
   "GET /api/v1/billing/rate-tables/:id": {
     summary: "Read one hospice rate-table version (F-210)",

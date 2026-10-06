@@ -1,4 +1,4 @@
-// Dev-only visual harness (mock ApiClient, no backend) for the patient Clinical tab + M14 IDG screens. Not a build entry: vite.config.ts builds index.html only. Open via `vite` at /clinical-preview.html?idg=<live|detail|minutes|packet|schedule|actions>.
+// Dev-only visual harness (mock ApiClient, no backend) for the patient Clinical tab + M14 IDG screens. Not a build entry: vite.config.ts builds index.html only. Open via `vite` at /clinical-preview.html?idg=<live|detail|minutes|packet|schedule|actions> (also ?rates, ?ssvi).
 import "@fontsource-variable/inter";
 import "./index.css";
 import {
@@ -27,6 +27,8 @@ import { DocumentExplorer } from "./modules/22-documents/document-explorer";
 import { PatientDocuments } from "./modules/22-documents/patient-documents";
 import { ArDashboard } from "./modules/23-billing-medicare/ar-dashboard";
 import { PatientClaims } from "./modules/23-billing-medicare/patient-claims";
+import { RateTables } from "./modules/23-billing-medicare/rate-tables";
+import { QualityHub } from "./modules/30-quality/quality-hub";
 import { AppLayout } from "./shell/layout";
 import { PRIMARY_NAV } from "./shell/primary-nav";
 import { RoleHome } from "./shell/role-home";
@@ -1251,6 +1253,166 @@ const billingGet = (p: string, o?: { params?: { path?: Record<string, string> } 
   return undefined;
 };
 
+// ── ?rates (M23 hospice rates, FY2027 HQRP + CMS reference) / ?ssvi (M30 quality hub with the SSVI panel) ──
+const isRates = new URLSearchParams(location.search).has("rates");
+const isSsvi = new URLSearchParams(location.search).has("ssvi");
+const RATE_FY =
+  new Date().getMonth() >= 9 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+const rateRef = {
+  fiscalYearStarting: RATE_FY,
+  fiscalYearLabel: `FY${RATE_FY + 1}`,
+  paymentUpdatePct: 2.3,
+  hqrpReductionPctPoints: 4,
+  hqrpCompliant: {
+    rhcDays1to60PerDiemCents: 23633,
+    rhcDays61PlusPerDiemCents: 18633,
+    chcPerDiemCents: 172616,
+    chcHourlyRateCents: 7192,
+    ircPerDiemCents: 54593,
+    gipPerDiemCents: 123151,
+  },
+  hqrpNonCompliant: {
+    rhcDays1to60PerDiemCents: 22709,
+    rhcDays61PlusPerDiemCents: 17904,
+    chcPerDiemCents: 165866,
+    chcHourlyRateCents: 6911,
+    ircPerDiemCents: 52458,
+    gipPerDiemCents: 118335,
+  },
+  sources: [
+    { cite: "CMS-1851-CN, 91 FR 61791 (2026-09-30)", url: "https://www.federalregister.gov" },
+  ],
+  note: "",
+};
+const rateVersion = (id: string, superseded: boolean, gip: number) => ({
+  rateTableId: id,
+  organizationId: "o",
+  providerEntityId: "pe1",
+  fiscalYearStarting: RATE_FY,
+  effectiveFrom: `${RATE_FY}-10-01`,
+  effectiveTo: `${RATE_FY + 1}-09-30`,
+  ...rateRef.hqrpCompliant,
+  gipPerDiemCents: gip,
+  laborShareRhc: "0.6600",
+  laborShareChc: "0.6600",
+  laborShareIrc: "0.5400",
+  laborShareGip: "0.6400",
+  hqrpCompliant: true,
+  nationalReferenceWarnings:
+    gip === 123151
+      ? []
+      : [
+          `The rates differ from the FY${RATE_FY + 1} HQRP-compliant national rates (CMS-1851-CN, 91 FR 61791):`,
+          `GIP: entered $${(gip / 100).toFixed(2)}, CMS national $1231.51`,
+        ],
+  enteredByMembershipId: "m1",
+  entryReason: superseded ? null : "Corrected per CMS-1851-CN",
+  supersededAt: superseded ? d(3) : null,
+  supersededById: superseded ? "rt2" : null,
+  createdAt: d(superseded ? 10 : 3),
+});
+const ratesGet = (p: string): unknown => {
+  if (p === "/api/v1/provider-entities")
+    return {
+      items: [
+        { id: "pe1", legalName: "Engrace Hospice", ccn: "381588", status: "active", npi: null },
+      ],
+      nextCursor: null,
+    };
+  if (p === "/api/v1/billing/rate-tables/national-reference") return { reference: rateRef };
+  if (p === "/api/v1/billing/rate-tables")
+    return { rateTables: [rateVersion("rt2", false, 123151), rateVersion("rt1", true, 123163)] };
+  return undefined;
+};
+const ssviValue = (numerator: number, denominator: number, met: boolean | null, why?: string) => ({
+  valueId: `v${numerator}${denominator}`,
+  organizationId: "o",
+  measureId: "",
+  period: { start: d(365), end: d(0), kind: "rolling_12m_to_quarter" },
+  numerator,
+  denominator,
+  rate: why || denominator === 0 ? null : numerator / denominator,
+  thresholdMet: why ? null : met,
+  bandColor: why ? "insufficient_n" : met === false ? "red" : "green",
+  unavailableReason: why ?? null,
+  computedAt: d(0),
+  computeVersion: "0.1.0",
+  snapshotContentHash: "h",
+  supersededByValueId: null,
+});
+const NOT_HERE =
+  "Total non-hospice spending is what Medicare paid OTHER providers for this hospice's beneficiaries during their elections; those claims exist only at CMS.";
+const ssviRows = [
+  [
+    "ssvi_metric_01",
+    "SSVI 1 — Providing no CHC and no GIP (internal estimate)",
+    ssviValue(9, 112, true),
+  ],
+  [
+    "ssvi_metric_02",
+    "SSVI 2 — RHC days in a nursing facility or SNF (internal estimate)",
+    ssviValue(4210, 9120, false),
+  ],
+  [
+    "ssvi_metric_03",
+    "SSVI 3 — Last two RHC days of life with a skilled visit (internal estimate)",
+    ssviValue(61, 70, true),
+  ],
+  ["ssvi_metric_04", "SSVI 4 — Live-discharge share (internal estimate)", ssviValue(21, 96, true)],
+  [
+    "ssvi_metric_05",
+    "SSVI 5 — Discharges with length of stay over 180 days (internal estimate)",
+    ssviValue(36, 96, false),
+  ],
+  [
+    "ssvi_metric_06",
+    "SSVI 6 — Skilled-nursing minutes per RHC day (internal estimate)",
+    ssviValue(118560, 9120, true),
+  ],
+  [
+    "ssvi_metric_07",
+    "SSVI 7 — Weekend RHC days with a skilled visit (internal estimate)",
+    ssviValue(301, 9120, false),
+  ],
+  [
+    "ssvi_metric_08",
+    "SSVI 8 — Live discharges back to the same hospice within 7 days (internal estimate)",
+    ssviValue(1, 21, true),
+  ],
+  [
+    "ssvi_metric_09",
+    "SSVI 9 — Total non-hospice spending (octile points) (internal estimate)",
+    ssviValue(0, 0, null, NOT_HERE),
+  ],
+  [
+    "ssvi_composite",
+    "Service and Spending Variation Index total (0–16; internal estimate)",
+    ssviValue(0, 0, null, "The SSVI total is withheld until all nine metrics contribute."),
+  ],
+  [
+    "hci_composite",
+    "Hospice Care Index composite score (0–10)",
+    ssviValue(0, 0, null, "The HCI composite is withheld until all ten contribute."),
+  ],
+  ["hvldl", "Hospice Visits in Last Days of Life", ssviValue(44, 70, true)],
+].map(([measureId, displayName, latestValue]) => ({
+  measureId,
+  displayName,
+  domain: String(measureId).startsWith("ssvi")
+    ? "ssvi"
+    : String(measureId).startsWith("hci")
+      ? "hci"
+      : "hvldl",
+  latestValue: { ...(latestValue as object), measureId },
+  fiscalYear: 2027,
+}));
+const ssviGet = (p: string): unknown => {
+  if (p === "/api/v1/quality/measures")
+    return { items: ssviRows, nextCursor: null, hasMore: false };
+  if (p === "/api/v1/quality/cop/citations") return { items: [], nextCursor: null, hasMore: false };
+  return undefined;
+};
+
 // ── ?explorer ──
 const isExplorer = new URLSearchParams(location.search).has("explorer");
 const explorerGet = (p: string, o?: { params?: { path?: Record<string, string> } }): unknown => {
@@ -2222,31 +2384,35 @@ const client = {
         ? f2fGet(p)
         : isIdg && p.startsWith("/api/v1/")
           ? idgGet(p, o as never)
-          : isPClaims && p.match(/claims|noe|notr/)
-            ? pclaimsGet(p)
-            : isExplorer
-              ? explorerGet(p, o as never)
-              : isBilling
-                ? billingGet(p, o as never)
-                : isSched
-                  ? schedGet(p, o as never)
-                  : p === "/api/v1/encounters/{encounterId}"
-                    ? details[o?.params?.path?.encounterId ?? ""]
-                    : p === "/api/v1/orders/{id}"
-                      ? { data: orders.find((x) => x.id === o?.params?.path?.id)?.__data }
-                      : p === "/api/v1/idg/meetings/{id}"
-                        ? {
-                            id: "mt0",
-                            locationId: "loc1",
-                            status: "packets_ready",
-                            scheduledStart: d(-3),
-                            scheduledEnd: new Date(now + 3 * 864e5 + 36e5).toISOString(),
-                          }
-                        : p === "/api/v1/mdm/{kind}/{id}"
-                          ? { canonical: { displayName: mdm[o?.params?.path?.id ?? ""] } }
-                          : isHome && p in homeRoutes
-                            ? homeRoutes[p]
-                            : routes[p],
+          : isRates
+            ? ratesGet(p)
+            : isSsvi
+              ? ssviGet(p)
+              : isPClaims && p.match(/claims|noe|notr/)
+                ? pclaimsGet(p)
+                : isExplorer
+                  ? explorerGet(p, o as never)
+                  : isBilling
+                    ? billingGet(p, o as never)
+                    : isSched
+                      ? schedGet(p, o as never)
+                      : p === "/api/v1/encounters/{encounterId}"
+                        ? details[o?.params?.path?.encounterId ?? ""]
+                        : p === "/api/v1/orders/{id}"
+                          ? { data: orders.find((x) => x.id === o?.params?.path?.id)?.__data }
+                          : p === "/api/v1/idg/meetings/{id}"
+                            ? {
+                                id: "mt0",
+                                locationId: "loc1",
+                                status: "packets_ready",
+                                scheduledStart: d(-3),
+                                scheduledEnd: new Date(now + 3 * 864e5 + 36e5).toISOString(),
+                              }
+                            : p === "/api/v1/mdm/{kind}/{id}"
+                              ? { canonical: { displayName: mdm[o?.params?.path?.id ?? ""] } }
+                              : isHome && p in homeRoutes
+                                ? homeRoutes[p]
+                                : routes[p],
     ),
   PATCH: (p: string, o?: never) => (isIdg ? idgNoteWrite("PATCH", p, o) : res({})),
   POST: (p: string, o?: never) => (isIdg ? idgNoteWrite("POST", p, o) : res({})),
@@ -2322,6 +2488,35 @@ if (isIdg) {
               </Route>
             </Routes>
           </div>
+        </ApiClientProvider>
+      </MemoryRouter>
+    </SessionProvider>,
+  );
+} else if (isRates || isSsvi) {
+  createRoot(document.getElementById("root")!).render(
+    <SessionProvider
+      session={
+        {
+          userId: "ada",
+          organizationId: "o",
+          displayName: "Ada Administrator",
+          permissions: [
+            "billing.rate_table.read",
+            "billing.rate_table.admin",
+            "quality.measure.read",
+          ],
+          roles: ["administrator"],
+          isAdmin: true,
+        } as never
+      }
+    >
+      <MemoryRouter initialEntries={[isRates ? "/billing/rate-tables" : "/quality"]}>
+        <ApiClientProvider client={client}>
+          <ToastProvider>
+            <div style={{ background: "var(--color-background)", minHeight: "100vh" }}>
+              {isRates ? <RateTables /> : <QualityHub />}
+            </div>
+          </ToastProvider>
         </ApiClientProvider>
       </MemoryRouter>
     </SessionProvider>,

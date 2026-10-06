@@ -555,6 +555,26 @@ export interface DischargeReader {
     readonly earlyLiveDischarges: number;
     readonly lateLiveDischarges: number;
   }>;
+
+  /**
+   * FY2027 SSVI metrics 4, 5 and 8 (CMS-1851-F Table 9) — over the same `[period.from, period.to)` discharge
+   * population: all discharges; the LIVE ones (`dischargeType !== 'death'`); discharges of ANY type whose length
+   * of stay (admission date to discharge date) exceeds 180 days; and live discharges followed by a NEW admission
+   * of the same patient to this organization within 7 days of the discharge date. Aggregate counts only (D6).
+   */
+  ssviDischargeCounts(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<SsviDischargeCounts>;
+}
+
+/** The {@link DischargeReader.ssviDischargeCounts} aggregate. */
+export interface SsviDischargeCounts {
+  readonly totalDischarges: number;
+  readonly liveDischarges: number;
+  /** Discharges (live and death) with a length of stay over 180 days; unclassifiable rows (no admission date) excluded. */
+  readonly dischargesWithLosOver180: number;
+  readonly liveDischargesReadmittedWithin7Days: number;
 }
 
 /** One admission-onset row for M30's `opioid_on_admission_rate` denominator (§4.11-style). */

@@ -264,6 +264,104 @@ describe.skipIf(!DB_URL)(
       expect(seenByB.rows[0].n).toBe(1);
     });
 
+    // ── FY2027 workstream E — the published cap constants (0393) and the D3 first-use guard (0392) ──
+    async function constantRow(capYear: string) {
+      const { rows } = await db.query<{
+        cents: string | null;
+        source_url: string | null;
+        first_tenant_use_at: Date | null;
+      }>(
+        `SELECT aggregate_cap_amount_cents::text AS cents, source_url, first_tenant_use_at
+           FROM cap_period_platform_constant WHERE cap_year = $1`,
+        [capYear],
+      );
+      return rows[0];
+    }
+    const rerun = (file: string) => db.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+
+    it("0393 publishes FY2026 = $35,361.44 and FY2027 = $36,174.75 with their Federal Register sources", async () => {
+      const fy26 = await constantRow("FY2026");
+      expect(fy26?.cents).toBe("3536144");
+      expect(fy26?.source_url).toBe("https://www.federalregister.gov/d/2025-14782");
+      const fy27 = await constantRow("FY2027");
+      expect(fy27?.cents).toBe("3617475");
+      expect(fy27?.source_url).toBe("https://www.federalregister.gov/d/2026-15686");
+      // Every tenant reads them (read-all policy) — the FY2026 open no longer fails CAP_AMOUNT_UNPUBLISHED.
+      const seenByB = await withOrg(ORG_B, () =>
+        db.query(
+          "SELECT aggregate_cap_amount_cents::text AS c FROM cap_period_platform_constant WHERE cap_year='FY2026'",
+        ),
+      );
+      expect(seenByB.rows[0].c).toBe("3536144");
+    });
+
+    it("0393 never overwrites a constant already in tenant use, nor one a platform admin published", async () => {
+      // In use (first_tenant_use_at set) and unpublished: the guard must leave it alone.
+      await db.query(
+        "UPDATE cap_period_platform_constant SET aggregate_cap_amount_cents = NULL, first_tenant_use_at = now() WHERE cap_year = 'FY2026'",
+      );
+      // Unused but already published with a different value by the platform admin.
+      await db.query(
+        "UPDATE cap_period_platform_constant SET aggregate_cap_amount_cents = 3600000 WHERE cap_year = 'FY2027'",
+      );
+      try {
+        await rerun("0393_m26_cap_constants_fy2026_fy2027.sql");
+        expect((await constantRow("FY2026"))?.cents).toBeNull();
+        expect((await constantRow("FY2027"))?.cents).toBe("3600000");
+      } finally {
+        await db.query(
+          "UPDATE cap_period_platform_constant SET aggregate_cap_amount_cents = 3536144, first_tenant_use_at = NULL WHERE cap_year = 'FY2026'",
+        );
+        await db.query(
+          "UPDATE cap_period_platform_constant SET aggregate_cap_amount_cents = 3617475 WHERE cap_year = 'FY2027'",
+        );
+      }
+    });
+
+    it("0392: wardenx_app stamps first_tenant_use_at once through the SECURITY DEFINER function", async () => {
+      expect((await constantRow("FY2027"))?.first_tenant_use_at).toBeNull();
+      await withOrg(ORG_A, () =>
+        db.query("SELECT cap_platform_loader_mark_constant_in_use('FY2027')"),
+      );
+      const first = (await constantRow("FY2027"))?.first_tenant_use_at;
+      expect(first).toBeInstanceOf(Date);
+      await withOrg(ORG_B, () =>
+        db.query("SELECT cap_platform_loader_mark_constant_in_use('FY2027')"),
+      );
+      expect((await constantRow("FY2027"))?.first_tenant_use_at?.getTime()).toBe(first?.getTime());
+      // ...and the app role still cannot write the platform table directly (0089 REVOKE stands).
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE cap_period_platform_constant SET first_tenant_use_at = NULL WHERE cap_year = 'FY2027'",
+          ),
+        ),
+      ).rejects.toThrow();
+      // The amend path's guard now bites: an in-use constant cannot be amended.
+      const amended = await withOrg(ORG_A, () =>
+        db.query(
+          "SELECT * FROM cap_platform_loader_amend_constant('FY2027', 1, 'x', gen_random_uuid())",
+        ),
+      );
+      expect(amended.rows).toHaveLength(0);
+      expect((await constantRow("FY2027"))?.cents).toBe("3617475");
+    });
+
+    it("0392 backfills first_tenant_use_at from the earliest cap_period already opened for the year", async () => {
+      // Org A's seeded period is FY2091 — publish a constant row for it, then replay the backfill.
+      await db.query(
+        `INSERT INTO cap_period_platform_constant (cap_year, aggregate_cap_amount_cents, recorded_by)
+         VALUES ('FY2091', 3446534, '00000000-0000-0000-0000-000000000000') ON CONFLICT DO NOTHING`,
+      );
+      await rerun("0392_m26_cap_constant_first_tenant_use.sql");
+      const { rows } = await db.query<{ same: boolean }>(
+        `SELECT c.first_tenant_use_at = p.opened_at AS same
+           FROM cap_period_platform_constant c JOIN cap_period p ON p.cap_year = c.cap_year
+          WHERE c.cap_year = 'FY2091'`,
+      );
+      expect(rows[0].same).toBe(true);
+    });
+
     it("a WITH CHECK refuses an INSERT into another tenant's scope", async () => {
       await expect(
         withOrg(ORG_B, () =>

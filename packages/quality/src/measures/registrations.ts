@@ -57,6 +57,19 @@ import {
 import { MEASURE_CATALOG, registerMeasure } from "./registry";
 import type { MeasureCalculator, MeasurePeriodRuleBinding, MeasureRegistration } from "./registry";
 import type { ComputeMeasureInput } from "./result";
+// SSVI — nine metrics + the total (FY2027; internal estimate).
+import {
+  computeSsviMetric01,
+  computeSsviMetric02,
+  computeSsviMetric03,
+  computeSsviMetric04,
+  computeSsviMetric05,
+  computeSsviMetric06,
+  computeSsviMetric07,
+  computeSsviMetric08,
+  computeSsviMetric09,
+  computeSsviScore,
+} from "./ssvi/index";
 
 /**
  * Resolve the period rule for a measure `code` from its {@link MEASURE_CATALOG} descriptor. Throws loudly on
@@ -88,10 +101,14 @@ function ruleForCode(code: string): MeasurePeriodRuleBinding {
  */
 const compositeCalculator = computeHciScore as unknown as MeasureCalculator<ComputeMeasureInput>;
 
+/** The SSVI total composes persisted metric results exactly like the HCI composite — same erasure, same reason. */
+const ssviCompositeCalculator =
+  computeSsviScore as unknown as MeasureCalculator<ComputeMeasureInput>;
+
 /**
  * Every M30 measure that has a CONCRETE pure calculator, bound to its catalog descriptor (§3.1). The HCI ten
- * indicators + composite, HVLDL, the two HOPE-derived TFP measures, and the nineteen operational measures —
- * all 33 {@link MEASURE_CATALOG} entries (the `cahps` family is a CAHPS-composite VALUE ingested from the
+ * indicators + composite, the SSVI nine metrics + total, HVLDL, the two HOPE-derived TFP measures, and the
+ * operational measures — every {@link MEASURE_CATALOG} entry (the `cahps` family is a CAHPS-composite VALUE ingested from the
  * vendor result-summary pipeline, not a computed measure, so it carries no catalog row + no calculator here).
  * This is the list the worker's `registrations` map is built from; an unwired measure recompute still fails
  * closed loudly.
@@ -110,6 +127,17 @@ export const M30_MEASURE_REGISTRATIONS: readonly MeasureRegistration[] = [
   registerMeasure("hci_indicator_10", computeHciIndicator10, ruleForCode("hci_indicator_10")),
   // HCI — composite (see {@link compositeCalculator} for the input-shape erasure note).
   registerMeasure("hci_composite", compositeCalculator, ruleForCode("hci_composite")),
+  // SSVI — nine metrics + the total (FY2027).
+  registerMeasure("ssvi_metric_01", computeSsviMetric01, ruleForCode("ssvi_metric_01")),
+  registerMeasure("ssvi_metric_02", computeSsviMetric02, ruleForCode("ssvi_metric_02")),
+  registerMeasure("ssvi_metric_03", computeSsviMetric03, ruleForCode("ssvi_metric_03")),
+  registerMeasure("ssvi_metric_04", computeSsviMetric04, ruleForCode("ssvi_metric_04")),
+  registerMeasure("ssvi_metric_05", computeSsviMetric05, ruleForCode("ssvi_metric_05")),
+  registerMeasure("ssvi_metric_06", computeSsviMetric06, ruleForCode("ssvi_metric_06")),
+  registerMeasure("ssvi_metric_07", computeSsviMetric07, ruleForCode("ssvi_metric_07")),
+  registerMeasure("ssvi_metric_08", computeSsviMetric08, ruleForCode("ssvi_metric_08")),
+  registerMeasure("ssvi_metric_09", computeSsviMetric09, ruleForCode("ssvi_metric_09")),
+  registerMeasure("ssvi_composite", ssviCompositeCalculator, ruleForCode("ssvi_composite")),
   // HVLDL (FY2025).
   registerMeasure("hvldl", computeHvldl, ruleForCode("hvldl")),
   // HOPE-derived (FY2028).

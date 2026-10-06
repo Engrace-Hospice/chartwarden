@@ -94,6 +94,7 @@ export function CapPlatformConstants(): JSX.Element {
                   <th style={{ ...head, textAlign: "right" }}>Per-beneficiary cap</th>
                   <th style={{ ...head, textAlign: "right" }}>Inpatient %</th>
                   <th style={head}>First tenant use</th>
+                  <th style={head}>Source</th>
                   <th style={head}>Published</th>
                 </tr>
               </thead>
@@ -118,6 +119,15 @@ export function CapPlatformConstants(): JSX.Element {
                         <StatusPill tone="success" label="Amendable" />
                       )}
                     </td>
+                    <td style={cell}>
+                      {c.sourceUrl ? (
+                        <a href={c.sourceUrl} target="_blank" rel="noreferrer">
+                          {sourceLabel(c.sourceUrl)}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td style={cell}>{shortDate(c.recordedAt)}</td>
                   </tr>
                 ))}
@@ -129,6 +139,13 @@ export function CapPlatformConstants(): JSX.Element {
       fullPageScroll
     />
   );
+}
+
+// FY2027 workstream E (migration 0393): the seeded FY2026/FY2027 rows cite their Federal Register document
+// (federalregister.gov/d/<doc number>); show the doc number rather than the bare URL.
+function sourceLabel(url: string): string {
+  const doc = /federalregister\.gov\/d\/([\w-]+)/.exec(url)?.[1];
+  return doc ? `Federal Register ${doc}` : "CMS source";
 }
 
 const filterShellStyle: CSSProperties = {

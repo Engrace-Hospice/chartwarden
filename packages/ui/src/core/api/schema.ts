@@ -4116,6 +4116,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/rate-tables/national-reference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The CMS national hospice per-diem base rates for a fiscal year, HQRP-compliant and non-compliant, with sources (reference only; pricing reads the tenant-entered table) */
+        get: operations["getApiV1BillingRatetablesNationalreference"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/rule-configs": {
         parameters: {
             query?: never;
@@ -32019,6 +32036,8 @@ export interface operations {
                             laborShareChc: string | null;
                             laborShareIrc: string | null;
                             laborShareGip: string | null;
+                            hqrpCompliant: boolean | null;
+                            nationalReferenceWarnings: string[];
                             enteredByMembershipId: string;
                             entryReason: string | null;
                             supersededAt: string | null;
@@ -32067,6 +32086,8 @@ export interface operations {
                     laborShareIrc: string;
                     /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
                     laborShareGip: string;
+                    /** @description true = HQRP-compliant national rates; false = the 4-percentage-point HQRP-reduced rates (42 CFR 418.306(b)(2)). */
+                    hqrpCompliant?: boolean;
                     entryReason?: string;
                 };
             };
@@ -32095,6 +32116,8 @@ export interface operations {
                         laborShareChc: string | null;
                         laborShareIrc: string | null;
                         laborShareGip: string | null;
+                        hqrpCompliant: boolean | null;
+                        nationalReferenceWarnings: string[];
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -32143,6 +32166,8 @@ export interface operations {
                         laborShareChc: string | null;
                         laborShareIrc: string | null;
                         laborShareGip: string | null;
+                        hqrpCompliant: boolean | null;
+                        nationalReferenceWarnings: string[];
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -32192,6 +32217,8 @@ export interface operations {
                     laborShareIrc: string;
                     /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
                     laborShareGip: string;
+                    /** @description true = HQRP-compliant national rates; false = the 4-percentage-point HQRP-reduced rates (42 CFR 418.306(b)(2)). */
+                    hqrpCompliant?: boolean;
                     entryReason?: string;
                 };
             };
@@ -32220,6 +32247,8 @@ export interface operations {
                         laborShareChc: string | null;
                         laborShareIrc: string | null;
                         laborShareGip: string | null;
+                        hqrpCompliant: boolean | null;
+                        nationalReferenceWarnings: string[];
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -32267,12 +32296,67 @@ export interface operations {
                         laborShareChc: string | null;
                         laborShareIrc: string | null;
                         laborShareGip: string | null;
+                        hqrpCompliant: boolean | null;
+                        nationalReferenceWarnings: string[];
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
                         supersededById: string | null;
                         createdAt: string;
                     } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingRatetablesNationalreference: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                fiscalYearStarting: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reference: {
+                            fiscalYearStarting: number;
+                            fiscalYearLabel: string;
+                            paymentUpdatePct: number;
+                            hqrpReductionPctPoints: number;
+                            hqrpCompliant: {
+                                rhcDays1to60PerDiemCents: number;
+                                rhcDays61PlusPerDiemCents: number;
+                                chcPerDiemCents: number;
+                                chcHourlyRateCents: number;
+                                ircPerDiemCents: number;
+                                gipPerDiemCents: number;
+                            };
+                            hqrpNonCompliant: {
+                                rhcDays1to60PerDiemCents: number;
+                                rhcDays61PlusPerDiemCents: number;
+                                chcPerDiemCents: number;
+                                chcHourlyRateCents: number;
+                                ircPerDiemCents: number;
+                                gipPerDiemCents: number;
+                            };
+                            sources: {
+                                cite: string;
+                                url: string;
+                            }[];
+                            note: string;
+                        } | null;
+                    };
                 };
             };
             "4XX": components["responses"]["Error"];
@@ -63615,7 +63699,7 @@ export interface operations {
     getApiV1QualityMeasures: {
         parameters: {
             query?: {
-                domain?: "hci" | "hvldl" | "hope" | "cahps" | "operational";
+                domain?: "hci" | "ssvi" | "hvldl" | "hope" | "cahps" | "operational";
                 cursor?: string;
                 limit?: number;
             };
@@ -63635,7 +63719,7 @@ export interface operations {
                         items: {
                             measureId: string;
                             displayName: string;
-                            domain: "hci" | "hvldl" | "hope" | "cahps" | "operational";
+                            domain: "hci" | "ssvi" | "hvldl" | "hope" | "cahps" | "operational";
                             latestValue: {
                                 valueId: string;
                                 organizationId: string;

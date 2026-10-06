@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1368,
-    "coveredRoutes": 1368,
-    "directRoutesReferenced": 1325
+    "routes": 1366,
+    "coveredRoutes": 1366,
+    "directRoutesReferenced": 1323
   },
   "modules": [
     {
@@ -73,16 +73,15 @@
     },
     {
       "module": "06-admission",
-      "routes": 71,
+      "routes": 68,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
         "apps/backend/__tests__/admission-discharge.test.ts",
         "apps/backend/__tests__/admission-intake.test.ts",
-        "apps/backend/__tests__/admission-routes.test.ts",
-        "apps/backend/__tests__/m6-physician-authority.test.ts"
+        "apps/backend/__tests__/admission-routes.test.ts"
       ],
-      "directRoutesReferenced": 71
+      "directRoutesReferenced": 68
     },
     {
       "module": "07-care-plan",
@@ -282,7 +281,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 56,
+      "routes": 57,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
@@ -290,7 +289,7 @@
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts"
       ],
-      "directRoutesReferenced": 55
+      "directRoutesReferenced": 56
     },
     {
       "module": "24-billing-medicaid",
