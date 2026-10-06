@@ -84,9 +84,24 @@ export {
   M24_CRON_QUEUES,
   M24_JOB_SCHEDULES,
   M24_QUEUE_PARAMS,
+  forEachActiveOrg as forEachM24ActiveOrg,
   registerM24CronWorkers,
   scheduleM24Jobs,
 } from "./jobs/index";
+// GAP-071 — the real rb_day sweep + eligibility-stale-watchdog stores behind the two §4.9 crons.
+export {
+  type RbLocPeriodsPort,
+  type RbSweepLocPeriod,
+  buildDrizzleEligibilityWatchdogStore,
+  buildDrizzleRbDaySweepStore,
+  deriveRbDays,
+} from "./jobs/rb-day-sweep";
+// GAP-071 follow-up — rb_day re-evaluation on `m6.loc.changed` + void on discharge / death (outbox push).
+export {
+  type M24RbDayConsumerDeps,
+  type RbAdmissionPatientPort,
+  buildM24RbDayConsumers,
+} from "./outbox-consumers/m24-rb-day-consumers";
 
 // §4.9 (WX-PR-011) — the LIVE submit/poll worker wiring over the per-state adapter + trading-partner
 // credentials. Boot-gated on `m24LaunchGatewayConfigFromEnv` (the M23 launch-gateway posture).

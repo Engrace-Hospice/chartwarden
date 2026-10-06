@@ -83,6 +83,7 @@ import type {
   BereavementRiskScoreView,
   M16ReadService,
 } from "./read-service";
+import { unreachableProposalOf } from "./read-service";
 import type {
   AlertPort,
   AssignCounselorInput,
@@ -94,6 +95,7 @@ import type {
   ConfirmContactInput,
   CosignCloseInput,
   CreateContactInput,
+  DismissUnreachableProposalInput,
   FlagComplicatedGriefInput,
   InitiateContactInput,
   LateAttemptInput,
@@ -258,6 +260,7 @@ export function buildDrizzleM16WriteService(
     confirmedAt: isoN(r.confirmedAt) as IsoInstant | null,
     optedOutAt: isoN(r.optedOutAt) as IsoInstant | null,
     unreachableAt: isoN(r.unreachableAt) as IsoInstant | null,
+    ...unreachableProposalOf(r),
     deceasedAt: isoN(r.deceasedAt) as IsoInstant | null,
     mayRescindOptOut: false,
     currentRiskTier: r.currentRiskTier ?? null,
@@ -1363,6 +1366,34 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the mark-unreachable update returned no row");
+        return toContactView(row);
+      });
+    },
+
+    // ── 34 — "keep trying": dismiss the unreachable proposal until a strictly newer no_response strike ──
+    async dismissUnreachableProposal(actor, contactId, input: DismissUnreachableProposalInput) {
+      return withOrgContext(db, scope(actor), async (tx) => {
+        const contact = await contactOr404(tx, contactId);
+        checkVersion(input.expectedVersion, contact.version);
+        if (
+          !unreachableProposalOf(contact).unreachableProposed ||
+          !contact.unreachableProposedThroughAt
+        ) {
+          throw new BereavementStateError(
+            "ILLEGAL_TRANSITION",
+            "there is no pending unreachable proposal to dismiss",
+          );
+        }
+        const [row] = await tx
+          .update(CONTACT)
+          .set({
+            unreachableProposalDismissedAt: contact.unreachableProposedThroughAt,
+            version: contact.version + 1,
+            updatedAt: new Date(now()),
+          })
+          .where(eq(CONTACT.id, contactId))
+          .returning();
+        if (!row) throw new Error("m16: the dismiss-unreachable-proposal update returned no row");
         return toContactView(row);
       });
     },

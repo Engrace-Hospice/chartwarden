@@ -584,7 +584,7 @@ describe("M15 §2.2.7 volunteer hour ledger", () => {
 describe("M15 §7.6 418.78(e) 5% ratio", () => {
   const bucket = { providerEntityId: PROVIDER_ENTITY, fiscalYear: 2026 };
 
-  it("surfaces `unavailable` with a stated reason while the M27 denominator is unbound — never 0%", () => {
+  it("surfaces `unavailable` with a stated reason while no staff visit duration has resolved — never 0%", () => {
     const r = computeVolunteerHourRatio({
       ...bucket,
       volunteerHourMinutes: 12_000,
@@ -648,6 +648,7 @@ describe("M15 §7.6 M8 volunteer-visit resolver (SignedEncountersReader seam)", 
       lateEntryTier: "same_day",
       status: "signed",
       evvBracketState: "not_applicable",
+      durationMinutes: null,
       ...overrides,
     };
   }
@@ -670,7 +671,7 @@ describe("M15 §7.6 M8 volunteer-visit resolver (SignedEncountersReader seam)", 
 
   it("keeps only volunteer_visit encounters signed by the assigned volunteer, anchored on the SERVICE date", async () => {
     registerReader([
-      digest(),
+      digest({ durationMinutes: 75 }),
       // another discipline's visit to the same patient is not volunteer time
       digest({ encounterId: "enc-2", encounterType: "routine_visit", discipline: "rn" }),
       // a volunteer visit signed by somebody else
@@ -680,7 +681,6 @@ describe("M15 §7.6 M8 volunteer-visit resolver (SignedEncountersReader seam)", 
       orgId: ORG,
       servedPatients: [{ patientId: PATIENT, volunteerMembershipId: VOLUNTEER }],
       since: "2026-01-01T00:00:00.000Z",
-      durationsByEncounterId: new Map([["enc-1", 75]]),
     });
     expect(candidates).toEqual([
       {
@@ -692,7 +692,7 @@ describe("M15 §7.6 M8 volunteer-visit resolver (SignedEncountersReader seam)", 
     ]);
   });
 
-  it("returns a null duration when none was resolved (the aggregator reports it, never zeroes it)", async () => {
+  it("returns a null duration when the digest carries none (the aggregator reports it, never zeroes it)", async () => {
     registerReader([digest()]);
     const candidates = await resolveVolunteerVisitCandidates({
       orgId: ORG,

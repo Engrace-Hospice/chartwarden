@@ -52,7 +52,9 @@ export type BereavementOutreachEvent =
       readonly consecutiveNoResponseCount: number;
     }
   | {
-      /** The hourly worker's verdict once `late_grace_until` has passed with no state change. */
+      /** The hourly worker's verdict once `late_grace_until` has PASSED (strictly after) with no attempt —
+       *  on time or late — recorded. 2026-10-05 decision: the grace end instant itself is still inside the
+       *  grace (`lateAttempt` is valid `<=`), so a miss may only be stamped `>` it. */
       readonly type: "missDeadline";
       readonly at: IsoInstant;
       readonly lateGraceUntil: IsoInstant;
@@ -175,11 +177,12 @@ export function transitionBereavementOutreach(
       ]);
     }
     case "missDeadline": {
-      // The worker may only call the miss once the LATE grace has passed, not merely once `due_at` did —
+      // The worker may only call the miss once the LATE grace has PASSED, not merely once `due_at` did —
       // §2.4 gives the counselor the grace window, and a miss stamped at `due_at` would report a compliance
-      // failure the agency still had seven days to prevent.
+      // failure the agency still had seven days to prevent. STRICTLY after `late_grace_until`: an attempt at
+      // the grace end instant is still a valid `lateAttempt` (`<=`), so the two windows never overlap.
       require_(
-        Date.parse(event.at) >= Date.parse(event.lateGraceUntil),
+        Date.parse(event.at) > Date.parse(event.lateGraceUntil),
         "OUTREACH_NOT_YET_OVERDUE",
         "a touchpoint is only missed once its late grace has passed",
       );

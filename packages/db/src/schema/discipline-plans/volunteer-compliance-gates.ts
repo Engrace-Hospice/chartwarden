@@ -16,6 +16,7 @@ import {
   check,
   index,
   pgTable,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -41,6 +42,9 @@ export const volunteerComplianceGate = pgTable(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     revokedReason: text("revoked_reason"), // audit-denylisted (§3.6)
 
+    // GAP-044 — the tightest 30/14/7/1 ladder mark already notified (stamped with the outbox publish, in one tx).
+    lastExpiryNoticeDaysOut: smallint("last_expiry_notice_days_out"),
+
     sourceDocumentId: uuid("source_document_id"), // logical FK → M22 document
     recordedByMembershipId: uuid("recorded_by_membership_id").notNull(), // logical FK → M2
     notes: text("notes"), // audit-denylisted (§3.6)
@@ -65,6 +69,10 @@ export const volunteerComplianceGate = pgTable(
     validWindow: check(
       "volunteer_compliance_gate_valid_window_ck",
       sql`valid_until IS NULL OR valid_until > valid_from`,
+    ),
+    noticeDaysRange: check(
+      "volunteer_compliance_gate_notice_days_ck",
+      sql`last_expiry_notice_days_out IS NULL OR last_expiry_notice_days_out BETWEEN 0 AND 30`,
     ),
     revokedRequiresReason: check(
       "volunteer_compliance_gate_revoked_reason_ck",

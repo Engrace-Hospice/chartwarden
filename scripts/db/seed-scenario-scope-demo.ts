@@ -35,7 +35,13 @@ const OUT = "0c8844c5-54c5-401b-9835-b3dc45441613";
 const id = (n: number): string => `5c09e000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const SHIFT_ID = id(1);
 
-interface VisitSpec { n: number; patientId: string; own: boolean; date: string; hour: number }
+interface VisitSpec {
+  n: number;
+  patientId: string;
+  own: boolean;
+  date: string;
+  hour: number;
+}
 const VISITS: readonly VisitSpec[] = [
   { n: 10, patientId: IN_A, own: false, date: "2026-10-06", hour: 9 },
   { n: 11, patientId: IN_B, own: false, date: "2026-10-06", hour: 11 },
@@ -46,7 +52,12 @@ const PROPOSALS: readonly { n: number; patientId: string }[] = [
   { n: 20, patientId: IN_A },
   { n: 21, patientId: OUT },
 ];
-interface CallSpec { n: number; patientId: string | null; handled: boolean; who: string }
+interface CallSpec {
+  n: number;
+  patientId: string | null;
+  handled: boolean;
+  who: string;
+}
 const CALLS: readonly CallSpec[] = [
   { n: 30, patientId: IN_A, handled: false, who: "in-caseload caller A" },
   { n: 31, patientId: IN_B, handled: false, who: "in-caseload caller B" },
@@ -69,17 +80,26 @@ async function main(): Promise<void> {
     await db.query("BEGIN");
     await db.query("SET LOCAL session_replication_role = replica");
     const mem = async (email: string): Promise<string> =>
-      (await one<{ id: string }>(db,
-        `SELECT m.id FROM membership m JOIN "user" u ON u.id = m.user_id
-          WHERE u.email = $1 AND m.organization_id = $2`, [email, ORG_ID])).id;
+      (
+        await one<{ id: string }>(
+          db,
+          `SELECT m.id FROM membership m JOIN "user" u ON u.id = m.user_id
+          WHERE u.email = $1 AND m.organization_id = $2`,
+          [email, ORG_ID],
+        )
+      ).id;
     const adminM = await mem(ADMIN_EMAIL);
     const clinM = await mem(CLINICIAN_EMAIL);
     let inserted = 0;
 
-    const adm = async (patientId: string) => one<{ id: string; location_id: string }>(db,
-      `SELECT id, location_id FROM admission
+    const adm = async (patientId: string) =>
+      one<{ id: string; location_id: string }>(
+        db,
+        `SELECT id, location_id FROM admission
         WHERE patient_id = $1 AND organization_id = $2 AND location_id IS NOT NULL
-        ORDER BY created_at DESC LIMIT 1`, [patientId, ORG_ID]);
+        ORDER BY created_at DESC LIMIT 1`,
+        [patientId, ORG_ID],
+      );
 
     for (const v of VISITS) {
       const a = await adm(v.patientId);
@@ -91,8 +111,20 @@ async function main(): Promise<void> {
            scheduled_started_at, scheduled_ended_at, service_date, status, scheduler_internal_notes)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'clinical_rn','routine_visit','telephonic',$8,$9,$10,'published',$11)
          ON CONFLICT DO NOTHING`,
-        [id(v.n), ORG_ID, PROVIDER_ENTITY_ID, a.location_id, v.patientId, a.id,
-         v.own ? clinM : adminM, start, end, v.date, TAG]);
+        [
+          id(v.n),
+          ORG_ID,
+          PROVIDER_ENTITY_ID,
+          a.location_id,
+          v.patientId,
+          a.id,
+          v.own ? clinM : adminM,
+          start,
+          end,
+          v.date,
+          TAG,
+        ],
+      );
       inserted += r.rowCount ?? 0;
     }
     for (const p of PROPOSALS) {
@@ -103,16 +135,22 @@ async function main(): Promise<void> {
            proposed_visit_purpose, proposed_discipline, proposed_duration_minutes)
          VALUES ($1,$2,$3,$4,$5,$6,'frequency_driven_m7','{}'::jsonb,$7,'2026-10-07','routine_visit','clinical_rn',60)
          ON CONFLICT DO NOTHING`,
-        [id(p.n), ORG_ID, PROVIDER_ENTITY_ID, a.location_id, p.patientId, a.id, `${TAG}-${p.n}`]);
+        [id(p.n), ORG_ID, PROVIDER_ENTITY_ID, a.location_id, p.patientId, a.id, `${TAG}-${p.n}`],
+      );
       inserted += r.rowCount ?? 0;
     }
 
-    inserted += (await db.query(
-      `INSERT INTO on_call_shift (id, organization_id, provider_entity_id, shift_starts_at, shift_ends_at,
+    inserted +=
+      (
+        await db.query(
+          `INSERT INTO on_call_shift (id, organization_id, provider_entity_id, shift_starts_at, shift_ends_at,
          discipline, primary_on_call_membership_id, policy_snapshot, status, opened_at)
        VALUES ($1,$2,$3, now() - interval '1 hour', now() + interval '11 hours','clinical_rn',$4,
          '{"model":"direct"}'::jsonb,'active', now() - interval '1 hour')
-       ON CONFLICT DO NOTHING`, [SHIFT_ID, ORG_ID, PROVIDER_ENTITY_ID, adminM])).rowCount ?? 0;
+       ON CONFLICT DO NOTHING`,
+          [SHIFT_ID, ORG_ID, PROVIDER_ENTITY_ID, adminM],
+        )
+      ).rowCount ?? 0;
 
     for (const c of CALLS) {
       const a = c.patientId ? await adm(c.patientId) : null;
@@ -120,15 +158,25 @@ async function main(): Promise<void> {
         `INSERT INTO triage_call (id, organization_id, provider_entity_id, on_call_shift_id, patient_id,
            admission_id, caller_kind, caller_display_name, inbound_channel, chief_complaint_text)
          VALUES ($1,$2,$3,$4,$5,$6,'caregiver',$7,'phone',$8) ON CONFLICT DO NOTHING`,
-        [id(c.n), ORG_ID, PROVIDER_ENTITY_ID, SHIFT_ID, c.patientId, a?.id ?? null,
-         `${TAG} ${c.who}`, `${TAG} ${c.who}`]);
+        [
+          id(c.n),
+          ORG_ID,
+          PROVIDER_ENTITY_ID,
+          SHIFT_ID,
+          c.patientId,
+          a?.id ?? null,
+          `${TAG} ${c.who}`,
+          `${TAG} ${c.who}`,
+        ],
+      );
       if ((r.rowCount ?? 0) === 0) continue;
       inserted += 1;
       // The state-history actor is what GAP-059's "handled by" arm keys on.
       await db.query(
         `INSERT INTO triage_call_state_history (organization_id, provider_entity_id, triage_call_id,
            from_state, to_state, actor_membership_id) VALUES ($1,$2,$3,NULL,'open',$4)`,
-        [ORG_ID, PROVIDER_ENTITY_ID, id(c.n), c.handled ? clinM : adminM]);
+        [ORG_ID, PROVIDER_ENTITY_ID, id(c.n), c.handled ? clinM : adminM],
+      );
     }
     await db.query("COMMIT");
     console.log(`scope-demo: inserted ${inserted} new row(s) (0 on a re-run)`);
@@ -140,4 +188,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

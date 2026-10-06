@@ -358,6 +358,9 @@ export function BereavementPlanDetail(): JSX.Element {
                       label={humanize(c.status)}
                       tone={toneOf(CONTACT_STATUS_TONE, c.status)}
                     />
+                    {c.unreachableProposed ? (
+                      <div style={mutedStyle}>unreachable proposed · 3 no-response attempts</div>
+                    ) : null}
                     {c.optedOutAt ? (
                       <div style={mutedStyle}>
                         opted out {shortDate(c.optedOutAt)}

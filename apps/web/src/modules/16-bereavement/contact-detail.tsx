@@ -24,6 +24,7 @@ import {
   type ContactRow,
   type PlanDetail,
   confirmContact,
+  dismissUnreachableProposal,
   errorMessage,
   getPlan,
   logDirectContact,
@@ -84,6 +85,8 @@ export function BereavedContactDetail(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
+  const [keepTryingBusy, setKeepTryingBusy] = useState(false);
+  const [keepTryingError, setKeepTryingError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!planId) return;
@@ -119,6 +122,24 @@ export function BereavedContactDetail(): JSX.Element {
     void load();
   };
 
+  const keepTrying = async () => {
+    setKeepTryingBusy(true);
+    setKeepTryingError(null);
+    const { error: err } = await dismissUnreachableProposal(
+      client,
+      contact.contactId,
+      contact.version,
+    );
+    setKeepTryingBusy(false);
+    if (err) {
+      setKeepTryingError(
+        errorMessage(err, "The unreachable proposal could not be dismissed. Reload and try again."),
+      );
+      return;
+    }
+    void load();
+  };
+
   return (
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
@@ -144,6 +165,36 @@ export function BereavedContactDetail(): JSX.Element {
           This survivor is `proposed` — no outreach may be attempted until they are confirmed, and
           confirming resolves the M39 bereavement-outreach consent server-side. That check fails
           CLOSED.
+        </Notice>
+      ) : null}
+
+      {contact.unreachableProposed ? (
+        <Notice tone="warning" live>
+          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap", alignItems: "center" }}>
+            <span>
+              Contact may be unreachable: 3 consecutive no-response attempts
+              {contact.unreachableProposedAt
+                ? ` (latest ${dateTime(contact.unreachableProposedAt)})`
+                : ""}
+              . The nightly check only proposes this; nothing changes until a counselor confirms.
+            </span>
+            <button
+              type="button"
+              style={primaryButtonStyle}
+              onClick={() => setCeremony("unreachable")}
+            >
+              Mark unreachable
+            </button>
+            <button
+              type="button"
+              style={ghostButtonStyle}
+              disabled={keepTryingBusy}
+              onClick={keepTrying}
+            >
+              {keepTryingBusy ? "Saving…" : "Keep trying"}
+            </button>
+          </div>
+          {keepTryingError ? <p style={alertStyle}>{keepTryingError}</p> : null}
         </Notice>
       ) : null}
 

@@ -54,6 +54,11 @@ export const prnAdministrations = pgTable(
     prnIntervalOverrideReason: text("prn_interval_override_reason"), // DENYLISTED
     prnIntervalOverrideBy: uuid("prn_interval_override_by"),
 
+    // "Already warned" marker (0345): the overdue check was resolved (event published or reassessment captured).
+    reassessmentOverdueWarnedAt: timestamp("reassessment_overdue_warned_at", {
+      withTimezone: true,
+    }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

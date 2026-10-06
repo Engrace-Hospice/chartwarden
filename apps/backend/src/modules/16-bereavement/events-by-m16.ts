@@ -235,6 +235,16 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m16.bereavement.contact_unreachable_proposed",
+    moduleOwner: "m16",
+    description:
+      "The nightly `m16-unreachable-detector` found 3+ consecutive no-response touchpoints for an active contact and PROPOSES `markUnreachable` (§2.3); M36 raises the counselor alert. The counselor's acceptance is `contact_unreachable`.",
+    payloadSchema: Type.Object({ planId: Id, contactId: Id, consecutiveNoResponseCount: Count }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m16.bereavement.contact_referred_external",
     moduleOwner: "m16",
     description:

@@ -30,9 +30,19 @@ import { createAlertPayloadRegistry } from "@wardenx/messaging";
 // the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
 import { type PseudonymKeyProvider, loadPseudonymKekRing } from "@wardenx/subscription-billing";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
-import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
+import {
+  registerPlatformJob,
+  runWithRequestContext,
+  withOrgContext,
+  withPlatformContext,
+} from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
-import type { AdmissionStatusReader, PatientAddressReader } from "@wardenx/types";
+import type {
+  AdmissionStatusReader,
+  PatientAddressReader,
+  PatientId,
+  ScaleType,
+} from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -78,6 +88,7 @@ import {
   wirePartitionRotationTenancy,
 } from "./bootstrap/jobs/partition-rotation";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
+import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
 import {
   m34ActiveMembershipUserId,
   m34SoleTenantUserIds,
@@ -177,6 +188,7 @@ import {
   createDbOrgRoleLookup,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
+  createMembershipsHoldingRoleKeyReader,
   createProposedRoleGuard,
   createTenantAuditExecutor,
   membershipRoleKeysForOrg,
@@ -263,6 +275,10 @@ import {
   wireM6Tenancy,
 } from "./modules/06-admission/index";
 import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
+// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
+// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
+import { deathDischargeFactsForOrg } from "./modules/06-admission/seams/death-discharge-facts-for-org";
+import { levelOfCarePeriodsForPatientForOrg } from "./modules/06-admission/seams/loc-periods-for-patient";
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
@@ -412,8 +428,10 @@ import {
   scheduleDoseSpotSyncQueueDrain,
   wireM12Tenancy,
 } from "./modules/12-dosespot/index";
+import { medicationOrdersForAdmissionForOrg } from "./modules/12-dosespot/seams/drizzle-store";
 import {
   M13_OUTBOX_EVENTS,
+  M13_PLATFORM_JOB_ID,
   buildM13AdmissionDischargedCascadeConsumer,
   buildM13CancelFutureScheduleConsumer,
   buildM13ComfortKitDeployedConsumer,
@@ -431,6 +449,9 @@ import {
   registerEmarErasers,
   registerEmarRoutes,
   registerEmarSeams,
+  registerM13CronWorkers,
+  scheduleM13Jobs,
+  wireM13Tenancy,
 } from "./modules/13-emar/index";
 import {
   M14_ALERT_PAYLOADS,
@@ -459,11 +480,13 @@ import {
 } from "./modules/14-idg/index";
 import {
   M15_OUTBOX_EVENTS,
+  M15_PLATFORM_JOB_ID,
   buildDrizzleDisciplinePlanAbacResolver,
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
   buildM15IdgDecisionConsumer,
   buildM15PlanBootstrapConsumer,
+  buildM15WorkerDeps,
   createDrizzleDisciplinePlanEraseStore,
   createDrizzleDisciplinePlanSeamStore,
   denyStubDisciplinePlanAbacResolver,
@@ -471,9 +494,12 @@ import {
   registerDisciplinePlanAbacPredicates,
   registerDisciplinePlanErasers,
   registerDisciplinePlanSeams,
+  registerM15CronWorkers,
+  scheduleM15Jobs,
 } from "./modules/15-discipline-care-plans/index";
 import {
   M16_OUTBOX_EVENTS,
+  M16_PLATFORM_JOB_ID,
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
@@ -484,6 +510,7 @@ import {
   buildM16DischargeDeathSecondaryConsumer,
   buildM16IdgDecisionConsumer,
   buildM16PatientOptOutChangedConsumer,
+  buildM16WorkerDeps,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
   denyStubBereavementAbacResolver,
@@ -491,6 +518,9 @@ import {
   registerBereavementAbacPredicates,
   registerBereavementErasers,
   registerBereavementSeams,
+  registerM16CronWorkers,
+  scheduleM16Jobs,
+  wireM16Tenancy,
 } from "./modules/16-bereavement/index";
 // F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
 // plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
@@ -522,6 +552,7 @@ import {
   registerSchedulingSeams,
   scheduleM17Jobs,
 } from "./modules/17-scheduling/index";
+import { onTimeVisitCountsForOrg } from "./modules/17-scheduling/seams/drizzle-store";
 import {
   M18_OUTBOX_EVENTS,
   buildM18EncounterSignedConsumer,
@@ -535,6 +566,7 @@ import {
   registerEvvRoutes,
   registerEvvSeams,
 } from "./modules/18-evv/index";
+import { evvComplianceCountsForOrg } from "./modules/18-evv/seams/drizzle-store";
 // F-194 (#248) — M18's org-explicit EVV-visit-provider-entity seam, injected as a port into M30's
 // visit-verified consumer (M30's manifest `dependsOn` excludes 18, the F-160 `CapConsumerStore` shape).
 import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-provider-entity-for-org";
@@ -585,6 +617,7 @@ import {
 } from "./modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
+  M21_PLATFORM_JOB_ID,
   bindSupplyRequestCreator,
   buildDrizzleM21ReadService,
   buildDrizzleM21WriteService,
@@ -599,12 +632,15 @@ import {
   buildM21PharmacyDispenseConsumer,
   buildM21SupplyCancellationConsumer,
   buildM21SupplyFulfillmentIntakeConsumer,
+  buildM21WorkerDeps,
   decideDispatcherEligible,
   denyStubSuppliesAbacResolver,
   mountM21Routes,
+  registerM21CronWorkers,
   registerSuppliesAbacPredicates,
   registerSuppliesSeams,
   registerSupplyEraser,
+  scheduleM21Jobs,
 } from "./modules/21-supplies/index";
 import { buildIntakeSudBatchReader } from "./modules/22-documents/extraction/privacy-sud-batches";
 import {
@@ -718,10 +754,13 @@ import {
   buildCredentialCipherPort,
   buildDrizzleActivePeStatesLister,
   buildDrizzleCredentialResolver,
+  buildDrizzleEligibilityWatchdogStore,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
+  buildDrizzleRbDaySweepStore,
   buildDrizzleStateChannelCredentialResolver,
   buildM24MedicarePrimaryAckConsumer,
+  buildM24RbDayConsumers,
   buildM24RemittanceConsumer,
   buildM24RevalidateEnqueuePort,
   buildM24RevalidateTriggerConsumers,
@@ -732,11 +771,13 @@ import {
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
   registerM24AbacPredicates,
+  registerM24CronWorkers,
   registerM24LaunchWorkers,
   registerM24PublishedSeams,
   registerM24RevalidateWorker,
   registerM24StateChannelHealthWorker,
   registerMedicaidErasers,
+  scheduleM24Jobs,
   scheduleM24StateChannelHealthJob,
   wireM24Tenancy,
 } from "./modules/24-billing-medicaid/index";
@@ -881,6 +922,7 @@ import {
   buildDrizzleM30WriteService,
   buildM30BereavementPlanClosedConsumer,
   buildM30ClaimAdjudicatedConsumer,
+  buildM30DischargeDeathConsumer,
   buildM30HopeSubmissionAcceptedConsumer,
   buildM30MedicationErrorReportedConsumer,
   buildM30RecomputeEnqueue,
@@ -1049,6 +1091,8 @@ import {
   selectTransactionalEmailTransport,
   wireAlertRuleSeed,
 } from "./modules/36-messaging/index";
+import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
+import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
 // bound transactional-outbox publisher. (The remaining §4.1 routes + §7.7 eraser + SeamRegistry extend this.)
@@ -1075,8 +1119,6 @@ import {
   validateIpuAIBlock,
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
-// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
-// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
 import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
 import {
   createDbTerminologyStore,
@@ -1372,9 +1414,13 @@ export function wireModuleSeams(
   // the volunteer gate still denies fail-CLOSED on an unreadable store and the ratio still badges `unavailable`.
   // TASK-002 — the seven M15 discipline-plan seams bind the Drizzle store on a db boot (volunteer
   // 418.78 gate stays fail-CLOSED: absent rows fail each blocking kind; the 418.78(e) ratio badges
-  // `unavailable` until the M27 staffPatientCareMinutes dep binds — never a fabricated 0% breach).
+  // `unavailable` until the nightly aggregator persists a resolved staff denominator — never a fabricated 0% breach).
   registerDisciplinePlanSeams(
-    deps.db ? { store: createDrizzleDisciplinePlanSeamStore(deps.db) } : {},
+    deps.db
+      ? {
+          store: createDrizzleDisciplinePlanSeamStore(deps.db),
+        }
+      : {},
   );
   // M15-T06 — the four §4.5 ABAC predicates M15 OWNS (aide_supervisor_eligible /
   // volunteer_compliance_active / family_violence_disclosure_allowed / volunteer_coordinator_role) into
@@ -1747,7 +1793,9 @@ export function wireModuleSeams(
   wireM7Tenancy();
   wireM9Tenancy();
   wireM10Tenancy();
+  wireM13Tenancy(); // GAP-038/039/040 — allowlist the cron job id so the M13 §4.8 crons may enter withPlatformContext
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
+  wireM16Tenancy(); // GAP-048 — allowlist the cron job id so the 13-month close / miss-deadline / anniversary-lookahead fan-outs may enter withPlatformContext
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
   wireM39Tenancy(); // F-216 — allowlist the cron job id so the consent expiration/reminder crons may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
@@ -2573,8 +2621,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M28_BAA_COVERAGE_JOB_ID);
+  // GAP-062 — the M21 §4.6 par-monitor / unreturned-kit-monitor / supply-request-monitor active-org fan-out.
+  if (platformDbHandle) registerPlatformJob(M21_PLATFORM_JOB_ID);
   // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
@@ -3638,6 +3689,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // fail-closed, never a silent no-op).
           const m30Recompute = buildM30RecomputeEnqueue(queueConnection);
           mountM30Routes(app, {
+            // D19 — M5's minimum-necessary display read ("First L." + MRN last-4), injected as a port; M30 reads no
+            // M5 table. Only surfaced to callers holding `mortality.read_with_patient`.
+            patientDisplay: {
+              displayForPatients: (organizationId, patientIds) =>
+                patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+            },
             readService: buildDrizzleM30ReadService(dbHandle.db),
             writeService: buildDrizzleM30WriteService(dbHandle.db, {
               recompute: m30Recompute.enqueue,
@@ -3865,8 +3922,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // mutation runs the pure §2.2/§2.3 machines and emits its §2.4 `m15.*` event through the
           // catalog-validating tx publisher (callerModule `m15`) on the mutation's own transaction — which
           // is how the D12 M22 plan-PDF render handshake (`m15.plan.version_signed`) reaches M22. The M27
-          // patient-care-HOURS denominator for the 418.78(e) ratio stays unbound (M15-F04): the ratio
-          // answers the honest `unavailable` badge, never a fabricated 0%.
+          // patient-care-HOURS denominator for the 418.78(e) ratio is persisted on the hour ledger by the
+          // nightly aggregator (M15-F04, migration 0347); the ratio answers `unavailable` only when it was
+          // never computed or no signed visit has a resolved duration, never a fabricated 0%.
           mountM15Routes(app, {
             readService: buildDrizzleM15ReadService(dbHandle.db),
             writeService: buildDrizzleM15WriteService(dbHandle.db, {
@@ -4767,12 +4825,26 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       dischargeReader: m30DischargeReader,
       admissionOnsetReader: m30AdmissionOnsetReader,
       medicationOrders: m30MedicationOrders,
+      // GAP-090 — the three operational measures whose published seams need a request context run in the
+      // worker via org-explicit `...ForOrg` reads (each opens its own `withOrgContext` on the job's org).
+      visitOnTimeCountsForOrg: (organizationId, window) =>
+        onTimeVisitCountsForOrg(dbHandle.db, organizationId, window),
+      evvComplianceCountsForOrg: (organizationId, window) =>
+        evvComplianceCountsForOrg(dbHandle.db, organizationId, window),
+      medicationOrdersForAdmissionForOrg: (organizationId, admissionId) =>
+        medicationOrdersForAdmissionForOrg(dbHandle.db, organizationId, admissionId),
       // WX-PR-014 — the nightly-recompute + risk-register-refresh cron fan-outs: the per-org provider-entity
       // lister (already used for M30's published seams) + the real BullMQ producer + the SAME tx-scoped
       // outbox publisher the M30 routes already use (`m30.measure.value_emitted` / `m30.risk_register
       // .refreshed` are called UNCONDITIONALLY by their workers — without this every recompute/refresh job
       // throws on its last line and rolls back, see M30WorkerDeps' doc comment).
       providerEntities: buildOrgProviderEntityLister(dbHandle.db),
+      // D9 backfill — the nightly `m30.assign-unassigned-mortality-reviews` cron assigns pre-fix / no-MD-at-the-time
+      // reviews through the SAME resolver the m6.discharge.death consumer binds (so a later-appointed MD is picked up).
+      resolveMedicalDirectorForOrg: buildMortalityReviewerResolver(
+        dbHandle.db,
+        createMembershipsHoldingRoleKeyReader(dbHandle.db),
+      ),
       recomputeEnqueue: m30CronRecompute.enqueue,
       outboxPublisher: m30OutboxPublisher,
     });
@@ -5026,6 +5098,62 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     app.addHook("onClose", async () => {
       await m24RevalidateWorker.close();
     });
+    // GAP-071 — the `rb-day-daily-sweep` + `medicaid-eligibility-stale-watchdog` §4.9 crons. Before this nothing
+    // inserted an `rb_day` row, so Medicaid room-and-board could never be billed. Needs only a queue connection
+    // + db (no gateway/cipher); the M6 LOC-of-day is pulled through an org-explicit port (M24 does not depend
+    // on M6), the active-org fan-out runs under the allowlisted M24 platform job id.
+    const m24CronActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M24_PLATFORM_JOB_ID,
+      reason:
+        "M24 §4.9 rb-day-daily-sweep / eligibility-stale-watchdog cron fan-out (active-org enumeration)",
+    });
+    const m24CronWorkers = registerM24CronWorkers({
+      connection: queueConnection,
+      activeOrgs: m24CronActiveOrgs,
+      rbDaySweep: buildDrizzleRbDaySweepStore({
+        db: dbHandle.db,
+        locPeriods: {
+          periodsForPatient: (organizationId, patientId, range) =>
+            levelOfCarePeriodsForPatientForOrg(dbHandle.db, organizationId, patientId, range),
+        },
+      }),
+      eligibilityWatchdog: buildDrizzleEligibilityWatchdogStore(dbHandle.db),
+      // The §4.10 `medicaid.eligibility.stale_at_assembly` alert over the live M36 AlertEmitter seam (the
+      // M23 `dispatch` adapter shape); the per-(org, patient, lastCheckedAt) correlationId is the dedupe key.
+      eligibilityAlerts: {
+        dispatch: async ({ eventType, organizationId, severity, correlationId, payload }) => {
+          await (
+            getSeam("AlertEmitter") as {
+              emit(
+                orgId: string,
+                input: {
+                  eventType: string;
+                  payload: Record<string, unknown>;
+                  severity: string;
+                  correlationId: string;
+                },
+              ): Promise<unknown>;
+            }
+          ).emit(organizationId, { eventType, payload, severity, correlationId });
+        },
+      },
+      log: app.log,
+    });
+    attachDlqAlertsToAll(m24CronWorkers, "m24-cron");
+    app.addHook("onClose", async () => {
+      await Promise.all(m24CronWorkers.map((worker) => worker.close()));
+    });
+    try {
+      const m24CronQueues = await scheduleM24Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m24CronQueues.map((queue) => queue.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M24 rb-day / eligibility cron schedule registration failed");
+    }
+    app.log.info("M24 rb-day-daily-sweep + eligibility-stale-watchdog cron workers constructed");
     // F-172 (#248, m1 group) — the `state-channel-health` §4.9 cron: genuinely unbuilt before now
     // (`M24_CRON_QUEUES.stateChannelHealth` was declared with no worker/schedule/handler anywhere — not
     // merely unwired). Requires the §8.7 credential cipher port (to decrypt trading-partner credentials —
@@ -5323,6 +5451,39 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info({ queues: m8Workers.length }, "M8 Phase-3 encounter automation crons constructed");
 
+    // ── M15 §4.6 discipline-plan crons (GAP-044) ─────────────────────────────────────────────────────────
+    // supervisory overdue (6h) / MSW + chaplain initial overdue / volunteer gate-watcher / hour aggregator.
+    // None of the five existed before GAP-044: five catalogued `m15.*` events were never emitted and a
+    // lapsed 418.78 gate was only ever caught fail-closed at read time.
+    const m15ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M15_PLATFORM_JOB_ID,
+      reason: "M15 discipline-plan crons fan-out (supervisory/initial-overdue/gate-watcher/hours)",
+    });
+    const m15WorkerDeps = buildM15WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m15OutboxPublisher,
+      activeOrgs: m15ActiveOrgs,
+      // M8's signed-encounter digest carries no duration — the composition-root adapter reads the bracket.
+      log: app.log,
+    });
+    const m15Workers = registerM15CronWorkers(m15WorkerDeps);
+    attachDlqAlertsToAll(m15Workers, "m15");
+    app.addHook("onClose", async () => {
+      await Promise.all(m15Workers.map((w) => w.close()));
+    });
+    try {
+      const m15ScheduleQueues = await scheduleM15Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m15ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M15 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m15Workers.length }, "M15 discipline-plan crons constructed");
+
     // ── M6 admission F2F due-reminder cron ───────────────────────────────────────────────────────────────
     const m6ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
@@ -5357,6 +5518,64 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
 
     app.log.info({ queues: m6Workers.length }, "M6 admission due-reminder crons constructed");
+
+    // ── M21 §4.6 crons (GAP-062) ─────────────────────────────────────────────────────────────────────────
+    // par-monitor (`m21.par.below_threshold` / `stockout_imminent`), unreturned-kit-monitor (the automatic
+    // 30-day `overdue` flip + `m21.comfort_kit.return_overdue`) and the supply-request monitor (the 72h
+    // `system_auto_confirm` receipt fallback + the vendor/delivery lateness advisories). Active-org fan-out
+    // over the audited platform pool; each org's work runs under withOrgContext, publishing through the
+    // catalog-validating tx publisher (`m21`).
+    const m21ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M21_PLATFORM_JOB_ID,
+      reason: "M21 §4.6 supplies cron fan-out (active-org enumeration)",
+    });
+    const m21AlertEmitter = getSeam("AlertEmitter") as {
+      emit(
+        orgId: string,
+        input: {
+          eventType: string;
+          payload: Record<string, unknown>;
+          severity: string;
+          correlationId: string;
+        },
+      ): Promise<unknown>;
+    };
+    const m21Workers = registerM21CronWorkers(
+      buildM21WorkerDeps({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m21OutboxPublisher,
+        activeOrgs: m21ActiveOrgs,
+        // par-monitor's 04:00-local gate: M1's owner read (M21 must not read `location` itself).
+        locationTimezone: (tx, locationId) =>
+          buildFoundationSiteReader().locationTimezone(tx, locationId),
+        alerts: {
+          emit: async ({ organizationId, kind, payload }) => {
+            await m21AlertEmitter.emit(organizationId, {
+              eventType: kind,
+              payload,
+              severity: typeof payload.severity === "string" ? payload.severity : "medium",
+              correlationId: `m21-cron:${kind}`,
+            });
+          },
+        },
+      }),
+    );
+    attachDlqAlertsToAll(m21Workers, "m21");
+    app.addHook("onClose", async () => {
+      await Promise.all(m21Workers.map((w) => w.close()));
+    });
+    try {
+      const m21ScheduleQueues = await scheduleM21Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m21ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M21 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m21Workers.length }, "M21 §4.6 supplies crons constructed");
 
     // ── M9 §4.8 `license`/`changes`/`cadence` crons (TASK-040D — the M25 worker-runner shape) ────────────
     // `summary`/`eraser` (M9_QUEUES) stay out of scope — event-driven / M4-destruction-cert consumers.
@@ -5407,6 +5626,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       outbox: m20OutboxPublisher,
       policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
       activeOrgs: m20ActiveOrgs,
+      // GAP-061 — the overdue detector's D14 after-hours zone, through M1's owner reader (M20 reads no
+      // `location` row itself).
+      locationTimezone: (tx, locationId) =>
+        buildFoundationSiteReader().locationTimezone(tx, locationId),
     });
 
     const m20Workers = registerM20CronWorkers(m20WorkerDeps);
@@ -5422,7 +5645,47 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M20 cron-schedule registration failed");
     }
-    app.log.info({ queues: m20Workers.length }, "M20 §4.8 SOS SLA watchdog cron constructed");
+    // GAP-061 — `registerM20CronWorkers` now also constructs the §4.8 `m20.overdue-detector.cron` (30 s, the
+    // lone-worker overdue check-in detector; it subsumes the post-visit closer) and the hourly
+    // `m20.coverage-gap-watchdog.cron`, both over the same deps (real catalog-validating `m20OutboxPublisher`).
+    app.log.info(
+      { queues: m20Workers.length },
+      "M20 §4.8 SOS SLA watchdog + overdue-detector + coverage-gap-watchdog crons constructed",
+    );
+
+    // ── M16 §4.9 bereavement crons (GAP-048 — the M20 worker-runner shape) ───────────────────────────────
+    // `closeAt13Months` and `missDeadline` had no caller anywhere: plans never auto-closed at death_date + 13
+    // months, no outreach was ever marked `missed` (so M30's missed/overdue counts were permanently 0) and no
+    // anniversary reminder was ever alerted. Three time-driven queues now produce them (`m16-close-13mo`,
+    // `m16-miss-deadline`, `m16-anniversary-lookahead`); each writes its row change + the m16.* outbox event
+    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is left unbound like
+    // M16's routes: the M36 alerts ride the outbox events, and the workers' best-effort alert port is optional.
+    const m16ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M16_PLATFORM_JOB_ID,
+      reason: "M16 §4.9 bereavement cron fan-out (active-org enumeration)",
+    });
+    const m16WorkerDeps = buildM16WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m16OutboxPublisher,
+      activeOrgs: m16ActiveOrgs,
+    });
+    const m16Workers = registerM16CronWorkers(m16WorkerDeps);
+    attachDlqAlertsToAll(m16Workers, "m16");
+    app.addHook("onClose", async () => {
+      await Promise.all(m16Workers.map((w) => w.close()));
+    });
+    try {
+      const m16ScheduleQueues = await scheduleM16Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m16ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M16 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m16Workers.length }, "M16 §4.9 bereavement crons constructed");
 
     // ── M10 §4.8 HOPE crons (TASK-040D — the M25 worker-runner shape) ────────────────────────────────────
     // `hope-window-watchdog` + `sfv-watchdog`, plus (F-058 / F-072) the three §4.10 submission stages on
@@ -5582,6 +5845,57 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       { queues: m14Workers.length },
       "M14 §4.8 BullMQ review-clock-sweep cron constructed",
     );
+
+    // ── M13 §4.8 crons (GAP-038/039/040): `m13.extend-schedule`, `m13.missed-dose-sweep`,
+    // `m13.reconciliation-due-warning`, `m13.kit-return-overdue`, `m13.prn-reassessment-overdue`. None
+    // existed: scheduled doses stopped after the 7-day activation window, nothing ever wrote `missed_dose`
+    // (M30 published a fabricated 0% rate), and no deadline signal (late reconciliation, unreturned kit,
+    // uncaptured PRN reassessment) was ever produced. Every pass is org-explicit (a cron tick is not a
+    // request): the active-org fan-out runs under the audited platform context, each org's work opens its own
+    // `withOrgContext`, and events go through the REAL catalog-validating `m13OutboxPublisher`. M12's order
+    // facts and M1's location timezone are the same org-explicit seams the activation materializer uses; M9's
+    // `ScaleSeriesProvider` (request-scoped read) runs under an explicit per-org `runWithRequestContext`.
+    const m13ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M13_PLATFORM_JOB_ID,
+      reason: "M13 §4.8 eMAR cron fan-out (active-org enumeration)",
+    });
+    const m13Workers = registerM13CronWorkers({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m13OutboxPublisher,
+      activeOrgs: m13ActiveOrgs,
+      orderContext: (organizationId, orderId) =>
+        medicationOrderScheduleContextForOrg(dbHandle.db, organizationId, orderId),
+      locationTimezone: (organizationId, locationId) =>
+        withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+          buildFoundationSiteReader().locationTimezone(tx as unknown as DbClient, locationId),
+        ),
+      reassessmentCaptured: (organizationId, patientId, scaleType, fromIso, toIso) =>
+        runWithRequestContext({ organizationId, userId: "", systemActor: true }, async () => {
+          const series = await getSeam("ScaleSeriesProvider").series(
+            patientId as PatientId,
+            scaleType as ScaleType,
+            fromIso,
+            toIso,
+          );
+          return series.points.length > 0;
+        }),
+    });
+    attachDlqAlertsToAll(m13Workers, "m13");
+    app.addHook("onClose", async () => {
+      await Promise.all(m13Workers.map((w) => w.close()));
+    });
+    try {
+      const m13ScheduleQueues = await scheduleM13Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m13ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M13 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m13Workers.length }, "M13 §4.8 BullMQ eMAR crons constructed");
 
     // ── M39 §4.9 crons: `m39.consent_expiration` + `m39.expiration_reminder` (F-216) — the ONLY producers
     // of `m39.consent.expired` / `m39.consent.expiring_soon` (M5's §7.6 privacy snapshot consumes `.expired`).
@@ -6222,6 +6536,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             admissionSitingForPatient: activeAdmissionSitingForPatientForOrg,
           }),
           buildM36ClinicalAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
+          // (M13 spec §4.9): previously unconsumed (M36 sat on the seam-consumer list).
+          buildM36EmarAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-061 — M20's check-in overdue / escalated / coverage-gap watchdog alerts (M20 spec §4.9): previously
+          // unconsumed, so a lone worker's missed check-in paged nobody.
+          buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // M14 §2.7/D8 — the carry-forward COMPLIANCE alert (the count crossing 3): validated against the
           // typed alert-payload catalog (M14's contribution registered on the Foundation registry here, in the
           // composition root — M36 never imports M14), one alert per action item.
@@ -6287,6 +6607,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-185 (#248) — the M37 restraint-application consumer. Auto-files a `restraint_use` incident
           // draft (D8, thin-pointer payload). `restraintAdmissionSitingForOrg` is M37's seam, injected as
           // a port — M30's manifest `dependsOn` excludes 37 (the same F-160 `CapConsumerStore` shape).
+          // GAP-089 — the M6 death consumer (mortality half): auto-creates the `mortality_review` draft and
+          // emits `m30.mortality.review_created`. `deathDischargeFactsForOrg` is M6's seam, injected as a
+          // port — M30's manifest `dependsOn` excludes 6 (the same F-160 shape).
+          buildM30DischargeDeathConsumer({
+            db: dbHandle.db,
+            outbox: m30OutboxPublisher,
+            deathDischargeFactsForOrg,
+            resolveMedicalDirectorForOrg: buildMortalityReviewerResolver(
+              dbHandle.db,
+              createMembershipsHoldingRoleKeyReader(dbHandle.db),
+            ),
+          }),
           buildM30RestraintAppliedConsumer({
             db: dbHandle.db,
             restraintAdmissionSitingForOrg,
@@ -6411,6 +6743,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // -primary" live bindings.
           ...buildM24RevalidateTriggerConsumers({ enqueue: m24RevalidateEnqueue.port }),
           buildM24MedicarePrimaryAckConsumer({ db: dbHandle.db, outbox: m24OutboxPublisher }),
+          // GAP-071 — rb_day re-evaluation on `m6.loc.changed` + void on `m6.admission.discharged` /
+          // `m5.patient.deceased` (M24 §2.2 / §4.4). M6 reads go through org-explicit ForOrg functions.
+          ...buildM24RbDayConsumers({
+            db: dbHandle.db,
+            locPeriods: {
+              periodsForPatient: (organizationId, patientId, range) =>
+                levelOfCarePeriodsForPatientForOrg(dbHandle.db, organizationId, patientId, range),
+            },
+            admissions: {
+              patientIdForAdmission: async (organizationId, admissionId) =>
+                (await admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId))
+                  ?.patientId ?? null,
+            },
+          }),
           // F-172 (#248, m24 group) — the m24 `handlers-unbound` group's last two events:
           // `mark-claim-paid` / `mark-claim-denied`, the Medicaid sibling of M23's own GAP-037
           // `m25-remittance.ts` consumer above. Both `m25.remittance.claim_paid`/`.claim_denied` already

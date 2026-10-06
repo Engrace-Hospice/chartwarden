@@ -206,6 +206,7 @@ export const M13_EVENT_NAMES = [
   "m13.caregiver_administration.acknowledged",
   "m13.caregiver_administration.disputed",
   "m13.prn_administration_recorded",
+  "m13.prn_reassessment.overdue",
   "m13.scheduled_dose.materialized",
   "m13.scheduled_dose.missed",
   "m13.scheduled_dose.cancelled",

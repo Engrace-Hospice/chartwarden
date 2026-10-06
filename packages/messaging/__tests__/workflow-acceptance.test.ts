@@ -214,6 +214,7 @@ describe("§7.4 tenant cannot disable system_locked rules", () => {
     expect([...SYSTEM_LOCKED_EVENT_TYPES].sort()).toEqual(
       [
         "field_safety.sos",
+        "m20.safety.coverage_gap_detected",
         "m3.breakglass.invoked",
         "noe.late_risk",
         "system.backup_failure",

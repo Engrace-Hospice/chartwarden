@@ -99,6 +99,94 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-039/040 — M13's deadline alerts (`36-messaging/outbox-consumers/emar-alerts.ts`); `emar.dose_missed`
+  // above is the missed-dose rule. Recipients: the patient's care team (payload `patientId`).
+  {
+    eventType: "m13.prn_reassessment.overdue",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m13.reconciliation.due_at_warning",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m13.reconciliation.overdue",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m13.comfort_kit.return_overdue",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-061 — M20's check-in watchdog alerts (`36-messaging/outbox-consumers/field-safety-alerts.ts`). An alert
+  // rule has ONE resolver and `role_set` cannot express the M19 on-call roster, so the escalation pages two
+  // ways: `check_in_escalated` reaches the supervisor/DON role set, and the consumer raises a SECOND alert,
+  // `m20.safety.check_in_escalated_oncall`, resolved by `on_call` (the M19 roster for the provider entity).
+  // That event type is an alert-rule key only — NOT an outbox catalog event. The coverage-gap rule follows M20
+  // spec §4.9 (critical, DON + org-admin) and is system-locked (migration 0346 flips an already-seeded row).
+  {
+    eventType: "m20.safety.check_in_overdue",
+    category: "field_safety",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_supervisor", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m20.safety.check_in_escalated",
+    category: "field_safety",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["clinical_supervisor", "clinical_lead", "don"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m20.safety.check_in_escalated_oncall",
+    category: "field_safety",
+    severityFloor: "critical",
+    recipientResolver: "on_call",
+    resolverArgs: { providerEntityIdPath: "providerEntityId" },
+    channelsOverride: ["in_app", "push", "sms"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m20.safety.coverage_gap_detected",
+    category: "field_safety",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["don", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: true,
+    enabled: true,
+  },
   {
     eventType: "patient.hospitalization_risk_high",
     category: "clinical_urgent",
@@ -291,6 +379,25 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     severityFloor: "warn",
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["billing_manager", "biller"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-071 — M24 §4.10 `medicaid.eligibility.stale_at_assembly` (severity warn, audience biller_for_pe): the
+  // eligibility-stale-watchdog cron's per-patient alert. `biller_for_pe`: the billers/billing managers
+  // assigned to the patient's provider entity (the payload's `providerEntityId` ↔ the member's default PE);
+  // only when nobody is assigned to that PE (or the check carries none) does it fall back to the org-wide
+  // billing_manager, so a standing stale check never pages every biller in the org yet never goes unseen.
+  {
+    eventType: "medicaid.eligibility.stale_at_assembly",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      providerEntityIdPath: "providerEntityId",
+      providerEntityScopedRoleKeys: ["billing_manager", "biller"],
+      providerEntityFallbackRoleKeys: ["billing_manager"],
+    },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -579,12 +686,14 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
 ];
 
 /** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a
- *  tenant can neither disable nor loosen: SOS, NOE late-risk, backup-failure, M3 break-glass. */
+ *  tenant can neither disable nor loosen: SOS, NOE late-risk, backup-failure, M3 break-glass, and the
+ *  M20 coverage-gap alert (nobody is subscribed to be paged for a field clinician's safety; migration 0346). */
 export const SYSTEM_LOCKED_EVENT_TYPES = [
   "field_safety.sos",
   "noe.late_risk",
   "system.backup_failure",
   "m3.breakglass.invoked",
+  "m20.safety.coverage_gap_detected",
 ] as const;
 
 /** Row shape the boot slice UPSERTs into `alert_rule` (mirrors the Drizzle columns, §3.6).

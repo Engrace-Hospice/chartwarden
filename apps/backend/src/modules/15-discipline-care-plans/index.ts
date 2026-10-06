@@ -102,3 +102,38 @@ export {
   rateOf,
   registerDisciplinePlanSeams,
 } from "./seams/index";
+
+// GAP-044 / §4.6 — the five scheduled crons (supervisory overdue, MSW + chaplain initial overdue, volunteer
+// gate-watcher, volunteer hour aggregator) and the platform-job id their active-org fan-out runs under.
+export {
+  type ActiveOrgListPort as M15ActiveOrgListPort,
+  type M15WorkerDeps,
+  buildM15WorkerDeps,
+  registerM15CronWorkers,
+  M15_ORG_JOB_NAME,
+  fanOutOrgJobs,
+  orgsDueNow,
+  runChaplainInitialOverdueCron,
+  runChaplainInitialOverdueForOrg,
+  runMswInitialOverdueForOrg,
+  runSupervisoryOverdueForOrg,
+  runVolunteerGateWatcherForOrg,
+  runVolunteerHourAggregatorForOrg,
+  runMswInitialOverdueCron,
+  runSupervisoryOverdueCron,
+  runVolunteerGateWatcherCron,
+  runVolunteerHourAggregatorCron,
+  scheduleM15Jobs,
+} from "./jobs/cron-workers";
+export {
+  M15_JOB_SCHEDULES,
+  M15_LOCAL_HOURS,
+  M15_PLATFORM_JOB_ID,
+  M15_QUEUES,
+  M15_QUEUE_PARAMS,
+} from "./jobs/index";
+
+export {
+  type StaffPatientCareMinutesPort,
+  createStaffPatientCareMinutesPort,
+} from "./consumers/patient-care-hours";

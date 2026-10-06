@@ -159,6 +159,7 @@ export {
 // `.plan_closed_early` consumer — enqueues a `bereavement_coverage_rate` recompute (see the file header
 // for why a plan closure has a real, if narrow, data dependency on that one measure).
 export { buildM30BereavementPlanClosedConsumer } from "./outbox-consumers/m16-plan-closed";
+export { buildM30DischargeDeathConsumer } from "./outbox-consumers/m6-discharge-death";
 // F-185 (#248): the `m37.restraint.applied` consumer — auto-files a `restraint_use` incident draft (D8,
 // thin-pointer payload). See the file header for why `providerEntityId` needs the injected M37 siting
 // port, mirroring `buildM30BereavementPlanClosedConsumer`'s shape.

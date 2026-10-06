@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 159,
+  "totalStaticWebScreens": 160,
   "e2eReachedCount": 19,
-  "axeReachedCount": 153,
+  "axeReachedCount": 154,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -713,6 +713,14 @@
       "module": "30-quality",
       "path": "/quality",
       "permission": "quality.measure.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "quality.mortality",
+      "module": "30-quality",
+      "path": "/quality/mortality",
+      "permission": "mortality.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1997,6 +2005,14 @@
       "module": "30-quality",
       "path": "/quality",
       "permission": "quality.measure.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "quality.mortality",
+      "module": "30-quality",
+      "path": "/quality/mortality",
+      "permission": "mortality.read",
       "e2eReached": false,
       "axeReached": true
     },

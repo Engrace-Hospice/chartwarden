@@ -20,7 +20,7 @@
 // PATCH (R-72) is version-OCC-protected and §4.1.1-exempt. Org/actor binding is ALWAYS server-side
 // (`request.context` via `actorOf`/`writeActorOf`), NEVER the body. The service drives the pure
 // @wardenx/quality mortality machine and emits the §4.10 `m30.mortality.*` events transactionally.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission, resolveActorPermissions } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -31,7 +31,11 @@ import {
   UpdateMortalityReviewBodySchema,
   parse,
 } from "./quality-typebox";
-import type { M30ReadRouteService, MortalityListFilter } from "./read-service";
+import type {
+  M30ReadRouteService,
+  MortalityListFilter,
+  MortalityReviewSummaryView,
+} from "./read-service";
 import { type PatientScopeResolver, defaultPatientScopeResolver } from "./scope-resolver";
 import type { M30WriteRouteService } from "./write-service";
 
@@ -40,6 +44,44 @@ export interface MortalityRouteDeps {
   readonly writeService: M30WriteRouteService;
   /** GAP-091 — resolves the caller's patient scope from the server session (defaults to the M5 caseload). */
   readonly resolveScope?: PatientScopeResolver;
+  /**
+   * D19 — M5's org-explicit, batched minimum-necessary display read, injected as a PORT at the composition root
+   * (M30 reads no M5 table). Absent ⇒ the reads never carry a patient name.
+   */
+  readonly patientDisplay?: PatientDisplayPort;
+}
+
+/** The M5 `patientDisplayLabelsForOrg` shape (structural — M30 imports no M5 code). */
+export interface PatientDisplayPort {
+  displayForPatients(
+    organizationId: string,
+    patientIds: readonly string[],
+  ): Promise<
+    ReadonlyMap<string, { readonly displayName: string; readonly mrnSuffix: string | null }>
+  >;
+}
+
+/**
+ * D19 — add the patient display name + MRN suffix to mortality rows, ONLY for a caller holding
+ * `mortality.read_with_patient`. One batched M5 read per response; an id M5 does not resolve stays id-only.
+ */
+async function withPatientDisplay<T extends MortalityReviewSummaryView>(
+  rows: readonly T[],
+  organizationId: string,
+  mayViewPatient: boolean,
+  port: PatientDisplayPort | undefined,
+): Promise<readonly T[]> {
+  if (!mayViewPatient || !port || rows.length === 0) return rows;
+  const labels = await port.displayForPatients(
+    organizationId,
+    rows.map((r) => r.patientId),
+  );
+  return rows.map((row) => {
+    const label = labels.get(row.patientId);
+    return label
+      ? { ...row, patientDisplayName: label.displayName, patientMrnSuffix: label.mrnSuffix }
+      : row;
+  });
 }
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -60,7 +102,10 @@ const IDEMPOTENT = requireIdempotencyKey();
 
 /** Register the §4.1 mortality routes (R-70..R-73). */
 export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRouteDeps): void {
-  const { readService, writeService } = deps;
+  const { readService, writeService, patientDisplay } = deps;
+  const mayViewPatient = async (request: Parameters<typeof actorOf>[0]): Promise<boolean> =>
+    patientDisplay !== undefined &&
+    (await resolveActorPermissions(request.context)).has("mortality.read_with_patient");
   const scopeOf = deps.resolveScope ?? defaultPatientScopeResolver;
 
   // R-70 — list mortality reviews (cursor-paginated; PHI). §4.1/§4.1.2.
@@ -74,13 +119,20 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
       const actor = actorOf(request);
       const q = parse(MortalityListQuerySchema, request.query);
       const filter: MortalityListFilter = { status: q.status, patientId: q.patientId };
-      return readService.listMortalityReviews(
+      const page = await readService.listMortalityReviews(
         actor,
         filter,
         q.cursor,
         q.limit,
         await scopeOf(actor, "mortality"),
       );
+      const items = await withPatientDisplay(
+        page.items,
+        actor.organizationId,
+        await mayViewPatient(request),
+        patientDisplay,
+      );
+      return { ...page, items };
     },
   );
 
@@ -94,7 +146,18 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
     async (request) => {
       const actor = actorOf(request);
       const { reviewId } = parse(ReviewIdParamsSchema, request.params);
-      return readService.getMortalityReview(actor, reviewId, await scopeOf(actor, "mortality"));
+      const review = await readService.getMortalityReview(
+        actor,
+        reviewId,
+        await scopeOf(actor, "mortality"),
+      );
+      const [enriched] = await withPatientDisplay(
+        [review],
+        actor.organizationId,
+        await mayViewPatient(request),
+        patientDisplay,
+      );
+      return enriched ?? review;
     },
   );
 

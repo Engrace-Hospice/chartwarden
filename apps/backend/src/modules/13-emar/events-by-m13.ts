@@ -254,6 +254,25 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     seamConsumers: ["m14", "m30"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m13.prn_reassessment.overdue",
+    moduleOwner: "m13",
+    description:
+      "The 15-minute `prn-reassessment-overdue` sweep found a PRN administration whose reassessment deadline " +
+      "passed with no scale captured (GAP-040); M36 routine alert to the patient's care team.",
+    payloadSchema: Type.Object({
+      prnAdministrationId: id,
+      patientId: id,
+      medicationOrderId: id,
+      recommendedReassessmentScale: id,
+      reassessmentDueAt: isoInstant,
+    }),
+    // GAP-040 — M13, not M9, owns this sweep: M9's spec never mentions PRN and it has no PRN linkage, so the
+    // `m9.prn_reassessment_overdue` the M13 spec assigned it was never producible (F-143). M13 owns the trigger
+    // rows and reads M9's `ScaleSeriesProvider` for "was a scale captured".
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
   // ── scheduled-dose pipeline (§2.3 / §2.5 / §4.4) ────────────────────────────────────────────────────────
   {
     eventName: "m13.scheduled_dose.materialized",
@@ -288,8 +307,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     // to keep" framing — M13's own D16 seam-publication text is decisive that M14 reads
     // `MedicationAdministrationProvider`'s "missed-dose count since last IDG" via the SAME aggregation
     // seam, not a per-event push; M14's own exhaustive build-description names no M13 event either.
-    declaredConsumers: [],
-    seamConsumers: ["m14", "m30", "m33", "m36"],
+    // GAP-039 — m36 moved from seamConsumers to DECLARED: `outbox-consumers/emar-alerts.ts` is a real push
+    // consumer (the §4.9 `m13.missed_dose` typed alert), bound at the composition root.
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m14", "m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -373,11 +394,13 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     description: "The `reconciliation-due-warning` cron crossed the 24h-remaining threshold.",
     payloadSchema: Type.Object({
       worksheetId: id,
+      // GAP-040 — `patientId` added additively: M36's care-team resolver routes on it.
+      patientId: id,
       dueAt: isoInstant,
       hoursRemaining: Type.Number(),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    // GAP-040 — M36 now binds a real consumer (`outbox-consumers/emar-alerts.ts`), so it is DECLARED.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -385,11 +408,17 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     moduleOwner: "m13",
     description:
       "The `reconciliation-due-warning` cron found an overdue worksheet; M36 high-severity, M30 survey log.",
-    payloadSchema: Type.Object({ worksheetId: id, dueAt: isoInstant, overdueHours: Type.Number() }),
+    payloadSchema: Type.Object({
+      worksheetId: id,
+      // GAP-040 — `patientId` + `triggerKind` added additively (the §4.9 `m13.reconciliation_overdue` payload).
+      patientId: id,
+      triggerKind: id,
+      dueAt: isoInstant,
+      overdueHours: Type.Number(),
+    }),
     // F-149 (#248) — m30 removed: no support anywhere (see `administration.recorded` above for the
     // governing finding this pass established for all twelve M13 events checked).
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -535,10 +564,14 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     moduleOwner: "m13",
     description:
       "The nightly `kit-return-overdue` cron found a deployment not returned within the window.",
-    payloadSchema: Type.Object({ deploymentId: id, daysOverdue: Type.Integer({ minimum: 0 }) }),
+    payloadSchema: Type.Object({
+      deploymentId: id,
+      // GAP-040 — `patientId` added additively: M36's care-team resolver routes on it.
+      patientId: id,
+      daysOverdue: Type.Integer({ minimum: 0 }),
+    }),
     // F-149 (#248) — m30 removed: no support anywhere (see `administration.recorded` above).
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

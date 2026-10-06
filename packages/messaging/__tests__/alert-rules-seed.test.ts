@@ -29,6 +29,14 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m10.hope.sfv_missed",
       "m10.hope.timepoint_expired",
       "emar.dose_missed",
+      "m13.prn_reassessment.overdue",
+      "m13.reconciliation.due_at_warning",
+      "m13.reconciliation.overdue",
+      "m13.comfort_kit.return_overdue",
+      "m20.safety.check_in_overdue",
+      "m20.safety.check_in_escalated",
+      "m20.safety.check_in_escalated_oncall",
+      "m20.safety.coverage_gap_detected",
       "patient.hospitalization_risk_high",
       "patient.pps_drop_20",
       "admission.recert_window_opening",
@@ -50,6 +58,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m8.encounter.cosignature_hard_cap_reached",
       "evv.geofence_violation",
       "claim.denied",
+      // GAP-071 — M24 eligibility-stale-watchdog alert.
+      "medicaid.eligibility.stale_at_assembly",
       "cap.approaching",
       "noe.late_risk",
       "system.integration_failure",
@@ -90,6 +100,43 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
     expect(() => assertAlertRuleSeedValid()).not.toThrow();
   });
 
+  it("seeds the M20 check-in watchdog rules (GAP-061) with the spec severities and recipients", () => {
+    const rule = (t: string) => PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === t);
+    expect(rule("m20.safety.check_in_overdue")).toMatchObject({ severityFloor: "warn" });
+    expect(rule("m20.safety.check_in_escalated")).toMatchObject({ severityFloor: "critical" });
+    expect(rule("m20.safety.coverage_gap_detected")).toMatchObject({
+      severityFloor: "critical",
+      recipientResolver: "role_set",
+      resolverArgs: { roleKeys: ["don", "org_admin"] },
+      systemLocked: true,
+      enabled: true,
+    });
+    // The M19 on-call roster page: a second, separately keyed rule (one resolver per rule).
+    expect(rule("m20.safety.check_in_escalated_oncall")).toMatchObject({
+      severityFloor: "critical",
+      recipientResolver: "on_call",
+      resolverArgs: { providerEntityIdPath: "providerEntityId" },
+      systemLocked: false,
+    });
+  });
+
+  it("seeds the M24 stale-eligibility alert PE-scoped to billers, org-wide billing_manager only as fallback", () => {
+    const rule = PLATFORM_DEFAULT_ALERT_RULES.find(
+      (r) => r.eventType === "medicaid.eligibility.stale_at_assembly",
+    );
+    expect(rule).toMatchObject({
+      severityFloor: "warn",
+      recipientResolver: "role_set",
+      resolverArgs: {
+        providerEntityIdPath: "providerEntityId",
+        providerEntityScopedRoleKeys: ["billing_manager", "biller"],
+        providerEntityFallbackRoleKeys: ["billing_manager"],
+      },
+    });
+    // No org-wide biller audience: an unscoped roleKeys would page every biller in the org.
+    expect(rule?.resolverArgs).not.toHaveProperty("roleKeys");
+  });
+
   it("SOS routes on_call with the voice channel (§2.5 voice is SOS-only)", () => {
     const sos = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === "field_safety.sos");
     expect(sos?.recipientResolver).toBe("on_call");
@@ -122,6 +169,7 @@ describe("M36-T05 §7.4 system_locked floors", () => {
     expect([...SYSTEM_LOCKED_EVENT_TYPES].sort()).toEqual(
       [
         "field_safety.sos",
+        "m20.safety.coverage_gap_detected",
         "m3.breakglass.invoked",
         "noe.late_risk",
         "system.backup_failure",

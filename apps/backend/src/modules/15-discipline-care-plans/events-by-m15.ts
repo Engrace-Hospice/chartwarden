@@ -224,8 +224,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     // `volunteer_compliance_gate_rate` from M15 (a seam pull on `DisciplineComplianceProvider`), and no
     // recompute trigger or measure consumes this push. M30's volunteer-hours ratio is a read-time seam
     // relationship, not outbox consumption. The separate, NON-outbox gap remains: nothing supplies M30's
-    // denominator (`staffPatientCareMinutes` defaults `null` in `seams/drizzle-store.ts`; M27 ships no
-    // hours seam) — recorded in docs/history, not here.
+    // denominator is now the signed hands-on visit minutes from M8's digests
+    // (`consumers/patient-care-hours`), bound by the composition root.
     declaredConsumers: [],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,

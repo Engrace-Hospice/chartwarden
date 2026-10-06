@@ -345,6 +345,11 @@ export const MarkUnreachableBody = Type.Object({
   note: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 
+/** Route 34 — the counselor's "keep trying" dismissal of the unreachable proposal. */
+export const DismissUnreachableProposalBody = Type.Object({
+  note: Type.Optional(Type.String({ maxLength: 2000 })),
+});
+
 /** Route 18 — §7.7. The M40 external resource is REQUIRED: "referred to external services" with nowhere
  *  named is a dead end for someone in crisis. */
 export const FlagComplicatedGriefBody = Type.Object({
@@ -590,6 +595,8 @@ export const BereavedContactRowViewResponseSchema = Type.Object({
   confirmedAt: Nullable(Str),
   optedOutAt: Nullable(Str),
   unreachableAt: Nullable(Str),
+  unreachableProposed: Bool,
+  unreachableProposedAt: Nullable(Str),
   deceasedAt: Nullable(Str),
   mayRescindOptOut: Bool,
   currentRiskTier: Type.Optional(Nullable(RiskTier)),

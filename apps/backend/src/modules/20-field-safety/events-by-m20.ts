@@ -88,8 +88,9 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       expectedAt: Iso,
       minutesOverdue: Type.Number(),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36", "m33"],
+    // GAP-061 — M36 binds a real push consumer (`outbox-consumers/field-safety-alerts.ts`), so it is DECLARED.
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -110,8 +111,9 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
     // recipient set is composed by M20 PULLING M19's `OnCallProvider.currentOnCallForProviderEntity`
     // seam at M36's `RecipientResolver`, explicitly "without M19 needing to know about safety alerts" —
     // the relationship is real but runs the opposite direction via a seam, never an M19 push subscription.
-    declaredConsumers: [],
-    seamConsumers: ["m36", "m33"],
+    // GAP-061 — see `check_in_overdue`: M36's `field-safety-alerts.ts` is the bound consumer.
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 
@@ -439,8 +441,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       detectedAt: Iso,
     }),
     // F-132 (#248) — m34 REMOVED: same reasoning as `m20.safety.sos_terminus_reached` above.
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    // GAP-061 — M36's `field-safety-alerts.ts` is the bound consumer (was a seam-only m36).
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

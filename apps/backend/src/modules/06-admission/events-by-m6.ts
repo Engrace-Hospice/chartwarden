@@ -355,6 +355,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // event carries no fact M23 needs beyond what discharge.created already delivers.
       "m37",
       "m36",
+      // GAP-071 — m24 ADDED: voids the patient's not-yet-billed `rb_day` rows from the discharge date
+      // (M24 §2.2: "voided ... when the underlying patient day is voided in M5 deceased / discharge correction").
+      "m24",
       // F-222 (#248) — `m31` REMOVED (was F-139's ADD): the `reason!='death'` branch is now a DAILY SWEEP over
       // M6's CURRENT discharge state through the org-explicit published read `portalDischargedPastGraceForOrg`
       // (`31-portal/jobs/post-discharge-grace-sweep.ts`) — a SEAM PULL, see `seamConsumers` below; a re-admitted
@@ -773,7 +776,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // (`ElectionPeriodReader`), not level-of-care-anchored; its own D13 names the INPATIENT (20% rule) day
     // source as M23 claim lines by revenue code (0655/0656), never M6 LOC periods, and its
     // subscription-map.ts names no `m6.loc.changed` topic.
-    declaredConsumers: ["m23"],
+    // GAP-071 — m24 ADDED: M24's spec (§4.4 `m6-loc-changed.consumer.ts`) re-evaluates the patient's
+    // not-yet-billed `rb_day` rows from `effectiveStart` (`24-billing-medicaid/outbox-consumers/m24-rb-day-consumers.ts`).
+    declaredConsumers: ["m23", "m24"],
     // F-115 (#248) — m30 moved here from declaredConsumers: it reads LOC data via
     // `LevelOfCarePeriodReader.chcOrGipCoverageCounts`/`.levelOfCareDaySpans` (HCI indicators 1/8/9) on
     // its own nightly cadence, not by reacting to this event — no consumer binds it or ever will.
@@ -906,7 +911,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // consumer (system actor)". M16 is deliberately NOT added here even though it is a declared
     // consumer of the DOWNSTREAM `m37.ipu_admission.death_recorded` event — see that event's own entry
     // in `events-by-m37.ts` for why that declaration is being dropped as redundant in the same change.
-    declaredConsumers: ["m5", "m37"],
+    // GAP-089 — m30 ADDED: the mortality-review auto-creator (M30 §4.10, D9) consumes this event
+    // (`30-quality/outbox-consumers/m6-discharge-death.ts`, mortality half; the CAHPS half is separate).
+    declaredConsumers: ["m5", "m30", "m37"],
     isOutboxOnly: true,
   },
   {

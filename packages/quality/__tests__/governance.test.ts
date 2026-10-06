@@ -10,7 +10,7 @@ import {
 //
 // Proves three pure, boot-catalog / Part-2 invariants the integrator must not let drift:
 //
-//   (a) the §4.6 permission tuple `M30_PERMISSIONS` is the 33-key source of truth the backend's
+//   (a) the §4.6 permission tuple `M30_PERMISSIONS` is the 34-key source of truth the backend's
 //       `M30_CONTRIBUTED_PERMISSIONS` mirrors (the route-key cross-check lives in the backend
 //       `m30-abac.test.ts`, which can see the route files).
 //   (c) the §4.9 alert catalog has all twelve definitions, each with the severity + channel set the
@@ -23,12 +23,12 @@ import { M30_ALERT_PAYLOADS } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 
 // -----------------------------------------------------------------------------
-// (a) §4.6 permission tuple — the 33-key source of truth.
+// (a) §4.6 permission tuple — the 34-key source of truth.
 // -----------------------------------------------------------------------------
 describe("M30 §4.6 permission tuple", () => {
-  it("declares exactly 33 keys with no duplicates", () => {
-    expect(M30_PERMISSIONS).toHaveLength(33);
-    expect(new Set(M30_PERMISSIONS).size).toBe(33);
+  it("declares exactly 34 keys with no duplicates", () => {
+    expect(M30_PERMISSIONS).toHaveLength(34);
+    expect(new Set(M30_PERMISSIONS).size).toBe(34);
   });
 
   it("every key is `resource.action`-shaped under an owned M30 resource prefix", () => {

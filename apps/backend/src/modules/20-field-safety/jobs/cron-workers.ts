@@ -71,63 +71,30 @@ import {
 import { decideSosWatchdog } from "../lifecycle/sos-escalator";
 import { type SosStateHistoryPort, runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
+import { runCoverageGapWatchdogCron } from "./coverage-gap-watchdog";
 import {
+  M20_COVERAGE_GAP_WATCHDOG_JOB_NAME,
   M20_JOB_SCHEDULES,
+  M20_OVERDUE_DETECTOR_JOB_NAME,
   M20_QUEUES,
   M20_QUEUE_PARAMS,
   M20_SOS_WATCHDOG_JOB_NAME,
 } from "./index";
+import { runOverdueDetectorCron } from "./overdue-detector";
+import {
+  type ActiveOrgListPort,
+  type M20WorkerDeps,
+  M20_WORKER_SYSTEM_USER_ID,
+  activeOrgsOf,
+} from "./worker-support";
+
+export type { ActiveOrgListPort, M20WorkerDeps } from "./worker-support";
+export { runCoverageGapWatchdogCron } from "./coverage-gap-watchdog";
+export { runOverdueDetectorCron } from "./overdue-detector";
 
 const SOS = schema.safetySosAlert;
 const SOS_HISTORY = schema.safetySosAlertStateHistory;
 const CONSENT = schema.safetyEmergencyContactConsent;
-
-/** The system actor id this cron stamps on its per-org `withOrgContext` tx. Empty, not a real UUID
- *  constant — mirrors `consumers/m36-delivery-failed.ts`'s `CONSUMER_USER_ID` exactly, because the M4
- *  write-audit trigger on `safety_sos_alert`/`safety_sos_alert_state_history` reads the ambient
- *  acting-user session variable and casts it to `actor_user_id`, which has a NOT-NULL FK to `user`. A
- *  fabricated module-number UUID (the M9/M7 cron convention, safe for tables with no audit trigger)
- *  would fail that FK on every write here unless a matching `user` row happened to exist; an empty
- *  string reads back as SQL NULL through that same lookup, which the FK accepts — a system-driven tier
- *  advance names no actor, same as §3.3 already requires for `transitioned_by_membership_id`. */
-const M20_WORKER_SYSTEM_USER_ID = "";
-
-/** The M2 active-org enumerator the cron fan-out reads (the M9/M6 `ActiveOrgListPort` shape, restated
- *  locally so this module takes no bootstrap import edge). */
-export interface ActiveOrgListPort {
-  listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
-}
-
-/** The dep bag the composition root injects. `outbox` and `policy` are REQUIRED — the watchdog cannot
- *  decide anything without the pinned policy, and cannot record a decision without the outbox; only
- *  `activeOrgs` gets the lazy fail-closed thunk (the M9/M7 convention). No `alerts` port, matching every
- *  other M20 outbox producer at the composition root: M36's emitter is not bound to M20's write path,
- *  the §4.10 alert events ride the OUTBOX and M36 resolves recipients through its own seam. */
-export interface M20WorkerDeps {
-  readonly connection: ConnectionOptions;
-  readonly db: DbClient;
-  readonly outbox: WriteOutboxPort;
-  readonly policy: SafetyPolicyProvider;
-  readonly alerts?: AlertPort;
-  readonly activeOrgs?: ActiveOrgListPort;
-  now?: () => Date;
-}
-
-function unbound<T>(port: string, hint: string): Promise<T> {
-  return Promise.reject(new Error(`M20_WORKER_PORT_UNBOUND: ${port} — ${hint}`));
-}
-
-function activeOrgsOf(deps: M20WorkerDeps): ActiveOrgListPort {
-  return (
-    deps.activeOrgs ?? {
-      listActiveOrgs: () =>
-        unbound(
-          "activeOrgs.listActiveOrgs",
-          "bind the M2 active-org enumerator (the cron fan-out source) under withPlatformContext",
-        ),
-    }
-  );
-}
 
 /** Build the {@link M20WorkerDeps} from the composition-root primitives (the M9/M25 `buildMxWorkerDeps` shape). */
 export function buildM20WorkerDeps(deps: {
@@ -137,6 +104,7 @@ export function buildM20WorkerDeps(deps: {
   policy: SafetyPolicyProvider;
   alerts?: AlertPort;
   activeOrgs?: ActiveOrgListPort;
+  locationTimezone?: M20WorkerDeps["locationTimezone"];
 }): M20WorkerDeps {
   return {
     connection: deps.connection,
@@ -145,6 +113,7 @@ export function buildM20WorkerDeps(deps: {
     policy: deps.policy,
     ...(deps.alerts ? { alerts: deps.alerts } : {}),
     activeOrgs: deps.activeOrgs,
+    ...(deps.locationTimezone ? { locationTimezone: deps.locationTimezone } : {}),
     now: () => new Date(),
   };
 }
@@ -641,32 +610,64 @@ function parseBackoff(spec: string): ParsedBackoff {
 
 // ── BullMQ construction (the M9/M25 registerMxCronWorkers / scheduleMxJobs template) ───────────────────
 
-/** Construct the one §4.8 cron `Worker` (the caller owns lifecycle — `close()` on shutdown). */
+/** Construct the §4.8 cron `Worker`s (the caller owns lifecycle — `close()` on shutdown). */
 export function registerM20CronWorkers(deps: M20WorkerDeps): Worker[] {
   return [
     new Worker(M20_QUEUES.sosSlaWatchdog, async () => runSosSlaWatchdogCron(deps), {
       connection: deps.connection,
       concurrency: M20_QUEUE_PARAMS.sosSlaWatchdog.concurrency,
     }),
+    // GAP-061 — the lone-worker overdue check-in detector (every 30 s) and the §7.8 coverage-gap watchdog.
+    new Worker(M20_QUEUES.overdueDetector, async () => runOverdueDetectorCron(deps), {
+      connection: deps.connection,
+      concurrency: M20_QUEUE_PARAMS.overdueDetector.concurrency,
+    }),
+    new Worker(M20_QUEUES.coverageGapWatchdog, async () => runCoverageGapWatchdogCron(deps), {
+      connection: deps.connection,
+      concurrency: M20_QUEUE_PARAMS.coverageGapWatchdog.concurrency,
+    }),
   ];
 }
 
-/** Register the §4.8 repeatable schedule (every 15 seconds — `M20_JOB_SCHEDULES`, `every` not `pattern`,
- *  the M33 `lagProbeEveryMs` precedent). Returns the `Queue` so the composition root can `close()` it. */
+/** Register the §4.8 repeatable schedules (`every` not `pattern` — the M33 `lagProbeEveryMs` precedent).
+ *  Returns the `Queue`s so the composition root can `close()` them. */
 export async function scheduleM20Jobs(connection: ConnectionOptions): Promise<Queue[]> {
-  const queue = new Queue(M20_QUEUES.sosSlaWatchdog, { connection });
-  const params = M20_QUEUE_PARAMS.sosSlaWatchdog;
-  await queue.add(
-    M20_SOS_WATCHDOG_JOB_NAME,
-    {},
+  const specs = [
     {
-      repeat: { every: M20_JOB_SCHEDULES.sosSlaWatchdogEveryMs },
-      priority: params.priority,
-      attempts: params.attempts,
-      backoff: parseBackoff(params.backoff),
-      removeOnComplete: true,
-      removeOnFail: false,
+      queue: M20_QUEUES.sosSlaWatchdog,
+      name: M20_SOS_WATCHDOG_JOB_NAME,
+      every: M20_JOB_SCHEDULES.sosSlaWatchdogEveryMs,
+      params: M20_QUEUE_PARAMS.sosSlaWatchdog,
     },
-  );
-  return [queue];
+    {
+      queue: M20_QUEUES.overdueDetector,
+      name: M20_OVERDUE_DETECTOR_JOB_NAME,
+      every: M20_JOB_SCHEDULES.overdueDetectorEveryMs,
+      params: M20_QUEUE_PARAMS.overdueDetector,
+    },
+    {
+      queue: M20_QUEUES.coverageGapWatchdog,
+      name: M20_COVERAGE_GAP_WATCHDOG_JOB_NAME,
+      every: M20_JOB_SCHEDULES.coverageGapWatchdogEveryMs,
+      params: M20_QUEUE_PARAMS.coverageGapWatchdog,
+    },
+  ] as const;
+  const queues: Queue[] = [];
+  for (const spec of specs) {
+    const queue = new Queue(spec.queue, { connection });
+    queues.push(queue);
+    await queue.add(
+      spec.name,
+      {},
+      {
+        repeat: { every: spec.every },
+        priority: spec.params.priority,
+        attempts: spec.params.attempts,
+        backoff: parseBackoff(spec.params.backoff),
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+  }
+  return queues;
 }

@@ -135,6 +135,7 @@ interface ContactRecord {
   confirmedAt: string | null;
   optedOutAt: string | null;
   unreachableAt: string | null;
+  unreachableProposedAt?: string | null;
   deceasedAt: string | null;
   currentRiskTier: string | null;
   version: number;
@@ -287,6 +288,8 @@ function createFakeBackend() {
       confirmedAt: c.confirmedAt,
       optedOutAt: c.optedOutAt,
       unreachableAt: c.unreachableAt,
+      unreachableProposed: (c.unreachableProposedAt ?? null) !== null && c.status !== "unreachable",
+      unreachableProposedAt: c.status === "unreachable" ? null : (c.unreachableProposedAt ?? null),
       deceasedAt: c.deceasedAt,
       mayRescindOptOut: true,
       currentRiskTier: c.currentRiskTier as never,
@@ -597,6 +600,15 @@ function createFakeBackend() {
       bump(c);
       return contactRow(c);
     },
+    async dismissUnreachableProposal(_actor, contactId, input) {
+      const c = contacts.get(contactId);
+      if (!c) throw new NotFoundError("bereaved contact not found");
+      if ((c.version ?? 0) !== input.expectedVersion && input.expectedVersion !== undefined)
+        throw new Error("version mismatch");
+      c.unreachableProposedAt = null;
+      bump(c);
+      return contactRow(c);
+    },
     async flagComplicatedGrief(_actor, contactId) {
       const c = contacts.get(contactId);
       if (!c) throw new NotFoundError("bereaved contact not found");
@@ -885,6 +897,18 @@ describe("M16 §4.1 route inventory — the boundary cases", () => {
     await app.close();
   });
 
+  it("route 34 dismiss-unreachable-proposal denies a user without mark_unreachable (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/bereavement/contacts/55555555-5555-4555-8555-555555555555/dismiss-unreachable-proposal",
+      headers: { ...NO_PERMS, "idempotency-key": "k-34" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("a user holding NO bereavement permissions is denied (403)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
@@ -1139,6 +1163,23 @@ describe("M16 §4.1 routes 11–18, 26, 32 — bereaved-contact lifecycle", () =
     });
     expect(unreachable.statusCode).toBe(200);
     expect(unreachable.json().status).toBe("unreachable");
+
+    // 34 — unreachable is terminal here, but the route still resolves for a known contact
+    const keepTrying = await app.inject({
+      method: "POST",
+      url: `/api/v1/bereavement/contacts/${contactId}/dismiss-unreachable-proposal`,
+      headers: { ...COUNSELOR, "idempotency-key": "c-keep-trying" },
+      payload: {},
+    });
+    expect(keepTrying.statusCode).toBe(200);
+    expect(keepTrying.json().unreachableProposed).toBe(false);
+    const keepTryingNoKey = await app.inject({
+      method: "POST",
+      url: `/api/v1/bereavement/contacts/${contactId}/dismiss-unreachable-proposal`,
+      headers: { ...COUNSELOR },
+      payload: {},
+    });
+    expect(keepTryingNoKey.statusCode).toBeGreaterThanOrEqual(400);
 
     // 16
     const deceased = await app.inject({

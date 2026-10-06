@@ -236,10 +236,11 @@ export function createSupervisoryCadencePlanReader(
  * dashboards. The store returns the window TALLIES and the provider does the division, so the rate semantics
  * (an empty scope is `null`, never 0) live in ONE pure place; the 418.78(e) ratio delegates wholly to
  * `computeVolunteerHourRatio`, which badges a null/zero patient-care-hours denominator `unavailable` with the
- * reason carried through to the UI (M15-F04 — the M27 hours seam is not yet bound).
+ * reason carried through to the UI (M15-F04 — no signed staff visit duration resolved).
  */
 export function createDisciplineComplianceProvider(
   store: DisciplinePlanSeamStore,
+  clock: SeamClock = () => new Date().toISOString() as IsoInstant,
 ): DisciplineComplianceProvider {
   const counts = async (scope: ComplianceScope) => store.complianceCounts(scope);
   return {
@@ -272,6 +273,8 @@ export function createDisciplineComplianceProvider(
         fiscalYear,
         volunteerHourMinutes: totals.volunteerHourMinutes,
         staffPatientCareMinutes: totals.staffPatientCareMinutes,
+        denominatorComputedAt: totals.staffPatientCareComputedAt,
+        now: clock(),
       });
     },
   };

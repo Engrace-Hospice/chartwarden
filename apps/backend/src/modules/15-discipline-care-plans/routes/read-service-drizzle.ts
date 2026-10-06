@@ -78,15 +78,6 @@ export interface M15ReadDeps {
   readonly now?: () => IsoInstant;
   readonly disclosure?: DisclosurePort;
   readonly caseload?: CaseloadPort;
-  /**
-   * The M27 patient-care-HOURS denominator for the 418.78(e) ratio (M15-F04 — hours, never dollars).
-   * Unbound ⇒ `null` ⇒ the honest `unavailable` badge (§7.6 / D8), never a fabricated 0%.
-   */
-  readonly staffPatientCareMinutes?: (input: {
-    organizationId: string;
-    providerEntityId: string;
-    fiscalYear: number;
-  }) => Promise<number | null>;
 }
 
 export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {}): M15ReadService {
@@ -104,7 +95,6 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
   const disclosurePort = deps.disclosure ?? seamDisclosurePort;
   const caseloadPort = deps.caseload ?? seamCaseloadPort;
-  const staffMinutes = deps.staffPatientCareMinutes ?? (async () => null);
 
   const scope = (actor: M15ReadActor) => ({
     organizationId: actor.organizationId,
@@ -523,7 +513,9 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
 
     // ── 23 — the 418.78(e) ratio (hours ÷ hours; `unavailable` while M27 is unbound, M15-F04) ────────
     async getVolunteerHourRatio(actor, query: HourRatioQuery) {
-      const ledgerMinutes = await withOrgContext(db, scope(actor), async (tx) => {
+      // M15-F04 / 0347: the denominator is the value the nightly hour aggregator persisted on this ledger
+      // row; never recomputed per request. No row / never computed ⇒ `unavailable`.
+      const ledger = await withOrgContext(db, scope(actor), async (tx) => {
         const [row] = await tx
           .select()
           .from(LEDGER)
@@ -534,17 +526,15 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
             ),
           )
           .limit(1);
-        return row?.totalVolunteerHourMinutes ?? 0;
+        return row ?? null;
       });
       return computeVolunteerHourRatio({
         providerEntityId: query.providerEntityId as ProviderEntityId,
         fiscalYear: query.fiscalYear as FiscalYear,
-        volunteerHourMinutes: ledgerMinutes,
-        staffPatientCareMinutes: await staffMinutes({
-          organizationId: actor.organizationId,
-          providerEntityId: query.providerEntityId,
-          fiscalYear: query.fiscalYear,
-        }),
+        volunteerHourMinutes: ledger?.totalVolunteerHourMinutes ?? 0,
+        staffPatientCareMinutes: ledger?.patientCareMinutes ?? null,
+        denominatorComputedAt: ledger?.patientCareComputedAt?.toISOString() ?? null,
+        now: now(),
       });
     },
 

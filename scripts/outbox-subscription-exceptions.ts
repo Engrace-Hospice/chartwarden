@@ -164,13 +164,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     events: ["m10.hope.j2051_trigger_fired"],
   },
   {
-    module: "m13",
-    kind: "no-such-event",
-    reason:
-      "M9 catalogues nine events and none is a PRN-reassessment overdue topic (the nearest are `m9.assessment.significant_change` and the two `m9.scale.license_*` reminders). This is not a staging gap — M9's catalog is landed and registered at boot — so the name was never right. Kept because the SUBSCRIPTION is meaningful: M13's §4.5 PRN follow-up is specified against an M9 overdue signal. Ends when M9 catalogues one.",
-    events: ["m9.prn_reassessment_overdue"],
-  },
-  {
     module: "m23",
     kind: "self-consumption",
     reason:
@@ -244,8 +237,8 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m30",
     kind: "handler-unbound",
     reason:
-      "`packages/quality/src/consumers/handlers.ts` implements both effects (the death-discharge measure input and the election-signed HCI denominator) and nothing binds them. Both events are already deferred by other unbound consumers.",
-    events: ["m6.discharge.death", "m6.election.signed"],
+      "`packages/quality/src/consumers/handlers.ts` implements the election-signed HCI denominator effect and nothing binds it. (`m6.discharge.death` left this group in GAP-089: its mortality half is bound by `m6-discharge-death.ts`.)",
+    events: ["m6.election.signed"],
   },
   {
     module: "m33",

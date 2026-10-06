@@ -3,14 +3,15 @@
 // decision core for the four M6 reconciliation triggers ships + is tested here, and the live boot wiring (when
 // the M13 backend is mounted) binds the handler to the dispatcher and executes the returned action through
 // M13's service path (worksheet open / schedule materialize / schedule cancel / kit deploy/return / PDF
-// back-ref / PRN quality signal).
+// back-ref).
 //
 // The M12 medication-order producers (active / discontinued) and the M6 admission/discharge/CTI producers
 // exist in Wave D/E — these bindings are LIVE-eligible. The M21 comfort-kit producers are ALSO now bound
 // live (F-166, #248) — `.deployed_at_patient` / `.replenished` / `.returned` / `.return_reconciliation`
 // under `../outbox-consumers/m21-comfort-kit-*.ts`; this list previously named only two of the four (the
-// other two were simply missing, corrected below). M22's document.rendered + M9's
-// prn_reassessment_overdue are forward/cross producers. Every consumed event name is a STRING literal (no
+// other two were simply missing, corrected below). M22's document.rendered is a
+// cross producer. (GAP-040 — the former `m9.prn_reassessment_overdue` subscription is GONE: M13 itself owns the
+// PRN overdue sweep and emits `m13.prn_reassessment.overdue`; see `../jobs/deadline-sweeps.ts`.) Every consumed event name is a STRING literal (no
 // cross-module schema import): M13 reads other modules solely through the foundation outbox, so this task
 // adds NO new edge to M13's manifest dependsOn (§1.1: outbox is the only cross-module communication).
 import {
@@ -64,5 +65,4 @@ export const M13_OUTBOX_SUBSCRIPTIONS = [
     consumerName: "m13.comfort-kit-return-reconciliation",
   },
   { eventName: "m22.document.rendered", consumerName: "m13.pdf-rendered-backref" },
-  { eventName: "m9.prn_reassessment_overdue", consumerName: "m13.prn-reassessment-overdue" },
 ] as const;

@@ -25,6 +25,10 @@ type IncidentRow =
 type ProjectRow =
   paths["/api/v1/quality/qapi/projects"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
 
+type MortalityRow =
+  paths["/api/v1/quality/mortality"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
+
+export type MortalityStatus = MortalityRow["status"];
 export type MeasureBandColor = NonNullable<MeasureRow["latestValue"]>["bandColor"];
 export type MeasureDomain = MeasureRow["domain"];
 export type CopStatus = CitationRow["status"];
@@ -78,6 +82,13 @@ export const QAPI_PHASE_TONE: Record<QapiProjectPhase, StatusTone> = {
   corrective_action: "warning",
   completed: "success",
   abandoned: "neutral",
+};
+
+/** Mortality-review status → tone. `created` is untouched work (warning), `completed` is terminal. */
+export const MORTALITY_STATUS_TONE: Record<MortalityStatus, StatusTone> = {
+  created: "warning",
+  in_progress: "progress",
+  completed: "success",
 };
 
 /** Measure domain → a short human label for the hub's grouping. */

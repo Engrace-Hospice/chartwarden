@@ -455,7 +455,7 @@ describe("DisciplineComplianceProvider (§4.3) — an empty scope is null, never
     expect(ratio.status).toBe("unavailable");
     expect(ratio.ratio).toBeNull();
     expect(ratio.volunteerHourMinutes).toBe(12_000);
-    expect(ratio.reason).toMatch(/Module 27/);
+    expect(ratio.reason).toMatch(/signed staff patient-care visit/);
   });
 
   it("computes the ratio once the denominator resolves", async () => {

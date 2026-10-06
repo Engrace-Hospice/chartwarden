@@ -30,6 +30,14 @@ export interface ResolverArgs {
    *  officer at T+1). Set by the trusted producer-side consumer, never by request input; absent/non-string
    *  entries are skipped. */
   readonly roleKeysPath?: string;
+  /** `role_set` only — role keys resolved ONLY among members assigned to the provider entity named by the
+   *  payload's `providerEntityIdPath` key (default `providerEntityId`), via `roleSetMembersForProviderEntity`.
+   *  Added to the org-wide `roleKeys` audience. */
+  readonly providerEntityScopedRoleKeys?: readonly string[];
+  /** `role_set` only — role keys resolved ORG-WIDE, but only when the PE-scoped audience resolved nobody (no
+   *  PE on the payload, an unbound port, or no member assigned to that PE): the narrowing never leaves an
+   *  alert with no recipient. */
+  readonly providerEntityFallbackRoleKeys?: readonly string[];
   /** Payload key holding the patient id for `care_team` (default `patientId`). */
   readonly patientIdPath?: string;
   /** Payload key holding the provider entity id for `on_call` (default `providerEntityId`). */
@@ -57,6 +65,13 @@ export interface RecipientSourcePorts {
   disciplineMembers(orgId: string, disciplines: readonly string[]): Promise<readonly string[]>;
   /** M2 membership filtered by an explicit role-key set. */
   roleSetMembers(orgId: string, roleKeys: readonly string[]): Promise<readonly string[]>;
+  /** M2 membership filtered by a role-key set AND assignment to one provider entity (its default PE).
+   *  Optional: an unbound port reads as "nobody resolvable", so the rule's org-wide fallback applies. */
+  roleSetMembersForProviderEntity?(
+    orgId: string,
+    roleKeys: readonly string[],
+    providerEntityId: string,
+  ): Promise<readonly string[]>;
   /** Org administrators (the `tenant_admins` resolver). */
   tenantAdmins(orgId: string): Promise<readonly string[]>;
   /** Every active member of the org (the `broadcast` resolver). */
@@ -99,6 +114,33 @@ function dedupe(userIds: readonly string[]): string[] {
 }
 
 /**
+ * `role_set` PE narrowing: the members of `providerEntityScopedRoleKeys` assigned to the payload's provider
+ * entity; when none resolve, the org-wide `providerEntityFallbackRoleKeys` (never an empty audience by
+ * construction of the narrowing alone).
+ */
+async function resolvePeScoped(
+  ports: RecipientSourcePorts,
+  orgId: string,
+  args: ResolverArgs,
+  payload: Record<string, unknown>,
+): Promise<readonly string[]> {
+  const scopedKeys = args.providerEntityScopedRoleKeys ?? [];
+  if (scopedKeys.length === 0) return [];
+  const providerEntityId = readPath(payload, args.providerEntityIdPath ?? "providerEntityId");
+  const scoped =
+    providerEntityId === null || ports.roleSetMembersForProviderEntity === undefined
+      ? []
+      : await ports.roleSetMembersForProviderEntity(
+          orgId,
+          [...new Set(scopedKeys)],
+          providerEntityId,
+        );
+  if (scoped.length > 0) return scoped;
+  const fallbackKeys = args.providerEntityFallbackRoleKeys ?? [];
+  return fallbackKeys.length === 0 ? [] : ports.roleSetMembers(orgId, [...new Set(fallbackKeys)]);
+}
+
+/**
  * Build the registry of the seven built-in resolvers (§4.6) over the injected source ports.
  * Returns a mutable map so later modules can `register` their ADR-0024 composition resolvers
  * (M36-T09) onto the same registry without importing this file's internals.
@@ -125,7 +167,8 @@ export function createRecipientResolverRegistry(
       ];
       const fromRoles = await ports.roleSetMembers(orgId, [...new Set(roleKeys)]);
       const fromPayload = (args.userIdPaths ?? []).flatMap((k) => readStrings(payload, k));
-      return [...fromRoles, ...fromPayload];
+      const fromPe = await resolvePeScoped(ports, orgId, args, payload);
+      return [...fromRoles, ...fromPe, ...fromPayload];
     },
     tenant_admins: async (orgId) => ports.tenantAdmins(orgId),
     // user_list is fully static — the one resolver with no source-of-truth port (§3.6 userIds).

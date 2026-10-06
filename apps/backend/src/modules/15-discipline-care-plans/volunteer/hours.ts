@@ -186,8 +186,16 @@ export function computeVolunteerHourRatio(args: {
   readonly fiscalYear: FiscalYear;
   readonly volunteerHourMinutes: number;
   readonly staffPatientCareMinutes: number | null;
+  /**
+   * When the nightly aggregator last persisted the denominator. `null` = never computed; `undefined` = the
+   * caller computed the denominator inline (no staleness semantics). Together with `now`, a computed-at older
+   * than {@link DENOMINATOR_STALE_AFTER_MS} still serves the value but marks the reason `stale`.
+   */
+  readonly denominatorComputedAt?: string | null;
+  readonly now?: string;
 }): VolunteerHourRatio {
   const denominator = args.staffPatientCareMinutes;
+  const neverComputed = args.denominatorComputedAt === null;
   if (denominator === null || denominator <= 0) {
     return {
       providerEntityId: args.providerEntityId,
@@ -196,9 +204,10 @@ export function computeVolunteerHourRatio(args: {
       staffPatientCareMinutes: denominator,
       ratio: null,
       status: "unavailable",
-      reason:
-        denominator === null
-          ? "cost basis unavailable — the Module 27 patient-care-hours seam is not yet bound"
+      reason: neverComputed
+        ? "cost basis unavailable — the staff patient-care denominator has not been computed yet for this provider entity and fiscal year (the nightly hour aggregator persists it)"
+        : denominator === null
+          ? "cost basis unavailable — no signed staff patient-care visit with a resolved duration for this provider entity and fiscal year"
           : "cost basis unavailable — no patient-care hours recorded for this provider entity and fiscal year",
     };
   }
@@ -210,6 +219,22 @@ export function computeVolunteerHourRatio(args: {
     staffPatientCareMinutes: denominator,
     ratio,
     status: volunteerRatioStatus(ratio),
+    ...staleReason(args.denominatorComputedAt, args.now),
+  };
+}
+
+/** A persisted denominator older than this is still served, but its ratio carries a `stale` reason. */
+export const DENOMINATOR_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
+
+function staleReason(
+  computedAt: string | null | undefined,
+  now: string | undefined,
+): { readonly reason?: string } {
+  if (computedAt === null || computedAt === undefined || now === undefined) return {};
+  const ageMs = Date.parse(now) - Date.parse(computedAt);
+  if (!(ageMs > DENOMINATOR_STALE_AFTER_MS)) return {};
+  return {
+    reason: `stale — the staff patient-care denominator was last computed ${computedAt} (over 48h ago); the nightly hour aggregator has not refreshed it`,
   };
 }
 

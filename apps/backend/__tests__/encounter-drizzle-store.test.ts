@@ -65,4 +65,21 @@ describe("createDrizzleEncounterReaderStore.signedEncountersForPatientSince", ()
     );
     expect(out[0]?.evvBracketState).toBe("evv_missing_documented");
   });
+
+  it("derives durationMinutes from the visit bracket; an incomplete or non-positive bracket is null, never 0", async () => {
+    const start = new Date("2026-02-10T09:00:00.000Z");
+    const rows = [
+      { ...ROW, encounterId: "a", startedAt: start, endedAt: new Date("2026-02-10T10:30:00.000Z") },
+      { ...ROW, encounterId: "b", startedAt: start, endedAt: null },
+      { ...ROW, encounterId: "c", startedAt: null, endedAt: null },
+      { ...ROW, encounterId: "d", startedAt: start, endedAt: start },
+    ];
+    const { db } = fakeScopedDb(rows);
+    const out = await createDrizzleEncounterReaderStore(db).signedEncountersForPatientSince(
+      "org-1",
+      "pat-1",
+      "2026-02-07T00:00:00.000Z",
+    );
+    expect(out.map((d) => d.durationMinutes)).toEqual([90, null, null, null]);
+  });
 });

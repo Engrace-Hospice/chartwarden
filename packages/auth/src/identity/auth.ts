@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { passkey } from "@better-auth/passkey";
 // @wardenx/auth · identity — Better Auth integration (M2-T01; M2 spec §1, §3.1).
 //
@@ -24,7 +25,6 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
 import { eq, sql } from "drizzle-orm";
-import { createHash } from "node:crypto";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 import { SESSION_MAX_ABSOLUTE_SEC, isUserStatusBlocked } from "./session-timeout";
@@ -98,7 +98,11 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
  * and `organization_invitation` is RLS-scoped. Pure read — the one-time token is consumed later, by
  * `POST /invitations/accept`, not here.
  */
-async function inviteTokenMatchesEmail(db: DbClient, token: string, email: string): Promise<boolean> {
+async function inviteTokenMatchesEmail(
+  db: DbClient,
+  token: string,
+  email: string,
+): Promise<boolean> {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const result = await db.execute(sql`SELECT * FROM m2_find_invitation_by_token(${tokenHash})`);
   const row = (

@@ -232,6 +232,8 @@ export function mountAuthorizationRoutes(
 export {
   type MembershipsHoldingPermissionReader,
   createMembershipsHoldingPermissionReader,
+  type MembershipsHoldingRoleKeyReader,
+  createMembershipsHoldingRoleKeyReader,
 } from "./permission-holders";
 // Org-explicit BATCHED role-key read (keys only), injected into other modules' route layers as a port at the composition
 // root (e.g. M14's attendance trust: validating a discipline against the target member's real roles).

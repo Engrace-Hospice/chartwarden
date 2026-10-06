@@ -292,10 +292,12 @@ export function createDrizzleEmarSeamStore(db: DbClient): EmarSeamStore {
           const [row] = await tx
             .select({
               denominator: sql<number>`count(*)::int`,
+              // GAP-039 — columns are table-QUALIFIED by hand: inside a single-table select drizzle renders `${SD.id}`
+              // unqualified, which the subquery resolved to `missed_dose.id` (numerator always 0 even with rows).
               numerator: sql<number>`count(*) filter (where exists (
-              select 1 from ${MD}
-              where ${MD.scheduledDoseId} = ${SD.id}
-                and ${MD.organizationId} = ${SD.organizationId}
+              select 1 from missed_dose md
+              where md.scheduled_dose_id = scheduled_dose.id
+                and md.organization_id = scheduled_dose.organization_id
             ))::int`,
             })
             .from(SD)

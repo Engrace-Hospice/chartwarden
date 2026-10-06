@@ -39,3 +39,28 @@ export function createMembershipsHoldingPermissionReader(
     });
   };
 }
+
+/** M3's half of "who holds role X?": the membership ids granted an ENABLED, UNEXPIRED role with this key (M30 mortality
+ *  review assignment). The Foundation half narrows to ACTIVE memberships of a provider entity
+ *  (`bootstrap/m30-mortality-reviewer-resolver.ts`) because `membership` is M2's table, not M3's. */
+export type MembershipsHoldingRoleKeyReader = (
+  organizationId: string,
+  roleKey: string,
+) => Promise<readonly string[]>;
+
+export function createMembershipsHoldingRoleKeyReader(
+  db: DbClient,
+): MembershipsHoldingRoleKeyReader {
+  return (organizationId, roleKey) =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const res = await tx.execute(sql`
+        SELECT DISTINCT mr.membership_id AS membership_id
+          FROM membership_role mr
+          JOIN role ro ON ro.id = mr.role_id AND ro.enabled
+         WHERE mr.organization_id = ${organizationId}
+           AND ro.key = ${roleKey}
+           AND (mr.expires_at IS NULL OR mr.expires_at > now())`);
+      const rows = (res as unknown as { rows?: Array<{ membership_id?: string }> }).rows ?? [];
+      return rows.flatMap((r) => (r.membership_id ? [r.membership_id] : []));
+    });
+}

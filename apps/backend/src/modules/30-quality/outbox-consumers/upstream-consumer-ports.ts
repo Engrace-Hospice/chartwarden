@@ -43,11 +43,14 @@ import {
   MEASURE_FY_BOUNDARY_v2028,
   type MeasureFyBoundary,
   MeasureRecomputeQueueRepository,
+  type MortalityReviewAutoCreateResult,
   resolvePeriodRule,
   resolvePeriodWindow,
   unboundWorkerPort,
 } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
+import { and, eq } from "drizzle-orm";
+import type { WriteOutboxPort } from "../routes/write-service";
 
 /**
  * `incident_report.reported_by_membership_id`'s "no real acting user" sentinel for an M30-system-authored
@@ -81,6 +84,7 @@ function resolveFyBoundary(asOf: Date): MeasureFyBoundary {
 export function buildM30UpstreamConsumerPorts(
   db: DbClient,
   now: () => Date = () => new Date(),
+  outbox?: WriteOutboxPort,
 ): M30ConsumerPorts {
   return {
     async enqueueRecompute(request) {
@@ -106,11 +110,13 @@ export function buildM30UpstreamConsumerPorts(
         },
       );
     },
-    createMortalityReviewDraft: () =>
-      unboundWorkerPort(
-        "outboxConsumers.m30.createMortalityReviewDraft",
-        "m6.discharge.death stays unbound — paired in the same handler call with the still-blocked addCahpsSampleCandidate (F-150, #248)",
-      ),
+    createMortalityReviewDraft: outbox
+      ? (result) => insertMortalityReviewDraft(db, outbox, result)
+      : () =>
+          unboundWorkerPort(
+            "outboxConsumers.m30.createMortalityReviewDraft",
+            "no transactional outbox publisher was supplied — the m6.discharge.death binding (GAP-089) passes one",
+          ),
     addCahpsSampleCandidate: () =>
       unboundWorkerPort(
         "outboxConsumers.m30.addCahpsSampleCandidate",
@@ -140,6 +146,76 @@ export function buildM30UpstreamConsumerPorts(
       });
     },
   };
+}
+
+/**
+ * GAP-089 — insert the auto-created `mortality_review` draft and emit `m30.mortality.review_created` in the
+ * SAME tenant transaction. `mortality_review` is RANGE-partitioned on `death_at`, so its per-admission and
+ * per-idempotency-key UNIQUE backstops are per-LEAF (`..._per_admission_uidx` / `..._idem_uidx`,
+ * migration 0064) and cannot serve `ON CONFLICT` on the parent: idempotency is a pre-check on
+ * `admission_id` (one review per admission) plus a catch on those leaf indexes for the concurrent race.
+ * A redelivery emits nothing.
+ */
+async function insertMortalityReviewDraft(
+  db: DbClient,
+  outbox: WriteOutboxPort,
+  result: MortalityReviewAutoCreateResult,
+): Promise<void> {
+  const { row } = result;
+  await withOrgContext(db, { organizationId: row.organizationId, userId: "" }, async (tx) => {
+    const t = tx as DbClient;
+    const [existing] = await t
+      .select({ id: schema.mortalityReview.id })
+      .from(schema.mortalityReview)
+      .where(
+        and(
+          eq(schema.mortalityReview.organizationId, row.organizationId),
+          eq(schema.mortalityReview.admissionId, row.admissionId),
+        ),
+      )
+      .limit(1);
+    if (existing) return;
+    let inserted: { id: string } | undefined;
+    try {
+      [inserted] = await t
+        .insert(schema.mortalityReview)
+        .values(row)
+        .returning({ id: schema.mortalityReview.id });
+    } catch (err) {
+      if (!isMortalityRedelivery(err)) throw err;
+      return;
+    }
+    if (!inserted) return;
+    await outbox.publish(t, {
+      eventName: "m30.mortality.review_created",
+      organizationId: row.organizationId,
+      aggregateKind: "mortality_review",
+      aggregateId: inserted.id,
+      payload: {
+        orgId: row.organizationId,
+        reviewId: inserted.id,
+        patientId: row.deceasedPatientId,
+        dateOfDeath: row.deathAt.toISOString(),
+        targetCompletionAt: result.completionClock.deferred
+          ? null
+          : (result.completionClock.effectiveTargetCompletionAt?.toISOString() ?? null),
+      },
+    });
+  });
+}
+
+/** True iff `err` is the `23505` from a mortality_review per-leaf idempotency/per-admission UNIQUE index. */
+function isMortalityRedelivery(err: unknown): boolean {
+  let cursor: unknown = err;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH && cursor instanceof Error; depth++) {
+    const code = (cursor as { code?: unknown }).code;
+    const constraint = (cursor as { constraint?: unknown }).constraint;
+    if (code === UNIQUE_VIOLATION && typeof constraint === "string") {
+      return constraint.endsWith("_per_admission_uidx") || constraint.endsWith("_idem_uidx");
+    }
+    cursor = (cursor as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /** Postgres `unique_violation`. */

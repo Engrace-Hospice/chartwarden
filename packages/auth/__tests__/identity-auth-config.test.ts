@@ -39,10 +39,16 @@ describe("GAP-009 — closed registration (invite-token sign-up)", () => {
     expect(resolveSignUpRequiresInvite({ NODE_ENV: "test" })).toBe(false);
     expect(resolveSignUpRequiresInvite({})).toBe(false);
     expect(
-      resolveSignUpRequiresInvite({ NODE_ENV: "development", WARDENX_SIGNUP_REQUIRES_INVITE: "true" }),
+      resolveSignUpRequiresInvite({
+        NODE_ENV: "development",
+        WARDENX_SIGNUP_REQUIRES_INVITE: "true",
+      }),
     ).toBe(true);
     expect(
-      resolveSignUpRequiresInvite({ NODE_ENV: "production", WARDENX_SIGNUP_REQUIRES_INVITE: "false" }),
+      resolveSignUpRequiresInvite({
+        NODE_ENV: "production",
+        WARDENX_SIGNUP_REQUIRES_INVITE: "false",
+      }),
     ).toBe(false);
   });
 

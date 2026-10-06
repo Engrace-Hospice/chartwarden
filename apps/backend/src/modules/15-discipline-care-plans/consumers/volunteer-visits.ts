@@ -5,14 +5,10 @@
 // on the nightly aggregator run (§7.4). Reading M8's `encounter` table directly would be the architecture
 // §25.15 violation the seam exists to prevent.
 //
-// **The duration gap, stated rather than papered over.** `SignedEncounterDigest` carries the service
-// date, the discipline and the signer — it does NOT carry a visit duration. So this resolver returns each
-// candidate with `durationMinutes: null` unless the caller supplies a resolved duration map (the M18 EVV
-// bracket for the visit, or a coordinator-entered duration). `aggregateVolunteerHours` then reports those
-// candidates as `unresolvedDurationEncounterIds` instead of counting them as zero minutes. Closing the
-// gap for real means either a duration on M8's digest or an M18 bracket read — both are cross-module
-// contract changes, so they belong to the M15-T05 seam task, not here. Until then the ledger's
-// encounter-sourced rows are only as complete as the durations handed in, and the count of what was
+// **Duration.** `SignedEncounterDigest.durationMinutes` is the M8 visit bracket in whole minutes, or `null`
+// when the bracket is incomplete (GAP-044 added it to the contract). A null is passed through UNRESOLVED:
+// `aggregateVolunteerHours` reports those candidates as `unresolvedDurationEncounterIds` instead of counting
+// them as zero minutes, so the ledger is only ever as complete as the brackets M8 holds, and what was
 // skipped is visible on every run.
 import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@wardenx/types";
 import { getSignedEncountersReader } from "../seams/index";
@@ -34,17 +30,14 @@ export interface VolunteerServedPatient {
  * since `since`. Only encounters SIGNED BY the assigned volunteer count: another discipline's visit to
  * the same patient is not volunteer time, and counting it would inflate the CoP numerator.
  *
- * `durationsByEncounterId` supplies whatever durations the caller could resolve; every other candidate
- * comes back with `durationMinutes: null` and is reported (not silently dropped) by the aggregator.
+ * Each candidate carries the digest's `durationMinutes` (null = unresolved, reported by the aggregator).
  */
 export async function resolveVolunteerVisitCandidates(args: {
   readonly orgId: string;
   readonly servedPatients: ReadonlyArray<VolunteerServedPatient>;
   readonly since: IsoInstant;
-  readonly durationsByEncounterId?: ReadonlyMap<EncounterId, number>;
 }): Promise<ReadonlyArray<VolunteerVisitCandidate>> {
   const reader = getSignedEncountersReader();
-  const durations = args.durationsByEncounterId ?? new Map<EncounterId, number>();
   const candidates: VolunteerVisitCandidate[] = [];
   const seen = new Set<EncounterId>();
 
@@ -67,7 +60,7 @@ export async function resolveVolunteerVisitCandidates(args: {
         // The SERVICE date, not `signedAt`: a 31-December visit signed on 2 January is volunteer time in
         // the fiscal year it was served, and bucketing on the signature would move it (§2.2.7).
         occurredAt: serviceInstant(d.serviceDate),
-        durationMinutes: durations.get(d.encounterId) ?? null,
+        durationMinutes: d.durationMinutes,
       });
     }
   }

@@ -638,6 +638,72 @@ describe("§2.4 bereavement_outreach lifecycle", () => {
     );
   });
 
+  // GAP-048 (2026-10-05) — the grace END instant belongs to the grace: `lateAttempt` is valid at or before
+  // `late_grace_until` (inclusive) and `missDeadline` only fires strictly AFTER it, so the windows never overlap.
+  describe("late-grace boundary (inclusive lateAttempt, strictly-after missDeadline)", () => {
+    const lateGraceUntil = "2026-04-08T00:00:00.000Z";
+    const oneSecondAfter = "2026-04-08T00:00:01.000Z";
+
+    it("missDeadline is refused exactly at the grace end", () => {
+      expectCode(
+        () =>
+          transitionBereavementOutreach("scheduled", {
+            type: "missDeadline",
+            at: lateGraceUntil,
+            lateGraceUntil,
+          }),
+        "OUTREACH_NOT_YET_OVERDUE",
+      );
+    });
+
+    it("missDeadline fires one second after the grace end", () => {
+      const t = transitionBereavementOutreach("scheduled", {
+        type: "missDeadline",
+        at: oneSecondAfter,
+        lateGraceUntil,
+      });
+      expect(t.to).toBe("missed");
+    });
+
+    it("lateAttempt is accepted exactly at the grace end", () => {
+      const t = transitionBereavementOutreach("missed", {
+        type: "lateAttempt",
+        at: lateGraceUntil,
+        lateGraceUntil,
+      });
+      expect(t.to).toBe("in_progress");
+    });
+
+    it("lateAttempt is refused one second after the grace end", () => {
+      expectCode(
+        () =>
+          transitionBereavementOutreach("missed", {
+            type: "lateAttempt",
+            at: oneSecondAfter,
+            lateGraceUntil,
+          }),
+        "LATE_ATTEMPT_GRACE_EXPIRED",
+      );
+    });
+
+    it("an attempt recorded at the grace end leaves nothing for missDeadline to fire on", () => {
+      const started = transitionBereavementOutreach("scheduled", {
+        type: "startContact",
+        at: lateGraceUntil,
+      });
+      expect(started.to).toBe("in_progress");
+      expectCode(
+        () =>
+          transitionBereavementOutreach(started.to, {
+            type: "missDeadline",
+            at: oneSecondAfter,
+            lateGraceUntil,
+          }),
+        "ILLEGAL_TRANSITION",
+      );
+    });
+  });
+
   it("terminal states accept nothing", () => {
     for (const from of ["completed", "declined", "no_response", "cancelled"] as const) {
       expectCode(
