@@ -7,7 +7,9 @@
 //
 // PURE: the decision of what a request may do, the plain-language error messages, and the claim-code hints the
 // API errors and the web screens share. The Drizzle service applies the verdict; the route maps it to HTTP.
-import type { PlaceOfDeath } from "./permission-map";
+
+/** Mirrors `permission-map.ts` `PLACES_OF_DEATH` (declared here too: permission-map imports this file's messages). */
+type PlaceOfDeathValue = "home" | "facility" | "unknown";
 
 /** Where the RECEIVING hospice cares for the patient (`transfer_event.receiving_care_setting`). */
 export const RECEIVING_CARE_SETTINGS = ["home", "facility"] as const;
@@ -21,7 +23,7 @@ export const DETAIL_CORRECTION_REASON_MIN = 20;
 export const DETAIL_CORRECTION_REASON_MAX = 2000;
 
 /** The claim patient status each place of death sets (UB-04 FL 17 / 837I CL103). */
-export const PLACE_OF_DEATH_STATUS: Record<PlaceOfDeath, string> = {
+export const PLACE_OF_DEATH_STATUS: Record<PlaceOfDeathValue, string> = {
   home: "40",
   facility: "41",
   unknown: "42",

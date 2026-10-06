@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 311 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 312 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 264 screen(s)
+- **web**: 265 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -60,6 +60,7 @@
 | web | 06-admission | `admission.death-pronouncement` | `/admissions/:id/death` | `discharge.death` | ✅ |
 | web | 06-admission | `admission.transfer-in` | `/admissions/:id/transfer-in` | `transfer.in` | ✅ |
 | web | 06-admission | `admission.discharge-cosign` | `/discharges/:id/cosign` | `discharge.cosign_for_cause` | ✅ |
+| web | 06-admission | `admission.discharge-details` | `/admissions/:id/discharge-details` | `admission.read` | ✅ |
 | web | 07-care-plan | `care-plan.view` | `/patients/:patientId/care-plan` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.versions` | `/care-plans/:planId/versions` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.version-detail` | `/care-plans/:planId/versions/:versionId` | `care_plan.read` | ✅ |
