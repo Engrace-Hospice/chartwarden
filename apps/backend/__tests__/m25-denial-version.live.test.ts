@@ -32,6 +32,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildM25AbacPredicates } from "../src/modules/25-remittance/abac-predicates";
+import { runDenialAgingCron } from "../src/modules/25-remittance/jobs/cron-workers";
 import { registerDenialRoutes } from "../src/modules/25-remittance/routes/denials.routes";
 import { DenialWorklistItemSchema } from "../src/modules/25-remittance/routes/m25-typebox";
 import { buildDrizzleM25ReadService } from "../src/modules/25-remittance/routes/read-service-drizzle";
@@ -291,6 +292,34 @@ describe.skipIf(!DB_URL)(
       expect((await getDenial(ORG_B, "b", foreign)).json().version).toBe(3);
       expect((await start(ORG_B, "b", foreign, "3")).statusCode).toBe(200);
       expect(await rowOf(foreign)).toEqual({ state: "in_progress", version: 4 });
+    });
+
+    it("the denial-aging cron rebuckets under the NULL (system) audit actor, not a sentinel uuid", async () => {
+      // Before the fix the cron stamped `00000000-…-0000000000e5` into `app.user_id`; the `denial_case`
+      // write-audit trigger copied it into `audit_event.actor_user_id` (FK to `user`) → 23503 every night.
+      const id = await seedDenial(ORG_A, 1);
+      await admin.query(
+        "UPDATE denial_case SET opened_at = now() - interval '40 days', aging_bucket_days = 0 WHERE id=$1",
+        [id],
+      );
+      const dispatched: string[] = [];
+      await runDenialAgingCron({
+        connection: {} as never,
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        alerts: { dispatch: async (a) => void dispatched.push(a.alertCode) },
+        now: () => new Date(),
+      });
+      const row = (await admin.query("SELECT aging_bucket_days FROM denial_case WHERE id=$1", [id]))
+        .rows[0] as { aging_bucket_days: number };
+      expect(row.aging_bucket_days).toBeGreaterThanOrEqual(40);
+      expect(dispatched).toContain("denial.aging_threshold_breached");
+      const audit = await admin.query(
+        "SELECT actor_user_id FROM audit_event WHERE resource_id=$1 AND event_type='denial_case.update'",
+        [id],
+      );
+      expect(audit.rows.length).toBeGreaterThan(0);
+      expect(audit.rows.every((r) => r.actor_user_id === null)).toBe(true);
     });
 
     it("the worklist never lists another tenant's denials", async () => {

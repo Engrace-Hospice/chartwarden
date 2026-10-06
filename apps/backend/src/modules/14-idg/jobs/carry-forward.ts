@@ -31,7 +31,7 @@
 //
 // AUDIT ACTOR: the tx runs with `userId: ""` (like `packet-build.ts` / `schedule-materialise.ts`) — the M4
 // write-audit triggers resolve `app.user_id` to `audit_event.actor_user_id`, which FKs to `"user"`; the worker
-// pseudo-user id (`M14_WORKER_SYSTEM_USER_ID`) has no `user` row, so a PHI write under it fails the FK
+// pseudo-user id the review-clock sweep once used (`…000000000014`) has no `user` row, so a PHI write under it fails the FK
 // (proven live). An empty actor records a system write (actor NULL).
 import { type DbClient, schema } from "@wardenx/db";
 import { isComplianceCrossing } from "@wardenx/idg";

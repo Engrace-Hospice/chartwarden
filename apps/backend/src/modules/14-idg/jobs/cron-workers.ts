@@ -5,7 +5,7 @@
 // TRANSACTIONAL OUTBOX inside that SAME tx (a thrown outbox validation error rolls back the whole org's
 // tick — a partial escalation burst never partially commits).
 import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
@@ -13,13 +13,7 @@ import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "../routes/idg
 import { runCarryForwardCron } from "./carry-forward";
 import { locationCoordinatorsForOrg, reviewClockPatientsForOrg } from "./cron-store";
 import type { ActiveOrgListPort } from "./index";
-import {
-  M14_JOB_SCHEDULES,
-  M14_QUEUES,
-  M14_QUEUE_PARAMS,
-  M14_WORKER_SYSTEM_USER_ID,
-  planReviewClockSweep,
-} from "./index";
+import { M14_JOB_SCHEDULES, M14_QUEUES, M14_QUEUE_PARAMS, planReviewClockSweep } from "./index";
 import type {
   Idg6PacketPort,
   Idg6RecertWindowPort,
@@ -33,7 +27,6 @@ import type { Idg1LocationTimezonePort } from "./schedule-materialise";
 import { runScheduleMaterialiseCron } from "./schedule-materialise";
 
 export type { ActiveOrgListPort } from "./index";
-export { M14_WORKER_SYSTEM_USER_ID } from "./index";
 
 /** The dep bag the composition root injects. `outbox` is REQUIRED; every fan-out/cross-module port
  * defaults fail-closed (the M9/M10 convention — only these get the lazy fail-closed thunk, F-171 extends
@@ -208,44 +201,40 @@ export async function runReviewClockSweepCron(
   for (const { organizationId } of orgs) {
     if (alreadySwept.has(organizationId)) continue;
     try {
-      await withOrgContext(
-        deps.db,
-        { organizationId, userId: M14_WORKER_SYSTEM_USER_ID },
-        async (tx) => {
-          const t = tx as unknown as DbClient;
-          const patients = await reviewClockPatientsForOrg(t, organizationId);
-          const escalations = planReviewClockSweep(patients, now);
-          // The coordinator tier of the M36 alert (only read when something escalates; one batched read).
-          const coordinators =
-            escalations.length === 0
-              ? new Map<string, string>()
-              : await locationCoordinatorsForOrg(
-                  t,
-                  organizationId,
-                  [...new Set(escalations.map((e) => e.locationId))],
-                  now,
-                );
-          for (const e of escalations) {
-            const coordinatorMembershipId = coordinators.get(e.locationId);
-            await deps.outbox.publish(t, {
-              eventName: "m14.review_clock.escalated",
-              payload: {
-                admissionId: e.admissionId,
-                patientId: e.patientId,
-                locationId: e.locationId,
-                lastIdgReviewedAt: e.lastIdgReviewedAt,
-                floorAt: e.floorAt,
-                stage: e.stage,
-                severity: e.severity,
-                ...(coordinatorMembershipId === undefined ? {} : { coordinatorMembershipId }),
-              },
-              organizationId,
-              aggregateKind: "idg_patient_packet",
-              aggregateId: e.patientId,
-            });
-          }
-        },
-      );
+      await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
+        const t = tx as unknown as DbClient;
+        const patients = await reviewClockPatientsForOrg(t, organizationId);
+        const escalations = planReviewClockSweep(patients, now);
+        // The coordinator tier of the M36 alert (only read when something escalates; one batched read).
+        const coordinators =
+          escalations.length === 0
+            ? new Map<string, string>()
+            : await locationCoordinatorsForOrg(
+                t,
+                organizationId,
+                [...new Set(escalations.map((e) => e.locationId))],
+                now,
+              );
+        for (const e of escalations) {
+          const coordinatorMembershipId = coordinators.get(e.locationId);
+          await deps.outbox.publish(t, {
+            eventName: "m14.review_clock.escalated",
+            payload: {
+              admissionId: e.admissionId,
+              patientId: e.patientId,
+              locationId: e.locationId,
+              lastIdgReviewedAt: e.lastIdgReviewedAt,
+              floorAt: e.floorAt,
+              stage: e.stage,
+              severity: e.severity,
+              ...(coordinatorMembershipId === undefined ? {} : { coordinatorMembershipId }),
+            },
+            organizationId,
+            aggregateKind: "idg_patient_packet",
+            aggregateId: e.patientId,
+          });
+        }
+      });
     } catch (error) {
       failures.push({ organizationId, error });
       continue;

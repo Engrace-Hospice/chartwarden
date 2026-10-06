@@ -8,7 +8,7 @@
 // consumer/worker write is the empty actor (`""`, which the trigger records as a NULL actor — see
 // `m20-safety-visit-cancellation.ts`, `05-patient/deceased-db.ts`).
 
-import type { OrgContext } from "@wardenx/tenancy";
+import { type OrgContext, systemOrgContext } from "@wardenx/tenancy";
 
 export const M17_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000017";
 
@@ -19,6 +19,6 @@ export const M17_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000017";
  */
 export function orgContextFor(organizationId: string, userId: string): OrgContext {
   return userId === M17_SYSTEM_USER_ID
-    ? { organizationId, userId: "", systemActor: true }
+    ? systemOrgContext(organizationId)
     : { organizationId, userId };
 }
