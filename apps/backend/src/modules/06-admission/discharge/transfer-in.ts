@@ -24,8 +24,74 @@ export interface TransferInInput {
   readonly otherHospiceName: string;
   /** The sending hospice's CMS CCN, when known — `transfer_event.receiving_or_sending_ccn`. */
   readonly otherHospiceCcn?: string;
+  /** The sending hospice's NPI, when known — `transfer_event.receiving_or_sending_npi` (migration 0375). */
+  readonly otherHospiceNpi?: string;
   /** Free-text transfer narrative — `transfer_event.narrative`. */
   readonly narrative: string;
+}
+
+/** Luhn mod 10 over "80840" + the first nine digits — the NPI check digit (45 CFR 162.406). */
+export function isNpiCheckDigitValid(npi: string): boolean {
+  if (!/^\d{10}$/.test(npi)) return false;
+  const digits = `80840${npi.slice(0, 9)}`;
+  let sum = 0;
+  for (let i = 0; i < digits.length; i += 1) {
+    let d = Number(digits.charAt(digits.length - 1 - i));
+    if (i % 2 === 0) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+  }
+  return (10 - (sum % 10)) % 10 === Number(npi.charAt(9));
+}
+
+/** Why a transfer-in's sending-hospice facts are refused (the `M6ErrorCode` the service raises). */
+export type TransferInSourceRefusal =
+  | "TRANSFER_SAME_PROVIDER"
+  | "TRANSFER_LIMIT_EXCEEDED"
+  | "TRANSFER_IN_SOURCE_INVALID";
+
+/**
+ * The receiving hospice's transfer-in source checks, CMS Pub. 100-04 ch. 11 §20.1.3 (Rev. 12847):
+ *   • "Transfers are not allowed from the same provider. Hospices must not submit an 8XC if the CMS
+ *     Certification Number (CCN) is the same" — a move between locations of one hospice is not a transfer;
+ *   • "A beneficiary can change hospices only once per benefit period" — any transfer (in or out) already
+ *     recorded for this patient in the carried benefit period refuses a second one (42 CFR 418.30);
+ *   • a supplied NPI must pass its check digit.
+ * PURE: the caller resolves our CCN and the prior-transfer fact. Returns null when the source is acceptable.
+ */
+export function transferInSourceRefusal(input: {
+  readonly otherHospiceCcn: string | null;
+  readonly otherHospiceNpi: string | null;
+  readonly ownCcn: string | null;
+  readonly transferAlreadyRecordedInPeriod: boolean;
+}): { readonly code: TransferInSourceRefusal; readonly message: string } | null {
+  if (
+    input.otherHospiceCcn !== null &&
+    input.ownCcn !== null &&
+    input.otherHospiceCcn === input.ownCcn
+  ) {
+    return {
+      code: "TRANSFER_SAME_PROVIDER",
+      message:
+        "The sending hospice has our CCN. A move between locations of the same hospice is not a transfer.",
+    };
+  }
+  if (input.otherHospiceNpi !== null && !isNpiCheckDigitValid(input.otherHospiceNpi)) {
+    return {
+      code: "TRANSFER_IN_SOURCE_INVALID",
+      message: "The sending hospice's NPI fails its check digit.",
+    };
+  }
+  if (input.transferAlreadyRecordedInPeriod) {
+    return {
+      code: "TRANSFER_LIMIT_EXCEEDED",
+      message:
+        "This patient already changed hospices in this benefit period; only one change is allowed.",
+    };
+  }
+  return null;
 }
 
 /** A planned election period the receiving hospice creates on the new transferred-in admission. */

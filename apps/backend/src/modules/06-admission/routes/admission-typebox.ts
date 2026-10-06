@@ -480,9 +480,30 @@ export const TransferOutSchema = Type.Object({
 
 export const TransferInSchema = Type.Object({
   direction: Type.Literal("in"),
-  effectiveDate: Type.String({ format: "date" }),
+  effectiveDate: Type.String({
+    format: "date",
+    description:
+      "The date the change of hospice is effective. The transferring hospice bills through and including " +
+      "this date and the receiving hospice's transfer notice (TOB 8xC) reports it as the Statement From " +
+      "date (CMS Pub. 100-04 ch. 11 §20.1.3).",
+  }),
   otherHospiceName: Type.String({ minLength: 1, maxLength: 200 }),
-  otherHospiceCcn: Type.Optional(Type.String({ pattern: "^[0-9A-Z]{6}$" })),
+  otherHospiceCcn: Type.Optional(
+    Type.String({
+      pattern: "^[0-9A-Z]{6}$",
+      description:
+        "The transferring hospice's CMS Certification Number. Our own CCN is refused (422 " +
+        "TRANSFER_SAME_PROVIDER): a move between locations of one hospice is not a transfer (§20.1.3). " +
+        "The 8xC transfer notice cannot be filed until it is known.",
+    }),
+  ),
+  otherHospiceNpi: Type.Optional(
+    Type.String({
+      pattern: "^[0-9]{10}$",
+      description:
+        "The transferring hospice's NPI (10 digits, check digit validated → 422 TRANSFER_IN_SOURCE_INVALID).",
+    }),
+  ),
   priorBenefitPeriodSequence: Type.Integer({ minimum: 1 }),
   priorElectionStartDate: Type.String({ format: "date" }),
   // D9 — the receiving hospice's own CTI for the `next` pending period (the inherited period runs on

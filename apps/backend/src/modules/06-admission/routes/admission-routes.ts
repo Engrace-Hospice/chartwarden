@@ -1214,6 +1214,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           effectiveDate: body.effectiveDate,
           otherHospiceName: body.otherHospiceName,
           otherHospiceCcn: body.otherHospiceCcn,
+          otherHospiceNpi: body.otherHospiceNpi,
           narrative: body.narrative,
         },
         userId,

@@ -80,7 +80,11 @@ import {
   issueDetails,
   resolvePlaceOfDeath,
 } from "./discharge/permission-map";
-import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
+import {
+  type TransferInInput,
+  planTransferIn,
+  transferInSourceRefusal,
+} from "./discharge/transfer-in";
 import { completeActiveElectionPeriod } from "./election-period-completion";
 import {
   type AdmissionReadinessFacts,
@@ -5313,11 +5317,44 @@ export function createDbAdmissionRouteService(
           .select({
             patientId: ADM.patientId,
             hospicePhysicianId: ADM.hospicePhysicianId,
+            attendingPhysicianId: ADM.attendingPhysicianId,
+            providerEntityId: ADM.providerEntityId,
           })
           .from(ADM)
           .where(eq(ADM.id, admissionId))
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(admissionId);
+        // CMS Pub. 100-04 ch. 11 §20.1.3 — the sending hospice must be ANOTHER provider (a different CCN), and
+        // a beneficiary changes hospices at most once per benefit period: any transfer (in or out) already
+        // recorded for this patient in the carried period refuses a second one. Both are the receiving
+        // hospice's 8xC transfer-notice rules, enforced here at capture so a bad transfer never posts.
+        const ownCcn = adm.providerEntityId
+          ? ((
+              await foundationSites.providerEntityIdentifiers(
+                tx,
+                organizationId,
+                adm.providerEntityId,
+              )
+            )?.ccn ?? null)
+          : null;
+        const [priorTransferInPeriod] = await tx
+          .select({ id: TE.id })
+          .from(TE)
+          .innerJoin(ADM, eq(ADM.id, TE.admissionId))
+          .where(
+            and(
+              eq(ADM.patientId, adm.patientId),
+              eq(TE.periodSequenceAtTransfer, input.priorBenefitPeriodSequence),
+            ),
+          )
+          .limit(1);
+        const refusal = transferInSourceRefusal({
+          otherHospiceCcn: input.otherHospiceCcn ?? null,
+          otherHospiceNpi: input.otherHospiceNpi ?? null,
+          ownCcn,
+          transferAlreadyRecordedInPeriod: !!priorTransferInPeriod,
+        });
+        if (refusal) throw new AdmissionStateError(refusal.code, refusal.message);
         const selectedHospicePhysicianId = adm.hospicePhysicianId ?? input.hospiceMedicalDirectorId;
         if (input.hospiceMedicalDirectorId !== selectedHospicePhysicianId) {
           throw new WardenXError(
@@ -5326,11 +5363,15 @@ export function createDbAdmissionRouteService(
             400,
           );
         }
-        if (!adm.hospicePhysicianId) {
+        // The transfer-in's attending physician was accepted by the route and then dropped; it is the 8xC's
+        // Attending Physician (CMS Pub. 100-04 ch. 11 §20.1.3), so it fills an admission that names none.
+        const fillAttending = !adm.attendingPhysicianId && !!input.attendingPhysicianId;
+        if (!adm.hospicePhysicianId || fillAttending) {
           await tx
             .update(ADM)
             .set({
-              hospicePhysicianId: selectedHospicePhysicianId,
+              ...(adm.hospicePhysicianId ? {} : { hospicePhysicianId: selectedHospicePhysicianId }),
+              ...(fillAttending ? { attendingPhysicianId: input.attendingPhysicianId } : {}),
               version: sql`${ADM.version} + 1`,
               updatedAt: now(),
             })
@@ -5441,6 +5482,7 @@ export function createDbAdmissionRouteService(
               effectiveAt: input.effectiveDate,
               periodSequenceAtTransfer: plan.inherited.sequence,
               receivingOrSendingCcn: input.otherHospiceCcn ?? null,
+              receivingOrSendingNpi: input.otherHospiceNpi ?? null,
               receivingOrSendingName: input.otherHospiceName,
               narrative: input.narrative,
             })

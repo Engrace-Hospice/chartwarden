@@ -132,6 +132,8 @@ export {
   electionPeriodContextForOrg,
   claimAssemblyRangeContextForOrg,
   claimStayEndFactsForOrg,
+  type TransferInNoticeContext,
+  transferInNoticeContextForOrg,
   createDrizzleAdmissionReaderStore,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
