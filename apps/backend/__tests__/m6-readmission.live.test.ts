@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type AbacContext, INTAKE_DEFAULT_GRANTS } from "@wardenx/auth";
+import { medicareReceiptDay } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
@@ -65,7 +66,9 @@ import {
 } from "../src/modules/23-billing-medicare/index";
 import {
   type M23WorkerDeps,
+  type Parsed277ca,
   type Parsed999,
+  runAckPull277ca,
   runAckPull999,
   runNotrSubmit,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
@@ -125,6 +128,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
   let workerDeps: M23WorkerDeps;
   const alerts: { alertCode: string; payload: Record<string, unknown> }[] = [];
   let parsed999: Parsed999[] = [];
+  let parsed277: Parsed277ca[] = [];
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -344,6 +348,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     m23 = buildDrizzleM23WriteService(handle.db as never, {
       outbox: bind("m23") as never,
       jobs: { enqueue: async () => ({ jobId: randomUUID() }) },
+      providerCcn: { ccnForProviderEntity: async () => "H11111" },
       priorLiveEndedStay: {
         async latestPriorLiveEndedAdmission(organizationId, q) {
           const prior = latestLiveEndedEpisode(
@@ -389,7 +394,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
         generateNoe: async () => ({ x12: "", correlationId: "" }),
         generateNotr: async (input) => ({ x12: "ISA*...~", correlationId: `corr-${input.notrId}` }),
         parse999: async () => parsed999,
-        parse277ca: async () => [],
+        parse277ca: async () => parsed277,
       },
       macPortal: {
         upload: async (input) => ({
@@ -397,7 +402,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
           generatedFileUri: `s3://notices/${input.controlNumber}.x12`,
         }),
         pullPending999: async () => [{ rawFileUri: "s3://acks/999.x12" }],
-        pullPending277ca: async () => [],
+        pullPending277ca: async () => [{ rawFileUri: "s3://acks/277.x12" }],
         probeHealth: async () => true,
       },
       jurisdictions: { listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }] },
@@ -615,6 +620,92 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       code: "PRIOR_ELECTION_NOT_CLOSED",
       statusCode: 409,
     });
+
+    // ── The biller files a corrected NOTR (ch. 11 §20.1.2): a new DRAFT linked to the rejected one. ──
+    const REASON =
+      "The 999 rejected the NOTR file; refiling after the submitter fixed the envelope.";
+    const filed = await m23.correctNotr(WRITE_ACTOR as never, notr.id, { reason: REASON });
+    expect(filed.created).toBe(true);
+    expect(filed.notice).toMatchObject({
+      state: "draft",
+      admissionId: first,
+      triggerKind: "discharge",
+      correctsNoticeId: notr.id,
+      correctionReason: REASON,
+    });
+    const corrected = filed.notice.notrId;
+    // Idempotent: a second request replays the correction in progress instead of filing another.
+    const again = await m23.correctNotr(WRITE_ACTOR as never, notr.id, { reason: REASON });
+    expect(again).toMatchObject({ created: false, notice: { notrId: corrected } });
+    // The rejected NOTR stays as history; the chain reads both ways.
+    expect(
+      await one("SELECT state, corrects_notice_id FROM notr_record WHERE id=$1", [notr.id]),
+    ).toEqual({ state: "ACK_REJECTED", corrects_notice_id: null });
+    // The structural backstop: a second open correction is refused by the unique index.
+    await expect(
+      admin.query(
+        `INSERT INTO notr_record (organization_id, provider_entity_id, patient_id, admission_id, trigger_kind,
+            discharge_event_id, effective_end_date, window_target_at, notr_control_number, corrects_notice_id,
+            correction_reason)
+         SELECT organization_id, provider_entity_id, patient_id, admission_id, trigger_kind, discharge_event_id,
+                effective_end_date, window_target_at, 'H11111-000000-zzzzz-99', corrects_notice_id, correction_reason
+           FROM notr_record WHERE id=$1`,
+        [corrected],
+      ),
+    ).rejects.toThrow(/notr_record_open_correction_uq|duplicate key/);
+
+    // The correction goes through the ordinary queue, worker and ack routing.
+    const queued2 = await m23.submitNotr(WRITE_ACTOR as never, corrected);
+    await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
+      runNotrSubmit(tx as never, workerDeps, { organizationId: ORG, notrId: corrected }),
+    );
+    const ctl = await one<{ notr_control_number: string }>(
+      "SELECT notr_control_number FROM notr_record WHERE id=$1",
+      [corrected],
+    );
+    expect(ctl.notr_control_number).not.toBe(notr.notr_control_number);
+    parsed999 = [
+      {
+        organizationId: ORG,
+        claimId: "",
+        submissionId: queued2.submissionId,
+        claimControlNumber: ctl.notr_control_number,
+        accepted: true,
+        reasonCodes: [],
+        ackFileUri: `s3://acks/999/${corrected}.json`,
+        functionalGroupDate: medicareReceiptDay(new Date()),
+      },
+    ];
+    await runAckPull999(workerDeps);
+    parsed277 = [
+      {
+        organizationId: ORG,
+        claimId: "",
+        submissionId: queued2.submissionId,
+        outcome: "accepted",
+        payerClaimControlNumber: "ICN-NOTR-2",
+        reasonCodes: [],
+        ackFileUri: `s3://acks/277/${corrected}.json`,
+        statusEffectiveDate: medicareReceiptDay(new Date()),
+      },
+    ];
+    await runAckPull277ca(workerDeps);
+    expect(
+      await one(
+        "SELECT state, payer_status_date::text AS payer_date, payer_status_date_source AS source FROM notr_record WHERE id=$1",
+        [corrected],
+      ),
+    ).toEqual({
+      state: "ACK_ACCEPTED",
+      payer_date: medicareReceiptDay(new Date()),
+      source: "277ca_stc02",
+    });
+
+    // The accepted corrected NOTR closes the prior election: the readmission's NOE is unblocked and files.
+    const unblocked = await readmission.getReadmissionContext(ORG, first, {});
+    expect(unblocked?.noeBlocked).toBe(false);
+    const noeQueued = await m23.submitNoe(WRITE_ACTOR as never, noe.id);
+    expect(noeQueued.kind).toBe("noe");
   }, 120_000);
 
   it("a period-3 readmission needs a face-to-face before activation, unless exceptional circumstances are documented", async () => {

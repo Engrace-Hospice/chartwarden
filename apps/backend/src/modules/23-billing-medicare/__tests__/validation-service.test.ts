@@ -358,3 +358,57 @@ describe("Type of Bill refresh on re-validation (812/813 → 811/814 once the st
     });
   });
 });
+
+describe("late-NOE occurrence span 77 on re-validation (CMS Pub. 100-04 ch. 11 §20.1.1)", () => {
+  function contextWithNoe(acceptedDate: string): ValidationContextPort {
+    return {
+      build: async (_tx, _actor, claim) => ({
+        context: {
+          claimId: claim.id,
+          claim: {
+            serviceFrom: "2026-03-01",
+            serviceTo: "2026-03-31",
+            dischargeClaimCodes: {
+              patientStatus: "30",
+              conditionCodes: [],
+              occurrenceCodes: [],
+              unresolved: null,
+            },
+          },
+          noe: {
+            state: "ack_accepted",
+            admissionDay: 20,
+            windowBreached: false,
+            electionEffectiveDate: "2026-03-01",
+            acceptedDate,
+            acceptedDateSource: "277ca_stc02",
+          },
+        } as unknown as ValidationContext,
+        overlays: {},
+      }),
+    };
+  }
+
+  it("persists OSC 77 (admission through the day before acceptance) for a NOE accepted late", async () => {
+    seedValidatingClaim();
+    const svc = makeService([passRule], { contextPort: contextWithNoe("2026-03-09") });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    expect(store.claims.get("claim-1").occurrenceSpans).toEqual([
+      { code: "77", from: "2026-03-01", through: "2026-03-08" },
+    ]);
+    expect(store.claims.get("claim-1").version).toBe(0); // a derived projection, not a user edit
+  });
+
+  it("clears the span once the NOE reads as timely (e.g. a corrected payer date)", async () => {
+    seedValidatingClaim();
+    await makeService([passRule], { contextPort: contextWithNoe("2026-03-09") }).validateClaim(
+      ACTOR,
+      { claimId: "claim-1", trigger: "manual_re_run" },
+    );
+    await makeService([passRule], { contextPort: contextWithNoe("2026-03-05") }).validateClaim(
+      ACTOR,
+      { claimId: "claim-1", trigger: "pre_submission" },
+    );
+    expect(store.claims.get("claim-1").occurrenceSpans).toEqual([]);
+  });
+});

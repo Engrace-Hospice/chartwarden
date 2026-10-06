@@ -188,13 +188,23 @@ describe.skipIf(!DB_URL)(
         attemptIndex: 0,
         withBlockingFailure: false,
       });
+      // A late NOE's provider-liable days (OSC 77, ch. 11 §20.1.1), as the validation run derives them.
+      await admin.query(
+        `UPDATE claim SET occurrence_spans = '[{"code":"77","from":"2026-01-01","through":"2026-01-06"}]'::jsonb
+          WHERE id = $1`,
+        [claimId],
+      );
       let uploaded = false;
+      const documents: unknown[] = [];
       const deps: M23WorkerDeps = {
         connection: {} as never,
         db: handle.db as unknown as repositories.BillingDb,
         outbox: { publish: async () => {} },
         x12: {
-          generate837i: async () => ({ x12: "ISA*00*...", correlationId: "corr-1" }),
+          generate837i: async (input) => {
+            documents.push(input.claimDocument);
+            return { x12: "ISA*00*...", correlationId: "corr-1" };
+          },
           generateNoe: async () => ({ x12: "", correlationId: "" }),
           generateNotr: async () => ({ x12: "", correlationId: "" }),
           parse999: async () => [],
@@ -223,6 +233,12 @@ describe.skipIf(!DB_URL)(
       expect(uploaded).toBe(true);
       const claim = await claimRow(claimId);
       expect(claim.state).toBe("SUBMITTED");
+      // The stored occurrence span reaches the X12 gateway's claim document (837I HI*BI:77:RD8).
+      expect(documents).toEqual([
+        expect.objectContaining({
+          occurrenceSpans: [{ code: "77", from: "2026-01-01", through: "2026-01-06" }],
+        }),
+      ]);
       const sub = await submissionRow(submissionId);
       expect(sub.outcome).toBe("submitted");
     });

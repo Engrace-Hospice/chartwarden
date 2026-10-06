@@ -40,12 +40,13 @@ import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
+import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
   PriorElectionNotClosedError,
   priorElectionClosureTx,
 } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
-import { noticeAckOutcomeView } from "./notice-ack-view";
+import { mapNoe, mapNotr } from "./notice-views";
 import type {
   ClaimDetailView,
   ClaimSummaryView,
@@ -64,6 +65,7 @@ import type {
   CancelNotrArgs,
   CheckEligibilityArgs,
   ClaimSubmissionAcceptedView,
+  CorrectNoticeArgs,
   CreateRuleConfigArgs,
   DeleteRuleConfigArgs,
   EligibilityCheckAcceptedView,
@@ -108,57 +110,6 @@ function mapClaimSummary(row: repositories.ClaimRecord): ClaimSummaryView {
     totalChargeCents: row.totalChargeCents,
     totalExpectedPaymentCents: row.totalExpectedPaymentCents,
     version: row.version,
-  };
-}
-
-function mapNoe(row: repositories.NoeRecord): NoeView {
-  return {
-    noeId: row.id,
-    organizationId: row.organizationId,
-    providerEntityId: row.providerEntityId,
-    patientId: row.patientId,
-    admissionId: row.admissionId,
-    electionPeriodId: row.electionPeriodId,
-    state: row.state,
-    electionEffectiveDate: row.electionEffectiveDate,
-    windowTargetAt: row.windowTargetAt,
-    windowBreachedAt: row.windowBreachedAt ?? null,
-    noeControlNumber: row.noeControlNumber,
-    payerNoeControlNumber: row.payerNoeControlNumber ?? null,
-    ...noticeAckOutcomeView(row),
-    latestSubmissionId: row.latestSubmissionId ?? null,
-    latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
-    confirmationDocumentId: row.confirmationDocumentId ?? null,
-    version: row.version,
-    createdAt: isoReq(row.createdAt),
-    updatedAt: isoReq(row.updatedAt),
-  };
-}
-
-function mapNotr(row: repositories.NotrRecord): NotrView {
-  return {
-    notrId: row.id,
-    organizationId: row.organizationId,
-    providerEntityId: row.providerEntityId,
-    patientId: row.patientId,
-    admissionId: row.admissionId,
-    triggerKind: row.triggerKind,
-    revocationEventId: row.revocationEventId ?? null,
-    transferEventId: row.transferEventId ?? null,
-    dischargeEventId: row.dischargeEventId ?? null,
-    effectiveEndDate: row.effectiveEndDate,
-    windowTargetAt: row.windowTargetAt,
-    windowBreachedAt: row.windowBreachedAt ?? null,
-    state: row.state,
-    notrControlNumber: row.notrControlNumber,
-    payerNotrControlNumber: row.payerNotrControlNumber ?? null,
-    ...noticeAckOutcomeView(row),
-    latestSubmissionId: row.latestSubmissionId ?? null,
-    latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
-    confirmationDocumentId: row.confirmationDocumentId ?? null,
-    version: row.version,
-    createdAt: isoReq(row.createdAt),
-    updatedAt: isoReq(row.updatedAt),
   };
 }
 
@@ -311,6 +262,14 @@ export function buildDrizzleM23WriteService(
   ): Promise<void> => {
     if (ports.outbox) await ports.outbox.publish(tx, input);
   };
+
+  // Corrected NOE / NOTR after a rejection — its own service (one transaction each, RLS-scoped).
+  const corrections = buildNoticeCorrectionService(db, {
+    outbox: ports.outbox,
+    ccnFor: (tx, organizationId, providerEntityId) =>
+      providerCcn.ccnForProviderEntity(tx, organizationId, providerEntityId),
+    now,
+  });
 
   /** The NOE's patient's latest earlier live-ended stay (`null` = none, an unknown NOE, or the port unbound). */
   const priorLiveEndedStayFor = async (
@@ -1038,6 +997,16 @@ export function buildDrizzleM23WriteService(
         if (!res.ok) throw conflict412(res.currentVersion);
         return mapNotr(res.row);
       });
+    },
+
+    async correctNoe(actor, noeId, args: CorrectNoticeArgs) {
+      const res = await corrections.correctNoe(actor, noeId, args);
+      return { created: res.created, notice: mapNoe(res.record) };
+    },
+
+    async correctNotr(actor, notrId, args: CorrectNoticeArgs) {
+      const res = await corrections.correctNotr(actor, notrId, args);
+      return { created: res.created, notice: mapNotr(res.record) };
     },
 
     // ── eligibility ──

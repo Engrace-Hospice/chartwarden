@@ -18,7 +18,8 @@
 // is expanded into its 7 real events (the §4.8 `m23.notr.submit` / `m23.notr.window-watch` queues + the §4.9
 // `m23.notr.window_*` alerts require them), yielding 40 events (18 claim + 7 noe + 7 notr + 3 eligibility +
 // 1 mac_credential + 2 mac_portal + 1 billing-render + 1 abn), plus the 5 `m23.transfer_notice.*` events
-// (8xC / 8xD, migration 0375) added after this count was taken. Severity (§4.10 col 2) and alert routing
+// (8xC / 8xD, migration 0375) and the 2 `m23.{noe,notr}.correction_created` events (migration 0378) added after
+// this count was taken. Severity (§4.10 col 2) and alert routing
 // (§4.9) are NOT part of the OutboxEventEntry shape — they live in `@wardenx/billing`'s alerts.ts.
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
@@ -30,6 +31,13 @@ const nullableInstant = Type.Union([isoInstant, Type.Null()]);
 const str = Type.String();
 const cents = Type.Integer();
 const int = Type.Integer();
+/** Which date `payerStatusDate` is (migration 0378): the 277CA STC02, a 999's GS04 / ISA09, or our receipt date. */
+const payerStatusDateSource = Type.Union([
+  Type.Literal("277ca_stc02"),
+  Type.Literal("999_gs04"),
+  Type.Literal("999_isa09"),
+  Type.Literal("receipt"),
+]);
 
 export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   // ── claim lifecycle (§2.2 / §4.10) ────────────────────────────────────────────────────────────────
@@ -387,6 +395,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       acknowledgmentId: id,
       payerNoeControlNumber: str,
       acceptedAt: isoInstant,
+      payerStatusDate: isoInstant,
+      payerStatusDateSource,
     }),
     declaredConsumers: [],
     seamConsumers: ["m33"],
@@ -403,9 +413,27 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca")]),
       rejectionCodes: Type.Array(str),
       rejectedAt: isoInstant,
+      payerStatusDate: isoInstant,
+      payerStatusDateSource,
     }),
     declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.noe.correction_created",
+    moduleOwner: "m23",
+    description:
+      "A biller filed a corrected NOE after Medicare rejected one (ch. 11 §20.1.1; M23 §2.2 'corrected NOE is its own row'): the new DRAFT `noeId` copies the rejected `correctsNoeId`, with its notice date possibly corrected (`dateCorrected`). The biller's reason stays on the row, never in this payload.",
+    payloadSchema: Type.Object({
+      noeId: id,
+      correctsNoeId: id,
+      admissionId: id,
+      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca"), Type.Null()]),
+      dateCorrected: Type.Boolean(),
+      windowTargetAt: isoInstant,
+    }),
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -488,6 +516,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       acknowledgmentId: id,
       payerNotrControlNumber: str,
       acceptedAt: isoInstant,
+      payerStatusDate: isoInstant,
+      payerStatusDateSource,
     }),
     declaredConsumers: [],
     seamConsumers: ["m33"],
@@ -504,9 +534,27 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca")]),
       rejectionCodes: Type.Array(str),
       rejectedAt: isoInstant,
+      payerStatusDate: isoInstant,
+      payerStatusDateSource,
     }),
     declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.notr.correction_created",
+    moduleOwner: "m23",
+    description:
+      "A biller filed a corrected NOTR after Medicare rejected one (ch. 11 §20.1.2; M23 §2.2 'corrected NOTR is its own row'): the new DRAFT `notrId` copies the rejected `correctsNotrId`, with its notice date possibly corrected (`dateCorrected`). The biller's reason stays on the row, never in this payload.",
+    payloadSchema: Type.Object({
+      notrId: id,
+      correctsNotrId: id,
+      admissionId: id,
+      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca"), Type.Null()]),
+      dateCorrected: Type.Boolean(),
+      windowTargetAt: isoInstant,
+    }),
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

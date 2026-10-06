@@ -12360,6 +12360,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/noe-records/{id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a corrected NOE for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
+        post: operations["postApiV1NoerecordsByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/noe-records/{id}/submit": {
         parameters: {
             query?: never;
@@ -12491,6 +12508,23 @@ export interface paths {
         put?: never;
         /** Cancel a DRAFT/READY NOTR — terminating-event-reversed guard fact (§4.1 #31) */
         post: operations["postApiV1NotrrecordsByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notr-records/{id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a corrected NOTR for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
+        post: operations["postApiV1NotrrecordsByIdCorrect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -55832,6 +55866,18 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
                             noeId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -55878,6 +55924,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
                         noeId: string;
                         organizationId: string;
                         providerEntityId: string;
@@ -55926,6 +55984,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdCorrect: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    correctedDate?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        created: boolean;
+                        notice: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
+                            noeId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            admissionId: string;
+                            electionPeriodId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            electionEffectiveDate: string;
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            noeControlNumber: string;
+                            payerNoeControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestAcknowledgmentId: string | null;
+                            confirmationDocumentId: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -56155,6 +56281,18 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
                             notrId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -56204,6 +56342,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
                         notrId: string;
                         organizationId: string;
                         providerEntityId: string;
@@ -56255,6 +56405,77 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NotrrecordsByIdCorrect: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    correctedDate?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        created: boolean;
+                        notice: {
+                            acceptedAt: string | null;
+                            rejectedAt: string | null;
+                            rejectionStage: "999" | "277ca" | null;
+                            rejectionCodes: string[];
+                            payerStatusDate: string | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
+                            correctsNoticeId: string | null;
+                            correctionReason: string | null;
+                            correctedBy: {
+                                noticeId: string;
+                                state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            } | null;
+                            notrId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            admissionId: string;
+                            triggerKind: "revocation" | "transfer_out" | "discharge";
+                            revocationEventId: string | null;
+                            transferEventId: string | null;
+                            dischargeEventId: string | null;
+                            effectiveEndDate: string;
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            notrControlNumber: string;
+                            payerNotrControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestAcknowledgmentId: string | null;
+                            confirmationDocumentId: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

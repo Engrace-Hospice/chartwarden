@@ -313,9 +313,28 @@ export interface NoticeAckOutcomeView {
   readonly rejectedAt: string | null;
   readonly rejectionStage: "999" | "277ca" | null;
   readonly rejectionCodes: readonly string[];
+  /** Medicare's own date for the answer (migration 0378): 277CA STC02, a 999's GS04 / ISA09, else our receipt. */
+  readonly payerStatusDate: string | null;
+  readonly payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | null;
 }
 
-export interface NoeView extends NoticeAckOutcomeView {
+/** The correction chain (migration 0378): a corrected notice points back at the rejected one, and vice versa. */
+export interface NoticeCorrectionLinkView {
+  /** On a corrected notice: the rejected notice it was filed for. */
+  readonly correctsNoticeId: string | null;
+  /** The biller's reason for the correction (on the corrected notice only). */
+  readonly correctionReason: string | null;
+  /** On a rejected notice: the correction filed for it (the live / accepted one, else the newest attempt). */
+  readonly correctedBy: { readonly noticeId: string; readonly state: NoticeState } | null;
+}
+
+/** `POST /…/:id/correct` — the corrected notice, and whether this request created it (false = replayed). */
+export interface NoticeCorrectionView<V> {
+  readonly created: boolean;
+  readonly notice: V;
+}
+
+export interface NoeView extends NoticeAckOutcomeView, NoticeCorrectionLinkView {
   readonly noeId: string;
   readonly organizationId: string;
   readonly providerEntityId: string;
@@ -336,7 +355,7 @@ export interface NoeView extends NoticeAckOutcomeView {
   readonly updatedAt: string;
 }
 
-export interface NotrView extends NoticeAckOutcomeView {
+export interface NotrView extends NoticeAckOutcomeView, NoticeCorrectionLinkView {
   readonly notrId: string;
   readonly organizationId: string;
   readonly providerEntityId: string;

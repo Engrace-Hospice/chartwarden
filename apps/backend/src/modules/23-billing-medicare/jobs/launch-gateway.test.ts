@@ -20,7 +20,16 @@ const CLAIM_DOCUMENT = {
     conditionCodes: [],
     occurrenceCodes: [{ code: "55", date: "2026-03-20" }],
   },
+  occurrenceSpans: [{ code: "77", from: "2026-03-01", through: "2026-03-06" }],
 } as const;
+
+const ACK_BASE = {
+  organizationId: "org-1",
+  claimId: "",
+  submissionId: "sub-1",
+  ackFileUri: "s3://acks/one",
+  reasonCodes: [],
+};
 
 describe("M23 launch gateway", () => {
   it("submits and parses acknowledgments through a credential-isolated transport", async () => {
@@ -68,5 +77,51 @@ describe("M23 launch gateway", () => {
         claimDocument: CLAIM_DOCUMENT,
       }),
     ).rejects.toThrow("invalid generation response");
+  });
+
+  it("passes the payer's STC02 / GS04 / ISA09 dates through, and refuses a malformed one", async () => {
+    let body: unknown = [];
+    const gateway = createM23LaunchGateway(config, {
+      request: async () => ({ status: 200, body }),
+    });
+    body = [
+      {
+        ...ACK_BASE,
+        outcome: "accepted",
+        payerClaimControlNumber: "ICN-1",
+        statusEffectiveDate: "2026-03-07",
+      },
+    ];
+    expect(await gateway.x12.parse277ca({ macJurisdiction: "ngs_j6", rawFileUri: "u" })).toEqual(
+      body,
+    );
+    body = [
+      {
+        ...ACK_BASE,
+        claimControlNumber: "c",
+        accepted: true,
+        functionalGroupDate: "2026-03-08",
+        interchangeDate: null,
+      },
+    ];
+    expect(await gateway.x12.parse999({ macJurisdiction: "ngs_j6", rawFileUri: "u" })).toEqual(
+      body,
+    );
+    // Pre-date gateways omit the dates entirely: still valid (the notice falls back to our receipt date).
+    body = [{ ...ACK_BASE, outcome: "rejected", payerClaimControlNumber: "" }];
+    expect(await gateway.x12.parse277ca({ macJurisdiction: "ngs_j6", rawFileUri: "u" })).toEqual(
+      body,
+    );
+    body = [
+      {
+        ...ACK_BASE,
+        outcome: "accepted",
+        payerClaimControlNumber: "",
+        statusEffectiveDate: "2026-02-30",
+      },
+    ];
+    await expect(
+      gateway.x12.parse277ca({ macJurisdiction: "ngs_j6", rawFileUri: "u" }),
+    ).rejects.toThrow("invalid 277CA response");
   });
 });

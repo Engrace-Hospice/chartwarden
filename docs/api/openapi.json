@@ -137359,6 +137359,15 @@
                       "items": {
                         "type": "object",
                         "required": [
+                          "acceptedAt",
+                          "rejectedAt",
+                          "rejectionStage",
+                          "rejectionCodes",
+                          "payerStatusDate",
+                          "payerStatusDateSource",
+                          "correctsNoticeId",
+                          "correctionReason",
+                          "correctedBy",
                           "noeId",
                           "organizationId",
                           "providerEntityId",
@@ -137379,6 +137388,151 @@
                           "updatedAt"
                         ],
                         "properties": {
+                          "acceptedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rejectedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rejectionStage": {
+                            "anyOf": [
+                              {
+                                "const": "999",
+                                "type": "string"
+                              },
+                              {
+                                "const": "277ca",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rejectionCodes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "payerStatusDate": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "payerStatusDateSource": {
+                            "anyOf": [
+                              {
+                                "const": "277ca_stc02",
+                                "type": "string"
+                              },
+                              {
+                                "const": "999_gs04",
+                                "type": "string"
+                              },
+                              {
+                                "const": "999_isa09",
+                                "type": "string"
+                              },
+                              {
+                                "const": "receipt",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctsNoticeId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctionReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctedBy": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "noticeId",
+                                  "state"
+                                ],
+                                "properties": {
+                                  "noticeId": {
+                                    "type": "string"
+                                  },
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "draft",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ready",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "submitted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_accepted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_rejected",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "cancelled",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "noeId": {
                             "type": "string"
                           },
@@ -137552,6 +137706,15 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "acceptedAt",
+                    "rejectedAt",
+                    "rejectionStage",
+                    "rejectionCodes",
+                    "payerStatusDate",
+                    "payerStatusDateSource",
+                    "correctsNoticeId",
+                    "correctionReason",
+                    "correctedBy",
                     "noeId",
                     "organizationId",
                     "providerEntityId",
@@ -137572,6 +137735,151 @@
                     "updatedAt"
                   ],
                   "properties": {
+                    "acceptedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionStage": {
+                      "anyOf": [
+                        {
+                          "const": "999",
+                          "type": "string"
+                        },
+                        {
+                          "const": "277ca",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "payerStatusDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerStatusDateSource": {
+                      "anyOf": [
+                        {
+                          "const": "277ca_stc02",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_gs04",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_isa09",
+                          "type": "string"
+                        },
+                        {
+                          "const": "receipt",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctsNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctionReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctedBy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "noticeId",
+                            "state"
+                          ],
+                          "properties": {
+                            "noticeId": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "noeId": {
                       "type": "string"
                     },
@@ -137744,6 +138052,389 @@
                 "properties": {
                   "electionReversed": {
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/noe-records/{id}/correct": {
+      "post": {
+        "operationId": "postApiV1NoerecordsByIdCorrect",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "File a corrected NOE for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "created",
+                    "notice"
+                  ],
+                  "properties": {
+                    "created": {
+                      "type": "boolean"
+                    },
+                    "notice": {
+                      "type": "object",
+                      "required": [
+                        "acceptedAt",
+                        "rejectedAt",
+                        "rejectionStage",
+                        "rejectionCodes",
+                        "payerStatusDate",
+                        "payerStatusDateSource",
+                        "correctsNoticeId",
+                        "correctionReason",
+                        "correctedBy",
+                        "noeId",
+                        "organizationId",
+                        "providerEntityId",
+                        "patientId",
+                        "admissionId",
+                        "electionPeriodId",
+                        "state",
+                        "electionEffectiveDate",
+                        "windowTargetAt",
+                        "windowBreachedAt",
+                        "noeControlNumber",
+                        "payerNoeControlNumber",
+                        "latestSubmissionId",
+                        "latestAcknowledgmentId",
+                        "confirmationDocumentId",
+                        "version",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "acceptedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rejectedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rejectionStage": {
+                          "anyOf": [
+                            {
+                              "const": "999",
+                              "type": "string"
+                            },
+                            {
+                              "const": "277ca",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rejectionCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "payerStatusDate": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "payerStatusDateSource": {
+                          "anyOf": [
+                            {
+                              "const": "277ca_stc02",
+                              "type": "string"
+                            },
+                            {
+                              "const": "999_gs04",
+                              "type": "string"
+                            },
+                            {
+                              "const": "999_isa09",
+                              "type": "string"
+                            },
+                            {
+                              "const": "receipt",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctsNoticeId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctionReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctedBy": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "noticeId",
+                                "state"
+                              ],
+                              "properties": {
+                                "noticeId": {
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "anyOf": [
+                                    {
+                                      "const": "draft",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ready",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "submitted",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_accepted",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_rejected",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cancelled",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "noeId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "patientId": {
+                          "type": "string"
+                        },
+                        "admissionId": {
+                          "type": "string"
+                        },
+                        "electionPeriodId": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ready",
+                              "type": "string"
+                            },
+                            {
+                              "const": "submitted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ack_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ack_accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ack_rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "electionEffectiveDate": {
+                          "type": "string"
+                        },
+                        "windowTargetAt": {
+                          "type": "string"
+                        },
+                        "windowBreachedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "noeControlNumber": {
+                          "type": "string"
+                        },
+                        "payerNoeControlNumber": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "latestSubmissionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "latestAcknowledgmentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "confirmationDocumentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "correctedDate": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -138465,6 +139156,15 @@
                       "items": {
                         "type": "object",
                         "required": [
+                          "acceptedAt",
+                          "rejectedAt",
+                          "rejectionStage",
+                          "rejectionCodes",
+                          "payerStatusDate",
+                          "payerStatusDateSource",
+                          "correctsNoticeId",
+                          "correctionReason",
+                          "correctedBy",
                           "notrId",
                           "organizationId",
                           "providerEntityId",
@@ -138488,6 +139188,151 @@
                           "updatedAt"
                         ],
                         "properties": {
+                          "acceptedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rejectedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rejectionStage": {
+                            "anyOf": [
+                              {
+                                "const": "999",
+                                "type": "string"
+                              },
+                              {
+                                "const": "277ca",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rejectionCodes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "payerStatusDate": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "payerStatusDateSource": {
+                            "anyOf": [
+                              {
+                                "const": "277ca_stc02",
+                                "type": "string"
+                              },
+                              {
+                                "const": "999_gs04",
+                                "type": "string"
+                              },
+                              {
+                                "const": "999_isa09",
+                                "type": "string"
+                              },
+                              {
+                                "const": "receipt",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctsNoticeId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctionReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctedBy": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "noticeId",
+                                  "state"
+                                ],
+                                "properties": {
+                                  "noticeId": {
+                                    "type": "string"
+                                  },
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "draft",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ready",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "submitted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_accepted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_rejected",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "cancelled",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "notrId": {
                             "type": "string"
                           },
@@ -138704,6 +139549,15 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "acceptedAt",
+                    "rejectedAt",
+                    "rejectionStage",
+                    "rejectionCodes",
+                    "payerStatusDate",
+                    "payerStatusDateSource",
+                    "correctsNoticeId",
+                    "correctionReason",
+                    "correctedBy",
                     "notrId",
                     "organizationId",
                     "providerEntityId",
@@ -138727,6 +139581,151 @@
                     "updatedAt"
                   ],
                   "properties": {
+                    "acceptedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionStage": {
+                      "anyOf": [
+                        {
+                          "const": "999",
+                          "type": "string"
+                        },
+                        {
+                          "const": "277ca",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "payerStatusDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerStatusDateSource": {
+                      "anyOf": [
+                        {
+                          "const": "277ca_stc02",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_gs04",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_isa09",
+                          "type": "string"
+                        },
+                        {
+                          "const": "receipt",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctsNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctionReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctedBy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "noticeId",
+                            "state"
+                          ],
+                          "properties": {
+                            "noticeId": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "notrId": {
                       "type": "string"
                     },
@@ -138942,6 +139941,435 @@
                 "properties": {
                   "terminatingEventReversed": {
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notr-records/{id}/correct": {
+      "post": {
+        "operationId": "postApiV1NotrrecordsByIdCorrect",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "File a corrected NOTR for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "created",
+                    "notice"
+                  ],
+                  "properties": {
+                    "created": {
+                      "type": "boolean"
+                    },
+                    "notice": {
+                      "type": "object",
+                      "required": [
+                        "acceptedAt",
+                        "rejectedAt",
+                        "rejectionStage",
+                        "rejectionCodes",
+                        "payerStatusDate",
+                        "payerStatusDateSource",
+                        "correctsNoticeId",
+                        "correctionReason",
+                        "correctedBy",
+                        "notrId",
+                        "organizationId",
+                        "providerEntityId",
+                        "patientId",
+                        "admissionId",
+                        "triggerKind",
+                        "revocationEventId",
+                        "transferEventId",
+                        "dischargeEventId",
+                        "effectiveEndDate",
+                        "windowTargetAt",
+                        "windowBreachedAt",
+                        "state",
+                        "notrControlNumber",
+                        "payerNotrControlNumber",
+                        "latestSubmissionId",
+                        "latestAcknowledgmentId",
+                        "confirmationDocumentId",
+                        "version",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "acceptedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rejectedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rejectionStage": {
+                          "anyOf": [
+                            {
+                              "const": "999",
+                              "type": "string"
+                            },
+                            {
+                              "const": "277ca",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rejectionCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "payerStatusDate": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "payerStatusDateSource": {
+                          "anyOf": [
+                            {
+                              "const": "277ca_stc02",
+                              "type": "string"
+                            },
+                            {
+                              "const": "999_gs04",
+                              "type": "string"
+                            },
+                            {
+                              "const": "999_isa09",
+                              "type": "string"
+                            },
+                            {
+                              "const": "receipt",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctsNoticeId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctionReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctedBy": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "noticeId",
+                                "state"
+                              ],
+                              "properties": {
+                                "noticeId": {
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "anyOf": [
+                                    {
+                                      "const": "draft",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ready",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "submitted",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_accepted",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ack_rejected",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cancelled",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "notrId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "patientId": {
+                          "type": "string"
+                        },
+                        "admissionId": {
+                          "type": "string"
+                        },
+                        "triggerKind": {
+                          "anyOf": [
+                            {
+                              "const": "revocation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "transfer_out",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "revocationEventId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "transferEventId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dischargeEventId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "effectiveEndDate": {
+                          "type": "string"
+                        },
+                        "windowTargetAt": {
+                          "type": "string"
+                        },
+                        "windowBreachedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ready",
+                              "type": "string"
+                            },
+                            {
+                              "const": "submitted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ack_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ack_accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ack_rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "notrControlNumber": {
+                          "type": "string"
+                        },
+                        "payerNotrControlNumber": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "latestSubmissionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "latestAcknowledgmentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "confirmationDocumentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "correctedDate": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }

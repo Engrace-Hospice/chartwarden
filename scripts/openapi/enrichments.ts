@@ -351,6 +351,7 @@ import {
   CheckEligibilityBodySchema,
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
+  CorrectNoticeBodySchema,
   CreateRuleConfigBodySchema,
   HospicePeriodsQuerySchema as M23HospicePeriodsQuerySchema,
   HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
@@ -9632,7 +9633,29 @@ const M23ClaimValidationRunsResponse = Type.Object({
   runs: Type.Array(M23ValidationRunView),
 });
 
+// The MAC's answer (0377) + Medicare's own date for it and the correction chain (0378), on NOE and NOTR alike.
+const M23NoticeAckAndCorrection = {
+  acceptedAt: Type.Union([Type.String(), Type.Null()]),
+  rejectedAt: Type.Union([Type.String(), Type.Null()]),
+  rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca"), Type.Null()]),
+  rejectionCodes: Type.Array(Type.String()),
+  payerStatusDate: Type.Union([Type.String(), Type.Null()]),
+  payerStatusDateSource: Type.Union([
+    Type.Literal("277ca_stc02"),
+    Type.Literal("999_gs04"),
+    Type.Literal("999_isa09"),
+    Type.Literal("receipt"),
+    Type.Null(),
+  ]),
+  correctsNoticeId: Type.Union([Type.String(), Type.Null()]),
+  correctionReason: Type.Union([Type.String(), Type.Null()]),
+  correctedBy: Type.Union([
+    Type.Object({ noticeId: Type.String(), state: M23NoticeState }),
+    Type.Null(),
+  ]),
+};
 const M23NoeView = Type.Object({
+  ...M23NoticeAckAndCorrection,
   noeId: Type.String(),
   organizationId: Type.String(),
   providerEntityId: Type.String(),
@@ -9658,6 +9681,7 @@ const M23NoeListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 const M23NotrView = Type.Object({
+  ...M23NoticeAckAndCorrection,
   notrId: Type.String(),
   organizationId: Type.String(),
   providerEntityId: Type.String(),
@@ -9947,6 +9971,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/notr-records/:id": {
     summary: "NOTR detail (§4.1 #29)",
     response: M23NotrView,
+  },
+  "POST /api/v1/noe-records/:id/correct": {
+    summary:
+      "File a corrected NOE for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress)",
+    body: CorrectNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: Type.Object({ created: Type.Boolean(), notice: M23NoeView }),
+    status: 201,
+  },
+  "POST /api/v1/notr-records/:id/correct": {
+    summary:
+      "File a corrected NOTR for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress)",
+    body: CorrectNoticeBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: Type.Object({ created: Type.Boolean(), notice: M23NotrView }),
+    status: 201,
   },
 });
 

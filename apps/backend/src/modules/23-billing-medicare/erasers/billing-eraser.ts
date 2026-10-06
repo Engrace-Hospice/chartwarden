@@ -315,7 +315,28 @@ export function createDrizzleBillingEraseStore(
         }
 
         // Shred the free-text §3.7 redact fields (M23_REDACT_FIELDS) so a partial delete failure
-        // leaves nothing readable: claim.replacement_reason + validation_override.reason.
+        // leaves nothing readable: claim.replacement_reason + validation_override.reason, and the corrected
+        // NOE / NOTR's correction_reason (migration 0378; the sentinel satisfies its 20..2000 CHECK).
+        await tx
+          .update(NOE)
+          .set({ correctionReason: M23_REDACT_SENTINEL })
+          .where(
+            and(
+              eq(NOE.organizationId, organizationId),
+              eq(NOE.patientId, patientId),
+              isNotNull(NOE.correctionReason),
+            ),
+          );
+        await tx
+          .update(NOTR)
+          .set({ correctionReason: M23_REDACT_SENTINEL })
+          .where(
+            and(
+              eq(NOTR.organizationId, organizationId),
+              eq(NOTR.patientId, patientId),
+              isNotNull(NOTR.correctionReason),
+            ),
+          );
         await tx
           .update(C)
           .set({ replacementReason: M23_REDACT_SENTINEL })

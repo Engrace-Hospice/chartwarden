@@ -48,7 +48,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import { type HospiceHistory, assertNoMbi } from "@wardenx/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
+import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
   type M23CronQueueName,
   M23_CRON_QUEUES,
@@ -223,6 +223,10 @@ export interface Parsed999 {
   readonly accepted: boolean;
   readonly reasonCodes: readonly string[];
   readonly ackFileUri: string;
+  /** The 999's own GS04 functional group date (ISO) — a 999 has no status date (`read999EnvelopeDates`). */
+  readonly functionalGroupDate?: string | null;
+  /** The 999's ISA09 interchange date (ISO), the fallback when GS04 is absent. */
+  readonly interchangeDate?: string | null;
 }
 
 /** A parsed 277CA result (PHI-free: claim-level accept/reject/partial + payer control number + reason codes). */
@@ -234,6 +238,8 @@ export interface Parsed277ca {
   readonly payerClaimControlNumber: string;
   readonly reasonCodes: readonly string[];
   readonly ackFileUri: string;
+  /** STC02 — the MAC's status information effective date (ISO) for this claim / notice (`read277caStatusDates`). */
+  readonly statusEffectiveDate?: string | null;
 }
 
 /** The MAC-portal transport (upload generated files; pull pending ack files; probe availability). */
@@ -718,6 +724,8 @@ export function claimDocumentFor(
     readonly patientStatusCode: string | null;
     readonly conditionCodes: unknown;
     readonly occurrenceCodes: unknown;
+    /** Migration 0378 — the derived occurrence spans (late-NOE OSC 77). Absent on a pre-0378 caller shape. */
+    readonly occurrenceSpans?: unknown;
   },
   claimControlNumber: string,
 ): ClaimDocument837i {
@@ -735,6 +743,17 @@ export function claimDocumentFor(
           : [];
       })
     : [];
+  const occurrenceSpans = Array.isArray(claim.occurrenceSpans)
+    ? claim.occurrenceSpans.flatMap((o: unknown) => {
+        const r = o as { code?: unknown; from?: unknown; through?: unknown } | null;
+        return r &&
+          typeof r.code === "string" &&
+          typeof r.from === "string" &&
+          typeof r.through === "string"
+          ? [{ code: r.code, from: r.from, through: r.through }]
+          : [];
+      })
+    : [];
   return {
     claimId: claim.id,
     claimControlNumber,
@@ -742,6 +761,7 @@ export function claimDocumentFor(
     serviceFrom: claim.serviceFrom,
     serviceTo: claim.serviceTo,
     dischargeCodes: { patientStatus: claim.patientStatusCode, conditionCodes, occurrenceCodes },
+    occurrenceSpans,
   };
 }
 
@@ -1405,6 +1425,8 @@ interface RoutedAck {
   readonly macJurisdiction: string;
   readonly ackFileUri: string;
   readonly receivedAt: Date;
+  /** The payer-stamped dates the gateway parsed (a notice's `payer_status_date`). */
+  readonly payerDates?: AckPayerDates;
 }
 
 /**
@@ -1557,6 +1579,10 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
             macJurisdiction,
             ackFileUri: result.ackFileUri,
             receivedAt: now(),
+            payerDates: {
+              functionalGroupDate: result.functionalGroupDate ?? null,
+              interchangeDate: result.interchangeDate ?? null,
+            },
           },
         });
       }
@@ -1585,6 +1611,7 @@ export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
             macJurisdiction,
             ackFileUri: result.ackFileUri,
             receivedAt: now(),
+            payerDates: { statusEffectiveDate: result.statusEffectiveDate ?? null },
           },
         });
       }

@@ -5,7 +5,9 @@
 //   1. append the `claim_acknowledgment` (no claim back-link; the notice id rides in `parsed_payload`) — the
 //      per-ack audit trail, idempotent on `(mac_jurisdiction, ack_file_uri)`;
 //   2. drive the notice's §2.2 ack transition (the pure `noeMachine` / `notrMachine`, version-checked), stamping
-//      the 277CA acceptance date, or the rejection date + stage + PHI-free reason codes;
+//      the 277CA acceptance date, or the rejection date + stage + PHI-free reason codes — each with the MAC's own
+//      date for it (`payer_status_date`: 277CA STC02, a 999's GS04 / ISA09, else our receipt date, with its
+//      source; migration 0378). `accepted_at` / `rejected_at` stay our receipt time;
 //   3. emit `m23.noe.*` / `m23.notr.accepted` | `.rejected` and, on a rejection, raise the M36 biller alert.
 //
 // A re-pulled ack is a no-op: the append collapses onto the original row, which the notice already points at.
@@ -14,7 +16,15 @@
 //
 // Leaf module: it takes its ports explicitly (no import of `m23-jobs.ts`, which imports THIS file), so the
 // no-circular fitness rule holds. Runs on the caller's org-scoped tx (`withOrgContext` per ack, system actor).
-import { type NoticeState, noeMachine, notrMachine, repositories } from "@wardenx/billing";
+import {
+  type NoticeState,
+  type PayerStatusDate,
+  type PayerStatusDateSource,
+  noeMachine,
+  notrMachine,
+  repositories,
+  resolvePayerStatusDate,
+} from "@wardenx/billing";
 
 type BillingDb = repositories.BillingDb;
 
@@ -88,6 +98,15 @@ export interface NoticeAck {
   readonly macJurisdiction: string;
   readonly ackFileUri: string;
   readonly receivedAt: Date;
+  /** The payer's dates the gateway parsed (ISO): 277CA STC02; 999 GS04 / ISA09. All optional. */
+  readonly payerDates?: AckPayerDates;
+}
+
+/** The dates an acknowledgment carries that Medicare itself stamped (see `resolvePayerStatusDate`). */
+export interface AckPayerDates {
+  readonly statusEffectiveDate?: string | null;
+  readonly functionalGroupDate?: string | null;
+  readonly interchangeDate?: string | null;
 }
 
 type AckEvent =
@@ -166,6 +185,11 @@ export async function applyNoticeAck(
 
   const outcome = ack.outcome === "accepted" ? "accepted" : "rejected";
   const reasonCodes = sanitizeAckReasonCodes(ack.reasonCodes);
+  const payerDate = resolvePayerStatusDate({
+    kind: ack.kind,
+    ...ack.payerDates,
+    receivedAt: ack.receivedAt,
+  });
   const acks = new repositories.ClaimAcknowledgmentRepository(tx);
   const recorded = await acks.append({
     organizationId: ack.organizationId,
@@ -179,6 +203,8 @@ export async function applyNoticeAck(
       outcome: ack.outcome,
       payerControlNumber: ack.payerControlNumber,
       reasonCodes,
+      payerStatusDate: payerDate.date,
+      payerStatusDateSource: payerDate.source,
       [spec.idKey]: notice.id,
     },
     outcomeStatus: outcome,
@@ -193,6 +219,7 @@ export async function applyNoticeAck(
     payerControlNumber: ack.payerControlNumber,
     reasonCodes,
     receivedAt: ack.receivedAt,
+    payerDate,
     organizationId: ack.organizationId,
   });
   if (!applied || applied.state !== "ack_pending") return applied?.state ?? null;
@@ -204,6 +231,8 @@ export async function applyNoticeAck(
   const payload = early.parsedPayload as {
     readonly payerControlNumber?: string | null;
     readonly reasonCodes?: readonly string[];
+    readonly payerStatusDate?: string;
+    readonly payerStatusDateSource?: PayerStatusDateSource;
   };
   const caughtUp = await applyRecorded(tx, ports, spec, submission.kind, applied, {
     acknowledgmentId: early.id,
@@ -212,6 +241,11 @@ export async function applyNoticeAck(
     payerControlNumber: payload.payerControlNumber ?? null,
     reasonCodes: sanitizeAckReasonCodes(payload.reasonCodes ?? []),
     receivedAt: early.ackReceivedAt,
+    // Recorded with the early 277CA; a row from before migration 0378 re-derives the receipt fallback.
+    payerDate:
+      payload.payerStatusDate && payload.payerStatusDateSource
+        ? { date: payload.payerStatusDate, source: payload.payerStatusDateSource }
+        : resolvePayerStatusDate({ kind: "ack_277ca", receivedAt: early.ackReceivedAt }),
     organizationId: ack.organizationId,
   });
   return (caughtUp ?? applied).state;
@@ -224,8 +258,10 @@ interface RecordedNoticeAck {
   readonly outcome: "accepted" | "rejected";
   readonly payerControlNumber: string | null;
   readonly reasonCodes: readonly string[];
-  /** When WardenX received the ack — the gateway's 277CA carries no payer status date. */
+  /** When WardenX received the ack (`accepted_at` / `rejected_at`). */
   readonly receivedAt: Date;
+  /** Medicare's own date for the answer, with its source (`payer_status_date[_source]`). */
+  readonly payerDate: PayerStatusDate;
   readonly organizationId: string;
 }
 
@@ -246,9 +282,13 @@ async function applyRecorded(
   const patch: Record<string, unknown> = { latestAcknowledgmentId: ack.acknowledgmentId };
   if (event === "ack_277ca_accepted") {
     patch.acceptedAt = ack.receivedAt;
+    patch.payerStatusDate = ack.payerDate.date;
+    patch.payerStatusDateSource = ack.payerDate.source;
     if (ack.payerControlNumber) patch[spec.payerColumn] = ack.payerControlNumber;
   } else if (ack.outcome === "rejected") {
     patch.rejectedAt = ack.receivedAt;
+    patch.payerStatusDate = ack.payerDate.date;
+    patch.payerStatusDateSource = ack.payerDate.source;
     patch.rejectionStage = rejectionStage;
     patch.rejectionCodes = [...ack.reasonCodes];
   }
@@ -271,6 +311,8 @@ async function applyRecorded(
         acknowledgmentId: ack.acknowledgmentId,
         [spec.payerColumn]: ack.payerControlNumber ?? "",
         acceptedAt: ack.receivedAt.toISOString(),
+        payerStatusDate: ack.payerDate.date,
+        payerStatusDateSource: ack.payerDate.source,
       },
     });
   } else if (ack.outcome === "rejected") {
@@ -283,6 +325,8 @@ async function applyRecorded(
         rejectionStage,
         rejectionCodes: [...ack.reasonCodes],
         rejectedAt: ack.receivedAt.toISOString(),
+        payerStatusDate: ack.payerDate.date,
+        payerStatusDateSource: ack.payerDate.source,
       },
     });
     // Inside the tx (the window-watch precedent): a failed dispatch rolls the transition back, so the next pull

@@ -17,6 +17,11 @@ interface FakeNoe {
   readonly state: string;
   readonly createdAt: Date;
   readonly windowBreachedAt: Date | null;
+  readonly electionEffectiveDate: string;
+  readonly acceptedAt: Date | null;
+  readonly payerStatusDate: string | null;
+  readonly payerStatusDateSource: string | null;
+  readonly correctsNoticeId?: string | null;
 }
 const NOES: FakeNoe[] = [];
 
@@ -33,6 +38,9 @@ vi.mock("@wardenx/billing", async (importOriginal) => {
             !["ack_accepted", "cancelled", "ack_rejected"].includes(n.state),
         ),
       );
+    }
+    async findById(id: string) {
+      return NOES.find((n) => n.id === id) ?? null;
     }
     async findEffectiveByAdmission(admissionId: string) {
       return latest(
@@ -104,12 +112,31 @@ async function noeRuleFor(rows: FakeNoe[]) {
   };
 }
 
-const noe = (state: string, createdAt: string, id = state): FakeNoe => ({
+const noe = (
+  state: string,
+  createdAt: string,
+  id = state,
+  ack: Partial<
+    Pick<
+      FakeNoe,
+      | "acceptedAt"
+      | "payerStatusDate"
+      | "payerStatusDateSource"
+      | "correctsNoticeId"
+      | "electionEffectiveDate"
+    >
+  > = {},
+): FakeNoe => ({
   id,
   admissionId: ADMISSION,
   state,
   createdAt: new Date(createdAt),
   windowBreachedAt: null,
+  electionEffectiveDate: "2025-11-01",
+  acceptedAt: state === "ack_accepted" ? new Date("2025-11-03T15:00:00Z") : null,
+  payerStatusDate: state === "ack_accepted" ? "2025-11-03" : null,
+  payerStatusDateSource: state === "ack_accepted" ? "277ca_stc02" : null,
+  ...ack,
 });
 
 describe("ValidationContextPort — the admission's effective NOE", () => {
@@ -141,5 +168,57 @@ describe("ValidationContextPort — the admission's effective NOE", () => {
     expect(context.noe).toBeNull();
     expect(result.passed).toBe(false);
     expect(result.message).toMatch(/No Notice of Election/);
+  });
+
+  it("a corrected NOE accepted late is judged on Medicare's date, from the original admission (OSC 77)", async () => {
+    const { context, result } = await noeRuleFor([
+      noe("ack_rejected", "2025-11-02T00:00:00Z", "rejected"),
+      noe("ack_accepted", "2025-11-09T00:00:00Z", "corrected", {
+        acceptedAt: new Date("2025-11-10T02:00:00Z"),
+        payerStatusDate: "2025-11-09",
+        payerStatusDateSource: "277ca_stc02",
+        correctsNoticeId: "rejected",
+      }),
+    ]);
+    expect(context.noe).toMatchObject({
+      state: "ack_accepted",
+      electionEffectiveDate: "2025-11-01",
+      acceptedDate: "2025-11-09",
+      acceptedDateSource: "277ca_stc02",
+    });
+    expect(result.passed).toBe(false);
+    expect(result.severity).toBe("info");
+    expect(result.annotations?.observed).toMatchObject({
+      daysLate: 3,
+      occurrenceSpanFrom: "2025-11-01",
+      occurrenceSpanThrough: "2025-11-08",
+    });
+  });
+
+  it("falls back to the day we received the acceptance when no payer date is recorded", async () => {
+    const { context } = await noeRuleFor([
+      noe("ack_accepted", "2025-11-02T00:00:00Z", "legacy", {
+        acceptedAt: new Date("2025-11-04T12:00:00Z"),
+        payerStatusDate: null,
+        payerStatusDateSource: null,
+      }),
+    ]);
+    expect(context.noe).toMatchObject({
+      acceptedDate: "2025-11-04",
+      acceptedDateSource: "receipt",
+    });
+  });
+
+  it("a correction cannot move the clock later: an edited admission date still counts from the original", async () => {
+    const { context, result } = await noeRuleFor([
+      noe("ack_rejected", "2025-11-02T00:00:00Z", "rejected"),
+      noe("ack_accepted", "2025-11-09T00:00:00Z", "corrected", {
+        electionEffectiveDate: "2025-11-05",
+        payerStatusDate: "2025-11-09",
+        correctsNoticeId: "rejected",
+      }),
+    ]);
+    expect(context.noe?.electionEffectiveDate).toBe("2025-11-01");
+    expect(result.severity).toBe("info"); // still late (due 11-06)
   });
 });

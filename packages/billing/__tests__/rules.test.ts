@@ -699,7 +699,14 @@ describe("noe_timeliness_5d", () => {
     const ctx = passingContext();
     const r = run(noeTimeliness5d, {
       ...ctx,
-      noe: { state: "submitted", admissionDay: 7, windowBreached: true },
+      noe: {
+        state: "submitted",
+        admissionDay: 7,
+        windowBreached: true,
+        electionEffectiveDate: "2026-03-01",
+        acceptedDate: null,
+        acceptedDateSource: null,
+      },
     });
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
@@ -708,8 +715,59 @@ describe("noe_timeliness_5d", () => {
     const ctx = passingContext();
     const r = run(noeTimeliness5d, {
       ...ctx,
-      noe: { state: "submitted", admissionDay: 3, windowBreached: false },
+      noe: {
+        state: "submitted",
+        admissionDay: 3,
+        windowBreached: false,
+        electionEffectiveDate: "2026-03-01",
+        acceptedDate: null,
+        acceptedDateSource: null,
+      },
     });
+    expect(r.passed).toBe(false);
+    expect(r.severity).toBe("warn");
+  });
+});
+
+describe("noe_timeliness_5d — the payer acceptance date and the late-NOE OSC 77 (ch. 11 §20.1.1)", () => {
+  const accepted = (acceptedDate: string | null) => ({
+    ...passingContext().noe!,
+    state: "ack_accepted" as const,
+    electionEffectiveDate: "2026-03-01",
+    acceptedDate,
+    acceptedDateSource: acceptedDate ? ("277ca_stc02" as const) : null,
+  });
+
+  it("passes a NOE Medicare accepted within admission + 5 days, naming the payer date", () => {
+    const r = run(noeTimeliness5d, { ...passingContext(), noe: accepted("2026-03-06") });
+    expect(r.passed).toBe(true);
+    expect(r.message).toMatch(/2026-03-06/);
+  });
+
+  it("reports a NOE accepted late by 1 with its OSC 77 span (non-blocking info)", () => {
+    const r = run(noeTimeliness5d, { ...passingContext(), noe: accepted("2026-03-07") });
+    expect(r.passed).toBe(false);
+    expect(r.severity).toBe("info");
+    expect(r.annotations?.observed).toMatchObject({
+      daysLate: 1,
+      occurrenceSpanCode: "77",
+      occurrenceSpanFrom: "2026-03-01",
+      occurrenceSpanThrough: "2026-03-06",
+    });
+  });
+
+  it("passes a late NOE on a claim with no liable days (a later claim period)", () => {
+    const ctx = passingContext();
+    const r = run(noeTimeliness5d, {
+      ...ctx,
+      claim: { ...ctx.claim, serviceFrom: "2026-04-01", serviceTo: "2026-04-30" },
+      noe: accepted("2026-03-20"),
+    });
+    expect(r.passed).toBe(true);
+  });
+
+  it("warns when an accepted NOE has no acceptance date (OSC 77 cannot be computed)", () => {
+    const r = run(noeTimeliness5d, { ...passingContext(), noe: accepted(null) });
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("warn");
   });

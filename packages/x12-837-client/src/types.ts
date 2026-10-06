@@ -137,6 +137,10 @@ export interface Parsed999 {
   readonly outcome: AckOutcome;
   readonly interchangeControlNumber: string;
   readonly errors: readonly AckError[];
+  /** The 999's GS04 functional group date (ISO); a 999 carries no status date (see acks/ack-dates.ts). */
+  readonly functionalGroupDate?: string | null;
+  /** The 999's ISA09 interchange date (ISO), the fallback when GS04 is absent. */
+  readonly interchangeDate?: string | null;
 }
 
 /** Raw 277CA claim-acknowledgment text to parse (was the claim content valid at the MAC's edits?). */
@@ -151,6 +155,8 @@ export interface ClaimAckStatus {
   readonly accepted: boolean;
   readonly statusCategoryCode: string;
   readonly statusCode: string;
+  /** STC02 — the status information effective date (ISO), the MAC's own date for this answer. */
+  readonly statusEffectiveDate?: string | null;
 }
 
 /** The parsed 277CA result. */

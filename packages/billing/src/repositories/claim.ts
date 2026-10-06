@@ -336,6 +336,29 @@ export class ClaimRepository {
   }
 
   /**
+   * Keep the claim's derived occurrence spans (migration 0378; today the late-NOE OSC 77) in step with the facts
+   * the latest validation run saw. A derived projection like {@link refreshDischargeCodes}: no version bump, a
+   * no-op when unchanged; the write-audit trigger records the change. Returns whether the row changed.
+   */
+  async refreshOccurrenceSpans(
+    id: string,
+    spans: readonly { readonly code: string; readonly from: string; readonly through: string }[],
+  ): Promise<boolean> {
+    const value = spans.map((s) => ({ code: s.code, from: s.from, through: s.through }));
+    const rows = await this.db
+      .update(C)
+      .set({ occurrenceSpans: value, updatedAt: new Date() })
+      .where(
+        and(
+          eq(C.id, id),
+          sql`${C.occurrenceSpans} IS DISTINCT FROM ${JSON.stringify(value)}::jsonb`,
+        ),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
    * Re-type an UNSUBMITTED normal-cadence claim whose stored Type of Bill no longer matches the one the resolver
    * derives from current M6 facts (e.g. assembled as interim 812/813 before a revocation or transfer-out was
    * counted as the end of the stay; now final 811/814). Guarded on the stored value (`fromTob`) so a concurrent

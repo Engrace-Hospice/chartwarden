@@ -35,7 +35,7 @@ import { type PriorStayFact, resolveRhcCarryOver } from "../services/rhc-carry-o
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 import { projectHospicePeriods } from "./hospice-periods";
-import { noticeAckOutcomeView } from "./notice-ack-view";
+import { mapNoe, mapNotr } from "./notice-views";
 import type {
   ClaimAcknowledgmentView,
   ClaimDetailView,
@@ -150,57 +150,6 @@ function mapOverride(row: schema.ValidationOverride): ValidationOverrideView {
     overrideRoleApplied: row.overrideRoleApplied,
     reason: row.reason,
     appliedAt: isoReq(row.appliedAt),
-  };
-}
-
-function mapNoe(row: repositories.NoeRecord): NoeView {
-  return {
-    noeId: row.id,
-    organizationId: row.organizationId,
-    providerEntityId: row.providerEntityId,
-    patientId: row.patientId,
-    admissionId: row.admissionId,
-    electionPeriodId: row.electionPeriodId,
-    state: row.state,
-    electionEffectiveDate: row.electionEffectiveDate,
-    windowTargetAt: row.windowTargetAt,
-    windowBreachedAt: row.windowBreachedAt ?? null,
-    noeControlNumber: row.noeControlNumber,
-    payerNoeControlNumber: row.payerNoeControlNumber ?? null,
-    ...noticeAckOutcomeView(row),
-    latestSubmissionId: row.latestSubmissionId ?? null,
-    latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
-    confirmationDocumentId: row.confirmationDocumentId ?? null,
-    version: row.version,
-    createdAt: isoReq(row.createdAt),
-    updatedAt: isoReq(row.updatedAt),
-  };
-}
-
-function mapNotr(row: repositories.NotrRecord): NotrView {
-  return {
-    notrId: row.id,
-    organizationId: row.organizationId,
-    providerEntityId: row.providerEntityId,
-    patientId: row.patientId,
-    admissionId: row.admissionId,
-    triggerKind: row.triggerKind,
-    revocationEventId: row.revocationEventId ?? null,
-    transferEventId: row.transferEventId ?? null,
-    dischargeEventId: row.dischargeEventId ?? null,
-    effectiveEndDate: row.effectiveEndDate,
-    windowTargetAt: row.windowTargetAt,
-    windowBreachedAt: row.windowBreachedAt ?? null,
-    state: row.state,
-    notrControlNumber: row.notrControlNumber,
-    payerNotrControlNumber: row.payerNotrControlNumber ?? null,
-    ...noticeAckOutcomeView(row),
-    latestSubmissionId: row.latestSubmissionId ?? null,
-    latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
-    confirmationDocumentId: row.confirmationDocumentId ?? null,
-    version: row.version,
-    createdAt: isoReq(row.createdAt),
-    updatedAt: isoReq(row.updatedAt),
   };
 }
 
@@ -554,14 +503,11 @@ export function buildDrizzleM23ReadService(
 
     async listNoes(actor, filter: NoeListFilter, cursor, limit) {
       return read(actor, async (tx) => {
-        const page = await new repositories.NoeRepository(tx).listByOrgPage(
-          actor.organizationId,
-          filter,
-          cursor,
-          limit,
-        );
+        const repo = new repositories.NoeRepository(tx);
+        const page = await repo.listByOrgPage(actor.organizationId, filter, cursor, limit);
+        const corrections = await repo.listCorrectionsForMany(page.items.map((r) => r.id));
         return {
-          items: page.items.map(mapNoe),
+          items: page.items.map((r) => mapNoe(r, corrections)),
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
         } satisfies CursorPage<NoeView>;
@@ -570,22 +516,20 @@ export function buildDrizzleM23ReadService(
 
     async getNoe(actor, noeId) {
       return read(actor, async (tx) => {
-        const row = await new repositories.NoeRepository(tx).findById(noeId);
+        const repo = new repositories.NoeRepository(tx);
+        const row = await repo.findById(noeId);
         if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("noe");
-        return mapNoe(row);
+        return mapNoe(row, await repo.listCorrectionsOf(row.id));
       });
     },
 
     async listNotrs(actor, filter: NotrListFilter, cursor, limit) {
       return read(actor, async (tx) => {
-        const page = await new repositories.NotrRepository(tx).listByOrgPage(
-          actor.organizationId,
-          filter,
-          cursor,
-          limit,
-        );
+        const repo = new repositories.NotrRepository(tx);
+        const page = await repo.listByOrgPage(actor.organizationId, filter, cursor, limit);
+        const corrections = await repo.listCorrectionsForMany(page.items.map((r) => r.id));
         return {
-          items: page.items.map(mapNotr),
+          items: page.items.map((r) => mapNotr(r, corrections)),
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
         } satisfies CursorPage<NotrView>;
@@ -594,9 +538,10 @@ export function buildDrizzleM23ReadService(
 
     async getNotr(actor, notrId) {
       return read(actor, async (tx) => {
-        const row = await new repositories.NotrRepository(tx).findById(notrId);
+        const repo = new repositories.NotrRepository(tx);
+        const row = await repo.findById(notrId);
         if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("notr");
-        return mapNotr(row);
+        return mapNotr(row, await repo.listCorrectionsOf(row.id));
       });
     },
 

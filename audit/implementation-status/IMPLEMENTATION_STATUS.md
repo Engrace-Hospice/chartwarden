@@ -32,7 +32,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | — | 13/13 ✅ |
 | M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 38/38 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 57/57 ✅ | ✅ | ✅ | — | 21/21 ✅ |
-| M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 65/65 ✅ | ✅ | ✅ | ✅ | 21/21 ✅ |
+| M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 67/67 ✅ | ✅ | ✅ | ✅ | 21/21 ✅ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 16/16 ✅ |
 | M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ✅ | ✅ | ✅ | 11/11 ✅ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 12/12 ✅ |

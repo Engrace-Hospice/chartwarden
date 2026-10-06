@@ -14,7 +14,7 @@
 // `listWindowWatchCandidates` (backed by the §3.4 `noe_window_watch_idx` partial index) and stamps
 // `window_breached_at` through `transitionToState` (or a same-state patch). No PHI / no MBI (D13 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq, isNull, lte, notInArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
@@ -60,6 +60,8 @@ export type NoeTransitionPatch = Partial<
     | "rejectedAt"
     | "rejectionStage"
     | "rejectionCodes"
+    | "payerStatusDate"
+    | "payerStatusDateSource"
   >
 >;
 
@@ -197,6 +199,30 @@ export class NoeRepository {
       )
       .orderBy(desc(N.windowTargetAt))
       .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map(toNoeRecord);
+  }
+
+  /**
+   * The corrections filed against a rejected notice (`corrects_notice_id = id`, migration 0378), newest first —
+   * the one-correction-at-a-time rule and the "corrected by" link read them.
+   */
+  async listCorrectionsOf(id: string): Promise<readonly NoeRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(eq(N.correctsNoticeId, id))
+      .orderBy(desc(N.createdAt), desc(N.id));
+    return rows.map(toNoeRecord);
+  }
+
+  /** {@link listCorrectionsOf} for a page of notices at once (the list view's "corrected by" link). */
+  async listCorrectionsForMany(ids: readonly string[]): Promise<readonly NoeRecord[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(inArray(N.correctsNoticeId, [...ids]))
+      .orderBy(desc(N.createdAt), desc(N.id));
     return rows.map(toNoeRecord);
   }
 

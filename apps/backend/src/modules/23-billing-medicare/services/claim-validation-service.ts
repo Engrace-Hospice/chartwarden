@@ -26,6 +26,7 @@ import {
   type RuleResult,
   type TypeOfBill,
   type ValidationContext,
+  claimLateNoeSpans,
   repositories,
   summarizeRuleRun,
 } from "@wardenx/billing";
@@ -215,6 +216,15 @@ export function buildClaimValidationService(
     await claimRepo.refreshDischargeCodes(
       claim.id,
       claimDischargeCodeColumns(context.claim.dischargeClaimCodes),
+    );
+    // …and its occurrence spans: a NOE Medicare accepted late makes the days from admission through the day before
+    // acceptance provider liability, reported as OSC 77 (CMS Pub. 100-04 ch. 11 §20.1.1).
+    await claimRepo.refreshOccurrenceSpans(
+      claim.id,
+      claimLateNoeSpans(context.noe, {
+        serviceFrom: context.claim.serviceFrom,
+        serviceTo: context.claim.serviceTo,
+      }),
     );
     const overriddenKeys = await overriddenKeysForClaim(tx, claim.id);
 

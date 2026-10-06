@@ -149,6 +149,14 @@ export const UpdateRuleConfigBodySchema = Type.Object({
 export const CancelNoeBodySchema = Type.Object({ electionReversed: Type.Boolean() });
 export const CancelNotrBodySchema = Type.Object({ terminatingEventReversed: Type.Boolean() });
 
+// ── corrected NOE / NOTR after a rejection (ch. 11 §20.1.1 / §20.1.2; migration 0378) ────────────────────
+// The biller's reason (kept on the corrected row; never in an event) and, optionally, the corrected notice date
+// (NOE: admission / election effective date; NOTR: effective end date). Everything else is copied.
+export const CorrectNoticeBodySchema = Type.Object({
+  reason: Type.String({ minLength: 20, maxLength: 2000 }),
+  correctedDate: Type.Optional(Type.Union([isoDate(), Type.Null()])),
+});
+
 // ── eligibility body ───────────────────────────────────────────────────────────────────────────────────
 export const CheckEligibilityBodySchema = Type.Object({
   patientId: uuid(),

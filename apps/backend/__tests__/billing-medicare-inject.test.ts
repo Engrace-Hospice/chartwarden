@@ -298,6 +298,11 @@ function createM23TestBackend(): {
         rejectedAt: null,
         rejectionStage: null,
         rejectionCodes: [],
+        payerStatusDate: null,
+        payerStatusDateSource: null,
+        correctsNoticeId: null,
+        correctionReason: null,
+        correctedBy: null,
         latestSubmissionId: null,
         latestAcknowledgmentId: null,
         confirmationDocumentId: null,
@@ -331,6 +336,11 @@ function createM23TestBackend(): {
         rejectedAt: null,
         rejectionStage: null,
         rejectionCodes: [],
+        payerStatusDate: null,
+        payerStatusDateSource: null,
+        correctsNoticeId: null,
+        correctionReason: null,
+        correctedBy: null,
         latestSubmissionId: null,
         latestAcknowledgmentId: null,
         confirmationDocumentId: null,
@@ -684,6 +694,14 @@ function createM23TestBackend(): {
       noes.set(noeId, updated);
       return updated;
     },
+    async correctNoe(_actor, noeId, args) {
+      const row = noes.get(noeId);
+      if (!row) throw new NotFoundError("noe_record", noeId);
+      return {
+        created: true,
+        notice: { ...row, state: "draft", correctsNoticeId: noeId, correctionReason: args.reason },
+      };
+    },
     async submitNotr() {
       return { submissionId: "notr-submission-1", jobId: "job-notr-1", kind: "notr" };
     },
@@ -693,6 +711,14 @@ function createM23TestBackend(): {
       const updated: NotrView = { ...row, state: "cancelled", version: row.version + 1 };
       notrs.set(notrId, updated);
       return updated;
+    },
+    async correctNotr(_actor, notrId, args) {
+      const row = notrs.get(notrId);
+      if (!row) throw new NotFoundError("notr_record", notrId);
+      return {
+        created: true,
+        notice: { ...row, state: "draft", correctsNoticeId: notrId, correctionReason: args.reason },
+      };
     },
     async checkEligibility(_actor, args) {
       return {
@@ -1167,6 +1193,14 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { electionReversed: true },
     expectStatus: 200,
   },
+  {
+    label: "26a POST /noe-records/:id/correct",
+    method: "POST",
+    url: `/api/v1/noe-records/${NOE}/correct`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("r26a") },
+    payload: { reason: "MAC rejected the NOE: MBI corrected from HETS, refiling." },
+    expectStatus: 201,
+  },
 
   // ── NOTR fast path (routes #28-31) ──────────────────────────────────────────────────────────────────
   {
@@ -1198,6 +1232,17 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: { ...SUPER_HEADERS, ...IDEMP("r30") },
     payload: { terminatingEventReversed: true },
     expectStatus: 200,
+  },
+  {
+    label: "30a POST /notr-records/:id/correct",
+    method: "POST",
+    url: `/api/v1/notr-records/${NOTR}/correct`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("r30a") },
+    payload: {
+      reason: "The 999 rejected the NOTR file; refiling with the corrected date.",
+      correctedDate: "2026-01-31",
+    },
+    expectStatus: 201,
   },
 
   // ── eligibility plane (routes #22-23 per the module header + the latest-read convenience) ─────────────

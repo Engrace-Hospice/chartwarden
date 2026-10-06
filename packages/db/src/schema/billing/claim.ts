@@ -85,6 +85,12 @@ export const claim = pgTable(
       .$type<{ code: string; date: string }[]>()
       .notNull()
       .default([]),
+    // Occurrence spans (migration 0378) FL 35-36 / HI*BI as `[{code, from, through}]` — today the late-NOE
+    // provider-liable span 77 (CMS Pub. 100-04 ch. 11 §20.1.1), derived on every validation.
+    occurrenceSpans: jsonb("occurrence_spans")
+      .$type<{ code: string; from: string; through: string }[]>()
+      .notNull()
+      .default([]),
 
     // Document back-ref (populated by m22.document.rendered consumer):
     acknowledgmentDocumentId: uuid("acknowledgment_document_id"), // M22 — set after ACK_ACCEPTED + render

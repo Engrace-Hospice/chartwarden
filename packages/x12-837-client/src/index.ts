@@ -147,3 +147,7 @@ export type {
   X12PersonName,
   X12Physician,
 } from "./notices/build-837i-transfer-notice";
+
+// ─── 999 / 277CA payer dates (STC02, GS04, ISA09) — the NOE/NOTR payer status date, ADR-0037 TypeScript ──────
+export { read277caStatusDates, read999EnvelopeDates } from "./acks/ack-dates";
+export type { Ack999EnvelopeDates, ClaimStatusDate } from "./acks/ack-dates";

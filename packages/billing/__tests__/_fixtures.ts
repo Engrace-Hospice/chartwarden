@@ -125,7 +125,14 @@ export function passingContext(): ValidationContext {
       asOfDate: "2026-03-01",
       ageDays: 5,
     },
-    noe: { state: "ack_accepted", admissionDay: 2, windowBreached: false },
+    noe: {
+      state: "ack_accepted",
+      admissionDay: 2,
+      windowBreached: false,
+      electionEffectiveDate: "2026-03-01",
+      acceptedDate: "2026-03-03",
+      acceptedDateSource: "277ca_stc02",
+    },
     sequestration: { percentage: "2.0", effectiveFrom: "2026-01-01", effectiveTo: null },
     wageIndex: {
       ccn: "123456",

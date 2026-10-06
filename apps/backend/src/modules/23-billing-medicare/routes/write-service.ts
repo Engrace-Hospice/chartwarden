@@ -17,6 +17,7 @@ import type {
   ClaimSubmissionKind,
   MacCredentialView,
   NoeView,
+  NoticeCorrectionView,
   NotrView,
   OverrideRole,
   RuleConfigView,
@@ -261,6 +262,16 @@ export interface CancelNotrArgs {
   readonly terminatingEventReversed: boolean;
 }
 
+/**
+ * File a corrected NOE / NOTR for a rejected one (ch. 11 §20.1.1 / §20.1.2): the biller's reason (20–2000 chars)
+ * and, optionally, the corrected notice date — NOE: the admission (election effective) date; NOTR: the effective
+ * end (discharge / revocation) date. Everything else is copied from the rejected notice.
+ */
+export interface CorrectNoticeArgs {
+  readonly reason: string;
+  readonly correctedDate?: string | null;
+}
+
 export interface CheckEligibilityArgs {
   readonly patientId: string;
   readonly providerEntityId: string;
@@ -335,6 +346,18 @@ export interface M23WriteRouteService {
   cancelNoe(actor: M23WriteActor, noeId: string, args: CancelNoeArgs): Promise<NoeView>;
   submitNotr(actor: M23WriteActor, notrId: string): Promise<NoticeSubmissionAcceptedView>;
   cancelNotr(actor: M23WriteActor, notrId: string, args: CancelNotrArgs): Promise<NotrView>;
+  /** Draft the corrected NOE for a rejected one (idempotent: replays the correction in progress). */
+  correctNoe(
+    actor: M23WriteActor,
+    noeId: string,
+    args: CorrectNoticeArgs,
+  ): Promise<NoticeCorrectionView<NoeView>>;
+  /** Draft the corrected NOTR for a rejected one (idempotent: replays the correction in progress). */
+  correctNotr(
+    actor: M23WriteActor,
+    notrId: string,
+    args: CorrectNoticeArgs,
+  ): Promise<NoticeCorrectionView<NotrView>>;
 
   // ── eligibility ──
   checkEligibility(

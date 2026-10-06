@@ -13,7 +13,7 @@
 // `listWindowWatchCandidates` (§3.4 `notr_window_watch_idx`) and stamps `window_breached_at` through
 // `transitionToState`. No PHI / no MBI (D13 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq, isNull, lte, notInArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
@@ -63,6 +63,8 @@ export type NotrTransitionPatch = Partial<
     | "rejectedAt"
     | "rejectionStage"
     | "rejectionCodes"
+    | "payerStatusDate"
+    | "payerStatusDateSource"
   >
 >;
 
@@ -139,6 +141,30 @@ export class NotrRepository {
   }
 
   /**
+   * The terminating event's EFFECTIVE NOTR — the latest that is neither cancelled nor rejected, an accepted one
+   * included (the NOTR twin of `NoeRepository.findEffectiveByAdmission`). `null` when only cancelled / rejected
+   * NOTRs (or none) exist for the event.
+   */
+  async findEffectiveByEvent(
+    triggerKind: NotrTriggerKind,
+    eventId: string,
+  ): Promise<NotrRecord | null> {
+    const eventCol =
+      triggerKind === "revocation"
+        ? N.revocationEventId
+        : triggerKind === "transfer_out"
+          ? N.transferEventId
+          : N.dischargeEventId;
+    const [row] = await this.db
+      .select()
+      .from(N)
+      .where(and(eq(eventCol, eventId), notInArray(N.state, ["CANCELLED", "ACK_REJECTED"])))
+      .orderBy(desc(N.createdAt), desc(N.id))
+      .limit(1);
+    return row ? toNotrRecord(row) : null;
+  }
+
+  /**
    * One keyset page of an org's NOTRs (optionally narrowed by provider/patient/admission/trigger/state),
    * `(created_at DESC, id DESC)`. Over-fetches `size + 1` rows so {@link buildCursorPage} reveals `hasMore`
    * + mints the next cursor. RLS scopes the statement to `app.org_id` at the service layer.
@@ -194,6 +220,30 @@ export class NotrRepository {
       )
       .orderBy(desc(N.windowTargetAt))
       .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map(toNotrRecord);
+  }
+
+  /**
+   * The corrections filed against a rejected notice (`corrects_notice_id = id`, migration 0378), newest first —
+   * the one-correction-at-a-time rule and the "corrected by" link read them.
+   */
+  async listCorrectionsOf(id: string): Promise<readonly NotrRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(eq(N.correctsNoticeId, id))
+      .orderBy(desc(N.createdAt), desc(N.id));
+    return rows.map(toNotrRecord);
+  }
+
+  /** {@link listCorrectionsOf} for a page of notices at once (the list view's "corrected by" link). */
+  async listCorrectionsForMany(ids: readonly string[]): Promise<readonly NotrRecord[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(inArray(N.correctsNoticeId, [...ids]))
+      .orderBy(desc(N.createdAt), desc(N.id));
     return rows.map(toNotrRecord);
   }
 

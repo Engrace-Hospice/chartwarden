@@ -59,6 +59,7 @@ export * from "./sequestration";
 export * from "./tob";
 // CMS Pub. 100-04 Ch. 11 §30.3 the pure discharge claim codes (patient status, condition 52/H2, occurrence 42/55).
 export * from "./claim-codes";
+export * from "./notice";
 // §4.1 / §4.2 the TypeBox route request/response SHAPE contracts (one module per route group).
 // Routed via the `./route-contracts` hop (see that file) so the barrel carries no schema-path import
 // literal alongside its catalog re-exports — avoids a crude arch:tables false positive.

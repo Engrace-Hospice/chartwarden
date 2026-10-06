@@ -33,6 +33,7 @@ import type {
   ValidationSeverity,
 } from "../contracts";
 import type { Cents } from "../domain/money";
+import type { PayerStatusDateSource } from "../notice/payer-status-date";
 
 // ── severity / category unions (mirror the §3.3 pgEnums) ───────────────────────────────────────────────
 
@@ -394,6 +395,14 @@ export interface NoeStatusSnapshot {
   /** Days elapsed since admission (precomputed; clock-free). Warn at day 3, block at day 5+1. */
   readonly admissionDay: number;
   readonly windowBreached: boolean;
+  /** The NOE's admission (election effective) date — the ch. 11 §20.1.1 timeliness clock starts here. */
+  readonly electionEffectiveDate: IsoDate;
+  /**
+   * The date the MAC accepted the NOE: the payer's own date (277CA STC02) when known, else the date we received
+   * the acceptance. `null` until accepted (or on a legacy row with neither).
+   */
+  readonly acceptedDate: IsoDate | null;
+  readonly acceptedDateSource: PayerStatusDateSource | null;
 }
 
 /** The active sequestration policy snapshot (D11). `null` if none configured (a config defect). */

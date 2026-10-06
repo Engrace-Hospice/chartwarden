@@ -14,10 +14,14 @@
 //   HI   Condition Information — each composite `BG:<condition code>` (UB-04 FL 18-28), max 12 per HI.
 //   HI   Occurrence Information — each composite `BH:<occurrence code>:D8:<CCYYMMDD>` (UB-04 FL 31-34),
 //        max 12 per HI.
+//   HI   Occurrence Span Information — each composite `BI:<span code>:RD8:<CCYYMMDD>-<CCYYMMDD>` (UB-04 FL
+//        35-36), max 12 per HI. Today only the late-NOE span 77 (ch. 11 §20.1.1) is derived.
 //
 // CL101/CL102 are NOT derived by WardenX: the caller passes them (the gateway's own claim data). This module
 // only guarantees CL103 and the BG/BH composites match the derived codes.
 import type { IsoDate } from "../contracts";
+import { toEpochDay } from "../domain/dates";
+import type { OccurrenceSpan } from "../notice/late-noe";
 import type { DischargeClaimCodes } from "./discharge-codes";
 
 /** The X12 HI segment holds HI01..HI12. */
@@ -38,6 +42,9 @@ export interface ClaimDocument837i {
     /** UB-04 FL 31-34 / HI*BH (date CCYY-MM-DD; the segment builder renders D8 CCYYMMDD). */
     readonly occurrenceCodes: readonly { readonly code: string; readonly date: IsoDate }[];
   };
+  /** UB-04 FL 35-36 / HI*BI — today the late-NOE provider-liable span 77 (`lateNoeOccurrenceSpan`). The
+   *  gateway must also report the charges of the lines on those days as non-covered (ch. 11 §20.1.1). */
+  readonly occurrenceSpans: readonly OccurrenceSpan[];
 }
 
 const CODE_RE = /^[0-9A-Z]{2}$/;
@@ -91,6 +98,17 @@ export function buildOccurrenceCodeSegments(
 ): string[] {
   for (const o of occurrences) assertCode("occurrence", o.code);
   return hiSegments(occurrences.map((o) => `BH:${o.code}:D8:${d8(o.date)}`));
+}
+
+/** `HI*BI:<code>:RD8:<CCYYMMDD>-<CCYYMMDD>*...~` (none when there are no occurrence spans). */
+export function buildOccurrenceSpanSegments(spans: readonly OccurrenceSpan[]): string[] {
+  for (const s of spans) {
+    assertCode("occurrence span", s.code);
+    if (toEpochDay(s.from) > toEpochDay(s.through)) {
+      throw new Error(`inverted occurrence span ${s.code} (${s.from} > ${s.through})`);
+    }
+  }
+  return hiSegments(spans.map((s) => `BI:${s.code}:RD8:${d8(s.from)}-${d8(s.through)}`));
 }
 
 /** The CL1 + condition HI + occurrence HI segments for one claim, in Loop 2300 order. */

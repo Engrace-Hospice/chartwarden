@@ -554,3 +554,109 @@ describe("routing", () => {
     },
   );
 });
+
+// ── Medicare's own date for the answer (migration 0378): STC02 / GS04 / ISA09, else our receipt date ─────────
+describe.each(KINDS)("$kind payer status date", ({ kind, table, pointer, idKey }) => {
+  const NOTICE = `dated-${kind}`;
+  const SUB = `dated-sub-${kind}`;
+  function seed(state: string) {
+    table().set(NOTICE, {
+      id: NOTICE,
+      organizationId: ORG,
+      providerEntityId: PE,
+      admissionId: ADMISSION,
+      state,
+      version: 1,
+      latestSubmissionId: SUB,
+      latestAcknowledgmentId: null,
+    });
+    fakes.submissions.set(SUB, {
+      id: SUB,
+      organizationId: ORG,
+      kind,
+      claimId: null,
+      [pointer]: NOTICE,
+    });
+  }
+  const notice = () => table().get(NOTICE) as Row;
+
+  it("277CA accepted: stamps the STC02 status effective date, keeps accepted_at as our receipt time", async () => {
+    seed("ack_pending");
+    const h = harness();
+    h.set277([ack277(SUB, "accepted", { statusEffectiveDate: "2026-10-05" })]);
+    await runAckPull277ca(h.deps);
+    expect(notice()).toMatchObject({
+      state: "ack_accepted",
+      acceptedAt: RECEIVED,
+      payerStatusDate: "2026-10-05",
+      payerStatusDateSource: "277ca_stc02",
+    });
+    expect(h.published[0]?.payload).toMatchObject({
+      [idKey]: NOTICE,
+      payerStatusDate: "2026-10-05",
+      payerStatusDateSource: "277ca_stc02",
+    });
+    expect(catalogAccepts(h.published[0] as Published)).toBe(true);
+  });
+
+  it("999 rejected: stamps the 999's GS04, else its ISA09", async () => {
+    seed("submitted");
+    const h = harness();
+    h.set999([
+      ack999(SUB, false, { functionalGroupDate: "2026-10-04", interchangeDate: "2026-10-03" }),
+    ]);
+    await runAckPull999(h.deps);
+    expect(notice()).toMatchObject({
+      payerStatusDate: "2026-10-04",
+      payerStatusDateSource: "999_gs04",
+    });
+    expect(catalogAccepts(h.published[0] as Published)).toBe(true);
+
+    fakes.acks.length = 0;
+    seed("submitted");
+    const h2 = harness();
+    h2.set999([
+      ack999(SUB, false, { interchangeDate: "2026-10-03", ackFileUri: "s3://acks/999/isa.json" }),
+    ]);
+    await runAckPull999(h2.deps);
+    expect(notice()).toMatchObject({
+      payerStatusDate: "2026-10-03",
+      payerStatusDateSource: "999_isa09",
+    });
+  });
+
+  it("no payer date on the ack: falls back to our receipt date, flagged as such", async () => {
+    seed("ack_pending");
+    const h = harness();
+    h.set277([ack277(SUB, "rejected")]);
+    await runAckPull277ca(h.deps);
+    expect(notice()).toMatchObject({
+      payerStatusDate: RECEIVED.toISOString().slice(0, 10),
+      payerStatusDateSource: "receipt",
+    });
+  });
+
+  it("a 999 acceptance stamps no payer date (it is not Medicare's answer yet)", async () => {
+    seed("submitted");
+    const h = harness();
+    h.set999([ack999(SUB, true, { functionalGroupDate: "2026-10-04" })]);
+    await runAckPull999(h.deps);
+    expect(notice().state).toBe("ack_pending");
+    expect(notice().payerStatusDate ?? null).toBeNull();
+  });
+
+  it("a 277CA that arrived before its 999 keeps its STC02 when applied later", async () => {
+    seed("submitted");
+    const h = harness();
+    h.set277([ack277(SUB, "accepted", { statusEffectiveDate: "2026-10-02" })]);
+    await runAckPull277ca(h.deps);
+    expect(notice().state).toBe("submitted");
+    h.set999([ack999(SUB, true)]);
+    await runAckPull999(h.deps);
+    expect(notice()).toMatchObject({
+      state: "ack_accepted",
+      payerStatusDate: "2026-10-02",
+      payerStatusDateSource: "277ca_stc02",
+    });
+  });
+});
