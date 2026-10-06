@@ -54,6 +54,7 @@ import {
   M23_JOB_SCHEDULES,
   M23_QUEUES,
   M23_QUEUE_PARAMS,
+  m23JobId,
 } from "./queues";
 
 const {
@@ -377,7 +378,7 @@ export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
                 ? M23_QUEUE_PARAMS.noeSubmit
                 : M23_QUEUE_PARAMS.notrSubmit;
         await queueFor(queueName).add(queueName, payload, {
-          jobId: `m23:${queueName}:${jobId}`,
+          jobId: m23JobId(queueName, jobId),
           attempts: params.attempts,
           backoff: params.backoff,
           removeOnComplete: { count: 500 },

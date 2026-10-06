@@ -160,3 +160,13 @@ export const M23_IDEMPOTENCY_KEYS = {
   ackPull277ca: (macJurisdiction: string, at: Date): string =>
     `ack277ca:${macJurisdiction}:${dayBucket(at)}`,
 } as const;
+
+/**
+ * The BullMQ job id for an M23 queue job: `m23:<queue>:<key>`. BullMQ refuses a custom id containing ':' unless
+ * it has exactly three ':'-separated parts ("Custom Id cannot contain :"), so a composite dedupe key
+ * (`eligibility.refresh`'s `patient:date:event`, `claim.submit.retry`'s `submission:attempt`) has its ':' folded to
+ * '_' — the id stays deterministic, so a relay redelivery is still a BullMQ-level no-op.
+ */
+export function m23JobId(queueName: string, key: string): string {
+  return `m23:${queueName}:${key.replaceAll(":", "_")}`;
+}
