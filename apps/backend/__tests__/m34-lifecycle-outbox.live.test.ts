@@ -27,11 +27,13 @@ import { registerPlatformJob } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { buildDrizzleTenantPlatformAbacResolver } from "../src/modules/34-saas-tenant-platform/abac-resolver-drizzle";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   type DrizzleTenantPlatformDeps,
   createDrizzleTenantPlatformBackend,
 } from "../src/modules/34-saas-tenant-platform/routes/platform/service-drizzle";
+import { wireM34Tenancy } from "../src/modules/34-saas-tenant-platform/wiring";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -254,5 +256,63 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
       purpose: "migration",
       initiatedByMembershipId: ACTOR_MEMBERSHIP,
     });
+  });
+
+  // GAP-098 — the Drizzle TenantPlatformAbacResolver over real rows. The superuser handle stands in for both
+  // pools (this suite proves the fact queries and the active/expired/revoked logic, not the role grants).
+  it("abac resolver: reads a live consent grant and an open support session; revoked/expired deny", async () => {
+    wireM34Tenancy();
+    const grantor = "77777777-7777-4777-8777-7777f2098001";
+    const operator = "77777777-7777-4777-8777-7777f2098002";
+    const grantId = "88888888-8888-4888-8888-8888f2098001";
+    await admin.query(
+      `INSERT INTO support_consent_grant (id,organization_id,tenant_account_id,scope,grant_reason,grantor_membership_id,expires_at)
+       VALUES ($1,$2,$3,'organization_scoped','abac live',$4, now() + interval '1 hour')`,
+      [grantId, ORG_A, TENANT_ACCOUNT_A, grantor],
+    );
+    await admin.query(
+      `INSERT INTO support_session (organization_id,support_consent_grant_id,actor_membership_id,expires_at)
+       VALUES ($1,$2,$3, now() + interval '1 hour')`,
+      [ORG_A, grantId, operator],
+    );
+    const resolver = buildDrizzleTenantPlatformAbacResolver({
+      db: platformDb.db,
+      platformDb: platformDb.db,
+      auditBypass: async () => {},
+      loadFlagRows: async () => [],
+    });
+    const platformOrg = "99999999-9999-4999-8999-9999f2098000";
+
+    const grant = await resolver.loadConsentGrant(platformOrg, grantId);
+    expect(grant).toMatchObject({ active: true, grantorMembershipId: grantor });
+    expect(
+      await resolver.hasActiveConsentedSupportSession({
+        organizationId: platformOrg,
+        tenantAccountId: TENANT_ACCOUNT_A,
+        actorMembershipId: operator,
+      }),
+    ).toBe(true);
+    expect(
+      await resolver.hasActiveConsentedSupportSession({
+        organizationId: platformOrg,
+        tenantAccountId: TENANT_ACCOUNT_A,
+        actorMembershipId: grantor,
+      }),
+    ).toBe(false);
+
+    await admin.query("UPDATE support_consent_grant SET revoked_at = now() WHERE id = $1", [
+      grantId,
+    ]);
+    expect((await resolver.loadConsentGrant(platformOrg, grantId))?.active).toBe(false);
+    expect(
+      await resolver.hasActiveConsentedSupportSession({
+        organizationId: platformOrg,
+        tenantAccountId: TENANT_ACCOUNT_A,
+        actorMembershipId: operator,
+      }),
+    ).toBe(false);
+    expect(
+      await resolver.loadConsentGrant(platformOrg, "88888888-8888-4888-8888-8888f2098999"),
+    ).toBeNull();
   });
 });

@@ -64,6 +64,8 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
   /** Flipped per-test to prove the D3 egress gate actually gates. */
   let consentAllows = true;
 
+  let baaActive = true;
+
   async function applyMigrations() {
     const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
     for (const f of readdirSync(MIGRATIONS_DIR)
@@ -164,6 +166,8 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
     registerFhirR4Routes(app, {
       store: createDrizzleFhirGatewayStore(handle.db),
       tokenEndpointUrl: TOKEN_URL,
+      // GAP-083 — the BAA gate is fail-closed when unbound, so the suite binds a drivable one.
+      baa: { isBaaActive: async () => baaActive },
     });
     await app.ready();
   }, 240_000);
@@ -176,6 +180,7 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
 
   beforeEach(() => {
     consentAllows = true;
+    baaActive = true;
   });
 
   it("the two tenant resolvers answer the owning org, and null for an unknown id", async () => {
@@ -331,6 +336,42 @@ describe.skipIf(!DB_URL)("F-035 M28 FHIR gateway — LIVE Postgres", () => {
     });
     expect(after.statusCode).toBe(401);
     await admin.query("UPDATE fhir_client SET status='active' WHERE id=$1", [CLIENT_A]);
+  });
+
+  it("GAP-083: an IP outside the allowlist gets 401 at mint and on read; a lapsed BAA gets 401; exceeding the rate gets 429", async () => {
+    // Inject peers are 127.0.0.1, so an allowlist that excludes it must refuse at the mint.
+    await admin.query("UPDATE fhir_client SET ip_allowlist='[\"10.0.0.0/8\"]'::jsonb WHERE id=$1", [
+      CLIENT_A,
+    ]);
+    expect((await mint(CLIENT_A, SECRET_A)).statusCode).toBe(401);
+    await admin.query("UPDATE fhir_client SET ip_allowlist='[]'::jsonb WHERE id=$1", [CLIENT_A]);
+
+    const token = (await mint(CLIENT_A, SECRET_A)).json().access_token as string;
+    const read = () =>
+      app.inject({
+        method: "GET",
+        url: `/fhir/r4/Patient/${patientA}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+    await admin.query("UPDATE fhir_client SET ip_allowlist='[\"10.0.0.0/8\"]'::jsonb WHERE id=$1", [
+      CLIENT_A,
+    ]);
+    expect((await read()).statusCode).toBe(401);
+    await admin.query("UPDATE fhir_client SET ip_allowlist='[]'::jsonb WHERE id=$1", [CLIENT_A]);
+
+    baaActive = false;
+    expect((await read()).statusCode).toBe(401);
+    baaActive = true;
+
+    await admin.query("UPDATE fhir_client SET rate_limit_rps=1 WHERE id=$1", [CLIENT_A]);
+    const burst = await Promise.all([read(), read(), read()]);
+    const throttled = burst.find((r) => r.statusCode === 429);
+    expect(throttled).toBeDefined();
+    expect(Number(throttled?.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+    await admin.query("UPDATE fhir_client SET rate_limit_rps=10 WHERE id=$1", [CLIENT_A]);
+    // The bucket is shared by the later cases (same client id, and Valkey-backed when REDIS_URL is set): let
+    // the drained one-token bucket refill at the restored 10 rps so they are not throttled by this case.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
   });
 
   it("advertises exactly what it serves, and refuses what it does not as not-supported", async () => {

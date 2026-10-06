@@ -3475,7 +3475,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8) */
+        /** D7 early-close request — step-up; ≥40-char narrative; records a pending request only, the plan stays open until a different supervisor cosigns (§4.1 #8) */
         post: operations["postApiV1BereavementPlansByPlanIdCloseearly"];
         delete?: never;
         options?: never;
@@ -3526,7 +3526,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9) */
+        /** The clinical-supervisor cosign that performs the early close (a different supervisor than the requester; self-cosign is 403) — step-up; the cosigner is the server-assembled acting membership (§4.1 #9) */
         post: operations["postApiV1BereavementPlansByPlanIdCosignclose"];
         delete?: never;
         options?: never;
@@ -29803,6 +29803,11 @@ export interface operations {
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
                         currentRiskComputedAt?: string | null;
                         legalHoldId: string | null;
+                        earlyCloseRequest?: {
+                            reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                            requestedAt: string;
+                            requestedByUserId: string;
+                        } | null;
                         version: number;
                         updatedAt: string;
                         redactedCategories: ("sud" | "clinical_risk")[];
@@ -29897,6 +29902,11 @@ export interface operations {
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
                         currentRiskComputedAt?: string | null;
                         legalHoldId: string | null;
+                        earlyCloseRequest?: {
+                            reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                            requestedAt: string;
+                            requestedByUserId: string;
+                        } | null;
                         version: number;
                         updatedAt: string;
                         redactedCategories: ("sud" | "clinical_risk")[];
@@ -29991,6 +30001,11 @@ export interface operations {
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
                         currentRiskComputedAt?: string | null;
                         legalHoldId: string | null;
+                        earlyCloseRequest?: {
+                            reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                            requestedAt: string;
+                            requestedByUserId: string;
+                        } | null;
                         version: number;
                         updatedAt: string;
                         redactedCategories: ("sud" | "clinical_risk")[];
@@ -30026,21 +30041,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        closureId: string;
                         planId: string;
-                        reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
-                        closeKind: string;
-                        closedAt: string;
-                        closedByUserId: string | null;
-                        cosignedByUserId: string | null;
-                        cosignedAt: string | null;
+                        patientId: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        locationId: string | null;
+                        status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                        deathDate: string;
+                        deathTime: string | null;
+                        windowEndsAt: string;
+                        openedAt: string | null;
+                        pausedAt: string | null;
+                        pauseKind: ("operational" | "family_request" | "counselor_unavailable_temp") | null;
+                        closedAt: string | null;
+                        assignedCounselorUserId: string | null;
+                        assignedCounselorAssignedAt: string | null;
+                        assignedVolunteerUserId: string | null;
+                        assignedVolunteerAssignedAt: string | null;
+                        externalSource: {
+                            sourceProposalId: string;
+                            sourceMessageId: string;
+                            sourceFacilityMdmId: string;
+                            sourceFacilityName: string;
+                            ackReceivedAt: string;
+                            cosignStatus: "pending" | "cosigned";
+                            cosignedAt?: string;
+                            medicalDirectorMembershipId?: string;
+                        } | null;
+                        firstContactAllowed: boolean;
+                        firstContactGateReason: string | null;
+                        contacts: {
+                            contactId: string;
+                            planId: string;
+                            status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                            displayName: string;
+                            relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            preferredLanguageIso639: string;
+                            portalAccountId: string | null;
+                            consentRecordId: string | null;
+                            allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                            volunteerVisibleOnly: boolean;
+                            confirmedAt: string | null;
+                            optedOutAt: string | null;
+                            unreachableAt: string | null;
+                            deceasedAt: string | null;
+                            mayRescindOptOut: boolean;
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            version: number;
+                        }[];
                         stats: {
                             completedCount: number;
                             missedCount: number;
                             contactsActiveCount: number;
                             contactsOptedOutCount: number;
                         };
-                        bereavementSummaryDocumentId: string | null;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        currentRiskComputedAt?: string | null;
+                        legalHoldId: string | null;
+                        earlyCloseRequest?: {
+                            reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                            requestedAt: string;
+                            requestedByUserId: string;
+                        } | null;
+                        version: number;
+                        updatedAt: string;
+                        redactedCategories: ("sud" | "clinical_risk")[];
                     };
                 };
             };
@@ -30376,6 +30441,11 @@ export interface operations {
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
                         currentRiskComputedAt?: string | null;
                         legalHoldId: string | null;
+                        earlyCloseRequest?: {
+                            reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                            requestedAt: string;
+                            requestedByUserId: string;
+                        } | null;
                         version: number;
                         updatedAt: string;
                         redactedCategories: ("sud" | "clinical_risk")[];
@@ -30585,6 +30655,11 @@ export interface operations {
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
                         currentRiskComputedAt?: string | null;
                         legalHoldId: string | null;
+                        earlyCloseRequest?: {
+                            reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                            requestedAt: string;
+                            requestedByUserId: string;
+                        } | null;
                         version: number;
                         updatedAt: string;
                         redactedCategories: ("sud" | "clinical_risk")[];
@@ -30743,6 +30818,11 @@ export interface operations {
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
                             currentRiskComputedAt?: string | null;
                             legalHoldId: string | null;
+                            earlyCloseRequest?: {
+                                reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                                requestedAt: string;
+                                requestedByUserId: string;
+                            } | null;
                             version: number;
                             updatedAt: string;
                             redactedCategories: ("sud" | "clinical_risk")[];
@@ -43645,6 +43725,7 @@ export interface operations {
                             approvedAt: string | null;
                             /** Format: date-time */
                             createdAt: string;
+                            baaStatus: "in_force" | "not_in_force" | "unknown";
                         }[];
                     };
                 };
@@ -53295,6 +53376,7 @@ export interface operations {
             content: {
                 "application/json": {
                     signerDiscipline: string;
+                    allergyOverrideReason?: string;
                 };
             };
         };
@@ -66773,8 +66855,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         id: string;
-                        /** @constant */
-                        matchState: "manual_matched";
+                        matchState: "posted" | "reversed" | "manual_matched";
                     };
                 };
             };

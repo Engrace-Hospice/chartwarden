@@ -96,6 +96,11 @@ export interface PortalRouteDeps {
    * patient "submitted" must have started M5's 60-day clock, so there is no fake-success fallback.
    */
   readonly amendmentIntake?: PortalAmendmentIntakePort;
+  /**
+   * GAP-093(d) — M3's engagement coverage reader for the auditor view. Absent ⇒ the `AuditorEngagementReader`
+   * seam (deny-stub until M3 registers it, which 403s the view). Injectable so the route suite needs no registry.
+   */
+  readonly engagementReader?: import("./auditor-engagement").EngagementCoverageReader;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */
   readonly now?: () => Date;
 }

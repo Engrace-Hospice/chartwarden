@@ -27,6 +27,7 @@
 import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
 import { NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { requestStepUpFresh } from "../../../bootstrap/index";
 import { prescriberDisciplinesOf } from "../abac-predicates";
 import { assertDisciplineHeld, resolveDraftingDiscipline } from "../prescriber-eligibility";
 import {
@@ -98,6 +99,8 @@ function refillActorOf(request: FastifyRequest): {
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const READ = P("prescribing.read");
+/** GAP-036 — step-up operation key for acknowledging an allergy conflict (tenants may only tighten it). */
+const ALLERGY_OVERRIDE_STEP_UP_OPERATION = "prescribing.allergy_override";
 const DRAFT = P("prescribing.draft");
 const SIGN = P("prescribing.sign");
 const SIGN_CONTROLLED = P("prescribing.sign_controlled_substance");
@@ -294,13 +297,31 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
     "/api/v1/medication-orders/:id/request-signature",
     { preHandler: [DRAFT, orderScope("prescribing.draft")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
       const b = parse(RequestSignatureRequest, request.body);
       // The body still names a discipline (the API contract) but it must be one the SESSION holds.
       const held = prescriberDisciplinesOf(request.context);
       assertDisciplineHeld(held, b.signerDiscipline);
-      return service.requestSignature(organizationId, id, b.signerDiscipline, held);
+      // GAP-036 — the acting membership is the session's, never a body field (it is who the M39 Part 2
+      // gate answers for).
+      // GAP-036 — an allergy acknowledgement carries the reason AND the session's step-up freshness
+      // (server-resolved); the service re-enforces both, so a reason alone never overrides.
+      const allergyOverride =
+        b.allergyOverrideReason === undefined
+          ? undefined
+          : {
+              reason: b.allergyOverrideReason,
+              stepUpFresh: await requestStepUpFresh(request, ALLERGY_OVERRIDE_STEP_UP_OPERATION),
+            };
+      return service.requestSignature(
+        organizationId,
+        id,
+        b.signerDiscipline,
+        held,
+        userId,
+        allergyOverride,
+      );
     },
   );
 

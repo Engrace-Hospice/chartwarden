@@ -1,4 +1,19 @@
 import { OsrmRoutingProvider, type RoutingCache, matrixCacheKey } from "@wardenx/routing-client";
+import {
+  EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH,
+  MATERIALIZE_HORIZON_DAYS,
+  type SchedulingSideEffect,
+  materializeRecurrence,
+  parseRrule,
+  planFrequencyProposals,
+} from "@wardenx/scheduling";
+import { describe, expect, it, vi } from "vitest";
+import {
+  SchedulingRouteService,
+  type SchedulingSeed,
+  buildSchedulingAbacPredicates,
+  planVisitCompletionFromEncounter,
+} from "../src/modules/17-scheduling/index";
 // apps/backend/__tests__/scheduling-workflow-acceptance.test.ts — M17-T09 the §9 workflow-acceptance suite (the
 // FINAL M17 task). One scenario per the §7 plan-named Scheduling workflows — §7.1 (frequency-driven proposal →
 // publish → EVV start → encounter-sign completion → caseload contribution), §7.3 (drag-drop reschedule mints a
@@ -18,21 +33,7 @@ import { OsrmRoutingProvider, type RoutingCache, matrixCacheKey } from "@wardenx
 // guarantees the service + ABAC layer own (org-pinned non-leaking NotFound, layer-independent cross-tenant deny,
 // the seven-predicate gate short-circuit). The RLS layer-independence (§9.3/§9.4) lives in rls-isolation.live (the
 // M17 block).
-import {
-  EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH,
-  MATERIALIZE_HORIZON_DAYS,
-  type SchedulingSideEffect,
-  materializeRecurrence,
-  parseRrule,
-  planFrequencyProposals,
-} from "@wardenx/scheduling";
-import { describe, expect, it, vi } from "vitest";
-import {
-  SchedulingRouteService,
-  type SchedulingSeed,
-  buildSchedulingAbacPredicates,
-  planVisitCompletionFromEncounter,
-} from "../src/modules/17-scheduling/index";
+import { type CallerAuthority, NO_AUTHORITY } from "../src/modules/17-scheduling/routes/own-vs-any";
 
 const ORG = "org_a";
 const ORG_B = "org_b";
@@ -248,14 +249,19 @@ describe("M17-T09 §7 workflow acceptance", () => {
 
   it("§7.5 — an approved PTO window makes the `not_on_pto` predicate deny an overlapping visit assignment", async () => {
     const svc = service();
-    const pto = svc.requestTimeOff(ORG, "sched_1", {
-      membershipId: MEM_RN,
-      kind: "pto",
-      startsAt: "2026-06-23T00:00:00.000Z",
-      endsAt: "2026-06-24T00:00:00.000Z",
-    });
+    const pto = svc.requestTimeOff(
+      ORG,
+      "sched_1",
+      {
+        membershipId: MEM_RN,
+        kind: "pto",
+        startsAt: "2026-06-23T00:00:00.000Z",
+        endsAt: "2026-06-24T00:00:00.000Z",
+      },
+      { ...NO_AUTHORITY, timeOffApprove: true },
+    );
     expect(eventNames(svc.drainEvents())).toContain("m17.time_off.requested");
-    svc.approveTimeOff(ORG, "sched_1", pto.id);
+    svc.approveTimeOff(ORG, "sched_1", pto.id, { ...NO_AUTHORITY, timeOffApprove: true });
     expect(eventNames(svc.drainEvents())).toContain("m17.time_off.approved");
 
     const predicates = buildSchedulingAbacPredicates({ resolver: svc });

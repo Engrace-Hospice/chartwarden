@@ -197,7 +197,11 @@ export type M16TableName =
  * INSERT capture of the narrative + the encrypted notes path inside `risk_factors_jsonb`.
  */
 export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string[] } = {
-  bereavement_plan: ["pause_reason_redacted", "ipoc_bereavement_intent_summary_redacted"],
+  bereavement_plan: [
+    "pause_reason_redacted",
+    "ipoc_bereavement_intent_summary_redacted",
+    "early_close_narrative_redacted",
+  ],
   bereaved_contact: ["ineligible_reason_redacted"],
   bereavement_risk_score: [
     "augmented_narrative_redacted",

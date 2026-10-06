@@ -120,6 +120,10 @@ export interface FhirBearerContext {
   readonly clientId: string;
   readonly scopesGranted: readonly string[];
   readonly clientStatus: FhirClientStatus;
+  /** GAP-083 — the client's request-time gates (D12/D16), read with the session so no second lookup. */
+  readonly ipAllowlist: readonly string[];
+  readonly baaContractReference: string;
+  readonly rateLimitRps: number;
 }
 
 /**
@@ -141,6 +145,11 @@ export interface FhirTokenClientView {
   readonly jwksUri: string | null;
   readonly allowedScopes: readonly string[];
   readonly apiKeyDigests: readonly string[];
+  /** GAP-083 — enforced on every mint and every read; empty = no IP restriction. */
+  readonly ipAllowlist: readonly string[];
+  readonly baaContractReference: string;
+  /** D16 — the per-client steady rate; the token mint draws from the same bucket family as reads. */
+  readonly rateLimitRps: number;
 }
 
 /** The `fhir_client_session` row the token route writes once an auth path has succeeded (§2.2). */
@@ -848,6 +857,9 @@ export function createInMemoryFhirGatewayStore(
         clientId: c.id,
         scopesGranted: s.scopesGranted,
         clientStatus: c.status,
+        ipAllowlist: c.ipAllowlist,
+        baaContractReference: c.baaContractReference,
+        rateLimitRps: c.rateLimitRps,
       };
     },
 
@@ -862,6 +874,9 @@ export function createInMemoryFhirGatewayStore(
         jwksUri: c.jwksUri,
         allowedScopes: c.allowedScopes,
         apiKeyDigests: c.secretDigests,
+        ipAllowlist: c.ipAllowlist,
+        baaContractReference: c.baaContractReference,
+        rateLimitRps: c.rateLimitRps ?? 10,
       };
     },
 

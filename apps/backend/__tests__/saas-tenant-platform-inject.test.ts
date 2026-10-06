@@ -110,6 +110,8 @@ const TASK_BLOCK_ID = "70000000-0000-4000-8000-000000000002";
 const BAA_TENANT_ID = "80000000-0000-4000-8000-000000000001";
 const EXPORT_FULFILLED_ID = "90000000-0000-4000-8000-000000000001";
 const TEST_FLAG_KEY = "m34.test_global_flag";
+const NEW_FLAG_KEY = "m34.brand_new_flag";
+const FOREIGN_TENANT_ORG = "a0000000-0000-4000-8000-000000000001";
 
 // ── §4.5 permission seeds (the two authorized personas this file drives every 2xx route through) ───────
 const PLATFORM_OPS_PERMISSIONS = [
@@ -176,9 +178,14 @@ function buildTestAbacResolver(): TenantPlatformAbacResolver {
         active: true,
       };
     },
-    async loadFeatureFlag(_organizationId, flagKey) {
-      if (flagKey !== TEST_FLAG_KEY) return null;
-      return { flagKey, organizationId: null }; // a PLATFORM-scoped (global) flag — platform_ops only.
+    async loadFeatureFlag(_organizationId, flagKey, scopeOrganizationId = null) {
+      // Exact-scope facts: the one seeded GLOBAL flag exists; any other (key, scope) is an ABSENT key in a
+      // valid scope (first-time creation) — which only platform_ops may write.
+      return {
+        flagKey,
+        organizationId: scopeOrganizationId,
+        exists: flagKey === TEST_FLAG_KEY && scopeOrganizationId === null,
+      };
     },
     async loadOnboardingTask() {
       return null;
@@ -666,6 +673,74 @@ describe("M34-saas-tenant-platform-inject — feature-flag admin (§4.7/D13)", (
     expect(kill.statusCode).toBe(200);
     expect(kill.json().killSwitchActive).toBe(true);
 
+    await app.close();
+  });
+});
+
+describe("M34-saas-tenant-platform-inject — feature-flag scope + first-time creation (§4.6/§4.7)", () => {
+  it("platform_ops creates a brand-new GLOBAL flag key (no pre-existing row to resolve)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/feature-flags",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { flagKey: NEW_FLAG_KEY, flagKind: "product", valueType: "boolean", value: false },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().organizationId).toBeNull();
+    await app.close();
+  });
+
+  it("platform_ops kills a per-tenant flag in ANOTHER org via the body's organizationId, leaving the global row alone", async () => {
+    const { app } = makeServer();
+    for (const organizationId of [null, FOREIGN_TENANT_ORG]) {
+      const up = await app.inject({
+        method: "POST",
+        url: "/api/v1/platform/feature-flags",
+        headers: PLATFORM_OPS_STEPUP,
+        payload: {
+          flagKey: NEW_FLAG_KEY,
+          organizationId,
+          flagKind: "kill_switch",
+          valueType: "boolean",
+          value: true,
+        },
+      });
+      expect(up.statusCode).toBe(201);
+    }
+    const kill = await app.inject({
+      method: "POST",
+      url: `/api/v1/platform/feature-flags/${NEW_FLAG_KEY}/kill-switch`,
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { killSwitchActive: true, organizationId: FOREIGN_TENANT_ORG },
+    });
+    expect(kill.statusCode).toBe(200);
+    expect(kill.json().organizationId).toBe(FOREIGN_TENANT_ORG);
+    expect(kill.json().killSwitchActive).toBe(true);
+    const listed = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/feature-flags",
+      headers: PLATFORM_OPS,
+    });
+    const globalRow = listed
+      .json()
+      .items.find(
+        (f: { flagKey: string; organizationId: string | null }) =>
+          f.flagKey === NEW_FLAG_KEY && f.organizationId === null,
+      );
+    expect(globalRow.killSwitchActive).toBe(false);
+    await app.close();
+  });
+
+  it("the kill switch on a key with no row at that scope is a 404, not a create", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/platform/feature-flags/${NEW_FLAG_KEY}/kill-switch`,
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { killSwitchActive: true },
+    });
+    expect(res.statusCode).toBe(404);
     await app.close();
   });
 });

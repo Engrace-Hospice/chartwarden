@@ -78,6 +78,7 @@ import {
 } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -273,7 +274,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     const m12Outbox: DoseSpotWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m12" }),
     };
-    meds = createDbDoseSpotBackend(handle.db, m12Outbox);
+    meds = createDbDoseSpotBackend(handle.db, m12Outbox, PASSING_M12_SAFETY_GATES);
 
     // The real render path: Drizzle document-row store + the real renderer. Only the OBJECT BYTES are
     // in-memory — production binds MinIO/S3 there, and this suite is about the row landing, not the blob.

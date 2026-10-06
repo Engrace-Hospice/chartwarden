@@ -19,6 +19,7 @@ import type { createDbHopeBackend } from "../src/modules/10-hope/hope-route-serv
 type HopeSvc = ReturnType<typeof createDbHopeBackend>;
 
 /** Items the workflow owns (A0050 type-of-record, J2052/J2053 SFV outputs, ...) — never generically answered. */
+// (A0600A is answered up front in `answerHopeForSign` with a valid SSN; it is not a generic text item.)
 export const HOPE_WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
 
 /** Required-at-least-one checklists: [stem, the real CMS value we check when the record has none]. */
@@ -56,7 +57,10 @@ export async function answerHopeForSign(
   };
 
   // A1400A (Medicare payer) satisfies CMS rule -3081 unless the caller picks a payer itself.
-  const first: Record<string, string> = { A1400A: "1", ...overrides };
+  // A0600A (SSN) is a free-text item the generic loop would fill with "Test", which the CMS fatal SSN format
+  // edits (-3015 digits only, -3001 nine digits, -3003 placeholder numbers) now reject: answer a real-shaped,
+  // non-placeholder number unless the caller supplies one.
+  const first: Record<string, string> = { A1400A: "1", A0600A: "492817365", ...overrides };
   {
     const ws = await svc.getAssessmentWorkspace(orgId, id);
     const items = ws.sections.flatMap((s) => s.items);

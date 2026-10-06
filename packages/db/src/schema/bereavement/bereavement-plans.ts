@@ -32,7 +32,12 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { bereavementPlanPauseKind, bereavementPlanStatus, bereavementRiskTier } from "../../enums";
+import {
+  bereavementPlanClosureReason,
+  bereavementPlanPauseKind,
+  bereavementPlanStatus,
+  bereavementRiskTier,
+} from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -76,6 +81,13 @@ export const bereavementPlan = pgTable(
     pauseReasonRedacted: text("pause_reason_redacted"), // D11 audit-denylisted; full reason lives in audit context
     closedAt: timestamp("closed_at", { withTimezone: true }),
 
+    // GAP-047 / D7 — a PENDING early-close request (close-early records it; cosign-close, by a DIFFERENT
+    // supervisor, performs the transition and inserts the closure). All four NULL, or all four set.
+    earlyCloseReason: bereavementPlanClosureReason("early_close_reason"),
+    earlyCloseNarrativeRedacted: text("early_close_narrative_redacted"), // D11 audit-denylisted
+    earlyCloseRequestedByUserId: uuid("early_close_requested_by_user_id"),
+    earlyCloseRequestedAt: timestamp("early_close_requested_at", { withTimezone: true }),
+
     // IPOC inheritance from `m7.care_plan.discharged` — the pre-death bereavement intent, carried forward.
     ipocBereavementIntentSummaryRedacted: text("ipoc_bereavement_intent_summary_redacted"),
     carePlanVersionIdAtDischarge: uuid("care_plan_version_id_at_discharge"), // logical FK → M7
@@ -114,6 +126,14 @@ export const bereavementPlan = pgTable(
       .where(
         sql`external_source_metadata IS NOT NULL AND external_source_metadata->>'cosignStatus' = 'pending'`,
       ),
+
+    // GAP-047 — the pending early-close request is all-or-none.
+    earlyCloseRequestAllOrNone: check(
+      "berv_plan_early_close_request_all_or_none",
+      sql`(early_close_reason IS NULL) = (early_close_narrative_redacted IS NULL)
+          AND (early_close_reason IS NULL) = (early_close_requested_by_user_id IS NULL)
+          AND (early_close_reason IS NULL) = (early_close_requested_at IS NULL)`,
+    ),
 
     // §3.3.1 status × required-field invariants (the machine in §2.2 is truth; these are the safety net).
     activeRequiresCounselor: check(

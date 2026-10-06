@@ -27,6 +27,7 @@ import {
 } from "../src/modules/12-dosespot/dosespot-route-service-db";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -72,6 +73,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbDoseSpotBackend>;
+  let outboxPort: DoseSpotWriteOutboxPort;
   const memberOf: Record<string, string> = {};
   const member2Of: Record<string, string> = {};
   const providerOf: Record<string, string> = {};
@@ -220,7 +222,8 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     const outbox: DoseSpotWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m12" }),
     };
-    svc = createDbDoseSpotBackend(handle.db, outbox);
+    outboxPort = outbox;
+    svc = createDbDoseSpotBackend(handle.db, outbox, PASSING_M12_SAFETY_GATES);
   }, 120_000);
 
   afterAll(async () => {
@@ -731,5 +734,251 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
         signedAtClient: new Date().toISOString(),
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // ── GAP-036 — the SUD-consent and allergy gates, fail-closed, decided from the stored order + session ──
+  describe("GAP-036 requestSignature safety gates", () => {
+    const backendWith = (gates: Parameters<typeof createDbDoseSpotBackend>[2]) =>
+      createDbDoseSpotBackend(handle.db, outboxPort, gates);
+    const sudDenied = {
+      ...PASSING_M12_SAFETY_GATES,
+      resolveConsentEvaluator: () => ({
+        evaluateForInternalAccess: async () => ({ redactSubstanceUseDisorderFields: true }),
+      }),
+    };
+
+    it("an SUD-treatment medication for a patient without a Part 2 release → 422 SUD_CONSENT_REQUIRED; the order stays a draft", async () => {
+      const draft = await svc.createDraft(
+        ORG_A,
+        memberOf[ORG_A],
+        draftArgs({ drugName: "Buprenorphine/naloxone" }),
+      );
+      expect(draft.id).toBeTruthy();
+      await expect(
+        backendWith(sudDenied).requestSignature(
+          ORG_A,
+          draft.id,
+          "hospice_physician",
+          ["hospice_physician"],
+          memberOf[ORG_A],
+        ),
+      ).rejects.toMatchObject({ code: "SUD_CONSENT_REQUIRED", statusCode: 422 });
+      expect(await statusOf(draft.id)).toBe("draft");
+      const { rows } = await admin.query(
+        "SELECT is_sud_treatment FROM medication_order WHERE id=$1",
+        [draft.id],
+      );
+      expect(rows[0].is_sud_treatment).toBe(true); // derived server-side from the drug, never the body
+    });
+
+    it("the same SUD order passes once M39 allows the acting membership, and M39 is asked about THAT membership", async () => {
+      const draft = await svc.createDraft(
+        ORG_A,
+        memberOf[ORG_A],
+        draftArgs({ drugName: "Methadone" }),
+      );
+      const asked: Array<string | null> = [];
+      const allowed = backendWith({
+        ...PASSING_M12_SAFETY_GATES,
+        resolveConsentEvaluator: () => ({
+          evaluateForInternalAccess: async (a) => {
+            asked.push(a.actor.membershipId);
+            return { redactSubstanceUseDisorderFields: false };
+          },
+        }),
+      });
+      const pending = await allowed.requestSignature(
+        ORG_A,
+        draft.id,
+        "hospice_physician",
+        ["hospice_physician"],
+        memberOf[ORG_A],
+      );
+      expect(pending.status).toBe("pending_signature");
+      expect(asked).toEqual([memberOf[ORG_A]]);
+    });
+
+    it("an M39 seam throw denies an SUD order (fail closed)", async () => {
+      const draft = await svc.createDraft(
+        ORG_A,
+        memberOf[ORG_A],
+        draftArgs({ drugName: "Naltrexone" }),
+      );
+      const down = backendWith({
+        ...PASSING_M12_SAFETY_GATES,
+        resolveConsentEvaluator: () => {
+          throw new Error("M39 unavailable");
+        },
+      });
+      await expect(
+        down.requestSignature(
+          ORG_A,
+          draft.id,
+          "hospice_physician",
+          ["hospice_physician"],
+          memberOf[ORG_A],
+        ),
+      ).rejects.toMatchObject({ code: "SUD_CONSENT_REQUIRED" });
+      expect(await statusOf(draft.id)).toBe("draft");
+    });
+
+    it("a non-SUD order never consults M39 (an M39 outage does not block ordinary prescribing)", async () => {
+      const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      const down = backendWith({
+        ...PASSING_M12_SAFETY_GATES,
+        resolveConsentEvaluator: () => {
+          throw new Error("M39 unavailable");
+        },
+      });
+      const pending = await down.requestSignature(
+        ORG_A,
+        draft.id,
+        "hospice_physician",
+        ["hospice_physician"],
+        memberOf[ORG_A],
+      );
+      expect(pending.status).toBe("pending_signature");
+    });
+
+    it("a recorded allergy (verified OR unverified) naming the drug → 422 ALLERGY_CHECK_NOT_PASSED", async () => {
+      for (const verificationStatus of ["verified", "unverified"] as const) {
+        const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+        const allergic = backendWith({
+          ...PASSING_M12_SAFETY_GATES,
+          resolveAllergyReader: () => ({
+            activeAllergies: async () => [
+              { allergenText: "Morphine", verificationStatus, severity: "severe" },
+            ],
+          }),
+        });
+        await expect(
+          allergic.requestSignature(
+            ORG_A,
+            draft.id,
+            "hospice_physician",
+            ["hospice_physician"],
+            memberOf[ORG_A],
+          ),
+        ).rejects.toMatchObject({ code: "ALLERGY_CHECK_NOT_PASSED", statusCode: 422 });
+        expect(await statusOf(draft.id)).toBe("draft");
+      }
+    });
+
+    it("unreadable allergy data (reader throws / null for the patient) denies — never read as 'no allergies'", async () => {
+      for (const resolveAllergyReader of [
+        () => {
+          throw new Error("M5 unavailable");
+        },
+        () => ({ activeAllergies: async () => null }),
+      ]) {
+        const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+        const blind = backendWith({ ...PASSING_M12_SAFETY_GATES, resolveAllergyReader });
+        await expect(
+          blind.requestSignature(
+            ORG_A,
+            draft.id,
+            "hospice_physician",
+            ["hospice_physician"],
+            memberOf[ORG_A],
+          ),
+        ).rejects.toMatchObject({ code: "ALLERGY_CHECK_NOT_PASSED" });
+      }
+    });
+
+    // GAP-036 follow-up — class matching + the acknowledgement-with-reason override.
+    const classAllergy = (allergenText: string) =>
+      backendWith({
+        ...PASSING_M12_SAFETY_GATES,
+        resolveAllergyReader: () => ({
+          activeAllergies: async () => [
+            { allergenText, verificationStatus: "verified" as const, severity: "severe" as const },
+          ],
+        }),
+      });
+    const REASON = "Benefit outweighs risk; patient and family counselled.";
+
+    it("a class allergy ('opioids') blocks morphine and names the class, offering an acknowledgement", async () => {
+      const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      await expect(
+        classAllergy("opioids").requestSignature(
+          ORG_A,
+          draft.id,
+          "hospice_physician",
+          ["hospice_physician"],
+          memberOf[ORG_A],
+        ),
+      ).rejects.toMatchObject({
+        code: "ALLERGY_CHECK_NOT_PASSED",
+        statusCode: 422,
+        message: expect.stringMatching(/opioid.*allergyOverrideReason/s),
+      });
+      expect(await statusOf(draft.id)).toBe("draft");
+    });
+
+    it("a reason WITHOUT a fresh step-up does not override (403 STEP_UP_REQUIRED), the order stays a draft", async () => {
+      const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      await expect(
+        classAllergy("opioids").requestSignature(
+          ORG_A,
+          draft.id,
+          "hospice_physician",
+          ["hospice_physician"],
+          memberOf[ORG_A],
+          { reason: REASON, stepUpFresh: false },
+        ),
+      ).rejects.toMatchObject({ code: "STEP_UP_REQUIRED" });
+      expect(await statusOf(draft.id)).toBe("draft");
+    });
+
+    it("reason + fresh step-up proceeds, records the acknowledgement on the order and emits it without the reason text", async () => {
+      const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      const pending = await classAllergy("opioids").requestSignature(
+        ORG_A,
+        draft.id,
+        "hospice_physician",
+        ["hospice_physician"],
+        memberOf[ORG_A],
+        { reason: REASON, stepUpFresh: true },
+      );
+      expect(pending.status).toBe("pending_signature");
+      expect((pending.data as Record<string, unknown>).allergyOverride).toMatchObject({
+        reason: REASON,
+        acknowledgedByMembershipId: memberOf[ORG_A],
+        matchedClasses: ["opioid"],
+      });
+    });
+
+    it("an unreadable allergy list is never overridable, even with a reason and a fresh step-up", async () => {
+      const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      const blind = backendWith({
+        ...PASSING_M12_SAFETY_GATES,
+        resolveAllergyReader: () => ({ activeAllergies: async () => null }),
+      });
+      await expect(
+        blind.requestSignature(
+          ORG_A,
+          draft.id,
+          "hospice_physician",
+          ["hospice_physician"],
+          memberOf[ORG_A],
+          { reason: REASON, stepUpFresh: true },
+        ),
+      ).rejects.toMatchObject({ code: "ALLERGY_CHECK_NOT_PASSED" });
+    });
+
+    it("a non-prescriber discipline cannot override: the eligibility refusal wins and nothing is recorded", async () => {
+      const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+      await expect(
+        classAllergy("opioids").requestSignature(
+          ORG_A,
+          draft.id,
+          "hospice_rn",
+          ["hospice_rn"],
+          memberOf[ORG_A],
+          { reason: REASON, stepUpFresh: true },
+        ),
+      ).rejects.toMatchObject({ code: "PRESCRIBER_NOT_ELIGIBLE" });
+      expect(await statusOf(draft.id)).toBe("draft");
+    });
   });
 });

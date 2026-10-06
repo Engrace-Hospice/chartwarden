@@ -82,6 +82,8 @@ describe.skipIf(!DB_URL)(
     beforeAll(async () => {
       process.env.BETTER_AUTH_SECRET ??= "test-secret-at-least-32-characters-long-xx";
       process.env.BETTER_AUTH_URL ??= "http://localhost:3000";
+      // The same 32-byte base64 TEST key CI sets (ADR-0034); 2FA secret encryption fails closed without one.
+      process.env.TWO_FACTOR_ENCRYPTION_KEY ??= "Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=";
       admin = new Client({ connectionString: DB_URL });
       await admin.connect();
       await resetAndMigrate();

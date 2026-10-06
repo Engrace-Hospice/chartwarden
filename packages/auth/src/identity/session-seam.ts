@@ -57,6 +57,8 @@ export interface SessionContextRecord {
   } | null;
   /** The vendor an M19 answering-service session acts for; null on every other class (F-030). */
   readonly externalActorId?: string | null;
+  /** The engagement an auditor session was minted for; null on every other class (GAP-093(c)). */
+  readonly engagementId?: string | null;
 }
 
 /** Reads a session-context row by id within an org scope (M1 `session` repo in production). */
@@ -100,6 +102,7 @@ export function createSessionContextResolver(
         sessionPatientId: row.sessionPatientId,
         deviceAttestation: row.deviceAttestation ?? null,
         externalActorId: row.externalActorId ?? null,
+        engagementId: row.engagementId ?? null,
       };
     },
     async resolveStepUpState(scope, sessionId): Promise<SessionStepUpFields | null> {

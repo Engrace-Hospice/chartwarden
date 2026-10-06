@@ -1,3 +1,8 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createDbClient } from "@wardenx/db";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 /**
  * M17L — the Drizzle `createDbSchedulingBackend` READ paths, proven against real Postgres.
  *
@@ -15,11 +20,7 @@
  * `max_locks_per_transaction` raised (the DROP SCHEMA + partitioned corpus outrun the default 64). For a
  * local PG without pgvector, set WARDENX_TEST_NO_PGVECTOR=1.
  */
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type CallerAuthority, NO_AUTHORITY } from "../src/modules/17-scheduling/routes/own-vs-any";
 import { createDbSchedulingBackend } from "../src/modules/17-scheduling/scheduling-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -193,7 +194,12 @@ describe.skipIf(!DB_URL)("M17 Drizzle read service — LIVE Postgres (M17L)", ()
     // The service projects availability times as HH:MM (not the DB's HH:MM:SS).
     expect(avail?.slots).toEqual([{ weekday: 1, startTime: "08:00", endTime: "17:00" }]);
 
-    const off = await service.listTimeOff(ORG_A, { membership: seeded[ORG_A].membership });
+    const off = await service.listTimeOff(
+      ORG_A,
+      seeded[ORG_A].membership,
+      { membership: seeded[ORG_A].membership },
+      NO_AUTHORITY,
+    );
     expect(off.length).toBe(1);
     expect(off[0].kind).toBe("pto");
     expect(off[0].state).toBe("requested");
@@ -214,17 +220,32 @@ describe.skipIf(!DB_URL)("M17 Drizzle read service — LIVE Postgres (M17L)", ()
     // The write lifecycle is live (no route at 501). A `time_off` write is clinician-scoped (nullable siting),
     // so it needs no membership tenancy defaults — the smoke check the full write suite (m17-scheduling-write)
     // exhausts. Prove one mutation commits under RLS and reads back scoped to the tenant.
-    const created = await service.requestTimeOff(ORG_A, seeded[ORG_A].membership, {
-      membershipId: seeded[ORG_A].membership,
-      kind: "sick",
-      startsAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-      endsAt: new Date(Date.now() + 8 * 86_400_000).toISOString(),
-    });
+    const created = await service.requestTimeOff(
+      ORG_A,
+      seeded[ORG_A].membership,
+      {
+        membershipId: seeded[ORG_A].membership,
+        kind: "sick",
+        startsAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        endsAt: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+      },
+      NO_AUTHORITY,
+    );
     expect(created.state).toBe("requested");
-    const listed = await service.listTimeOff(ORG_A, { membership: seeded[ORG_A].membership });
+    const listed = await service.listTimeOff(
+      ORG_A,
+      seeded[ORG_A].membership,
+      { membership: seeded[ORG_A].membership },
+      NO_AUTHORITY,
+    );
     expect(listed.some((t) => t.id === created.id && t.kind === "sick")).toBe(true);
     // RLS: org B cannot see org A's freshly-written PTO row.
-    const bList = await service.listTimeOff(ORG_B, {});
+    const bList = await service.listTimeOff(
+      ORG_B,
+      seeded[ORG_A].membership,
+      {},
+      { ...NO_AUTHORITY, timeOffReadTeam: true },
+    );
     expect(bList.every((t) => t.id !== created.id)).toBe(true);
   });
 });

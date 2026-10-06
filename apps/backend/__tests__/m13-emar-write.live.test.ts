@@ -220,6 +220,7 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
             blockedReasons: ["discontinued"],
             medClass: "standard",
             isControlledSubstance: false,
+            isSudTreatment: false,
           };
         const known = [MED_ORDER, CONTROLLED_MED_ORDER, OTHER_MED_ORDER];
         if (!known.includes(medicationOrderId)) return null;
@@ -236,6 +237,9 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
           blockedReasons: [],
           medClass: controlled ? "controlled_substance" : "standard",
           isControlledSubstance: controlled,
+          // GAP-036 follow-up — the controlled order stands in for an SUD-treatment (methadone) order, so the
+          // flag M12 now writes is proven to reach the administration row (portal redaction + M28 Part 2 gate).
+          isSudTreatment: controlled,
         };
       },
     };
@@ -313,6 +317,14 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     expect(view.status).toBe("committed");
     expect(view.isControlledSubstance).toBe(true);
     expect(view.witnessMembershipId).toBe(member2Of[ORG_A]);
+    // GAP-036 follow-up — M12's SUD flag is snapshotted onto the administration row (it was never written).
+    expect(
+      (
+        await admin.query("SELECT is_sud_treatment FROM administration_record WHERE id=$1", [
+          view.id,
+        ])
+      ).rows[0].is_sud_treatment,
+    ).toBe(true);
     const events = await eventsFor(view.id);
     expect(events).toContain("m13.administration.recorded");
     expect(events).toContain("m13.administration.controlled_witnessed");

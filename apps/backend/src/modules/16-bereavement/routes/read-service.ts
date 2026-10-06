@@ -123,6 +123,12 @@ export interface BereavementPlanDetail {
   readonly currentRiskTier?: BereavementRiskTier | null;
   readonly currentRiskComputedAt?: IsoInstant | null;
   readonly legalHoldId: string | null;
+  /** GAP-047 / D7 — a pending early-close request awaiting the supervisor cosign (narrative never exposed). */
+  readonly earlyCloseRequest?: {
+    readonly reason: BereavementPlanClosureReason;
+    readonly requestedAt: IsoInstant;
+    readonly requestedByUserId: MembershipId;
+  } | null;
   readonly version: number;
   readonly updatedAt: IsoInstant;
   /** §7.13 — which confidentiality categories were withheld from this body, if any. */

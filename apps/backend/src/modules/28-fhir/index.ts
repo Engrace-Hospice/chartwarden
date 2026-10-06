@@ -62,6 +62,10 @@ export {
   type FhirJwksFetcher,
   type FhirReplayRedis,
   createHttpFhirJwksFetcher,
+  createInMemoryFhirClientRateLimiter,
   createInMemoryFhirReplayGuard,
+  createRedisFhirClientRateLimiter,
   createRedisFhirReplayGuard,
+  sampleFhirBaaCoverage,
+  warnOnFhirBaaGap,
 } from "./routes/index";

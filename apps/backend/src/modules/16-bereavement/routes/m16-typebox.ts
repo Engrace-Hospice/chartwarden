@@ -623,6 +623,9 @@ export const BereavementPlanDetailResponseSchema = Type.Object({
   currentRiskTier: Type.Optional(Nullable(RiskTier)),
   currentRiskComputedAt: Type.Optional(Nullable(Str)),
   legalHoldId: Nullable(Str),
+  earlyCloseRequest: Type.Optional(
+    Nullable(Type.Object({ reason: ClosureReason, requestedAt: Str, requestedByUserId: Str })),
+  ),
   version: Int,
   updatedAt: Str,
   redactedCategories: Type.Array(RedactedCategory),

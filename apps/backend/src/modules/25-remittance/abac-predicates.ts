@@ -36,7 +36,7 @@ export const M25_REGISTERED_ABAC_PREDICATES = [
 export type M25RegisteredAbacPredicate = (typeof M25_REGISTERED_ABAC_PREDICATES)[number];
 
 /** Roles whose billing oversight spans the worklist (they see every assignee's denial cases). */
-const BROAD_DENIAL_SCOPE_ROLES: readonly string[] = [
+export const BROAD_DENIAL_SCOPE_ROLES: readonly string[] = [
   "org_admin",
   "compliance_officer",
   "billing_manager",

@@ -99,6 +99,8 @@ export type BereavementPlanEvent =
       readonly at: IsoInstant;
       /** D7 — the clinical supervisor who ratified it; null on the cosign-exempt reasons. */
       readonly cosignedByUserId: MembershipId | null;
+      /** GAP-047 — who requested the close; the cosigner must be someone else (D7 two-person control). */
+      readonly requestedByUserId?: MembershipId | null;
       /** M4 — an active hold does not stop the program from closing, but the erase clock is M4's. */
       readonly legalHoldActive?: boolean;
     }
@@ -352,6 +354,14 @@ export function transitionBereavementPlan(
           "an early close requires a clinical-supervisor cosign",
         );
       }
+      require_(
+        !cosignRequired ||
+          event.requestedByUserId === undefined ||
+          event.requestedByUserId === null ||
+          event.requestedByUserId !== event.cosignedByUserId,
+        "EARLY_CLOSE_SELF_COSIGN",
+        "the early-close cosign must come from someone other than the requesting counselor (D7)",
+      );
       require_(
         event.legalHoldActive !== true,
         "LEGAL_HOLD_ACTIVE",

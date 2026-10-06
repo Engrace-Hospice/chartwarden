@@ -17,6 +17,10 @@
 //   bereaved_portal_window_open      — §4.7: the M16 13-month bereavement window (or state-extended) is open
 //        for this account+patient.
 //   telehealth_consent_active        — §4.7: M39 `telehealth_consent` is live for the visit's patient.
+//   portal_engagement_scope          — GAP-093: the auditor-engagement view. The acting session is an `auditor`
+//        session whose OWN engagement (stamped server-side) is the one the route names, and M3's
+//        `AuditorEngagementReader` confirms that engagement is active now. M3 registers no shared
+//        `engagement_scope` predicate, so M31 owns this one (a distinct name — the registry is single-owner).
 //   state_two_party_recording_consent_present — §4.7 / D9: reads the patient's residence state (M5
 //        `PatientAddressReader`) against the §3.8 two-party matrix; in a two-party state the visit's
 //        patient must carry an explicit recording consent, else the Record button is refused.
@@ -53,6 +57,7 @@ export const M31_ABAC_PREDICATES = [
   "bereaved_portal_window_open",
   "telehealth_consent_active",
   "state_two_party_recording_consent_present",
+  "portal_engagement_scope",
 ] as const;
 
 export type M31RegisteredAbacPredicate = (typeof M31_ABAC_PREDICATES)[number];
@@ -142,6 +147,13 @@ export interface PortalAbacPorts {
   primaryCaregiverUserId(orgId: string, patientId: string): Promise<string | null>;
   /** M5 `PatientAddressReader` — the patient's residence state code (2-letter), or null. */
   patientResidenceState(orgId: string, patientId: string): Promise<string | null>;
+  /** M3 `AuditorEngagementReader` — is this engagement active now for this auditor? Fail-closed on error. */
+  engagementActive(input: {
+    organizationId: string;
+    engagementId: string;
+    auditorUserId: string;
+    at: string;
+  }): Promise<boolean>;
 }
 
 // Structural shapes for the seams this file calls — no `@wardenx/*/seams` import edge is taken.
@@ -202,6 +214,15 @@ export const seamPortalAbacPorts: PortalAbacPorts = {
       return await getSeam("PatientAddressReader").primaryResidenceState(orgId, patientId);
     } catch {
       return null;
+    }
+  },
+  async engagementActive(input) {
+    try {
+      return (
+        (await getSeam("AuditorEngagementReader").isEngagementActiveForAuditor(input)) === true
+      );
+    } catch {
+      return false; // an unbound / erroring M3 DENIES the auditor view
     }
   },
 };
@@ -354,6 +375,26 @@ export function buildPortalAbacPredicates(
         consentType: "telehealth_consent",
         sessionClass: portalSessionClassOf(context),
       });
+    },
+
+    /** GAP-093 — the auditor's session engagement is the one the route names, and it is active now. */
+    portal_engagement_scope: async (context, target) => {
+      try {
+        if (!context.organizationId || !context.userId) return false;
+        if (portalSessionClassOf(context) !== "auditor") return false;
+        const engagementId = targetStr(target, "engagementId");
+        // The session's OWN engagement (server-stamped), never the route's claim of it.
+        const sessionEngagementId = targetStr(target, "sessionEngagementId");
+        if (engagementId === null || engagementId !== sessionEngagementId) return false;
+        return await ports.engagementActive({
+          organizationId: context.organizationId,
+          engagementId,
+          auditorUserId: context.userId,
+          at: now().toISOString(),
+        });
+      } catch {
+        return false;
+      }
     },
 
     /** §4.1 recording start (D9) — a two-party state demands an explicit recording consent. */

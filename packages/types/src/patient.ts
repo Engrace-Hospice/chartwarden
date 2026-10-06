@@ -655,3 +655,27 @@ export interface PatientPrivacyFlagReader {
     patientIds: readonly string[];
   }): Promise<readonly PatientRoomingFacts[]>;
 }
+
+// ── PatientAllergyReader seam (GAP-036 — the M12 requestSignature allergy gate) ──────────────────────
+
+/** One entry of a patient's allergy list as the prescribing gate reads it. */
+export interface PatientAllergyEntry {
+  /** The attested allergen text, verbatim (PHI). */
+  readonly allergenText: string;
+  /** `unverified` entries (e.g. DocLens referral lines) count: hiding an unverified allergy is the unsafe failure. */
+  readonly verificationStatus: "unverified" | "verified";
+  readonly severity: "mild" | "moderate" | "severe" | "unknown" | null;
+}
+
+/**
+ * M5 — the patient's CURRENT allergy list (every row not `entered_in_error`), read by M12's
+ * `requestSignature` allergy gate. Returns `null` when the patient is unknown / cross-tenant / not
+ * readable: the caller must treat that as "cannot check", never as "no allergies" (an empty array means
+ * the patient exists and has no recorded allergy). A missing/unreadable M5 throws via the deny-stub.
+ */
+export interface PatientAllergyReader {
+  activeAllergies(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<readonly PatientAllergyEntry[] | null>;
+}

@@ -134,6 +134,14 @@ export interface PortalOwnedTableOps {
   ): Promise<TelehealthVisitDigest | null>;
   /** Per-tenant telehealth roster (§4.1 admin). */
   telehealthList(orgId: string): Promise<TelehealthVisitDigest[]>;
+  /**
+   * GAP-093 — the recording facts stop-recording decides over: whether a recording is on and the user who
+   * started it (`null` ⇒ unknown: a recording started before migration 0339). `null` result ⇒ no such visit in this org.
+   */
+  telehealthRecordingState(
+    orgId: string,
+    id: string,
+  ): Promise<{ enabled: boolean; startedByUserId: string | null } | null>;
   /** Apply a telehealth lifecycle transition + optional side-effect columns, returning the new digest. */
   updateTelehealthLifecycle(
     orgId: string,
@@ -144,6 +152,8 @@ export interface PortalOwnedTableOps {
       audioOnlyFallbackActive?: boolean;
       recordingEnabled?: boolean;
       recordingRequested?: boolean;
+      /** The session user who started the recording (GAP-093). */
+      recordingStartedByUserId?: string | null;
       visitStartedAt?: Date;
       visitEndedAt?: Date;
       endReason?: TelehealthEndReason;
@@ -518,6 +528,20 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
           .orderBy(desc(telehealthVisits.roomMintedAt))
           .limit(200);
         return rows.map(toVisitDigest);
+      });
+    },
+    async telehealthRecordingState(orgId, id) {
+      return withOrgContext(db, ctx(orgId), async (tx) => {
+        const [row] = await tx
+          .select({
+            enabled: telehealthVisits.recordingEnabled,
+            startedBy: telehealthVisits.recordingStartedByUserId,
+          })
+          .from(telehealthVisits)
+          .where(eq(telehealthVisits.id, id))
+          .limit(1);
+        // GAP-093(b): NULL ⇒ no recording, or one started before 0339 (stop falls back to the assignee).
+        return row ? { enabled: row.enabled, startedByUserId: row.startedBy } : null;
       });
     },
     async updateTelehealthLifecycle(orgId, userId, id, patch) {

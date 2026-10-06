@@ -249,10 +249,18 @@ export async function requestSignature(
   client: ApiClient,
   id: string,
   signerDiscipline: string,
+  /** GAP-036: a written reason acknowledging a drug-allergy conflict the server flagged (422 `ALLERGY_CHECK_NOT_PASSED`). */
+  allergyOverrideReason?: string,
 ): Promise<WriteResult<MedicationOrderView>> {
   const { data, error, response } = await client.POST(
     "/api/v1/medication-orders/{id}/request-signature",
-    { params: { path: { id } }, body: { signerDiscipline } as RequestSignatureBody },
+    {
+      params: { path: { id } },
+      body: {
+        signerDiscipline,
+        ...(allergyOverrideReason ? { allergyOverrideReason } : {}),
+      } as RequestSignatureBody,
+    },
   );
   if (error || !data) return failure(response?.status, error);
   return ok(data as MedicationOrderView);

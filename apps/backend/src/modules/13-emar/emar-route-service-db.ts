@@ -201,6 +201,12 @@ export interface EmarMedicationOrderPort {
      */
     readonly medClass: MedClass;
     readonly isControlledSubstance: boolean;
+    /**
+     * GAP-036 follow-up — M12's 42 CFR Part 2 flag (`medication_order.is_sud_treatment`), snapshotted onto
+     * every administration row written for the order. The portal redaction and the M28 FHIR gate read M13's
+     * copy; it was never written before.
+     */
+    readonly isSudTreatment: boolean;
   } | null>;
 }
 
@@ -1005,6 +1011,7 @@ export function createDbEmarBackend(
               doseAmountSnapshot: args.doseAmount != null ? String(args.doseAmount) : null,
               doseUnitSnapshot: args.doseUnit ?? null,
               isControlledSubstance: isControlled,
+              isSudTreatment: identity.isSudTreatment,
               isComfortKitDrawdown,
               administeredAt: new Date(args.administeredAt),
               recordedAt,
@@ -1229,6 +1236,7 @@ export function createDbEmarBackend(
               status: "pending_caregiver_review",
               data: {},
               drugNameSnapshot: "",
+              isSudTreatment: identity.isSudTreatment,
               routeSnapshot: args.route,
               doseAmountSnapshot: String(args.doseAmount),
               doseUnitSnapshot: args.doseUnit,
@@ -1338,6 +1346,7 @@ export function createDbEmarBackend(
               doseAmountSnapshot: orig.doseAmountSnapshot,
               doseUnitSnapshot: orig.doseUnitSnapshot,
               isControlledSubstance: orig.isControlledSubstance,
+              isSudTreatment: orig.isSudTreatment,
               isComfortKitDrawdown: orig.isComfortKitDrawdown,
               administeredAt: orig.administeredAt,
               actorKind: orig.actorKind,
@@ -1444,6 +1453,7 @@ export function createDbEmarBackend(
               routeSnapshot: identity.route,
               isControlledSubstance:
                 identity.isControlledSubstance || identity.medClass === "controlled_substance",
+              isSudTreatment: identity.isSudTreatment,
               refused: true,
               administeredAt: new Date(args.refusedAt),
               actorKind: "clinician",

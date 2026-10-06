@@ -6268,13 +6268,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/bereavement/plans/:planId/close-early": {
     summary:
-      "D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8)",
+      "D7 early-close request — step-up; ≥40-char narrative; records a pending request only, the plan stays open until a different supervisor cosigns (§4.1 #8)",
     body: M16CloseEarlyBody,
-    response: M16ClosureResponse,
+    response: M16PlanDetailResponse,
   },
   "POST /api/v1/bereavement/plans/:planId/cosign-close": {
     summary:
-      "The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
+      "The clinical-supervisor cosign that performs the early close (a different supervisor than the requester; self-cosign is 403) — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
     body: M16CosignCloseBody,
     response: M16ClosureResponse,
   },
@@ -9788,7 +9788,19 @@ const M28FhirClientSummarySchema = Type.Object({
 });
 
 const M28ClientListResponse = Type.Object({
-  clients: Type.Array(M28FhirClientSummarySchema),
+  clients: Type.Array(
+    Type.Composite([
+      M28FhirClientSummarySchema,
+      Type.Object({
+        // GAP-083 — server-derived via the M40 BaaStatusProvider seam; `unknown` = seam error/unbound.
+        baaStatus: Type.Union([
+          Type.Literal("in_force"),
+          Type.Literal("not_in_force"),
+          Type.Literal("unknown"),
+        ]),
+      }),
+    ]),
+  ),
 });
 
 const M28FhirSessionSummarySchema = Type.Object({

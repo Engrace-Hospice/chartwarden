@@ -339,6 +339,17 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     signerDiscipline: string,
     /** The caller's session disciplines — `signerDiscipline` must be among them (422 DISCIPLINE_NOT_HELD). */
     heldDisciplines: readonly string[],
+    /**
+     * GAP-036 — the acting SESSION membership (server-derived, never the body): the actor the M39 Part 2
+     * gate answers for. Optional so the in-memory slice keeps its shape; the production backend treats
+     * absent as an unidentified actor (a restricted release then denies).
+     */
+    actorMembershipId?: string | null,
+    /**
+     * GAP-036 — the allergy acknowledgement: the clinician's written `reason` plus whether the SESSION holds a
+     * fresh step-up (resolved server-side by the route, never a body claim). Absent = no acknowledgement.
+     */
+    allergyOverride?: { readonly reason: string; readonly stepUpFresh: boolean },
   ): Promise<MedicationOrderView>;
   signOrder(
     organizationId: string,

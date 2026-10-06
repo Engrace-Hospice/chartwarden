@@ -38,6 +38,8 @@ export {
   buildTenantPlatformAbacPredicates,
   registerTenantPlatformAbacPredicates,
 } from "./abac-predicates";
+export { buildDrizzleTenantPlatformAbacResolver } from "./abac-resolver-drizzle";
+export { buildFeatureFlagKillSwitchPorts } from "./feature-flag-kill-switch-ports";
 
 // §4.9 — M34's outbox event catalog (the eighteen typed `m34.*` alert payloads). Merged into the
 // platform outbox-event catalog by the composition root; the dispatcher validates each publish against

@@ -45,8 +45,13 @@ export interface SupportConsentGrantFacts {
 /** Owner facts for a feature flag (resolved off the M1 flag store, §4.6). */
 export interface FeatureFlagFacts {
   readonly flagKey: string;
-  /** `null` for a PLATFORM-scoped (global) flag — only `platform_ops` may write. */
+  /** The SCOPE the facts describe: `null` for the PLATFORM-scoped (global) flag, else the owning org. */
   readonly organizationId: string | null;
+  /**
+   * Whether a row exists at exactly (`flagKey`, `organizationId`). `false` = first-time creation of an
+   * absent key in a valid scope. Omitted = true (a resolver that only ever returned facts for rows).
+   */
+  readonly exists?: boolean;
 }
 
 /** Owner facts for an onboarding task (resolved off `onboarding_task`, §4.6). */
@@ -71,7 +76,15 @@ export interface TenantPlatformAbacResolver {
     organizationId: string,
     grantId: string,
   ): Promise<SupportConsentGrantFacts | null>;
-  loadFeatureFlag(organizationId: string, flagKey: string): Promise<FeatureFlagFacts | null>;
+  /**
+   * Resolve the flag at the EXACT scope `scopeOrganizationId` (`null` = platform-global). A same-key row in
+   * another scope never stands in for it (no shadowing either way). `null` = deny (unknown tenant scope).
+   */
+  loadFeatureFlag(
+    organizationId: string,
+    flagKey: string,
+    scopeOrganizationId?: string | null,
+  ): Promise<FeatureFlagFacts | null>;
   loadOnboardingTask(organizationId: string, taskId: string): Promise<OnboardingTaskFacts | null>;
 }
 
@@ -80,6 +93,16 @@ const targetStr = (target: AbacTarget, field: string): string | null => {
   const value = target[field];
   return typeof value === "string" && value.length > 0 ? value : null;
 };
+
+/**
+ * The flag scope a write targets: `null` (organizationId absent/null = platform-global), a non-empty org id,
+ * or `undefined` when the field is present but malformed (the caller denies).
+ */
+function flagScopeOf(target: AbacTarget): string | null | undefined {
+  const value = target.organizationId;
+  if (value === undefined || value === null) return null;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
 
 /** `platform_ops` is the M3 RBAC role on a staff session (M34-F03) — tested via `context.roles`. */
 const isPlatformOps = (context: AbacContext): boolean => hasRole(context, "platform_ops");
@@ -116,7 +139,7 @@ export function buildTenantPlatformAbacPredicates(
   const { resolver } = deps;
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
-  return {
+  return denyOnThrow({
     // platform-ops tenant surface: actor holds the `platform_ops` M3 RBAC role (M34-F03). §4.6.
     tenant_lifecycle_platform_ops: async (context) => isPlatformOps(context),
 
@@ -158,14 +181,19 @@ export function buildTenantPlatformAbacPredicates(
     tenant_export_org_admin_or_platform_ops: async (context) =>
       hasRole(context, "org_admin") || isPlatformOps(context),
 
-    // feature-flag write: platform_ops for a PLATFORM (global) flag, else org_admin for the own-org flag. §4.6.
+    // feature-flag write: platform_ops for any scope (including first-time creation of an absent key);
+    // org_admin only for an EXISTING flag of its own org. The scope comes from the body's organizationId
+    // (absent/null = global) and is validated by the resolver against server rows. §4.6.
     feature_flag_write_authority: async (context, target) => {
       const flagKey = targetStr(target, "flagKey");
       if (!flagKey) return false; // fail-closed
-      const flag = await resolver.loadFeatureFlag(context.organizationId, flagKey);
-      if (!flag) return false; // absent / cross-tenant
-      if (flag.organizationId === null) return isPlatformOps(context); // global flag — platform-ops only
-      return hasRole(context, "org_admin") && flag.organizationId === context.organizationId;
+      const scope = flagScopeOf(target);
+      if (scope === undefined) return false; // malformed organizationId
+      const flag = await resolver.loadFeatureFlag(context.organizationId, flagKey, scope);
+      if (!flag || flag.organizationId !== scope) return false; // unknown scope / resolver disagrees
+      if (isPlatformOps(context)) return true;
+      if (flag.exists === false) return false; // creation is platform_ops-only
+      return scope !== null && hasRole(context, "org_admin") && scope === context.organizationId;
     },
 
     // onboarding task update/skip: the task's assignee OR org_admin. §4.6.
@@ -182,7 +210,25 @@ export function buildTenantPlatformAbacPredicates(
     // platform-tenant BAA attest: actor holds the tenant's compliance_officer role. §4.6.
     tenant_platform_baa_compliance_officer: async (context) =>
       hasRole(context, "compliance_officer"),
-  };
+  });
+}
+
+type Predicate = (context: AbacContext, target: AbacTarget) => Promise<boolean>;
+
+/** A predicate that throws (resolver/seam failure) denies — a throw must never be read as an allow. */
+function denyOnThrow(predicates: Record<string, Predicate>): Record<string, Predicate> {
+  return Object.fromEntries(
+    Object.entries(predicates).map(([name, predicate]) => [
+      name,
+      async (context: AbacContext, target: AbacTarget): Promise<boolean> => {
+        try {
+          return await predicate(context, target);
+        } catch {
+          return false;
+        }
+      },
+    ]),
+  );
 }
 
 /**

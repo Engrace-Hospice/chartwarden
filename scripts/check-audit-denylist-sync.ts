@@ -140,6 +140,7 @@ const MODULES: ReadonlyArray<{
     migrations: [
       "packages/db/migrations/0102_bereavement_m16_rls_audit_triggers.sql",
       "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
+      "packages/db/migrations/0338_m16_early_close_pending_request.sql",
     ],
   },
   {

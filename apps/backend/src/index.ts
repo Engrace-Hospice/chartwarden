@@ -43,6 +43,7 @@ import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
   createDrizzleFeatureFlagAdmin,
   createDrizzleFeatureFlagReader,
+  createDrizzleFeatureFlagScopeLoader,
 } from "./bootstrap/feature-flag-store";
 // F-166 (#248) — M13's `m12.medication_order.active` materializer needs the order's location timezone.
 import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
@@ -132,6 +133,8 @@ const M8_PLATFORM_JOB_ID = "m8-encounter-automation";
 const M17_PLATFORM_JOB_ID = "m17-scheduling-automation";
 // GAP-054 — the audited platform read behind the geocode-coverage gauge/boot warning (active-org list only).
 const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
+// GAP-083 follow-up — the audited platform read behind the FHIR-client BAA boot warning (active-org list only).
+const M28_BAA_COVERAGE_JOB_ID = "m28-baa-coverage";
 // AC-04 — the sentinel the `/ready` object-store check HEADs. Neither the bucket nor the key is
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
@@ -806,13 +809,18 @@ import {
   createDrizzleFhirGatewayStore,
   createDrizzleFhirPublishedSeamStore,
   createHttpFhirJwksFetcher,
+  createInMemoryFhirClientRateLimiter,
   createInMemoryFhirReplayGuard,
+  createRedisFhirClientRateLimiter,
   createRedisFhirReplayGuard,
   denyStubFhirGatewayAbacResolver,
+  getFhirBaaStatusProvider,
   mountM28Routes,
   registerFhirGatewayAbacPredicates,
   registerFhirGatewayEraser,
   registerFhirPublishedSeams,
+  sampleFhirBaaCoverage,
+  warnOnFhirBaaGap,
 } from "./modules/28-fhir/index";
 // M29 (External Interfaces) boot surface (M29-T08) — the §4.1/§4.2 route store, the §4.4 published seams,
 // and the §4.8 ABAC predicate resolver. Seams register over their M1 deny-stubs ONLY when a Drizzle store is
@@ -959,7 +967,9 @@ import {
   type TenantPlatformAbacResolver,
   bootstrapModule34,
   buildDrizzlePlatformService,
+  buildDrizzleTenantPlatformAbacResolver,
   buildDrizzleTenantService,
+  buildFeatureFlagKillSwitchPorts,
   buildM34ProvisionQueue,
   buildM34ProvisionStartedConsumer,
   buildM34WorkerDeps,
@@ -1231,7 +1241,9 @@ export function wireModuleSeams(
   // M8 — back the §4.7 reader seams with the Drizzle store when a db is present (#107): the live
   // SignedEncountersReader.signedEncountersForPatientSince over the real encounter table (the prior in-memory
   // default returned empty, zeroing M30's HVLDL numerator). Slice/tests keep the in-memory store.
-  registerEncounterSeams(deps.db ? { store: createDrizzleEncounterReaderStore(deps.db) } : {});
+  registerEncounterSeams(
+    deps.db ? { store: createDrizzleEncounterReaderStore(deps.db), db: deps.db } : {},
+  );
   // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
   // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
@@ -1729,10 +1741,20 @@ export function wireModuleSeams(
   wirePartitionRotationTenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
-  // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
-  // routes (Phase 2D Drizzle-backed); the platform-ops route surface mounted here uses only the role-only
-  // predicate, so a fail-closed slice resolver is sufficient until the Drizzle resolver lands.
-  registerTenantPlatformAbacPredicates({ resolver: SLICE_M34_ABAC_RESOLVER });
+  // registered above). GAP-098: on a DB boot the grant/session/flag/onboarding-task facts resolve through the
+  // Drizzle resolver (platform-scoped, audited); support sessions and flag writes are gated on them. Without a
+  // platform credential the fail-closed slice resolver stands, so those routes deny rather than fail open.
+  registerTenantPlatformAbacPredicates({
+    resolver:
+      deps.db && deps.platformDb
+        ? buildDrizzleTenantPlatformAbacResolver({
+            db: deps.db,
+            platformDb: deps.platformDb,
+            auditBypass: m34PlatformBypassAuditor,
+            loadFlagRows: createDrizzleFeatureFlagScopeLoader(deps.platformDb),
+          })
+        : SLICE_M34_ABAC_RESOLVER,
+  });
   // M34 (Phase 2D) — register M34's platform job id on the @wardenx/tenancy allowlist (the allowlist starts
   // empty; without this the platform-ops seam reads + the platform-scoped workers are REFUSED entry to
   // withPlatformContext — fail-closed). Must run before any registerLiveM34Seams read or worker run.
@@ -1990,10 +2012,9 @@ const SLICE_MODULE_34_SEAM_DEPS: BootstrapModule34Deps = {
 };
 
 /**
- * Fail-closed slice resolver for M34's §4.6 ABAC predicates registered at boot. Every owner-fact load
- * denies (returns null/false) — the platform-ops tenant-lifecycle routes only exercise the role-only
- * `tenant_lifecycle_platform_ops` predicate, so these methods are never reached for that surface. The
- * Phase-2D Drizzle-backed resolver (loading grant/flag/onboarding-task facts under RLS) replaces this.
+ * Fail-closed slice resolver for M34's §4.6 ABAC predicates, used only when the boot has no DB or no
+ * platform credential. Every owner-fact load denies (returns null/false). The DB boot binds the Drizzle
+ * resolver instead (GAP-098).
  */
 const SLICE_M34_ABAC_RESOLVER: TenantPlatformAbacResolver = {
   hasActiveConsentedSupportSession: async () => false,
@@ -2453,6 +2474,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M28_BAA_COVERAGE_JOB_ID);
   // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
@@ -3136,8 +3158,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           noteInMemoryBinding({
             kind: "route-dep",
             label:
-              "M3 mountAuthorizationRoutes — engagements/auditorSessions in-memory (auditor-engagement console is process-local; GAP-010 made the break-glass Compliance notification durable via the m3.breakglass.invoked outbox event)",
-            task: "GAP-011 (Drizzle engagement/auditor-session stores)",
+              "M3 mountAuthorizationRoutes — auditorSessions in-memory (engagements are durable since GAP-011: createDbEngagementStore; the auditor magic-link mint/consume still needs a persisted invite token store, which needs a migration; GAP-010 made the break-glass Compliance notification durable via the m3.breakglass.invoked outbox event)",
+            task: "GAP-011 (auditor magic-link token store + session consume)",
           });
           if (!liveRbacHandle) {
             // Should be unreachable on a db boot (wireModuleSeams runs first inside buildServer) —
@@ -3412,7 +3434,28 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // route file's own header says must not exist). On the PLATFORM pool: migration 0001's write
               // policies never admit a NULL org, so a platform-global flag is uncreatable from a tenant
               // connection by design.
-              featureFlags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
+              featureFlags: createDrizzleFeatureFlagAdmin(
+                platformDbHandle?.db ?? dbHandle.db,
+                // §4.7 kill switch — audited emergency control; only with a real platform credential
+                // (without one the seam refuses 501 rather than flip a flag unaudited).
+                platformDbHandle
+                  ? buildFeatureFlagKillSwitchPorts({
+                      platformDb: platformDbHandle.db,
+                      auditBypass: m34PlatformBypassAuditor,
+                      outbox: m34OutboxPublisher,
+                      auditCritical: (tx, event) =>
+                        auditPlatformEvent(tx, {
+                          eventType: event.eventType,
+                          resourceKind: "feature_flag",
+                          resourceId: event.resourceId,
+                          outcome: "success",
+                          severity: "critical",
+                          correlationId: event.correlationId,
+                          context: event.context,
+                        }),
+                    })
+                  : undefined,
+              ),
             }),
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
@@ -4061,6 +4104,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             replay: rateLimitRedisClient
               ? createRedisFhirReplayGuard(rateLimitRedisClient)
               : createInMemoryFhirReplayGuard(),
+            // GAP-083 — the request-time gates. The BAA port resolves the M40 seam LAZILY (a not-yet-
+            // registered provider is the fail-closed deny-stub, never a boot error); the limiter is the
+            // Valkey token bucket when REDIS_URL is set, per-process otherwise (the plugin's posture).
+            baa: { isBaaActive: (input) => getFhirBaaStatusProvider().isBaaActive(input) },
+            rateLimiter: rateLimitRedisClient
+              ? createRedisFhirClientRateLimiter(rateLimitRedisClient, {
+                  onStoreError: (err) =>
+                    app.log.warn({ err }, "M28 client rate limiter: Valkey error"),
+                })
+              : createInMemoryFhirClientRateLimiter(),
             tokenEndpointUrl: integrationEnabled(process.env, FHIR_TOKEN_ENDPOINT_ENABLED_ENV)
               ? process.env.FHIR_TOKEN_ENDPOINT_URL
               : undefined,
@@ -4170,6 +4223,34 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       warn: (fields, message) => app.log.warn(fields, message),
       info: (fields, message) => app.log.info(fields, message),
     });
+  }
+  // GAP-083 follow-up — count ACTIVE FHIR clients whose BAA reference no longer resolves to an in-force M40
+  // contract (they get 401 BAA_NOT_IN_FORCE on mint and reads). Fire-and-forget; never blocks boot. Org list
+  // via the audited platform pool, client rows via the tenant pool under each org's RLS context.
+  if (dbHandle) {
+    const baaCoverageStore = createDrizzleFhirGatewayStore(dbHandle.db);
+    const baaCoverageOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M28_BAA_COVERAGE_JOB_ID,
+      reason: "GAP-083 FHIR client BAA coverage probe: active-org list",
+    });
+    void warnOnFhirBaaGap(
+      () =>
+        sampleFhirBaaCoverage({
+          listOrgs: () => baaCoverageOrgs.listActiveOrgs(),
+          activeClientRefs: async (organizationId) =>
+            (await baaCoverageStore.listClients(organizationId, { status: "active" })).map(
+              (c) => c.baaContractReference,
+            ),
+          baa: { isBaaActive: (input) => getFhirBaaStatusProvider().isBaaActive(input) },
+          now: () => new Date().toISOString(),
+        }),
+      {
+        warn: (fields, message) => app.log.warn(fields, message),
+        info: (fields, message) => app.log.info(fields, message),
+      },
+    );
   }
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the

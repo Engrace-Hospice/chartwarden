@@ -20,10 +20,12 @@ import type {
   AdmissionCensusReader,
   AdmissionOnsetReader,
   AdmissionStatusReader,
+  AuditorEngagementReader,
   AuditorSessionMinter,
   BereavedPortalScopeProvider,
   BereavementAssignmentReader,
   BereavementComplianceProvider,
+  BereavementEncounterReader,
   BereavementOutreachProvider,
   BereavementPlanProvider,
   BereavementRiskFactorsProvider,
@@ -90,6 +92,7 @@ import type {
   OrganizationReader,
   PatientAddressReader,
   PatientAdmissionClearanceReader,
+  PatientAllergyReader,
   PatientCaregiverReader,
   PatientCounterProvider,
   PatientCoverageReader,
@@ -273,6 +276,13 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
 export const patientPrivacyFlagReaderDenyStub: PatientPrivacyFlagReader = {
   roomingFactsFor() {
     throw new NotImplementedError("PatientPrivacyFlagReader");
+  },
+};
+
+/** M5 — the patient's allergy list (GAP-036). Throws: an unanswerable allergy question must DENY the signature request, never read as "no allergies". */
+export const patientAllergyReaderDenyStub: PatientAllergyReader = {
+  activeAllergies() {
+    throw new NotImplementedError("PatientAllergyReader");
   },
 };
 
@@ -643,6 +653,13 @@ export const patientSitingReaderDenyStub: PatientSitingReader = {
   },
 };
 
+/** M8 — bereavement source-encounter facts. Denies until M8 registers the real reader (M16 fails closed). */
+export const bereavementEncounterReaderDenyStub: BereavementEncounterReader = {
+  getBereavementEncounterFacts() {
+    throw new NotImplementedError("BereavementEncounterReader");
+  },
+};
+
 /** M3 — supervisor / membership location facts. Denies until M3 registers the real reader. */
 export const supervisorReaderDenyStub: SupervisorReader = {
   resolveSupervisedMembershipIds() {
@@ -653,6 +670,16 @@ export const supervisorReaderDenyStub: SupervisorReader = {
   },
   membershipLocationIds() {
     throw new NotImplementedError("SupervisorReader");
+  },
+};
+
+/** M3 — auditor engagement activity. Denies until M3 registers the real reader (M31's auditor view fails closed). */
+export const auditorEngagementReaderDenyStub: AuditorEngagementReader = {
+  isEngagementActiveForAuditor() {
+    throw new NotImplementedError("AuditorEngagementReader");
+  },
+  engagementScope() {
+    throw new NotImplementedError("AuditorEngagementReader");
   },
 };
 

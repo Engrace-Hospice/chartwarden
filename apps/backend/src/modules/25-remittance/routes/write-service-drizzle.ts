@@ -19,14 +19,13 @@ import {
 } from "../domain";
 import type { M25WriteActor } from "./actor";
 import { VersionConflictError } from "./concurrency";
+import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
 import type {
-  AdjustmentOverrideInput,
   AppealCreateInput,
   AppealDecideInput,
   AppealSubmitInput,
   DenialAssignInput,
   M25WriteService,
-  ManualMatchInput,
   ReasonInput,
   TaxonomyOverlayInput,
   VersionedResult,
@@ -48,10 +47,10 @@ class InvalidTransitionError extends WardenXError {
 export function buildDrizzleM25WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
+  ports: Pick<RemittanceCommandDeps, "claims" | "audit"> = {},
 ): M25WriteService {
   const RA = schema.remittanceAdvice;
   const RL = schema.remittanceLine;
-  const ADJ = schema.remittanceAdjustment;
   const DC = schema.denialCase;
   const AC = schema.appealCase;
   const AE = schema.appealCaseEvent;
@@ -122,60 +121,7 @@ export function buildDrizzleM25WriteService(
       });
     },
 
-    async manualMatch(actor, lineId, input: ManualMatchInput) {
-      await withOrgContext(db, actor, async (tx) => {
-        const rows = await tx
-          .select({ id: RL.id, matchState: RL.matchState })
-          .from(RL)
-          .where(eq(RL.id, lineId))
-          .limit(1);
-        if (!rows[0]) throw new NotFoundError("remittance line not found");
-        if (rows[0].matchState !== "unmatched") {
-          throw new WardenXError(
-            "INVALID_STATE",
-            "only an unmatched line can be manually matched",
-            409,
-          );
-        }
-        await tx
-          .update(RL)
-          .set({
-            claimId: input.proposedClaimId,
-            matchState: "manual_matched",
-            matchStrategy: "manual",
-            matchConfidence: 100,
-            matchedAt: sql`now()`,
-            matchedByMembershipId: actor.membershipId,
-          })
-          .where(eq(RL.id, lineId));
-        await outbox.publish(tx, {
-          eventName: "m25.remittance.manual_match_recorded",
-          organizationId: actor.organizationId,
-          aggregateKind: "remittance_line",
-          aggregateId: lineId,
-          payload: {
-            remittanceLineId: lineId,
-            claimId: input.proposedClaimId,
-            matchedByMembershipId: actor.membershipId,
-          },
-        });
-      });
-    },
-
-    async overrideAdjustment(actor, adjustmentId, input: AdjustmentOverrideInput) {
-      await withOrgContext(db, actor, async (tx) => {
-        const rows = await tx
-          .select({ id: ADJ.id })
-          .from(ADJ)
-          .where(eq(ADJ.id, adjustmentId))
-          .limit(1);
-        if (!rows[0]) throw new NotFoundError("remittance adjustment not found");
-        await tx
-          .update(ADJ)
-          .set({ postAction: input.newPostAction })
-          .where(eq(ADJ.id, adjustmentId));
-      });
-    },
+    ...buildRemittanceCommands({ db, outbox, ...ports }),
 
     async assignDenial(actor, id, input: DenialAssignInput, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {

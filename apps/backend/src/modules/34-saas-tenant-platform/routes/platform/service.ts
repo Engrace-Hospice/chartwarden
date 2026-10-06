@@ -248,8 +248,13 @@ export interface UpsertFeatureFlagArgs {
 }
 export interface SetKillSwitchArgs {
   readonly flagKey: string;
+  /** The flag's scope (body, ABAC-validated against server rows): the owning org, null = global. */
   readonly organizationId: string | null;
   readonly killSwitchActive: boolean;
+  /** The operator's own session org — server-derived; the emergency alert/outbox row is emitted under it. */
+  readonly actorOrganizationId: string;
+  /** The operator's session membership id, when the session carries one (server-derived). */
+  readonly actorMembershipId: string | null;
 }
 
 export interface ProvisionTenantArgs {

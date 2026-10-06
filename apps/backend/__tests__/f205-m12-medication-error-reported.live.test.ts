@@ -30,6 +30,7 @@ import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { medicationOrderScheduleContextForOrg } from "../src/modules/12-dosespot/seams/drizzle-store";
 import { buildM30MedicationErrorReportedConsumer } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -157,7 +158,7 @@ describe.skipIf(!DB_URL)(
       const outbox: DoseSpotWriteOutboxPort = {
         publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m12" }),
       };
-      svc = createDbDoseSpotBackend(handle.db, outbox);
+      svc = createDbDoseSpotBackend(handle.db, outbox, PASSING_M12_SAFETY_GATES);
       consumer = buildM30MedicationErrorReportedConsumer({
         db: handle.db,
         medicationOrderScheduleContextForOrg,

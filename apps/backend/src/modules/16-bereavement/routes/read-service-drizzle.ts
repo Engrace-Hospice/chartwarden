@@ -34,6 +34,7 @@ import type {
   BereavementRiskTier,
   IsoInstant,
   M16OutreachStats,
+  MembershipId,
 } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { BEREAVEMENT_OVERSIGHT_ROLES } from "../abac-predicates";
@@ -420,6 +421,14 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
               }
             : {}),
           legalHoldId: plan.legalHoldId ?? null,
+          earlyCloseRequest:
+            plan.earlyCloseReason && plan.earlyCloseRequestedAt && plan.earlyCloseRequestedByUserId
+              ? {
+                  reason: plan.earlyCloseReason,
+                  requestedAt: iso(plan.earlyCloseRequestedAt) as IsoInstant,
+                  requestedByUserId: plan.earlyCloseRequestedByUserId as MembershipId,
+                }
+              : null,
           version: plan.version,
           updatedAt: iso(plan.updatedAt) as IsoInstant,
           redactedCategories: gate.redactedCategories,

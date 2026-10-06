@@ -1,3 +1,4 @@
+import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/08-encounters/seams — M8's published §4.7 owned seams + the M7 CarePlanReader
 // it CONSUMES (M8-T08). M8 publishes FOUR leaf-typed surfaces every downstream module consumes instead
 // of importing M8's schema (architecture §11 blocks the schema import): BillableEncounterReader (M23/M24
@@ -13,6 +14,7 @@
 // M9's §4.7/D7 LatestAssessmentProvider (`getLatestAssessmentProvider()`) — the §2.6 check 3 (#125)
 // "is the mandated scale present" read.
 import type {
+  BereavementEncounterReader,
   BillableEncounterReader,
   CarePlanReader,
   CareTeamProvider,
@@ -23,6 +25,7 @@ import type {
   SignedEncountersReader,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import { createBereavementEncounterReader } from "./bereavement-encounter-reader";
 import {
   createBillableEncounterReader,
   createEncounterCreator,
@@ -57,7 +60,11 @@ export {
 export interface EncounterSeamDeps {
   /** The §4.7 data port (Drizzle over M8's tables in prod; in-memory slice in tests). */
   store?: EncounterReaderStore;
+  /** Pooled db for the BereavementEncounterReader; without one the fail-closed deny-stub stands. */
+  db?: DbClient;
 }
+
+export { createBereavementEncounterReader } from "./bereavement-encounter-reader";
 
 /**
  * Register every M8 §4.7 owned seam into the M1 registry over its boot deny-stub (M8-T08; before
@@ -70,6 +77,8 @@ export function registerEncounterSeams(deps: EncounterSeamDeps = {}): void {
   registerSeam("SignedEncountersReader", createSignedEncountersReader(store));
   registerSeam("MileagePayrollReader", createMileagePayrollReader(store));
   registerSeam("EncounterCreator", createEncounterCreator(store));
+  if (deps.db)
+    registerSeam("BereavementEncounterReader", createBereavementEncounterReader(deps.db));
 }
 
 /** Typed resolver for M8's BillableEncounterReader (sound: registered real impl; validateSeams guards it). */

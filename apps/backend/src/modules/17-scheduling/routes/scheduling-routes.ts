@@ -19,10 +19,11 @@ import {
   resolveActorPermissions,
 } from "@wardenx/auth";
 import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { NotFoundError, UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam, requestStepUpFresh } from "../../../bootstrap/index";
 import { assertAssignedClinician } from "./assigned-clinician";
+import { type CallerAuthority, NO_AUTHORITY } from "./own-vs-any";
 import {
   ApproveTimeOffRequest,
   AvailabilityQuerySchema,
@@ -160,11 +161,47 @@ const RECURRING_READ = P("recurring_visit.read");
 const RECURRING_CREATE = P("recurring_visit.create");
 const RECURRING_DISCONTINUE = P("recurring_visit.discontinue");
 const AVAIL_READ = P("availability.read");
-const AVAIL_EDIT = P("availability.edit_own");
-const TIME_OFF_READ = P("time_off.read_own");
 const TIME_OFF_REQUEST = P("time_off.request_own");
 const TIME_OFF_APPROVE = P("time_off.approve");
-const TIME_OFF_CANCEL = P("time_off.cancel_own");
+
+/** RBAC gate that passes when the caller holds ANY of `keys` (spec §4.6 "X or Y" rows). Fails closed. */
+const anyPermission =
+  (...keys: string[]): PreHandler =>
+  async (request) => {
+    const ctx = request.context;
+    if (!ctx?.organizationId) throw new UnauthorizedError();
+    const granted = await resolveActorPermissions({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+    if (!keys.some((k) => granted.has(k))) {
+      throw new ForbiddenError(`requires permission '${keys.join("' or '")}'`);
+    }
+  };
+const AVAIL_EDIT = anyPermission("availability.edit_own", "availability.edit_any");
+const TIME_OFF_READ = anyPermission("time_off.read_own", "time_off.read_team");
+const TIME_OFF_CANCEL = anyPermission("time_off.cancel_own", "time_off.approve");
+
+/**
+ * GAP-051 — the own-vs-any widening keys the caller holds, resolved from the RBAC engine (never from a body
+ * or header). The service enforces the same rule again; a resolver failure widens nothing.
+ */
+async function authorityOf(request: FastifyRequest): Promise<CallerAuthority> {
+  const ctx = request.context;
+  try {
+    const granted = await resolveActorPermissions({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+    return {
+      availabilityEditAny: granted.has("availability.edit_any"),
+      timeOffReadTeam: granted.has("time_off.read_team"),
+      timeOffApprove: granted.has("time_off.approve"),
+    };
+  } catch {
+    return NO_AUTHORITY;
+  }
+}
 const OPTIMIZE = P("route.optimize_on_demand");
 const ROUTE_METRICS = P("route.read_metrics");
 const PORTAL_READ = P("portal.visit.read_upcoming");
@@ -526,7 +563,13 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     const { organizationId, userId } = actorOf(request);
     const { membershipId } = parse(MembershipIdParamsSchema, request.params);
     const b = parse(UpsertAvailabilityRequest, request.body);
-    return service.upsertAvailability(organizationId, userId, membershipId, b);
+    return service.upsertAvailability(
+      organizationId,
+      userId,
+      membershipId,
+      b,
+      await authorityOf(request),
+    );
   });
 
   // 18 — list PTO requests (own; supervisor reads team).
@@ -541,9 +584,14 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const q = parse(TimeOffListQuerySchema, request.query);
-      return service.listTimeOff(organizationId, { membership: q.membership, state: q.state });
+      return service.listTimeOff(
+        organizationId,
+        userId,
+        { membership: q.membership, state: q.state },
+        await authorityOf(request),
+      );
     },
   );
 
@@ -551,12 +599,17 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   app.post("/api/v1/time-off", { preHandler: [TIME_OFF_REQUEST] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const b = parse(RequestTimeOffRequest, request.body);
-    const res = service.requestTimeOff(organizationId, userId, {
-      membershipId: b.membershipId,
-      kind: b.kind,
-      startsAt: b.startsAt,
-      endsAt: b.endsAt,
-    });
+    const res = await service.requestTimeOff(
+      organizationId,
+      userId,
+      {
+        membershipId: b.membershipId,
+        kind: b.kind,
+        startsAt: b.startsAt,
+        endsAt: b.endsAt,
+      },
+      await authorityOf(request),
+    );
     return reply.code(201).send(res);
   });
 
@@ -565,7 +618,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     parse(ApproveTimeOffRequest, request.body);
-    return service.approveTimeOff(organizationId, userId, id);
+    return service.approveTimeOff(organizationId, userId, id, await authorityOf(request));
   });
 
   // 21 — deny PTO (reason ≥ 20 chars).
@@ -573,7 +626,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     const b = parse(DenyTimeOffRequest, request.body);
-    return service.denyTimeOff(organizationId, userId, id, b.reason);
+    return service.denyTimeOff(organizationId, userId, id, b.reason, await authorityOf(request));
   });
 
   // 22 — cancel own pre-start PTO.
@@ -581,7 +634,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     parse(CancelTimeOffRequest, request.body);
-    return service.cancelTimeOff(organizationId, userId, id);
+    return service.cancelTimeOff(organizationId, userId, id, await authorityOf(request));
   });
 
   // 23 — day-view for a clinician or org-wide.

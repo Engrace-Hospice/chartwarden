@@ -43,6 +43,7 @@ import {
   createDbDoseSpotBackend,
 } from "../src/modules/12-dosespot/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { PASSING_M12_SAFETY_GATES } from "./_m12-safety-gates";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -243,7 +244,7 @@ describe.skipIf(!DB_URL)(
       };
 
       m11Backend = createDbOrderBackend(handle.db, bindM11 as never);
-      m12Backend = createDbDoseSpotBackend(handle.db, bindM12 as never);
+      m12Backend = createDbDoseSpotBackend(handle.db, bindM12 as never, PASSING_M12_SAFETY_GATES);
       // GAP-035 follow-up — recordVerbal refuses a named prescriber with no active roster row
       // (NAMED_PRESCRIBER_NOT_ENROLLED), so each org enrolls one prescriber for PHYSICIAN_MDM.
       for (const org of [ORG_A, ORG_B])

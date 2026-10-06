@@ -30,6 +30,21 @@ const quantity = Type.Object({
   value: Type.Number({ minimum: 0.01 }),
   unit: Type.String({ minLength: 1 }),
 });
+/**
+ * GAP-036 — the allergy acknowledgement SERVER-recorded by `requestSignature` (never client-supplied: the
+ * draft validators below reject this key in a non-complete/client payload). It lives in the per-class `data`
+ * jsonb because `medication_order` has no dedicated column; the whole column is audit-denylisted (§7.6).
+ */
+export const ALLERGY_OVERRIDE_DATA_KEY = "allergyOverride";
+export const AllergyOverrideData = Type.Object(
+  {
+    reason: Type.String({ minLength: 10, maxLength: 1000 }),
+    acknowledgedByMembershipId: Type.String({ minLength: 1 }),
+    acknowledgedAt: Type.String({ minLength: 1 }),
+    matchedClasses: Type.Array(Type.String({ minLength: 1 })),
+  },
+  { additionalProperties: false },
+);
 export const StandardMedOrderData = Type.Object(
   {
     sigStructured: sig,
@@ -41,6 +56,7 @@ export const StandardMedOrderData = Type.Object(
     dispenseQuantity: quantity,
     daysSupply: Type.Integer({ minimum: 1, maximum: 365 }),
     daw: Type.Boolean(),
+    allergyOverride: Type.Optional(AllergyOverrideData),
   },
   { additionalProperties: false },
 );
@@ -57,6 +73,7 @@ export const ControlledSubstanceMedOrderData = Type.Object(
     daw: Type.Boolean(),
     deaSchedule: dea,
     prescriberDea: Type.String({ pattern: "^[A-Z]{2}[0-9]{7}$" }),
+    allergyOverride: Type.Optional(AllergyOverrideData),
   },
   { additionalProperties: false },
 );
@@ -88,6 +105,7 @@ export const CompoundedMedOrderData = Type.Object(
     dispenseQuantity: quantity,
     daysSupply: Type.Integer({ minimum: 1, maximum: 180 }),
     daw: Type.Literal(true),
+    allergyOverride: Type.Optional(AllergyOverrideData),
   },
   { additionalProperties: false },
 );
@@ -127,8 +145,10 @@ export function validateMedicationOrderData(
       ? [{ field: "data", code: "REQUIRED", message: "Medication order data is required." }]
       : [{ field: "data", code: "INVALID", message: "Medication order data must be an object." }];
   const allowed = Object.keys((schema as { properties?: object }).properties ?? {});
+  // The allergy acknowledgement is recorded by the server at requestSignature; a client-supplied draft
+  // payload (non-complete) must never carry one.
   for (const key of Object.keys(data))
-    if (!allowed.includes(key))
+    if (!allowed.includes(key) || (key === ALLERGY_OVERRIDE_DATA_KEY && !complete))
       findings.push({
         field: `data.${key}`,
         code: "UNKNOWN",

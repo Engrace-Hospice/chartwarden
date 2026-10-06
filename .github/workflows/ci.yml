@@ -523,6 +523,7 @@ jobs:
           # GAP-010: break-glass durably notifies Compliance — `m3.breakglass.invoked` through the real catalog-validating
           # publisher on the invoke's own tx (atomic with the grant), RLS-scoped, delivered by the M36 consumer.
           - { name: "M3 break-glass outbox (GAP-010)", scripts: "test:m3:break-glass-outbox:live" }
+          - { name: "M3 auditor engagement (GAP-093)", scripts: "test:m3:auditor-engagement:live" }
           - { name: "M3 proposed-role attach (F-097)", scripts: "test:m3:role-attach:live" }
           # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
           # was asserted by name in a code comment and existed in no migration, and nothing had ever
@@ -578,7 +579,7 @@ jobs:
           - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
           - {
               name: "M25 Remittance",
-              scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
+              scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live test:m25:manual-match:live",
             }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
@@ -824,6 +825,7 @@ jobs:
           # F-171 (#248) — the real §7.1/§7.2 T-24h packet-build worker (schedule-materialise + packets-cron).
           - { name: "M14 packet build", scripts: "test:m14:packet-build:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
+          - { name: "M16 early close + source encounter", scripts: "test:m16:early-close:live" }
           - { name: "M6/M16 external death cosign", scripts: "test:m6-m16:external-death-cosign:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
           # F-171 (#248) — the consent-type-catalog seed rows that unblock the already-built M2/M16/M31

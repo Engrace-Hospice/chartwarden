@@ -188,7 +188,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
     },
   );
 
-  // 8 — D7 early close (step-up; ≥40-char narrative). The closure row lands awaiting the route-9 cosign.
+  // 8 — D7 early-close REQUEST (step-up; ≥40-char narrative). Records a pending request only (GAP-047): the
+  //     plan keeps its state until route 9 is cosigned by a DIFFERENT supervisor.
   app.post(
     "/api/v1/bereavement/plans/:planId/close-early",
     {
@@ -199,19 +200,18 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
         IDEMPOTENT,
       ],
     },
-    async (request, reply) => {
+    async (request) => {
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CloseEarlyBody, request.body);
-      const closure = await writeService.closeEarly(writeActorOf(request), planId, {
+      return writeService.closeEarly(writeActorOf(request), planId, {
         expectedVersion: ifMatchVersion(request, true),
         ...body,
       });
-      return reply.code(201).send(closure);
     },
   );
 
-  // 9 — the clinical-supervisor cosign that ratifies the early close (step-up; oversight, not window —
-  //     by this point the plan is already `closed_early`).
+  // 9 — the clinical-supervisor cosign that PERFORMS the early close (step-up; oversight, not window). The
+  //     cosigner is the server-derived acting membership and must differ from the requester (403 otherwise).
   app.post(
     "/api/v1/bereavement/plans/:planId/cosign-close",
     {

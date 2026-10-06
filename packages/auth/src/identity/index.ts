@@ -118,6 +118,7 @@ export {
   isSessionScopeValid,
   assertSessionScope,
   sessionExternalActorId,
+  sessionEngagementId,
   sessionPinnedPatientId,
   sessionAllowsConcurrent,
   PORTAL_SESSION_CLASSES,

@@ -358,7 +358,11 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       flagKey: id,
       killSwitchActive: Type.Boolean(),
-      actorMembershipId: id,
+      // The acting platform-ops USER. A platform operator toggling a global flag holds no membership in
+      // any tenant the flag touches, so the membership id is optional; the user id is always known.
+      actorUserId: id,
+      actorMembershipId: nullableId,
+      // The flag's scope: the owning org, or null for a platform-global flag.
       orgId: nullableId,
       changedAt: isoInstant,
     }),

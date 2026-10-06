@@ -29,7 +29,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { NotFoundError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -118,6 +118,7 @@ interface PlanRecord {
   version: number;
   updatedAt: string;
   closure: BereavementClosureView | null;
+  pendingEarlyClose: { reason: string; requestedBy: string } | null;
 }
 
 interface ContactRecord {
@@ -198,6 +199,7 @@ function createFakeBackend() {
       version: 1,
       updatedAt: NOW,
       closure: null,
+      pendingEarlyClose: null,
       ...overrides,
     };
     plans.set(planId, rec);
@@ -503,33 +505,33 @@ function createFakeBackend() {
     async closeEarly(actor, planId, input) {
       const p = plans.get(planId);
       if (!p) throw new NotFoundError("bereavement plan not found");
-      p.status = "closed_early";
-      p.closedAt = NOW;
+      // GAP-047 — a request only: the plan keeps its state and no closure exists yet.
+      p.pendingEarlyClose = { reason: input.reason, requestedBy: actor.membershipId };
       bump(p);
-      const closure: BereavementClosureView = {
-        closureId: fakeId(),
-        planId,
-        reason: input.reason as never,
-        closeKind: "early_pending_cosign",
-        closedAt: NOW,
-        closedByUserId: actor.membershipId,
-        cosignedByUserId: null,
-        cosignedAt: null,
-        stats: zeroStats(),
-        bereavementSummaryDocumentId: null,
-      };
-      p.closure = closure;
-      return closure;
+      return planDetail(p);
     },
     async cosignClose(actor, planId) {
       const p = plans.get(planId);
-      if (!p || !p.closure) throw new NotFoundError("bereavement plan closure not found");
+      if (!p?.pendingEarlyClose) throw new NotFoundError("bereavement plan closure not found");
+      if (p.pendingEarlyClose.requestedBy === actor.membershipId) {
+        throw new ForbiddenError("the cosign must come from someone other than the requester");
+      }
+      p.status = "closed_early";
+      p.closedAt = NOW;
       p.closure = {
-        ...p.closure,
+        closureId: fakeId(),
+        planId,
+        reason: p.pendingEarlyClose.reason as never,
+        closeKind: "manual",
+        closedAt: NOW,
+        closedByUserId: p.pendingEarlyClose.requestedBy as never,
         cosignedByUserId: actor.membershipId,
         cosignedAt: NOW,
-        closeKind: "early_cosigned",
+        stats: zeroStats(),
+        bereavementSummaryDocumentId: null,
       };
+      p.pendingEarlyClose = null;
+      bump(p);
       return p.closure;
     },
     async createContact(_actor, planId, input) {
@@ -1014,8 +1016,8 @@ describe("M16 §4.1 routes 8–10 — early close + cosign + closure", () => {
       headers: { ...COUNSELOR, "idempotency-key": "ce-1", "if-match": String(plan.version) },
       payload: { reason: "geographic_relocation", narrative: "x".repeat(45) },
     });
-    expect(close.statusCode).toBe(201);
-    const closureId = close.json().closureId as string;
+    expect(close.statusCode).toBe(200);
+    expect(close.json().status).toBe("active");
 
     const cosign = await app.inject({
       method: "POST",
@@ -1025,6 +1027,8 @@ describe("M16 §4.1 routes 8–10 — early close + cosign + closure", () => {
     });
     expect(cosign.statusCode).toBe(200);
     expect(cosign.json().cosignedByUserId).toBe(SUPERVISOR_ID);
+    expect(cosign.json().closedByUserId).toBe(COUNSELOR_ID);
+    const closureId = cosign.json().closureId as string;
 
     const closure = await app.inject({
       method: "GET",

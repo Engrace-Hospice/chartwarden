@@ -73,6 +73,9 @@ const ports = (consentAllowed: boolean, over: Partial<PortalAbacPorts> = {}): Po
   async patientResidenceState() {
     return "CA";
   },
+  async engagementActive() {
+    return true;
+  },
   ...over,
 });
 
@@ -95,7 +98,7 @@ describe("M31-T07 §4.6 permission keys", () => {
 });
 
 describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
-  it("names exactly the six owned predicates", () => {
+  it("names exactly the seven owned predicates", () => {
     expect([...M31_ABAC_PREDICATES]).toEqual([
       "portal_account_active",
       "portal_grant_active_for_patient",
@@ -103,6 +106,7 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
       "bereaved_portal_window_open",
       "telehealth_consent_active",
       "state_two_party_recording_consent_present",
+      "portal_engagement_scope",
     ]);
   });
 
@@ -162,6 +166,78 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
     expect(
       await oneParty.state_two_party_recording_consent_present(ctx(), { telehealthVisitId: "v1" }),
     ).toBe(true);
+  });
+});
+
+describe("M31 GAP-093 portal_engagement_scope — fail-closed", () => {
+  const ENGAGEMENT = "44444444-4444-4444-8444-444444444444";
+  const auditor = ctx({ attributes: { sessionClass: "auditor", engagementId: ENGAGEMENT } });
+  const own: AbacTarget = { engagementId: ENGAGEMENT, sessionEngagementId: ENGAGEMENT };
+
+  it("allows an auditor session on its own, active engagement", async () => {
+    const p = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(true) });
+    expect(await p.portal_engagement_scope(auditor, own)).toBe(true);
+  });
+
+  it("denies a non-auditor session class", async () => {
+    const p = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(true) });
+    const staff = ctx({ attributes: { sessionClass: "staff", engagementId: ENGAGEMENT } });
+    expect(await p.portal_engagement_scope(staff, own)).toBe(false);
+  });
+
+  it("denies when the route names a different engagement than the session's, or the session has none", async () => {
+    const p = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(true) });
+    expect(await p.portal_engagement_scope(auditor, { ...own, engagementId: "other" })).toBe(false);
+    expect(await p.portal_engagement_scope(auditor, { engagementId: ENGAGEMENT })).toBe(false);
+    expect(await p.portal_engagement_scope(auditor, {})).toBe(false);
+  });
+
+  it("denies an inactive engagement and catches a throwing reader", async () => {
+    const inactive = buildPortalAbacPredicates({
+      resolver: resolver(),
+      ports: ports(true, {
+        async engagementActive() {
+          return false;
+        },
+      }),
+    });
+    expect(await inactive.portal_engagement_scope(auditor, own)).toBe(false);
+    const throwing = buildPortalAbacPredicates({
+      resolver: resolver(),
+      ports: ports(true, {
+        async engagementActive() {
+          throw new Error("M3 unreadable");
+        },
+      }),
+    });
+    expect(await throwing.portal_engagement_scope(auditor, own)).toBe(false);
+  });
+
+  it("hands the reader the SESSION's user and org, never a target-supplied one", async () => {
+    const seen: unknown[] = [];
+    const p = buildPortalAbacPredicates({
+      resolver: resolver(),
+      ports: ports(true, {
+        async engagementActive(input) {
+          seen.push(input);
+          return true;
+        },
+      }),
+      now: () => new Date("2026-07-30T12:00:00.000Z"),
+    });
+    await p.portal_engagement_scope(auditor, {
+      ...own,
+      organizationId: "evil",
+      auditorUserId: "evil",
+    });
+    expect(seen).toEqual([
+      {
+        organizationId: ORG,
+        engagementId: ENGAGEMENT,
+        auditorUserId: "user-1",
+        at: "2026-07-30T12:00:00.000Z",
+      },
+    ]);
   });
 });
 

@@ -1,3 +1,18 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createDbClient } from "@wardenx/db";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { registerPatientSeams } from "../src/modules/05-patient/index";
+import { createDrizzleCaseloadStore } from "../src/modules/05-patient/seams/drizzle-stores";
+import {
+  M17_OUTBOX_EVENTS,
+  type SchedulingAbacResolver,
+  type SchedulingWriteOutboxPort,
+  createDbSchedulingBackend,
+  registerSchedulingSeams,
+} from "../src/modules/17-scheduling/index";
 /**
  * M17L — the Drizzle scheduling write lifecycle, proven against real Postgres.
  *
@@ -15,21 +30,7 @@
  * `visit` / `visit_state_history` are RANGE-partitioned → the throwaway superuser DB needs
  * `max_locks_per_transaction` raised. For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
  */
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
-import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { registerPatientSeams } from "../src/modules/05-patient/index";
-import { createDrizzleCaseloadStore } from "../src/modules/05-patient/seams/drizzle-stores";
-import {
-  M17_OUTBOX_EVENTS,
-  type SchedulingAbacResolver,
-  type SchedulingWriteOutboxPort,
-  createDbSchedulingBackend,
-  registerSchedulingSeams,
-} from "../src/modules/17-scheduling/index";
+import { type CallerAuthority, NO_AUTHORITY } from "../src/modules/17-scheduling/routes/own-vs-any";
 import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -365,18 +366,30 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
 
   it("upsertAvailability merges per weekday; getAvailability folds the slots", async () => {
     const { member2 } = seeded[ORG_A];
-    await svc.upsertAvailability(ORG_A, member2, member2, {
-      timeZone: "America/Los_Angeles",
-      slots: [{ weekday: 2, startTime: "08:00", endTime: "12:00" }],
-    });
+    await svc.upsertAvailability(
+      ORG_A,
+      member2,
+      member2,
+      {
+        timeZone: "America/Los_Angeles",
+        slots: [{ weekday: 2, startTime: "08:00", endTime: "12:00" }],
+      },
+      NO_AUTHORITY,
+    );
     // Re-upsert the same weekday (UPDATE, no duplicate) + add a new one (INSERT).
-    await svc.upsertAvailability(ORG_A, member2, member2, {
-      timeZone: "America/Los_Angeles",
-      slots: [
-        { weekday: 2, startTime: "09:00", endTime: "17:00" },
-        { weekday: 4, startTime: "08:00", endTime: "12:00" },
-      ],
-    });
+    await svc.upsertAvailability(
+      ORG_A,
+      member2,
+      member2,
+      {
+        timeZone: "America/Los_Angeles",
+        slots: [
+          { weekday: 2, startTime: "09:00", endTime: "17:00" },
+          { weekday: 4, startTime: "08:00", endTime: "12:00" },
+        ],
+      },
+      NO_AUTHORITY,
+    );
     const avail = await svc.getAvailability(ORG_A, member2);
     expect(avail?.slots).toEqual([
       { weekday: 2, startTime: "09:00", endTime: "17:00" },
@@ -385,32 +398,44 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
   });
 
   it("time-off request→approve→deny→cancel drive the machine and emit", async () => {
-    const { member } = seeded[ORG_A];
-    // request → approve (disjoint 30d window).
-    const req = await svc.requestTimeOff(ORG_A, member, {
-      membershipId: member,
-      kind: "pto",
-      startsAt: new Date(Date.now() + 30 * DAY).toISOString(),
-      endsAt: new Date(Date.now() + 31 * DAY).toISOString(),
-    });
+    const { member, member2 } = seeded[ORG_A];
+    const approver = { ...NO_AUTHORITY, timeOffApprove: true };
+    // request → approve (disjoint 30d window). GAP-051: a DIFFERENT approver decides (self-approval is a 409).
+    const req = await svc.requestTimeOff(
+      ORG_A,
+      member,
+      {
+        membershipId: member,
+        kind: "pto",
+        startsAt: new Date(Date.now() + 30 * DAY).toISOString(),
+        endsAt: new Date(Date.now() + 31 * DAY).toISOString(),
+      },
+      NO_AUTHORITY,
+    );
     expect(req.state).toBe("requested");
     expect(await eventsFor(req.id)).toContain("m17.time_off.requested");
-    const appr = await svc.approveTimeOff(ORG_A, member, req.id);
+    const appr = await svc.approveTimeOff(ORG_A, member2, req.id, approver);
     expect(appr.state).toBe("approved");
     expect(await eventsFor(req.id)).toContain("m17.time_off.approved");
 
     // deny a separate requested row (40d).
-    const req2 = await svc.requestTimeOff(ORG_A, member, {
-      membershipId: member,
-      kind: "sick",
-      startsAt: new Date(Date.now() + 40 * DAY).toISOString(),
-      endsAt: new Date(Date.now() + 41 * DAY).toISOString(),
-    });
-    const den = await svc.denyTimeOff(
+    const req2 = await svc.requestTimeOff(
       ORG_A,
       member,
+      {
+        membershipId: member,
+        kind: "sick",
+        startsAt: new Date(Date.now() + 40 * DAY).toISOString(),
+        endsAt: new Date(Date.now() + 41 * DAY).toISOString(),
+      },
+      NO_AUTHORITY,
+    );
+    const den = await svc.denyTimeOff(
+      ORG_A,
+      member2,
       req2.id,
       "coverage cannot be arranged for that week",
+      approver,
     );
     expect(den.state).toBe("denied");
     expect(await eventsFor(req2.id)).toContain("m17.time_off.denied");
@@ -422,8 +447,39 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       Date.now() + 50 * DAY,
       Date.now() + 51 * DAY,
     );
-    const cancelled = await svc.cancelTimeOff(ORG_A, member, appId);
+    // GAP-051: another clinician cannot cancel it; the owner can.
+    await expect(svc.cancelTimeOff(ORG_A, member2, appId, NO_AUTHORITY)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    const cancelled = await svc.cancelTimeOff(ORG_A, member, appId, NO_AUTHORITY);
     expect(cancelled.state).toBe("cancelled");
+  });
+
+  it("GAP-051: cross-membership availability edit is 403 and self-approval is 409 on the DB service", async () => {
+    const { member, member2 } = seeded[ORG_A];
+    await expect(
+      svc.upsertAvailability(
+        ORG_A,
+        member2,
+        member,
+        { timeZone: "UTC", slots: [{ weekday: 3, startTime: "08:00", endTime: "12:00" }] },
+        NO_AUTHORITY,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    const own = await svc.requestTimeOff(
+      ORG_A,
+      member,
+      {
+        membershipId: member,
+        kind: "pto",
+        startsAt: new Date(Date.now() + 60 * DAY).toISOString(),
+        endsAt: new Date(Date.now() + 61 * DAY).toISOString(),
+      },
+      NO_AUTHORITY,
+    );
+    await expect(
+      svc.approveTimeOff(ORG_A, member, own.id, { ...NO_AUTHORITY, timeOffApprove: true }),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("optimizeDay returns the §7.9 degraded result and emits route_optimization_degraded", async () => {

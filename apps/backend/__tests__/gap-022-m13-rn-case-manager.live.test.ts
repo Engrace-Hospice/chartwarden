@@ -200,6 +200,7 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
           blockedReasons: [],
           medClass: "standard",
           isControlledSubstance: false,
+          isSudTreatment: false,
         };
       },
     };

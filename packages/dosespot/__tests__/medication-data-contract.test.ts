@@ -32,6 +32,26 @@ describe("M12 canonical medication data", () => {
       validateMedicationOrderData("standard", undefined, { unexpected: true }, false)[0]?.field,
     ).toBe("data.unexpected");
   });
+  it("accepts the server-recorded allergyOverride at readiness but refuses it in a client draft payload", () => {
+    const allergyOverride = {
+      reason: "benefit outweighs risk, family informed",
+      acknowledgedByMembershipId: "mem-1",
+      acknowledgedAt: "2026-10-05T10:00:00.000Z",
+      matchedClasses: ["opioid"],
+    };
+    expect(
+      validateMedicationOrderData("standard", undefined, { ...standard, allergyOverride }),
+    ).toEqual([]);
+    expect(
+      validateMedicationOrderData("standard", undefined, { allergyOverride }, false)[0]?.field,
+    ).toBe("data.allergyOverride");
+    expect(
+      validateMedicationOrderData("standard", undefined, {
+        ...standard,
+        allergyOverride: { ...allergyOverride, reason: "short" },
+      }).length,
+    ).toBeGreaterThan(0);
+  });
   it("enforces Schedule II no-refill rule", () =>
     expect(
       validateMedicationOrderData("controlled_substance", "controlled_substance.v1", {

@@ -41,6 +41,8 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
       sessionPatientId: null,
       // F-030 — the vendor a session acts for, null on every class but M19's two.
       externalActorId: null,
+      // GAP-093(c) — the auditor's engagement, null on every class but `auditor`.
+      engagementId: null,
     });
   });
 

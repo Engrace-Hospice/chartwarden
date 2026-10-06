@@ -17,6 +17,7 @@ import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } f
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import {
   type BereavementCloseEarlyReason,
   type BereavementInitiateContactKind,
@@ -87,6 +88,7 @@ export function BereavementPlanDetail(): JSX.Element {
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const session = useSession();
 
   const load = useCallback(async () => {
     if (!planId) return;
@@ -119,6 +121,13 @@ export function BereavementPlanDetail(): JSX.Element {
   const countdown = anniversaryCountdown(plan.deathDate);
   const redaction = redactionLabel(plan.redactedCategories);
   const closed = plan.status.startsWith("closed_");
+  // GAP-047: a pending request is the plan's awaiting-cosign state. The requester may not cosign it
+  // (server: 403 EARLY_CLOSE_SELF_COSIGN) — hiding the button is a courtesy, the server is the control.
+  const earlyCloseRequest = closed ? null : (plan.earlyCloseRequest ?? null);
+  const canCosign =
+    earlyCloseRequest !== null &&
+    session !== null &&
+    session.userId !== earlyCloseRequest.requestedByUserId;
 
   const doResume = async () => {
     setBusy(true);
@@ -172,6 +181,15 @@ export function BereavementPlanDetail(): JSX.Element {
         <Notice tone="warning">
           A legal hold ({shortId(plan.legalHoldId)}) is in force on this plan. The 13-month window
           does not close it while the hold stands.
+        </Notice>
+      ) : null}
+
+      {earlyCloseRequest ? (
+        <Notice tone="warning" live>
+          Pending supervisor cosign — an early close ({humanize(earlyCloseRequest.reason)}) was
+          requested {dateTime(earlyCloseRequest.requestedAt)} by{" "}
+          {shortId(earlyCloseRequest.requestedByUserId)}. The plan stays active until a different
+          clinical supervisor cosigns.
         </Notice>
       ) : null}
 
@@ -291,12 +309,12 @@ export function BereavementPlanDetail(): JSX.Element {
               {busy ? "Resuming…" : "Resume"}
             </button>
           ) : null}
-          {!closed ? (
+          {!closed && !earlyCloseRequest ? (
             <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("close")}>
               Close early
             </button>
           ) : null}
-          {plan.status === "closed_early" ? (
+          {canCosign ? (
             <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("cosign")}>
               Cosign the early close
             </button>
@@ -587,7 +605,7 @@ function PauseModal({
   );
 }
 
-/** §5.1 #16 — the close-plan ceremony (route 8). Step-up auth is enforced by the server; a ≥40-char
+/** §5.1 #16 — the early-close REQUEST ceremony (route 8; GAP-047 — records a pending request only). Step-up auth is enforced by the server; a ≥40-char
  *  narrative is enforced by the route schema AND by a DB CHECK, so the counter here is honest. */
 function CloseModal({
   planId,
@@ -611,7 +629,7 @@ function CloseModal({
     });
     setBusy(false);
     if (err) {
-      setError(errorMessage(err, "The plan could not be closed."));
+      setError(errorMessage(err, "The early close could not be requested."));
       return;
     }
     onDone();
@@ -628,13 +646,14 @@ function CloseModal({
           disabled={busy || narrative.trim().length < 40}
           onClick={submit}
         >
-          {busy ? "Closing…" : "Close early"}
+          {busy ? "Requesting…" : "Request early close"}
         </button>
       }
     >
       <Notice tone="warning">
-        An early close cuts a regulatory 13-month obligation short. It requires step-up
-        authentication, a documented narrative, and a clinical-supervisor cosign before it is final.
+        An early close cuts a regulatory 13-month obligation short. This records a request only — it
+        does not close the plan. It requires step-up authentication and a documented narrative, and
+        stays pending until a different clinical supervisor cosigns it.
       </Notice>
       <SelectField
         label="Reason"

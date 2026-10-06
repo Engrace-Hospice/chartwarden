@@ -125,6 +125,11 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
       "authenticate hook — `ResolvedActor.deviceAttestation`, resolved from M2's `device_attestation` row through the session's `device_attestation_id` pointer and RE-CHECKED there (`liveDeviceAttestation`: verdict, revocation, expiry), so a stale or dangling pointer yields null and the gate denies. Written only when a LIVE attestation stands behind the session. This entry was blocked until ADR-0023 D2 was adjudicated in M2's favour — the ADR offered exactly two exits, a real `ownedTables` edit or deletion from the consuming specs, and the surface had two consumers (M3's predicate; M18's `evv_device.m2_device_attestation_id`, a logical FK to a table that did not exist).",
   },
 
+  engagementId: {
+    producer:
+      "authenticate hook — `ResolvedActor.engagementId`, the `auditor_engagement` an `auditor`-class session was minted for, read from `session.scope.engagementId` through `sessionEngagementId` (class- AND window-gated: a staff session carrying a stray key, or an auditor row missing its `engagement_start/end`, stamps nothing). Stamped only when `sessionClass === 'auditor'`, from server-side session state — never a header or the route, because M31's `portal_engagement_scope` compares it against the engagement the ROUTE names (GAP-093). The write side (M2 stamping `scope.engagementId` on the session at auditor magic-link consumption) is not built yet, so until it is no live session carries one and the auditor route denies everyone — fail closed.",
+  },
+
   externalActorId: {
     producer:
       "authenticate hook — `ResolvedActor.externalActorId`, the `external_triage_vendor` row an M19 answering-service session acts for, resolved through `sessionExternalActorId` so the CLASS decides and a staff session carrying a stray `scope.externalActorId` stamps nothing (it is the authorization SUBJECT of `external_triage_actor`, so any other route to it would reach a vendor-scoped triage call). Written at mint by M2's `VendorSessionBinder`, which M19's vendor-binding route calls; migration 0223 makes `scope.externalActorId` a `session_scope_chk` requirement of both vendor classes, so a vendor session with no vendor cannot be written at all.",

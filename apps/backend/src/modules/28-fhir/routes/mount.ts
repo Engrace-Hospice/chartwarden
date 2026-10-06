@@ -7,10 +7,12 @@
 // FHIR-spec routes simply resolve their own bearer instead of composing the M3 permission preHandlers.
 import type { FastifyInstance } from "fastify";
 
+import type { FhirBaaStatusView } from "../seams/index";
 import { registerAdminClientRoutes } from "./admin-clients.routes";
 import { registerAdminConfigRoutes } from "./admin-config.routes";
 import { registerAdminExportRoutes } from "./admin-export.routes";
 import { registerAdminInboundRoutes } from "./admin-inbound.routes";
+import type { FhirClientRateLimiter } from "./client-rate-limiter";
 import { type FhirDisclosureAuditPort, registerFhirR4Routes } from "./fhir-r4.routes";
 import type { FhirGatewayStore } from "./store";
 import type { FhirAssertionReplayGuard, FhirJwksFetcher } from "./token-mint";
@@ -24,6 +26,12 @@ export {
   type FhirR4RouteDeps,
   type FhirDisclosureAuditPort,
 } from "./fhir-r4.routes";
+export {
+  type FhirClientRateLimiter,
+  type FhirRateLimitRedis,
+  createInMemoryFhirClientRateLimiter,
+  createRedisFhirClientRateLimiter,
+} from "./client-rate-limiter";
 export {
   type FhirAssertionReplayGuard,
   type FhirJwksFetcher,
@@ -57,13 +65,26 @@ export interface M28RouteServices {
   readonly replay?: FhirAssertionReplayGuard;
   /** R3 — this token endpoint's absolute URL (the required assertion `aud`). */
   readonly tokenEndpointUrl?: string;
+  /** GAP-083 — M40 BAA gate (absent ⇒ fail closed). */
+  readonly baa?: Pick<FhirBaaStatusView, "isBaaActive">;
+  /** GAP-083 — per-client token bucket (absent ⇒ per-process). */
+  readonly rateLimiter?: FhirClientRateLimiter;
 }
 
 /** Mount every M28 §4.1 route plugin over the composed service surface. */
 export function mountM28Routes(app: FastifyInstance, services: M28RouteServices): void {
-  const { store, audit, now, jwks, replay, tokenEndpointUrl } = services;
-  registerFhirR4Routes(app, { store, audit, now, jwks, replay, tokenEndpointUrl });
-  registerAdminClientRoutes(app, { store });
+  const { store, audit, now, jwks, replay, tokenEndpointUrl, baa, rateLimiter } = services;
+  registerFhirR4Routes(app, {
+    store,
+    audit,
+    now,
+    jwks,
+    replay,
+    tokenEndpointUrl,
+    baa,
+    rateLimiter,
+  });
+  registerAdminClientRoutes(app, { store, baa, now });
   registerAdminExportRoutes(app, { store });
   registerAdminInboundRoutes(app, { store });
   registerAdminConfigRoutes(app, { store });
