@@ -404,7 +404,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(evaluation.decision).toBe("fail_distance");
     expect(evaluation.computed_distance_m).toBeGreaterThan(4_500);
     const { rows } = await admin.query(
-      "SELECT payload FROM outbox_event WHERE event_name='m18.evv.geofence_breach_recorded' AND aggregate_id=$1",
+      "SELECT payload FROM outbox_event WHERE event_type='m18.evv.geofence_breach_recorded' AND aggregate_id=$1",
       [ci.eventId],
     );
     expect(rows[0].payload.computedDistanceM).toBeGreaterThan(4_500);

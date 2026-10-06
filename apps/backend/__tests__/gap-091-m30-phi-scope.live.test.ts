@@ -55,6 +55,7 @@ const NO_CASELOAD = "00000000-0000-0000-0000-0000000c2291";
 const PAT_1 = "00000000-0000-0000-0000-0000000e1191";
 const PAT_2 = "00000000-0000-0000-0000-0000000e2291";
 const PAT_B = "00000000-0000-0000-0000-0000000eb191";
+const MEDICAL_DIRECTOR = "00000000-0000-0000-0000-0000000d0191"; // a real-shaped user id (the audit actor is uuid-typed)
 const REPORTER = "00000000-0000-0000-0000-0000000a0191"; // a membership id (logical FK only)
 
 const PER_PATIENT = 125; // 2 x 125 = 250 incidents for org A, above the old 200-row window
@@ -159,8 +160,9 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
     actor: M30ReadActor,
     filter: Parameters<typeof read.listIncidents>[1] = {},
     limit = 100,
+    readSurface?: Parameters<typeof scopeFor>[1],
   ): Promise<string[]> {
-    const scope = await scopeFor(actor);
+    const scope = await scopeFor(actor, readSurface);
     const ids: string[] = [];
     let cursor: string | undefined;
     for (let guard = 0; guard < 50; guard++) {
@@ -207,7 +209,9 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
         [pe, org, `12345${n === "A" ? 6 : 7}`, `123456789${n === "A" ? 3 : 4}`],
       );
     }
-    for (const u of [CLINICIAN, NO_CASELOAD]) {
+    // The write-audit trigger casts the actor to uuid and `audit_event.actor_user_id` is a FK to "user":
+    // every actor id the service-layer cases act as must be a real user row.
+    for (const u of [CLINICIAN, NO_CASELOAD, MEDICAL_DIRECTOR, REPORTER]) {
       await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [u, `${u}@gap091.test`]);
     }
     for (const p of [PAT_1, PAT_2]) await seedM5Patient(admin, ORG_A, p);
@@ -275,7 +279,7 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
   });
 
   it("an org-wide role pages through ALL 250 incidents (past the old 200-row window), no dup, no gap", async () => {
-    const ids = await allIncidentIds(actorOf("any", ["medical_director"]), {}, 100);
+    const ids = await allIncidentIds(actorOf(MEDICAL_DIRECTOR, ["medical_director"]), {}, 100);
     // 250 patient rows + the patient-less one; the abuse allegation is hidden without the permission.
     expect(ids).toHaveLength(PER_PATIENT * 2 + 1);
     expect(new Set(ids).size).toBe(ids.length);
@@ -284,14 +288,14 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
   });
 
   it("pages of a small size still terminate exactly and agree with one big page", async () => {
-    const actor = actorOf("any", ["medical_director"]);
+    const actor = actorOf(MEDICAL_DIRECTOR, ["medical_director"]);
     const small = await allIncidentIds(actor, {}, 7);
     const big = await allIncidentIds(actor, {}, 100);
     expect(small).toEqual(big);
   });
 
   it("filters are applied in SQL: an old record is reachable by date, severity narrows the whole set", async () => {
-    const actor = actorOf("any", ["medical_director"]);
+    const actor = actorOf(MEDICAL_DIRECTOR, ["medical_director"]);
     const severe = await allIncidentIds(actor, { severities: ["severe"] });
     expect(severe).toHaveLength((PER_PATIENT * 2) / 5);
     const oldest = await allIncidentIds(actor, {
@@ -321,7 +325,7 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
   it("incident detail outside the caseload is a 404; inside it succeeds", async () => {
     const actor = actorOf(CLINICIAN, ["rn_case_manager"]);
     const scope = await scopeFor(actor);
-    const out = (await allIncidentIds(actorOf("any", ["medical_director"]))).find(
+    const out = (await allIncidentIds(actorOf(MEDICAL_DIRECTOR, ["medical_director"]))).find(
       (id) => !p1Incidents.includes(id) && id !== patientLessIncident,
     ) as string;
     await expect(read.getIncident(actor, out, scope)).rejects.toBeInstanceOf(NotFoundError);
@@ -335,7 +339,7 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
     const page = await read.listMortalityReviews(actor, {}, undefined, 50, scope);
     expect(page.items.map((r) => r.patientId)).toEqual([PAT_1, PAT_1]);
     const orgPage = await read.listMortalityReviews(
-      actorOf("any", ["medical_director"]),
+      actorOf(MEDICAL_DIRECTOR, ["medical_director"]),
       {},
       undefined,
       50,
@@ -422,7 +426,7 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
     });
 
     it("an org-wide role and a typed system actor may name any patient in the org", async () => {
-      const md = writeActor("any", ["medical_director"]);
+      const md = writeActor(MEDICAL_DIRECTOR, ["medical_director"]);
       const event = await write().recordInfectionEvent(md, infectionArgs(PAT_2));
       expect(event.patientId).toBe(PAT_2);
       const system = m30SystemWriteActor({
@@ -465,19 +469,19 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
       });
       const rn = writeActor(CLINICIAN, ["rn_case_manager"]);
       // writeActor stamps membershipId REPORTER, which is the seeded reporter => own-record arm allows.
-      const own = await write().updateIncident(rn, out, { severity: "high" } as never);
+      const own = await write().updateIncident(rn, out, { severity: "severe" } as never);
       expect(own.incidentId).toBe(out);
       await admin.query("UPDATE incident_report SET reported_by_membership_id = $2 WHERE id = $1", [
         out,
         randomUUID(),
       ]);
       await expect(
-        write().updateIncident(rn, out, { severity: "low" } as never),
+        write().updateIncident(rn, out, { severity: "minor" } as never),
       ).rejects.toBeInstanceOf(NotFoundError);
       // The M30 read arm never opens a WRITE: a QAPI coordinator is still caseload-scoped for writes.
       await expect(
         write().updateIncident(writeActor(CLINICIAN, ["qapi_coordinator"]), out, {
-          severity: "low",
+          severity: "minor",
         } as never),
       ).rejects.toBeInstanceOf(NotFoundError);
       // An assigned investigator (sidecar assignee) is not locked out.
@@ -486,20 +490,19 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
         [out, REPORTER],
       );
       await expect(
-        write().updateIncident(rn, out, { severity: "low" } as never),
+        write().updateIncident(rn, out, { severity: "minor" } as never),
       ).resolves.toBeDefined();
     });
   });
 
   describe("M30 org-wide READ arm (spec §6.5 / §6.6 check cells)", () => {
     it("qapi_coordinator reads every incident; infection_control_lead reads incidents + infection events org-wide", async () => {
-      const all = await allIncidentIds(actorOf("any", ["medical_director"]));
+      const all = await allIncidentIds(actorOf(MEDICAL_DIRECTOR, ["medical_director"]));
       const qc = actorOf(NO_CASELOAD, ["qapi_coordinator"]);
       const icl = actorOf(NO_CASELOAD, ["infection_control_lead"]);
-      const page = async (a: M30ReadActor) =>
-        read.listIncidents(a, {}, undefined, 500, await scopeFor(a, "incident"));
-      expect((await page(qc)).items.length).toBe(all.length);
-      expect((await page(icl)).items.length).toBe(all.length);
+      // The list is capped per page (100), so walk every page with the incident-surface scope.
+      expect((await allIncidentIds(qc, {}, 100, "incident")).length).toBe(all.length);
+      expect((await allIncidentIds(icl, {}, 100, "incident")).length).toBe(all.length);
       const infection = await read.listInfectionEvents(
         icl,
         {},

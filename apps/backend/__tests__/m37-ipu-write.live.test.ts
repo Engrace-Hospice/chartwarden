@@ -629,6 +629,13 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
           [ORG_A, roomId, unit.id],
         )
       ).rows[0].id;
+      // A GIP admission only opens while the unit's 24/7 RN coverage is active (D3).
+      await admin.query(
+        `INSERT INTO ipu_rn_coverage_window (organization_id,unit_id,hour_start_at,is_covered,rn_assignment_ids)
+         SELECT $1,$2,date_trunc('hour', now()),true,'{}'
+         WHERE NOT EXISTS (SELECT 1 FROM ipu_rn_coverage_window WHERE organization_id=$1 AND unit_id=$2 AND hour_start_at=date_trunc('hour', now()))`,
+        [ORG_A, unit.id],
+      );
       const lcp = `88888888-8888-4888-8888-${String(seq).padStart(12, "0")}`;
       const adm = await gipSvc.openAdmission(actor, {
         patientId: PATIENT,
@@ -734,7 +741,7 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     });
 
     it("confirm: only the typed M6 LCP-ack actor, naming THIS admission's period, activates it", async () => {
-      const { adm, lcp } = await openBedAssignedGipAdmission(202);
+      const { adm, lcp } = await openBedAssignedGipAdmission(204);
       await gipSvc.attestGip(MD_ACTOR, adm.id, { attestingPhysicianId: MD_OK, data: GIP_DATA });
 
       // A tenant write actor smuggled past the type (a role named "system" changes nothing) is refused,
