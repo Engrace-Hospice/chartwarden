@@ -52,6 +52,7 @@ import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 
 const CTI_CLINICAL = {
   terminalDiagnosisIcd10: "C34.90",
@@ -231,6 +232,7 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
         reason: "moved_out_of_service_area",
         dischargeDate: new Date().toISOString().slice(0, 10),
         narrative: "The patient relocated out of the service area and elects another hospice.",
+        dischargeOrder: dischargeOrderBy(MD),
         ifVersion: adm?.version,
       } as never,
       USER,
@@ -250,6 +252,8 @@ describe.skipIf(!DB_URL)("F-120 — M21's M11 order cascade, LIVE Postgres", () 
       `INSERT INTO "user" (id,email) VALUES ($1,'f120a@x.test'),($2,'f120md@x.test'),($3,'f120at@x.test')`,
       [USER, MD, ATTENDING],
     );
+    // 42 CFR 418.26(b) — the live discharges below are dated today, so they carry a physician order.
+    await seedPhysicianRole(admin, ORG_A, MD);
     providerEntityId = (
       await admin.query(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)

@@ -1960,6 +1960,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/admission-recommendation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the 42 CFR 418.25(a) physician admission recommendation (medical director, physician designee, or the patient's IDG physician; attending consultation) */
+        post: operations["postApiV1AdmissionsByIdAdmissionrecommendation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/compliance-windows": {
         parameters: {
             query?: never;
@@ -1988,6 +2005,23 @@ export interface paths {
         put?: never;
         /** Discharge the admission (§6.3: permission key derived from reason) */
         post: operations["postApiV1AdmissionsByIdDischarge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/discharge-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The admission's 42 CFR 418.26(b) discharge order and for-cause cosigner (null until discharged) */
+        get: operations["getApiV1AdmissionsByIdDischargeorder"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2110,6 +2144,23 @@ export interface paths {
         put?: never;
         /** Attach an uploaded, externally acknowledged notice-of-rights document (M22 document version) */
         post: operations["postApiV1AdmissionsByIdNorUploadedevidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/physician-signers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Physicians eligible to sign for this admission's patient under 42 CFR 418.25(a)/418.26(b), with their capacities */
+        get: operations["getApiV1AdmissionsByIdPhysiciansigners"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6643,7 +6694,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Medical-director cosign for a for-cause discharge (§6.3 ABAC) */
+        /** Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician) */
         post: operations["postApiV1DischargesByIdCosignforcause"];
         delete?: never;
         options?: never;
@@ -25826,6 +25877,14 @@ export interface operations {
                             displayName: string;
                             npi?: string | null;
                         } | null;
+                        attendingPhysicianId?: string | null;
+                        admissionRecommendation?: {
+                            recommendedByUserId: string;
+                            capacity: "medical_director" | "physician_designee" | "idg_physician_member";
+                            recommendedAt: string;
+                            attendingConsulted: boolean;
+                            attendingConsultNote: string | null;
+                        } | null;
                         activationGate: {
                             ready: boolean;
                             missing: ("election_signed" | "nor_acknowledged" | "cti_signed")[];
@@ -25906,6 +25965,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AdmissionsByIdAdmissionrecommendation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    recommendedByUserId: string;
+                    /** Format: date-time */
+                    recommendedAt: string;
+                    capacity?: "medical_director" | "physician_designee" | "idg_physician_member";
+                    attendingConsulted: boolean;
+                    attendingConsultNote?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        patientId?: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AdmissionsByIdCompliancewindows: {
         parameters: {
             query?: never;
@@ -25956,6 +26057,15 @@ export interface operations {
                     forCauseReason?: string;
                     /** Format: uuid */
                     deathCertifierId?: string;
+                    dischargeOrder?: {
+                        /** Format: uuid */
+                        signedByUserId: string;
+                        /** Format: date-time */
+                        signedAt: string;
+                        capacity?: "medical_director" | "physician_designee" | "idg_physician_member";
+                        orderText?: string;
+                        orderReference?: string;
+                    };
                 };
             };
         };
@@ -25966,6 +26076,51 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdmissionsByIdDischargeorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        discharge: {
+                            dischargeEventId: string;
+                            reason: string;
+                            status: string;
+                            dischargeDate: string;
+                            orderRequired: boolean;
+                            order: {
+                                signedByUserId: string;
+                                signedByName: string | null;
+                                capacity: "medical_director" | "physician_designee" | "idg_physician_member";
+                                signedAt: string;
+                                orderText: string | null;
+                                orderReference: string | null;
+                            } | null;
+                            cosigner: {
+                                name: string;
+                                npi: string;
+                                cosignedAt: string | null;
+                            } | null;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26299,6 +26454,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AdmissionsByIdPhysiciansigners: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            userId: string;
+                            name: string | null;
+                            capacities: ("medical_director" | "physician_designee" | "idg_physician_member")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AdmissionsByIdReadiness: {
         parameters: {
             query?: never;
@@ -26323,12 +26508,12 @@ export interface operations {
                         completed: number;
                         blockingRemaining: number;
                         requirements: {
-                            code: "patient_identity" | "admission_details" | "patient_privacy" | "notice_of_rights" | "election_statement" | "cti" | "f2f";
+                            code: "patient_identity" | "admission_details" | "patient_privacy" | "notice_of_rights" | "election_statement" | "cti" | "f2f" | "admission_recommendation";
                             label: string;
                             status: "complete" | "action_required" | "awaiting_signature" | "pending" | "blocked" | "overdue" | "not_applicable";
                             blocking: boolean;
                             message?: string;
-                            action?: "RESOLVE_PATIENT" | "COMPLETE_ADMISSION_DETAILS" | "REVIEW_PRIVACY" | "COMPLETE_NOTICE_OF_RIGHTS" | "COMPLETE_ELECTION_STATEMENT" | "COMPLETE_ELECTION_SIGNATURE" | "COMPLETE_CTI" | "COMPLETE_CTI_SIGNATURE" | "REVIEW_F2F";
+                            action?: "RESOLVE_PATIENT" | "COMPLETE_ADMISSION_DETAILS" | "REVIEW_PRIVACY" | "COMPLETE_NOTICE_OF_RIGHTS" | "COMPLETE_ELECTION_STATEMENT" | "COMPLETE_ELECTION_SIGNATURE" | "COMPLETE_CTI" | "COMPLETE_CTI_SIGNATURE" | "REVIEW_F2F" | "RECORD_ADMISSION_RECOMMENDATION";
                             satisfiedBy?: "normal" | "override";
                             evidence?: {
                                 sourceType: "structured" | "uploaded";
@@ -39011,6 +39196,9 @@ export interface operations {
                 "application/json": {
                     cosignerName: string;
                     cosignerNpi: string;
+                    capacity?: "medical_director" | "physician_designee" | "idg_physician_member";
+                    orderText?: string;
+                    orderReference?: string;
                     ifVersion: number;
                 };
             };

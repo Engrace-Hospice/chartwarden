@@ -14,8 +14,9 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { dischargeEventStatus, dischargeType } from "../../enums";
+import { dischargeEventStatus, dischargeType, physicianSignerCapacity } from "../../enums";
 import { organizations } from "../organizations";
+import { users } from "../users";
 import { admissions } from "./admissions";
 
 export const dischargeEvents = pgTable(
@@ -48,6 +49,20 @@ export const dischargeEvents = pgTable(
     cosignRequired: boolean("cosign_required").notNull().default(false),
     medicalDirectorMembershipId: uuid("medical_director_membership_id"), // acting user (logical)
     cosignedAt: timestamp("cosigned_at", { withTimezone: true }),
+    // 42 CFR 418.26(b) (effective 2026-10-01; migration 0388) — the written physician discharge order. Required
+    // for a live (non-death) discharge dated on/after 2026-10-01; for `for_cause` it is the route-40 cosign.
+    // All-or-none across signer/capacity/signedAt (CHECK). `discharge_order_text` is audit-scrubbed free text.
+    dischargeOrderSignedByUserId: uuid("discharge_order_signed_by_user_id").references(
+      () => users.id,
+      { onDelete: "restrict" },
+    ),
+    dischargeOrderSignerCapacity: physicianSignerCapacity("discharge_order_signer_capacity"),
+    dischargeOrderSignedAt: timestamp("discharge_order_signed_at", { withTimezone: true }),
+    dischargeOrderText: text("discharge_order_text"),
+    dischargeOrderReference: text("discharge_order_reference"),
+    // Route-40 cosigner identity as attested on the cosign body (previously validated, then discarded).
+    cosignerName: text("cosigner_name"),
+    cosignerNpi: text("cosigner_npi"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),

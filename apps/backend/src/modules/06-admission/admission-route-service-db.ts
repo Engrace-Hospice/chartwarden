@@ -83,6 +83,13 @@ import {
   computeActivationGate,
   evaluateAdmissionReadiness,
 } from "./intake";
+import { type PhysicianAuthorityPort, dischargeOrderRequired } from "./physician-authority";
+import { createDbPhysicianAuthority } from "./physician-authority-db";
+import {
+  resolveCosignerCapacity,
+  validateAdmissionRecommendation,
+  validateDischargeOrder,
+} from "./physician-signer-checks";
 import type {
   CosignDischargeInput,
   CtiDraftInput,
@@ -100,6 +107,7 @@ import {
   ExternalReferralAlreadyIngestedError,
   InvalidReferralStateError,
   LocationProviderMismatchError,
+  RECOMMENDATION_CLOSED_STATES,
   ReferralAdmissionPathError,
   ReferralAlreadyConvertedError,
   ReferralNotReadyError,
@@ -512,6 +520,8 @@ export function createDbAdmissionRouteService(
   providerEntityLocations?: ProviderEntityLocationPort,
   dpoaConsent?: DpoaConsentCheckPort,
   f2fClinicianRoles?: F2fClinicianRolePort,
+  // 42 CFR 418.25(a) / 418.26(b) — the physician signer facts (role grants + IDG care-team membership).
+  physicianAuthority: PhysicianAuthorityPort = createDbPhysicianAuthority(db),
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -1427,6 +1437,7 @@ export function createDbAdmissionRouteService(
         patientResidenceAddressId: ADM.patientResidenceAddressId,
         serviceAddressLine1: ADM.serviceAddressLine1,
         attendingPhysicianId: ADM.attendingPhysicianId,
+        recommendedByUserId: ADM.recommendedByUserId,
       })
       .from(ADM)
       .where(eq(ADM.id, admissionId))
@@ -1588,6 +1599,7 @@ export function createDbAdmissionRouteService(
         attested: !!f2f?.attestationSignedAt || f2f?.status === "attested",
         satisfiedBy: f2f?.windowOverride ? "override" : undefined,
       },
+      admissionRecommendation: { recorded: adm.recommendedByUserId !== null },
     };
     return evaluateAdmissionReadiness(facts);
   }
@@ -2051,6 +2063,12 @@ export function createDbAdmissionRouteService(
             hospicePhysicianId: ADM.hospicePhysicianId,
             primaryDiagnosisIcd10: REF.icd10TerminalPrimary,
             referringDxText: REF.referringDxText,
+            recommendedByUserId: ADM.recommendedByUserId,
+            recommenderCapacity: ADM.recommenderCapacity,
+            recommendedAt: ADM.recommendedAt,
+            attendingConsulted: ADM.attendingConsulted,
+            attendingConsultNote: ADM.attendingConsultNote,
+            attendingPhysicianId: ADM.attendingPhysicianId,
           })
           .from(ADM)
           .leftJoin(REF, eq(REF.id, ADM.referralId))
@@ -2095,6 +2113,17 @@ export function createDbAdmissionRouteService(
             : null,
           primaryDiagnosisIcd10: adm.primaryDiagnosisIcd10 ?? null,
           referringDxText: adm.referringDxText ?? null,
+          admissionRecommendation:
+            adm.recommendedByUserId && adm.recommenderCapacity && adm.recommendedAt
+              ? {
+                  recommendedByUserId: adm.recommendedByUserId,
+                  capacity: adm.recommenderCapacity,
+                  recommendedAt: adm.recommendedAt.toISOString(),
+                  attendingConsulted: adm.attendingConsulted ?? false,
+                  attendingConsultNote: adm.attendingConsultNote ?? null,
+                }
+              : null,
+          attendingPhysicianId: adm.attendingPhysicianId ?? null,
           activationGate,
           readiness: readiness ?? undefined,
         };
@@ -5371,6 +5400,33 @@ export function createDbAdmissionRouteService(
       input: DischargeInput,
       actorUserId,
     ): Promise<DischargeResult> {
+      // 42 CFR 418.26(b) — validate (or require) the physician discharge order BEFORE the write transaction:
+      // the authority port opens its own org-scoped reads, so resolving it inside would hold two connections.
+      const order = input.externalSource
+        ? null
+        : await validateDischargeOrder({
+            port: physicianAuthority,
+            organizationId,
+            // Only an order needs the chart (for the IDG-membership check); its absence never does.
+            patientId: input.dischargeOrder
+              ? await withOrgContext(db, { organizationId, userId: actorUserId }, (tx) =>
+                  patientForAdmission(tx as DbClient, admissionId),
+                )
+              : "",
+            reason: input.reason,
+            dischargeDate: input.dischargeDate,
+            order: input.dischargeOrder,
+            now: now(),
+          });
+      const orderColumns = order
+        ? {
+            dischargeOrderSignedByUserId: order.signedByUserId,
+            dischargeOrderSignerCapacity: order.capacity,
+            dischargeOrderSignedAt: order.signedAt,
+            dischargeOrderText: order.orderText,
+            dischargeOrderReference: order.orderReference,
+          }
+        : {};
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
         // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
@@ -5461,6 +5517,7 @@ export function createDbAdmissionRouteService(
               deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
               deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
               bereavementEligible: input.reason === "death",
+              ...orderColumns,
               // F-227 — W-M6-31 provenance: completed NOW, flagged for the after-the-fact cosign.
               ...(input.externalSource
                 ? {
@@ -5498,7 +5555,35 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult> {
-      void input; // validated at the route; no `discharge_event` column to land in — see the doc comment.
+      // 42 CFR 418.26(b) — the cosigner IS the discharge-order signer. Resolve the capacity BEFORE the write
+      // transaction (the authority port opens its own org-scoped read); the predicate already admitted the
+      // actor, this records WHICH capacity and re-checks it against the discharge date's signer set.
+      const signing = await withOrgContext(
+        db,
+        { organizationId, userId: actorUserId },
+        async (tx) => {
+          const [row] = await tx
+            .select({ effectiveAt: DE.effectiveAt, source: DE.source, patientId: ADM.patientId })
+            .from(DE)
+            .innerJoin(ADM, eq(ADM.id, DE.admissionId))
+            .where(eq(DE.id, id))
+            .limit(1);
+          return row ?? null;
+        },
+      );
+      if (!signing) throw new ResourceNotFoundError(id);
+      const externalDeath = signing.source === "hl7_external";
+      const capacity = await resolveCosignerCapacity({
+        port: physicianAuthority,
+        organizationId,
+        actorUserId,
+        actorRoleKeys: input.actorRoleKeys ?? [],
+        patientId: signing.patientId,
+        dischargeDate: signing.effectiveAt,
+        externalDeath,
+        claimed: input.capacity,
+      });
+      const cosignerColumns = { cosignerName: input.cosignerName, cosignerNpi: input.cosignerNpi };
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -5531,6 +5616,7 @@ export function createDbAdmissionRouteService(
               .set({
                 cosignedAt,
                 medicalDirectorMembershipId: actorUserId,
+                ...cosignerColumns,
                 version: sql`${DE.version} + 1`,
                 updatedAt: cosignedAt,
               })
@@ -5591,6 +5677,13 @@ export function createDbAdmissionRouteService(
               // F-227 — record the director's cosign facts on the row too (columns exist since 0300).
               cosignedAt: now(),
               medicalDirectorMembershipId: actorUserId,
+              ...cosignerColumns,
+              // The cosign is the written 418.26(b) discharge order for a for-cause discharge.
+              dischargeOrderSignedByUserId: actorUserId,
+              dischargeOrderSignerCapacity: capacity,
+              dischargeOrderSignedAt: now(),
+              dischargeOrderText: input.orderText ?? null,
+              dischargeOrderReference: input.orderReference ?? null,
               version: sql`${DE.version} + 1`,
               updatedAt: now(),
             })
@@ -5627,6 +5720,141 @@ export function createDbAdmissionRouteService(
         });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
+    },
+    async recordAdmissionRecommendation(
+      organizationId,
+      admissionId,
+      input,
+      ifVersion,
+      actorUserId,
+    ): Promise<MutationResult> {
+      // 42 CFR 418.25(a) — load the chart facts, validate the recommender OUTSIDE the write transaction (the
+      // authority port opens its own reads), then write under optimistic locking.
+      const adm = await withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [row] = await tx
+          .select({
+            patientId: ADM.patientId,
+            status: ADM.status,
+            version: ADM.version,
+            attendingPhysicianId: ADM.attendingPhysicianId,
+          })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        return row ?? null;
+      });
+      if (!adm) throw new ResourceNotFoundError(admissionId);
+      assertVersion(admissionId, Number(adm.version), ifVersion);
+      if (RECOMMENDATION_CLOSED_STATES.has(adm.status))
+        throw new AdmissionStateError(
+          "ADMISSION_RECOMMENDATION_INVALID",
+          `admission ${admissionId} is ${adm.status}; a recommendation can no longer be recorded`,
+        );
+      const capacity = await validateAdmissionRecommendation({
+        port: physicianAuthority,
+        organizationId,
+        patientId: adm.patientId,
+        hasAttendingPhysician: adm.attendingPhysicianId !== null,
+        input,
+        now: now(),
+      });
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const at = now();
+        const [r] = await tx
+          .update(ADM)
+          .set({
+            recommendedByUserId: input.recommendedByUserId,
+            recommenderCapacity: capacity,
+            recommendedAt: new Date(input.recommendedAt),
+            attendingConsulted: input.attendingConsulted,
+            attendingConsultNote: input.attendingConsultNote ?? null,
+            recommendationRecordedByUserId: actorUserId || null,
+            version: sql`${ADM.version} + 1`,
+            updatedAt: at,
+          })
+          .where(and(eq(ADM.id, admissionId), eq(ADM.version, ifVersion)))
+          .returning({ id: ADM.id, status: ADM.status, version: ADM.version });
+        if (!r) throw conflict(`admission ${admissionId} changed concurrently; reload and retry`);
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async getDischargeOrder(organizationId, admissionId) {
+      const found = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [adm] = await tx
+          .select({ id: ADM.id, patientId: ADM.patientId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!adm) return null;
+        const [de] = await tx
+          .select({
+            id: DE.id,
+            dischargeType: DE.dischargeType,
+            status: DE.status,
+            effectiveAt: DE.effectiveAt,
+            signedBy: DE.dischargeOrderSignedByUserId,
+            capacity: DE.dischargeOrderSignerCapacity,
+            signedAt: DE.dischargeOrderSignedAt,
+            orderText: DE.dischargeOrderText,
+            orderReference: DE.dischargeOrderReference,
+            cosignerName: DE.cosignerName,
+            cosignerNpi: DE.cosignerNpi,
+            cosignedAt: DE.cosignedAt,
+          })
+          .from(DE)
+          .where(eq(DE.admissionId, admissionId))
+          .limit(1);
+        return { patientId: adm.patientId, de: de ?? null };
+      });
+      if (!found) return null;
+      const { de } = found;
+      if (!de) return { discharge: null };
+      // The signer's display name, when they are still a listed physician for this chart (ids are the record).
+      const signedByName = de.signedBy
+        ? ((await physicianAuthority.listSignerCandidates(organizationId, found.patientId)).find(
+            (c) => c.userId === de.signedBy,
+          )?.name ?? null)
+        : null;
+      return {
+        discharge: {
+          dischargeEventId: de.id,
+          reason: de.dischargeType,
+          status: de.status,
+          dischargeDate: de.effectiveAt,
+          orderRequired: dischargeOrderRequired(de.dischargeType, de.effectiveAt),
+          order:
+            de.signedBy && de.capacity && de.signedAt
+              ? {
+                  signedByUserId: de.signedBy,
+                  signedByName,
+                  capacity: de.capacity,
+                  signedAt: de.signedAt.toISOString(),
+                  orderText: de.orderText,
+                  orderReference: de.orderReference,
+                }
+              : null,
+          cosigner:
+            de.cosignerName && de.cosignerNpi
+              ? {
+                  name: de.cosignerName,
+                  npi: de.cosignerNpi,
+                  cosignedAt: de.cosignedAt?.toISOString() ?? null,
+                }
+              : null,
+        },
+      };
+    },
+    async listPhysicianSigners(organizationId, admissionId) {
+      const patientId = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await tx
+          .select({ patientId: ADM.patientId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        return row?.patientId ?? null;
+      });
+      if (patientId === null) return null;
+      return { items: await physicianAuthority.listSignerCandidates(organizationId, patientId) };
     },
     async acknowledgeNor(organizationId, admissionId, input, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
@@ -6002,6 +6230,23 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           ? {
               patientId: r.patientId,
               providerEntityId: r.providerEntityId ?? null,
+            }
+          : null;
+      });
+    },
+    async loadDischargeSigning(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ effectiveAt: DE.effectiveAt, source: DE.source, patientId: ADM.patientId })
+          .from(DE)
+          .innerJoin(ADM, eq(ADM.id, DE.admissionId))
+          .where(eq(DE.id, id))
+          .limit(1);
+        return r
+          ? {
+              patientId: r.patientId,
+              dischargeDate: r.effectiveAt,
+              externalDeath: r.source === "hl7_external",
             }
           : null;
       });

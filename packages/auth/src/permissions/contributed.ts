@@ -646,8 +646,10 @@ export type M39ContributedPermissionKey = keyof typeof M39_CONTRIBUTED_PERMISSIO
  * discharge/nor/compliance are first-class admission resources, like M5's `patient.*`). The catalog
  * `abac` field is the DEFAULT predicate per route (§4.6); the route layer additionally applies an
  * explicit `requireAbac(...)` for the role-only signer/override predicates M6 owns
- * (`f2f.is_hospice_md_or_np`, `f2f.window_override`, `discharge.is_medical_director`,
- * `compliance.window_override`). `patient.scope` (route 8) is M5's re-used predicate; M6 does not
+ * (`f2f.is_hospice_md_or_np`, `f2f.window_override`, `compliance.window_override`) and the
+ * 42 CFR 418.26(b) route-40 signer predicate `discharge.is_order_signer` (medical director, physician
+ * designee, or the physician member of the patient's IDG — FY 2027; it replaced
+ * `discharge.is_medical_director`). `patient.scope` (route 8) is M5's re-used predicate; M6 does not
  * own it.
  *
  * Route 39 (`POST …/discharge`) derives its key from `reason` server-side (§6.3): the five
@@ -717,6 +719,14 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
   "admission.activate": {
     resource: "admission",
     action: "activate",
+    category: "clinical",
+    abac: "admission.scope",
+  },
+  // 42 CFR 418.25(a) — record the physician admission recommendation (the recommender is validated
+  // server-side against the signer set; this key gates who may ENTER it). Mirror row + grants: 0389.
+  "admission.record_recommendation": {
+    resource: "admission",
+    action: "record_recommendation",
     category: "clinical",
     abac: "admission.scope",
   },
@@ -830,7 +840,7 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
     resource: "discharge",
     action: "cosign_for_cause",
     category: "clinical",
-    abac: "discharge.is_medical_director",
+    abac: "discharge.is_order_signer",
   },
   "discharge.record_death": {
     resource: "discharge",

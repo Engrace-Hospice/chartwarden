@@ -418,6 +418,25 @@ export const TransferInSchema = Type.Object({
 // TypeBox module and the schema union stays in lock-step with the policy table.
 export { DISCHARGE_REASONS, type DischargeReason } from "../discharge";
 import { DISCHARGE_REASONS } from "../discharge";
+import { PHYSICIAN_SIGNER_CAPACITIES } from "../physician-authority";
+
+/** 42 CFR 418.25(a) / 418.26(b) — the physician signer capacities (physician-authority.ts). */
+export const PhysicianSignerCapacitySchema = Type.Union(
+  PHYSICIAN_SIGNER_CAPACITIES.map((c) => Type.Literal(c)),
+);
+
+/**
+ * 42 CFR 418.26(b) (effective 2026-10-01) — the written physician discharge order. Required (service-enforced,
+ * `DISCHARGE_ORDER_REQUIRED`) for a live non-death, non-for-cause discharge dated on/after 2026-10-01. The
+ * signer is a USER the server validates against the signer set; `capacity` is a claim that must be backed.
+ */
+export const DischargeOrderSchema = Type.Object({
+  signedByUserId: Uuid(),
+  signedAt: Type.String({ format: "date-time" }),
+  capacity: Type.Optional(PhysicianSignerCapacitySchema),
+  orderText: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+  orderReference: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+});
 
 export const DischargeCreateSchema = Type.Object({
   reason: Type.Union(DISCHARGE_REASONS.map((r) => Type.Literal(r))),
@@ -427,12 +446,71 @@ export const DischargeCreateSchema = Type.Object({
   // R-DC-01 — required (service-enforced, see checkDischargeNarrative) when reason='death'; identifies
   // who certified the death (M40 external_physician or M2 user; app-validated, not a DB FK).
   deathCertifierId: Type.Optional(Uuid()),
+  dischargeOrder: Type.Optional(DischargeOrderSchema),
 });
 
+/** Route 40 — the cosigning physician IS the discharge-order signer (418.26(b)); name/NPI are persisted. */
 export const DischargeCosignSchema = Type.Object({
   cosignerName: Type.String({ minLength: 1, maxLength: 200 }),
   cosignerNpi: Npi(),
+  capacity: Type.Optional(PhysicianSignerCapacitySchema),
+  orderText: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+  orderReference: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   ifVersion: Version(),
+});
+
+/** 42 CFR 418.26(b) — the admission's discharge order + route-40 cosigner (`GET /admissions/:id/discharge-order`). */
+export const DischargeOrderResponseSchema = Type.Object({
+  discharge: Type.Union([
+    Type.Object({
+      dischargeEventId: Type.String(),
+      reason: Type.String(),
+      status: Type.String(),
+      dischargeDate: Type.String(),
+      orderRequired: Type.Boolean(),
+      order: Type.Union([
+        Type.Object({
+          signedByUserId: Type.String(),
+          signedByName: Type.Union([Type.String(), Type.Null()]),
+          capacity: PhysicianSignerCapacitySchema,
+          signedAt: Type.String(),
+          orderText: Type.Union([Type.String(), Type.Null()]),
+          orderReference: Type.Union([Type.String(), Type.Null()]),
+        }),
+        Type.Null(),
+      ]),
+      cosigner: Type.Union([
+        Type.Object({
+          name: Type.String(),
+          npi: Type.String(),
+          cosignedAt: Type.Union([Type.String(), Type.Null()]),
+        }),
+        Type.Null(),
+      ]),
+    }),
+    Type.Null(),
+  ]),
+});
+
+/** 42 CFR 418.25(a) — the physician admission recommendation (route `POST /admissions/:id/admission-recommendation`). */
+export const AdmissionRecommendationSchema = Type.Object({
+  recommendedByUserId: Uuid(),
+  recommendedAt: Type.String({ format: "date-time" }),
+  capacity: Type.Optional(PhysicianSignerCapacitySchema),
+  attendingConsulted: Type.Boolean(),
+  attendingConsultNote: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
+  ifVersion: Version(),
+});
+
+/** The physicians who may sign for this admission's patient (the signer picker). */
+export const PhysicianSignerListResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      userId: Type.String(),
+      name: Type.Union([Type.String(), Type.Null()]),
+      capacities: Type.Array(PhysicianSignerCapacitySchema),
+    }),
+  ),
 });
 
 // ── NOR & compliance windows (routes 41–46) ──────────────────────────────────────────────────────
@@ -523,6 +601,20 @@ export const AdmissionDetailResponseSchema = Type.Object({
       Type.Null(),
     ]),
   ),
+  attendingPhysicianId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  // 42 CFR 418.25(a) — the recorded physician admission recommendation (null until recorded).
+  admissionRecommendation: Type.Optional(
+    Type.Union([
+      Type.Object({
+        recommendedByUserId: Type.String(),
+        capacity: PhysicianSignerCapacitySchema,
+        recommendedAt: Type.String(),
+        attendingConsulted: Type.Boolean(),
+        attendingConsultNote: Type.Union([Type.String(), Type.Null()]),
+      }),
+      Type.Null(),
+    ]),
+  ),
   activationGate: Type.Object({
     ready: Type.Boolean(),
     missing: Type.Array(ActivationGapSchema),
@@ -549,6 +641,7 @@ const RequirementActionSchema = Type.Union([
   Type.Literal("COMPLETE_CTI"),
   Type.Literal("COMPLETE_CTI_SIGNATURE"),
   Type.Literal("REVIEW_F2F"),
+  Type.Literal("RECORD_ADMISSION_RECOMMENDATION"),
 ]);
 
 const RequirementEvidenceSchema = Type.Object({
@@ -577,6 +670,7 @@ const RequirementCodeSchema = Type.Union([
   Type.Literal("election_statement"),
   Type.Literal("cti"),
   Type.Literal("f2f"),
+  Type.Literal("admission_recommendation"),
 ]);
 
 export const AdmissionReadinessResponseSchema = Type.Object({

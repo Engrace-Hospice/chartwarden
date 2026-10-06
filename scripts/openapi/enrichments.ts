@@ -78,6 +78,7 @@ import {
   AdmissionHoldSchema,
   AdmissionListQuerySchema,
   AdmissionReadinessResponseSchema,
+  AdmissionRecommendationSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
   CtiDraftSchema,
@@ -86,6 +87,7 @@ import {
   CtiVoidSchema,
   DischargeCosignSchema,
   DischargeCreateSchema,
+  DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
   ElectionPeriodPatchSchema,
   ElectionSignSchema,
@@ -109,6 +111,7 @@ import {
   SummaryRowResponseSchema as M6SummaryRowResponseSchema,
   NorAcknowledgeSchema,
   PatientElectionCertificationResponseSchema,
+  PhysicianSignerListResponseSchema,
   ReferralAcceptResponseSchema,
   ReferralAcceptSchema,
   ReferralActivityListResponseSchema,
@@ -3628,6 +3631,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Activate the admission (only when the R-AC-01 gate is satisfied)",
     body: AdmissionActivateSchema,
   },
+  "POST /api/v1/admissions/:id/admission-recommendation": {
+    summary:
+      "Record the 42 CFR 418.25(a) physician admission recommendation (medical director, physician designee, or the patient's IDG physician; attending consultation)",
+    body: AdmissionRecommendationSchema,
+    response: M6SummaryRowResponseSchema,
+  },
+  "GET /api/v1/admissions/:id/physician-signers": {
+    summary:
+      "Physicians eligible to sign for this admission's patient under 42 CFR 418.25(a)/418.26(b), with their capacities",
+    response: PhysicianSignerListResponseSchema,
+  },
   // Election statement & period (routes 15–21)
   "POST /api/v1/admissions/:id/election-statements": {
     summary: "Draft the beneficiary's election statement",
@@ -3763,8 +3777,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: DischargeCreateSchema,
   },
   "POST /api/v1/discharges/:id/cosign-for-cause": {
-    summary: "Medical-director cosign for a for-cause discharge (§6.3 ABAC)",
+    summary:
+      "Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician)",
     body: DischargeCosignSchema,
+  },
+  "GET /api/v1/admissions/:id/discharge-order": {
+    summary:
+      "The admission's 42 CFR 418.26(b) discharge order and for-cause cosigner (null until discharged)",
+    response: DischargeOrderResponseSchema,
   },
   // NOR (routes 41–42)
   "POST /api/v1/admissions/:id/nor": {

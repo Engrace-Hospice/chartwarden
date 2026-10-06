@@ -57,6 +57,20 @@ of area, no-longer-terminally-ill, discharge-for-cause). For discharge due to **
 ill** or **for-cause**, a **Notice of Medicare Non-Coverage (NOMNC)** is issued with appeal rights.
 (M06-F09)
 
+> **Amendment (2026-10-06) — who may sign the order (418.26(b), CMS-1851-F, effective 2026-10-01).**
+> The FY 2027 final rule amended 418.26(b): the written discharge order comes "from the hospice medical
+> director (or physician designee, as defined at § 418.3) or physician member of the interdisciplinary
+> group" (before 2026-10-01 it named only the medical director). The attending physician is consulted, not
+> a signer; PAs were expressly declined. M06 v0.8 implements D5's order as columns on `discharge_event`
+> (signer user, capacity, signed-at, text, reference — migration 0388), required on route 39 for a live
+> discharge dated on/after 2026-10-01; for `for_cause` the physician cosign (route 40, predicate
+> `discharge.is_order_signer`) is the order. Discharges dated before 2026-10-01 keep the legacy rule. The
+> same signer set governs the **418.25(a) admission recommendation** (FY 2026 rule, effective 2025-10-01 —
+> the IDG physician member was added), recorded on `admission` (migration 0389) as a non-blocking
+> activation-checklist item (M6 spec D19: 418.25 is a payment condition and activation already hard-blocks
+> on the hospice-physician CTI signature). NOMNC remains out of scope of this amendment. Primary sources:
+> `docs/research/FY2027_HOSPICE_COP_RESEARCH.md` §2, §5.
+
 ### D6 — Transfer requires the 418.30 patient-signed statement
 
 A beneficiary may **transfer hospices once per benefit period**; the transfer requires a

@@ -54,6 +54,7 @@ import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -242,6 +243,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
         reason: "moved_out_of_service_area",
         dischargeDate: new Date().toISOString().slice(0, 10),
         narrative: "The patient relocated out of the service area and elects another hospice.",
+        dischargeOrder: dischargeOrderBy(MD),
         ifVersion: adm?.version,
       } as never,
       USER,
@@ -261,6 +263,9 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
       `INSERT INTO "user" (id,email) VALUES ($1,'f102a@x.test'),($2,'f102md@x.test'),($3,'f102at@x.test')`,
       [USER, MD, ATTENDING],
     );
+    // 42 CFR 418.26(b) — the live discharges below are dated today, so they carry a physician order.
+    await seedPhysicianRole(admin, ORG_A, MD);
+    await seedPhysicianRole(admin, ORG_B, MD);
     for (const org of [ORG_A, ORG_B]) {
       providerOf[org] = (
         await admin.query(

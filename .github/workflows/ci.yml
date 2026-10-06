@@ -215,7 +215,7 @@ jobs:
               scripts:
                 "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
                 test:m6:t5:write:live test:m6:t5:counts:live test:m6:abac-scope:live
-                test:m6:election-guards:live",
+                test:m6:election-guards:live test:m6:physician-authority:live",
             }
           - {
               name: "M7 Care Plan",
