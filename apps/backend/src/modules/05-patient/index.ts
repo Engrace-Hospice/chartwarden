@@ -124,6 +124,7 @@ export {
 // §2.4.1 — the live-discharge `active/on_hold → discharged` edges off `m6.admission.discharged`.
 export {
   M5_ADMISSION_DISCHARGED_CONSUMER,
+  applyAdmissionDischarged,
   buildM5AdmissionDischargedConsumer,
   type AdmissionDischargedDeps,
   type AdmissionDischargedOutcome,

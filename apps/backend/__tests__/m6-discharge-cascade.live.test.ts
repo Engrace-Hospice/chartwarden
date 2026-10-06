@@ -32,7 +32,10 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
-import { buildM5AdmissionDischargedConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
+import {
+  type AdmissionDischargedDeps,
+  applyAdmissionDischarged,
+} from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import {
   M6_OUTBOX_EVENTS,
@@ -93,7 +96,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
-  let m5Discharged: ReturnType<typeof buildM5AdmissionDischargedConsumer>;
+  let m5Discharged: AdmissionDischargedDeps;
   const providerOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
   const memberOf: Record<string, string> = {};
@@ -348,12 +351,12 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
     // catalog-validating publisher (an `m5.patient.status_changed` payload drift throws).
     registerAdmissionSeams({ store: createDrizzleAdmissionReaderStore(handle.db) });
     const m5Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M5_OUTBOX_EVENTS]));
-    m5Discharged = buildM5AdmissionDischargedConsumer({
+    m5Discharged = {
       db: handle.db,
       outbox: {
         publish: (tx, input) => m5Publisher.publish(tx, { ...input, callerModule: "m5" }),
       },
-    });
+    };
   }, 180_000);
 
   afterAll(async () => {
@@ -471,7 +474,7 @@ describe.skipIf(!DB_URL)("F-102 — the M6 discharge cascade, LIVE Postgres", ()
       [admissionId],
     );
     expect(rows).toHaveLength(1);
-    const outcome = await m5Discharged.handle({
+    const outcome = await applyAdmissionDischarged(m5Discharged, {
       organizationId: rows[0].organization_id as string,
       payload: rows[0].payload,
     });

@@ -114,6 +114,26 @@ async function dischargePatient(
   });
 }
 
+/** One delivery's work, with what it did (the binding's `handle` discards the outcome). */
+export async function applyAdmissionDischarged(
+  deps: AdmissionDischargedDeps,
+  event: { readonly organizationId: string; readonly payload: unknown },
+): Promise<AdmissionDischargedOutcome> {
+  const facts = factsOf(event.payload);
+  if (isDeathDischargeReason(facts.reason)) return "skipped_death";
+
+  const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
+    event.organizationId,
+    facts.admissionId,
+  );
+  // Unknown / cross-tenant admission id: nothing of this tenant's to discharge.
+  if (!care) return "skipped_unknown_admission";
+  if (!ENDED_ADMISSION_STATES.has(care.status)) return "skipped_admission_not_ended";
+  if (care.otherAdmissionUnderCare) return "skipped_other_admission_under_care";
+
+  return dischargePatient(deps, event.organizationId, care.patientId);
+}
+
 /** M5's live `m6.admission.discharged` binding — see the file header. */
 export function buildM5AdmissionDischargedConsumer(deps: AdmissionDischargedDeps) {
   return {
@@ -123,20 +143,8 @@ export function buildM5AdmissionDischargedConsumer(deps: AdmissionDischargedDeps
     async handle(event: {
       readonly organizationId: string;
       readonly payload: unknown;
-    }): Promise<AdmissionDischargedOutcome> {
-      const facts = factsOf(event.payload);
-      if (isDeathDischargeReason(facts.reason)) return "skipped_death";
-
-      const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
-        event.organizationId,
-        facts.admissionId,
-      );
-      // Unknown / cross-tenant admission id: nothing of this tenant's to discharge.
-      if (!care) return "skipped_unknown_admission";
-      if (!ENDED_ADMISSION_STATES.has(care.status)) return "skipped_admission_not_ended";
-      if (care.otherAdmissionUnderCare) return "skipped_other_admission_under_care";
-
-      return dischargePatient(deps, event.organizationId, care.patientId);
+    }): Promise<void> {
+      await applyAdmissionDischarged(deps, event);
     },
   };
 }

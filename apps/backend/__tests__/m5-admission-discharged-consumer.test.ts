@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import {
   M5_ADMISSION_DISCHARGED_CONSUMER,
+  applyAdmissionDischarged,
   buildM5AdmissionDischargedConsumer,
 } from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
 
@@ -41,7 +42,7 @@ const care = (over: Partial<AdmissionPatientCare> = {}): AdmissionPatientCare =>
   }) as AdmissionPatientCare;
 
 const deliver = (reason: string, payload: Record<string, unknown> = {}) =>
-  buildM5AdmissionDischargedConsumer(untouchable).handle({
+  applyAdmissionDischarged(untouchable, {
     organizationId: ORG,
     payload: { admissionId: ADMISSION, reason, dischargeDate: "2026-06-01", ...payload },
   });

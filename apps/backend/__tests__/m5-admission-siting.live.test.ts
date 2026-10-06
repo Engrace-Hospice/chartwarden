@@ -23,7 +23,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/events-by-m5";
 import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
-import { buildM5AdmissionDischargedConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
+import {
+  type AdmissionDischargedDeps,
+  applyAdmissionDischarged,
+} from "../src/modules/05-patient/outbox-consumers/m6-admission-discharged";
 import { registerAdmissionSeams } from "../src/modules/06-admission/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -44,7 +47,7 @@ describe.skipIf(!DB_URL)(
     let providerB: string;
     let locationA: string;
     let consumer: ReturnType<typeof buildM5AdmissionSitingConsumer>;
-    let discharged: ReturnType<typeof buildM5AdmissionDischargedConsumer>;
+    let dischargedDeps: AdmissionDischargedDeps;
 
     async function resetSchema() {
       await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -161,12 +164,12 @@ describe.skipIf(!DB_URL)(
           publish: (tx, input) => txPublisher.publish(tx, { ...input, callerModule: "m5" }),
         },
       });
-      discharged = buildM5AdmissionDischargedConsumer({
+      dischargedDeps = {
         db: handle.db,
         outbox: {
           publish: (tx, input) => txPublisher.publish(tx, { ...input, callerModule: "m5" }),
         },
-      });
+      };
     }, 120_000);
 
     afterAll(async () => {
@@ -368,7 +371,7 @@ describe.skipIf(!DB_URL)(
       return admissionId;
     }
     const deliver = (organizationId: string, admissionId: string, reason: string) =>
-      discharged.handle({
+      applyAdmissionDischarged(dischargedDeps, {
         organizationId,
         payload: { admissionId, reason, dischargeDate: "2026-06-01" },
       });

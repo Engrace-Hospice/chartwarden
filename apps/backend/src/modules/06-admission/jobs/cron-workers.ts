@@ -287,8 +287,8 @@ export async function runElectionPeriodAutoEndCron(deps: M6WorkerDeps): Promise<
   for (const { organizationId } of orgs) {
     await withOrgContext(
       deps.db,
-      // "" — this tick UPDATEs `election_period`, an audited table: a synthetic uuid would 23503 on the
-      // audit trigger's `user` FK (see the F-178b note on the window-missed scan above).
+      // The NULL audit actor — this tick UPDATEs `election_period`, an audited table: a synthetic uuid
+      // would 23503 on the audit trigger's `user` FK (see the F-178b note on the window-missed scan above).
       systemOrgContext(organizationId),
       async (tx) => {
         const t = tx as unknown as DbClient;
