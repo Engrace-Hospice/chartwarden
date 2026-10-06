@@ -16,6 +16,9 @@ export {
   deriveDischargePermissionKey,
   dischargeRequiresCosign,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
+  PLACES_OF_DEATH,
+  type PlaceOfDeath,
 } from "./permission-map";
 export {
   type BereavementFacts,

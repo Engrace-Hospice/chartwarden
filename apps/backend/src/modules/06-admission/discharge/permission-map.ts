@@ -98,7 +98,9 @@ export interface DischargeNarrativeIssue {
   readonly code:
     | "NARRATIVE_REQUIRED_FOR_CAUSE"
     | "DISCHARGE_NARRATIVE_TOO_SHORT"
-    | "DEATH_CERTIFIER_INVALID";
+    | "DEATH_CERTIFIER_INVALID"
+    | "PLACE_OF_DEATH_REQUIRED"
+    | "PLACE_OF_DEATH_NOT_ALLOWED";
   readonly message: string;
 }
 
@@ -110,6 +112,37 @@ export interface DischargeNarrativeIssue {
  * places it can fail); every reason requires a narrative of at least the reason's minimum (D11
  * tightens `no_longer_terminal`/`other`) (422).
  */
+/** Where the patient died (`discharge_event.place_of_death`) — drives claim patient status 40/41/42. */
+export const PLACES_OF_DEATH = ["home", "facility", "unknown"] as const;
+export type PlaceOfDeath = (typeof PLACES_OF_DEATH)[number];
+
+/**
+ * A death discharge must say where the patient died: the Medicare claim's patient discharge status is
+ * 40 (home), 41 (medical facility) or 42 (place unknown) — CMS Pub. 100-04 Ch. 11 §30.3. `unknown` is a
+ * valid answer (42); silence is not. Any other reason must NOT carry a place of death.
+ */
+export function checkPlaceOfDeath(
+  reason: DischargeReason,
+  placeOfDeath: string | undefined,
+): DischargeNarrativeIssue | null {
+  if (reason === "death") {
+    if (placeOfDeath === undefined || !(PLACES_OF_DEATH as readonly string[]).includes(placeOfDeath)) {
+      return {
+        code: "PLACE_OF_DEATH_REQUIRED",
+        message: "death discharge requires placeOfDeath (home, facility or unknown)",
+      };
+    }
+    return null;
+  }
+  if (placeOfDeath !== undefined) {
+    return {
+      code: "PLACE_OF_DEATH_NOT_ALLOWED",
+      message: "placeOfDeath is only recorded on a death discharge",
+    };
+  }
+  return null;
+}
+
 export function checkDischargeNarrative(
   reason: DischargeReason,
   narrative: string,

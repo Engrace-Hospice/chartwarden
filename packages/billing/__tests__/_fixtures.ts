@@ -34,6 +34,12 @@ export function passingContext(): ValidationContext {
       priorClaimServiceTo: null,
       dischargeDate: null,
       dischargeReason: null,
+      dischargeClaimCodes: {
+        patientStatus: "30",
+        conditionCodes: [],
+        occurrenceCodes: [],
+        unresolved: null,
+      },
     },
     lines: [
       {

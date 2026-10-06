@@ -57,6 +57,9 @@ export const M6_ERROR_STATUS = {
   // Discharge reason-specific capture gates (§6.3 / D11)
   NARRATIVE_REQUIRED_FOR_CAUSE: 412,
   DISCHARGE_NARRATIVE_TOO_SHORT: 422,
+  // Claim patient discharge status 40/41/42 needs the place of death (CMS Pub. 100-04 Ch. 11 §30.3).
+  PLACE_OF_DEATH_REQUIRED: 422,
+  PLACE_OF_DEATH_NOT_ALLOWED: 422,
   // Compliance windows (§2.4.1 R-CW-*)
   WINDOW_OVERRIDE_FORBIDDEN: 403,
   // Structural — an event dispatched from a state that does not accept it (§2.3 graph).

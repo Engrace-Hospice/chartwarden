@@ -396,6 +396,10 @@ export const TransferOutSchema = Type.Object({
   effectiveDate: Type.String({ format: "date" }),
   otherHospiceName: Type.String({ minLength: 1, maxLength: 200 }),
   otherHospiceCcn: Type.Optional(Type.String({ pattern: "^[0-9A-Z]{6}$" })),
+  // Where the RECEIVING hospice cares for the patient — the claim's patient discharge status 50 (hospice,
+  // home) vs 51 (hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Persisted on
+  // `transfer_event.receiving_care_setting` (migration 0370).
+  receivingCareSetting: Type.Union([Type.Literal("home"), Type.Literal("facility")]),
   narrative: Reason(10, 4000),
 });
 
@@ -427,6 +431,11 @@ export const DischargeCreateSchema = Type.Object({
   // R-DC-01 — required (service-enforced, see checkDischargeNarrative) when reason='death'; identifies
   // who certified the death (M40 external_physician or M2 user; app-validated, not a DB FK).
   deathCertifierId: Type.Optional(Uuid()),
+  // Required (service-enforced, `checkPlaceOfDeath`) when reason='death', refused otherwise: where the
+  // patient died — the claim's patient discharge status 40 / 41 / 42 (CMS Pub. 100-04 Ch. 11 §30.3).
+  placeOfDeath: Type.Optional(
+    Type.Union([Type.Literal("home"), Type.Literal("facility"), Type.Literal("unknown")]),
+  ),
 });
 
 export const DischargeCosignSchema = Type.Object({

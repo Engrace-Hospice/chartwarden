@@ -17,6 +17,7 @@ import {
   type DischargeReason,
   type TransferInInput,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
   decideBereavementEligibility,
   dischargeRequiresCosign,
   fileForCauseDischarge,
@@ -400,6 +401,9 @@ export interface DischargeInput {
   readonly forCauseReason?: string;
   /** R-DC-01 — required when `reason === 'death'` (`checkDischargeNarrative` enforces it). */
   readonly deathCertifierId?: string;
+  /** Required when `reason === 'death'` (`checkPlaceOfDeath`); claim patient status 40/41/42. An external
+   *  (HL7) death that cannot know it records `unknown`. */
+  readonly placeOfDeath?: "home" | "facility" | "unknown";
   /**
    * F-227 (#248) — set ONLY by the M29 proposal applier (`recordExternalDeath`, W-M6-31): the death was
    * reported by an external facility, so R-DC-01's pronouncing-certifier capture does not apply at intake
@@ -414,6 +418,8 @@ export interface TransferOutInput {
   readonly effectiveDate: string;
   readonly otherHospiceName: string;
   readonly otherHospiceCcn?: string;
+  /** Where the receiving hospice cares for the patient — claim patient status 50 (home) / 51 (facility). */
+  readonly receivingCareSetting: "home" | "facility";
   readonly narrative: string;
 }
 
@@ -1101,6 +1107,7 @@ interface Rec {
   effectiveAt?: string;
   otherHospiceName?: string;
   otherHospiceCcn?: string | null;
+  receivingCareSetting?: "home" | "facility" | null;
   narrative?: string;
   // revocation facts (§4.2.7 route 36) — what was actually submitted, not a hardcoded default.
   signedAt?: string;
@@ -2374,6 +2381,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         effectiveAt: input.effectiveDate,
         otherHospiceName: input.otherHospiceName,
         otherHospiceCcn: input.otherHospiceCcn ?? null,
+        receivingCareSetting: input.receivingCareSetting,
         narrative: input.narrative,
       });
       events.push("m6.transfer.created");
@@ -2435,6 +2443,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         input.deathCertifierId,
       );
       if (issue) throw new AdmissionStateError(issue.code, issue.message);
+      const placeIssue = checkPlaceOfDeath(input.reason, input.placeOfDeath);
+      if (placeIssue) throw new AdmissionStateError(placeIssue.code, placeIssue.message);
       const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
       events.push("m6.discharge.created");
       if (requiresMedicalDirectorCosign) {

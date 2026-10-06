@@ -773,6 +773,97 @@ describe("bereavement_discharge_legitimacy", () => {
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
   });
+  it("passes a revocation discharge bill (811) carrying 01 + occurrence 42", () => {
+    const ctx = passingContext();
+    const r = run(bereavementDischargeLegitimacy, {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        tob: "811",
+        dischargeDate: "2026-03-20",
+        dischargeReason: "revocation",
+        dischargeClaimCodes: {
+          patientStatus: "01",
+          conditionCodes: [],
+          occurrenceCodes: [{ code: "42", date: "2026-03-20" }],
+          unresolved: null,
+        },
+      },
+    });
+    expect(r.passed).toBe(true);
+  });
+  it.each([
+    ["place_of_death_missing", "place of death"],
+    ["transfer_setting_missing", "receiving care setting"],
+    ["discharge_reason_not_codable", "no CMS claim coding"],
+  ] as const)("fails a discharge bill whose codes are unresolved (%s)", (reason, text) => {
+    const ctx = passingContext();
+    const r = run(bereavementDischargeLegitimacy, {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        tob: "811",
+        dischargeDate: "2026-03-20",
+        dischargeReason: "death",
+        dischargeClaimCodes: {
+          patientStatus: null,
+          conditionCodes: [],
+          occurrenceCodes: [],
+          unresolved: reason,
+        },
+      },
+    });
+    expect(r.passed).toBe(false);
+    expect(String(r.annotations?.observed?.firstDefect)).toContain(text);
+  });
+  it("fails a discharge bill (814) still carrying status 30", () => {
+    const ctx = passingContext();
+    const r = run(bereavementDischargeLegitimacy, {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        tob: "814",
+        dischargeDate: "2026-03-20",
+        dischargeReason: "no_longer_terminal",
+      },
+    });
+    expect(r.passed).toBe(false);
+  });
+  it("fails an interim bill (812) carrying a discharge status", () => {
+    const ctx = passingContext();
+    const r = run(bereavementDischargeLegitimacy, {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        dischargeClaimCodes: {
+          patientStatus: "01",
+          conditionCodes: [],
+          occurrenceCodes: [],
+          unresolved: null,
+        },
+      },
+    });
+    expect(r.passed).toBe(false);
+  });
+  it("fails a code set hitting a CR 7677 edit (52 with H2)", () => {
+    const ctx = passingContext();
+    const r = run(bereavementDischargeLegitimacy, {
+      ...ctx,
+      claim: {
+        ...ctx.claim,
+        tob: "811",
+        dischargeDate: "2026-03-20",
+        dischargeReason: "for_cause",
+        dischargeClaimCodes: {
+          patientStatus: "01",
+          conditionCodes: ["52", "H2"],
+          occurrenceCodes: [],
+          unresolved: null,
+        },
+      },
+    });
+    expect(r.passed).toBe(false);
+  });
   it("fails when a bereavement line (0942) carries a billable charge", () => {
     const ctx = passingContext();
     const r = run(bereavementDischargeLegitimacy, {

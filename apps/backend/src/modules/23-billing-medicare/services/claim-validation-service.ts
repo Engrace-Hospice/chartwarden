@@ -31,6 +31,7 @@ import {
 import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { claimDischargeCodeColumns } from "./claim-discharge";
 import {
   type BillingDb,
   type BillingTx,
@@ -202,6 +203,12 @@ export function buildClaimValidationService(
 
     // Materialize the aggregate context + tenant overlays, then run the FROZEN rule set (pure).
     const { context, overlays } = await contextPort.build(tx, actor, claim);
+    // Keep the persisted discharge claim codes (sent to the X12 gateway at submission) in step with the
+    // facts this run validated — e.g. a biller recorded the missing place of death since assembly.
+    await claimRepo.refreshDischargeCodes(
+      claim.id,
+      claimDischargeCodeColumns(context.claim.dischargeClaimCodes),
+    );
     const overriddenKeys = await overriddenKeysForClaim(tx, claim.id);
 
     const startedAt = now();

@@ -51,6 +51,7 @@ import type {
   ValidationRunDetailView,
   ValidationRunView,
 } from "./read-service";
+import { claimDischargeCodesView } from "./read-service";
 
 type BillingDb = repositories.BillingDb;
 
@@ -371,6 +372,7 @@ export function buildDrizzleM23ReadService(
           latestValidationRunId: row.latestValidationRunId ?? null,
           latestSubmissionId: row.latestSubmissionId ?? null,
           acknowledgmentDocumentId: row.acknowledgmentDocumentId ?? null,
+          dischargeCodes: claimDischargeCodesView(row),
           latestValidation: latestRun ? mapValidationRun(latestRun) : null,
           pricing: {
             hipps: hipps

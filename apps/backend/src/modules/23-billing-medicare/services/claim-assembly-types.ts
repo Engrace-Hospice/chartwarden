@@ -62,10 +62,18 @@ export interface AdmissionContext {
   readonly admissionId: string;
   /** The hospice election/admission date — anchors the RHC days-1-7 vs days-8+ bucket (D7). */
   readonly hospiceAdmissionDate: IsoDate;
+  /** The COMPLETED `discharge_event` only (a voided or pending-cosign row is not a discharge). */
   readonly dischargeDate: IsoDate | null;
   readonly dischargeReason: string | null;
   /** M5/M6 date of death (drives SIA + the PATIENT_DECEASED_BEFORE_FROM gate); `null` ⇒ alive. */
   readonly deceasedDate: IsoDate | null;
+  /** M6 `discharge_event.place_of_death` (`home` / `facility` / `unknown`); claim patient status 40/41/42. */
+  readonly placeOfDeath: string | null;
+  /** M6 transfer-OUT (no `discharge_event` row); `receivingCareSetting` drives claim patient status 50/51. */
+  readonly transferOut: {
+    readonly effectiveDate: IsoDate;
+    readonly receivingCareSetting: string | null;
+  } | null;
 }
 
 export interface AdmissionContextReader {

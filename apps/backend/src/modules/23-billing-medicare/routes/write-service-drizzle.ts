@@ -50,6 +50,7 @@ import type {
   RuleConfigView,
   ValidationOverrideView,
 } from "./read-service";
+import { claimDischargeCodesView } from "./read-service";
 import type {
   AssembleClaimArgs,
   AssembledClaimLineInput,
@@ -386,6 +387,7 @@ export function buildDrizzleM23WriteService(
       latestValidationRunId: claim.latestValidationRunId ?? null,
       latestSubmissionId: claim.latestSubmissionId ?? null,
       acknowledgmentDocumentId: claim.acknowledgmentDocumentId ?? null,
+      dischargeCodes: claimDischargeCodesView(claim),
       latestValidation: latestRun
         ? {
             validationRunId: latestRun.id,

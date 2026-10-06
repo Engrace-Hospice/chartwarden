@@ -32,6 +32,7 @@
 // AI-BLOCK (D13): no `@wardenx/ai-platform` import anywhere here; a background job has no acting user.
 import { createHash } from "node:crypto";
 import {
+  type ClaimDocument837i,
   type ClaimState,
   type ClaimTransitionEvent,
   type EligibilityOutcome,
@@ -176,6 +177,9 @@ export interface X12ClientPort {
     readonly organizationId: string;
     readonly claimId: string;
     readonly claimControlNumber: string;
+    /** The claim facts the gateway renders (`@wardenx/billing` `ClaimDocument837i`): today the TOB, the
+     *  service window and the CMS Pub. 100-04 Ch. 11 §30.3 discharge codes → CL103 / HI*BG / HI*BH. */
+    readonly claimDocument: ClaimDocument837i;
   }): Promise<{ readonly x12: string; readonly correlationId: string }>;
   generateNoe(input: {
     readonly organizationId: string;
@@ -658,6 +662,49 @@ function daysToTarget(targetDate: string, now: Date): number {
   return Math.round((target - today) / (24 * 60 * 60 * 1000));
 }
 
+/**
+ * The generate-837i claim document for a persisted claim. THROWS when the discharge codes are not resolved
+ * (`patient_status_code` NULL) — the submit preflight already requires a passing validation run, whose
+ * `bereavement_discharge_legitimacy` rule blocks unresolved codes, so this is defense in depth: the throw
+ * lands in the caller's catch and fails the attempt (`failed_worker`) rather than sending a claim without
+ * a patient status.
+ */
+export function claimDocumentFor(
+  claim: {
+    readonly id: string;
+    readonly tob: string;
+    readonly serviceFrom: string;
+    readonly serviceTo: string;
+    readonly patientStatusCode: string | null;
+    readonly conditionCodes: unknown;
+    readonly occurrenceCodes: unknown;
+  },
+  claimControlNumber: string,
+): ClaimDocument837i {
+  if (claim.patientStatusCode === null) {
+    throw new Error(`claim ${claim.id} has no patient discharge status (re-validate the claim)`);
+  }
+  const conditionCodes = Array.isArray(claim.conditionCodes)
+    ? claim.conditionCodes.filter((c): c is string => typeof c === "string")
+    : [];
+  const occurrenceCodes = Array.isArray(claim.occurrenceCodes)
+    ? claim.occurrenceCodes.flatMap((o: unknown) => {
+        const r = o as { code?: unknown; date?: unknown } | null;
+        return r && typeof r.code === "string" && typeof r.date === "string"
+          ? [{ code: r.code, date: r.date }]
+          : [];
+      })
+    : [];
+  return {
+    claimId: claim.id,
+    claimControlNumber,
+    tob: claim.tob,
+    serviceFrom: claim.serviceFrom,
+    serviceTo: claim.serviceTo,
+    dischargeCodes: { patientStatus: claim.patientStatusCode, conditionCodes, occurrenceCodes },
+  };
+}
+
 // ── the §4.8 WORK processors (each runs INSIDE the worker's per-job withOrgContext tx) ──────────────────────
 
 /**
@@ -719,6 +766,7 @@ export async function runClaimSubmit(
       organizationId: job.organizationId,
       claimId: job.claimId,
       claimControlNumber: job.claimControlNumber,
+      claimDocument: claimDocumentFor(claim, job.claimControlNumber),
     });
     uploaded = await macPortalOf(deps).upload({
       organizationId: job.organizationId,
@@ -919,6 +967,7 @@ export async function runClaimSubmitRetry(
       organizationId: job.organizationId,
       claimId: job.claimId,
       claimControlNumber,
+      claimDocument: claimDocumentFor(claim, claimControlNumber),
     });
     uploaded = await macPortalOf(deps).upload({
       organizationId: job.organizationId,

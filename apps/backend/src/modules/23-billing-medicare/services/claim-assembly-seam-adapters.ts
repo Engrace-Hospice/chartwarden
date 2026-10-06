@@ -196,6 +196,11 @@ export interface M6ClaimRangeReader {
       readonly dischargeDate: string | null;
       readonly dischargeReason: string | null;
       readonly deceasedDate: string | null;
+      readonly placeOfDeath: string | null;
+      readonly transferOut: {
+        readonly effectiveDate: string;
+        readonly receivingCareSetting: string | null;
+      } | null;
       /** F-127 (#251) — `admission.hospice_physician_id` (M40), for `mdm.resolveClinicalParticipants`. */
       readonly hospicePhysicianId: string | null;
     };

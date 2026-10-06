@@ -73,6 +73,7 @@ import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
   type DischargeReason,
   checkDischargeNarrative,
+  checkPlaceOfDeath,
   dischargeRequiresCosign,
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
@@ -5148,6 +5149,7 @@ export function createDbAdmissionRouteService(
               periodSequenceAtTransfer: period.sequence,
               receivingOrSendingCcn: input.otherHospiceCcn ?? null,
               receivingOrSendingName: input.otherHospiceName,
+              receivingCareSetting: input.receivingCareSetting,
               narrative: input.narrative,
             })
             .returning({ id: TE.id, version: TE.version }),
@@ -5388,6 +5390,14 @@ export function createDbAdmissionRouteService(
           input.externalSource ? "external-facility" : input.deathCertifierId,
         );
         if (issue) throw new AdmissionStateError(issue.code, issue.message);
+        // Claim patient status 40/41/42 (CMS Pub. 100-04 Ch. 11 §30.3) needs the place of death. An external
+        // (HL7) death that does not carry it records `unknown` (status 42) rather than blocking the intake.
+        const placeOfDeath =
+          input.reason === "death" && input.externalSource
+            ? (input.placeOfDeath ?? "unknown")
+            : input.placeOfDeath;
+        const placeIssue = checkPlaceOfDeath(input.reason, placeOfDeath);
+        if (placeIssue) throw new AdmissionStateError(placeIssue.code, placeIssue.message);
         const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
         const dbType = REASON_TO_DB_TYPE[input.reason];
         if (requiresMedicalDirectorCosign) {
@@ -5460,6 +5470,7 @@ export function createDbAdmissionRouteService(
               narrative: input.narrative,
               deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
               deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
+              placeOfDeath: input.reason === "death" ? (placeOfDeath ?? null) : null,
               bereavementEligible: input.reason === "death",
               // F-227 — W-M6-31 provenance: completed NOW, flagged for the after-the-fact cosign.
               ...(input.externalSource

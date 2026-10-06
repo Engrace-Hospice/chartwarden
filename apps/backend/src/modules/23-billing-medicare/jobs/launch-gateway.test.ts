@@ -9,6 +9,20 @@ const config = {
   timeoutMs: 5000,
 };
 
+
+const CLAIM_DOCUMENT = {
+  claimId: "claim-1",
+  claimControlNumber: "control-1",
+  tob: "811",
+  serviceFrom: "2026-03-01",
+  serviceTo: "2026-03-20",
+  dischargeCodes: {
+    patientStatus: "40",
+    conditionCodes: [],
+    occurrenceCodes: [{ code: "55", date: "2026-03-20" }],
+  },
+} as const;
+
 describe("M23 launch gateway", () => {
   it("submits and parses acknowledgments through a credential-isolated transport", async () => {
     const seen: GatewayHttpRequest[] = [];
@@ -28,6 +42,7 @@ describe("M23 launch gateway", () => {
       organizationId: "org-1",
       claimId: "claim-1",
       claimControlNumber: "control-1",
+      claimDocument: CLAIM_DOCUMENT,
     });
     const uploaded = await gateway.macPortal.upload({
       organizationId: "org-1",
@@ -38,6 +53,8 @@ describe("M23 launch gateway", () => {
     });
     expect(uploaded.accepted).toBe(true);
     expect(seen.map((request) => request.bearerToken)).toEqual(["x12-token", "mac-token"]);
+    // The discharge claim codes reach the gateway in the generate-837i body (CL103 / HI*BG / HI*BH source).
+    expect((seen[0]?.body as { claimDocument?: unknown }).claimDocument).toEqual(CLAIM_DOCUMENT);
   });
 
   it("rejects malformed gateway output without echoing the body", async () => {
@@ -49,6 +66,7 @@ describe("M23 launch gateway", () => {
         organizationId: "org-1",
         claimId: "claim-1",
         claimControlNumber: "control-1",
+        claimDocument: CLAIM_DOCUMENT,
       }),
     ).rejects.toThrow("invalid generation response");
   });

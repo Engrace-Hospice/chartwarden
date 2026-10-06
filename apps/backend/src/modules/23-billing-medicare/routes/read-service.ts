@@ -92,6 +92,39 @@ export interface ClaimPricingView {
   } | null;
 }
 
+/**
+ * The claim's discharge-driven codes: UB-04 FL 17 patient status (837I CL103; `null` = could not be derived,
+ * the discharge rule blocks the claim), FL 18-28 condition codes (HI*BG) and FL 31-34 occurrence codes with
+ * dates (HI*BH).
+ */
+export interface ClaimDischargeCodesView {
+  readonly patientStatusCode: string | null;
+  readonly conditionCodes: readonly string[];
+  readonly occurrenceCodes: readonly { readonly code: string; readonly date: string }[];
+}
+
+/** Project the persisted `claim` code columns (jsonb, defensively narrowed) onto the view. */
+export function claimDischargeCodesView(row: {
+  readonly patientStatusCode: string | null;
+  readonly conditionCodes: unknown;
+  readonly occurrenceCodes: unknown;
+}): ClaimDischargeCodesView {
+  const conditionCodes = Array.isArray(row.conditionCodes)
+    ? row.conditionCodes.filter((c): c is string => typeof c === "string")
+    : [];
+  const occurrenceCodes = Array.isArray(row.occurrenceCodes)
+    ? row.occurrenceCodes.flatMap((o: unknown) =>
+        o !== null &&
+        typeof o === "object" &&
+        typeof (o as { code?: unknown }).code === "string" &&
+        typeof (o as { date?: unknown }).date === "string"
+          ? [{ code: (o as { code: string }).code, date: (o as { date: string }).date }]
+          : [],
+      )
+    : [];
+  return { patientStatusCode: row.patientStatusCode ?? null, conditionCodes, occurrenceCodes };
+}
+
 export interface ClaimDetailView extends ClaimSummaryView {
   readonly electionPeriodIdFrom: string;
   readonly electionPeriodIdTo: string;
@@ -104,6 +137,8 @@ export interface ClaimDetailView extends ClaimSummaryView {
   readonly latestValidationRunId: string | null;
   readonly latestSubmissionId: string | null;
   readonly acknowledgmentDocumentId: string | null;
+  /** The discharge claim codes (CMS Pub. 100-04 Ch. 11 §30.3) as persisted at assembly / re-validation. */
+  readonly dischargeCodes: ClaimDischargeCodesView;
   readonly latestValidation: ValidationRunView | null;
   readonly pricing: ClaimPricingView;
   readonly createdAt: string;

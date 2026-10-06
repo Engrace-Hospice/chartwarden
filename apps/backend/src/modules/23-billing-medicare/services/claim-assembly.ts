@@ -50,6 +50,7 @@ import {
   hospiceFiscalYearStarting,
   readAssemblyFacts,
 } from "./claim-assembly-facts";
+import { claimDischargeCodeColumns, claimDischargeCodes } from "./claim-discharge";
 import { assembleValidationContext } from "./validation-context";
 
 // The org-context transaction handle every repo writes through (structurally a `BillingDb`). withOrgContext
@@ -251,8 +252,15 @@ export function buildClaimAssemblyService(
           .filter((c) => interimTobs.has(c.tob))
           .sort((a, b) => (a.serviceTo < b.serviceTo ? 1 : a.serviceTo > b.serviceTo ? -1 : 0))[0];
         const hasPriorClaimForAdmission = priorClaim !== undefined;
-        const patientDischarged =
-          admission.dischargeDate !== null && admission.dischargeDate <= serviceTo;
+        // The stay ends on a completed discharge_event, a transfer-out or a revocation (claim-discharge.ts) —
+        // the latter two have no discharge_event row, so reading only `dischargeDate` mis-typed their final
+        // bill as an interim one (812/813 instead of 811/814).
+        const { discharge, codes: dischargeCodes } = claimDischargeCodes(
+          admission,
+          resolvedPeriods,
+          serviceTo,
+        );
+        const patientDischarged = discharge !== null && discharge.effectiveDate <= serviceTo;
         const tob = deriveTypeOfBill({
           hasPriorClaimForAdmission,
           patientDischarged,
@@ -360,6 +368,8 @@ export function buildClaimAssemblyService(
           sequestrationPolicyId: seqPolicy.sequestrationPolicyId,
           latestValidationRunId: validationRunId, // logical pointer; the run row is appended below
           createdByMembershipId: actor.membershipId,
+          // CMS Pub. 100-04 Ch. 11 §30.3 discharge codes (refreshed on every re-validation).
+          ...claimDischargeCodeColumns(dischargeCodes),
         });
 
         const insertedLines = await new repositories.ClaimLineRepository(tx).insertBatch(

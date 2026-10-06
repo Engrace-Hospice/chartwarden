@@ -9351,6 +9351,13 @@ const M23ClaimDetailResponse = Type.Composite([
     latestValidationRunId: Type.Union([Type.String(), Type.Null()]),
     latestSubmissionId: Type.Union([Type.String(), Type.Null()]),
     acknowledgmentDocumentId: Type.Union([Type.String(), Type.Null()]),
+    // CMS Pub. 100-04 Ch. 11 §30.3 discharge claim codes (patient status FL 17 / condition FL 18-28 /
+    // occurrence FL 31-34), persisted at assembly and refreshed on re-validation.
+    dischargeCodes: Type.Object({
+      patientStatusCode: Type.Union([Type.String(), Type.Null()]),
+      conditionCodes: Type.Array(Type.String()),
+      occurrenceCodes: Type.Array(Type.Object({ code: Type.String(), date: Type.String() })),
+    }),
     latestValidation: Type.Union([M23ValidationRunView, Type.Null()]),
     pricing: M23ClaimPricingView,
     createdAt: Type.String(),

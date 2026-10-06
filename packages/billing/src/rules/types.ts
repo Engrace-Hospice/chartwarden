@@ -32,6 +32,7 @@ import type {
   ValidationSeverity,
 } from "../contracts";
 import type { Cents } from "../domain/money";
+import type { DischargeClaimCodes } from "../claim-codes";
 
 // ── severity / category unions (mirror the §3.3 pgEnums) ───────────────────────────────────────────────
 
@@ -173,6 +174,12 @@ export interface ClaimSnapshot {
   /** Discharge facts for the `bereavement_discharge_legitimacy` rule (null on non-discharge TOBs). */
   readonly dischargeDate: IsoDate | null;
   readonly dischargeReason: string | null;
+  /**
+   * The discharge-driven claim codes (patient status / condition 52, H2 / occurrence 42, 55) derived from
+   * the same facts (`deriveDischargeClaimCodes`). Required so no context producer can omit it; the
+   * `bereavement_discharge_legitimacy` rule blocks a claim whose codes are unresolved or conflicting.
+   */
+  readonly dischargeClaimCodes: DischargeClaimCodes;
 }
 
 /** One assembled `claim_line` (per service-date per LOC). */

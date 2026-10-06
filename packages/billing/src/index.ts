@@ -55,6 +55,8 @@ export * from "./wage-index";
 export * from "./sequestration";
 // D4 / D14 the pure Type-of-Bill derivation (811/812/813/814/817/818 from admission + claim cadence).
 export * from "./tob";
+// CMS Pub. 100-04 Ch. 11 §30.3 the pure discharge claim codes (patient status, condition 52/H2, occurrence 42/55).
+export * from "./claim-codes";
 // §4.1 / §4.2 the TypeBox route request/response SHAPE contracts (one module per route group).
 // Routed via the `./route-contracts` hop (see that file) so the barrel carries no schema-path import
 // literal alongside its catalog re-exports — avoids a crude arch:tables false positive.

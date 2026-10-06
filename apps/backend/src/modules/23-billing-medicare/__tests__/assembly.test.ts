@@ -92,6 +92,8 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
         dischargeDate: null,
         dischargeReason: null,
         deceasedDate: null,
+        placeOfDeath: null,
+        transferOut: null,
       }),
     },
     electionPeriods: {
@@ -331,6 +333,8 @@ describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produ
           dischargeDate: null,
           dischargeReason: null,
           deceasedDate: "2025-11-07",
+          placeOfDeath: null,
+          transferOut: null,
         }),
       },
       signedEncounters: {

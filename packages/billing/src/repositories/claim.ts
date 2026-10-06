@@ -300,4 +300,38 @@ export class ClaimRepository {
     const current = await this.findById(id);
     return versionConflict(current?.version ?? null);
   }
+
+  /**
+   * Refresh the DERIVED discharge claim codes (migration 0371) after a re-validation re-derived them from
+   * current M6 facts (e.g. a biller recorded the missing place of death). These columns are a projection of
+   * clinical facts, not a user edit, so the write does NOT bump `version` (an If-Match holder is not
+   * invalidated by a fact refresh) and is a no-op when nothing changed. Returns whether a row was updated.
+   */
+  async refreshDischargeCodes(
+    id: string,
+    codes: {
+      readonly patientStatusCode: string | null;
+      readonly conditionCodes: string[];
+      readonly occurrenceCodes: { code: string; date: string }[];
+    },
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({
+        patientStatusCode: codes.patientStatusCode,
+        conditionCodes: codes.conditionCodes,
+        occurrenceCodes: codes.occurrenceCodes,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(C.id, id),
+          sql`(${C.patientStatusCode} IS DISTINCT FROM ${codes.patientStatusCode}
+            OR ${C.conditionCodes} IS DISTINCT FROM ${JSON.stringify(codes.conditionCodes)}::jsonb
+            OR ${C.occurrenceCodes} IS DISTINCT FROM ${JSON.stringify(codes.occurrenceCodes)}::jsonb)`,
+        ),
+      )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
 }

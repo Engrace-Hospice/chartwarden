@@ -1133,6 +1133,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           effectiveDate: body.effectiveDate,
           otherHospiceName: body.otherHospiceName,
           otherHospiceCcn: body.otherHospiceCcn,
+          receivingCareSetting: body.receivingCareSetting,
           narrative: body.narrative,
         },
         userId,
@@ -1182,6 +1183,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           narrative: body.narrative,
           forCauseReason: body.forCauseReason,
           deathCertifierId: body.deathCertifierId,
+          placeOfDeath: body.placeOfDeath,
         },
         userId,
       );

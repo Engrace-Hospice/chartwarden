@@ -45,6 +45,7 @@ const F2F = schema.faceToFaceEncounters;
 const LOC = schema.levelOfCarePeriods;
 const DE = schema.dischargeEvents;
 const ES = schema.electionStatements;
+const TE = schema.transferEvents;
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -225,9 +226,20 @@ export interface ClaimRangeAdmission {
    *  cumulative days across sequential elections, so this admission's own start is the right anchor). */
   readonly hospiceAdmissionDate: string;
   /** `discharge_event.effective_at` — NOT `admission.discharged_at`, which the F-107 finding established
-   *  is the FILING timestamp, not the CMS-relevant effective date. */
+   *  is the FILING timestamp, not the CMS-relevant effective date. Only a `completed` discharge counts: a
+   *  `voided` one never happened and a `pending_cosign` for-cause filing leaves the admission active (D11). */
   readonly dischargeDate: string | null;
   readonly dischargeReason: string | null;
+  /** `discharge_event.place_of_death` (`home` / `facility` / `unknown`) on a completed death; `null` when not
+   *  a death or not recorded (historic rows). Drives claim patient status 40/41/42. */
+  readonly placeOfDeath: string | null;
+  /** The admission's transfer-OUT (`transfer_event`, direction `out`), which ends the stay without a
+   *  `discharge_event` row. `receivingCareSetting` (`home` / `facility`, `null` on historic rows) drives
+   *  claim patient status 50/51. */
+  readonly transferOut: {
+    readonly effectiveDate: string;
+    readonly receivingCareSetting: string | null;
+  } | null;
   /** `discharge_event.death_at`, read as a plain UTC calendar date (F-105: M6 models no time of death —
    *  every value in that column is midnight UTC of a typed `LocalDate`, never a real instant). */
   readonly deceasedDate: string | null;
@@ -348,14 +360,26 @@ export async function claimAssemblyRangeContextForOrg(
       if (!candidate) return null;
       const admissionId = candidate.id;
 
+      // Only a COMPLETED discharge ends the stay: a voided row never happened, and a for-cause filing that is
+      // still `pending_cosign` leaves the admission active until the medical director cosigns (D11).
       const [dischargeRow] = await tx
         .select({
           effectiveAt: DE.effectiveAt,
           dischargeType: DE.dischargeType,
           deathAt: DE.deathAt,
+          placeOfDeath: DE.placeOfDeath,
         })
         .from(DE)
-        .where(eq(DE.admissionId, admissionId))
+        .where(and(eq(DE.admissionId, admissionId), eq(DE.status, "completed")))
+        .limit(1);
+
+      // A transfer-out discharges the admission without a discharge_event row (§2.3.1); R-XFR-01 allows one
+      // per benefit period, so take the latest.
+      const [transferOutRow] = await tx
+        .select({ effectiveAt: TE.effectiveAt, receivingCareSetting: TE.receivingCareSetting })
+        .from(TE)
+        .where(and(eq(TE.admissionId, admissionId), eq(TE.direction, "out")))
+        .orderBy(desc(TE.effectiveAt))
         .limit(1);
 
       const admission: ClaimRangeAdmission = {
@@ -364,6 +388,13 @@ export async function claimAssemblyRangeContextForOrg(
         dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,
+        placeOfDeath: dischargeRow?.placeOfDeath ?? null,
+        transferOut: transferOutRow
+          ? {
+              effectiveDate: localDate(transferOutRow.effectiveAt),
+              receivingCareSetting: transferOutRow.receivingCareSetting ?? null,
+            }
+          : null,
         hospicePhysicianId: candidate.hospicePhysicianId,
       };
 
