@@ -719,6 +719,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(ctx?.admission).toEqual({
         admissionId,
         hospiceAdmissionDate: "2026-01-01",
+        rhcPriorHospiceDays: 0, // a first stay: the RHC day count starts here
         dischargeDate: null,
         dischargeReason: null,
         deceasedDate: null,

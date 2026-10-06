@@ -865,7 +865,22 @@ export function createDbAdmissionRouteService(
     // Readmission workflow — an admission's FIRST period (a re-election into period 3+) has no predecessor on the
     // admission to derive a start from; its start is the admission date.
     let admissionDay: string | null = null;
-    if (!prior && !ep.expectedStart && !ep.effectiveAt) {
+    const [earlier] =
+      !prior && !ep.expectedStart && !ep.effectiveAt
+        ? await tx
+            .select({ id: EP.id })
+            .from(EP)
+            .where(
+              and(
+                eq(EP.admissionId, ep.admissionId),
+                lt(EP.sequenceNumber, Number(ep.sequenceNumber)),
+              ),
+            )
+            .limit(1)
+        : [{ id: "n/a" }];
+    // Only the admission's FIRST period falls back to the admission date; a recert with a missing predecessor
+    // stays unverifiable (fail closed, F-226).
+    if (!earlier) {
       const [adm] = await tx
         .select({ admissionAt: ADM.admissionAt })
         .from(ADM)
