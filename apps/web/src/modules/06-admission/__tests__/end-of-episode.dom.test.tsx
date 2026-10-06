@@ -175,7 +175,9 @@ describe("DeathPronouncement", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Review" }));
     expect(screen.getByText("Select the pronouncing physician.")).toBeTruthy();
     expect(screen.getByText("Choose where the patient died.")).toBeTruthy();
-    expect(screen.getByText(/at least 10 characters/)).toBeTruthy();
+    // The place-of-death hint (claim patient status 40/41/42) stays visible beside the error.
+    expect(screen.getByText(/death patient status on the final claim \(40 home/)).toBeTruthy();
+    expect(screen.getAllByText(/at least 10 characters/).length).toBeGreaterThan(0);
     expect(client.POST).not.toHaveBeenCalled();
   });
 });
@@ -303,6 +305,16 @@ describe("DischargeCosign", () => {
 });
 
 describe("TransferIn", () => {
+  it("keeps a long admission status inside the rail card (wraps, full label as tooltip)", async () => {
+    const client = { GET: getFor(admission("notice_of_rights_acknowledged")), POST: vi.fn() };
+    mount(`/admissions/${ADM}/transfer-in`, <TransferIn />, "/admissions/:id/transfer-in", client);
+    const label = await screen.findByText("Notice Of Rights Acknowledged");
+    expect(label.style.whiteSpace).toBe("normal");
+    const holder = label.closest(".wx-rail-status-pill") as HTMLElement;
+    expect(holder.getAttribute("title")).toBe("Notice Of Rights Acknowledged");
+    expect(holder.style.maxWidth).toBe("100%");
+  });
+
   it("walks the steps, locks the CTI physician to the admission's, and posts the body", async () => {
     const POST = vi.fn(async () => ok({ id: "t-1", state: "created", version: 0 }, 201));
     const client = { GET: getFor(admission("pending")), POST };

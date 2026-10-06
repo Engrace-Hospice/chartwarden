@@ -171,6 +171,10 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
     // The receiving care setting is required (claim patient status 50 / 51).
     cont();
     expect(screen.getByText("Choose home or facility.")).toBeTruthy();
+    // The claim hint stays visible beside the error (it says why the answer matters).
+    expect(
+      screen.getByText(/patient status on the final claim: 50 \(hospice, home\)/),
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("radio", { name: "In a facility (nursing home or other facility)" }),
     );

@@ -5,6 +5,7 @@ import {
   Panel,
   PatientWorkspaceLayout,
   StatusPill,
+  type StatusTone,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — the shared frame of the M6 end-of-episode workflows (discharge /
@@ -170,6 +171,25 @@ export function EpisodeWorkspace({
   );
 }
 
+/**
+ * A status pill sized for the narrow rail cards: a long label ("Notice Of Rights Acknowledged") wraps inside
+ * the card instead of running past its right edge, and the full label stays available as the tooltip.
+ */
+export function RailStatusPill({ label, tone }: { label: string; tone: StatusTone }): JSX.Element {
+  return (
+    <span
+      className="wx-rail-status-pill"
+      title={label}
+      style={{ display: "inline-block", maxWidth: "100%" }}
+    >
+      <StatusPill
+        tone={tone}
+        label={<span style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{label}</span>}
+      />
+    </span>
+  );
+}
+
 /** Rail card: the admission this workflow acts on. */
 export function AdmissionPanel({
   admission,
@@ -187,7 +207,7 @@ export function AdmissionPanel({
           {
             label: "Status",
             value: (
-              <StatusPill
+              <RailStatusPill
                 label={stateLabel(admission.state)}
                 tone={ADMISSION_TONE[admission.state] ?? "neutral"}
               />
@@ -434,12 +454,13 @@ export function Field({
         </label>
       </div>
       {children}
+      {/* The hint (e.g. which claim patient status the answer sets) stays visible beside an error, so the
+          person fixing the field still sees why it matters. */}
+      {source || hint ? <div className="wx-hope-field-hint">{source ?? hint}</div> : null}
       {error ? (
         <div className="wx-hope-field-msg wx-hope-field-msg-error" role="alert">
           {error}
         </div>
-      ) : source || hint ? (
-        <div className="wx-hope-field-hint">{source ?? hint}</div>
       ) : null}
     </div>
   );
@@ -529,12 +550,11 @@ export function ChoiceRows<V extends string>({
           );
         })}
       </div>
+      {hint ? <div className="wx-hope-field-hint">{hint}</div> : null}
       {error ? (
         <p className="wx-hope-field-msg wx-hope-field-msg-error" role="alert">
           {error}
         </p>
-      ) : hint ? (
-        <div className="wx-hope-field-hint">{hint}</div>
       ) : null}
     </fieldset>
   );
