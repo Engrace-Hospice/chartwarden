@@ -140,20 +140,60 @@ function tooLarge(): HetsTransportError {
   return new HetsTransportError("HETS_INVALID_RESPONSE", "HETS response exceeds the size limit");
 }
 
+/** The declared Content-Length, or null when absent / not a non-negative integer (then the stream cap decides). */
+function declaredLength(response: Response): number | null {
+  const raw = response.headers.get("content-length");
+  if (raw === null || !/^\d+$/.test(raw.trim())) return null;
+  const n = Number(raw.trim());
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/**
+ * Read the body as a stream, counting bytes as they arrive; past `MAX_RESPONSE_BYTES` the reader is cancelled and
+ * the read refused — a chunked or lying response is never buffered whole before the cap is checked.
+ */
+async function readCappedBody(response: Response): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    bytes.set(c, offset);
+    offset += c.byteLength;
+  }
+  return bytes;
+}
+
 async function readPayload(response: Response): Promise<string> {
-  const declared = Number(response.headers.get("content-length") ?? "");
-  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw tooLarge();
+  const declared = declaredLength(response);
+  if (declared !== null && declared > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel().catch(() => undefined);
+    throw tooLarge();
+  }
   const contentType = response.headers.get("content-type") ?? "";
+  const bytes = await readCappedBody(response);
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
     // Some clearinghouses answer the raw X12 body; accept it only if it is an interchange.
-    const text = await response.text();
-    if (text.length > MAX_RESPONSE_BYTES) throw tooLarge();
+    const text = new TextDecoder().decode(bytes);
     if (text.trimStart().startsWith("ISA")) return text;
     throw new HetsTransportError("HETS_INVALID_RESPONSE", "HETS response is not a CORE envelope");
   }
   let form: FormData;
   try {
-    form = await response.formData();
+    // Built from the capped bytes, never from the unbounded response.
+    form = await new Response(bytes, { headers: { "content-type": contentType } }).formData();
   } catch {
     throw new HetsTransportError("HETS_INVALID_RESPONSE", "HETS CORE envelope is malformed");
   }

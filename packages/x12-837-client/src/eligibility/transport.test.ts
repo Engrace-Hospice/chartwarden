@@ -187,3 +187,82 @@ describe("sandbox transport", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("CORE transport — streamed size cap", () => {
+  const CAP = 8 * 1024 * 1024;
+  const CHUNK = 1024 * 1024;
+
+  it("rejects a chunked body with no Content-Length once it passes the cap, and cancels the stream", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(CHUNK).fill(0x2a));
+        // An endless stream: only the cap can stop it.
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const fetchImpl: HetsFetch = async () =>
+      new Response(body, { status: 200, headers: { "content-type": "text/plain" } });
+    const transport = createCoreMimeHetsTransport(config, fetchImpl);
+    const err = await transport.exchange({ x12: request270(), payloadId: "p" }).catch((e) => e);
+    expect(err).toBeInstanceOf(HetsTransportError);
+    expect(err.code).toBe("HETS_INVALID_RESPONSE");
+    expect(err.message).toMatch(/size limit/);
+    expect(cancelled).toBe(true);
+    expect(pulled * CHUNK).toBeLessThanOrEqual(CAP + 2 * CHUNK);
+  });
+
+  it("treats a negative or non-integer Content-Length as absent (the stream cap still applies)", async () => {
+    const x12 = await sample271();
+    for (const contentLength of ["-1", "12.5", "abc"]) {
+      const fetchImpl: HetsFetch = async () => {
+        const res = new Response(x12, { status: 200, headers: { "content-type": "text/plain" } });
+        const headers = new Headers(res.headers);
+        headers.set("content-length", contentLength);
+        return { ...res, headers, body: res.body, status: 200 } as unknown as Response;
+      };
+      const transport = createCoreMimeHetsTransport(config, fetchImpl);
+      const out = await transport.exchange({ x12: request270(), payloadId: "p" });
+      expect(out.x12).toBe(x12);
+    }
+  });
+
+  it("still parses a raw ISA body under the cap, streamed in chunks", async () => {
+    const x12 = await sample271();
+    const bytes = new TextEncoder().encode(x12);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < bytes.length; i += 97) controller.enqueue(bytes.slice(i, i + 97));
+        controller.close();
+      },
+    });
+    const fetchImpl: HetsFetch = async () =>
+      new Response(body, { status: 200, headers: { "content-type": "text/plain" } });
+    const transport = createCoreMimeHetsTransport(config, fetchImpl);
+    const res = await transport.exchange({ x12: request270(), payloadId: "p" });
+    expect(parse271(res.x12, { asOfServiceDate: "2026-10-06" }).outcome).toBe("active_part_a");
+  });
+
+  it("still parses a multipart CORE envelope under the cap, rebuilt from the capped bytes", async () => {
+    const x12 = await sample271();
+    const reply = new FormData();
+    reply.set("PayloadType", "X12_271_Response_005010X279A1");
+    reply.set("ErrorCode", "Success");
+    reply.set("Payload", x12);
+    const multipart = new Response(reply);
+    const contentType = multipart.headers.get("content-type") ?? "";
+    expect(contentType).toMatch(/multipart\/form-data; boundary=/);
+    const fetchImpl: HetsFetch = async () =>
+      // A streamed body with no Content-Length.
+      new Response(multipart.body, { status: 200, headers: { "content-type": contentType } });
+    const transport = createCoreMimeHetsTransport(config, fetchImpl);
+    const res = await transport.exchange({ x12: request270(), payloadId: "p" });
+    // (A multipart text field may come back with CRLF line breaks — the X12 content is the same.)
+    expect(res.x12.replaceAll("\r\n", "\n")).toBe(x12);
+    expect(parse271(res.x12, { asOfServiceDate: "2026-10-06" }).outcome).toBe("active_part_a");
+  });
+});
