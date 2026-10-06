@@ -264,9 +264,11 @@ export interface ClaimRangeAdmission {
    *  readmission continues are carried separately in `rhcPriorHospiceDays` (this date also anchors the NOE
    *  admission day, so it is never shifted). */
   readonly hospiceAdmissionDate: string;
-  /** Hospice days of this patient's earlier stays with us that carry into this stay's two-tier RHC day count
-   *  (a readmission within 60 days of a discharge; Claims Processing Manual ch. 11) — 0 when the count starts
-   *  here. Days at another hospice are not known to M6 (M23 merges them in from HETS — `rhcPriorStays`). */
+  /** Hospice days of this patient's earlier stays with us — plus a transfer-in's sending-hospice span — that
+   *  carry into this stay's two-tier RHC day count (a readmission within 60 days of a discharge; Claims
+   *  Processing Manual ch. 11), capped at 60 — 0 when the count starts here. The same rule as M23's
+   *  `computeRhcCarryOver` over `rhcPriorStays` (shared core); other hospices' days known only to HETS are not
+   *  in it (M23 merges them in). */
   readonly rhcPriorHospiceDays: number;
   /** This patient's earlier stays with us (start / ending date, both inclusive hospice days), the facts behind
    *  `rhcPriorHospiceDays`: M23 merges them with the HETS cross-hospice history (`computeRhcCarryOver`). A
@@ -447,19 +449,21 @@ export async function claimAssemblyRangeContextForOrg(
         patientId,
         admissionId,
       );
-      const rhc = rhcCarryOver(priorEpisodes, localDate(candidate.start));
       const currentTransferIn = await loadTransferInSources(tx as DbClient, organizationId, [
         admissionId,
       ]);
+      // A transfer-in's sending-hospice days of the inherited period carry into this stay's RHC count too —
+      // in the stays list M23 merges with HETS AND in M6's own fallback count over the same facts.
+      const rhcPriorStays = rhcPriorStayFacts(priorEpisodes, {
+        admissionId,
+        transferredIn: currentTransferIn.get(admissionId) ?? null,
+      });
+      const rhc = rhcCarryOver(rhcPriorStays, localDate(candidate.start));
       const admission: ClaimRangeAdmission = {
         admissionId,
         hospiceAdmissionDate: localDate(candidate.start),
         rhcPriorHospiceDays: rhc.priorHospiceDays,
-        // A transfer-in's sending-hospice days of the inherited period carry into this stay's RHC count too.
-        rhcPriorStays: rhcPriorStayFacts(priorEpisodes, {
-          admissionId,
-          transferredIn: currentTransferIn.get(admissionId) ?? null,
-        }),
+        rhcPriorStays,
         dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,

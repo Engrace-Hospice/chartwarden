@@ -48,12 +48,22 @@
 //   - at most the HETS maximum of 360 rows (180 NOEs + 180 billed periods) is considered, the most recent first;
 //   - every span is clipped to end the day before the new election before merging, and the day attribution is
 //     interval arithmetic — the work is O(n log n)-ish in the row count and independent of a span's LENGTH.
+//
+// SHARED CORE: the clip / merge / walk-back rule (1–3 above, + the 60-day stop) is `@wardenx/shared/rhc`, the one
+// implementation M6's own fallback count (`rhcCarryOver`, which may not import this package) uses too.
+import {
+  type CarryBlock,
+  RHC_CARRY_OVER_MAX_GAP_DAYS,
+  clipToBeforeElection,
+  mergeCarryBlocks,
+  walkCarryChain,
+} from "@wardenx/shared/rhc";
 import type { IsoDate } from "../contracts";
 import { fromEpochDay, toEpochDay } from "../domain/dates";
 import { RHC_HIGH_TIER_LAST_DAY } from "./calculator";
 
 /** Max gap (days from a stay's last day to the next stay's first day) that still continues the count. */
-export const RHC_CARRY_OVER_MAX_GAP_DAYS = 60;
+export { RHC_CARRY_OVER_MAX_GAP_DAYS };
 /** Two hospices may share exactly one day (the transfer day); a longer overlap is the same stay. */
 const SAME_STAY_MIN_OVERLAP_DAYS = 2;
 /** Medicare began 1965-07-30 (no hospice day can precede it); the floor of a sane HETS date. */
@@ -374,30 +384,8 @@ function closeOpenSpans(
   });
 }
 
-interface Block {
-  start: number;
-  end: number;
-  members: (Span & { end: number; endAssumed: boolean })[];
-}
-
-function mergeBlocks(spans: readonly (Span & { end: number; endAssumed: boolean })[]): Block[] {
-  const sorted = [...spans].sort((a, b) => a.start - b.start || a.end - b.end);
-  const blocks: Block[] = [];
-  for (const s of sorted) {
-    const last = blocks.at(-1);
-    // Touching (next day) or overlapping → continuous care.
-    if (last && s.start <= last.end + 1) {
-      blocks[blocks.length - 1] = {
-        start: last.start,
-        end: Math.max(last.end, s.end),
-        members: [...last.members, s],
-      };
-    } else {
-      blocks.push({ start: s.start, end: s.end, members: [s] });
-    }
-  }
-  return blocks;
-}
+type ClosedSpan = Span & { end: number; endAssumed: boolean };
+type Block = CarryBlock<ClosedSpan>;
 
 /**
  * The days each member owns when every calendar day goes to ONE member: lower `priority` first, then the earlier
@@ -493,42 +481,24 @@ export function computeRhcCarryOver(input: RhcCarryOverInput): RhcCarryOverResul
     .filter((s) => s.start < electionDay)
     .map((s) => (s.end !== null && s.end >= electionDay ? { ...s, end: electionDay - 1 } : s));
   warnHetsRows(prior, warn);
-  const closed = closeOpenSpans(prior, electionDay, warn).map((s) =>
-    s.end >= electionDay ? { ...s, end: electionDay - 1 } : s,
-  );
-  const blocks = mergeBlocks(closed);
-
-  const chain: RhcCountedSpan[] = [];
-  let total = 0;
-  let cursor = electionDay;
-  let reachedOldest = true;
-  for (const block of [...blocks].reverse()) {
-    if (cursor - block.end > RHC_CARRY_OVER_MAX_GAP_DAYS) {
-      reachedOldest = false;
-      break;
-    }
-    total += block.end - block.start + 1;
-    chain.unshift(...attribute(block));
-    cursor = block.start;
-    if (total >= RHC_HIGH_TIER_LAST_DAY) {
-      reachedOldest = false;
-      break;
-    }
-  }
-  if (input.hets?.truncated && reachedOldest && chain.length > 0) {
+  // An assumed end never passes the election either (the shared clip, rule 1).
+  const closed = clipToBeforeElection(closeOpenSpans(prior, electionDay, warn), electionDay);
+  const walked = walkCarryChain(mergeCarryBlocks(closed), electionDay);
+  const chain: RhcCountedSpan[] = walked.blocks.flatMap(attribute);
+  const total = walked.totalDays;
+  if (input.hets?.truncated && walked.reachedOldest && chain.length > 0) {
     warn({
       code: "hets_history_truncated",
       message:
         "HETS returned its maximum number of hospice records; older periods may be missing, so the carried days are a minimum.",
     });
   }
-  const latest = blocks.at(-1);
   return {
     priorDays: Math.min(total, RHC_HIGH_TIER_LAST_DAY),
     chainDays: total,
     chain,
     basis,
     warnings,
-    daysSinceLastCare: latest ? electionDay - latest.end : null,
+    daysSinceLastCare: walked.latestEnd === null ? null : electionDay - walked.latestEnd,
   };
 }

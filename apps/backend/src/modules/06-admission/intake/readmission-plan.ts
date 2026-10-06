@@ -5,7 +5,7 @@
 import type { LocalDate } from "@wardenx/types";
 import type { BenefitPeriodPlan, ReadmissionBlocker } from "../routes/readmission-typebox";
 import type { PriorEpisode } from "../seams/prior-episodes";
-import { latestLiveEndedEpisode } from "../seams/prior-episodes";
+import { latestLiveEndedEpisode, rhcPriorStayFacts } from "../seams/prior-episodes";
 import { daysBetween } from "../state-machines/validation";
 import { requirementsForBenefitPeriod, rhcCarryOver, suggestBenefitPeriod } from "./benefit-period";
 
@@ -83,6 +83,7 @@ export function buildBenefitPeriodPlan(input: ReadmissionPlanInput): BenefitPeri
     noeBlocked: closure !== null && closure.status !== "filed",
     suggestion,
     requirements: requirementsForBenefitPeriod(sequence, input.startDate),
-    rhc: rhcCarryOver(input.episodes, input.startDate),
+    // An earlier transfer-in's sending-hospice span counts too (the new admission itself is not a transfer-in).
+    rhc: rhcCarryOver(rhcPriorStayFacts(input.episodes), input.startDate),
   };
 }

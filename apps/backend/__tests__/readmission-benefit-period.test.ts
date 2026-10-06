@@ -26,6 +26,7 @@ const ep = (p: Partial<PriorEpisode> & { admissionId: string }): PriorEpisode =>
   dischargeType: "no_longer_terminal",
   lastRanSequence: 1,
   endingEventId: null,
+  transferredIn: null,
   ...p,
 });
 
