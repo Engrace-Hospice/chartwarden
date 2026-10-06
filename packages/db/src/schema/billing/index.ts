@@ -28,6 +28,7 @@ export * from "./claim-submission";
 export * from "./claim-acknowledgment";
 export * from "./noe-record";
 export * from "./notr-record";
+export * from "./transfer-notice-record";
 export * from "./hipps-calculation";
 export * from "./sia-calculation";
 export * from "./validation-rule-config";

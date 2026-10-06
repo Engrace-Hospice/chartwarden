@@ -43,6 +43,8 @@ export * from "./machines/claim";
 // the `claim` machine's same-named functions. Consume as `noeMachine.reduce(...)` / `notrMachine.reduce(...)`.
 export * as noeMachine from "./machines/noe";
 export * as notrMachine from "./machines/notr";
+export * as transferNoticeMachine from "./machines/transfer-notice";
+export * from "./transfer-notice";
 // D7 the pure HIPPS calculator (LOC-segment → per-diem, days-1-7 vs days-8+, wage-index snapshot).
 export * from "./hipps";
 // D6 the pure SIA (Service Intensity Add-on) calculator (last-7-days-of-life RN/MSW care pricing).

@@ -124,3 +124,16 @@ export type { SandboxHetsTransportOptions } from "./eligibility/sandbox-transpor
 export { HETS_271_SCENARIOS, synthetic271 } from "./eligibility/fixtures";
 export type { Hets271Scenario, Synthetic271Context } from "./eligibility/fixtures";
 export { X12FormatError } from "./eligibility/x12-envelope";
+
+// ─── Medicare hospice transfer notice 837I (TOB 81C/82C, correction, 8xD void) — ADR-0037 TypeScript ─────────
+export {
+  build837iTransferNotice,
+  TransferNotice837iBuildError,
+} from "./notices/build-837i-transfer-notice";
+export type {
+  TransferNotice837iInput,
+  TransferNoticeDocumentInput,
+  X12Address,
+  X12PersonName,
+  X12Physician,
+} from "./notices/build-837i-transfer-notice";

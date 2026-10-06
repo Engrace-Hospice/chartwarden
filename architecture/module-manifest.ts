@@ -814,6 +814,7 @@ export const MODULES: ModuleDef[] = [
       "sequestration_policy",
       "sia_calculation",
       "tenant_wage_index",
+      "transfer_notice_record",
       "unmapped_taxonomy_occurrence",
       "validation_override",
       "validation_result",

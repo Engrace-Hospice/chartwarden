@@ -37,6 +37,8 @@ export const M23_PATIENT_CASCADE_ORDER = [
   "claim",
   "noe_record",
   "notr_record",
+  // Migration 0375 — the 8xC / 8xD transfer notice (follow-ups deleted before the originals they act on).
+  "transfer_notice_record",
 ] as const;
 
 export type M23PatientCascadeTable = (typeof M23_PATIENT_CASCADE_ORDER)[number];
