@@ -18,6 +18,7 @@ import { buildPatientAdmissionClearanceReader } from "../admission-clearance-rea
 import { buildPatientAllergyReader } from "../allergy-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
 import { buildPatientHopeAdmissionPrefillReader } from "../hope-admission-prefill-reader";
+import { buildMbiUnlockReader } from "../mbi-unlock-reader";
 import { buildPatientPrivacyFlagReader } from "../privacy-flag-reader";
 import { type CareTeamSeamDeps, registerCareTeamSeam } from "./care-team-provider";
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
@@ -106,6 +107,9 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // present: without one there is no coverage data to project, and the deny-stub's loud failure is the
   // honest answer (an empty coverage list would read as "this patient has no insurance").
   if (deps.db) registerSeam("PatientCoverageReader", buildPatientCoverageReader(deps.db));
+  // M23 §4.4 / §8.7 — the transient MBI unlock for ONE HETS 270 build (M23-only consumer). Same db-present
+  // posture: without a db the deny-stub's THROW is the only honest answer (an MBI must never degrade open).
+  if (deps.db) registerSeam("MbiUnlockReader", buildMbiUnlockReader(deps.db));
   if (deps.db)
     registerSeam(
       "PatientHopeAdmissionPrefillReader",

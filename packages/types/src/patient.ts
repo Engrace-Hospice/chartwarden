@@ -488,6 +488,41 @@ export interface PatientCoverageReader {
   }): Promise<PatientCoverage | null>;
 }
 
+// ── MbiUnlockReader seam (M5-published, M23-ONLY consumer — the HETS 270 build) ─────────────────────
+
+/**
+ * The transient beneficiary identity ONE HETS 270 request needs (CMS HETS Companion Guide §7.3: MBI +
+ * last name + first name + DOB). Returned by {@link MbiUnlockReader} for the duration of a single 270
+ * build; the caller MUST NOT persist, log, audit or serialize it (M23 D13 / §3.6 / §8.7) and drops its
+ * reference as soon as the 270 string is built.
+ */
+export interface EligibilitySubscriberIdentity {
+  /** The `patient_payer` row the MBI came from (safe to persist — an id, not the MBI). */
+  readonly patientPayerId: string;
+  /** The plaintext MBI. Never persisted, logged or audited by any consumer. */
+  readonly mbi: string;
+  readonly lastName: string;
+  readonly firstName: string;
+  /** ISO yyyy-mm-dd. */
+  readonly dateOfBirth: string;
+}
+
+/**
+ * M5-published, M23-ONLY seam (M23 §4.4 / §8.7): unlock the patient's Medicare (FFS) MBI for one HETS
+ * 270 build. Resolves the `medicare_ffs` coverage in force on `onDate` (highest rank first), else the
+ * patient's current `medicare_ffs` coverage; returns null when no Medicare MBI is on file (the caller
+ * records an `mbi_invalid` eligibility outcome without calling HETS). Org-explicit (a worker has no
+ * request context). The deny-stub THROWS — MBI access must never degrade open.
+ */
+export interface MbiUnlockReader {
+  unlockForEligibility(input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+    /** ISO yyyy-mm-dd — the eligibility as-of service date. */
+    readonly onDate: string;
+  }): Promise<EligibilitySubscriberIdentity | null>;
+}
+
 // ── PatientCaregiverReader / PatientAddressReader seams (TASK-015 — M31 portal ABAC) ─────────────────
 
 /**
