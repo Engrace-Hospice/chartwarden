@@ -42,6 +42,15 @@ export function actorOf(request: FastifyRequest): M30ReadActor {
 }
 
 /**
+ * The typed-system-actor marker (GAP-091 follow-up). A symbol-keyed property cannot be produced by JSON
+ * parsing, a request body, a header or a role string, so only in-process code that imports
+ * {@link m30SystemWriteActor} can mint a system actor. `writeActorOf` (the only route-side constructor)
+ * never sets it. A worker/consumer that authors a row through the write service presents this actor; the
+ * PHI patient scope then does not apply (there is no human caseload to narrow by).
+ */
+export const M30_SYSTEM_ACTOR: unique symbol = Symbol("m30.system-actor");
+
+/**
  * The MUTATING-route actor: the read actor PLUS the server-assembled active `membershipId` (the M2
  * session attribute `context.attributes.membershipId`). Every M30 command stamps this id as the row's
  * authoring/acting principal — `reportedByMembershipId` on an incident, `chargedByMembershipId` on a
@@ -52,6 +61,28 @@ export function actorOf(request: FastifyRequest): M30ReadActor {
  */
 export interface M30WriteActor extends M30ReadActor {
   readonly membershipId: string;
+  /** Present ONLY on an actor built by {@link m30SystemWriteActor}; see {@link isM30SystemActor}. */
+  readonly [M30_SYSTEM_ACTOR]?: true;
+}
+
+/** Build a typed system actor (worker / consumer). Never derived from request input. `roles` is empty on purpose. */
+export function m30SystemWriteActor(args: {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly membershipId: string;
+}): M30WriteActor {
+  return {
+    organizationId: args.organizationId,
+    userId: args.userId,
+    roles: [],
+    membershipId: args.membershipId,
+    [M30_SYSTEM_ACTOR]: true,
+  };
+}
+
+/** Is this a typed system actor? Decided by the marker alone, never by a role string or a look-alike field. */
+export function isM30SystemActor(actor: M30ReadActor): boolean {
+  return (actor as { readonly [M30_SYSTEM_ACTOR]?: true })[M30_SYSTEM_ACTOR] === true;
 }
 
 /** Extract the write actor (org + user + roles + active membership id) from `request.context`, or 401/403. */

@@ -65,6 +65,7 @@ import {
   buildSraClosureColumns,
   resolveCloseCosigners,
 } from "./close-cosign";
+import { incidentOwnedBy } from "./incident-ownership";
 import type {
   CahpsDecedentView,
   CahpsExportJobView,
@@ -86,6 +87,8 @@ import type {
   SraFindingView,
   SraRemediationView,
 } from "./read-service";
+import { type PatientScopeResolver, defaultPatientScopeResolver } from "./scope-resolver";
+import { assertWritePatientInScope } from "./write-scope";
 import type {
   AddInvestigationNoteArgs,
   AddQapiPipArgs,
@@ -150,6 +153,12 @@ export interface M30WriteServicePorts {
   readonly providerEntity?: ProviderEntityPort;
   /** The per-org live CAHPS adapter registry (§4.5) — supplies the vendor's minimum-cell size on ingest. */
   readonly cahps?: CahpsAdapterRegistry;
+  /**
+   * GAP-091 follow-up — the PHI patient-scope resolver the service enforces ITSELF (second layer behind the
+   * route predicate). Default: org-wide roles ⇒ org, everyone else ⇒ their M5 caseload via the seam, failing
+   * closed. A typed system actor (`m30SystemWriteActor`) bypasses it.
+   */
+  readonly patientScope?: PatientScopeResolver;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
 }
@@ -331,6 +340,7 @@ export function buildDrizzleM30WriteService(
   ports: M30WriteServicePorts = {},
 ): M30WriteRouteService {
   const now = ports.now ?? (() => new Date());
+  const patientScope = ports.patientScope ?? defaultPatientScopeResolver;
   const recompute: RecomputeEnqueuePort = ports.recompute ?? {
     enqueue: async () => ({ jobId: randomUUID() }),
   };
@@ -386,6 +396,17 @@ export function buildDrizzleM30WriteService(
       .limit(1);
     if (!row || row.organizationId !== actor.organizationId)
       throw new NotFoundError("incident report");
+    // GAP-091 — every lifecycle write (update / submit / triage / investigate / resolve / close / reopen) is
+    // caseload-scoped HERE, at the service. The own-record arm (reporter, triager, assigned investigator)
+    // keeps an assigned investigator from being locked out; a patient-less row stays org-level; a typed
+    // system actor is exempt. The M30 org-wide READ arm does not apply to a write (no read surface passed).
+    await assertWritePatientInScope(
+      actor,
+      row.patientId,
+      patientScope,
+      "incident report",
+      incidentOwnedBy(row, actor.membershipId),
+    );
     return row;
   };
 
@@ -403,6 +424,19 @@ export function buildDrizzleM30WriteService(
       throw new NotFoundError("mortality review");
     return row;
   };
+
+  /** GAP-091 — the read side's own-record arm: the assigned reviewer keeps access to the review they own. */
+  const assertMortalityWriteScope = (
+    actor: M30WriteActor,
+    row: schema.MortalityReview,
+  ): Promise<void> =>
+    assertWritePatientInScope(
+      actor,
+      row.deceasedPatientId,
+      patientScope,
+      "mortality review",
+      row.assignedReviewerMembershipId === actor.membershipId,
+    );
 
   const loadCahpsSample = async (
     tx: WriteTx,
@@ -1316,6 +1350,9 @@ export function buildDrizzleM30WriteService(
 
     // ── incidents (R-51, R-53..R-60) ──
     async createIncident(actor, args: CreateIncidentArgs): Promise<IncidentDetailView> {
+      // GAP-091 — service-layer scope: a patient-linked report about a patient outside the actor's scope is a
+      // 404 even if the route predicate was skipped. Checked BEFORE opening the transaction.
+      await assertWritePatientInScope(actor, args.patientId, patientScope);
       return inOrgCtx(actor, async (tx) => {
         // §4.2 per-kind validation: a present-but-disallowed exposure subkind is refused at create.
         const subkind = typeof args.data.subkind === "string" ? args.data.subkind : undefined;
@@ -1592,6 +1629,7 @@ export function buildDrizzleM30WriteService(
       return inOrgCtx(actor, async (tx) => {
         const repo = new MortalityReviewRepository(tx);
         const row = await loadMortality(tx, actor, reviewId);
+        await assertMortalityWriteScope(actor, row);
         const assignedReviewerMembershipId =
           args.assignedToMembershipId ?? row.assignedReviewerMembershipId ?? null;
         let status = row.status;
@@ -1623,6 +1661,7 @@ export function buildDrizzleM30WriteService(
       return inOrgCtx(actor, async (tx) => {
         const repo = new MortalityReviewRepository(tx);
         const row = await loadMortality(tx, actor, reviewId);
+        await assertMortalityWriteScope(actor, row);
         const dimensionsComplete =
           Object.keys(args.dimensions.clinical).length > 0 &&
           Object.keys(args.dimensions.satisfaction).length > 0 &&
@@ -1727,6 +1766,7 @@ export function buildDrizzleM30WriteService(
 
     // ── infection (R-91, R-93) ──
     async recordInfectionEvent(actor, args: RecordInfectionEventArgs): Promise<InfectionEventView> {
+      await assertWritePatientInScope(actor, args.patientId, patientScope);
       return inOrgCtx(actor, async (tx) => {
         const repo = new InfectionRepository(tx);
         const providerEntityId = await providerEntity.primaryProviderEntityId(

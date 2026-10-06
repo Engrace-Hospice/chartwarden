@@ -2111,6 +2111,18 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
 > client-asserted (the server checks the visit window and geofence against what the client sends, not against
 > a device-attested clock or fix), so treat EVV timestamps and positions as unattested until it is enabled.
 
+### 16.7 M18 EVV geofence: the geocode dependency (GAP-054)
+
+M18 decides each capture's geofence from the distance between the device fix and the patient's **geocoded service address** (`patient_address.geocode_lat` / `geocode_lng` on the current primary address, read through M5's `PatientAddressReader`). **Nothing in the codebase populates those columns today**: M5's `m5.geocode_address` processor exists as pure code but has no geocoder adapter, no queue worker and no consumer of `patient.address_changed` bound at boot, and no route accepts a coordinate. Until the columns are filled, every capture records `gpsQuality = no_geofence_baseline` (`geofenceDecision = fail_no_baseline`) and is accepted as advisory; no `m18.evv.at_patient_address` event fires, so M17's EVV-driven visit advance stays quiet; and no `geofence_breach_recorded` alert is raised for those captures (a breach needs a measurable distance). Supervisors see the state only as the `no_geofence_baseline` badge on the event, not as an alert.
+
+**Rollout order: geocode first, then rely on the geofence.** Do not treat a green deploy as proof the geofence works.
+
+1. Populate `geocode_lat` / `geocode_lng` for every active patient's current primary address (an operator back-fill under the audited admin credential, or the geocoder adapter once one is approved; sending patient addresses to a third-party geocoder is a disclosure decision, see INTEGRATIONS §routing, and a self-hosted engine keeps them in-perimeter).
+2. Check coverage: the backend logs `GAP-054: ...` at boot (warn while any active patient lacks a coordinate or coverage cannot be measured) and exposes `wardenx_patient_ungeocoded_active_total` on `/metrics` (`-1` = not measured, for example no `DATABASE_PLATFORM_URL`). The target is `0`.
+3. Spot-check one capture on the Docker stack: it should return `gpsQuality` of `high` / `acceptable` / `outside_geofence`, not `no_geofence_baseline`.
+
+The gauge counts active patients whose current primary address has no coordinate; a visit pinned to a different, non-primary address is approximated by the primary one. New addresses added after the back-fill stay un-geocoded until the job (or an operator) fills them, so keep the gauge on an alert.
+
 ---
 
 ## 17. Document Maintenance

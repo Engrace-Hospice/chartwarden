@@ -17,7 +17,13 @@
 import { ForbiddenError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { GIP_ATTESTER_ELIGIBLE, P, STEP_UP, SYSTEM_INTERNAL_ONLY } from "./guards";
+import {
+  GIP_ATTESTER_ELIGIBLE,
+  P,
+  STEP_UP,
+  STEP_UP_UNLESS_CRITERION_STILL_MET,
+  SYSTEM_INTERNAL_ONLY,
+} from "./guards";
 import {
   AdmissionIdParamsSchema,
   AdvanceBodyReleaseBodySchema,
@@ -348,7 +354,13 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   // 20. POST /ipu-admissions/:id/gip-criteria/reassess — record a reassessment. §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/gip-criteria/reassess",
-    { preHandler: [P("m37.gip_criteria.reassess")] },
+    {
+      // §7.4 — step-up when the criterion is no longer met; the service stores the real assertion id.
+      preHandler: [
+        P("m37.gip_criteria.reassess"),
+        STEP_UP_UNLESS_CRITERION_STILL_MET("m37.gip_criteria.reassess"),
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);

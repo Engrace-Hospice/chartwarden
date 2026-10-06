@@ -97,6 +97,8 @@ export const M37_ERROR_STATUS = {
   RESTRAINT_ORDER_REQUIRED: 422,
   // §2.10 — a restraint application without fresh M2 step-up (RN+; the m37.restraint.apply key is step-up).
   RESTRAINT_STEP_UP_REQUIRED: 403,
+  // §2.10 — no server-derived step-up assertion id to bind the application to (the session carries none).
+  RESTRAINT_STEP_UP_ASSERTION_MISSING: 403,
   // §2.10 — a reassessment interval that attempts to LOOSEN above its behavioral/medical platform floor.
   RESTRAINT_INTERVAL_NOT_TIGHTENING: 409,
   // §2.10 — a restraint transition not accepted from the event's current state (`released` is terminal).

@@ -43,7 +43,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 34-saas-tenant-platform | 50 | ✅ | 49/50 | apps/backend/__tests__/saas-tenant-platform-inject.test.ts |
 | 35-subscription | 54 | ✅ | 54/54 | apps/backend/__tests__/subscription-inject.test.ts |
 | 36-messaging | 23 | ✅ | 22/23 | apps/backend/__tests__/messaging-member-admin.test.ts, apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
-| 37-ipu | 52 | ✅ | 52/52 | apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts, apps/backend/__tests__/ipu-inject.test.ts |
+| 37-ipu | 52 | ✅ | 52/52 | apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts, apps/backend/__tests__/ipu-inject.test.ts, apps/backend/__tests__/ipu-step-up-assertion.test.ts |
 | 38-terminology | 14 | ✅ | 14/14 | apps/backend/__tests__/terminology-admin-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
 | 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-abac.test.ts, apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts |
 | 40-mdm | 14 | ✅ | 10/14 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

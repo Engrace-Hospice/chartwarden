@@ -780,6 +780,28 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m6.level_of_care.activated",
+    moduleOwner: "m6",
+    description:
+      "M6 activated an IPU level-of-care period (`assigning` -> `active`) after verifying the M37 bed " +
+      "assignment (`confirmLocBedAssignment`, M6 §2.3.5 / M37 §2.2 handshake). M37 acknowledges it by " +
+      "confirming the matching `bed_assigned` admission.",
+    payloadSchema: Type.Object({
+      levelOfCarePeriodId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      // Only the two IPU levels ever pass through `assigning`, so only they can activate this way.
+      newLevel: Type.Union([
+        Type.Literal("inpatient_respite_care"),
+        Type.Literal("general_inpatient_care"),
+      ]),
+      activatedAt: Type.String({ minLength: 1 }),
+    }),
+    // M37 §2.2 (`bed_assigned` -> `active`: "M6 LCP confirmation event received") and §4.5 name this as
+    // the event M37's `confirm` is driven by; `m37.lcp-activated` is the binding.
+    declaredConsumers: ["m37"],
+    isOutboxOnly: true,
+  },
   // ── revocation / transfer ───────────────────────────────────────────────────────────────────────
   {
     eventName: "m6.revocation.created",

@@ -133,6 +133,11 @@ export {
   M5_CONSENT_PRIVACY_CONSUMER,
   buildM5ConsentPrivacyConsumer,
 } from "./outbox-consumers/m39-consent-privacy";
+// GAP-054 — rollout signal: active patients whose primary address has no geocode coordinate.
+export {
+  type ActivePatientGeocodeCount,
+  countActivePatientsWithoutGeocode,
+} from "./geocode-coverage";
 export {
   M5_QUEUES,
   M5_JOB_SCHEDULES,

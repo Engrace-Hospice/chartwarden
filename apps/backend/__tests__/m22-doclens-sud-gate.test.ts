@@ -25,6 +25,7 @@ import type {
 import { registerDocLensReviewWorkspaceRoutes } from "../src/modules/22-documents/extraction/review-workspace-routes";
 import {
   type SudContentAccess,
+  type SudStatus,
   assertSudPageReadable,
   redactSudWorkspace,
   resolveSudContentAccess,
@@ -110,6 +111,11 @@ function workspaceFixture(sudStatus: ReviewWorkspace["sud"]["status"]): ReviewWo
   };
 }
 
+const access = (o: { eligible: boolean; consent: boolean }): SudContentAccess => ({
+  reviewerEligible: async () => o.eligible,
+  consentPresent: async () => o.consent,
+});
+
 describe("GAP-067 — pure SUD content gate", () => {
   it("redacts SUD-detected candidates and the evidence for a viewer without access", () => {
     const out = redactSudWorkspace(workspaceFixture("detected"));
@@ -141,25 +147,100 @@ describe("GAP-067 — pure SUD content gate", () => {
     expect(ws.sud.indicators).toHaveLength(1);
   });
 
-  it("denies when no access function is supplied, and when it throws or answers false", async () => {
-    expect(await resolveSudContentAccess(undefined, PATIENT)).toBe(false);
-    expect(await resolveSudContentAccess(async () => false, PATIENT)).toBe(false);
+  it("denies when no access is supplied, and when a probe throws or answers false", async () => {
+    const target = { sudStatus: "confirmed", patientId: PATIENT } as const;
+    expect(await resolveSudContentAccess(undefined, target)).toBe(false);
+    expect(await resolveSudContentAccess(access({ eligible: false, consent: true }), target)).toBe(
+      false,
+    );
     expect(
-      await resolveSudContentAccess(async () => {
-        throw new Error("consent seam down");
-      }, PATIENT),
+      await resolveSudContentAccess(
+        {
+          reviewerEligible: async () => true,
+          consentPresent: async () => {
+            throw new Error("consent seam down");
+          },
+        },
+        target,
+      ),
     ).toBe(false);
-    expect(await resolveSudContentAccess(async () => true, PATIENT)).toBe(true);
+    expect(
+      await resolveSudContentAccess(
+        {
+          reviewerEligible: async () => {
+            throw new Error("predicate down");
+          },
+          consentPresent: async () => true,
+        },
+        target,
+      ),
+    ).toBe(false);
+    expect(await resolveSudContentAccess(access({ eligible: true, consent: true }), target)).toBe(
+      true,
+    );
   });
 
-  it("asks the access function about the BATCH's patient, never anything else", async () => {
-    const seen: (string | null)[] = [];
-    const access: SudContentAccess = async (patientId) => {
-      seen.push(patientId);
-      return true;
-    };
-    await resolveSudContentAccess(access, PATIENT);
+  it("asks the consent probe about the BATCH's patient, never anything else", async () => {
+    const seen: string[] = [];
+    await resolveSudContentAccess(
+      {
+        reviewerEligible: async () => true,
+        consentPresent: async (patientId) => {
+          seen.push(patientId);
+          return true;
+        },
+      },
+      { sudStatus: "confirmed", patientId: PATIENT },
+    );
     expect(seen).toEqual([PATIENT]);
+  });
+
+  // The behaviour matrix (status x licensed-eligible x consent). `true` = Part 2 content readable.
+  const MATRIX: ReadonlyArray<readonly [SudStatus, boolean, boolean, boolean]> = [
+    // status, eligible, consent, readable
+    ["not_detected", false, false, true], // not Part 2 content
+    ["not_detected", true, true, true],
+    ["rejected", false, false, true], // a false positive is not Part 2 content
+    ["rejected", true, false, true],
+    ["detected", true, false, true], // adjudicating a detection is internal use: no consent needed
+    ["detected", true, true, true],
+    ["detected", false, true, false], // consent never substitutes for the licence
+    ["detected", false, false, false],
+    ["confirmed", true, true, true],
+    ["confirmed", true, false, false], // confirmed Part 2 content needs consent on file again
+    ["confirmed", false, true, false],
+    ["confirmed", false, false, false],
+  ];
+  it.each(MATRIX)(
+    "matrix: %s eligible=%s consent=%s -> readable=%s",
+    async (status, eligible, consent, readable) => {
+      const target = { sudStatus: status, patientId: PATIENT };
+      expect(await resolveSudContentAccess(access({ eligible, consent }), target)).toBe(readable);
+    },
+  );
+
+  it("a detected batch needs no consent lookup, so a down consent seam cannot blind the adjudicator", async () => {
+    const consentCalls: string[] = [];
+    const ok = await resolveSudContentAccess(
+      {
+        reviewerEligible: async () => true,
+        consentPresent: async (p) => {
+          consentCalls.push(p);
+          throw new Error("consent seam down");
+        },
+      },
+      { sudStatus: "detected", patientId: PATIENT },
+    );
+    expect(ok).toBe(true);
+    expect(consentCalls).toEqual([]);
+  });
+
+  it("a patientless batch: detected is adjudicable by an eligible reviewer, confirmed is denied", async () => {
+    const a = access({ eligible: true, consent: true });
+    expect(await resolveSudContentAccess(a, { sudStatus: "detected", patientId: null })).toBe(true);
+    expect(await resolveSudContentAccess(a, { sudStatus: "confirmed", patientId: null })).toBe(
+      false,
+    );
   });
 
   it("page images: a detected or confirmed batch is refused (403) without access; others pass", () => {
@@ -219,7 +300,10 @@ function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
   const service = {
     async getWorkspace(_org: string, _id: string, _membership: string, access?: SudContentAccess) {
       const ws = workspaceFixture(sudStatus);
-      const allowed = await resolveSudContentAccess(access, ws.batch.patientId);
+      const allowed = await resolveSudContentAccess(access, {
+        sudStatus,
+        patientId: ws.batch.patientId,
+      });
       return allowed ? ws : redactSudWorkspace(ws);
     },
     async renderPage(
@@ -229,7 +313,10 @@ function makeServer(sudStatus: ReviewWorkspace["sud"]["status"] = "detected") {
       _correlationId: string,
       access?: SudContentAccess,
     ) {
-      assertSudPageReadable(sudStatus, await resolveSudContentAccess(access, PATIENT));
+      assertSudPageReadable(
+        sudStatus,
+        await resolveSudContentAccess(access, { sudStatus, patientId: PATIENT }),
+      );
       calls.renders += 1;
       return { png: new Uint8Array([1]), pageWidth: 1, pageHeight: 1 };
     },
@@ -255,8 +342,8 @@ afterEach(() => {
 });
 
 describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know check", () => {
-  it("a licensed reviewer with Part 2 consent on file sees the SUD values and evidence", async () => {
-    const { app, calls } = makeServer();
+  it("a licensed reviewer with Part 2 consent on file sees a confirmed batch's SUD values and evidence", async () => {
+    const { app, calls } = makeServer("confirmed");
     const res = await app.inject({ method: "GET", url: workspaceUrl, headers: as("rn_ok") });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -267,8 +354,21 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
     expect(calls.consentPatients).toEqual([PATIENT]);
   });
 
-  it("a reviewer with the permission but NO consent gets SUD values and evidence redacted", async () => {
-    const { app } = makeServer();
+  it("a licensed reviewer with NO consent sees a PENDING detection (adjudicating it is internal use)", async () => {
+    const { app, calls } = makeServer("detected");
+    const res = await app.inject({
+      method: "GET",
+      url: workspaceUrl,
+      headers: as("rn_no_consent"),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().sud.contentRedacted).toBe(false);
+    expect(res.json().candidates[1].value).toBe("Methadone 20 mg");
+    expect(calls.consentPatients).toEqual([]);
+  });
+
+  it("a licensed reviewer with NO consent gets a CONFIRMED batch's SUD values and evidence redacted", async () => {
+    const { app } = makeServer("confirmed");
     const res = await app.inject({
       method: "GET",
       url: workspaceUrl,
@@ -282,24 +382,44 @@ describe("GAP-067 — DocLens review routes compose the Part 2 need-to-know chec
     expect(res.json().candidates[0].value).toBe("(503) 555-0142");
   });
 
-  it("an unlicensed reviewer is redacted even when consent is on file", async () => {
-    const { app } = makeServer();
+  it("a licensed reviewer WITH consent reads a confirmed batch", async () => {
+    const { app } = makeServer("confirmed");
+    const res = await app.inject({ method: "GET", url: workspaceUrl, headers: as("rn_ok") });
+    expect(res.json().candidates[1].value).toBe("Methadone 20 mg");
+  });
+
+  it("an unlicensed reviewer is redacted even when consent is on file, pending or confirmed", async () => {
+    const { app } = makeServer("detected");
     const res = await app.inject({ method: "GET", url: workspaceUrl, headers: as("aide_consent") });
     expect(res.statusCode).toBe(200);
     expect(res.json().candidates[1].value).toBeNull();
   });
 
-  it("fails closed (redacts) when the consent seam throws", async () => {
-    const { app } = makeServer();
+  it("fails closed (redacts a confirmed batch) when the consent seam throws", async () => {
+    const { app } = makeServer("confirmed");
     const res = await app.inject({ method: "GET", url: workspaceUrl, headers: as("rn_seam_down") });
     expect(res.statusCode).toBe(200);
     expect(res.json().sud.contentRedacted).toBe(true);
     expect(res.body).not.toMatch(/methadone/i);
   });
 
-  it("the page image of a SUD-flagged batch is a 403 without access, and never rendered", async () => {
+  it("the page image of a CONFIRMED batch is a 403 without consent, and never rendered", async () => {
+    const { app, calls } = makeServer("confirmed");
+    const res = await app.inject({ method: "GET", url: imageUrl, headers: as("rn_no_consent") });
+    expect(res.statusCode).toBe(403);
+    expect(calls.renders).toBe(0);
+  });
+
+  it("the page image of a PENDING detection renders for a licensed reviewer without consent", async () => {
     const { app, calls } = makeServer("detected");
     const res = await app.inject({ method: "GET", url: imageUrl, headers: as("rn_no_consent") });
+    expect(res.statusCode).toBe(200);
+    expect(calls.renders).toBe(1);
+  });
+
+  it("the page image of a PENDING detection is still a 403 for an unlicensed reviewer", async () => {
+    const { app, calls } = makeServer("detected");
+    const res = await app.inject({ method: "GET", url: imageUrl, headers: as("aide_consent") });
     expect(res.statusCode).toBe(403);
     expect(calls.renders).toBe(0);
   });

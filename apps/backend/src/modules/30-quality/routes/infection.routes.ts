@@ -86,7 +86,7 @@ export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRou
         filter,
         q.cursor,
         q.limit,
-        await scopeOf(actor),
+        await scopeOf(actor, "infection"),
       );
     },
   );

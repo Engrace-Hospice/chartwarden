@@ -24,11 +24,19 @@ import {
   createCaseloadProvider,
   createDrizzleCaseloadStore,
 } from "../src/modules/05-patient/index";
-import { buildDrizzleM30ReadService } from "../src/modules/30-quality/index";
-import type { M30ReadActor } from "../src/modules/30-quality/routes/actor";
+import {
+  buildDrizzleM30ReadService,
+  buildDrizzleM30WriteService,
+} from "../src/modules/30-quality/index";
+import {
+  type M30ReadActor,
+  type M30WriteActor,
+  m30SystemWriteActor,
+} from "../src/modules/30-quality/routes/actor";
 import {
   type CaseloadLookup,
   type QualityPatientScope,
+  type QualityReadSurface,
   resolveQualityPatientScope,
 } from "../src/modules/30-quality/routes/patient-scope";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -141,8 +149,10 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
     return id;
   }
 
-  const scopeFor = (actor: M30ReadActor): Promise<QualityPatientScope> =>
-    resolveQualityPatientScope(actor, () => caseload);
+  const scopeFor = (
+    actor: M30ReadActor,
+    readSurface?: QualityReadSurface,
+  ): Promise<QualityPatientScope> => resolveQualityPatientScope(actor, () => caseload, readSurface);
 
   /** Walk every page of the incident list and return all ids, newest first. */
   async function allIncidentIds(
@@ -356,5 +366,155 @@ describe.skipIf(!DB_URL)("GAP-091 M30 PHI scope + keyset paging — LIVE Postgre
     // 2 PAT_1 events + the patient-less staff exposure; PAT_2's are hidden.
     expect(all).toHaveLength(3);
     expect(all.some((e) => e.patientId === PAT_2)).toBe(false);
+  });
+
+  // ── GAP-091 follow-up: the WRITE path is scoped at the service layer too (route predicate skipped) ──
+  describe("service-layer write scope (a caller that skips the route predicate)", () => {
+    const writeActor = (userId: string, roles: readonly string[]): M30WriteActor => ({
+      ...actorOf(userId, roles),
+      membershipId: REPORTER,
+    });
+    const incidentArgs = (patientId?: string) => ({
+      kind: "fall" as const,
+      severity: "moderate" as const,
+      patientId,
+      occurredAt: new Date(BASE + 999 * MINUTE).toISOString(),
+      data: {},
+    });
+    const infectionArgs = (patientId: string) => ({
+      patientId,
+      pathogen: "norovirus",
+      bodySite: "gi",
+      observedAt: new Date(BASE + 999 * MINUTE).toISOString(),
+    });
+    // The REAL M5 CaseloadProvider through the production resolver, over the NOBYPASSRLS app role.
+    const write = () =>
+      buildDrizzleM30WriteService(handle.db, {
+        providerEntity: { primaryProviderEntityId: async () => PE_A },
+        patientScope: scopeFor,
+      });
+
+    it("createIncident / recordInfectionEvent for an out-of-caseload patient are 404 and write nothing", async () => {
+      const before = await admin.query("SELECT count(*)::int AS n FROM incident_report");
+      const rn = writeActor(CLINICIAN, ["rn_case_manager"]);
+      await expect(write().createIncident(rn, incidentArgs(PAT_2))).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      await expect(write().recordInfectionEvent(rn, infectionArgs(PAT_2))).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      const after = await admin.query("SELECT count(*)::int AS n FROM incident_report");
+      expect(after.rows[0].n).toBe(before.rows[0].n);
+    });
+
+    it("an in-caseload patient and a patient-less incident are accepted", async () => {
+      const rn = writeActor(CLINICIAN, ["rn_case_manager"]);
+      const withPatient = await write().createIncident(rn, incidentArgs(PAT_1));
+      expect(withPatient.patientId).toBe(PAT_1);
+      const patientLess = await write().createIncident(rn, incidentArgs(undefined));
+      expect(patientLess.patientId ?? null).toBeNull();
+    });
+
+    it("an empty caseload cannot author a patient-linked row (fails closed)", async () => {
+      await expect(
+        write().createIncident(writeActor(NO_CASELOAD, ["rn_case_manager"]), incidentArgs(PAT_1)),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it("an org-wide role and a typed system actor may name any patient in the org", async () => {
+      const md = writeActor("any", ["medical_director"]);
+      const event = await write().recordInfectionEvent(md, infectionArgs(PAT_2));
+      expect(event.patientId).toBe(PAT_2);
+      const system = m30SystemWriteActor({
+        organizationId: ORG_A,
+        userId: REPORTER,
+        membershipId: REPORTER,
+      });
+      const created = await write().createIncident(system, incidentArgs(PAT_2));
+      expect(created.patientId).toBe(PAT_2);
+    });
+
+    it("an administrator is NOT org-wide: an out-of-caseload patient is 404 for the write path too", async () => {
+      await expect(
+        write().createIncident(writeActor(NO_CASELOAD, ["administrator"]), incidentArgs(PAT_2)),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it("mortality update/complete on an out-of-caseload review is 404 unless the actor is its assigned reviewer", async () => {
+      const out = await seedMortality(PAT_2, new Date(BASE + 500 * MINUTE));
+      const rn = writeActor(CLINICIAN, ["rn_case_manager"]);
+      await expect(
+        write().updateMortalityReview(rn, out, { dimensions: { clinical: { note: "x" } } }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await admin.query(
+        "UPDATE mortality_review SET assigned_reviewer_membership_id = $2 WHERE id = $1",
+        [out, REPORTER],
+      );
+      const updated = await write().updateMortalityReview(rn, out, {
+        dimensions: { clinical: { note: "x" } },
+      });
+      expect(updated.reviewId).toBe(out);
+    });
+
+    it("incident lifecycle writes are caseload-scoped; the reporter / assigned investigator keep access", async () => {
+      const out = await seedIncident({
+        org: ORG_A,
+        pe: PE_A,
+        patient: PAT_2,
+        at: new Date(BASE + 600 * MINUTE),
+      });
+      const rn = writeActor(CLINICIAN, ["rn_case_manager"]);
+      // writeActor stamps membershipId REPORTER, which is the seeded reporter => own-record arm allows.
+      const own = await write().updateIncident(rn, out, { severity: "high" } as never);
+      expect(own.incidentId).toBe(out);
+      await admin.query("UPDATE incident_report SET reported_by_membership_id = $2 WHERE id = $1", [
+        out,
+        randomUUID(),
+      ]);
+      await expect(
+        write().updateIncident(rn, out, { severity: "low" } as never),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      // The M30 read arm never opens a WRITE: a QAPI coordinator is still caseload-scoped for writes.
+      await expect(
+        write().updateIncident(writeActor(CLINICIAN, ["qapi_coordinator"]), out, {
+          severity: "low",
+        } as never),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      // An assigned investigator (sidecar assignee) is not locked out.
+      await admin.query(
+        `UPDATE incident_report SET kind_data = jsonb_set(kind_data, '{_m30}', jsonb_build_object('assignedToMembershipId', $2::text)) WHERE id = $1`,
+        [out, REPORTER],
+      );
+      await expect(
+        write().updateIncident(rn, out, { severity: "low" } as never),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe("M30 org-wide READ arm (spec §6.5 / §6.6 check cells)", () => {
+    it("qapi_coordinator reads every incident; infection_control_lead reads incidents + infection events org-wide", async () => {
+      const all = await allIncidentIds(actorOf("any", ["medical_director"]));
+      const qc = actorOf(NO_CASELOAD, ["qapi_coordinator"]);
+      const icl = actorOf(NO_CASELOAD, ["infection_control_lead"]);
+      const page = async (a: M30ReadActor) =>
+        read.listIncidents(a, {}, undefined, 500, await scopeFor(a, "incident"));
+      expect((await page(qc)).items.length).toBe(all.length);
+      expect((await page(icl)).items.length).toBe(all.length);
+      const infection = await read.listInfectionEvents(
+        icl,
+        {},
+        undefined,
+        500,
+        await scopeFor(icl, "infection"),
+      );
+      expect(infection.items.length).toBeGreaterThan(0);
+    });
+
+    it("infection_control_lead has NO mortality arm (mortality.read is not granted); qapi_coordinator does", async () => {
+      const icl = actorOf(NO_CASELOAD, ["infection_control_lead"]);
+      const qc = actorOf(NO_CASELOAD, ["qapi_coordinator"]);
+      expect(await scopeFor(icl, "mortality")).toEqual({ kind: "caseload", patientIds: [] });
+      expect(await scopeFor(qc, "mortality")).toEqual({ kind: "org" });
+    });
   });
 });

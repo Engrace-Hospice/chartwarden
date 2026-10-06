@@ -135,7 +135,8 @@ export const RESTRICTION_RATIONALE_MIN = 1;
 
 const REQUEST_BED_FROM: readonly string[] = ["pending"];
 const ASSIGN_BED_FROM: readonly string[] = ["bed_pending"];
-const CONFIRM_FROM: readonly string[] = ["bed_assigned"];
+/** GAP-106 — a bed-assigned admission is activated by M6's LCP acknowledgement, not by a tenant session. */
+const AWAITING_LCP_ACK_FROM: readonly string[] = ["bed_assigned"];
 const TRANSFER_FROM: readonly string[] = ["active"];
 const CONFIRM_TRANSFER_FROM: readonly string[] = ["transferring"];
 const DISCHARGE_FROM: readonly string[] = ["active"];
@@ -145,7 +146,11 @@ const ADMISSION_TERMINAL: readonly string[] = ["discharged", "transferred", "dec
 export interface AdmissionActions {
   readonly requestBed: boolean;
   readonly assignBed: boolean;
-  readonly confirm: boolean;
+  /**
+   * READ-ONLY status, never an action: `POST /ipu-admissions/:id/confirm` is system-internal (always 403 for
+   * a tenant session), so the worklist shows "Awaiting M6 LCP acknowledgement" instead of a Confirm button.
+   */
+  readonly awaitingLcpAck: boolean;
   readonly initiateTransfer: boolean;
   readonly confirmTransfer: boolean;
   readonly discharge: boolean;
@@ -156,15 +161,16 @@ export const admissionActions = (state: string): AdmissionActions => {
     ADMISSION_TERMINAL.includes(state) ||
     REQUEST_BED_FROM.includes(state) ||
     ASSIGN_BED_FROM.includes(state) ||
-    CONFIRM_FROM.includes(state) ||
+    AWAITING_LCP_ACK_FROM.includes(state) ||
     TRANSFER_FROM.includes(state) ||
     CONFIRM_TRANSFER_FROM.includes(state);
-  // An unrecognised state offers everything; a recognised terminal one offers nothing.
+  // An unrecognised state offers every tenant action; a recognised terminal one offers nothing. The
+  // M6-ack status is a fact about a KNOWN state only, so an unknown state never claims it.
   if (!known) {
     return {
       requestBed: true,
       assignBed: true,
-      confirm: true,
+      awaitingLcpAck: false,
       initiateTransfer: true,
       confirmTransfer: true,
       discharge: true,
@@ -173,7 +179,7 @@ export const admissionActions = (state: string): AdmissionActions => {
   return {
     requestBed: REQUEST_BED_FROM.includes(state),
     assignBed: ASSIGN_BED_FROM.includes(state),
-    confirm: CONFIRM_FROM.includes(state),
+    awaitingLcpAck: AWAITING_LCP_ACK_FROM.includes(state),
     initiateTransfer: TRANSFER_FROM.includes(state),
     confirmTransfer: CONFIRM_TRANSFER_FROM.includes(state),
     discharge: DISCHARGE_FROM.includes(state),
@@ -321,18 +327,9 @@ export async function assignBed(
   return ok(data);
 }
 
-export async function confirmAdmission(
-  client: ApiClient,
-  id: string,
-): Promise<WriteResult<AdmissionView>> {
-  // GAP-106 — the route is SYSTEM-INTERNAL (driven by M6's LCP acknowledgement): a tenant session is always
-  // refused (403) and there is no request body. Kept so the modal surfaces that refusal honestly.
-  const { data, error, response } = await client.POST("/api/v1/ipu-admissions/{id}/confirm", {
-    params: { path: { id } },
-  });
-  if (error || !data) return failure(response?.status, error);
-  return ok(data);
-}
+// There is deliberately NO `confirmAdmission` here: `POST /ipu-admissions/{id}/confirm` is system-internal
+// (GAP-106, driven by M6's LCP acknowledgement) and always 403s a tenant session, so a client for it
+// could only dead-end. The worklist shows `AdmissionActions.awaitingLcpAck` as a read-only status instead.
 
 export async function dischargeAdmission(
   client: ApiClient,

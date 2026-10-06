@@ -51,7 +51,6 @@ import {
   type SudContentAccess,
   type SudStatus,
   assertSudPageReadable,
-  isSudContentState,
   redactSudWorkspace,
   resolveSudContentAccess,
 } from "./sud-content-gate";
@@ -517,8 +516,10 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       });
       const { b, pages, jobs, cands, review, decisions, conflict } = loaded;
       // GAP-067 — decided BEFORE any decryption, so a denied viewer's request never holds Part 2 plaintext.
-      const sudAllowed =
-        !isSudContentState(b.sudStatus) || (await resolveSudContentAccess(sudAccess, b.patientId));
+      const sudAllowed = await resolveSudContentAccess(sudAccess, {
+        sudStatus: b.sudStatus,
+        patientId: b.patientId,
+      });
 
       const geometry = (Array.isArray(b.pageGeometry) ? b.pageGeometry : []) as {
         page: number;
@@ -700,9 +701,10 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
       // docling call, so a denied viewer costs the object store nothing and never holds a URL.
       assertSudPageReadable(
         source.sudStatus,
-        isSudContentState(source.sudStatus)
-          ? await resolveSudContentAccess(sudAccess, source.patientId)
-          : true,
+        await resolveSudContentAccess(sudAccess, {
+          sudStatus: source.sudStatus,
+          patientId: source.patientId,
+        }),
       );
       if (!deps.docling || !deps.presignSource) {
         throw new DegradedError("doclens-render", "no docling-worker / object store is configured");

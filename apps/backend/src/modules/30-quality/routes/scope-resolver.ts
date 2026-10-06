@@ -9,11 +9,20 @@ import type { M30ReadActor } from "./actor";
 import {
   type CaseloadLookup,
   type QualityPatientScope,
+  type QualityReadSurface,
   resolveQualityPatientScope,
 } from "./patient-scope";
 
-export type PatientScopeResolver = (actor: M30ReadActor) => Promise<QualityPatientScope>;
+/** `readSurface` is set by the read routes only (M30 org-wide read arm); writes call it without. */
+export type PatientScopeResolver = (
+  actor: M30ReadActor,
+  readSurface?: QualityReadSurface,
+) => Promise<QualityPatientScope>;
 
 /** The production resolver: org-wide roles read the org, everyone else their M5 caseload. */
-export const defaultPatientScopeResolver: PatientScopeResolver = (actor) =>
-  resolveQualityPatientScope(actor, () => getSeam("CaseloadProvider") as CaseloadLookup);
+export const defaultPatientScopeResolver: PatientScopeResolver = (actor, readSurface) =>
+  resolveQualityPatientScope(
+    actor,
+    () => getSeam("CaseloadProvider") as CaseloadLookup,
+    readSurface,
+  );

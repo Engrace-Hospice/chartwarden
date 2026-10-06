@@ -5019,6 +5019,21 @@ export function createDbAdmissionRouteService(
           aggregateKind: "level_of_care_period",
           aggregateId: r.id,
         });
+        // M6 §2.3.5 / M37 §2.2 handshake: the activation M37 is waiting on. Same transaction as the status
+        // flip, so the acknowledgement can never be published for a period that did not activate (and an
+        // activation can never go unannounced). M37's consumer confirms the `bed_assigned` admission.
+        await outbox.publish(tx, {
+          eventName: "m6.level_of_care.activated",
+          payload: {
+            levelOfCarePeriodId: r.id,
+            admissionId: cur.admissionId,
+            newLevel: r.levelOfCare,
+            activatedAt: now().toISOString(),
+          },
+          organizationId,
+          aggregateKind: "level_of_care_period",
+          aggregateId: r.id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },

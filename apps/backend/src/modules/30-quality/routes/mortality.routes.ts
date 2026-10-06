@@ -79,7 +79,7 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
         filter,
         q.cursor,
         q.limit,
-        await scopeOf(actor),
+        await scopeOf(actor, "mortality"),
       );
     },
   );
@@ -94,7 +94,7 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
     async (request) => {
       const actor = actorOf(request);
       const { reviewId } = parse(ReviewIdParamsSchema, request.params);
-      return readService.getMortalityReview(actor, reviewId, await scopeOf(actor));
+      return readService.getMortalityReview(actor, reviewId, await scopeOf(actor, "mortality"));
     },
   );
 

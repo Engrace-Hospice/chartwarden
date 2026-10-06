@@ -27,6 +27,7 @@ import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildPatientAdmissionClearanceReader } from "../src/modules/05-patient/admission-clearance-reader";
 import { M5_OUTBOX_EVENTS, buildM5IntakeSudPrivacyConsumer } from "../src/modules/05-patient/index";
+import type { SudContentAccess } from "../src/modules/22-documents/extraction/sud-content-gate";
 import {
   type DocLensClassifierPort,
   type DocLensExtractorPort,
@@ -436,10 +437,30 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     }
   });
 
-  // GAP-067 — the route resolves the Part 2 need-to-know (licence + `sud_consent_present` on the batch's
-  // patient) and hands the service this function; the service defaults to DENY when it is absent.
-  const sudAllowed = async (patientId: string | null): Promise<boolean> => patientId !== null;
-  const sudDenied = async (): Promise<boolean> => false;
+  // GAP-067 — the route composes the Part 2 probes (licence + `sud_consent_present` on the batch's patient)
+  // and hands the service this object; the service defaults to DENY when it is absent. A PENDING detection
+  // needs only the licence (adjudicating it is internal use, before any consent exists); a CONFIRMED batch
+  // needs the licence AND consent.
+  const sudAllowed: SudContentAccess = {
+    reviewerEligible: async () => true,
+    consentPresent: async (patientId) => patientId !== "",
+  };
+  const sudLicensedNoConsent: SudContentAccess = {
+    reviewerEligible: async () => true,
+    consentPresent: async () => false,
+  };
+  const sudDenied: SudContentAccess = {
+    reviewerEligible: async () => false,
+    consentPresent: async () => true,
+  };
+
+  it("a licensed reviewer WITHOUT consent can read a PENDING detection, so the RN does not adjudicate blind (GAP-067)", async () => {
+    const ws = await workspace.getWorkspace(ORG, batchId, membership, sudLicensedNoConsent);
+    expect(ws.sud.status).toBe("detected");
+    expect(ws.sud.contentRedacted).toBe(false);
+    expect(ws.sud.indicators[0]).toMatchObject({ term: "Methadone" });
+    expect(ws.candidates.find((x) => x.fieldPath === "medications[0].name")?.redacted).toBe(false);
+  });
 
   it("withholds SUD values and evidence from a viewer without the Part 2 need-to-know (GAP-067)", async () => {
     for (const viewer of [undefined, sudDenied]) {

@@ -51,6 +51,7 @@ import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { M30ReadActor } from "./actor";
 import { type CursorPage, pageSizeOf, paginate } from "./concurrency";
+import { incidentOwnedBy } from "./incident-ownership";
 import { assertPatientInScope } from "./patient-scope";
 import {
   fetchIncidentPage,
@@ -835,7 +836,7 @@ export function buildDrizzleM30ReadService(
           scope,
           row.patientId,
           "incident",
-          ownsRow(actor.membershipId, row.reportedByMembershipId, row.triagedByMembershipId),
+          incidentOwnedBy(row, actor.membershipId),
         );
         return {
           ...mapIncidentSummary(row),

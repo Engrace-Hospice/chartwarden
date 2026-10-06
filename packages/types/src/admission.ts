@@ -194,6 +194,7 @@ export const M6_EVENT_NAMES = [
   "m6.f2f.due_3d",
   "m6.f2f.overdue_1d",
   "m6.loc.changed",
+  "m6.level_of_care.activated",
   "m6.revocation.created",
   "m6.transfer.created",
   "m6.discharge.created",

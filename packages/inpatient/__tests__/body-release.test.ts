@@ -51,6 +51,8 @@ describe("body-release machine (§2.11 D12)", () => {
       throw new Error("expected throw");
     } catch (e) {
       expect((e as IpuStateError).code).toBe("BODY_RELEASE_DOCUMENT_REQUIRED");
+      // The gate states its approximation: M22 has no signed-state fact, so "signed" is not claimed.
+      expect((e as IpuStateError).message).toMatch(/NOT proof of a captured signature/);
     }
     const t = transitionBodyRelease("funeral_home_identified", {
       type: "releaseBody",

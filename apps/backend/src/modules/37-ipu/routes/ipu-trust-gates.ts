@@ -43,6 +43,22 @@ export const GIP_ATTESTER_ROLE_KEYS = ["medical_director", "hospice_physician"] 
 export const hasGipAttesterRole = (roles: readonly string[]): boolean =>
   GIP_ATTESTER_ROLE_KEYS.some((role) => roles.includes(role));
 
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The REAL step-up assertion id for a write: the M2 session id the fresh step-up ceremony ran on, as the
+ * server stamped it on the actor (`actor.ts`, from `context.attributes.sessionId`). Null when there is no
+ * fresh step-up or the session carries no uuid-shaped id — the caller then REFUSES; it never substitutes the
+ * membership id (which is the same value for every write that person makes and proves nothing).
+ */
+export function sessionStepUpAssertionId(actor: {
+  readonly stepUpRecent: boolean;
+  readonly stepUpAssertionId?: string | null;
+}): string | null {
+  const id = actor.stepUpAssertionId ?? null;
+  return actor.stepUpRecent && id !== null && UUID_SHAPE.test(id) ? id : null;
+}
+
 /** Run a seam read; ANY throw (deny-stub, outage) reads as "not proven". */
 async function proven<T>(read: () => Promise<T | null> | T | null): Promise<T | null> {
   try {
@@ -62,6 +78,19 @@ async function funeralHomeIsResolved(
   return resolved !== null && resolved.status === ACTIVE;
 }
 
+/**
+ * KNOWN APPROXIMATION — "signed" is NOT proven here. The spec's body-released transition requires a SIGNED
+ * `body_release_authorization`, but M22 exposes no signature fact: its `DocumentDigest` carries no
+ * signed/signed_at/e-signature field, a document has no rendered-and-signed version state, and M22 does
+ * not capture signatures at all (it renders the source module's signature block; signing belongs to the
+ * source module). The strongest thing M37 can prove through M22's published seam is therefore:
+ *   an ACTIVE `body_release_authorization` document, filed against THIS release and THIS patient, whose
+ *   active version exists (i.e. M22 rendered and stored it).
+ * That is deliberately the CONSERVATIVE reading — anything weaker (wrong type / release / patient,
+ * superseded, no active version, seam unreadable) is refused — but it can pass an unsigned rendering.
+ * When M22 publishes a signature fact (e.g. `signedAt` on the digest or a `signed` document status), add it
+ * to `BodyReleaseDocumentReader` and require it HERE; nothing else in M37 should change.
+ */
 async function releaseDocumentIsVerified(
   documents: BodyReleaseDocumentReader,
   organizationId: string,

@@ -15,11 +15,18 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import {
   ResourceNotFoundError,
   SYSTEM_F2F_ACTOR,
 } from "../src/modules/06-admission/routes/service";
+import {
+  buildDrizzleLcpAdmissionLookup,
+  buildM37LcpActivatedConsumer,
+} from "../src/modules/37-ipu/consumers/m6-lcp-activated";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
+import { buildDrizzleIpuRouteService } from "../src/modules/37-ipu/routes/service-drizzle";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
@@ -482,6 +489,109 @@ describe.skipIf(!DB_URL)(
       await expect(
         svc.confirmLocBedAssignment(ORG_A, assigning.id, confirmed.version),
       ).rejects.toMatchObject({ code: "ILLEGAL_TRANSITION" });
+    });
+
+    it("M6 -> M37 handshake: confirm-bed publishes m6.level_of_care.activated and M37's consumer activates the bed_assigned admission (idempotent on redelivery)", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const assigning = await svc.changeLoc(
+        ORG_A,
+        admissionId,
+        "inpatient_respite_care",
+        randomUUID(),
+        undefined,
+        "caregiver respite stay arranged for the coming week",
+      );
+      // A REAL M37 chain at `bed_assigned`: unit -> room -> reserved bed -> ipu_admission (irc, this
+      // period) -> active bed assignment. IRC so no GIP-criteria row is needed to activate.
+      const unitId = (
+        await admin.query(
+          `INSERT INTO inpatient_unit (organization_id, facility_id, display_name, bed_count)
+           VALUES ($1,$2,'Unit H',4) RETURNING id`,
+          [ORG_A, randomUUID()],
+        )
+      ).rows[0].id as string;
+      const roomId = (
+        await admin.query(
+          `INSERT INTO ipu_room (organization_id, unit_id, room_number, kind, bed_count)
+           VALUES ($1,$2,'201','private',1) RETURNING id`,
+          [ORG_A, unitId],
+        )
+      ).rows[0].id as string;
+      const bedId = (
+        await admin.query(
+          `INSERT INTO ipu_bed (organization_id, room_id, unit_id, bed_label, cleaning_status)
+           VALUES ($1,$2,$3,'A','reserved') RETURNING id`,
+          [ORG_A, roomId, unitId],
+        )
+      ).rows[0].id as string;
+      const ipuAdmissionId = (
+        await admin.query(
+          `INSERT INTO ipu_admission
+             (organization_id, provider_entity_id, patient_id, admission_id, level_of_care_period_id,
+              unit_id, kind, state, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,'irc','bed_assigned',$7) RETURNING id`,
+          [ORG_A, PROVIDER_ENTITY, randomUUID(), admissionId, assigning.id, unitId, USER],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO ipu_bed_assignment (organization_id, ipu_admission_id, bed_id, assigned_by)
+         VALUES ($1,$2,$3,$4)`,
+        [ORG_A, ipuAdmissionId, bedId, USER],
+      );
+
+      // M6 half: the activation publishes the acknowledgement in the same transaction.
+      await svc.confirmLocBedAssignment(ORG_A, assigning.id, assigning.version);
+      const emitted = await admin.query(
+        `SELECT payload FROM outbox_event
+          WHERE organization_id=$1 AND event_type='m6.level_of_care.activated' AND aggregate_id=$2`,
+        [ORG_A, assigning.id],
+      );
+      expect(emitted.rows).toHaveLength(1);
+      expect(emitted.rows[0].payload).toMatchObject({
+        levelOfCarePeriodId: assigning.id,
+        admissionId,
+        newLevel: "inpatient_respite_care",
+      });
+
+      // M37 half: the real consumer over the real service, the real catalog-validating m37 publisher.
+      const m37Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M37_OUTBOX_EVENTS]));
+      const consumer = buildM37LcpActivatedConsumer({
+        service: buildDrizzleIpuRouteService(handle.db, {
+          outbox: {
+            publish: (tx, e) => m37Publisher.publish(tx as never, { ...e, callerModule: "m37" }),
+          },
+        }),
+        lookup: buildDrizzleLcpAdmissionLookup(handle.db),
+      });
+      const event = { id: randomUUID(), organizationId: ORG_A, payload: emitted.rows[0].payload };
+      await consumer.handle(event);
+      const after = await admin.query("SELECT state, activated_at FROM ipu_admission WHERE id=$1", [
+        ipuAdmissionId,
+      ]);
+      expect(after.rows[0].state).toBe("active");
+      expect(after.rows[0].activated_at).not.toBeNull();
+      const bed = await admin.query("SELECT cleaning_status FROM ipu_bed WHERE id=$1", [bedId]);
+      expect(bed.rows[0].cleaning_status).toBe("occupied");
+
+      // Redelivery is a no-op: still one activation event, one IRC episode.
+      await consumer.handle(event);
+      const activated = await admin.query(
+        "SELECT 1 FROM outbox_event WHERE event_type='m37.ipu_admission.activated' AND aggregate_id=$1",
+        [ipuAdmissionId],
+      );
+      expect(activated.rows).toHaveLength(1);
+      const episodes = await admin.query("SELECT 1 FROM irc_episode WHERE ipu_admission_id=$1", [
+        ipuAdmissionId,
+      ]);
+      expect(episodes.rows).toHaveLength(1);
+
+      // Fail closed: an event naming a period no ipu_admission carries is refused, never guessed at.
+      await expect(
+        consumer.handle({
+          ...event,
+          payload: { ...event.payload, levelOfCarePeriodId: randomUUID() },
+        }),
+      ).rejects.toThrow(/no ipu_admission/);
     });
 
     it("discharge (moved) → admission discharged, event completed", async () => {

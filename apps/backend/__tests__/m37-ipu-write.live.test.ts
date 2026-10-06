@@ -138,12 +138,15 @@ const ADMISSIONS = {
   },
 };
 
+/** The M2 session the fresh step-up ran on — the REAL assertion id writes bind to (never the membership id). */
+const STEP_UP_SESSION = "eeeeeeee-0000-4000-8000-eeeeeeee00f1";
 const actor = {
   organizationId: ORG_A,
   userId: USER,
   roles: [] as string[],
   membershipId: MEMBER,
   stepUpRecent: true,
+  stepUpAssertionId: STEP_UP_SESSION as string | null,
 };
 const readActor = { organizationId: ORG_A, userId: USER, roles: [] as string[] };
 
@@ -330,6 +333,23 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     );
     expect(stored[0].ordering_physician_id).toBe(PHYSICIAN);
     expect(stored[0].ordering_order_id).toBe(SIGNED_ORDER);
+    // M37 follow-up — the stored step-up assertion is the SESSION's, not the actor's membership id.
+    const { rows: assertion } = await admin.query(
+      "SELECT applied_step_up_assertion_id FROM ipu_restraint_event WHERE id=$1",
+      [restraint.id],
+    );
+    expect(assertion[0].applied_step_up_assertion_id).toBe(STEP_UP_SESSION);
+    expect(assertion[0].applied_step_up_assertion_id).not.toBe(MEMBER);
+    // …and a session carrying no assertion id (or no fresh step-up) cannot apply one at all.
+    await expect(
+      svc.applyRestraint({ ...actor, stepUpAssertionId: null }, adm.id, {
+        restraintKind: "soft_limb",
+        restraintJustificationText: "x".repeat(120),
+        orderingOrderId: SIGNED_ORDER,
+        category: "behavioral",
+        reassessmentIntervalMinutes: 15,
+      }),
+    ).rejects.toMatchObject({ code: "RESTRAINT_STEP_UP_ASSERTION_MISSING", statusCode: 403 });
     const reassessed = await svc.reassessRestraint(actor, restraint.id, {
       outcome: "release",
       nextDueAt: new Date().toISOString(),
@@ -667,6 +687,50 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
       ).rows[0];
       expect(row.step_up_assertion_id).toBe(SESSION_ID);
       expect(row.step_up_assertion_id).not.toBe(MEMBER);
+    });
+
+    it("GIP reassessment: criterion no longer met needs the session's step-up and stores it; still-met stores none", async () => {
+      gipSvc = buildDrizzleIpuRouteService(handle.db, {
+        orders: ORDERS,
+        admissions: ADMISSIONS,
+        outbox: VALIDATING_OUTBOX,
+        releaseDocuments: DOCS as never,
+        mdmDirectory: MDM,
+      });
+      const { adm } = await openBedAssignedGipAdmission(202);
+      await gipSvc.attestGip(MD_ACTOR, adm.id, { attestingPhysicianId: MD_OK, data: GIP_DATA });
+      const rationale = "r".repeat(60);
+      await expect(
+        gipSvc.reassessGip({ ...MD_ACTOR, stepUpAssertionId: null }, adm.id, {
+          criterionStillMet: false,
+          rationale,
+        }),
+      ).rejects.toMatchObject({ code: "GIP_STEP_UP_ASSERTION_MISSING" });
+      await expect(
+        gipSvc.reassessGip({ ...MD_ACTOR, stepUpRecent: false }, adm.id, {
+          criterionStillMet: false,
+          rationale,
+        }),
+      ).rejects.toMatchObject({ code: "GIP_STEP_UP_ASSERTION_MISSING" });
+      await gipSvc.reassessGip(MD_ACTOR, adm.id, { criterionStillMet: false, rationale });
+      await gipSvc.reassessGip(
+        { ...MD_ACTOR, stepUpAssertionId: null, stepUpRecent: false },
+        adm.id,
+        {
+          criterionStillMet: true,
+          rationale,
+        },
+      );
+      const rows = (
+        await admin.query(
+          "SELECT criterion_still_met, step_up_assertion_id FROM gip_criteria_reassessment WHERE ipu_admission_id=$1 ORDER BY created_at",
+          [adm.id],
+        )
+      ).rows;
+      expect(rows).toHaveLength(2);
+      expect(rows[0].step_up_assertion_id).toBe(SESSION_ID);
+      expect(rows[0].step_up_assertion_id).not.toBe(MEMBER);
+      expect(rows[1].step_up_assertion_id).toBeNull();
     });
 
     it("confirm: only the typed M6 LCP-ack actor, naming THIS admission's period, activates it", async () => {

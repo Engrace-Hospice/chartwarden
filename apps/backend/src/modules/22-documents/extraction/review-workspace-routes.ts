@@ -286,7 +286,9 @@ const ABAC_SUD_REVIEWER = requireAbac("intake.review", "extraction_reviewer_elig
 // confirmed Part 2 detection. Two named predicates, composed here and never decided from the request: the
 // licence arm of `extraction_reviewer_eligible`, and M39's `sud_consent_present` (42 CFR Part 2 need-to-know)
 // for the BATCH'S patient — which the service loads from the batch row and passes in (`getTarget` is
-// synchronous, so the route cannot look it up itself). `requireAbac` throws on denial; for a READ a denial
+// synchronous, so the route cannot look it up itself). The gate (sud-content-gate.ts) decides which are
+// needed: a PENDING detection needs only the licence (adjudication is internal use, spec §7.4 W4 — consent
+// is captured later), a CONFIRMED batch needs both. `requireAbac` throws on denial; for a READ a denial
 // is not a refusal of the whole request but a redaction, so the throw is the answer, caught here and turned
 // into `false`. Any error (an unregistered predicate, a down consent seam) is a `false` too: fail closed.
 // Not break-glass-bypassable: an emergency grant is not a Part 2 need-to-know.
@@ -302,15 +304,17 @@ const sudConsentFor = (patientId: string) =>
 
 function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
   const guardRequest: GuardRequest = request;
-  return async (patientId) => {
-    if (!patientId) return false; // a patientless batch has no consent to evaluate
-    try {
+  // Each probe is a registered ABAC predicate; a denial or a throw reaches the gate as a rejection, which it
+  // turns into `false` (fail closed). Which probes a batch needs depends on its state: see sud-content-gate.
+  return {
+    reviewerEligible: async () => {
       await SUD_READ_ELIGIBLE(guardRequest);
+      return true;
+    },
+    consentPresent: async (patientId) => {
       await sudConsentFor(patientId)(guardRequest);
       return true;
-    } catch {
-      return false;
-    }
+    },
   };
 }
 

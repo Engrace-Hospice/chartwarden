@@ -44,6 +44,7 @@ import {
   type VisitorConsentGate,
   evaluateGipAttesterEligibility,
   resolveBodyReleaseEventFacts,
+  sessionStepUpAssertionId,
 } from "./ipu-trust-gates";
 
 // Re-exported for existing importers; the definitions live in ipu-trust-gates (see the note there).
@@ -227,8 +228,6 @@ export interface IpuRouteServiceDeps {
 }
 
 const iso = (d: Date): string => d.toISOString();
-/** An M2 session / step-up assertion id is a uuid; anything else cannot be the assertion the column holds. */
-const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ctx = (actor: Pick<IpuReadActor, "organizationId" | "userId">) => ({
   organizationId: actor.organizationId,
   userId: actor.userId,
@@ -1198,12 +1197,8 @@ export function buildDrizzleIpuRouteService(
       // GAP-106 — the step-up assertion is the SESSION's (server-assembled), never a client value and never
       // the membership id it used to be. No fresh step-up, or a session that carries no assertion id → no
       // attestation. The route's STEP_UP guard says the same; this is the second wall.
-      const stepUpAssertionId = actor.stepUpAssertionId ?? null;
-      if (
-        !actor.stepUpRecent ||
-        stepUpAssertionId === null ||
-        !UUID_SHAPE.test(stepUpAssertionId)
-      ) {
+      const stepUpAssertionId = sessionStepUpAssertionId(actor);
+      if (stepUpAssertionId === null) {
         throw new IpuStateError(
           "GIP_STEP_UP_ASSERTION_MISSING",
           "GIP attestation requires a fresh step-up on a session that carries an assertion id.",
@@ -1259,6 +1254,16 @@ export function buildDrizzleIpuRouteService(
     },
 
     async reassessGip(actor: IpuWriteActor, admissionId: string, body: ReassessGipBody) {
+      // §7.4 / §2.4 — `criterion_still_met=false` is consequential and needs a fresh step-up; the column
+      // stores the SESSION's assertion id (never the membership id). A routine "still met" row stores none.
+      // Resolved BEFORE any read or write; the route's conditional step-up guard is the first wall.
+      const stepUpAssertionId = body.criterionStillMet ? null : sessionStepUpAssertionId(actor);
+      if (!body.criterionStillMet && stepUpAssertionId === null) {
+        throw new IpuStateError(
+          "GIP_STEP_UP_ASSERTION_MISSING",
+          "A GIP reassessment that finds the criterion no longer met requires a fresh step-up on a session that carries an assertion id.",
+        );
+      }
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
         const [crit] = await t.select().from(GC).where(eq(GC.ipuAdmissionId, admissionId)).limit(1);
@@ -1271,7 +1276,7 @@ export function buildDrizzleIpuRouteService(
           reassessedByMembershipId: actor.membershipId,
           criterionStillMet: body.criterionStillMet,
           rationale: body.rationale,
-          stepUpAssertionId: body.criterionStillMet ? null : actor.membershipId,
+          stepUpAssertionId,
         });
         await outbox.publish(t, {
           eventName: "m37.gip_criteria.reassessment_completed",
@@ -1807,6 +1812,16 @@ export function buildDrizzleIpuRouteService(
     },
 
     async applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody) {
+      // §7.4 — the application is bound to the REAL step-up assertion (the session's), resolved and
+      // refused BEFORE any read or write. No fresh step-up, or no assertion id on the session → no
+      // restraint (fail closed). The route's STEP_UP guard is the first wall; this is the second.
+      const stepUpAssertionId = sessionStepUpAssertionId(actor);
+      if (stepUpAssertionId === null) {
+        throw new IpuStateError(
+          "RESTRAINT_STEP_UP_ASSERTION_MISSING",
+          "Restraint application requires a fresh step-up on a session that carries an assertion id.",
+        );
+      }
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
@@ -1888,15 +1903,10 @@ export function buildDrizzleIpuRouteService(
             orderingPhysicianId: orderingPhysicianId as string,
             orderingOrderId: body.orderingOrderId,
             appliedByMembershipId: actor.membershipId,
-            // KNOWN GAP (F-069 §3, stated rather than papered over). This is NOT an assertion id — it is
-            // the actor's membership, so every restraint the same nurse applies carries the same value
-            // and the column cannot distinguish two applications. The platform has no uuid-identified
-            // step-up assertion to put here: step-up state is `session.last_step_up_at` on a row whose
-            // `id` is `text` (the same absence #165 found behind
-            // `evv_missing_resolution.step_up_auth_ref_id`). Unlike that column this one is NOT NULL, so
-            // it cannot be left empty until an M2 `step_up_session` exists. The step-up itself is real
-            // and server-verified — `actor.stepUpRecent`, checked by the machine above.
-            appliedStepUpAssertionId: actor.membershipId,
+            // The REAL step-up assertion: the M2 session id the fresh step-up ran on (server-derived,
+            // resolved and enforced before this transaction opens), the same source GIP attestation uses.
+            // It was the actor's membership id until this change (F-069 §3 known gap).
+            appliedStepUpAssertionId: stepUpAssertionId,
             reassessmentIntervalMinutes: interval,
           })
           .returning();

@@ -412,10 +412,8 @@ function AdmissionRowActions({
           Assign bed
         </Button>
       ) : null}
-      {actions.confirm ? (
-        <Button size="sm" tone="primary" onClick={() => onAction("confirm")}>
-          Confirm
-        </Button>
+      {actions.awaitingLcpAck ? (
+        <output style={awaitingAckStyle}>Awaiting M6 LCP acknowledgement</output>
       ) : null}
       {actions.initiateTransfer ? (
         <Button size="sm" tone="tertiary" onClick={() => onAction("initiateTransfer")}>
@@ -435,6 +433,12 @@ function AdmissionRowActions({
     </div>
   );
 }
+
+const awaitingAckStyle: CSSProperties = {
+  fontSize: "0.8125rem",
+  color: "var(--color-muted)",
+  alignSelf: "center",
+};
 
 const rowActionsStyle: CSSProperties = {
   display: "flex",

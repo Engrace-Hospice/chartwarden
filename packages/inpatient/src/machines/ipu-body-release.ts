@@ -117,12 +117,14 @@ export function transitionBodyRelease(
       requireIpu(
         event.documentRejected !== true,
         "BODY_RELEASE_DOCUMENT_INVALID",
-        "releaseBody names a document that is not this release's M22 body_release_authorization.",
+        "releaseBody names a document that is not an active M22 body_release_authorization filed against this release and patient.",
       );
       requireIpu(
         event.hasReleaseDocument,
         "BODY_RELEASE_DOCUMENT_REQUIRED",
-        "releaseBody requires the signed M22 body_release_authorization document.",
+        "releaseBody requires an active M22 body_release_authorization document filed against this release. " +
+          "M22 exposes no signed-state fact, so 'signed' is approximated by active-with-an-active-version " +
+          "and is NOT proof of a captured signature.",
       );
       return {
         from,

@@ -277,7 +277,27 @@ describe("#91 — the admissions worklist can move an admission", () => {
     // hide a real transition behind a stale frontend.
     expect(await screen.findByRole("button", { name: "Request bed" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Discharge" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Confirm" })).toBeTruthy();
+    // The system-internal confirm is never offered, even to a state this build cannot classify, and an
+    // unknown state does not claim the M6-ack status either (that is a fact about a KNOWN state).
+    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+    expect(screen.queryByText("Awaiting M6 LCP acknowledgement")).toBeNull();
+  });
+
+  it("a bed-assigned admission shows a read-only M6-ack status and NO Confirm button (GAP-106)", async () => {
+    admissionState = "bed_assigned";
+    mountWorklist();
+    expect(await screen.findByText("Awaiting M6 LCP acknowledgement")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm admission" })).toBeNull();
+    // Nothing on the row can reach the system-internal route.
+    expect(writes().some((c) => c.endsWith("/confirm"))).toBe(false);
+  });
+
+  it("the M6-ack status is shown only while the admission awaits it", async () => {
+    admissionState = "active";
+    mountWorklist();
+    expect(await screen.findByRole("button", { name: "Discharge" })).toBeTruthy();
+    expect(screen.queryByText("Awaiting M6 LCP acknowledgement")).toBeNull();
   });
 
   it("request-bed sends the unit the coordinator picked", async () => {

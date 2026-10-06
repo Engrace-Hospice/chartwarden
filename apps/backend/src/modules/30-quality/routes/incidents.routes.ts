@@ -133,7 +133,13 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
         patientId: q.patientId,
         mayViewAbuseAllegations: granted.has("incident.abuse_review"),
       };
-      return readService.listIncidents(actor, filter, q.cursor, q.limit, await scopeOf(actor));
+      return readService.listIncidents(
+        actor,
+        filter,
+        q.cursor,
+        q.limit,
+        await scopeOf(actor, "incident"),
+      );
     },
   );
 
@@ -182,7 +188,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
     async (request) => {
       const actor = actorOf(request);
       const { incidentId } = parse(IncidentIdParamsSchema, request.params);
-      return readService.getIncident(actor, incidentId, await scopeOf(actor));
+      return readService.getIncident(actor, incidentId, await scopeOf(actor, "incident"));
     },
   );
 

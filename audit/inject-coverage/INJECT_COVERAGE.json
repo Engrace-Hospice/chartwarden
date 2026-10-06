@@ -423,7 +423,8 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts",
-        "apps/backend/__tests__/ipu-inject.test.ts"
+        "apps/backend/__tests__/ipu-inject.test.ts",
+        "apps/backend/__tests__/ipu-step-up-assertion.test.ts"
       ],
       "directRoutesReferenced": 52
     },

@@ -52,6 +52,8 @@ export {
   type M30WriteActor,
   type PreHandler,
   actorOf,
+  isM30SystemActor,
+  m30SystemWriteActor,
   writeActorOf,
 } from "./actor";
 
