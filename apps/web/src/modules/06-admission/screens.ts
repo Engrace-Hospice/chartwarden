@@ -20,6 +20,9 @@ const AdmissionCreate = lazy(() =>
 const AdmissionDetail = lazy(() =>
   import("./admission-detail").then((m) => ({ default: m.AdmissionDetail })),
 );
+const DischargeWorkflow = lazy(() =>
+  import("./discharge-workflow").then((m) => ({ default: m.DischargeWorkflow })),
+);
 const ComplianceDashboard = lazy(() =>
   import("./compliance-dashboard").then((m) => ({ default: m.ComplianceDashboard })),
 );
@@ -76,6 +79,17 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       title: "Admission",
       requiredPermission: "admission.read",
       screen: AdmissionDetail,
+    },
+    {
+      // Discharge / revocation / transfer-out stepper (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER) — reached
+      // from the Admission Detail header of an active / on-hold admission; omitted from nav (param path).
+      // `discharge.create` is the umbrella key (route 39's fallback gate); the server derives the real
+      // per-reason key (`discharge.moved`, `transfer.out`, `revocation.create`, …) on submit.
+      id: "admission.discharge",
+      path: "/admissions/:id/discharge",
+      title: "Discharge / transfer",
+      requiredPermission: "discharge.create",
+      screen: DischargeWorkflow,
     },
     {
       // Referral detail — reached from a Referral Inbox row; omitted from nav (param path). Fixes the

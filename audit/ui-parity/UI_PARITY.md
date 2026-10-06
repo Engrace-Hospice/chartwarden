@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 307 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 308 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 260 screen(s)
+- **web**: 261 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -53,6 +53,7 @@
 | web | 06-admission | `admission.census` | `/admissions` | `admission.read` | ✅ |
 | web | 06-admission | `admission.compliance` | `/compliance/admissions` | `compliance.read` | ✅ |
 | web | 06-admission | `admission.detail` | `/admissions/:id` | `admission.read` | ✅ |
+| web | 06-admission | `admission.discharge` | `/admissions/:id/discharge` | `discharge.create` | ✅ |
 | web | 06-admission | `admission.referral-detail` | `/referrals/:id` | `referral.read` | ✅ |
 | web | 06-admission | `admission.create` | `/admissions/new` | `admission.create` | ✅ |
 | web | 06-admission | `admission.patient-election-cert` | `/patients/:patientId/election-certification` | `election.read` | ✅ |

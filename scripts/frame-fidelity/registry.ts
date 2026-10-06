@@ -279,4 +279,19 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "Census KPI is the REAL active count (GET /patients/census-metrics); Admissions/Discharges/GIP/" +
       "Recerts KPIs are honest '—' placeholders noting their owning module (M6 / billing).",
   },
+  {
+    screenId: "admission.discharge",
+    screen: "Discharge / Revocation / Transfer",
+    module: "M06",
+    frameNode: "m8VaU",
+    penFile: "wardenx-P2-operational.pen",
+    status: "pending",
+    notes:
+      "Built as a stepper workflow (Reason -> Details -> Effective date -> Review -> Confirm) in the " +
+      "patient workspace on the 2026-09-25 redesign kit; not yet matched region-by-region to the frame. " +
+      "All writes are REAL (POST /admissions/:id/discharge | /revocation | /transfer-out). The rail's " +
+      "current benefit period is best-effort from election-certification. Honest gaps: no death path " +
+      "(Death & Pronouncement workflow), no for-cause cosign screen, and transfer-out does not yet record " +
+      "home vs facility care at the receiving hospice (backend field pending).",
+  },
 ];

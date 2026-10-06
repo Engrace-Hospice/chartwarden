@@ -252,6 +252,14 @@
       "app": "web",
       "module": "06-admission",
       "moduleId": 6,
+      "id": "admission.discharge",
+      "path": "/admissions/:id/discharge",
+      "permission": "discharge.create"
+    },
+    {
+      "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
       "id": "admission.referral-detail",
       "path": "/referrals/:id",
       "permission": "referral.read"
