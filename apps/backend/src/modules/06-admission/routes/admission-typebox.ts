@@ -338,13 +338,38 @@ export const F2fScheduleSchema = Type.Object({
   scheduledClinicianId: Uuid(),
 });
 
+/** The §3.2 `f2f_encounter_location` alphabet (R-F2F-05: `telehealth` is date-limited + attestation-gated). */
+export const F2fEncounterLocationSchema = Type.Union([
+  Type.Literal("patient_home"),
+  Type.Literal("alf"),
+  Type.Literal("snf"),
+  Type.Literal("ipu"),
+  Type.Literal("hospital"),
+  Type.Literal("telehealth"),
+]);
+
+/** R-F2F-05 — the § 418.22(a)(4)(ii)(A)–(C) facts, attested by the completing clinician (no defaults). */
+export const F2fTelehealthEligibilitySchema = Type.Object({
+  patientInMoratoriumArea: Type.Boolean(),
+  hospiceUnderEnhancedOversight: Type.Boolean(),
+  performerMedicareEnrolledOrOptedOut: Type.Boolean(),
+});
+
 export const F2fCompleteSchema = Type.Object({
   encounterDate: Type.String({ format: "date" }),
+  encounterLocation: F2fEncounterLocationSchema,
+  /** Required when `encounterLocation` is `telehealth` and the encounter is on/after 2026-01-31. */
+  telehealthEligibility: Type.Optional(F2fTelehealthEligibilitySchema),
   ifVersion: Version(),
 });
 
+/**
+ * Exactly one attestation source (§ 418.22(b)(4)): a written `attestationNarrative` (≥ 100 chars), OR
+ * `signedNoteEncounterId` — an M8 note signed and dated by the performer on the encounter date (R-F2F-06).
+ */
 export const F2fAttestSchema = Type.Object({
-  attestationNarrative: Type.String({ minLength: 1, maxLength: 4000 }),
+  attestationNarrative: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+  signedNoteEncounterId: Type.Optional(Uuid()),
   ifVersion: Version(),
 });
 

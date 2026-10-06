@@ -261,7 +261,12 @@ describe("F-226 assertPlausibleEncounterDate", () => {
 });
 
 describe("F-226 F2F state machine", () => {
-  const base = { type: "recordCompletion", performerRole: "hospice_md" } as const;
+  const base = {
+    type: "recordCompletion",
+    performerRole: "hospice_md",
+    encounterLocation: "patient_home",
+    telehealthEligibility: null,
+  } as const;
   it("records the honest verdict as the set_flag effect (true / false / unknown)", () => {
     const flag = (periodStart: string | null, encounterDate: string, hasOverride: boolean) =>
       transitionFaceToFace("scheduled", {

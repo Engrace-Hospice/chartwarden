@@ -24,7 +24,7 @@ import {
   normalizeMedicaidNumber,
   normalizeMedicareNumber,
 } from "@wardenx/types";
-import type { LevelOfCare } from "@wardenx/types";
+import type { LevelOfCare, LocalDate } from "@wardenx/types";
 import {
   type AnyColumn,
   type SQL,
@@ -133,6 +133,7 @@ import {
   transitionElectionPeriod,
 } from "./state-machines/election-period";
 import { AdmissionStateError } from "./state-machines/errors";
+import type { SignedNoteFacts } from "./state-machines/f2f-attestation-rules";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
 import { type LevelOfCareState, transitionLevelOfCare } from "./state-machines/level-of-care";
 
@@ -207,6 +208,16 @@ export interface ProviderEntityLocationPort {
  */
 export interface F2fClinicianRolePort {
   roleKeysForUser(organizationId: string, userId: string): Promise<readonly string[] | null>;
+}
+
+/**
+ * FY2027 R-F2F-06 (42 CFR 418.22(b)(4)) — the facts of one M8 clinical note, for the signed-note F2F
+ * attestation. Encounters are M8's table, so the read is injected from the composition root (bound over
+ * M8's `signedEncounterNoteForOrg`). `null` = no such encounter in this org. An ABSENT binding refuses the
+ * signed-note path (503) rather than accepting an unverified note; the written-narrative path is unaffected.
+ */
+export interface F2fSignedNotePort {
+  signedNoteFor(organizationId: string, encounterId: string): Promise<SignedNoteFacts | null>;
 }
 
 /**
@@ -512,6 +523,7 @@ export function createDbAdmissionRouteService(
   providerEntityLocations?: ProviderEntityLocationPort,
   dpoaConsent?: DpoaConsentCheckPort,
   f2fClinicianRoles?: F2fClinicianRolePort,
+  f2fSignedNotes?: F2fSignedNotePort,
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -2195,6 +2207,9 @@ export function createDbAdmissionRouteService(
                 status: F2F.status,
                 performerRole: F2F.performerRole,
                 encounterDate: F2F.encounterDate,
+                encounterLocation: F2F.encounterLocation,
+                encounterId: F2F.encounterId,
+                performedByUserId: F2F.performedByUserId,
                 withinWindow: F2F.withinWindow,
                 windowOverride: F2F.windowOverride,
                 attestationSignedAt: F2F.attestationSignedAt,
@@ -2283,6 +2298,11 @@ export function createDbAdmissionRouteService(
                   status: f2f.status,
                   performerRole: f2f.performerRole,
                   encounterDate: f2f.encounterDate,
+                  // FY2027 R-F2F-05 / R-F2F-06 — the modality and the linked signed note (when the
+                  // § 418.22(b)(4) attestation is a clinical note rather than a written narrative).
+                  encounterLocation: f2f.encounterLocation,
+                  attestationNoteEncounterId: f2f.encounterId,
+                  performerUserId: f2f.performedByUserId,
                   withinWindow: f2f.withinWindow,
                   windowOverride: f2f.windowOverride,
                   attested: !!f2f.attestationSignedAt,
@@ -4630,7 +4650,13 @@ export function createDbAdmissionRouteService(
         return { id: f2f.id, state: f2f.status, version: Number(f2f.version) };
       });
     },
-    async completeF2f(organizationId, id, ifVersion, encounterDate): Promise<MutationResult> {
+    async completeF2f(
+      organizationId,
+      id,
+      ifVersion,
+      encounterDate,
+      modality,
+    ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4662,7 +4688,15 @@ export function createDbAdmissionRouteService(
           periodStart: windowStart?.start ?? null,
           encounterDate,
           hasOverride: cur.override,
+          // R-F2F-05 — telehealth through 2027-12-31 only; (A)-(C) attestation from 2026-01-31.
+          encounterLocation: modality?.encounterLocation ?? null,
+          telehealthEligibility: modality?.telehealthEligibility ?? null,
         });
+        const isTelehealth = modality?.encounterLocation === "telehealth";
+        const telehealthEligibility =
+          isTelehealth && modality?.telehealthEligibility
+            ? { ...modality.telehealthEligibility, attestedAt: now().toISOString() }
+            : null;
         const withinWindow: boolean | null = t.effects.some(
           (e) => e.kind === "set_flag" && e.field === "within_window_unknown",
         )
@@ -4674,6 +4708,8 @@ export function createDbAdmissionRouteService(
             .set({
               status: t.to,
               encounterDate,
+              ...(modality ? { encounterLocation: modality.encounterLocation } : {}),
+              telehealthEligibility,
               withinWindow, // null = unverified (override on file, start not derivable): the gate fails closed
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),
@@ -4717,7 +4753,28 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
       attestationNarrative,
+      signedNoteEncounterId = null,
     ): Promise<MutationResult> {
+      // R-F2F-06 — exactly one § 418.22(b)(4) attestation source: the written narrative OR a linked note.
+      const hasNarrative = (attestationNarrative ?? "").trim().length > 0;
+      if (hasNarrative === (signedNoteEncounterId !== null && signedNoteEncounterId !== "")) {
+        throw new AdmissionStateError(
+          "F2F_ATTESTATION_SOURCE_REQUIRED",
+          "Provide exactly one attestation: a written attestation narrative or a linked signed clinical note",
+        );
+      }
+      // Resolved BEFORE the write transaction: the port opens its own `withOrgContext` (one pool
+      // connection per request, the `f2fClinicianRoles` precedent).
+      let note: SignedNoteFacts | null = null;
+      if (signedNoteEncounterId) {
+        if (!f2fSignedNotes)
+          throw new WardenXError(
+            "F2F_NOTE_SOURCE_UNAVAILABLE",
+            "the clinical-note reader is not bound; refusing to accept an unverified note as the F2F attestation",
+            503,
+          );
+        note = await f2fSignedNotes.signedNoteFor(organizationId, signedNoteEncounterId);
+      }
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4725,17 +4782,27 @@ export function createDbAdmissionRouteService(
             version: F2F.version,
             performer: F2F.performedByUserId,
             epId: F2F.electionPeriodId,
+            encounterDate: F2F.encounterDate,
           })
           .from(F2F)
           .where(eq(F2F.id, id))
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
-        // GAP-022 / R-F2F-04 — run the real machine: narrative >= 100 chars and the attester IS the
+        // GAP-022 / R-F2F-04 — run the real machine: narrative >= 100 chars (or, R-F2F-06, a note signed
+        // and dated by the performer on the encounter date for THIS patient) and the attester IS the
         // performer. No falsy-actor bypass: an empty actor id never equals the stored performer.
         transitionFaceToFace(cur.status as FaceToFaceState, {
           type: "attest",
           narrative: attestationNarrative,
+          signedNote: signedNoteEncounterId
+            ? {
+                note,
+                patientId: await patientForElectionPeriod(tx as DbClient, cur.epId),
+                performerUserId: cur.performer,
+                encounterDate: cur.encounterDate as LocalDate | null,
+              }
+            : null,
           performerIsActor: actorUserId !== "" && cur.performer === actorUserId,
         });
         const attestedAt = now();
@@ -4744,7 +4811,9 @@ export function createDbAdmissionRouteService(
             .update(F2F)
             .set({
               status: "attested",
-              attestationNarrative: attestationNarrative.trim(),
+              ...(signedNoteEncounterId
+                ? { encounterId: signedNoteEncounterId, attestationNarrative: null }
+                : { attestationNarrative: (attestationNarrative ?? "").trim() }),
               attestationSignedAt: attestedAt,
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),

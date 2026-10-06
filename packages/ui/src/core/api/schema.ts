@@ -43702,7 +43702,9 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    attestationNarrative: string;
+                    attestationNarrative?: string;
+                    /** Format: uuid */
+                    signedNoteEncounterId?: string;
                     ifVersion: number;
                 };
             };
@@ -43733,6 +43735,12 @@ export interface operations {
                 "application/json": {
                     /** Format: date */
                     encounterDate: string;
+                    encounterLocation: "patient_home" | "alf" | "snf" | "ipu" | "hospital" | "telehealth";
+                    telehealthEligibility?: {
+                        patientInMoratoriumArea: boolean;
+                        hospiceUnderEnhancedOversight: boolean;
+                        performerMedicareEnrolledOrOptedOut: boolean;
+                    };
                     ifVersion: number;
                 };
             };

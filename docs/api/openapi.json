@@ -92349,13 +92349,16 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "attestationNarrative",
                   "ifVersion"
                 ],
                 "properties": {
                   "attestationNarrative": {
                     "minLength": 1,
                     "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "signedNoteEncounterId": {
+                    "format": "uuid",
                     "type": "string"
                   },
                   "ifVersion": {
@@ -92405,12 +92408,60 @@
                 "type": "object",
                 "required": [
                   "encounterDate",
+                  "encounterLocation",
                   "ifVersion"
                 ],
                 "properties": {
                   "encounterDate": {
                     "format": "date",
                     "type": "string"
+                  },
+                  "encounterLocation": {
+                    "anyOf": [
+                      {
+                        "const": "patient_home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "alf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "snf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ipu",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hospital",
+                        "type": "string"
+                      },
+                      {
+                        "const": "telehealth",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "telehealthEligibility": {
+                    "type": "object",
+                    "required": [
+                      "patientInMoratoriumArea",
+                      "hospiceUnderEnhancedOversight",
+                      "performerMedicareEnrolledOrOptedOut"
+                    ],
+                    "properties": {
+                      "patientInMoratoriumArea": {
+                        "type": "boolean"
+                      },
+                      "hospiceUnderEnhancedOversight": {
+                        "type": "boolean"
+                      },
+                      "performerMedicareEnrolledOrOptedOut": {
+                        "type": "boolean"
+                      }
+                    }
                   },
                   "ifVersion": {
                     "minimum": 0,

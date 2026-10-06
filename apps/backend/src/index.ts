@@ -320,6 +320,7 @@ import {
   registerEncounterSeams,
   registerM8CronWorkers,
   scheduleM8Jobs,
+  signedEncounterNoteForOrg,
   signedEncounterSnapshotsInRangeForOrg,
 } from "./modules/08-encounters/index";
 import {
@@ -3450,6 +3451,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             { activeLocationsFor: buildProviderEntityLocationLister(dbHandle.db) },
             // GAP-022 — the F2F performer role is derived from the clinician's real role grants.
             buildF2fClinicianRoleReader(dbHandle.db),
+            // FY2027 R-F2F-06 — the § 418.22(b)(4) signed-clinical-note attestation reads M8's note facts.
+            {
+              signedNoteFor: (orgId, encounterId) =>
+                signedEncounterNoteForOrg(dbHandle.db, orgId, encounterId),
+            },
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write

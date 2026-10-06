@@ -87,7 +87,12 @@ export interface Generate837iRequest {
   readonly claimId: string;
   /** Deterministic control number minted by @wardenx/billing; the sidecar echoes it for idempotency. */
   readonly claimControlNumber: string;
-  /** Opaque claim document assembled by @wardenx/billing (TOB-typed). Shape firmed in Phase 2. */
+  /**
+   * Opaque claim document assembled by @wardenx/billing (TOB-typed). Shape firmed in Phase 2. Each line
+   * carries `revenueCode`, dated `serviceDateFrom`, and an optional `hcpcsCode`: a line WITH a HCPCS (FY2027,
+   * CR 14495: G0679 on revenue code 0657 for a telehealth recert face-to-face) must be emitted as its own
+   * separately dated SV2 with that HCPCS in place of the site-of-service Q-code.
+   */
   readonly claimDocument: unknown;
 }
 

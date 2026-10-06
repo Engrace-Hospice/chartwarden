@@ -35,6 +35,10 @@ import {
 export type { AdmissionReadinessResult } from "../intake";
 import { resolveF2fPerformerRole } from "../certification/f2f-performer";
 import { AdmissionStateError } from "../state-machines/errors";
+import type {
+  F2fEncounterLocation,
+  TelehealthEligibilityAttestation,
+} from "../state-machines/f2f-attestation-rules";
 import { transitionFaceToFace } from "../state-machines/face-to-face";
 import { daysBetween } from "../state-machines/validation";
 
@@ -632,6 +636,13 @@ export interface AdmissionReadScope {
   readonly patientIds: readonly string[] | null;
 }
 
+/** R-F2F-05 — what the clinician records about HOW the face-to-face took place. */
+export interface F2fCompletionModality {
+  readonly encounterLocation: F2fEncounterLocation;
+  /** The § 418.22(a)(4)(ii)(A)–(C) attestation; required for telehealth from 2026-01-31. */
+  readonly telehealthEligibility: TelehealthEligibilityAttestation | null;
+}
+
 export interface AdmissionRouteService {
   // Referral (routes 1–7)
   createReferral(
@@ -927,14 +938,21 @@ export interface AdmissionRouteService {
     id: string,
     ifVersion: number,
     encounterDate: string,
+    /** R-F2F-05 — the encounter modality (the route requires it; omitted = not recorded). */
+    modality?: F2fCompletionModality,
   ): Promise<MutationResult>;
-  /** GAP-022 - `attestationNarrative` (>= 100 chars, R-F2F-04) is persisted; the attester must be the performer. */
+  /**
+   * GAP-022 - `attestationNarrative` (>= 100 chars, R-F2F-04) is persisted; the attester must be the
+   * performer. R-F2F-06 — OR `signedNoteEncounterId` links an M8 note signed and dated by the performer on
+   * the encounter date (§ 418.22(b)(4)); exactly one source is required.
+   */
   attestF2f(
     organizationId: string,
     id: string,
     ifVersion: number,
     actorUserId: string,
-    attestationNarrative: string,
+    attestationNarrative: string | null,
+    signedNoteEncounterId?: string | null,
   ): Promise<MutationResult>;
   overrideF2fWindow(
     organizationId: string,
@@ -2270,15 +2288,30 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "f2f");
       return rec ? summary(rec) : null;
     },
-    async completeF2f(organizationId, id, ifVersion, encounterDate) {
+    async completeF2f(organizationId, id, ifVersion, encounterDate, modality) {
       void encounterDate;
+      void modality;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
       return transition(rec, "completed", ifVersion);
     },
-    async attestF2f(organizationId, id, ifVersion, actorUserId, attestationNarrative) {
+    async attestF2f(
+      organizationId,
+      id,
+      ifVersion,
+      actorUserId,
+      attestationNarrative,
+      signedNoteEncounterId,
+    ) {
       void actorUserId;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
-      // GAP-022 — R-F2F-04: the >= 100-char narrative guard runs through the real machine.
+      // GAP-022 — R-F2F-04: the >= 100-char narrative guard runs through the real machine. The in-memory
+      // store has no M8 notes to validate a linked note against, so the signed-note path is refused here.
+      if (signedNoteEncounterId) {
+        throw new AdmissionStateError(
+          "F2F_ATTESTATION_NOTE_INVALID",
+          "The linked clinical note was not found",
+        );
+      }
       transitionFaceToFace("completed", {
         type: "attest",
         narrative: attestationNarrative,

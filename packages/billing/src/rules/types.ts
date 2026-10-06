@@ -213,11 +213,24 @@ export interface CertificationSnapshot {
   readonly attendingCosigned: boolean;
 }
 
-/** Face-to-face attestation facts (M6 `FaceToFaceReader`); required for periods ≥ 3. */
+/**
+ * How a face-to-face took place (M6 `face_to_face_encounter.encounter_location`): `telehealth` when the
+ * location is `telehealth`, `in_person` for any physical location, `null` when not recorded.
+ */
+export type F2fModality = "in_person" | "telehealth";
+
+/**
+ * Face-to-face attestation facts (M6 `FaceToFaceReader`); required for periods ≥ 3. M6 also returns a
+ * TELEHEALTH encounter whose date falls in the claim span even when its (next) period does not overlap the
+ * span — the recert F2F happens up to 30 days BEFORE its period starts, and CR 14495 reports it on the claim
+ * covering the encounter date (`f2f_telehealth_g0679`).
+ */
 export interface FaceToFaceSnapshot {
   readonly electionPeriodSequence: number;
   readonly attested: boolean;
   readonly encounterDate: IsoDate | null;
+  /** FY2027 (CR 14495) — drives the G0679 line; `null` = modality not recorded. */
+  readonly modality: F2fModality | null;
 }
 
 /** A level-of-care period within the claim range (M6 `LevelOfCareReader`). */

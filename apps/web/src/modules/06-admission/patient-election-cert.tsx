@@ -26,8 +26,9 @@ import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { CtiDetailModal } from "./cti-detail-modal";
+import type { F2fEncounterLocation } from "./election-certification-api";
 import { ElectionStatementDetailModal } from "./election-statement-detail-modal";
-import { FaceToFaceDetailModal } from "./face-to-face-detail-modal";
+import { FaceToFaceRail } from "./face-to-face-rail";
 
 interface Bundle {
   id: string;
@@ -48,7 +49,10 @@ interface Cti extends Bundle {
 }
 interface F2f extends Bundle {
   performerRole: string;
+  performerUserId?: string | null;
   encounterDate: string | null;
+  encounterLocation?: F2fEncounterLocation | null;
+  attestationNoteEncounterId?: string | null;
   withinWindow: boolean | null;
   windowOverride: boolean;
   attested: boolean;
@@ -242,6 +246,9 @@ export function PatientElectionCert(): JSX.Element {
     <PatientBanner name="Election & Certification" />
   );
 
+  // The rail reads the CURRENT period row, so a completion/attestation reload refreshes it in place.
+  const f2fSelected =
+    data?.periods.find((period) => period.id === f2fDetailPeriod?.id) ?? f2fDetailPeriod;
   const admission = data?.admission ?? null;
   const windows = data?.complianceWindows ?? [];
   const electionPeriod = data?.periods.find((period) => period.electionStatement !== null) ?? null;
@@ -554,64 +561,89 @@ export function PatientElectionCert(): JSX.Element {
             ) : null}
           </main>
 
-          <aside style={rightRail}>
-            <div style={{ ...cardSurface, padding: "1.125rem" }}>
-              <h2 style={railTitle}>Compliance windows</h2>
+          {f2fSelected?.faceToFace ? (
+            <div className="wx-f2f-rail-slot">
+              <FaceToFaceRail
+                key={f2fSelected.faceToFace.id}
+                faceToFaceId={f2fSelected.faceToFace.id}
+                patientId={patientId ?? null}
+                canManage={canManageF2f}
+                snapshot={{
+                  sequenceNumber: f2fSelected.sequenceNumber,
+                  performerRole: f2fSelected.faceToFace.performerRole,
+                  performerUserId: f2fSelected.faceToFace.performerUserId ?? null,
+                  encounterDate: f2fSelected.faceToFace.encounterDate,
+                  encounterLocation: f2fSelected.faceToFace.encounterLocation ?? null,
+                  attestationNoteEncounterId:
+                    f2fSelected.faceToFace.attestationNoteEncounterId ?? null,
+                  withinWindow: f2fSelected.faceToFace.withinWindow,
+                  windowOverride: f2fSelected.faceToFace.windowOverride,
+                  attested: f2fSelected.faceToFace.attested,
+                }}
+                onClose={() => setF2fDetailPeriod(null)}
+                onChanged={() => void load()}
+              />
+            </div>
+          ) : (
+            <aside style={rightRail}>
+              <div style={{ ...cardSurface, padding: "1.125rem" }}>
+                <h2 style={railTitle}>Compliance windows</h2>
 
-              {windows.length === 0 ? (
-                <p style={meta}>No open compliance windows for this admission.</p>
-              ) : (
-                <ul
-                  style={{
-                    listStyle: "none",
-                    margin: 0,
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.6rem",
-                  }}
-                >
-                  {windows.map((w) => (
-                    <li
-                      key={w.id}
-                      style={{
-                        borderTop: `1px solid ${t.outlineVariant}`,
-                        paddingTop: "0.6rem",
-                      }}
-                    >
-                      <div
+                {windows.length === 0 ? (
+                  <p style={meta}>No open compliance windows for this admission.</p>
+                ) : (
+                  <ul
+                    style={{
+                      listStyle: "none",
+                      margin: 0,
+                      padding: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.6rem",
+                    }}
+                  >
+                    {windows.map((w) => (
+                      <li
+                        key={w.id}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          marginBottom: "0.2rem",
+                          borderTop: `1px solid ${t.outlineVariant}`,
+                          paddingTop: "0.6rem",
                         }}
                       >
-                        <span
+                        <div
                           style={{
-                            fontWeight: 600,
-                            fontSize: "0.82rem",
-                            color: t.onSurface,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            marginBottom: "0.2rem",
                           }}
                         >
-                          {stateLabel(w.windowKind)}
-                        </span>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              fontSize: "0.82rem",
+                              color: t.onSurface,
+                            }}
+                          >
+                            {stateLabel(w.windowKind)}
+                          </span>
 
-                        <StatusPill
-                          label={stateLabel(w.status)}
-                          tone={WINDOW_TONE[w.status] ?? "neutral"}
-                        />
-                      </div>
+                          <StatusPill
+                            label={stateLabel(w.status)}
+                            tone={WINDOW_TONE[w.status] ?? "neutral"}
+                          />
+                        </div>
 
-                      <div style={{ color: t.muted, fontSize: "0.76rem" }}>
-                        due {fmtDate(w.mustCompleteBy)}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </aside>
+                        <div style={{ color: t.muted, fontSize: "0.76rem" }}>
+                          due {fmtDate(w.mustCompleteBy)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </aside>
+          )}
         </div>
       </div>
 
@@ -651,26 +683,6 @@ export function PatientElectionCert(): JSX.Element {
         }
         onOpenChange={(open) => {
           if (!open) setCtiDetailPeriod(null);
-        }}
-      />
-
-      <FaceToFaceDetailModal
-        open={f2fDetailPeriod !== null}
-        faceToFaceId={f2fDetailPeriod?.faceToFace?.id ?? null}
-        snapshot={
-          f2fDetailPeriod?.faceToFace
-            ? {
-                sequenceNumber: f2fDetailPeriod.sequenceNumber,
-                performerRole: f2fDetailPeriod.faceToFace.performerRole,
-                encounterDate: f2fDetailPeriod.faceToFace.encounterDate,
-                withinWindow: f2fDetailPeriod.faceToFace.withinWindow,
-                windowOverride: f2fDetailPeriod.faceToFace.windowOverride,
-                attested: f2fDetailPeriod.faceToFace.attested,
-              }
-            : null
-        }
-        onOpenChange={(open) => {
-          if (!open) setF2fDetailPeriod(null);
         }}
       />
     </PatientWorkspaceLayout>

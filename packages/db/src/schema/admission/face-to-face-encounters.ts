@@ -10,6 +10,7 @@ import {
   boolean,
   date,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -22,6 +23,14 @@ import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import { users } from "../users";
 import { electionPeriods } from "./election-periods";
+
+/** The persisted R-F2F-05 telehealth attestation (no PHI — three booleans + the record instant). */
+export interface F2fTelehealthEligibilityRecord {
+  readonly patientInMoratoriumArea: boolean;
+  readonly hospiceUnderEnhancedOversight: boolean;
+  readonly performerMedicareEnrolledOrOptedOut: boolean;
+  readonly attestedAt: string;
+}
 
 export const faceToFaceEncounters = pgTable(
   "face_to_face_encounter",
@@ -46,6 +55,10 @@ export const faceToFaceEncounters = pgTable(
     scheduledDate: date("scheduled_date"),
     encounterDate: date("encounter_date"),
     encounterLocation: f2fEncounterLocation("encounter_location"),
+    // FY2027 CoP R-F2F-05 (migration 0390): the completing clinician's § 418.22(a)(4)(ii)(A)–(C) attestation
+    // for a TELEHEALTH encounter (moratorium area / enhanced oversight / performer Medicare-enrolled or
+    // opted out) + when it was recorded. NULL for in-person encounters (CHECK-enforced).
+    telehealthEligibility: jsonb("telehealth_eligibility").$type<F2fTelehealthEligibilityRecord>(),
     withinWindow: boolean("within_window"),
     windowOverride: boolean("window_override").notNull().default(false),
     windowOverrideReason: text("window_override_reason"),
@@ -56,7 +69,9 @@ export const faceToFaceEncounters = pgTable(
       withTimezone: true,
     }),
     attestationNarrative: text("attestation_narrative"),
-    encounterId: uuid("encounter_id"), // M8 visit (app-validated; no cross-module FK)
+    // M8 encounter (app-validated; no cross-module FK). FY2027 R-F2F-06: set when the § 418.22(b)(4)
+    // attestation is a linked signed clinical note rather than `attestation_narrative`.
+    encounterId: uuid("encounter_id"),
     documentId: uuid("document_id"), // M22 document (app-validated)
     status: f2fEncounterStatus("status").notNull().default("scheduled"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
