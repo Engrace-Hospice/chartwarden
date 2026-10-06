@@ -135,11 +135,12 @@ describe("validators", () => {
     });
     expect(validateCosign("Dr. A", "1234567890")).toEqual({});
   });
-  it("transfer: CCN shape, period ≥1, start ≤ transfer date", () => {
+  it("transfer: CCN required + shape, NPI shape, period ≥1, start ≤ transfer date", () => {
     const e = validateTransfer(
       {
         otherHospiceName: "Sunrise",
         otherHospiceCcn: "12ab",
+        otherHospiceNpi: "12345",
         effectiveDate: "2026-10-01",
         priorBenefitPeriodSequence: "0",
         priorElectionStartDate: "2026-10-02",
@@ -153,9 +154,29 @@ describe("validators", () => {
     );
     expect(Object.keys(e).sort()).toEqual([
       "otherHospiceCcn",
+      "otherHospiceNpi",
       "priorBenefitPeriodSequence",
       "priorElectionStartDate",
     ]);
+    // The 8xC transfer notice cannot be filed without the sending hospice's CCN.
+    expect(
+      validateTransfer(
+        {
+          otherHospiceName: "Sunrise",
+          otherHospiceCcn: "",
+          otherHospiceNpi: "",
+          effectiveDate: "2026-10-01",
+          priorBenefitPeriodSequence: "2",
+          priorElectionStartDate: "2026-09-01",
+          hospiceMedicalDirectorId: PHYS,
+          hospiceMedicalDirectorLabel: "",
+          attendingPhysicianId: "",
+          attendingPhysicianLabel: "",
+          narrative: "Records received by fax",
+        },
+        today,
+      ).otherHospiceCcn,
+    ).toBe("Enter the sending hospice's CCN.");
   });
 });
 
@@ -361,6 +382,7 @@ describe("TransferIn", () => {
     fireEvent.change(screen.getByLabelText(/CMS Certification Number/), {
       target: { value: "1a2b3c" },
     });
+    fireEvent.change(screen.getByLabelText(/^NPI/), { target: { value: "1234567893" } });
     fireEvent.change(screen.getByLabelText(/Transfer date/), { target: { value: "2026-09-20" } });
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
 
@@ -387,6 +409,7 @@ describe("TransferIn", () => {
         effectiveDate: "2026-09-20",
         otherHospiceName: "Sunrise Hospice",
         otherHospiceCcn: "1A2B3C",
+        otherHospiceNpi: "1234567893",
         priorBenefitPeriodSequence: 2,
         priorElectionStartDate: "2026-08-15",
         hospiceMedicalDirectorId: PHYS,
@@ -395,11 +418,14 @@ describe("TransferIn", () => {
     });
   });
 
-  it("maps TRANSFER_LIMIT_EXCEEDED", async () => {
-    const POST = vi.fn(async () => fail(409, "TRANSFER_LIMIT_EXCEEDED"));
+  async function recordWith(code: string, status: number): Promise<void> {
+    const POST = vi.fn(async () => fail(status, code));
     const client = { GET: getFor(admission("pending")), POST };
     mount(`/admissions/${ADM}/transfer-in`, <TransferIn />, "/admissions/:id/transfer-in", client);
     fireEvent.change(await screen.findByLabelText(/Hospice name/), { target: { value: "S" } });
+    fireEvent.change(screen.getByLabelText(/CMS Certification Number/), {
+      target: { value: "381777" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     fireEvent.change(await screen.findByLabelText(/Benefit period number/), {
       target: { value: "1" },
@@ -412,8 +438,36 @@ describe("TransferIn", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Record transfer" }));
+  }
+
+  it("holds the sending-hospice step until a CCN is entered", async () => {
+    const client = { GET: getFor(admission("pending")), POST: vi.fn() };
+    mount(`/admissions/${ADM}/transfer-in`, <TransferIn />, "/admissions/:id/transfer-in", client);
+    fireEvent.change(await screen.findByLabelText(/Hospice name/), { target: { value: "S" } });
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
+    expect(await screen.findByText("Enter the sending hospice's CCN.")).toBeTruthy();
+    expect(screen.queryByLabelText(/Benefit period number/)).toBeNull();
+  });
+
+  it("maps TRANSFER_SAME_PROVIDER (our own CCN is not a transfer)", async () => {
+    await recordWith("TRANSFER_SAME_PROVIDER", 422);
     await waitFor(() =>
-      expect(screen.getByText("Only one transfer is allowed per benefit period.")).toBeTruthy(),
+      expect(
+        screen.getByText(
+          "That CCN is ours. A move between locations of the same hospice is not a transfer.",
+        ),
+      ).toBeTruthy(),
+    );
+  });
+
+  it("maps TRANSFER_LIMIT_EXCEEDED (one change of hospice per benefit period)", async () => {
+    await recordWith("TRANSFER_LIMIT_EXCEEDED", 409);
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "This patient already changed hospices in this benefit period. Only one change is allowed per benefit period.",
+        ),
+      ).toBeTruthy(),
     );
   });
 });

@@ -32,6 +32,7 @@ import {
   localToday,
   useEpisodeAdmission,
 } from "./end-of-episode-ui";
+import { TransferNoticeStatus } from "./transfer-notice-status";
 import { authFailureRedirect } from "./write-workflow";
 
 const TITLE = "Transfer-in";
@@ -39,14 +40,19 @@ const STEPS = ["Sending hospice", "Benefit period", "Review & record"] as const;
 const REVIEW_STEP = 2;
 const MIN_NARRATIVE = 10;
 const CCN = /^[0-9A-Z]{6}$/;
+const NPI = /^[0-9]{10}$/;
 /** Transfer-in is recorded during intake, before the admission is activated. */
 const TRANSFERABLE = new Set(["pending", "notice_of_rights_acknowledged"]);
 
 const TRANSFER_MESSAGES: Record<string, string> = {
   CTI_HOSPICE_PHYSICIAN_MISMATCH:
     "The certifying physician must be the admission's hospice physician.",
-  TRANSFER_LIMIT_EXCEEDED: "Only one transfer is allowed per benefit period.",
-  TRANSFER_IN_SOURCE_INVALID: "The sending hospice details were rejected. Check the name and CCN.",
+  TRANSFER_LIMIT_EXCEEDED:
+    "This patient already changed hospices in this benefit period. Only one change is allowed per benefit period.",
+  TRANSFER_IN_SOURCE_INVALID:
+    "The sending hospice details were rejected. Check the name, CCN and NPI.",
+  TRANSFER_SAME_PROVIDER:
+    "That CCN is ours. A move between locations of the same hospice is not a transfer.",
   BENEFIT_PERIOD_SEQUENCE_GAP:
     "The prior benefit period number does not follow the patient's history.",
   ELECTION_PERIOD_OVERLAP: "The inherited period overlaps an existing benefit period.",
@@ -60,11 +66,16 @@ const TRANSFER_CASCADE: readonly WhatHappensItem[] = [
   { icon: "calendar", text: "The next period opens pending, the day after; it needs our own CTI." },
   { icon: "file-check", text: "A prior signed election statement is not re-collected." },
   { icon: "shield", text: "One transfer per benefit period is enforced." },
+  {
+    icon: "file-check",
+    text: "A Medicare transfer notice (TOB 81C) is drafted in Billing, held until the sending hospice finalizes its billing.",
+  },
 ];
 
 export interface TransferDraft {
   otherHospiceName: string;
   otherHospiceCcn: string;
+  otherHospiceNpi: string;
   effectiveDate: string;
   priorBenefitPeriodSequence: string;
   priorElectionStartDate: string;
@@ -78,6 +89,7 @@ export interface TransferDraft {
 type DraftField =
   | "otherHospiceName"
   | "otherHospiceCcn"
+  | "otherHospiceNpi"
   | "effectiveDate"
   | "priorBenefitPeriodSequence"
   | "priorElectionStartDate"
@@ -86,15 +98,18 @@ type DraftField =
 type FieldErrors = Partial<Record<DraftField, string>>;
 
 const STEP_FIELDS: DraftField[][] = [
-  ["otherHospiceName", "otherHospiceCcn", "effectiveDate"],
+  ["otherHospiceName", "otherHospiceCcn", "otherHospiceNpi", "effectiveDate"],
   ["priorBenefitPeriodSequence", "priorElectionStartDate", "hospiceMedicalDirectorId", "narrative"],
 ];
 
 export function validateTransfer(d: TransferDraft, today: string): FieldErrors {
   const e: FieldErrors = {};
   if (!d.otherHospiceName.trim()) e.otherHospiceName = "Enter the sending hospice's name.";
-  if (d.otherHospiceCcn && !CCN.test(d.otherHospiceCcn))
+  // The Medicare transfer notice cannot be filed without it (a transfer from our own CCN is not allowed).
+  if (!d.otherHospiceCcn) e.otherHospiceCcn = "Enter the sending hospice's CCN.";
+  else if (!CCN.test(d.otherHospiceCcn))
     e.otherHospiceCcn = "A CCN is 6 characters: digits or capital letters.";
+  if (d.otherHospiceNpi && !NPI.test(d.otherHospiceNpi)) e.otherHospiceNpi = "An NPI is 10 digits.";
   if (!d.effectiveDate) e.effectiveDate = "Enter the transfer date.";
   else if (d.effectiveDate > today) e.effectiveDate = "The transfer date cannot be in the future.";
   const seq = Number(d.priorBenefitPeriodSequence);
@@ -113,6 +128,7 @@ export function validateTransfer(d: TransferDraft, today: string): FieldErrors {
 const EMPTY_DRAFT = (today: string): TransferDraft => ({
   otherHospiceName: "",
   otherHospiceCcn: "",
+  otherHospiceNpi: "",
   effectiveDate: today,
   priorBenefitPeriodSequence: "",
   priorElectionStartDate: "",
@@ -182,6 +198,7 @@ export function TransferIn(): JSX.Element {
           effectiveDate: effective.effectiveDate,
           otherHospiceName: effective.otherHospiceName.trim(),
           ...(effective.otherHospiceCcn ? { otherHospiceCcn: effective.otherHospiceCcn } : {}),
+          ...(effective.otherHospiceNpi ? { otherHospiceNpi: effective.otherHospiceNpi } : {}),
           priorBenefitPeriodSequence: Number(effective.priorBenefitPeriodSequence),
           priorElectionStartDate: effective.priorElectionStartDate,
           hospiceMedicalDirectorId: effective.hospiceMedicalDirectorId,
@@ -264,6 +281,7 @@ export function TransferIn(): JSX.Element {
                 Benefit period {effective.priorBenefitPeriodSequence} from{" "}
                 {effective.otherHospiceName.trim()} is now active on this admission.
               </InlineAlert>
+              <TransferNoticeStatus admissionId={admission.id} />
             </Section>
           ) : null}
 
@@ -357,6 +375,7 @@ function reviewRows(d: TransferDraft): { term: string; value: string; multiline?
   return [
     { term: "Sending hospice", value: d.otherHospiceName.trim() },
     { term: "CCN", value: d.otherHospiceCcn || "—" },
+    { term: "NPI", value: d.otherHospiceNpi || "—" },
     { term: "Transfer date", value: fmtDate(d.effectiveDate) },
     {
       term: "Inherited period",
@@ -402,8 +421,8 @@ function SendingHospiceStep({
         <Field
           id="ti-ccn"
           label="CMS Certification Number"
-          optional
-          hint="Medicare CCN — 6 characters."
+          required
+          hint="Medicare CCN — 6 characters. It must differ from ours."
           error={errors.otherHospiceCcn}
         >
           <input
@@ -416,7 +435,31 @@ function SendingHospiceStep({
             disabled={disabled}
           />
         </Field>
-        <Field id="ti-date" label="Transfer date" required error={errors.effectiveDate}>
+        <Field
+          id="ti-npi"
+          label="NPI"
+          optional
+          hint="The sending hospice's 10-digit NPI."
+          error={errors.otherHospiceNpi}
+        >
+          <input
+            id="ti-npi"
+            type="text"
+            inputMode="numeric"
+            maxLength={10}
+            value={draft.otherHospiceNpi}
+            aria-invalid={errors.otherHospiceNpi ? true : undefined}
+            onChange={(e) => patch({ otherHospiceNpi: e.target.value.trim() })}
+            disabled={disabled}
+          />
+        </Field>
+        <Field
+          id="ti-date"
+          label="Transfer date"
+          required
+          hint="They bill through this date and we bill from it — the same day, or Medicare rejects the transfer."
+          error={errors.effectiveDate}
+        >
           <input
             id="ti-date"
             type="date"

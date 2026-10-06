@@ -23,6 +23,9 @@ export const transferEvents = pgTable(
     // name are filled when the sending/receiving hospice is known.
     receivingOrSendingCcn: text("receiving_or_sending_ccn"),
     receivingOrSendingName: text("receiving_or_sending_name"),
+    // Migration 0375: the counterparty hospice's NPI (10 digits), captured with its CCN on a transfer-in so
+    // the receiving hospice's 8xC transfer notice (CMS Pub. 100-04 ch. 11 §20.1.3) can name it.
+    receivingOrSendingNpi: text("receiving_or_sending_npi"),
     receivingOrSendingFacilityId: uuid("receiving_or_sending_facility_id"), // M40 facility (app-validated)
     // Transfer-OUT only (migration 0370): where the RECEIVING hospice cares for the patient — drives the
     // claim's patient discharge status 50 (hospice, home) vs 51 (hospice, medical facility) per CMS Pub.

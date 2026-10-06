@@ -264,6 +264,7 @@ function mapSubmission(row: schema.ClaimSubmission): ClaimSubmissionView {
     claimId: row.claimId ?? null,
     noeId: row.noeId ?? null,
     notrId: row.notrId ?? null,
+    transferNoticeId: row.transferNoticeId ?? null,
     claimControlNumber: row.claimControlNumber,
     attemptIndex: row.attemptIndex,
     outcome: row.outcome,

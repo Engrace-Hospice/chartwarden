@@ -59,6 +59,11 @@ export interface ReadingM23AbacResolver {
   loadNoe(ctx: M23AbacReadContext, noeId: string): Promise<BillingEntityScopeFacts | null>;
   /** Load a `notr_record`'s provider/patient facts; `null` → deny. */
   loadNotr(ctx: M23AbacReadContext, notrId: string): Promise<BillingEntityScopeFacts | null>;
+  /** Load a `transfer_notice_record`'s provider/patient facts (8xC / 8xD); `null` or absent → deny. */
+  loadTransferNotice?(
+    ctx: M23AbacReadContext,
+    transferNoticeId: string,
+  ): Promise<BillingEntityScopeFacts | null>;
   /** Load a `validation_result`'s rule key; `null` → deny. */
   loadValidationResult(
     ctx: M23AbacReadContext,
@@ -81,6 +86,7 @@ export function buildDrizzleM23AbacResolver(db: BillingDb): ReadingM23AbacResolv
   const C = schema.claim;
   const NOE = schema.noeRecord;
   const NOTR = schema.notrRecord;
+  const TN = schema.transferNoticeRecord;
   const VR = schema.validationResult;
   const RC = schema.validationRuleConfig;
 
@@ -144,6 +150,29 @@ export function buildDrizzleM23AbacResolver(db: BillingDb): ReadingM23AbacResolv
           })
           .from(NOTR)
           .where(and(eq(NOTR.organizationId, ctx.organizationId), eq(NOTR.id, notrId)))
+          .limit(1);
+        if (!row) return null;
+        return {
+          entityId: row.id,
+          organizationId: row.organizationId,
+          providerEntityId: row.providerEntityId,
+          patientId: row.patientId,
+          state: null,
+        };
+      });
+    },
+
+    async loadTransferNotice(ctx, transferNoticeId) {
+      return withOrgContext(db, ctx, async (tx) => {
+        const [row] = await tx
+          .select({
+            id: TN.id,
+            organizationId: TN.organizationId,
+            providerEntityId: TN.providerEntityId,
+            patientId: TN.patientId,
+          })
+          .from(TN)
+          .where(and(eq(TN.organizationId, ctx.organizationId), eq(TN.id, transferNoticeId)))
           .limit(1);
         if (!row) return null;
         return {

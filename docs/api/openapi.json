@@ -22391,6 +22391,7 @@
                   },
                   "effectiveDate": {
                     "format": "date",
+                    "description": "The date the change of hospice is effective. The transferring hospice bills through and including this date and the receiving hospice's transfer notice (TOB 8xC) reports it as the Statement From date (CMS Pub. 100-04 ch. 11 §20.1.3).",
                     "type": "string"
                   },
                   "otherHospiceName": {
@@ -22400,6 +22401,12 @@
                   },
                   "otherHospiceCcn": {
                     "pattern": "^[0-9A-Z]{6}$",
+                    "description": "The transferring hospice's CMS Certification Number. Our own CCN is refused (422 TRANSFER_SAME_PROVIDER): a move between locations of one hospice is not a transfer (§20.1.3). The 8xC transfer notice cannot be filed until it is known.",
+                    "type": "string"
+                  },
+                  "otherHospiceNpi": {
+                    "pattern": "^[0-9]{10}$",
+                    "description": "The transferring hospice's NPI (10 digits, check digit validated → 422 TRANSFER_IN_SOURCE_INVALID).",
                     "type": "string"
                   },
                   "priorBenefitPeriodSequence": {
@@ -47045,6 +47052,7 @@
                       "claimId",
                       "noeId",
                       "notrId",
+                      "transferNoticeId",
                       "claimControlNumber",
                       "attemptIndex",
                       "outcome",
@@ -47073,6 +47081,10 @@
                           {
                             "const": "notr",
                             "type": "string"
+                          },
+                          {
+                            "const": "transfer_notice",
+                            "type": "string"
                           }
                         ]
                       },
@@ -47097,6 +47109,16 @@
                         ]
                       },
                       "notrId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "transferNoticeId": {
                         "anyOf": [
                           {
                             "type": "string"
@@ -51510,6 +51532,3717 @@
                           "type": "null"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices": {
+      "get": {
+        "operationId": "getApiV1BillingTransfernotices",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Transfer-notice worklist (8xC / 8xD) with each notice's §20.1.3 blockers and allowed actions",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "transferNoticeId",
+                          "organizationId",
+                          "providerEntityId",
+                          "patientId",
+                          "admissionId",
+                          "transferEventId",
+                          "action",
+                          "supersedesNoticeId",
+                          "state",
+                          "tob",
+                          "statementFromDate",
+                          "originalTransferDate",
+                          "admissionDate",
+                          "benefitPeriodSequence",
+                          "benefitPeriodStartDate",
+                          "priorHospiceName",
+                          "priorHospiceCcn",
+                          "priorHospiceNpi",
+                          "providerCcn",
+                          "priorBillingConfirmedAt",
+                          "priorHospiceThroughDate",
+                          "priorHospicePatientStatus",
+                          "controlNumber",
+                          "payerControlNumber",
+                          "latestSubmissionId",
+                          "latestSubmissionOutcome",
+                          "cancelReason",
+                          "blockers",
+                          "warnings",
+                          "conditionCodes",
+                          "occurrenceCodes",
+                          "allowedActions",
+                          "followUp",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "transferNoticeId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "transferEventId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "action": {
+                            "anyOf": [
+                              {
+                                "const": "original",
+                                "type": "string"
+                              },
+                              {
+                                "const": "correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "void",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "supersedesNoticeId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready",
+                                "type": "string"
+                              },
+                              {
+                                "const": "submitted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ack_rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "tob": {
+                            "description": "81C / 82C (transfer notice) or 81D / 82D (void).",
+                            "type": "string"
+                          },
+                          "statementFromDate": {
+                            "type": "string"
+                          },
+                          "originalTransferDate": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "admissionDate": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "benefitPeriodSequence": {
+                            "type": "integer"
+                          },
+                          "benefitPeriodStartDate": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "priorHospiceName": {
+                            "type": "string"
+                          },
+                          "priorHospiceCcn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "priorHospiceNpi": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "providerCcn": {
+                            "type": "string"
+                          },
+                          "priorBillingConfirmedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "priorHospiceThroughDate": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "priorHospicePatientStatus": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "50",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "51",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "controlNumber": {
+                            "type": "string"
+                          },
+                          "payerControlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "latestSubmissionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "latestSubmissionOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancelReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "blockers": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code",
+                                "message",
+                                "citation"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "message": {
+                                  "type": "string"
+                                },
+                                "citation": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "warnings": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code",
+                                "message",
+                                "citation"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "message": {
+                                  "type": "string"
+                                },
+                                "citation": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "conditionCodes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "occurrenceCodes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code",
+                                "date"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "date": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "allowedActions": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "confirm_prior_billing",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submit",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancel",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "correct_date",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "void",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "redraft",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "followUp": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "transferNoticeId",
+                                  "action",
+                                  "state"
+                                ],
+                                "properties": {
+                                  "transferNoticeId": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "action": {
+                                    "anyOf": [
+                                      {
+                                        "const": "original",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "correction",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "void",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "draft",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ready",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "submitted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_accepted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ack_rejected",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "cancelled",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingTransfernoticesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Transfer notice detail — blockers, derived occurrence/condition codes, allowed actions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transferNoticeId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "transferEventId",
+                    "action",
+                    "supersedesNoticeId",
+                    "state",
+                    "tob",
+                    "statementFromDate",
+                    "originalTransferDate",
+                    "admissionDate",
+                    "benefitPeriodSequence",
+                    "benefitPeriodStartDate",
+                    "priorHospiceName",
+                    "priorHospiceCcn",
+                    "priorHospiceNpi",
+                    "providerCcn",
+                    "priorBillingConfirmedAt",
+                    "priorHospiceThroughDate",
+                    "priorHospicePatientStatus",
+                    "controlNumber",
+                    "payerControlNumber",
+                    "latestSubmissionId",
+                    "latestSubmissionOutcome",
+                    "cancelReason",
+                    "blockers",
+                    "warnings",
+                    "conditionCodes",
+                    "occurrenceCodes",
+                    "allowedActions",
+                    "followUp",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "transferNoticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "transferEventId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "original",
+                          "type": "string"
+                        },
+                        {
+                          "const": "correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "void",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tob": {
+                      "description": "81C / 82C (transfer notice) or 81D / 82D (void).",
+                      "type": "string"
+                    },
+                    "statementFromDate": {
+                      "type": "string"
+                    },
+                    "originalTransferDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "benefitPeriodSequence": {
+                      "type": "integer"
+                    },
+                    "benefitPeriodStartDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceName": {
+                      "type": "string"
+                    },
+                    "priorHospiceCcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceNpi": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerCcn": {
+                      "type": "string"
+                    },
+                    "priorBillingConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceThroughDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospicePatientStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "50",
+                              "type": "string"
+                            },
+                            {
+                              "const": "51",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "payerControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "conditionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "occurrenceCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "date"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "confirm_prior_billing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "correct_date",
+                            "type": "string"
+                          },
+                          {
+                            "const": "void",
+                            "type": "string"
+                          },
+                          {
+                            "const": "redraft",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "followUp": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "transferNoticeId",
+                            "action",
+                            "state"
+                          ],
+                          "properties": {
+                            "transferNoticeId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "original",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "correction",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "void",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices/{id}/cancel": {
+      "post": {
+        "operationId": "postApiV1BillingTransfernoticesByIdCancel",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Cancel a DRAFT/READY transfer notice with a reason (a submitted one is voided instead)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transferNoticeId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "transferEventId",
+                    "action",
+                    "supersedesNoticeId",
+                    "state",
+                    "tob",
+                    "statementFromDate",
+                    "originalTransferDate",
+                    "admissionDate",
+                    "benefitPeriodSequence",
+                    "benefitPeriodStartDate",
+                    "priorHospiceName",
+                    "priorHospiceCcn",
+                    "priorHospiceNpi",
+                    "providerCcn",
+                    "priorBillingConfirmedAt",
+                    "priorHospiceThroughDate",
+                    "priorHospicePatientStatus",
+                    "controlNumber",
+                    "payerControlNumber",
+                    "latestSubmissionId",
+                    "latestSubmissionOutcome",
+                    "cancelReason",
+                    "blockers",
+                    "warnings",
+                    "conditionCodes",
+                    "occurrenceCodes",
+                    "allowedActions",
+                    "followUp",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "transferNoticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "transferEventId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "original",
+                          "type": "string"
+                        },
+                        {
+                          "const": "correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "void",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tob": {
+                      "description": "81C / 82C (transfer notice) or 81D / 82D (void).",
+                      "type": "string"
+                    },
+                    "statementFromDate": {
+                      "type": "string"
+                    },
+                    "originalTransferDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "benefitPeriodSequence": {
+                      "type": "integer"
+                    },
+                    "benefitPeriodStartDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceName": {
+                      "type": "string"
+                    },
+                    "priorHospiceCcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceNpi": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerCcn": {
+                      "type": "string"
+                    },
+                    "priorBillingConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceThroughDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospicePatientStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "50",
+                              "type": "string"
+                            },
+                            {
+                              "const": "51",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "payerControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "conditionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "occurrenceCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "date"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "confirm_prior_billing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "correct_date",
+                            "type": "string"
+                          },
+                          {
+                            "const": "void",
+                            "type": "string"
+                          },
+                          {
+                            "const": "redraft",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "followUp": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "transferNoticeId",
+                            "action",
+                            "state"
+                          ],
+                          "properties": {
+                            "transferNoticeId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "original",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "correction",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "void",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "reason"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices/{id}/confirm-prior-billing": {
+      "post": {
+        "operationId": "postApiV1BillingTransfernoticesByIdConfirmpriorbilling",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Confirm the transferring hospice finalized its billing (its final claim's Through date + status 50/51)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transferNoticeId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "transferEventId",
+                    "action",
+                    "supersedesNoticeId",
+                    "state",
+                    "tob",
+                    "statementFromDate",
+                    "originalTransferDate",
+                    "admissionDate",
+                    "benefitPeriodSequence",
+                    "benefitPeriodStartDate",
+                    "priorHospiceName",
+                    "priorHospiceCcn",
+                    "priorHospiceNpi",
+                    "providerCcn",
+                    "priorBillingConfirmedAt",
+                    "priorHospiceThroughDate",
+                    "priorHospicePatientStatus",
+                    "controlNumber",
+                    "payerControlNumber",
+                    "latestSubmissionId",
+                    "latestSubmissionOutcome",
+                    "cancelReason",
+                    "blockers",
+                    "warnings",
+                    "conditionCodes",
+                    "occurrenceCodes",
+                    "allowedActions",
+                    "followUp",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "transferNoticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "transferEventId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "original",
+                          "type": "string"
+                        },
+                        {
+                          "const": "correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "void",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tob": {
+                      "description": "81C / 82C (transfer notice) or 81D / 82D (void).",
+                      "type": "string"
+                    },
+                    "statementFromDate": {
+                      "type": "string"
+                    },
+                    "originalTransferDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "benefitPeriodSequence": {
+                      "type": "integer"
+                    },
+                    "benefitPeriodStartDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceName": {
+                      "type": "string"
+                    },
+                    "priorHospiceCcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceNpi": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerCcn": {
+                      "type": "string"
+                    },
+                    "priorBillingConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceThroughDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospicePatientStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "50",
+                              "type": "string"
+                            },
+                            {
+                              "const": "51",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "payerControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "conditionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "occurrenceCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "date"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "confirm_prior_billing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "correct_date",
+                            "type": "string"
+                          },
+                          {
+                            "const": "void",
+                            "type": "string"
+                          },
+                          {
+                            "const": "redraft",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "followUp": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "transferNoticeId",
+                            "action",
+                            "state"
+                          ],
+                          "properties": {
+                            "transferNoticeId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "original",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "correction",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "void",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "priorHospiceThroughDate",
+                  "priorHospicePatientStatus"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "type": "integer"
+                  },
+                  "priorHospiceThroughDate": {
+                    "format": "date",
+                    "description": "The Through date on the transferring hospice's final claim. It must equal the transfer date, or Medicare rejects the transfer as a gap in care (§20.1.3).",
+                    "type": "string"
+                  },
+                  "priorHospicePatientStatus": {
+                    "description": "The patient status on that final claim: 50 discharged to hospice (home), 51 to hospice (medical facility).",
+                    "anyOf": [
+                      {
+                        "const": "50",
+                        "type": "string"
+                      },
+                      {
+                        "const": "51",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "priorHospiceCcn": {
+                    "pattern": "^[0-9A-Z]{6}$",
+                    "description": "The transferring hospice's CCN, when the transfer-in recorded none.",
+                    "type": "string"
+                  },
+                  "priorHospiceNpi": {
+                    "pattern": "^[0-9]{10}$",
+                    "description": "The transferring hospice's NPI, when the transfer-in recorded none.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices/{id}/correct-date": {
+      "post": {
+        "operationId": "postApiV1BillingTransfernoticesByIdCorrectdate",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Draft a corrected 8xC for an accepted notice: From = corrected date, OC 56 = date on file, CC D0",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transferNoticeId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "transferEventId",
+                    "action",
+                    "supersedesNoticeId",
+                    "state",
+                    "tob",
+                    "statementFromDate",
+                    "originalTransferDate",
+                    "admissionDate",
+                    "benefitPeriodSequence",
+                    "benefitPeriodStartDate",
+                    "priorHospiceName",
+                    "priorHospiceCcn",
+                    "priorHospiceNpi",
+                    "providerCcn",
+                    "priorBillingConfirmedAt",
+                    "priorHospiceThroughDate",
+                    "priorHospicePatientStatus",
+                    "controlNumber",
+                    "payerControlNumber",
+                    "latestSubmissionId",
+                    "latestSubmissionOutcome",
+                    "cancelReason",
+                    "blockers",
+                    "warnings",
+                    "conditionCodes",
+                    "occurrenceCodes",
+                    "allowedActions",
+                    "followUp",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "transferNoticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "transferEventId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "original",
+                          "type": "string"
+                        },
+                        {
+                          "const": "correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "void",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tob": {
+                      "description": "81C / 82C (transfer notice) or 81D / 82D (void).",
+                      "type": "string"
+                    },
+                    "statementFromDate": {
+                      "type": "string"
+                    },
+                    "originalTransferDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "benefitPeriodSequence": {
+                      "type": "integer"
+                    },
+                    "benefitPeriodStartDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceName": {
+                      "type": "string"
+                    },
+                    "priorHospiceCcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceNpi": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerCcn": {
+                      "type": "string"
+                    },
+                    "priorBillingConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceThroughDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospicePatientStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "50",
+                              "type": "string"
+                            },
+                            {
+                              "const": "51",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "payerControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "conditionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "occurrenceCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "date"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "confirm_prior_billing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "correct_date",
+                            "type": "string"
+                          },
+                          {
+                            "const": "void",
+                            "type": "string"
+                          },
+                          {
+                            "const": "redraft",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "followUp": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "transferNoticeId",
+                            "action",
+                            "state"
+                          ],
+                          "properties": {
+                            "transferNoticeId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "original",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "correction",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "void",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "correctedTransferDate"
+                ],
+                "properties": {
+                  "correctedTransferDate": {
+                    "format": "date",
+                    "description": "The correct effective date of the transfer — the corrected notice's From date; the date on file is reported with occurrence code 56 and condition code D0 (§20.1.3).",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices/{id}/redraft": {
+      "post": {
+        "operationId": "postApiV1BillingTransfernoticesByIdRedraft",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Redraft a rejected or cancelled original transfer notice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transferNoticeId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "transferEventId",
+                    "action",
+                    "supersedesNoticeId",
+                    "state",
+                    "tob",
+                    "statementFromDate",
+                    "originalTransferDate",
+                    "admissionDate",
+                    "benefitPeriodSequence",
+                    "benefitPeriodStartDate",
+                    "priorHospiceName",
+                    "priorHospiceCcn",
+                    "priorHospiceNpi",
+                    "providerCcn",
+                    "priorBillingConfirmedAt",
+                    "priorHospiceThroughDate",
+                    "priorHospicePatientStatus",
+                    "controlNumber",
+                    "payerControlNumber",
+                    "latestSubmissionId",
+                    "latestSubmissionOutcome",
+                    "cancelReason",
+                    "blockers",
+                    "warnings",
+                    "conditionCodes",
+                    "occurrenceCodes",
+                    "allowedActions",
+                    "followUp",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "transferNoticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "transferEventId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "original",
+                          "type": "string"
+                        },
+                        {
+                          "const": "correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "void",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tob": {
+                      "description": "81C / 82C (transfer notice) or 81D / 82D (void).",
+                      "type": "string"
+                    },
+                    "statementFromDate": {
+                      "type": "string"
+                    },
+                    "originalTransferDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "benefitPeriodSequence": {
+                      "type": "integer"
+                    },
+                    "benefitPeriodStartDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceName": {
+                      "type": "string"
+                    },
+                    "priorHospiceCcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceNpi": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerCcn": {
+                      "type": "string"
+                    },
+                    "priorBillingConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceThroughDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospicePatientStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "50",
+                              "type": "string"
+                            },
+                            {
+                              "const": "51",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "payerControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "conditionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "occurrenceCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "date"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "confirm_prior_billing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "correct_date",
+                            "type": "string"
+                          },
+                          {
+                            "const": "void",
+                            "type": "string"
+                          },
+                          {
+                            "const": "redraft",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "followUp": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "transferNoticeId",
+                            "action",
+                            "state"
+                          ],
+                          "properties": {
+                            "transferNoticeId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "original",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "correction",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "void",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices/{id}/submit": {
+      "post": {
+        "operationId": "postApiV1BillingTransfernoticesByIdSubmit",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "File the transfer notice with Medicare — re-checks every blocker; emits m23.transfer_notice.submit_requested (step-up; 202)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transferNoticeId",
+                    "submissionId",
+                    "jobId",
+                    "kind"
+                  ],
+                  "properties": {
+                    "transferNoticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "submissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "jobId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "transfer_notice",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/transfer-notices/{id}/void": {
+      "post": {
+        "operationId": "postApiV1BillingTransfernoticesByIdVoid",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Draft the 8xD that removes an accepted transfer submitted in error (§20.1.4)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transferNoticeId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "transferEventId",
+                    "action",
+                    "supersedesNoticeId",
+                    "state",
+                    "tob",
+                    "statementFromDate",
+                    "originalTransferDate",
+                    "admissionDate",
+                    "benefitPeriodSequence",
+                    "benefitPeriodStartDate",
+                    "priorHospiceName",
+                    "priorHospiceCcn",
+                    "priorHospiceNpi",
+                    "providerCcn",
+                    "priorBillingConfirmedAt",
+                    "priorHospiceThroughDate",
+                    "priorHospicePatientStatus",
+                    "controlNumber",
+                    "payerControlNumber",
+                    "latestSubmissionId",
+                    "latestSubmissionOutcome",
+                    "cancelReason",
+                    "blockers",
+                    "warnings",
+                    "conditionCodes",
+                    "occurrenceCodes",
+                    "allowedActions",
+                    "followUp",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "transferNoticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "transferEventId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "action": {
+                      "anyOf": [
+                        {
+                          "const": "original",
+                          "type": "string"
+                        },
+                        {
+                          "const": "correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "void",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "supersedesNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tob": {
+                      "description": "81C / 82C (transfer notice) or 81D / 82D (void).",
+                      "type": "string"
+                    },
+                    "statementFromDate": {
+                      "type": "string"
+                    },
+                    "originalTransferDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "benefitPeriodSequence": {
+                      "type": "integer"
+                    },
+                    "benefitPeriodStartDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceName": {
+                      "type": "string"
+                    },
+                    "priorHospiceCcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceNpi": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerCcn": {
+                      "type": "string"
+                    },
+                    "priorBillingConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospiceThroughDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorHospicePatientStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "50",
+                              "type": "string"
+                            },
+                            {
+                              "const": "51",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "payerControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message",
+                          "citation"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "citation": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "conditionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "occurrenceCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "date"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "confirm_prior_billing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "correct_date",
+                            "type": "string"
+                          },
+                          {
+                            "const": "void",
+                            "type": "string"
+                          },
+                          {
+                            "const": "redraft",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "followUp": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "transferNoticeId",
+                            "action",
+                            "state"
+                          ],
+                          "properties": {
+                            "transferNoticeId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "original",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "correction",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "void",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
                     }
                   }
                 }

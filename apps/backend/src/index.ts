@@ -278,6 +278,7 @@ import {
   registerAdmissionSeams,
   registerM6CronWorkers,
   scheduleM6Jobs,
+  transferInNoticeContextForOrg,
   wireM6Tenancy,
 } from "./modules/06-admission/index";
 import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
@@ -728,11 +729,13 @@ import {
   buildM23SubmissionQueuePort,
   buildM23SubmissionRequestConsumer,
   buildM23TaxonomyUnmappedCodeObservedConsumer,
+  buildM23TransferNoticeDraftConsumer,
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
   buildNoticeWindowPort,
+  buildTransferNoticeService,
   createDrizzleBillingEraseStore,
   createM23HetsTransport,
   createM23LaunchGateway,
@@ -3906,6 +3909,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               outbox: m23OutboxPublisher,
               providerCcn: m23ProviderCcn,
               ...m23AssemblyPorts,
+            }),
+            // The receiving hospice's Medicare transfer notice (TOB 8xC / 8xD, CMS Pub. 100-04 ch. 11
+            // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
+            // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
+            transferNoticeService: buildTransferNoticeService(dbHandle.db, {
+              outbox: m23OutboxPublisher,
+              jobs: buildM23OutboxBackedSubmissionGate({
+                "transfer_notice.submit": m23SubmissionQueues !== null,
+              }),
+              transferInFacts: (organizationId, transferEventId) =>
+                transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
             }),
           });
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
@@ -7493,6 +7507,25 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                   admission: info.admissionId,
                 },
                 "M23 NOTR draft skipped",
+              ),
+          }),
+          // The 8xC transfer notice — the receiving hospice's filing for a transfer-in (direction `in` of
+          // `m6.transfer.created`; the NOTR binding above takes direction `out`). A transfer-in's inherited
+          // period is deliberately skipped by the NOE draft (8xA opens an election; 8xC continues one).
+          buildM23TransferNoticeDraftConsumer({
+            db: dbHandle.db,
+            outbox: m23OutboxPublisher,
+            resolveTransferIn: async (organizationId, transferEventId) =>
+              transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
+            resolveCcn: buildRequiredProviderEntityCcnResolver(dbHandle.db),
+            onSkipped: (info) =>
+              app.log.info(
+                {
+                  reason: info.reason,
+                  org: info.organizationId,
+                  transferEvent: info.transferEventId,
+                },
+                "M23 transfer notice draft skipped",
               ),
           }),
           buildM23RemittanceConsumer({

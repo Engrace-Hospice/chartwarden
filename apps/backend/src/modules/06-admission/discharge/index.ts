@@ -38,6 +38,9 @@ export {
   type TransferInInput,
   type TransferInPeriodPlan,
   type TransferInPlan,
+  type TransferInSourceRefusal,
+  isNpiCheckDigitValid,
   planTransferIn,
+  transferInSourceRefusal,
 } from "./transfer-in";
 export * from "./discharge-details";

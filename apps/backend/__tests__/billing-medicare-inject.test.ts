@@ -190,6 +190,7 @@ function createM23TestBackend(): {
       claimId: CLAIM,
       noeId: null,
       notrId: null,
+      transferNoticeId: null,
       claimControlNumber: "CCN0000001",
       attemptIndex: 1,
       outcome: "queued",

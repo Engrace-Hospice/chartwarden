@@ -56,6 +56,12 @@ import {
   M23_QUEUE_PARAMS,
   m23JobId,
 } from "./queues";
+import {
+  type GenerateTransferNotice,
+  type TransferNoticeSubmitJob,
+  applyTransferNoticeAck,
+  runTransferNoticeSubmit,
+} from "./transfer-notice-jobs";
 
 const {
   ClaimRepository,
@@ -193,6 +199,10 @@ export interface X12ClientPort {
     readonly notrId: string;
     readonly notrControlNumber: string;
   }): Promise<{ readonly x12: string; readonly correlationId: string }>;
+  /** The 8xC / 8xD transfer notice (`POST /generate-transfer-notice`); the reference rendering is
+   *  `build837iTransferNotice` in `@wardenx/x12-837-client`. Optional so older bindings stay valid —
+   *  an absent binding fails the job closed (`unboundWorkerPort`). */
+  generateTransferNotice?: GenerateTransferNotice;
   parse999(input: {
     readonly macJurisdiction: string;
     readonly rawFileUri: string;
@@ -231,7 +241,7 @@ export interface MacPortalPort {
     readonly organizationId: string;
     /** The submitting provider entity (M40); the transport resolves the MAC jurisdiction from its credential. */
     readonly providerEntityId: string;
-    readonly kind: "claim_837i" | "noe" | "notr";
+    readonly kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
     readonly x12: string;
     readonly controlNumber: string;
   }): Promise<{
@@ -350,7 +360,12 @@ export interface MacJurisdictionListPort {
 export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
   readonly port: {
     enqueue(
-      queueName: "claim.submit" | "claim.submit.retry" | "noe.submit" | "notr.submit",
+      queueName:
+        | "claim.submit"
+        | "claim.submit.retry"
+        | "noe.submit"
+        | "notr.submit"
+        | "transfer_notice.submit",
       jobId: string,
       payload: Record<string, unknown>,
     ): Promise<void>;
@@ -376,7 +391,9 @@ export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
               ? M23_QUEUE_PARAMS.claimSubmitRetry
               : queueName === "noe.submit"
                 ? M23_QUEUE_PARAMS.noeSubmit
-                : M23_QUEUE_PARAMS.notrSubmit;
+                : queueName === "transfer_notice.submit"
+                  ? M23_QUEUE_PARAMS.transferNoticeSubmit
+                  : M23_QUEUE_PARAMS.notrSubmit;
         await queueFor(queueName).add(queueName, payload, {
           jobId: m23JobId(queueName, jobId),
           attempts: params.attempts,
@@ -1178,6 +1195,35 @@ async function runNotrSubmit(
 }
 
 /**
+ * `transfer_notice.submit`: the 8xC / 8xD processor (`jobs/transfer-notice-jobs.ts`) over this bundle's ports.
+ * Exported for the live suite, which drives it directly (the `runClaimSubmit` posture).
+ */
+export async function runTransferNoticeSubmitJob(
+  tx: BillingDb,
+  deps: M23WorkerDeps,
+  job: TransferNoticeSubmitJob,
+): Promise<void> {
+  const x12 = x12Of(deps);
+  const portal = macPortalOf(deps);
+  await runTransferNoticeSubmit(
+    tx,
+    {
+      generate: (input) =>
+        x12.generateTransferNotice
+          ? x12.generateTransferNotice(input)
+          : unboundWorkerPort(
+              "x12.generateTransferNotice",
+              "bind the X12 gateway's generate-transfer-notice operation",
+            ),
+      upload: (input) => portal.upload(input),
+      outbox: outboxOf(deps),
+      now: deps.now ?? (() => new Date()),
+    },
+    job,
+  );
+}
+
+/**
  * The `eligibility_check.parsed_payload` (§3.6) — coverage flags + the structured hospice history. NO MBI / NO
  * name / NO DOB. `hospicePeriods` is null when HETS returned no usable hospice section (so a reader can tell
  * "no history" from "not asked"). The hospice fields are what `GET /billing/eligibility/hospice-periods` reads.
@@ -1317,7 +1363,14 @@ export async function runRevalidateConsumer(
  * own org `withOrgContext`), and drive the matching §2.2 claim transition. 999 advances ACK staging; 277CA
  * drives ACK_PENDING → ACK_ACCEPTED / ACK_REJECTED / ACK_PARTIAL. Portal/x12 calls sit behind fail-closed binds.
  */
-async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
+/** Whether an acknowledged submission is a transfer notice's (8xC / 8xD) rather than a claim's. */
+async function isTransferNoticeSubmission(tx: BillingDb, submissionId: string): Promise<boolean> {
+  const submission = await new ClaimSubmissionRepository(tx).findById(submissionId);
+  return submission?.kind === "transfer_notice";
+}
+
+/** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice live suite. */
+export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const jurisdictions = await jurisdictionsOf(deps).listJurisdictions();
@@ -1338,6 +1391,21 @@ async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
           },
           async (txAny) => {
             const tx = txAny as unknown as BillingDb;
+            // A transfer notice (8xC / 8xD) has no claim: route its ack by the submission's subject kind.
+            if (await isTransferNoticeSubmission(tx, result.submissionId)) {
+              await applyTransferNoticeAck(tx, outboxOf(deps), {
+                organizationId: result.organizationId,
+                submissionId: result.submissionId,
+                kind: "ack_999",
+                outcome: result.accepted ? "accepted" : "rejected",
+                payerControlNumber: null,
+                reasonCodes: result.reasonCodes,
+                macJurisdiction,
+                ackFileUri: result.ackFileUri,
+                receivedAt: (deps.now ?? (() => new Date()))(),
+              });
+              return;
+            }
             const acks = new ClaimAcknowledgmentRepository(tx);
             const claims = new ClaimRepository(tx);
             const ack = await acks.append({
@@ -1383,7 +1451,7 @@ async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
 }
 
 /** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
-async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
+export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const jurisdictions = await jurisdictionsOf(deps).listJurisdictions();
@@ -1404,6 +1472,20 @@ async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
           },
           async (txAny) => {
             const tx = txAny as unknown as BillingDb;
+            if (await isTransferNoticeSubmission(tx, result.submissionId)) {
+              await applyTransferNoticeAck(tx, outboxOf(deps), {
+                organizationId: result.organizationId,
+                submissionId: result.submissionId,
+                kind: "ack_277ca",
+                outcome: result.outcome,
+                payerControlNumber: result.payerClaimControlNumber,
+                reasonCodes: result.reasonCodes,
+                macJurisdiction,
+                ackFileUri: result.ackFileUri,
+                receivedAt: (deps.now ?? (() => new Date()))(),
+              });
+              return;
+            }
             const acks = new ClaimAcknowledgmentRepository(tx);
             const claims = new ClaimRepository(tx);
             const ack = await acks.append({
@@ -1817,6 +1899,11 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
       M23_QUEUES.notrSubmit,
       M23_QUEUE_PARAMS.notrSubmit.concurrency,
       runNotrSubmit,
+    ),
+    orgScoped<TransferNoticeSubmitJob>(
+      M23_QUEUES.transferNoticeSubmit,
+      M23_QUEUE_PARAMS.transferNoticeSubmit.concurrency,
+      runTransferNoticeSubmitJob,
     ),
     orgScoped<EligibilityRefreshJob>(
       M23_QUEUES.eligibilityRefresh,

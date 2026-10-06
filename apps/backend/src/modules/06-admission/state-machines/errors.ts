@@ -60,6 +60,8 @@ export const M6_ERROR_STATUS = {
   REVOCATION_EFFECTIVE_BEFORE_SIGNED: 422,
   TRANSFER_LIMIT_EXCEEDED: 409,
   TRANSFER_IN_SOURCE_INVALID: 422,
+  // CMS Pub. 100-04 ch. 11 §20.1.3: transfers are not allowed from the same provider (same CCN).
+  TRANSFER_SAME_PROVIDER: 422,
   DEATH_CERTIFIER_INVALID: 422,
   DISCHARGE_BEFORE_ADMISSION: 422,
   // Discharge reason-specific capture gates (§6.3 / D11)

@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 161 statically-routable `web` screen(s) — 19/161 E2E-reached, 155/161 axe-reached.
+**Coverage:** 162 statically-routable `web` screen(s) — 19/162 E2E-reached, 156/162 axe-reached.
 
 ## Zero E2E coverage
 
@@ -37,6 +37,7 @@
 | `billing.overrides` | 23-billing-medicare | `/billing/overrides` | billing.validation.read_override |
 | `billing.rule-config` | 23-billing-medicare | `/billing/rule-config` | billing.rule_config.read |
 | `billing.sequestration` | 23-billing-medicare | `/billing/sequestration-policy` | billing.sequestration_policy.read |
+| `billing.transfer-notices` | 23-billing-medicare | `/billing/transfer-notices` | billing.noe.read |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `cap.dashboard` | 26-cap | `/cap` | cap.projection.read |
 | `cap.events` | 26-cap | `/cap/events` | cap.event.read |

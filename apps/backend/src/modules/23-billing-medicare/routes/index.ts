@@ -1,4 +1,5 @@
 import type { ClaimAssemblyService } from "../services/claim-assembly";
+import type { TransferNoticeService } from "../services/transfer-notice-service";
 // apps/backend/src/modules/23-billing-medicare/routes/index.ts — M23 route-service barrel.
 //
 // The split READ + WRITE route services the §4.1 M23 route plugins compose over (the M27 `M27RouteServices`
@@ -80,6 +81,8 @@ export interface M23RouteServices {
   readonly wageIndexService?: WageIndexRouteService;
   /** F-212 — the tenant-entered sequestration-policy service (absent ⇒ the /billing/sequestration-policies routes are not mounted). */
   readonly sequestrationService?: SequestrationPolicyRouteService;
+  /** The Medicare transfer notice (8xC / 8xD) service (absent ⇒ /billing/transfer-notices is not mounted). */
+  readonly transferNoticeService?: TransferNoticeService;
 }
 
 export {

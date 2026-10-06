@@ -46,7 +46,7 @@ export type OverrideRole =
   | "compliance_officer"
   | "medical_director"
   | "org_admin";
-export type ClaimSubmissionKind = "claim_837i" | "noe" | "notr";
+export type ClaimSubmissionKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
 export type ClaimSubmissionOutcome =
   | "queued"
   | "generated"
@@ -227,6 +227,7 @@ export interface ClaimSubmissionView {
   readonly claimId: string | null;
   readonly noeId: string | null;
   readonly notrId: string | null;
+  readonly transferNoticeId: string | null;
   readonly claimControlNumber: string;
   readonly attemptIndex: number;
   readonly outcome: ClaimSubmissionOutcome;

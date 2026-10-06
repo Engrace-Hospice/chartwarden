@@ -40,6 +40,8 @@ const paramId = (request: TargetRequest, key: string): TargetMap => {
 export const targetClaimId = (request: TargetRequest): TargetMap => paramId(request, "claimId");
 export const targetNoeId = (request: TargetRequest): TargetMap => paramId(request, "noeId");
 export const targetNotrId = (request: TargetRequest): TargetMap => paramId(request, "notrId");
+export const targetTransferNoticeId = (request: TargetRequest): TargetMap =>
+  paramId(request, "transferNoticeId");
 export const targetRuleConfigId = (request: TargetRequest): TargetMap =>
   paramId(request, "ruleConfigId");
 

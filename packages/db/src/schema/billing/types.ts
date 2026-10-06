@@ -141,6 +141,8 @@ export const m23ClaimSubmissionKind = pgEnum("m23_claim_submission_kind", [
   "claim_837i",
   "noe",
   "notr",
+  // Migration 0375 — the 8xC transfer notice / 8xD void (CMS Pub. 100-04 ch. 11 §20.1.3–§20.1.4).
+  "transfer_notice",
 ]);
 
 export const m23ClaimSubmissionOutcome = pgEnum("m23_claim_submission_outcome", [
