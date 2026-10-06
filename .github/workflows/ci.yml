@@ -859,6 +859,8 @@ jobs:
           # readmission NOE held until the prior election's NOTR / final claim is filed.
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
+          # M23 §4.4 — HETS 270/271 eligibility (sandbox transport) + hospice-periods read + MBI non-persistence.
+          - { name: "M23 HETS eligibility", scripts: "test:m23:hets-eligibility:live" }
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # F-153 (#248) — the §4.8 revalidate.consumer producer side, six M6/M8 trigger events.
           - { name: "M23 revalidate triggers", scripts: "test:m23:revalidate-triggers:live" }

@@ -150,21 +150,23 @@ export const levelOfCareCodec: EnumCodec<LevelOfCare, LevelOfCareDb> = makeEnumC
 });
 
 /**
- * `eligibility_check.outcome` — DB (5 values) ↔ domain `EligibilityOutcome` (4 values), ASYMMETRIC: the DB
- * `mbi_invalid` and `hets_error` both fold to the domain `error`; `unknown_response` ↔ `indeterminate`.
+ * `eligibility_check.outcome` — DB (5 values) ↔ domain `EligibilityOutcome` (5 values): `unknown_response`
+ * ↔ `indeterminate`, `hets_error` ↔ `error`, the rest 1:1 (`mbi_invalid` is its own domain value since the
+ * HETS 271 parser distinguishes a beneficiary-match rejection from a system error).
  */
 export const eligibilityOutcomeCodec: EnumCodec<EligibilityOutcome, EligibilityOutcomeDb> =
   makeBiCodec<EligibilityOutcome, EligibilityOutcomeDb>(
     {
       active_part_a: "active_part_a",
       inactive_part_a: "inactive_part_a",
+      mbi_invalid: "mbi_invalid",
       indeterminate: "unknown_response",
       error: "hets_error",
     },
     {
       active_part_a: "active_part_a",
       inactive_part_a: "inactive_part_a",
-      mbi_invalid: "error",
+      mbi_invalid: "mbi_invalid",
       unknown_response: "indeterminate",
       hets_error: "error",
     },

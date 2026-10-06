@@ -250,3 +250,59 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   }
   return converted as Static<T>;
 }
+
+// ── GET /billing/eligibility/hospice-periods response (the readmission screen's HETS history) ───────────
+const nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
+const ELIGIBILITY_OUTCOME = [
+  "active_part_a",
+  "inactive_part_a",
+  "mbi_invalid",
+  "indeterminate",
+  "error",
+] as const;
+const NEXT_PERIOD_BASIS = [
+  "computed",
+  "election_open",
+  "election_status_uncertain",
+  "unbilled_election",
+  "history_truncated",
+] as const;
+
+export const HospicePeriodSchema = Type.Object({
+  kind: lit(["election", "benefit_period"] as const),
+  periodNumber: nullable(Type.Integer({ minimum: 1 })),
+  startDate: isoDate(),
+  endDate: nullable(isoDate()),
+  hospiceNpi: nullable(Type.String({ pattern: "^\\d{10}$" })),
+  revocationOrDischargeDate: nullable(isoDate()),
+  revocationCode: nullable(lit(["0", "1", "2", "3"] as const)),
+  daysUsed: nullable(Type.Integer({ minimum: 0 })),
+});
+
+export const HospicePeriodsResponseSchema = Type.Object({
+  status: lit(["available", "no_check_on_file", "hets_not_configured"] as const),
+  hetsConfigured: Type.Boolean(),
+  patientId: uuid(),
+  checkId: nullable(uuid()),
+  asOfServiceDate: nullable(isoDate()),
+  outcome: nullable(lit(ELIGIBILITY_OUTCOME)),
+  checkedAt: nullable(Type.String({ format: "date-time" })),
+  staleAt: nullable(Type.String({ format: "date-time" })),
+  stale: nullable(Type.Boolean()),
+  synthetic: Type.Boolean(),
+  hospiceHistoryReturned: Type.Boolean(),
+  hospiceElectionOpen: nullable(Type.Boolean()),
+  hospiceHistoryTruncated: nullable(Type.Boolean()),
+  hospicePeriods: Type.Array(HospicePeriodSchema),
+  nextPeriodNumber: nullable(Type.Integer({ minimum: 1 })),
+  nextPeriodBasis: nullable(lit(NEXT_PERIOD_BASIS)),
+  lastAttempt: nullable(
+    Type.Object({
+      checkId: uuid(),
+      outcome: lit(ELIGIBILITY_OUTCOME),
+      checkedAt: Type.String({ format: "date-time" }),
+      reason: nullable(Type.String()),
+    }),
+  ),
+});
+export type HospicePeriodsResponse = Static<typeof HospicePeriodsResponseSchema>;

@@ -516,6 +516,27 @@ function createM23TestBackend(): {
       const rows = eligibilityByPatient.get(patientId) ?? [];
       return rows[0] ?? null;
     },
+    async getHospicePeriods(_actor, patientId) {
+      return {
+        status: "hets_not_configured",
+        hetsConfigured: false,
+        patientId,
+        checkId: null,
+        asOfServiceDate: null,
+        outcome: null,
+        checkedAt: null,
+        staleAt: null,
+        stale: null,
+        synthetic: false,
+        hospiceHistoryReturned: false,
+        hospiceElectionOpen: null,
+        hospiceHistoryTruncated: null,
+        hospicePeriods: [],
+        nextPeriodNumber: null,
+        nextPeriodBasis: null,
+        lastAttempt: null,
+      };
+    },
     async listRuleConfigs(_actor, _filter: RuleConfigListFilter) {
       return page([...ruleConfigs.values()]);
     },
@@ -1186,6 +1207,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     label: "32 GET /billing/eligibility",
     method: "GET",
     url: `/api/v1/billing/eligibility?patientId=${PATIENT}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "33b GET /billing/eligibility/hospice-periods",
+    method: "GET",
+    url: `/api/v1/billing/eligibility/hospice-periods?patientId=${PATIENT}`,
     headers: SUPER_HEADERS,
     expectStatus: 200,
   },

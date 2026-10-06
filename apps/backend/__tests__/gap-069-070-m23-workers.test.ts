@@ -191,10 +191,15 @@ describe("GAP-070 workers", () => {
       hets: {
         check: async () => ({
           outcome: "active_part_a",
+          reason: null,
           partAEffectiveDate: "2025-01-01",
           partATerminationDate: null,
           hospiceElectionOnFile: false,
-          responseFileUri: "s3://x/271",
+          hospice: null,
+          rejectionCodes: [],
+          transport: "sandbox",
+          correlationId: "trace-1",
+          responseFileUri: null,
           staleAt: new Date("2026-11-04T12:00:00.000Z"),
         }),
       },
@@ -210,6 +215,68 @@ describe("GAP-070 workers", () => {
     expect(fakes.appended).toHaveLength(1);
     expect(published.map((p) => p.eventName)).toEqual(["m23.eligibility.checked"]);
     expect(catalogAccepts(published[0] as Published)).toBe(true);
+  });
+
+  it("eligibility.refresh persists the structured hospice history and refuses an MBI-bearing payload", async () => {
+    const hospice = {
+      periods: [
+        {
+          kind: "benefit_period" as const,
+          periodNumber: 1,
+          startDate: "2023-01-10",
+          endDate: "2023-04-09",
+          hospiceNpi: "1649726464",
+          revocationOrDischargeDate: "2023-04-09",
+          revocationCode: "1" as const,
+          daysUsed: 90,
+        },
+      ],
+      electionOpen: false,
+      truncated: false,
+      billedPeriodCount: 1,
+      nextPeriodNumber: 2,
+      nextPeriodBasis: "computed" as const,
+    };
+    const result = {
+      outcome: "active_part_a" as const,
+      reason: null,
+      partAEffectiveDate: "2005-04-01",
+      partATerminationDate: null,
+      hospiceElectionOnFile: true,
+      hospice,
+      rejectionCodes: [],
+      transport: "core_mime" as const,
+      correlationId: "trace-2",
+      responseFileUri: null,
+      staleAt: new Date("2026-11-04T12:00:00.000Z"),
+    };
+    const job = {
+      organizationId: ORG,
+      patientId: "p-1",
+      providerEntityId: "pe-1",
+      asOfServiceDate: "2026-10-05",
+    };
+    const { deps } = harness({ hets: { check: async () => result } } as Partial<M23WorkerDeps>);
+    await runEligibilityRefresh({} as never, deps, job);
+    const row = fakes.appended.at(-1) as Record<string, unknown>;
+    expect(row.workerCorrelationId).toBe("trace-2");
+    expect(row.rawResponseFileUri).toBeNull();
+    expect(row.parsedPayload).toMatchObject({
+      partAActive: true,
+      hospicePeriods: hospice.periods,
+      hospiceElectionOpen: false,
+      hospiceNextPeriodNumber: 2,
+      hospiceNextPeriodBasis: "computed",
+      transport: "core_mime",
+    });
+
+    // A port that (wrongly) leaks an MBI-shaped value into the payload is refused before any write.
+    const before = fakes.appended.length;
+    const leaky = harness({
+      hets: { check: async () => ({ ...result, reason: "1EG4TE5MK73" }) },
+    } as Partial<M23WorkerDeps>);
+    await expect(runEligibilityRefresh({} as never, leaky.deps, job)).rejects.toThrow(/MBI_LEAK/);
+    expect(fakes.appended).toHaveLength(before);
   });
 
   it("revalidate.consumer fans out one validation-run per VALIDATING/READY target with a real uuid run id", async () => {

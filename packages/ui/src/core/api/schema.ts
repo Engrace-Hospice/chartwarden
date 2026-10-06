@@ -3961,6 +3961,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/eligibility/hospice-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period (readmission screen) */
+        get: operations["getApiV1BillingEligibilityHospiceperiods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/eligibility/latest": {
         parameters: {
             query?: never;
@@ -31858,7 +31875,7 @@ export interface operations {
                             providerEntityId: string;
                             patientId: string;
                             asOfServiceDate: string;
-                            outcome: "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
+                            outcome: "active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error";
                             parsedPayload: {
                                 [key: string]: unknown;
                             };
@@ -31903,6 +31920,66 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingEligibilityHospiceperiods: {
+        parameters: {
+            query: {
+                patientId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "available" | "no_check_on_file" | "hets_not_configured";
+                        hetsConfigured: boolean;
+                        /** Format: uuid */
+                        patientId: string;
+                        checkId: string | null;
+                        asOfServiceDate: string | null;
+                        outcome: ("active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error") | null;
+                        checkedAt: string | null;
+                        staleAt: string | null;
+                        stale: boolean | null;
+                        synthetic: boolean;
+                        hospiceHistoryReturned: boolean;
+                        hospiceElectionOpen: boolean | null;
+                        hospiceHistoryTruncated: boolean | null;
+                        hospicePeriods: {
+                            kind: "election" | "benefit_period";
+                            periodNumber: number | null;
+                            /** Format: date */
+                            startDate: string;
+                            endDate: string | null;
+                            hospiceNpi: string | null;
+                            revocationOrDischargeDate: string | null;
+                            revocationCode: ("0" | "1" | "2" | "3") | null;
+                            daysUsed: number | null;
+                        }[];
+                        nextPeriodNumber: number | null;
+                        nextPeriodBasis: ("computed" | "election_open" | "election_status_uncertain" | "unbilled_election" | "history_truncated") | null;
+                        lastAttempt: {
+                            /** Format: uuid */
+                            checkId: string;
+                            outcome: "active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error";
+                            /** Format: date-time */
+                            checkedAt: string;
+                            reason: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingEligibilityLatest: {
         parameters: {
             query: {
@@ -31925,7 +32002,7 @@ export interface operations {
                         providerEntityId: string;
                         patientId: string;
                         asOfServiceDate: string;
-                        outcome: "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
+                        outcome: "active_part_a" | "inactive_part_a" | "mbi_invalid" | "indeterminate" | "error";
                         parsedPayload: {
                             [key: string]: unknown;
                         };

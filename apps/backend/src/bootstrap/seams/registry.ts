@@ -106,6 +106,7 @@ import {
   latestAssessmentProviderDenyStub,
   levelOfCarePeriodReaderDenyStub,
   levelOfCareReaderDenyStub,
+  mbiUnlockReaderDenyStub,
   mdmEntityProviderDenyStub,
   medicaidClaimMatchProviderDenyStub,
   medicationAdministrationProviderDenyStub,
@@ -222,6 +223,14 @@ export const REQUIRED_SEAMS = [
     ownerModule: 5,
     phi: true,
     denyStub: patientCoverageReaderDenyStub,
+  },
+  // M5 → M23-ONLY (§4.4 / §8.7) — the transient MBI + name/DOB for one HETS 270 build. PHI (the MBI
+  // itself); fail-closed THROW deny-stub so a db-less boot can never hand out an MBI.
+  {
+    key: "MbiUnlockReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: mbiUnlockReaderDenyStub,
   },
   {
     key: "PatientAdmissionClearanceReader",

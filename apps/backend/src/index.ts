@@ -126,6 +126,7 @@ import {
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
+  buildProviderEligibilityIdentityReader,
   buildProviderEntityCcnResolver,
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
@@ -700,6 +701,7 @@ import {
 // reader seams + the live MAC/X12 binds are follow-ups.
 import {
   type M23BootAssemblyPorts,
+  type M23HetsConfig,
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
   type ProviderCcnPort,
@@ -713,6 +715,7 @@ import {
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleWageIndexService,
+  buildHetsEligibilityPort,
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
@@ -731,7 +734,9 @@ import {
   buildM23WorkerDeps,
   buildNoticeWindowPort,
   createDrizzleBillingEraseStore,
+  createM23HetsTransport,
   createM23LaunchGateway,
+  m23HetsConfigFromEnv,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
   priorElectionClosureForOrg,
@@ -2490,6 +2495,21 @@ function buildFirstAdminAcceptanceService(deps: {
 }
 
 /**
+ * The bound M23 HETS 270/271 port (§4.4). `provider_entity` is M1-owned (arch:tables), so the 2100B NPI +
+ * organization-name read is the M1 bootstrap reader; the MBI comes from M5's `MbiUnlockReader` seam
+ * (resolved lazily per check, so boot registration order never matters).
+ */
+function buildM23HetsPort(db: DbClient, config: M23HetsConfig) {
+  return buildHetsEligibilityPort({
+    transport: createM23HetsTransport(config),
+    submitterId: config.submitterId,
+    usage: config.usage,
+    mbiUnlock: () => getSeam("MbiUnlockReader"),
+    providers: buildProviderEligibilityIdentityReader(db),
+  });
+}
+
+/**
  * The M23 reader ports the claim assembly (route) AND the validation-run worker (GAP-070) both read through.
  * One builder so the route and the worker see the same facts. `provider_entity` is M1-owned (arch:tables), so
  * the CCN reader lives here in the composition root and is shared by the write-service's control-number
@@ -2665,6 +2685,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     ? m23LaunchGatewayConfigFromEnv(process.env)
     : null;
   const m23LaunchGateway = m23LaunchConfig ? createM23LaunchGateway(m23LaunchConfig) : null;
+  // M23 §4.4 HETS 270/271 — bound ONLY when `M23_HETS_TRANSPORT` is set (`core_mime` to CMS / a clearinghouse,
+  // or the dev/test `sandbox`, refused in production). Unset → the eligibility.refresh worker stays unbound and
+  // POST /billing/eligibility/check keeps answering 503: never a fabricated eligibility result. A present but
+  // invalid configuration throws here, so a typo fails the boot instead of silently disabling eligibility.
+  const m23HetsConfig = m23HetsConfigFromEnv(process.env);
   // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
   // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
   // default). No sidecar is deployed anywhere yet, so this stays undefined in every environment today.
@@ -3831,6 +3856,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 forAdmissions: (orgId, admissionIds) =>
                   claimStayEndFactsForOrg(dbHandle.db, orgId, admissionIds),
               },
+              // The hospice-periods read reports `hets_not_configured` when no transport is bound.
+              hetsConfigured: m23HetsConfig !== null,
             }),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
@@ -3854,9 +3881,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 "notr.submit": m23SubmissionQueues !== null,
                 // GAP-070 — real `validation-run` worker + outbox bridge whenever a queue connection exists.
                 "validation-run": m23WorkQueues !== null,
-                // HETS 270/271 is unbound (no clearinghouse client / M5 MBI-unlock seam): refuse rather
-                // than accept an eligibility request no worker can complete.
-                "eligibility.refresh": false,
+                // HETS 270/271: accepted only when a transport is configured AND a worker can drain the
+                // queue; otherwise refuse (503) rather than accept a request no worker can complete.
+                "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
               }),
               providerCcn: m23ProviderCcn,
             }),
@@ -4995,9 +5022,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     //      (registerM23Workers had no caller), so revalidation jobs piled up unconsumed and every watch tick threw
     //      `unboundWorkerPort`.
     //   2. + the launch gateway: claim/NOE/NOTR submit[.retry], the 999/277CA ack pulls and MAC-portal health.
-    //   3. HETS 270/271 (`hets`) stays UNBOUND: there is no clearinghouse client and no M5 MBI-unlock seam in
-    //      this codebase yet, so the `eligibility.refresh` job fails closed when it runs and the route-side gate
-    //      below keeps refusing eligibility checks (503) rather than accepting work that cannot complete.
+    //   3. HETS 270/271 (`hets`) is bound only when `M23_HETS_TRANSPORT` is configured (M5's MbiUnlockReader
+    //      supplies the transient MBI). Unconfigured, the `eligibility.refresh` job fails closed when it runs
+    //      and the route-side gate keeps refusing eligibility checks (503).
     const m23AlertEmitter = getSeam("AlertEmitter") as {
       emit(
         orgId: string,
@@ -5024,8 +5051,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         providerCcn: m23ClaimSeamPorts.providerCcn,
         ...m23ClaimSeamPorts.assemblyPorts,
       }),
-      eligibilityBound: false,
+      // The §11.A eligibility rules read eligibility_check only when HETS can actually refresh it.
+      eligibilityBound: m23HetsConfig !== null,
     });
+    const m23Hets = m23HetsConfig ? buildM23HetsPort(dbHandle.db, m23HetsConfig) : undefined;
+    app.log.info(
+      { hetsTransport: m23HetsConfig?.transport ?? "unbound" },
+      "M23 HETS 270/271 eligibility transport",
+    );
     const m23CoreWorkerDeps = buildM23WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
@@ -5049,6 +5082,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       // The revalidate consumer's `validation-run` fan-out producer (GAP-070).
       enqueue: m23WorkQueues?.port,
+      // §4.4 HETS 270/271 — bound only when configured (see `m23HetsConfig` above).
+      hets: m23Hets,
     });
     let m23Workers: Worker[] = [
       ...registerM23DomainWorkers(m23CoreWorkerDeps),

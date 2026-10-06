@@ -1805,6 +1805,8 @@ export function initM23(reg: SeamRegistry): void {
 
 > **`MbiUnlockReader` is a new M5 seam introduced by M23's needs.** M5 publishes it at M5 lock revision (post-M23 lock, since this seam is consumed only by M23); deny-stub until then. The seam takes `(orgId, patientPayerId)` and returns the decrypted MBI as a `string` for the duration of the request only — the caller is contractually obligated not to persist it. The HETS adapter (`packages/x12-worker-client/src/eligibility-270.ts`) is the only place this string is held in memory; it is zeroed after the 270 request is built.
 
+> **As built (2026-10):** the seam is `MbiUnlockReader.unlockForEligibility({ organizationId, patientId, onDate })` in `@wardenx/types` (it resolves the in-force `medicare_ffs` coverage itself and also returns the legal name + DOB HETS matches on), registered by M5 (`apps/backend/src/modules/05-patient/mbi-unlock-reader.ts`). Per ADR-0037 the 270 builder / 271 parser are TypeScript in `packages/x12-837-client/src/eligibility/` (no sidecar); the bound port is `apps/backend/src/modules/23-billing-medicare/jobs/hets-eligibility.ts`. The 271 hospice section (NOEs, billed benefit periods, revocation codes, hospice NPI) is persisted in `eligibility_check.parsed_payload` and served by `GET /api/v1/billing/eligibility/hospice-periods`. The raw 271 is not stored (HETS echoes the MBI). Connectivity + citations: `WARDENX_INTEGRATIONS` §6.4.
+
 ### 4.5 The Validation Rule Registry (§11.A — Implementation Shape of D1)
 
 The rule registry lives in `packages/billing/src/rules/`. Each rule is a typed predicate with metadata; the central `_registry.ts` registers every rule at module load; `billingRuleRegistry.freeze()` at boot makes the set immutable.

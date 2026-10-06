@@ -33,6 +33,7 @@ import {
 } from "../services/claim-attention";
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
+import { projectHospicePeriods } from "./hospice-periods";
 import type {
   ClaimAcknowledgmentView,
   ClaimDetailView,
@@ -71,6 +72,11 @@ export interface M23ReadServicePorts {
    * reads carry no `attention` block and an `attention` list filter returns an empty page.
    */
   readonly stayEndFacts?: ClaimStayEndFactsPort;
+  /**
+   * Whether this deployment has a HETS transport bound (`M23_HETS_TRANSPORT`). Only shapes the
+   * hospice-periods `status` when no resolved check is on file (`hets_not_configured` vs `no_check_on_file`).
+   */
+  readonly hetsConfigured?: boolean;
 }
 
 /** The most claims one `attention`-filtered list request scans (M6 facts are live, so it cannot be SQL). */
@@ -605,6 +611,21 @@ export function buildDrizzleM23ReadService(
           patientId,
         );
         return row ? mapEligibility(row) : null;
+      });
+    },
+
+    async getHospicePeriods(actor, patientId) {
+      return read(actor, async (tx) => {
+        const repo = new repositories.EligibilityCheckRepository(tx);
+        const resolved = await repo.findLatestResolvedForPatient(actor.organizationId, patientId);
+        const latest = await repo.findLatestForPatient(actor.organizationId, patientId);
+        return projectHospicePeriods({
+          patientId,
+          hetsConfigured: ports.hetsConfigured ?? false,
+          resolved,
+          latest,
+          now: now(),
+        });
       });
     },
 

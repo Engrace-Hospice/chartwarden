@@ -352,6 +352,7 @@ import {
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
   CreateRuleConfigBodySchema,
+  HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
   NotrListQuerySchema,
@@ -9271,6 +9272,7 @@ const M23NoticeState = Type.Union([
 const M23EligibilityOutcome = Type.Union([
   Type.Literal("active_part_a"),
   Type.Literal("inactive_part_a"),
+  Type.Literal("mbi_invalid"),
   Type.Literal("indeterminate"),
   Type.Literal("error"),
 ]);
@@ -9722,6 +9724,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Per-patient eligibility-check history (§4.1 #23)",
     query: BillingPatientQuerySchema,
     response: M23EligibilityListResponse,
+  },
+  "GET /api/v1/billing/eligibility/hospice-periods": {
+    summary:
+      "The beneficiary's cross-hospice hospice election / benefit-period history from the latest resolved HETS 271, with the computed next benefit period (readmission screen)",
+    query: BillingPatientQuerySchema,
+    response: M23HospicePeriodsResponseSchema,
   },
   "GET /api/v1/billing/eligibility/latest": {
     summary: "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",

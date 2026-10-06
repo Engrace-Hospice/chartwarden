@@ -46,6 +46,7 @@ import {
   repositories,
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
+import { type HospiceHistory, assertNoMbi } from "@wardenx/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   type M23CronQueueName,
@@ -244,9 +245,36 @@ export interface MacPortalPort {
 }
 
 /**
- * The HETS 270/271 eligibility seam (§4.4). The bound impl unlocks the patient MBI via the M5 `MbiUnlockReader`
- * (deny-stub until M5's post-M23 lock revision), builds + sends the 270, parses the 271, and zeroes the MBI —
- * so the MBI NEVER crosses into this file (D13 / §3.6). Returns the domain-cased outcome + the persisted refs.
+ * The hospice election / benefit-period history derived from a HETS 271 (Companion Guide §7.16). Built by
+ * `deriveHospiceHistory` in `@wardenx/x12-837-client`; carries no MBI (NPIs + dates + codes only).
+ */
+export type HetsHospiceHistory = HospiceHistory;
+
+/** One HETS round-trip result. PHI-minimal: no MBI, no name, no DOB (D13 / §3.6 / §8.7). */
+export interface HetsEligibilityResult {
+  readonly outcome: EligibilityOutcome;
+  /** PHI-free reason code when the outcome is not a resolved Part A answer (`mbi_not_on_file`, `HETS_TIMEOUT`, …). */
+  readonly reason: string | null;
+  readonly partAEffectiveDate: string | null;
+  readonly partATerminationDate: string | null;
+  readonly hospiceElectionOnFile: boolean;
+  /** The hospice history, or null when no usable 271 came back (transport error, AAA, 999, no MBI on file). */
+  readonly hospice: HetsHospiceHistory | null;
+  /** AAA rejections as `<loop>:<AAA03>` (e.g. `2100C:72`). */
+  readonly rejectionCodes: readonly string[];
+  /** Which transport answered — `sandbox` results are synthetic and flagged as such downstream. */
+  readonly transport: "core_mime" | "sandbox";
+  /** The TRN trace number of the 270 (PHI-free), stored as `worker_correlation_id`. */
+  readonly correlationId: string | null;
+  /** Always null today: the raw 271 echoes the MBI, so it is never stored (D13). */
+  readonly responseFileUri: string | null;
+  readonly staleAt: Date;
+}
+
+/**
+ * The HETS 270/271 eligibility seam (§4.4). The bound impl (`hets-eligibility.ts`) unlocks the patient MBI via
+ * the M5 `MbiUnlockReader`, builds + sends the 270, parses the 271 and releases the MBI — so the MBI NEVER
+ * crosses into this file (D13 / §3.6). Unbound (no `M23_HETS_TRANSPORT`) it fails closed on call.
  */
 export interface HetsEligibilityPort {
   check(input: {
@@ -254,14 +282,7 @@ export interface HetsEligibilityPort {
     readonly patientId: string;
     readonly providerEntityId: string;
     readonly asOfServiceDate: string;
-  }): Promise<{
-    readonly outcome: EligibilityOutcome;
-    readonly partAEffectiveDate: string | null;
-    readonly partATerminationDate: string | null;
-    readonly hospiceElectionOnFile: boolean;
-    readonly responseFileUri: string;
-    readonly staleAt: Date;
-  }>;
+  }): Promise<HetsEligibilityResult>;
 }
 
 /** The §2.2 NOE/NOTR window stamp — sets `window_breached_at` (the append-only repos expose no plain update). */
@@ -1156,6 +1177,29 @@ async function runNotrSubmit(
 }
 
 /**
+ * The `eligibility_check.parsed_payload` (§3.6) — coverage flags + the structured hospice history. NO MBI / NO
+ * name / NO DOB. `hospicePeriods` is null when HETS returned no usable hospice section (so a reader can tell
+ * "no history" from "not asked"). The hospice fields are what `GET /billing/eligibility/hospice-periods` reads.
+ */
+export function eligibilityParsedPayload(result: HetsEligibilityResult): Record<string, unknown> {
+  const h = result.hospice;
+  return {
+    partAActive: result.outcome === "active_part_a",
+    partAEffectiveDate: result.partAEffectiveDate,
+    partATerminationDate: result.partATerminationDate,
+    hospiceElectionOnFile: result.hospiceElectionOnFile,
+    hospicePeriods: h ? h.periods.map((p) => ({ ...p })) : null,
+    hospiceElectionOpen: h ? h.electionOpen : null,
+    hospiceHistoryTruncated: h ? h.truncated : null,
+    hospiceNextPeriodNumber: h ? h.nextPeriodNumber : null,
+    hospiceNextPeriodBasis: h ? h.nextPeriodBasis : null,
+    rejectionCodes: [...result.rejectionCodes],
+    reason: result.reason,
+    transport: result.transport,
+  };
+}
+
+/**
  * `eligibility.refresh` (§4.4 / §4.8): drain `m23.eligibility.refresh_requested` — run the HETS 270/271 check
  * (the bound seam unlocks + zeroes the MBI internally; the MBI never crosses this file), APPEND the
  * `eligibility_check` row (append-only; outcome codec mapped at the repo boundary), and emit
@@ -1176,20 +1220,18 @@ export async function runEligibilityRefresh(
     asOfServiceDate: job.asOfServiceDate,
   });
 
+  const parsedPayload = eligibilityParsedPayload(result);
+  // Persistence-boundary guard (§8.7): an MBI-shaped token in the payload aborts the write (no row, no event).
+  assertNoMbi(parsedPayload);
   const row = await checks.append({
     organizationId: job.organizationId,
     providerEntityId: job.providerEntityId,
     patientId: job.patientId,
     asOfServiceDate: job.asOfServiceDate,
     outcome: result.outcome,
-    // The §3.6 parsed 271 payload — coverage flags only, NO PHI / NO MBI (the MBI was zeroed in the seam).
-    parsedPayload: {
-      partAActive: result.outcome === "active_part_a",
-      partAEffectiveDate: result.partAEffectiveDate,
-      partATerminationDate: result.partATerminationDate,
-      hospiceElectionOnFile: result.hospiceElectionOnFile,
-    },
+    parsedPayload,
     rawResponseFileUri: result.responseFileUri,
+    workerCorrelationId: result.correlationId,
     staleAt: result.staleAt,
   });
 
@@ -2117,10 +2159,12 @@ export function buildM23WorkerDeps(deps: {
   };
 }
 
-// STILL UNBOUND (these throw only when a job runs, RULE 4):
-//   • the HETS 270/271 seam (`deps.hets`) — needs a clearinghouse client plus an M5 MBI-unlock seam, neither of
-//     which exists yet; the MBI must never persist (§3.6). The route-side gate refuses eligibility checks (503)
-//     until it is bound, so no request is accepted that this worker cannot complete.
+// BOUND ONLY WHEN CONFIGURED (these throw only when a job runs, RULE 4):
+//   • the HETS 270/271 seam (`deps.hets`) — bound by the composition root over `hets-eligibility.ts` when
+//     `M23_HETS_TRANSPORT` is set (CORE MIME to CMS / a clearinghouse, or the dev/test sandbox) and M5's
+//     `MbiUnlockReader` is registered. Unset, it stays unbound and the route-side gate refuses eligibility
+//     checks (503), so no request is accepted that this worker cannot complete.
+// STILL UNBOUND:
 //   • the x12-837-client sidecar (`deps.x12`) + MAC-portal transport (`deps.macPortal`) outside the launch
 //     gateway, and the MAC-jurisdiction enumerator beyond the single launch jurisdiction.
 // BOUND in the composition root (apps/backend/src/index.ts): outbox, alerts (M36), activeOrgs (M23 platform job),
