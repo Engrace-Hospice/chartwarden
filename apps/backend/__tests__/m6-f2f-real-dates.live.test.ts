@@ -320,18 +320,19 @@ describe.skipIf(!DB_URL)("F-226 — F2F real dates — LIVE Postgres (wardenx_ap
       expect((await f2fRow(g.id)).within_window).toBe(true);
     });
 
-    it("same-day F2F (encounter == period start) is refused per R-F2F-02; start+1 too", async () => {
+    it("start+1 is refused per R-F2F-02; the period's first day itself is timely (MBPM ch. 9 §20.1(5)(a))", async () => {
       const p = await pending3();
       const start = dayOffset(-2);
       await setStart(p.periodId, start);
       const f = await schedule(p.periodId);
-      await expect(svc.completeF2f(ORG_A, f.id, f.version, start)).rejects.toMatchObject({
-        code: "F2F_OUTSIDE_WINDOW",
-      });
       await expect(svc.completeF2f(ORG_A, f.id, f.version, dayOffset(-1))).rejects.toMatchObject({
         code: "F2F_OUTSIDE_WINDOW",
       });
       expect((await f2fRow(f.id)).status).toBe("scheduled");
+      await svc.completeF2f(ORG_A, f.id, f.version, start);
+      const row = await f2fRow(f.id);
+      expect(row.status).toBe("completed");
+      expect(row.within_window).toBe(true);
     });
 
     it("a future date and an absurdly old date are malformed input (422), not a window verdict", async () => {

@@ -739,6 +739,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
           revocationDate: null,
           // F-127 (#251) — the SIGNED election statement names M6_ATTENDING.
           attendingPhysicianId: M6_ATTENDING,
+          // An ordinary period-1 admission: no documented F2F exception (MBPM ch. 9 §20.1(5)(d)).
+          f2fExceptionDocumented: false,
         },
       ]);
       expect(ctx?.certifications).toHaveLength(1);
