@@ -66,9 +66,12 @@ import {
   resolveF2fWindowStart,
 } from "./certification/f2f-window";
 import {
+  type AssessmentWindowKind,
   addCalendarDays,
+  computeAssessmentWindowDeadline,
   computeCtiSignatureDueAt,
   computeWrittenCertDeadline,
+  isAssessmentWindowKind,
   localDateOfInstant,
 } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
@@ -497,13 +500,60 @@ function toReferralReadView(
 const DEFAULT_ORG_TZ = "America/Los_Angeles";
 const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
 
-/** §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). */
+/**
+ * §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). The two 42 CFR
+ * 418.54 assessment windows are NOT here: their deadline is election-anchored calendar math
+ * (`computeAssessmentWindowDeadline` — 48 hours, and election date as day 0 + 5 days), not a flat hour count.
+ */
 const WINDOW_HOURS: Record<string, number> = {
-  initial_assessment_48h: 48,
-  comprehensive_assessment_5d: 24 * 5,
   care_plan_5d: 24 * 5,
   notice_of_rights: 48,
 };
+
+/** The 418.54 windows re-anchored on the election when the admission activates. */
+const ASSESSMENT_WINDOW_KINDS: readonly AssessmentWindowKind[] = [
+  "initial_assessment_48h",
+  "comprehensive_assessment_5d",
+];
+
+/**
+ * 42 CFR 418.54 — the initial (48 h) and comprehensive (election day 0 + 5) assessment clocks run from the
+ * ELECTION, and activation is the election here (the first period's `effective_at` is the activation day). The
+ * windows `createAdmission` opened were anchored on the DRAFT, which can precede the election by days — so every
+ * still-open one is re-dated from `electedAt` (and back to `open`: a provisional deadline that lapsed before the
+ * patient elected was never a real breach). A closed window is left alone.
+ */
+async function reanchorAssessmentWindows(
+  tx: DbClient,
+  admissionId: string,
+  electedAt: Date,
+): Promise<void> {
+  for (const kind of ASSESSMENT_WINDOW_KINDS) {
+    await tx
+      .update(CW)
+      .set({
+        startsAt: electedAt,
+        mustCompleteBy: computeAssessmentWindowDeadline(kind, electedAt, DEFAULT_ORG_TZ),
+        status: "open",
+        updatedAt: electedAt,
+        version: sql`${CW.version} + 1`,
+      })
+      .where(
+        and(
+          eq(CW.admissionId, admissionId),
+          eq(CW.windowKind, kind),
+          inArray(CW.status, ["open", "closing_soon", "overdue"]),
+        ),
+      );
+  }
+}
+
+/** The deadline a newly opened window carries, opened at `openedAt`. */
+function windowDeadline(window: string, openedAt: Date): Date {
+  if (isAssessmentWindowKind(window))
+    return computeAssessmentWindowDeadline(window, openedAt, DEFAULT_ORG_TZ);
+  return new Date(openedAt.getTime() + (WINDOW_HOURS[window] ?? 48) * 3600_000);
+}
 
 /**
  * The production, RLS-backed AdmissionRouteService. Every read and every write is real Drizzle over
@@ -651,14 +701,16 @@ export function createDbAdmissionRouteService(
           aggregateId: ctx.aggregateId,
         });
       } else if (e.kind === "open_window") {
-        const hours = WINDOW_HOURS[e.window] ?? 48;
+        // A draft admission's 418.54 windows are PROVISIONAL here (anchored on the draft); activation — the
+        // election — re-anchors them (`activateAdmission`).
+        const openedAt = now();
         await tx.insert(CW).values({
           organizationId: ctx.organizationId,
           admissionId: ctx.admissionId,
           windowKind: e.window,
           status: "open",
-          startsAt: now(),
-          mustCompleteBy: new Date(now().getTime() + hours * 3600_000),
+          startsAt: openedAt,
+          mustCompleteBy: windowDeadline(e.window, openedAt),
         });
       } else if (e.kind === "close_window") {
         await tx
@@ -3971,6 +4023,7 @@ export function createDbAdmissionRouteService(
             })
             .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
         }
+        await reanchorAssessmentWindows(tx as DbClient, id, activatedAt);
         await runEffects(
           tx,
           {

@@ -29,12 +29,18 @@
 //     discharged during a benefit period" too;
 //   • the readmission repeats the whole admission: a new signed election statement (418.24), a new NOE (8xA)
 //     within 5 calendar days AFTER the admission date (the day after admission is day 1 — Claims Processing
-//     Manual ch. 11 §20.1.1: admitted Fri 10/10, "Day 5 = Weds. 10/15 is the NOE Due Date"), the initial (48 h, 418.54(a)) and comprehensive (5 days,
-//     418.54(b)) assessments, and a new HOPE Admission record (A0220 = the re-election date).
+//     Manual ch. 11 §20.1.1: admitted Fri 10/10, "Day 5 = Weds. 10/15 is the NOE Due Date"), the initial (48 h, 418.54(a)) and comprehensive ("no later than
+//     5 calendar days after the election", 418.54(b) — SOM App. M L523 counts the election date as day 0, so elected
+//     Wed ⇒ due Mon = election + 5) assessments, and a new HOPE Admission record (A0220 = the re-election date).
 //   • two-tier RHC: readmitted within 60 days of a discharge, the prior hospice days carry over for the day 1–60
 //     high rate; after a longer gap the day count resets (Claims Processing Manual ch. 11, two-tier RHC).
 import type { LocalDate } from "@wardenx/types";
-import { addCalendarDays } from "../certification/window-math";
+import {
+  COMPREHENSIVE_ASSESSMENT_DAYS,
+  INITIAL_ASSESSMENT_DAYS,
+  addCalendarDays,
+  comprehensiveAssessmentDueOn,
+} from "../certification/window-math";
 import {
   ELECTION_PERIOD_LENGTH_DAYS,
   RECERT_SEQUENCE_FLOOR,
@@ -71,9 +77,9 @@ export const RHC_HIGH_RATE_DAYS = 60;
 /** 42 CFR 418.24 / Claims Processing Manual ch. 11 §20.1.1 — NOE due 5 calendar days after the admission date
  *  (admission day is NOT day 1: admitted 10/10 ⇒ due 10/15). Matches M23's NOE `window_target_at` (+5). */
 export const NOE_CALENDAR_DAYS = 5;
-/** 42 CFR 418.54(a) / (b) — initial assessment within 48 hours, comprehensive within 5 calendar days. */
-export const INITIAL_ASSESSMENT_DAYS = 2;
-export const COMPREHENSIVE_ASSESSMENT_DAYS = 5;
+/** 42 CFR 418.54(a) / (b) — initial assessment within 48 hours, comprehensive within 5 calendar days (election =
+ *  day 0). Defined once in ../certification/window-math (the compliance-window clocks use the same constants). */
+export { COMPREHENSIVE_ASSESSMENT_DAYS, INITIAL_ASSESSMENT_DAYS };
 
 // ── prior-episode facts (resolved by the caller from M6's own tables) ─────────────────────────────────
 
@@ -241,7 +247,9 @@ export interface BenefitPeriodRequirements {
   readonly electionStatementRequired: true;
   /** The NOE (8xA) must be filed and accepted by this day (admission date + 5 calendar days). */
   readonly noeDueBy: LocalDate;
+  /** 418.54(a) — 48 hours after the election, as the latest DATE those hours reach (election + 2). */
   readonly initialAssessmentDueBy: LocalDate;
+  /** 418.54(b) — the last timely day: election date (day 0) + 5 calendar days (SOM App. M L523). */
   readonly comprehensiveAssessmentDueBy: LocalDate;
   /** HOPE Admission record — A0220 is the (re-)election date. */
   readonly hopeAdmissionA0220: LocalDate;
@@ -276,7 +284,7 @@ export function requirementsForBenefitPeriod(
     electionStatementRequired: true,
     noeDueBy: addCalendarDays(startDate, NOE_CALENDAR_DAYS),
     initialAssessmentDueBy: addCalendarDays(startDate, INITIAL_ASSESSMENT_DAYS),
-    comprehensiveAssessmentDueBy: addCalendarDays(startDate, COMPREHENSIVE_ASSESSMENT_DAYS - 1),
+    comprehensiveAssessmentDueBy: comprehensiveAssessmentDueOn(startDate),
     hopeAdmissionA0220: startDate,
   };
 }

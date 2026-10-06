@@ -17,6 +17,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-entity-resolver";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import {
+  DEFAULT_ORG_TIME_ZONE,
+  addCalendarDays,
+  endOfOrgDayInstant,
+  localDateOfInstant,
+} from "../src/modules/06-admission/certification/window-math";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { validatingM6Outbox } from "./_m6-outbox";
 
@@ -301,8 +307,44 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
       "UPDATE patient_privacy_flag_snapshot SET sud_flag_origin='m22_intake_unconfirmed' WHERE patient_id=$1",
       [PATIENT2],
     );
+    // 42 CFR 418.54 — the draft's assessment windows are provisional. Age them so a deadline anchored on the
+    // DRAFT has already lapsed: activation (the election) must re-date them, and re-open the lapsed one.
+    await admin.query(
+      `UPDATE compliance_window SET starts_at = now() - interval '10 days',
+              must_complete_by = now() - interval '5 days', status = 'overdue'
+        WHERE admission_id=$1 AND window_kind IN ('initial_assessment_48h','comprehensive_assessment_5d')`,
+      [admissionId],
+    );
     const active = await svc.activateAdmission(ORG_A, admissionId, norRes.version);
     expect(active.state).toBe("active");
+    const activatedAt = (
+      await admin.query("SELECT activated_at FROM admission WHERE id=$1", [admissionId])
+    ).rows[0].activated_at as Date;
+    const assessment = (
+      await admin.query(
+        `SELECT window_kind, status, starts_at, must_complete_by FROM compliance_window
+          WHERE admission_id=$1 AND window_kind IN ('initial_assessment_48h','comprehensive_assessment_5d')`,
+        [admissionId],
+      )
+    ).rows as Array<{
+      window_kind: string;
+      status: string;
+      starts_at: Date;
+      must_complete_by: Date;
+    }>;
+    const byKind = Object.fromEntries(assessment.map((w) => [w.window_kind, w]));
+    // 418.54(a): 48 hours after the election.
+    expect(byKind.initial_assessment_48h?.status).toBe("open");
+    expect(byKind.initial_assessment_48h?.starts_at.getTime()).toBe(activatedAt.getTime());
+    expect(byKind.initial_assessment_48h?.must_complete_by.getTime()).toBe(
+      activatedAt.getTime() + 48 * 3_600_000,
+    );
+    // 418.54(b): the election date is day 0 — due at the END of election date + 5 (org-local).
+    const electionDay = localDateOfInstant(activatedAt.toISOString(), DEFAULT_ORG_TIME_ZONE);
+    expect(byKind.comprehensive_assessment_5d?.status).toBe("open");
+    expect(byKind.comprehensive_assessment_5d?.must_complete_by.toISOString()).toBe(
+      endOfOrgDayInstant(addCalendarDays(electionDay, 5), DEFAULT_ORG_TIME_ZONE),
+    );
     expect(
       (
         await admin.query(

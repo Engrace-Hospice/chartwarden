@@ -158,3 +158,46 @@ export function decideF2fWindowStatus(input: {
   if (input.attested) return "attested";
   return input.today > input.window.windowEnd ? "missed" : "open";
 }
+
+// ── 42 CFR 418.54 assessment clocks ──────────────────────────────────────────────────────────────────
+
+/** 42 CFR 418.54(a) — the RN initial assessment is due "within 48 hours after the election". */
+export const INITIAL_ASSESSMENT_HOURS = 48;
+/** The initial assessment's 48 hours as a calendar-date bound (the latest DATE 48 hours can reach). */
+export const INITIAL_ASSESSMENT_DAYS = 2;
+/**
+ * 42 CFR 418.54(b) — the IDG completes the comprehensive assessment "no later than 5 calendar days after the
+ * election". CMS SOM Appendix M (L523) counts the election date as DAY 0: elected Wednesday ⇒ Monday is day 5,
+ * the last timely day. So the due DATE is `election + 5`, not `election + 4`.
+ */
+export const COMPREHENSIVE_ASSESSMENT_DAYS = 5;
+
+/** The two §418.54 window kinds whose deadline is anchored on the election. */
+export type AssessmentWindowKind = "initial_assessment_48h" | "comprehensive_assessment_5d";
+
+export function isAssessmentWindowKind(kind: string): kind is AssessmentWindowKind {
+  return kind === "initial_assessment_48h" || kind === "comprehensive_assessment_5d";
+}
+
+/** The comprehensive assessment's last timely org-local DATE: election date (day 0) + 5 calendar days. */
+export function comprehensiveAssessmentDueOn(electionDate: LocalDate): LocalDate {
+  return addCalendarDays(electionDate, COMPREHENSIVE_ASSESSMENT_DAYS);
+}
+
+/**
+ * The `compliance_window.must_complete_by` instant of a §418.54 assessment window anchored at the election
+ * instant `electedAt`:
+ *   • `initial_assessment_48h` — exactly 48 hours after the election (418.54(a) is an hour clock);
+ *   • `comprehensive_assessment_5d` — 23:59:59.999 org-local on election date + 5 (418.54(b) is a calendar-day
+ *     clock with the election date as day 0, so the whole of day 5 is on time and day 6 is late).
+ */
+export function computeAssessmentWindowDeadline(
+  kind: AssessmentWindowKind,
+  electedAt: Date,
+  timeZone: string,
+): Date {
+  if (kind === "initial_assessment_48h")
+    return new Date(electedAt.getTime() + INITIAL_ASSESSMENT_HOURS * 3_600_000);
+  const electionDate = localDateOfInstant(electedAt.toISOString(), timeZone);
+  return new Date(endOfOrgDayInstant(comprehensiveAssessmentDueOn(electionDate), timeZone));
+}

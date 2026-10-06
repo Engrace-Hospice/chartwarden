@@ -103,7 +103,8 @@ describe("requirementsForBenefitPeriod — everything keys off the chosen number
     expect(r.noeDueBy).toBe("2026-05-06");
     expect(requirementsForBenefitPeriod(1, "2026-10-10").noeDueBy).toBe("2026-10-15");
     expect(r.initialAssessmentDueBy).toBe("2026-05-03");
-    expect(r.comprehensiveAssessmentDueBy).toBe("2026-05-05");
+    // 418.54(b) / SOM App. M L523: the election date is day 0 ⇒ 05-01 + 5 = 05-06.
+    expect(r.comprehensiveAssessmentDueBy).toBe("2026-05-06");
     expect(r.hopeAdmissionA0220).toBe("2026-05-01");
   });
 
