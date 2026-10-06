@@ -56,6 +56,24 @@ function DiagnosisRows({ v }: { v: AddendumVersion }): JSX.Element {
   );
 }
 
+/** Read-only non-covered list: type on the left, the item and its patient-facing reason on the right. */
+export function NonCoveredList({ items }: { items: readonly AddendumItem[] }): JSX.Element {
+  return (
+    <dl className="wx-kv">
+      {items.map((it, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: stored order is the identity.
+        <div key={i}>
+          <dt>{CATEGORY_LABEL[it.category]}</dt>
+          <dd>
+            {it.description}
+            <span className="wx-row-sub">{it.reasonNotCovered}</span>
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function ItemEditor({
   items,
   onChange,
@@ -89,10 +107,10 @@ function ItemEditor({
           />
           <div className="wx-action-row">
             {it.source ? (
-              <span className="wx-row-sub">
-                <Glyph name="link" size={12} /> From the{" "}
-                {it.source === "problem" ? "plan of care" : it.source}
-              </span>
+              <p className="wx-pa-source">
+                <Glyph name="link" size={12} />
+                <span>From the {it.source === "problem" ? "plan of care" : it.source}</span>
+              </p>
             ) : null}
             <Button
               tone="tertiary"
@@ -211,7 +229,7 @@ export function ElectionAddendumDrawer({
       ? [
           {
             value: "not_required",
-            label: "Not required — patient left care before it was furnished",
+            label: "Signature not required — left care",
           },
         ]
       : [
@@ -292,8 +310,9 @@ export function ElectionAddendumDrawer({
         <section className="wx-drawer-card">
           <h3>Terminal illness and related conditions</h3>
           <DiagnosisRows v={v} />
-          <p className="wx-row-sub">
-            <Glyph name="lock" size={12} /> From the plan of care
+          <p className="wx-pa-source">
+            <Glyph name="lock" size={12} />
+            <span>From the plan of care</span>
           </p>
         </section>
 
@@ -333,18 +352,7 @@ export function ElectionAddendumDrawer({
           ) : v.items.length === 0 ? (
             <p className="wx-row-sub">No items recorded yet.</p>
           ) : (
-            <dl className="wx-kv">
-              {v.items.map((it, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: stored order is the identity.
-                <div key={i}>
-                  <dt>{CATEGORY_LABEL[it.category]}</dt>
-                  <dd>
-                    {it.description}
-                    <span className="wx-row-sub">{it.reasonNotCovered}</span>
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <NonCoveredList items={v.items} />
           )}
         </section>
 

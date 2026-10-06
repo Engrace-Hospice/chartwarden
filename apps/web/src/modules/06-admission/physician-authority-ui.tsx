@@ -207,15 +207,15 @@ export function AuthorityDrawer({
   return (
     <aside className="wx-admission-drawer" aria-label={title}>
       <header className="wx-drawer-head">
-        <span className="wx-pa-head-icon" aria-hidden>
-          <Glyph name={icon} size={20} />
+        <span className="wx-rail-icon wx-pa-head-icon" aria-hidden>
+          <Glyph name={icon} size={16} />
         </span>
         <div className="wx-pa-head-text">
           <h2>{title}</h2>
-          <p className="wx-pa-subtitle">{subtitle}</p>
+          <div className="wx-row-sub">{subtitle}</div>
         </div>
         <IconButton tone="tertiary" size="sm" aria-label="Close panel" onClick={onClose}>
-          <Glyph name="close" size={18} />
+          <Glyph name="close" size={16} />
         </IconButton>
       </header>
       <div className="wx-action-body">{children}</div>

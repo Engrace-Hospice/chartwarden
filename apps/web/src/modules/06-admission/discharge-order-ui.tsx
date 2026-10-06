@@ -23,6 +23,7 @@ import {
 } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import { usDate } from "./election-addendum-format";
 import {
   AuthoritySection,
   CAPACITY_LABEL,
@@ -113,7 +114,7 @@ export function DischargeOrderFields({
       }
       aside={
         <>
-          <span className="wx-cms-code">42 CFR 418.26(b)</span>
+          <span className="wx-muted-code">42 CFR 418.26(b)</span>
           <StatusPill
             label={required ? "Required" : "Optional"}
             tone={required ? "warning" : "neutral"}
@@ -276,7 +277,7 @@ export function DischargeOrderSection({
       aside={
         data ? (
           <>
-            <span className="wx-cms-code">42 CFR 418.26(b)</span>
+            <span className="wx-muted-code">42 CFR 418.26(b)</span>
             <StatusPill
               label={
                 data.order ? "Order on file" : data.orderRequired ? "Order missing" : "Not required"
@@ -297,7 +298,7 @@ export function DischargeOrderSection({
               [
                 "Discharge date",
                 <span key="date" className="wx-nums">
-                  {data.dischargeDate}
+                  {usDate(data.dischargeDate)}
                 </span>,
               ],
               ...(data.order
@@ -312,6 +313,16 @@ export function DischargeOrderSection({
                     ],
                     ...(data.order.orderReference
                       ? ([["Reference", data.order.orderReference]] as const)
+                      : []),
+                    ...(data.order.orderText
+                      ? ([
+                          [
+                            "Order text",
+                            <span key="text" className="wx-pa-order-text">
+                              {data.order.orderText}
+                            </span>,
+                          ],
+                        ] as const)
                       : []),
                   ] as const)
                 : ([
@@ -340,9 +351,6 @@ export function DischargeOrderSection({
             ]}
             source="Recorded on the discharge · signer validated against the 418.26(b) signer set"
           />
-          {data.order?.orderText ? (
-            <p className="wx-pa-order-text">{data.order.orderText}</p>
-          ) : null}
         </div>
       )}
     </AuthoritySection>

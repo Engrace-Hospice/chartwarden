@@ -25,12 +25,15 @@ import {
   type ElectionAddendumApi,
   createElectionAddendumApi,
 } from "./election-addendum-api";
-import { type AddendumPermissions, ElectionAddendumDrawer } from "./election-addendum-drawer";
+import {
+  type AddendumPermissions,
+  ElectionAddendumDrawer,
+  NonCoveredList,
+} from "./election-addendum-drawer";
 import {
   ADDENDUM_STATUS_LABEL,
   ADDENDUM_STATUS_TONE,
   ADDENDUM_WINDOW_LABEL,
-  CATEGORY_LABEL,
   countdownLabel,
   countdownTone,
   nextDue,
@@ -147,39 +150,18 @@ export function ElectionAddendumPanel({
         </dl>
 
         {current ? (
-          current.noNonCoveredItems ? (
-            <p className="wx-row-sub">
-              All conditions, items, services, and drugs are related and covered.
-            </p>
-          ) : current.items.length > 0 ? (
-            <DataTable
-              ariaLabel="Not covered by the hospice"
-              rows={current.items.map((it, i) => ({ ...it, key: `${i}` }))}
-              getRowId={(r) => r.key}
-              columns={[
-                {
-                  id: "type",
-                  header: "Type",
-                  cell: (r) => CATEGORY_LABEL[r.category],
-                  priority: "secondary",
-                },
-                {
-                  id: "desc",
-                  header: "Condition, item, service, or drug",
-                  cell: (r) => r.description,
-                  priority: "primary",
-                },
-                {
-                  id: "why",
-                  header: "Reason not covered",
-                  cell: (r) => r.reasonNotCovered,
-                  priority: "tertiary",
-                },
-              ]}
-            />
-          ) : (
-            <p className="wx-row-sub">No non-covered items recorded yet.</p>
-          )
+          <div className="wx-addendum-group">
+            <h4 className="wx-addendum-subhead">Not covered by the hospice</h4>
+            {current.noNonCoveredItems ? (
+              <p className="wx-row-sub">
+                All conditions, items, services, and drugs are related and covered.
+              </p>
+            ) : current.items.length > 0 ? (
+              <NonCoveredList items={current.items} />
+            ) : (
+              <p className="wx-row-sub">No non-covered items recorded yet.</p>
+            )}
+          </div>
         ) : (
           <EmptyState
             title="No addendum yet"

@@ -10,6 +10,7 @@ import {
 } from "@wardenx/ui";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { isCop27Preview, renderCop27Preview } from "./cop27-preview";
 import { PatientChart } from "./modules/05-patient/patient-chart";
 import { PatientElectionCert } from "./modules/06-admission/patient-election-cert";
 import { CarePlanView } from "./modules/07-care-plan/care-plan-view";
@@ -2361,6 +2362,17 @@ function f2fGet(p: string): unknown {
       status: "active",
     };
   if (p === "/api/v1/face-to-face/{id}") return { id: "f2f3", state: f2fState, version: 2 };
+  // Election effective 2026-07-08 — before the FY2027 addendum mandate (42 CFR 418.24(b)(6)).
+  if (p === "/api/v1/admissions/{id}/election-addendum")
+    return {
+      admissionId: "adm1",
+      required: false,
+      electionEffectiveDate: "2026-07-08",
+      inCare: true,
+      current: null,
+      history: [],
+      openWindows: [],
+    };
   if (p === "/api/v1/encounters")
     return {
       encounters: [
@@ -2450,7 +2462,10 @@ const previewNavScreens = PRIMARY_NAV.flatMap((section) =>
       screen: () => null,
     })),
 );
-if (isIdg) {
+// FY2027 CoP screens (?addendum / ?coverage / ?admit) — fixtures in cop27-preview.tsx.
+if (isCop27Preview) {
+  renderCop27Preview();
+} else if (isIdg) {
   createRoot(document.getElementById("root")!).render(
     <SessionProvider
       session={

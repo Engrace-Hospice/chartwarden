@@ -50,9 +50,16 @@ export const ADDENDUM_WINDOW_LABEL: Record<string, string> = {
   election_addendum_update: "Addendum update (3 days)",
 };
 
+/** A bare `YYYY-MM-DD` is a calendar date: parse it on the local calendar (`new Date("2026-10-07")` is UTC
+ *  midnight, which is the previous day anywhere west of Greenwich). A timestamp parses as an instant. */
+function calendarDate(value: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
 /** Whole calendar days from `now` to `dueAt` (negative = overdue), on the viewer's local calendar. */
 export function daysUntil(dueAt: string, now: Date = new Date()): number {
-  const due = new Date(dueAt);
+  const due = calendarDate(dueAt);
   const a = Date.UTC(due.getFullYear(), due.getMonth(), due.getDate());
   const b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((a - b) / 86_400_000);

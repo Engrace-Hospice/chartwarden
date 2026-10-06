@@ -66,7 +66,7 @@ export function AdmissionRecommendationSection({
       description="Medical director, physician designee, or the patient's IDG physician, with the attending's input."
       aside={
         <>
-          <span className="wx-cms-code">42 CFR 418.25(a)</span>
+          <span className="wx-muted-code">42 CFR 418.25(a)</span>
           <StatusPill
             label={recommendation ? "Recorded" : "Review advised"}
             tone={recommendation ? "success" : "warning"}

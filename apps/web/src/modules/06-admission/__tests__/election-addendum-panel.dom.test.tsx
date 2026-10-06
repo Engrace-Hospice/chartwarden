@@ -214,4 +214,11 @@ describe("addendum countdown", () => {
       "Overdue by 2 days",
     );
   });
+
+  it("reads a bare YYYY-MM-DD due date on the local calendar, not as UTC midnight", () => {
+    const now = new Date(2026, 9, 6, 9, 0, 0);
+    expect(daysUntil("2026-10-07", now)).toBe(1);
+    expect(countdownLabel("2026-10-06", now)).toBe("Due today");
+    expect(countdownLabel("2026-10-04", now)).toBe("Overdue by 2 days");
+  });
 });
