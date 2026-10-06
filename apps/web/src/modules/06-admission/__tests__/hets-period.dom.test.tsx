@@ -8,7 +8,12 @@ import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
 import { AdmissionCreate } from "../admission-create";
 import { BenefitPeriodField } from "../benefit-period-field";
-import { type HetsHospicePeriodsView, hetsAdvice, localDateOf } from "../hets-model";
+import {
+  type HetsHospicePeriodsView,
+  canRunHetsCheck,
+  hetsAdvice,
+  localDateOf,
+} from "../hets-model";
 import { useHetsHospicePeriods } from "../hets-period-panel";
 import { Readmission } from "../readmission";
 import type { BenefitPeriodDraft } from "../readmission-model";
@@ -394,5 +399,23 @@ describe("HETS on the screens", () => {
         query: { patientId: PATIENT, electionDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
       },
     });
+  });
+});
+
+describe("canRunHetsCheck", () => {
+  it("is true only when HETS is configured and the caller may run a check", () => {
+    expect(canRunHetsCheck({ kind: "loaded", view: NO_CHECK }, true)).toBe(true);
+    expect(canRunHetsCheck({ kind: "loaded", view: NO_CHECK }, false)).toBe(false);
+  });
+
+  it("is false when HETS is not configured or the read is unavailable", () => {
+    const unconfigured = view({
+      ...NO_CHECK,
+      status: "hets_not_configured",
+      hetsConfigured: false,
+    });
+    expect(canRunHetsCheck({ kind: "loaded", view: unconfigured }, true)).toBe(false);
+    expect(canRunHetsCheck({ kind: "unavailable", reason: "not_configured" }, true)).toBe(false);
+    expect(canRunHetsCheck({ kind: "unavailable", reason: "forbidden" }, true)).toBe(false);
   });
 });

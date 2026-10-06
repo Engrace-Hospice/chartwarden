@@ -38,6 +38,7 @@ import {
   localToday,
   useEpisodeAdmission,
 } from "./end-of-episode-ui";
+import { canRunHetsCheck } from "./hets-model";
 import {
   type BenefitPeriodDraft,
   type BenefitPeriodPlan,
@@ -406,9 +407,7 @@ export function Readmission(): JSX.Element {
             </Section>
           ) : null}
 
-          <WorkflowFooter
-            note={`Previous stay: ${endLabel(loadedPlan.previous?.dischargeType ?? null)}`}
-          >
+          <WorkflowFooter note={`Previous stay: ${previousEndLabel(loadedPlan.previous)}`}>
             {step === 0 ? (
               <Link to={backTo} className="wx-btn-secondary">
                 Cancel
@@ -444,6 +443,12 @@ export function Readmission(): JSX.Element {
   );
 }
 
+/** How the previous stay ended; a transfer with no discharge type on file reads as a transfer out. */
+function previousEndLabel(prev: BenefitPeriodPlan["previous"]): string {
+  if (!prev) return endLabel(null);
+  return endLabel(prev.dischargeType ?? (prev.transfer ? "transfer_out" : null));
+}
+
 function PreviousEpisodeStep({
   plan,
   hets,
@@ -467,7 +472,7 @@ function PreviousEpisodeStep({
               { term: "Ended", value: `${endKindLabel(prev.endKind)} on ${fmtDate(prev.endedOn)}` },
               {
                 term: "Reason",
-                value: endLabel(prev.dischargeType ?? (prev.transfer ? "transfer_out" : null)),
+                value: previousEndLabel(prev),
               },
               {
                 term: "Days since discharge",
@@ -493,7 +498,10 @@ function PreviousEpisodeStep({
             <WarningNote>
               Readmitted within 60 days of a discharge, but no recent HETS check is on file: days
               the patient spent at another hospice are not counted, so the RHC high/low rate split
-              may be wrong. Run a HETS check on the Benefit period step.
+              may be wrong.{" "}
+              {canRunHetsCheck(hets.load, hets.canCheck)
+                ? "Run a HETS check on the Benefit period step."
+                : "Look the patient up in HETS / ELGA / ELGH before confirming the benefit period."}
             </WarningNote>
           ) : null}
           {prev.transfer ? (
