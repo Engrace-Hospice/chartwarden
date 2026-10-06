@@ -53,6 +53,7 @@ import {
   RequestSignatureRequest,
   RevokePrescriberRequest,
   RxBenefitLookupRequest,
+  SetCoverageDeterminationRequest,
   SignControlledCompleteRequest,
   SignControlledInitiateRequest,
   SignMedicationOrderRequest,
@@ -108,6 +109,7 @@ const VERBAL = P("prescribing.verbal.record");
 const COSIGN = P("prescribing.cosign");
 const DISCONTINUE = P("prescribing.discontinue");
 const REPORT_ERROR = P("prescribing.report_error");
+const COVERAGE = P("prescribing.coverage_determine");
 const REFILL_DECIDE = P("prescribing.refill_decide");
 const ROSTER = P("prescribing.admin.roster");
 const POLICY = P("prescribing.admin.policy");
@@ -444,6 +446,23 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       return service.reportMedicationError(organizationId, userId, id, {
         errorCategory: b.errorCategory,
         summary: b.summary,
+      });
+    },
+  );
+
+  // COP27 (42 CFR 418.24(c)) — set/change the hospice coverage determination (covered_related |
+  // not_covered_unrelated | not_covered_other + reason). Not a lifecycle transition; caseload-scoped and
+  // never break-glass-bypassable like every other write. The determining membership is the SESSION's.
+  app.put(
+    "/api/v1/medication-orders/:id/coverage-determination",
+    { preHandler: [COVERAGE, orderScope("prescribing.coverage_determine")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const b = parse(SetCoverageDeterminationRequest, request.body);
+      return service.setCoverageDetermination(organizationId, userId, id, {
+        hospiceCoverage: b.hospiceCoverage,
+        reason: b.reason ?? null,
       });
     },
   );

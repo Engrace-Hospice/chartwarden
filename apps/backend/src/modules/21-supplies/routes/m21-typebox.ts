@@ -25,7 +25,12 @@
 // spec contradicts its own §3.1 column types — the columns win.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import {
+  HospiceCoverageFieldsSchema,
+  HospiceCoverageSchema,
+  SetHospiceCoverageBodySchema,
+  ValidationError,
+} from "@wardenx/types";
 import type {
   ComfortKitReturnDetail as ServiceComfortKitReturnDetail,
   ComfortKitReturnListItem as ServiceComfortKitReturnListItem,
@@ -361,6 +366,10 @@ export const CaptureCaregiverSignatureBody = Type.Object({
   declinedReason: Type.Optional(FreeText(500)),
 });
 
+/** COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination. `reason`
+ *  is required when not covered (422 `COVERAGE_REASON_REQUIRED`); a kit kind is refused (422). */
+export const SetCoverageDeterminationBody = SetHospiceCoverageBodySchema;
+
 export const ConfirmReceivedBody = Type.Object({
   actor: SupplyReceivedConfirmedActor,
   confirmedAt: Instant,
@@ -569,6 +578,7 @@ export type MarkInTransitBody = Static<typeof MarkInTransitBody>;
 export type MarkDeliveredBody = Static<typeof MarkDeliveredBody>;
 export type CaptureCaregiverSignatureBody = Static<typeof CaptureCaregiverSignatureBody>;
 export type ConfirmReceivedBody = Static<typeof ConfirmReceivedBody>;
+export type SetCoverageDeterminationBody = Static<typeof SetCoverageDeterminationBody>;
 export type CancelRequestBody = Static<typeof CancelRequestBody>;
 export type ReturnRequestBody = Static<typeof ReturnRequestBody>;
 export type CreateSupplyItemBody = Static<typeof CreateSupplyItemBody>;
@@ -650,6 +660,8 @@ export const SupplyRequestListItemSchema = Type.Object({
   deliveredAt: NStr,
   createdAt: Str,
   updatedAt: Str,
+  // COP27 — the hospice coverage determination (list badge; the reason is detail-only).
+  hospiceCoverage: HospiceCoverageSchema,
 });
 
 /** §4.1 row 3 — the full request, with the D13 free text and the frozen D4 routing record. */
@@ -695,6 +707,10 @@ export const SupplyRequestDetailSchema = Type.Object({
       declinedReason: Type.Optional(Str),
     }),
   ),
+  // COP27 (42 CFR 418.24(c)) — the determination's reason / instant / determining membership.
+  coverageReason: HospiceCoverageFieldsSchema.coverageReason,
+  coverageDeterminedAt: HospiceCoverageFieldsSchema.coverageDeterminedAt,
+  coverageDeterminedBy: HospiceCoverageFieldsSchema.coverageDeterminedBy,
 });
 
 /** §4.2.1's create response — the created request plus the D4 resolution the router froze onto it. */

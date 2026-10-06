@@ -20,6 +20,7 @@ export * from "./idg";
 export * from "./discipline-plans";
 export * from "./bereavement";
 export * from "./supplies";
+export * from "./hospice-coverage";
 export * from "./oncall";
 export * from "./safety";
 export * from "./ai-platform";

@@ -788,6 +788,7 @@ import {
   ReconcileReturnResultSchema as M21ReconcileReturnResultSchema,
   SupplyItemListResponseSchema as M21SupplyItemListResponseSchema,
   SupplyItemViewSchema as M21SupplyItemViewSchema,
+  SetCoverageDeterminationBody as M21SetCoverageDeterminationBody,
   SupplyRequestDetailSchema as M21SupplyRequestDetailSchema,
   SupplyRequestListResponseSchema as M21SupplyRequestListResponseSchema,
   VendorRoutingRuleListResponseSchema as M21VendorRoutingRuleListResponseSchema,
@@ -1419,6 +1420,7 @@ import {
   RefillListResponseSchema as M12RefillListResponseSchema,
   RefillRequestResponseSchema as M12RefillRequestResponseSchema,
   ReportMedicationErrorRequest as M12ReportMedicationErrorRequest,
+  SetCoverageDeterminationRequest as M12SetCoverageDeterminationRequest,
   RequestSignatureRequest as M12RequestSignatureRequest,
   RevokePrescriberRequest as M12RevokePrescriberRequest,
   RxBenefitLookupRequest as M12RxBenefitLookupRequest,
@@ -4572,6 +4574,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12ReportMedicationErrorRequest,
     response: M12MedicationErrorReportResponseSchema,
   },
+  "PUT /api/v1/medication-orders/:id/coverage-determination": {
+    summary:
+      "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed)",
+    body: M12SetCoverageDeterminationRequest,
+    response: M12MedicationOrderResponseSchema,
+  },
   "POST /api/v1/medication-orders/:id/complete": {
     summary: "Complete a medication order (no-refills-no-renewal)",
     body: M12CompleteRequest,
@@ -6879,6 +6887,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "M21's own caregiver-signature capture (F-193, #248) — not a status transition, no outbox emission, refuses a second capture (If-Match)",
     body: M21CaptureCaregiverSignatureBody,
+    response: M21SupplyRequestDetailSchema,
+  },
+  "PUT /api/v1/supplies/supply-requests/:supplyRequestId/coverage-determination": {
+    summary:
+      "COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination (reason required when not covered; kit kinds refused; If-Match)",
+    body: M21SetCoverageDeterminationBody,
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/confirm-received": {

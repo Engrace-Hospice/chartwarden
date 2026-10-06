@@ -110,6 +110,8 @@ import {
   medicaidClaimMatchProviderDenyStub,
   medicationAdministrationProviderDenyStub,
   medicationOrderProviderDenyStub,
+  nonCoveredDmeSuppliesReaderDenyStub,
+  nonCoveredMedicationsReaderDenyStub,
   messagingProviderDenyStub,
   metricsProviderDenyStub,
   mileagePayrollReaderDenyStub,
@@ -944,6 +946,21 @@ export const REQUIRED_SEAMS = [
     ownerModule: 12,
     phi: true,
     denyStub: refillInboxProviderDenyStub,
+  },
+  // COP27 (42 CFR 418.24(c), workstream B) — the module-owned "what did the hospice determine is NOT
+  // covered" reads the M6 election-statement addendum composes (M12 drugs, M21 dme/supply). Patient-linked
+  // clinical determinations → phi: true; fail-closed until the owner registers the real reader.
+  {
+    key: "NonCoveredMedicationsReader",
+    ownerModule: 12,
+    phi: true,
+    denyStub: nonCoveredMedicationsReaderDenyStub,
+  },
+  {
+    key: "NonCoveredDmeSuppliesReader",
+    ownerModule: 21,
+    phi: true,
+    denyStub: nonCoveredDmeSuppliesReaderDenyStub,
   },
   // M13 (eMAR & Med Administration) owned seams (§2.12 D16). Both are READ-only DTO surfaces over M13's
   // `administration_record` / `medication_reconciliation_*` tables: `MedicationAdministrationProvider` is the

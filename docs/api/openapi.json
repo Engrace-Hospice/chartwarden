@@ -126998,7 +126998,11 @@
                           "transmittedAt",
                           "discontinuedAt",
                           "discontinuationReason",
-                          "createdAt"
+                          "createdAt",
+                          "hospiceCoverage",
+                          "coverageReason",
+                          "coverageDeterminedAt",
+                          "coverageDeterminedBy"
                         ],
                         "properties": {
                           "id": {
@@ -127312,6 +127316,52 @@
                           },
                           "createdAt": {
                             "type": "string"
+                          },
+                          "hospiceCoverage": {
+                            "anyOf": [
+                              {
+                                "const": "covered_related",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_covered_unrelated",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_covered_other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "coverageReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "coverageDeterminedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "coverageDeterminedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -127383,7 +127433,11 @@
                     "transmittedAt",
                     "discontinuedAt",
                     "discontinuationReason",
-                    "createdAt"
+                    "createdAt",
+                    "hospiceCoverage",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "id": {
@@ -127697,6 +127751,52 @@
                     },
                     "createdAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -127896,7 +127996,11 @@
                     "transmittedAt",
                     "discontinuedAt",
                     "discontinuationReason",
-                    "createdAt"
+                    "createdAt",
+                    "hospiceCoverage",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "id": {
@@ -128210,6 +128314,52 @@
                     },
                     "createdAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -128548,6 +128698,483 @@
                     "minLength": 50,
                     "maxLength": 1000,
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/medication-orders/{id}/coverage-determination": {
+      "put": {
+        "operationId": "putApiV1MedicationordersByIdCoveragedetermination",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medClass",
+                    "status",
+                    "drugName",
+                    "strength",
+                    "doseForm",
+                    "route",
+                    "data",
+                    "rxnormRxcui",
+                    "ndc",
+                    "version",
+                    "prescriberMembershipId",
+                    "prescriberDiscipline",
+                    "prescribingPhysicianMdmId",
+                    "dispensingPharmacyMdmId",
+                    "isControlledSubstance",
+                    "deaSchedule",
+                    "cosignRequired",
+                    "cosignStatus",
+                    "refillsRemaining",
+                    "refillsAuthorized",
+                    "derivedFromRefillId",
+                    "replacesMedicationOrderId",
+                    "signedAt",
+                    "signedBy",
+                    "transmittedAt",
+                    "discontinuedAt",
+                    "discontinuationReason",
+                    "createdAt",
+                    "hospiceCoverage",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medClass": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "controlled_substance",
+                          "type": "string"
+                        },
+                        {
+                          "const": "compounded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_signature",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verbal_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "epcs_identity_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "queued_for_transmission",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transmitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "nack_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "completed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discontinued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transmission_failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired_unsigned",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "drugName": {
+                      "type": "string"
+                    },
+                    "strength": {
+                      "type": "string"
+                    },
+                    "doseForm": {
+                      "type": "string"
+                    },
+                    "route": {
+                      "type": "string"
+                    },
+                    "data": {},
+                    "rxnormRxcui": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ndc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "prescriberMembershipId": {
+                      "type": "string"
+                    },
+                    "prescriberDiscipline": {
+                      "type": "string"
+                    },
+                    "prescribingPhysicianMdmId": {
+                      "type": "string"
+                    },
+                    "dispensingPharmacyMdmId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "deaSchedule": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "II",
+                              "type": "string"
+                            },
+                            {
+                              "const": "III",
+                              "type": "string"
+                            },
+                            {
+                              "const": "IV",
+                              "type": "string"
+                            },
+                            {
+                              "const": "V",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cosignRequired": {
+                      "type": "boolean"
+                    },
+                    "cosignStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attached",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refillsRemaining": {
+                      "type": "integer"
+                    },
+                    "refillsAuthorized": {
+                      "type": "integer"
+                    },
+                    "derivedFromRefillId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "replacesMedicationOrderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "transmittedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discontinuedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discontinuationReason": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "clinical_judgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient_request",
+                              "type": "string"
+                            },
+                            {
+                              "const": "adverse_event",
+                              "type": "string"
+                            },
+                            {
+                              "const": "replaced_by_corrected_order",
+                              "type": "string"
+                            },
+                            {
+                              "const": "admission_discharged",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_nack",
+                              "type": "string"
+                            },
+                            {
+                              "const": "corrected_replacement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired_verbal",
+                              "type": "string"
+                            },
+                            {
+                              "const": "transmission_failed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_refills_no_renewal",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "hospiceCoverage"
+                ],
+                "properties": {
+                  "hospiceCoverage": {
+                    "anyOf": [
+                      {
+                        "const": "covered_related",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_covered_unrelated",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_covered_other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -153863,7 +154490,11 @@
                           "transmittedAt",
                           "discontinuedAt",
                           "discontinuationReason",
-                          "createdAt"
+                          "createdAt",
+                          "hospiceCoverage",
+                          "coverageReason",
+                          "coverageDeterminedAt",
+                          "coverageDeterminedBy"
                         ],
                         "properties": {
                           "id": {
@@ -154177,6 +154808,52 @@
                           },
                           "createdAt": {
                             "type": "string"
+                          },
+                          "hospiceCoverage": {
+                            "anyOf": [
+                              {
+                                "const": "covered_related",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_covered_unrelated",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_covered_other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "coverageReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "coverageDeterminedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "coverageDeterminedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -205735,7 +206412,8 @@
                           "orderedAt",
                           "deliveredAt",
                           "createdAt",
-                          "updatedAt"
+                          "updatedAt",
+                          "hospiceCoverage"
                         ],
                         "properties": {
                           "supplyRequestId": {
@@ -205876,6 +206554,22 @@
                           },
                           "updatedAt": {
                             "type": "string"
+                          },
+                          "hospiceCoverage": {
+                            "anyOf": [
+                              {
+                                "const": "covered_related",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_covered_unrelated",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_covered_other",
+                                "type": "string"
+                              }
+                            ]
                           }
                         }
                       }
@@ -206253,6 +206947,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -206282,7 +206977,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -206423,6 +207121,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -206907,6 +207621,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -206965,6 +207709,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -206994,7 +207739,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -207135,6 +207883,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -207619,6 +208383,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -207745,6 +208539,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -207774,7 +208569,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -207915,6 +208713,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -208399,6 +209213,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -208477,6 +209321,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -208506,7 +209351,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -208647,6 +209495,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -209131,6 +209995,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -209244,6 +210138,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -209273,7 +210168,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -209414,6 +210312,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -209898,6 +210812,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -209954,13 +210898,13 @@
         }
       }
     },
-    "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-delivered": {
-      "post": {
-        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered",
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/coverage-determination": {
+      "put": {
+        "operationId": "putApiV1SuppliesSupplyrequestsBySupplyRequestIdCoveragedetermination",
         "tags": [
           "21-supplies"
         ],
-        "summary": "D7 courier attestation (deliveredBy stamped from session; If-Match)",
+        "summary": "COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination (reason required when not covered; kit kinds refused; If-Match)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -209992,6 +210936,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -210021,7 +210966,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -210162,6 +211110,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -210646,6 +211610,841 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "hospiceCoverage"
+                ],
+                "properties": {
+                  "hospiceCoverage": {
+                    "anyOf": [
+                      {
+                        "const": "covered_related",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_covered_unrelated",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_covered_other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-delivered": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered",
+        "tags": [
+          "21-supplies"
+        ],
+        "summary": "D7 courier attestation (deliveredBy stamped from session; If-Match)",
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "supplyRequestId",
+                    "patientId",
+                    "locationId",
+                    "kind",
+                    "status",
+                    "assignedVendorId",
+                    "vendorOrderReference",
+                    "trackingNumber",
+                    "carrier",
+                    "orderedAt",
+                    "deliveredAt",
+                    "createdAt",
+                    "updatedAt",
+                    "hospiceCoverage",
+                    "admissionId",
+                    "providerEntityId",
+                    "sourceOrderId",
+                    "sourceReplenishmentEventId",
+                    "requestedByMembershipId",
+                    "data",
+                    "routingRuleResolved",
+                    "pharmacyPartnerId",
+                    "documentId",
+                    "deliveryInstructions",
+                    "deliveryMethod",
+                    "deliveredByMembershipId",
+                    "deliveryEvidenceDocumentId",
+                    "receivedConfirmedAt",
+                    "receivedConfirmedActor",
+                    "completedAt",
+                    "cancelledAt",
+                    "cancellationPendingAt",
+                    "cancellationReason",
+                    "shippedAt",
+                    "invoiceTotalCents",
+                    "invoiceAccruedAt",
+                    "invoiceReconciledAt",
+                    "invoiceVarianceCents",
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
+                  ],
+                  "properties": {
+                    "supplyRequestId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "dme",
+                          "type": "string"
+                        },
+                        {
+                          "const": "supply",
+                          "type": "string"
+                        },
+                        {
+                          "const": "comfort_kit_deploy",
+                          "type": "string"
+                        },
+                        {
+                          "const": "comfort_kit_replenish",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "vendor_assigned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ordered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_transit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "delivered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "received_confirmed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "completed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancellation_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "returned",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "assignedVendorId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "vendorOrderReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "trackingNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carrier": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "orderedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveredAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "sourceOrderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceReplenishmentEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {},
+                    "routingRuleResolved": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "resolverVersion",
+                            "resolvedAt",
+                            "precedenceLevelUsed",
+                            "matchedRuleId",
+                            "assignedVendorId",
+                            "assignedFulfillmentMode",
+                            "defaultPharmacyDispatchMode",
+                            "candidatesEvaluated",
+                            "routingPolicyDigest"
+                          ],
+                          "properties": {
+                            "resolverVersion": {
+                              "type": "string"
+                            },
+                            "resolvedAt": {
+                              "type": "string"
+                            },
+                            "precedenceLevelUsed": {
+                              "anyOf": [
+                                {
+                                  "const": "sku",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "location",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "matchedRuleId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "assignedVendorId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "assignedFulfillmentMode": {
+                              "anyOf": [
+                                {
+                                  "const": "vendor",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "internal_supply_hub",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "partner_pharmacy",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "dosespot_to_partner_pharmacy",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "defaultPharmacyDispatchMode": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "supply_hub_dispatch",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "partner_pharmacy_dispatch",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "dosespot_to_partner_pharmacy",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "candidatesEvaluated": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "precedenceLevel",
+                                  "ruleId",
+                                  "matched",
+                                  "reason"
+                                ],
+                                "properties": {
+                                  "precedenceLevel": {
+                                    "anyOf": [
+                                      {
+                                        "const": "sku",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "location",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "tenant",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "ruleId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "matched": {
+                                    "type": "boolean"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "routingPolicyDigest": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pharmacyPartnerId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryInstructions": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "agency_courier",
+                              "type": "string"
+                            },
+                            {
+                              "const": "vendor_direct_ship",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_partner_courier",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient_pickup",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_facility_internal",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveredByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedConfirmedActor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "caregiver",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "supply_team",
+                              "type": "string"
+                            },
+                            {
+                              "const": "system_auto_confirm",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationPendingAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "shippedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceTotalCents": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceAccruedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceReconciledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceVarianceCents": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dispatchId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -210752,6 +212551,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -210781,7 +212581,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -210922,6 +212725,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -211406,6 +213225,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -211490,6 +213339,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -211519,7 +213369,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -211660,6 +213513,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -212144,6 +214013,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -212222,6 +214121,7 @@
                     "deliveredAt",
                     "createdAt",
                     "updatedAt",
+                    "hospiceCoverage",
                     "admissionId",
                     "providerEntityId",
                     "sourceOrderId",
@@ -212251,7 +214151,10 @@
                     "caregiverSignatureCapturedAt",
                     "caregiverSignatureCapturedByMembershipId",
                     "caregiverSignatureEvidenceDocumentId",
-                    "caregiverSignatureEvidence"
+                    "caregiverSignatureEvidence",
+                    "coverageReason",
+                    "coverageDeterminedAt",
+                    "coverageDeterminedBy"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -212392,6 +214295,22 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "hospiceCoverage": {
+                      "anyOf": [
+                        {
+                          "const": "covered_related",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_unrelated",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_covered_other",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "admissionId": {
                       "type": "string"
@@ -212876,6 +214795,36 @@
                               "type": "string"
                             }
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coverageDeterminedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"

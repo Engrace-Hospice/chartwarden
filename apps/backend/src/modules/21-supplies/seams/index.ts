@@ -23,15 +23,18 @@
 // written against these exact contracts (M21-T04 already consumes M11's side of the same handshake).
 // Flipping the consumer is an M11/M13 wiring change (the M26 precedent, PRs #129/#130), not M21's. What
 // lands here is the producer side: the contracts are real, registered and boot-validated.
+import type { DbClient } from "@wardenx/db";
 import { getRequestContext } from "@wardenx/tenancy";
 import type {
   ComfortKitDispatchProvider,
   IsoInstant,
+  NonCoveredItemsReader,
   OrgId,
   SupplyCostProvider,
   SupplyFulfillmentProvider,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import { createNonCoveredDmeSuppliesReader } from "./non-covered-dme-supplies";
 import {
   type SuppliesSeamClock,
   type SuppliesSeamOrgResolver,
@@ -61,6 +64,13 @@ export {
   createInMemorySuppliesSeamStore,
 } from "./store";
 export { buildDrizzleSuppliesSeamStore } from "./store-drizzle";
+export {
+  NON_COVERED_EXCLUDED_SUPPLY_STATUSES,
+  createNonCoveredDmeSuppliesReader,
+  listNonCoveredDmeSuppliesForAdmission,
+  skuIdOfRequestData,
+  supplySnapshotOf,
+} from "./non-covered-dme-supplies";
 export {
   type SuppliesSeamClock,
   type SuppliesSeamOrgResolver,
@@ -125,6 +135,9 @@ export interface SuppliesSeamDeps {
    * provider treats as "no caller org to compare against" rather than as a match.
    */
   orgOf?: SuppliesSeamOrgResolver;
+  /** COP27 — the production DB client the `NonCoveredDmeSuppliesReader` reads through (org-explicit). Absent
+   *  ⇒ the seam keeps its fail-closed deny-stub (no silent "nothing is non-covered"). */
+  db?: DbClient;
 }
 
 /**
@@ -144,6 +157,12 @@ export function registerSuppliesSeams(deps: SuppliesSeamDeps = {}): void {
   );
   registerSeam("ComfortKitDispatchProvider", createComfortKitDispatchProvider(store, clock));
   registerSeam("SupplyCostProvider", createSupplyCostProvider(store, orgOf));
+  if (deps.db) registerSeam("NonCoveredDmeSuppliesReader", createNonCoveredDmeSuppliesReader(deps.db));
+}
+
+/** Typed resolver for M21's COP27 NonCoveredDmeSuppliesReader (the M6 election-statement addendum composes it). */
+export function getNonCoveredDmeSuppliesReader(): NonCoveredItemsReader {
+  return getSeam("NonCoveredDmeSuppliesReader");
 }
 
 /** Typed resolver for M21's SupplyFulfillmentProvider (M11's cascade, M22/M28/M30/M33 projections). */

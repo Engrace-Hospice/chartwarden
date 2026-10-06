@@ -1383,7 +1383,9 @@ export function wireModuleSeams(
   // TASK-002 — MedicationOrderProvider + RefillInboxProvider bind the Drizzle store on a db boot
   // (D14 allowlist sig projection; the cost-basis + comfort-kit rollups REFUSE with
   // M12_SEAM_SCHEMA_GAP — no cost column / not M12's table — never a fabricated $0 or "no kit").
-  registerDoseSpotSeams(deps.db ? { store: createDrizzleDoseSpotSeamStore(deps.db) } : {});
+  registerDoseSpotSeams(
+    deps.db ? { store: createDrizzleDoseSpotSeamStore(deps.db), db: deps.db } : {},
+  );
   // M13 — the two §2.12 D16 owned READ seams (MedicationAdministrationProvider — the administration read path M14
   // (IDG "administrations since last meeting") / M28 (FHIR) / M30 (PRN-effectiveness / missed-dose /
   // comfort-kit-timeliness measures) / M31 (portal summary) / M33 (dashboards) / M37 (IPU IV-pump overlay)
@@ -1488,7 +1490,9 @@ export function wireModuleSeams(
   // route and an M11 cascade (D4 routing freeze + per-kind validation + the §4.5.2 emit). It is wired below,
   // where the Drizzle services are constructed; unbound, the create method raises rather than writing a
   // routing-less row.
-  registerSuppliesSeams(deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db) } : {});
+  registerSuppliesSeams(
+    deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db), db: deps.db } : {},
+  );
   // M19 — the five §4.3 owned READ seams: `OnCallProvider` (who is on call NOW for a ProviderEntity + the
   // active shifts M36's `on_call` channel synchronizer re-syncs membership from, §4.5 — the same read M20's
   // after-hours SOS parallel recipient resolves through, M20 §7.5 D14), `TriageCallReader` (M32's PHI-free

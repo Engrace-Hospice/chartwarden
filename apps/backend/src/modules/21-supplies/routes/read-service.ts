@@ -37,6 +37,7 @@ import type {
   SupplyDeliveryMethod,
   SupplyFulfillmentMode,
   SupplyItemId,
+  HospiceCoverage,
   SupplyReceivedConfirmedActor,
   SupplyRequestId,
   SupplyRequestKind,
@@ -64,6 +65,8 @@ export interface SupplyRequestListItem {
   readonly createdAt: IsoInstant;
   /** The `If-Match` value a transition on this row must echo (§7.2). */
   readonly updatedAt: IsoInstant;
+  /** COP27 — the hospice coverage determination (the list badge; the reason is detail-only free text). */
+  readonly hospiceCoverage: HospiceCoverage;
 }
 
 /** §4.1 row 3 — the full request. Carries the D13 free text and the frozen D4 routing record. */
@@ -100,6 +103,12 @@ export interface SupplyRequestDetail extends SupplyRequestListItem {
   readonly caregiverSignatureCapturedByMembershipId: MembershipId | null;
   readonly caregiverSignatureEvidenceDocumentId: string | null;
   readonly caregiverSignatureEvidence: SupplyCaregiverSignatureEvidence | null;
+  /** COP27 (42 CFR 418.24(c)) — the patient-facing reason; required when not covered. */
+  readonly coverageReason: string | null;
+  /** `null` = never explicitly determined (presumed related — the migration default). */
+  readonly coverageDeterminedAt: IsoInstant | null;
+  /** The determining MEMBERSHIP id (session-derived). */
+  readonly coverageDeterminedBy: MembershipId | null;
 }
 
 /** §4.1 rows 11 / 13 — a catalog SKU. Platform rows have no org; the overlay rows are tenant-scoped. */

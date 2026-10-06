@@ -33,6 +33,7 @@ import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 import type { DocumentId } from "./documents";
 import type { MedicationOrderId } from "./dosespot";
 import type { ComfortKitDeploymentId } from "./emar";
+import type { HospiceCoverageDeterminationChangedPayload } from "./hospice-coverage";
 import type { OrderRecordId } from "./orders";
 
 // ── M21-owned id aliases (mirror the §3.1 uuid PKs; packages/types cannot import @wardenx/db) ─────────
@@ -258,6 +259,8 @@ export const M21_EVENT_NAMES = [
   "m21.supply_request.delivery_overdue",
   "m21.supply_request.invoice_accrued",
   "m21.supply_request.invoice_reconciled",
+  // COP27 (42 CFR 418.24(c)) — a clinician set/changed a dme/supply request's hospice coverage determination.
+  "m21.supply_request.coverage_determination_changed",
   "m21.comfort_kit.dispatched",
   "m21.comfort_kit.deployed_at_patient",
   "m21.comfort_kit.replenished",
@@ -625,6 +628,7 @@ export interface M21EventPayloadMap {
   "m21.supply_request.delivery_overdue": M21SupplyRequestDeliveryOverduePayload;
   "m21.supply_request.invoice_accrued": M21SupplyRequestInvoiceAccruedPayload;
   "m21.supply_request.invoice_reconciled": M21SupplyRequestInvoiceReconciledPayload;
+  "m21.supply_request.coverage_determination_changed": HospiceCoverageDeterminationChangedPayload;
   "m21.comfort_kit.dispatched": M21ComfortKitDispatchedPayload;
   "m21.comfort_kit.deployed_at_patient": M21ComfortKitDeployedAtPatientPayload;
   "m21.comfort_kit.replenished": M21ComfortKitReplenishedPayload;

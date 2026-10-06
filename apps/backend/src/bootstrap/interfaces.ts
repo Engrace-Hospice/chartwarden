@@ -82,6 +82,7 @@ export type {
   MedicationAdministrationProvider,
   MedicationOrderProvider,
   MileagePayrollReader,
+  NonCoveredItemsReader,
   MswRiskFactorReader,
   OnCallProvider,
   PatientSitingReader,

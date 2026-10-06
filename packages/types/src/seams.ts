@@ -85,6 +85,7 @@ import type {
   TriageCallProvider,
   TriageCallReader,
 } from "./oncall";
+import type { NonCoveredItemsReader } from "./hospice-coverage";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type {
   PatientAddressReader,
@@ -162,6 +163,8 @@ export type SeamName =
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
   | "PatientAddressReader" // M5 — TASK-015: patient residence state (M31 portal two-party-recording ABAC)
+  | "NonCoveredMedicationsReader" // M12 — COP27: active medication orders determined NOT hospice-covered (M6 election addendum, 42 CFR 418.24(c))
+  | "NonCoveredDmeSuppliesReader" // M21 — COP27: active dme/supply requests determined NOT hospice-covered (M6 election addendum)
   | "PatientAllergyReader" // M5 — the patient's current allergy list (M12 requestSignature allergy gate, GAP-036)
   | "PatientPrivacyFlagReader" // M5 §3.5 — sex class + active privacy flags (M37 shared-room gate, GAP-061)
   | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
@@ -1049,6 +1052,8 @@ export interface SeamContracts {
   PatientCaregiverReader: PatientCaregiverReader;
   PatientAddressReader: PatientAddressReader;
   PatientAllergyReader: PatientAllergyReader;
+  NonCoveredMedicationsReader: NonCoveredItemsReader;
+  NonCoveredDmeSuppliesReader: NonCoveredItemsReader;
   PatientPrivacyFlagReader: PatientPrivacyFlagReader;
   ExternalGriefResourceReader: ExternalGriefResourceReader;
   PatientMutator: PatientMutator;

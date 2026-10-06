@@ -20,13 +20,14 @@ import {
 } from "@wardenx/dosespot";
 import type {
   DeaSchedule,
+  HospiceCoverage,
   MedClass,
   MedicationOrderDiscontinuationReason,
   MedicationOrderStatus,
   RefillRequestStatus,
   RefillResponseChannel,
 } from "@wardenx/types";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { NotFoundError, ValidationError, assertCoverageDetermination } from "@wardenx/types";
 import {
   assertCosignSatisfied,
   assertCosignStanding,
@@ -103,6 +104,13 @@ export interface MedicationOrderView {
   readonly discontinuedAt: string | null;
   readonly discontinuationReason: MedicationOrderDiscontinuationReason | null;
   readonly createdAt: string;
+  /** COP27 (42 CFR 418.24(c)) — the hospice coverage determination (mig 0385). */
+  readonly hospiceCoverage: HospiceCoverage;
+  readonly coverageReason: string | null;
+  /** `null` = never explicitly determined (presumed related — the migration default). */
+  readonly coverageDeterminedAt: string | null;
+  /** The determining MEMBERSHIP id (session-derived). */
+  readonly coverageDeterminedBy: string | null;
 }
 
 export interface RefillRequestView {
@@ -203,6 +211,11 @@ export interface DiscontinueArgs {
 export interface ReportMedicationErrorArgs {
   readonly errorCategory: string;
   readonly summary?: string;
+}
+/** COP27 — `setCoverageDetermination`'s args (reason required when not covered; validated in the service). */
+export interface SetCoverageDeterminationArgs {
+  readonly hospiceCoverage: HospiceCoverage;
+  readonly reason?: string | null;
 }
 export interface MedicationErrorReport {
   readonly medicationErrorId: string;
@@ -400,6 +413,15 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     id: string,
     args: ReportMedicationErrorArgs,
   ): Promise<MedicationErrorReport>;
+  /** COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination. Not a lifecycle
+   *  transition (status/version untouched); emits `m12.medication_order.coverage_determination_changed`
+   *  when the determination actually changes. A NOT-covered value requires a reason (422). */
+  setCoverageDetermination(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: SetCoverageDeterminationArgs,
+  ): Promise<MedicationOrderView>;
   completeOrder(
     organizationId: string,
     userId: string,
@@ -638,6 +660,10 @@ export function createInMemoryDoseSpotBackend(
       discontinuedAt: null,
       discontinuationReason: null,
       createdAt: now(),
+      hospiceCoverage: "covered_related",
+      coverageReason: null,
+      coverageDeterminedAt: null,
+      coverageDeterminedBy: null,
       data: {},
       cosignerRoleNeeded: null,
       ...s,
@@ -690,6 +716,27 @@ export function createInMemoryDoseSpotBackend(
     if (!r || r.organizationId !== organizationId)
       throw new NotFoundError(`medication order ${id} not found`);
     return r;
+  };
+  /** COP27 — the coverage block a new draft starts with (inherited across correction / refill mint). */
+  const inheritedCoverage = (args: {
+    replacesMedicationOrderId?: string | null;
+    derivedFromRefillId?: string | null;
+  }): Pick<
+    OrderRecord,
+    "hospiceCoverage" | "coverageReason" | "coverageDeterminedAt" | "coverageDeterminedBy"
+  > => {
+    const predecessorId =
+      args.replacesMedicationOrderId ??
+      (args.derivedFromRefillId
+        ? (refills.get(args.derivedFromRefillId)?.sourceMedicationOrderId ?? null)
+        : null);
+    const p = predecessorId ? orders.get(predecessorId) : undefined;
+    return {
+      hospiceCoverage: p?.hospiceCoverage ?? "covered_related",
+      coverageReason: p?.coverageReason ?? null,
+      coverageDeterminedAt: p?.coverageDeterminedAt ?? null,
+      coverageDeterminedBy: p?.coverageDeterminedBy ?? null,
+    };
   };
   const findRefill = (organizationId: string, id: string): RefillRecord => {
     const r = refills.get(id);
@@ -787,6 +834,9 @@ export function createInMemoryDoseSpotBackend(
       discontinuedAt: null,
       discontinuationReason: null,
       createdAt: now(),
+      // COP27 — a correction / refill mint inherits its predecessor's determination (same drug, same
+      // patient); anything else starts at the regulatory presumption (related / covered).
+      ...inheritedCoverage(args),
       data: args.data,
       cosignerRoleNeeded: null,
     };
@@ -1029,6 +1079,33 @@ export function createInMemoryDoseSpotBackend(
         `${id}:m12.medication.error_reported:${medicationErrorId}`,
       );
       return { medicationErrorId, orderId: id, reportedAt };
+    },
+    async setCoverageDetermination(organizationId, userId, id, args) {
+      const r = find(organizationId, id); // 404s if the order is unknown to this org.
+      const reason = assertCoverageDetermination(args);
+      if (r.hospiceCoverage === args.hospiceCoverage && r.coverageReason === reason)
+        return view(r); // idempotent re-save: nothing changed, nothing to announce
+      const previous = r.hospiceCoverage;
+      const changedAt = now();
+      r.hospiceCoverage = args.hospiceCoverage;
+      r.coverageReason = reason;
+      r.coverageDeterminedAt = changedAt;
+      r.coverageDeterminedBy = userId;
+      emit(
+        "m12.medication_order.coverage_determination_changed",
+        {
+          orgId: organizationId,
+          admissionId: r.admissionId,
+          patientId: r.patientId,
+          sourceId: id,
+          hospiceCoverage: args.hospiceCoverage,
+          previousHospiceCoverage: previous,
+          reason,
+          changedAt,
+        },
+        `${id}:m12.medication_order.coverage_determination_changed:${changedAt}`,
+      );
+      return view(r);
     },
     async completeOrder(organizationId, _userId, id, _reason) {
       const r = find(organizationId, id);

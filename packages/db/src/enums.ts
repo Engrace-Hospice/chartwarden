@@ -1540,6 +1540,15 @@ export const medicationOrderStatus = pgEnum("medication_order_status", [
   "expired_unsigned",
 ]);
 
+/** `hospice_coverage` — COP27 (42 CFR 418.24(b)(6)/(c)): the hospice's coverage determination on a drug
+ *  (M12 `medication_order`) or a dme/supply request (M21 `supply_request`). Shared by both owning tables;
+ *  created once in migration 0385. Mirrors `HOSPICE_COVERAGE_VALUES` in `@wardenx/types`. */
+export const hospiceCoverage = pgEnum("hospice_coverage", [
+  "covered_related",
+  "not_covered_unrelated",
+  "not_covered_other",
+]);
+
 /** `med_class` — the §2.1 medication taxonomy (standard / controlled / compounded). */
 export const medClass = pgEnum("med_class", ["standard", "controlled_substance", "compounded"]);
 

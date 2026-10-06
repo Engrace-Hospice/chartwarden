@@ -1406,8 +1406,8 @@ export type M11ContributedPermissionKey = keyof typeof M11_CONTRIBUTED_PERMISSIO
  * admin roster/policy/EPCS-certification keys are pure RBAC (`none`; org-admin / compliance / platform-ops
  * reference rows, step-up enforced at the route). Keys carry a `prescribing.` NAMESPACE prefix on top of the
  * `resource.action` decomposition (like M11's `orders.` / M10's `hope.`), so `key` is the full dotted
- * permission string used at `requirePermission(...)`. Fifteen keys total (§4.6; F-205, #248, added
- * `prescribing.report_error`). Kept in a dedicated const
+ * permission string used at `requirePermission(...)`. Sixteen keys total (§4.6; F-205, #248, added
+ * `prescribing.report_error`; COP27 added `prescribing.coverage_determine`). Kept in a dedicated const
  * for §3.3 attributability.
  */
 export const M12_CONTRIBUTED_PERMISSIONS = {
@@ -1464,6 +1464,15 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
   "prescribing.report_error": {
     resource: "medication_order",
     action: "report_error",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  // COP27 (42 CFR 418.24(c)) — set/change a medication order's hospice coverage determination (covered /
+  // not covered + reason) that the M6 election-statement addendum lists. Clinical, caseload-scoped like the
+  // other order writes.
+  "prescribing.coverage_determine": {
+    resource: "medication_order",
+    action: "coverage_determine",
     category: "clinical",
     abac: "caseload_or_scope",
   },
@@ -3962,6 +3971,15 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
   "supplies.request.caregiver_signature": {
     resource: "supply_request",
     action: "caregiver_signature",
+    category: "clinical",
+    abac: "none",
+  },
+  // COP27 (42 CFR 418.24(c)) — set/change a dme/supply request's hospice coverage determination (the M6
+  // election-statement addendum lists the not-covered items). A clinical determination, RBAC only like the
+  // other request writes; the service refuses it on the comfort-kit kinds.
+  "supplies.request.coverage_determine": {
+    resource: "supply_request",
+    action: "coverage_determine",
     category: "clinical",
     abac: "none",
   },

@@ -61,6 +61,7 @@ import {
   assertTemplateEffective,
   authorTenantTemplate,
   caregiverSignatureEvidenceJsonbOf,
+  decideCoverageDetermination,
   prepareDispatch,
   reconcileReturn,
   requireCaregiverSignatureEvidence,
@@ -98,6 +99,7 @@ import type {
   ReconcileReturnResult,
   RetireSupplyItemInput,
   ReturnRequestInput,
+  SetCoverageDeterminationInput,
   SupersedeTemplateInput,
   UpdateParStockInput,
   UpsertRoutingRuleInput,
@@ -824,6 +826,63 @@ export function buildDrizzleM21WriteService(
             updatedAt: at,
           })
           .where(eq(REQUEST.id, row.id));
+      });
+      return readService.getSupplyRequest(actor, supplyRequestId);
+    },
+
+    // COP27 (42 CFR 418.24(c)) — the hospice coverage determination. NOT `runRequestTransition` (status does
+    // not move; allowed in any status — a plan-of-care change can re-classify equipment already delivered,
+    // § 418.24(d)(2)). Freshness first (§7.2), then the kind + reason rules, row-locked so the change and
+    // its event commit together. An unchanged re-save writes nothing and announces nothing. The determining
+    // membership is the SESSION's (routes/actor.ts), never the body.
+    async setCoverageDetermination(
+      actor,
+      supplyRequestId,
+      input: SetCoverageDeterminationInput,
+    ) {
+      const at = now();
+      await scoped(actor, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(REQUEST)
+          .where(eq(REQUEST.id, supplyRequestId))
+          .limit(1)
+          .for("update");
+        if (!row) throw new NotFoundError("supply_request");
+        assertFresh(row, input.expectedUpdatedAt);
+        const reason = decideCoverageDetermination({
+          kind: row.kind,
+          hospiceCoverage: input.hospiceCoverage,
+          reason: input.reason,
+        });
+        if (row.hospiceCoverage === input.hospiceCoverage && (row.coverageReason ?? null) === reason)
+          return;
+        await tx
+          .update(REQUEST)
+          .set({
+            hospiceCoverage: input.hospiceCoverage,
+            coverageReason: reason,
+            coverageDeterminedAt: at,
+            coverageDeterminedByMembershipId: actor.membershipId,
+            updatedAt: at,
+          })
+          .where(and(eq(REQUEST.id, row.id), eq(REQUEST.createdAt, row.createdAt)));
+        await outbox.publish(tx, {
+          eventName: "m21.supply_request.coverage_determination_changed",
+          payload: {
+            orgId: row.organizationId,
+            admissionId: row.admissionId,
+            patientId: row.patientId,
+            sourceId: row.id,
+            hospiceCoverage: input.hospiceCoverage,
+            previousHospiceCoverage: row.hospiceCoverage,
+            reason,
+            changedAt: iso(at),
+          },
+          organizationId: actor.organizationId,
+          aggregateKind: "supply_request",
+          aggregateId: row.id,
+        });
       });
       return readService.getSupplyRequest(actor, supplyRequestId);
     },

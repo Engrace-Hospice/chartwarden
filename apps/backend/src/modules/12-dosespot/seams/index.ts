@@ -8,13 +8,19 @@
 // driven from the composition root's wireModuleSeams(). Both share ONE injected DoseSpotSeamStore (in-memory
 // slice here; Drizzle in prod, reads under the consumer's RLS) — mirrors the M9/M10/M11 seams/index.ts
 // precedents. Neither seam is a mutate path: M12 owns the medication-order lifecycle internally.
-import type { MedicationOrderProvider, RefillInboxProvider } from "@wardenx/types";
+import type { DbClient } from "@wardenx/db";
+import type {
+  MedicationOrderProvider,
+  NonCoveredItemsReader,
+  RefillInboxProvider,
+} from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import type {
   DoseSpotConsentValidator,
   DoseSpotMdmValidator,
   DoseSpotTerminologyValidator,
 } from "../routes/service";
+import { createNonCoveredMedicationsReader } from "./non-covered-medications";
 import { createMedicationOrderProvider, createRefillInboxProvider } from "./providers";
 import { type DoseSpotSeamStore, createInMemoryDoseSpotSeamStore } from "./store";
 
@@ -26,6 +32,12 @@ export {
   createInMemoryDoseSpotSeamStore,
 } from "./store";
 export { createMedicationOrderProvider, createRefillInboxProvider } from "./providers";
+export {
+  NON_COVERED_EXCLUDED_MEDICATION_STATUSES,
+  createNonCoveredMedicationsReader,
+  listNonCoveredMedicationsForAdmission,
+  medicationSnapshotOf,
+} from "./non-covered-medications";
 export {
   IDG_MEDICATION_HISTORY_MAX_PATIENTS,
   type IdgMedicationHistoryState,
@@ -49,6 +61,9 @@ export {
 export interface DoseSpotSeamDeps {
   /** The §2.10 data port (Drizzle over M12's tables in prod; in-memory slice in tests). */
   store?: DoseSpotSeamStore;
+  /** COP27 — the production DB client the `NonCoveredMedicationsReader` reads through (org-explicit). Absent
+   *  ⇒ the seam keeps its fail-closed deny-stub (no silent "nothing is non-covered"). */
+  db?: DbClient;
 }
 
 /**
@@ -60,6 +75,12 @@ export function registerDoseSpotSeams(deps: DoseSpotSeamDeps = {}): void {
   const store = deps.store ?? createInMemoryDoseSpotSeamStore().store;
   registerSeam("MedicationOrderProvider", createMedicationOrderProvider(store));
   registerSeam("RefillInboxProvider", createRefillInboxProvider(store));
+  if (deps.db) registerSeam("NonCoveredMedicationsReader", createNonCoveredMedicationsReader(deps.db));
+}
+
+/** Typed resolver for M12's COP27 NonCoveredMedicationsReader (the M6 election-statement addendum composes it). */
+export function getNonCoveredMedicationsReader(): NonCoveredItemsReader {
+  return getSeam("NonCoveredMedicationsReader");
 }
 
 /** Typed resolver for M12's MedicationOrderProvider (M13/M14/M19/M28/M30/M31/M33 consume the read seam). */
