@@ -56,6 +56,8 @@ fi
 
 if command -v nginx >/dev/null 2>&1; then
   install -d -m 0755 /etc/nginx/sites-available /etc/nginx/sites-enabled
+  install -d -m 0755 /etc/nginx/conf.d
+  install -m 0644 "$SOURCE_DIR/nginx/wardenx-log-format.conf" /etc/nginx/conf.d/wardenx-log-format.conf
   install -m 0644 "$SOURCE_DIR/nginx/wardenx-storage.conf" /etc/nginx/sites-available/wardenx-storage.conf
   ln -sfn /etc/nginx/sites-available/wardenx-storage.conf /etc/nginx/sites-enabled/wardenx-storage.conf
   nginx -t

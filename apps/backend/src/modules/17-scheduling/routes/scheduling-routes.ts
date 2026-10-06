@@ -22,6 +22,7 @@ import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam, requestStepUpFresh } from "../../../bootstrap/index";
+import { assertAssignedClinician } from "./assigned-clinician";
 import {
   ApproveTimeOffRequest,
   AvailabilityQuerySchema,
@@ -326,35 +327,52 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     return service.editVisit(organizationId, userId, visitId, b);
   });
 
-  // 5 — self-attest start (EVV-missing path).
-  app.post("/api/v1/visits/:visitId/start", { preHandler: [START] }, async (request) => {
+  // GAP-050 — start / arrive are the clinician's own self-attest: the route predicate binds the acting
+  // membership to the visit's assignee (the service re-checks), 403 on anyone else. An absent visit is a 404.
+  const ASSIGNED_CLINICIAN: PreHandler = async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { visitId } = parse(VisitIdParamsSchema, request.params);
-    const b = parse(StartVisitRequest, request.body);
-    return service.startVisit(
-      organizationId,
-      userId,
-      visitId,
-      b.evvMissingReason,
-      await requestStepUpFresh(request, START_STEP_UP_OPERATION),
-    );
-  });
+    const visit = await service.getVisit(organizationId, visitId);
+    assertAssignedClinician(visit.assignedMembershipId, userId);
+  };
+
+  // 5 — self-attest start (EVV-missing path; an EVV-sourced start advances only from the M18 consumers).
+  app.post(
+    "/api/v1/visits/:visitId/start",
+    { preHandler: [START, ASSIGNED_CLINICIAN] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { visitId } = parse(VisitIdParamsSchema, request.params);
+      const b = parse(StartVisitRequest, request.body);
+      return service.startVisit(
+        organizationId,
+        userId,
+        visitId,
+        b.evvMissingReason,
+        await requestStepUpFresh(request, START_STEP_UP_OPERATION),
+      );
+    },
+  );
 
   // 6 — EVV/arrival check-in. This is the explicit en_route → in_visit step before encounter signature.
-  app.post("/api/v1/visits/:visitId/arrive", { preHandler: [START] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { visitId } = parse(VisitIdParamsSchema, request.params);
-    const b = parse(StartVisitRequest, request.body);
-    return service.arriveVisit(
-      organizationId,
-      userId,
-      visitId,
-      b.evvMissingReason,
-      // Server-side step-up freshness (#72) — the same EVV-missing self-attest gate as `start`; the
-      // client-supplied `x-step-up` header this route read on main was the hole #70 closed.
-      await requestStepUpFresh(request, START_STEP_UP_OPERATION),
-    );
-  });
+  app.post(
+    "/api/v1/visits/:visitId/arrive",
+    { preHandler: [START, ASSIGNED_CLINICIAN] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { visitId } = parse(VisitIdParamsSchema, request.params);
+      const b = parse(StartVisitRequest, request.body);
+      return service.arriveVisit(
+        organizationId,
+        userId,
+        visitId,
+        b.evvMissingReason,
+        // Server-side step-up freshness (#72) — the same EVV-missing self-attest gate as `start`; the
+        // client-supplied `x-step-up` header this route read on main was the hole #70 closed.
+        await requestStepUpFresh(request, START_STEP_UP_OPERATION),
+      );
+    },
+  );
 
   // 7 — cancel a visit (reason ≥ 20 chars).
   app.post("/api/v1/visits/:visitId/cancel", { preHandler: [CANCEL] }, async (request) => {

@@ -32,11 +32,14 @@ import {
   parse,
 } from "./quality-typebox";
 import type { M30ReadRouteService, MortalityListFilter } from "./read-service";
+import { type PatientScopeResolver, defaultPatientScopeResolver } from "./scope-resolver";
 import type { M30WriteRouteService } from "./write-service";
 
 export interface MortalityRouteDeps {
   readonly readService: M30ReadRouteService;
   readonly writeService: M30WriteRouteService;
+  /** GAP-091 — resolves the caller's patient scope from the server session (defaults to the M5 caseload). */
+  readonly resolveScope?: PatientScopeResolver;
 }
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -58,6 +61,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** Register the §4.1 mortality routes (R-70..R-73). */
 export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRouteDeps): void {
   const { readService, writeService } = deps;
+  const scopeOf = deps.resolveScope ?? defaultPatientScopeResolver;
 
   // R-70 — list mortality reviews (cursor-paginated; PHI). §4.1/§4.1.2.
   app.get(
@@ -70,7 +74,13 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
       const actor = actorOf(request);
       const q = parse(MortalityListQuerySchema, request.query);
       const filter: MortalityListFilter = { status: q.status, patientId: q.patientId };
-      return readService.listMortalityReviews(actor, filter, q.cursor, q.limit);
+      return readService.listMortalityReviews(
+        actor,
+        filter,
+        q.cursor,
+        q.limit,
+        await scopeOf(actor, "mortality"),
+      );
     },
   );
 
@@ -84,7 +94,7 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
     async (request) => {
       const actor = actorOf(request);
       const { reviewId } = parse(ReviewIdParamsSchema, request.params);
-      return readService.getMortalityReview(actor, reviewId);
+      return readService.getMortalityReview(actor, reviewId, await scopeOf(actor, "mortality"));
     },
   );
 

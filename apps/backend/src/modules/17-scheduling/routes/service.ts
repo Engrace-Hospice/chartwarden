@@ -27,6 +27,7 @@ import type {
 import { ConflictError, ForbiddenError, NotFoundError } from "@wardenx/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
+import { assertAssignedClinician } from "./assigned-clinician";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope; M17-T08) ─────────────
 export interface RecordedSchedulingEvent {
@@ -321,41 +322,67 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return toVisitView(record);
   }
 
+  /** GAP-050 — the HTTP self-attest path only: the assigned clinician, a documented reason, a fresh step-up. */
   startVisit(
     orgId: string,
-    _userId: string,
+    userId: string,
     visitId: string,
-    evvMissingReason: string | undefined,
+    evvMissingReason: string,
     stepUpSatisfied: boolean,
   ): VisitView {
+    return this.advanceSelfAttested(
+      "start",
+      orgId,
+      userId,
+      visitId,
+      evvMissingReason,
+      stepUpSatisfied,
+    );
+  }
+
+  arriveVisit(
+    orgId: string,
+    userId: string,
+    visitId: string,
+    evvMissingReason: string,
+    stepUpSatisfied: boolean,
+  ): VisitView {
+    return this.advanceSelfAttested(
+      "arrive",
+      orgId,
+      userId,
+      visitId,
+      evvMissingReason,
+      stepUpSatisfied,
+    );
+  }
+
+  /**
+   * The M18 EVV consumers' advance (`via:'evv'`, system actor) — deliberately NOT reachable from any HTTP
+   * route (GAP-050). The production consumers write their own rows; this mirrors them for the in-memory slice.
+   */
+  advanceFromEvv(orgId: string, visitId: string, event: "start" | "arrive"): VisitView {
     const record = this.requireVisit(orgId, visitId);
-    const transition = transitionVisit(record.status, {
-      type: "start",
-      source:
-        evvMissingReason === undefined
-          ? { via: "evv" }
-          : { via: "self_attest", evvMissingReason, stepUpSatisfied },
-    });
+    const transition = transitionVisit(record.status, { type: event, source: { via: "evv" } });
     record.status = transition.to;
     record.version += 1;
     this.record(transition.effects, record.id);
     return toVisitView(record);
   }
 
-  arriveVisit(
+  private advanceSelfAttested(
+    event: "start" | "arrive",
     orgId: string,
-    _userId: string,
+    userId: string,
     visitId: string,
-    evvMissingReason: string | undefined,
+    evvMissingReason: string,
     stepUpSatisfied: boolean,
   ): VisitView {
     const record = this.requireVisit(orgId, visitId);
+    assertAssignedClinician(record.assignedMembershipId, userId);
     const transition = transitionVisit(record.status, {
-      type: "arrive",
-      source:
-        evvMissingReason === undefined
-          ? { via: "evv" }
-          : { via: "self_attest", evvMissingReason, stepUpSatisfied },
+      type: event,
+      source: { via: "self_attest", evvMissingReason, stepUpSatisfied },
     });
     record.status = transition.to;
     record.version += 1;

@@ -17,6 +17,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildPatientAddressReader } from "../src/modules/05-patient/address-reader";
+import { countActivePatientsWithoutGeocode } from "../src/modules/05-patient/geocode-coverage";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -151,5 +152,34 @@ describe.skipIf(!DB_URL)("F-229 — M5 PatientAddressReader.primaryAddress — L
     expect(await reader.primaryAddress(ORG_B, pa)).toBeNull();
     expect(await reader.primaryAddress(ORG_A, pb)).toBeNull();
     expect((await reader.primaryAddress(ORG_B, pb))?.line1).toBe("5 B Only St");
+  });
+
+  // GAP-054 rollout signal — counts active patients with no geocoded current primary address. Delta-based so the
+  // earlier cases' seed rows (prospective patients) cannot disturb it.
+  it("counts only ACTIVE patients lacking a geocoded current primary address, tenant-scoped", async () => {
+    const before = await countActivePatientsWithoutGeocode(handle.db, ORG_A);
+    const activate = (id: string) =>
+      admin.query("UPDATE patient SET status = 'active' WHERE id = $1", [id]);
+    const geocode = (id: string) =>
+      admin.query(
+        "UPDATE patient_address SET geocode_lat = 45.523000, geocode_lng = -122.678900 WHERE patient_id = $1",
+        [id],
+      );
+    const noAddress = await seedPatient(ORG_A);
+    const ungeocoded = await seedPatient(ORG_A);
+    await seedAddress(ORG_A, ungeocoded, { line1: "6 Ungeocoded St" });
+    const geocoded = await seedPatient(ORG_A);
+    await seedAddress(ORG_A, geocoded, { line1: "7 Geocoded St" });
+    await geocode(geocoded);
+    const prospective = await seedPatient(ORG_A);
+    await seedAddress(ORG_A, prospective, { line1: "8 Prospective St" });
+    for (const id of [noAddress, ungeocoded, geocoded]) await activate(id);
+
+    const after = await countActivePatientsWithoutGeocode(handle.db, ORG_A);
+    expect(after.activePatients - before.activePatients).toBe(3);
+    expect(after.ungeocoded - before.ungeocoded).toBe(2); // no-address + ungeocoded; geocoded and prospective excluded
+
+    const otherOrg = await countActivePatientsWithoutGeocode(handle.db, ORG_B);
+    expect(otherOrg.activePatients).toBe(0);
   });
 });

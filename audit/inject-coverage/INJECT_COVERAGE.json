@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1364,
     "coveredRoutes": 1364,
-    "directRoutesReferenced": 1319
+    "directRoutesReferenced": 1321
   },
   "modules": [
     {
@@ -97,6 +97,7 @@
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/f238-problem-proposal-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
+        "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
@@ -214,6 +215,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
+        "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
@@ -269,9 +271,10 @@
         "apps/backend/__tests__/f238-pending-address.test.ts",
         "apps/backend/__tests__/f238-prospect-summary.test.ts",
         "apps/backend/__tests__/f238-records-request-expiry.test.ts",
-        "apps/backend/__tests__/f238-records-request.test.ts"
+        "apps/backend/__tests__/f238-records-request.test.ts",
+        "apps/backend/__tests__/m22-doclens-sud-gate.test.ts"
       ],
-      "directRoutesReferenced": 52
+      "directRoutesReferenced": 54
     },
     {
       "module": "23-billing-medicare",
@@ -347,6 +350,7 @@
       "routes": 60,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/gap-091-m30-phi-scope.test.ts",
         "apps/backend/__tests__/m30-close-cosign.test.ts",
         "apps/backend/__tests__/quality-inject.test.ts"
       ],
@@ -418,7 +422,9 @@
       "routes": 52,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/ipu-inject.test.ts"
+        "apps/backend/__tests__/ipu-gap106-trust-boundary.test.ts",
+        "apps/backend/__tests__/ipu-inject.test.ts",
+        "apps/backend/__tests__/ipu-step-up-assertion.test.ts"
       ],
       "directRoutesReferenced": 52
     },

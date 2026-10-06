@@ -50,7 +50,16 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { M30ReadActor } from "./actor";
-import { type CursorPage, paginate } from "./concurrency";
+import { type CursorPage, pageSizeOf, paginate } from "./concurrency";
+import { incidentOwnedBy } from "./incident-ownership";
+import { assertPatientInScope } from "./patient-scope";
+import {
+  fetchIncidentPage,
+  fetchInfectionEventPage,
+  fetchMortalityPage,
+  toKeysetPage,
+  toListCursor,
+} from "./phi-list-queries";
 import type {
   CahpsDecedentFilter,
   CahpsDecedentView,
@@ -108,6 +117,9 @@ export interface M30ReadServicePorts {
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
+/** Does the actor's membership match any of the row's owner columns? (the own-record arm of the PHI scope) */
+const ownsRow = (membershipId: string | undefined, ...owners: (string | null)[]): boolean =>
+  membershipId !== undefined && owners.includes(membershipId);
 /** A Drizzle `numeric` column round-trips as a string; parse to a number (or null when absent). */
 const num = (v: string | null | undefined): number | null => (v == null ? null : Number(v));
 
@@ -792,50 +804,40 @@ export function buildDrizzleM30ReadService(
     },
 
     // ── Incidents (R-50, R-52, R-61) — PHI ────────────────────────────────────────────────────────────
-    async listIncidents(actor, filter, cursor, limit) {
-      return read(actor, async (tx) => {
-        const repo = new IncidentRepository(tx);
-        const rows = filter.patientId
-          ? await repo.listForPatient(actor.organizationId, filter.patientId, { limit: 200 })
-          : await repo.listByOrg(actor.organizationId, { limit: 200 });
-        const kinds = filter.kinds ? new Set(filter.kinds) : null;
-        const states = filter.states ? new Set(filter.states) : null;
-        const severities = filter.severities ? new Set(filter.severities) : null;
-        const after = filter.occurredAfter ? new Date(filter.occurredAfter) : null;
-        const before = filter.occurredBefore ? new Date(filter.occurredBefore) : null;
-        const mapped = rows
-          .filter((r) => {
-            // Abuse allegations are a separately-gated surface (`incident.abuse_review`, its own
-            // /abuse-allegations route). Dropped here BEFORE pagination so a caller without the key
-            // cannot infer their existence from a short page or a cursor that skips ids.
-            if (r.kind === "allegation_of_abuse" && !filter.mayViewAbuseAllegations) return false;
-            if (kinds && !kinds.has(r.kind)) return false;
-            if (states && !states.has(r.lifecycle)) return false;
-            if (severities && !severities.has(r.severity)) return false;
-            if (after && r.occurredAt < after) return false;
-            if (before && r.occurredAt > before) return false;
-            return true;
-          })
-          .map((r) => ({
-            ...mapIncidentSummary(r),
-            createdAt: isoReq(r.occurredAt),
-            id: r.id,
-          }));
-        const page = paginate(mapped, cursor, limit);
-        return {
-          ...page,
-          items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
-        } satisfies CursorPage<IncidentSummaryView>;
-      });
+    async listIncidents(actor, filter, cursor, limit, scope) {
+      // GAP-091 — an explicit patient filter outside the caller's scope is a 404, never an empty page.
+      assertPatientInScope(scope, filter.patientId, "patient");
+      const keyset = toListCursor(cursor);
+      return read(actor, async (tx) =>
+        toKeysetPage(
+          await fetchIncidentPage(
+            tx,
+            actor.organizationId,
+            filter,
+            scope,
+            keyset,
+            pageSizeOf(limit),
+            actor.membershipId,
+          ),
+          (r) => ({ at: r.occurredAt, id: r.id }),
+          mapIncidentSummary,
+        ),
+      );
     },
 
-    async getIncident(actor, incidentId) {
+    async getIncident(actor, incidentId, scope) {
       return read(actor, async (tx) => {
         // Point-read by id only (the composite PK includes the `occurred_at` partition key the route does
         // not carry); the RLS-scoped SELECT scans the partitions and returns the org's row.
         const I = schema.incidentReport;
         const [row] = await tx.select().from(I).where(eq(I.id, incidentId)).limit(1);
         if (!row) throw new NotFoundError("incident");
+        assertPatientInScope(
+          scope,
+          row.patientId,
+          "incident",
+          incidentOwnedBy(row, actor.membershipId),
+        );
         return {
           ...mapIncidentSummary(row),
           // The structured per-kind payload (the route is permission-gated + patient-scoped, so the
@@ -882,32 +884,37 @@ export function buildDrizzleM30ReadService(
     },
 
     // ── Mortality (R-70, R-71) — PHI ──────────────────────────────────────────────────────────────────
-    async listMortalityReviews(actor, filter, cursor, limit) {
-      return read(actor, async (tx) => {
-        const repo = new MortalityReviewRepository(tx);
-        const rows = filter.patientId
-          ? await repo.listForPatient(actor.organizationId, filter.patientId, { limit: 200 })
-          : await repo.listByOrg(actor.organizationId, { limit: 200 });
-        const mapped = rows
-          .filter((r) => filter.status === undefined || mortalityStatus(r.status) === filter.status)
-          .map((r) => ({
-            ...mapMortalitySummary(r),
-            createdAt: isoReq(r.deathAt),
-            id: r.id,
-          }));
-        const page = paginate(mapped, cursor, limit);
-        return {
-          ...page,
-          items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
-        } satisfies CursorPage<MortalityReviewSummaryView>;
-      });
+    async listMortalityReviews(actor, filter, cursor, limit, scope) {
+      assertPatientInScope(scope, filter.patientId, "patient");
+      const keyset = toListCursor(cursor);
+      return read(actor, async (tx) =>
+        toKeysetPage(
+          await fetchMortalityPage(
+            tx,
+            actor.organizationId,
+            filter,
+            scope,
+            keyset,
+            pageSizeOf(limit),
+            actor.membershipId,
+          ),
+          (r) => ({ at: r.deathAt, id: r.id }),
+          mapMortalitySummary,
+        ),
+      );
     },
 
-    async getMortalityReview(actor, reviewId) {
+    async getMortalityReview(actor, reviewId, scope) {
       return read(actor, async (tx) => {
         const M = schema.mortalityReview;
         const [row] = await tx.select().from(M).where(eq(M.id, reviewId)).limit(1);
         if (!row) throw new NotFoundError("mortality review");
+        assertPatientInScope(
+          scope,
+          row.deceasedPatientId,
+          "mortality review",
+          ownsRow(actor.membershipId, row.assignedReviewerMembershipId),
+        );
         return {
           ...mapMortalitySummary(row),
           dimensions: {
@@ -952,32 +959,23 @@ export function buildDrizzleM30ReadService(
     },
 
     // ── Infection (R-90, R-92) ─────────────────────────────────────────────────────────────────────────
-    async listInfectionEvents(actor, filter, cursor, limit) {
-      return read(actor, async (tx) => {
-        const repo = new InfectionRepository(tx);
-        const rows = filter.patientId
-          ? await repo.listEventsForPatient(actor.organizationId, filter.patientId, { limit: 200 })
-          : await repo.listEventsForOrg(actor.organizationId, { limit: 200 });
-        const after = filter.observedAfter ? new Date(filter.observedAfter) : null;
-        const before = filter.observedBefore ? new Date(filter.observedBefore) : null;
-        const mapped = rows
-          .filter((r) => {
-            if (filter.pathogen && r.pathogen !== filter.pathogen) return false;
-            if (after && r.observedAt < after) return false;
-            if (before && r.observedAt > before) return false;
-            return true;
-          })
-          .map((r) => ({
-            ...mapInfectionEvent(r),
-            createdAt: isoReq(r.observedAt),
-            id: r.id,
-          }));
-        const page = paginate(mapped, cursor, limit);
-        return {
-          ...page,
-          items: page.items.map(({ createdAt: _c, id: _i, ...d }) => d),
-        } satisfies CursorPage<InfectionEventView>;
-      });
+    async listInfectionEvents(actor, filter, cursor, limit, scope) {
+      assertPatientInScope(scope, filter.patientId, "patient");
+      const keyset = toListCursor(cursor);
+      return read(actor, async (tx) =>
+        toKeysetPage(
+          await fetchInfectionEventPage(
+            tx,
+            actor.organizationId,
+            filter,
+            scope,
+            keyset,
+            pageSizeOf(limit),
+          ),
+          (r) => ({ at: r.observedAt, id: r.id }),
+          mapInfectionEvent,
+        ),
+      );
     },
 
     async listInfectionOutbreaks(actor, filter, cursor, limit) {

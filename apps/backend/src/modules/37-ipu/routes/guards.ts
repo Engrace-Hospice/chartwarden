@@ -16,7 +16,8 @@
 // periodically-recomputed fact like this is wanted again, it needs an async-capable `getTarget` (a core
 // `requireAbac` change touching every one of M3's 168 predicates) or an in-process cache the
 // `rn-coverage-watchdog` cron keeps warm — either is a real feature, not a bug fix, and neither exists today.
-import { requirePermission, requireStepUp } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { ForbiddenError } from "@wardenx/types";
 import type { PreHandler } from "./actor";
 
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.6 key catalog M37 contributes). */
@@ -25,3 +26,34 @@ export const P = (key: string): PreHandler => requirePermission(key) as PreHandl
 /** §D14 step-up gate on the break-glass / attest / unit-deactivate mutations. */
 export const STEP_UP = (operationKey: string): PreHandler =>
   requireStepUp(operationKey) as PreHandler;
+
+/**
+ * §7.4 — GIP reassessment needs step-up ONLY when `criterion_still_met=false` (the LOC change is
+ * consequential). A routine "still met" reassessment is not step-up gated. FAIL CLOSED: the step-up guard is
+ * skipped only for a body whose `criterionStillMet` is exactly boolean `true`; false, missing or malformed
+ * all run it. The service re-asserts the same rule and stores the real assertion id (second wall).
+ */
+export const STEP_UP_UNLESS_CRITERION_STILL_MET = (operationKey: string): PreHandler => {
+  const stepUp = STEP_UP(operationKey);
+  return async (request, reply) => {
+    const body = request.body as { criterionStillMet?: unknown } | null | undefined;
+    if (body?.criterionStillMet === true) return;
+    await stepUp(request, reply);
+  };
+};
+
+/**
+ * GAP-106 — `m37.gip_criteria.attester_eligible` composed on the attest route (§4.6 note). The predicate
+ * reads the actor's discipline off the server-assembled `AbacContext` roles; the target is ignored, so
+ * nothing the client sends can make an RN eligible. A break-glass grant never stands in for an attestation.
+ */
+export const GIP_ATTESTER_ELIGIBLE: PreHandler = requireAbac(
+  "m37.gip_criteria.attest",
+  "m37.gip_criteria.attester_eligible",
+  { getTarget: () => ({}), breakGlassBypassable: false },
+) as PreHandler;
+
+/** GAP-106 — refuses EVERY tenant session: the route it guards is driven by the platform, not by a user. */
+export const SYSTEM_INTERNAL_ONLY: PreHandler = async () => {
+  throw new ForbiddenError("system-internal route: not callable from a tenant session");
+};

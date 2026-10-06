@@ -46,11 +46,9 @@
 //     nurse cannot tell who is in which bed is the one thing this screen exists to answer. Fixing it is
 //     a producer-side change (a patient projection through the M5 seam, with the masking decision that
 //     comes with it), not a frontend one.
-//   • `m37.gip_criteria.attester_eligible` IS REGISTERED AND GATES NOTHING. Route 19 carries RBAC plus
-//     step-up and no `requireAbac`, so CoP 418.108's "hospice MD only" attestation is open to any holder
-//     of `m37.gip_criteria.attest`. It is the `RN_COVERAGE` shape `routes/guards.ts` documents — the
-//     predicate reads a boolean off a SYNCHRONOUS ABAC target that no route can populate — so binding it
-//     needs the same async-target change, not a one-line guard.
+//   • `m37.gip_criteria.attester_eligible` NOW GATES the attestation (GAP-106): route 19 composes
+//     RBAC + step-up + the registered predicate, and the service re-checks the attester server-side. The
+//     CoP 418.108 "hospice MD only" rule is therefore enforced on the backend, not by this surface.
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { lazy } from "react";
 import type { ComponentType } from "react";

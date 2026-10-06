@@ -131,6 +131,33 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
         }));
       });
     },
+    async serviceAddressCoordinate(organizationId, patientId, patientAddressId) {
+      // GAP-054 — the EVV geofence baseline. Org + patient are both explicit predicates (a second wall on top
+      // of RLS) so a caller-supplied address id can never resolve another patient's coordinate. Without an
+      // address id: the current primary address. `numeric` columns arrive as strings → parsed and
+      // range-checked; anything unreadable is "no baseline" (null), never a zero pair.
+      return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+        const scope = [
+          eq(ADDRESS.organizationId, organizationId),
+          eq(ADDRESS.patientId, patientId),
+        ];
+        const target = patientAddressId
+          ? [...scope, eq(ADDRESS.id, patientAddressId)]
+          : [...scope, eq(ADDRESS.isPrimary, true), isNull(ADDRESS.effectiveTo)];
+        const [row] = await tx
+          .select({ lat: ADDRESS.geocodeLat, lng: ADDRESS.geocodeLng })
+          .from(ADDRESS)
+          .where(and(...target))
+          .orderBy(desc(ADDRESS.effectiveFrom), desc(ADDRESS.createdAt))
+          .limit(1);
+        if (!row || row.lat === null || row.lng === null) return null;
+        const lat = Number(row.lat);
+        const lng = Number(row.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+        return { lat, lng };
+      });
+    },
   };
 }
 

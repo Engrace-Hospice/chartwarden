@@ -62,7 +62,6 @@ import {
   attestGipCriteria,
   checkInVisitor,
   checkOutVisitor,
-  confirmAdmission,
   confirmTransfer,
   dischargeAdmission,
   initiateTransfer,
@@ -136,11 +135,10 @@ function reasonHint(value: string, min: number): ReactNode {
 
 // ── admission lifecycle ────────────────────────────────────────────────────────────────────────────────
 
-/** The six §2.2 transitions this surface offers from the admissions worklist. */
+/** The five §2.2 transitions this surface offers from the admissions worklist. */
 export type AdmissionAction =
   | "requestBed"
   | "assignBed"
-  | "confirm"
   | "initiateTransfer"
   | "confirmTransfer"
   | "discharge";
@@ -157,12 +155,7 @@ const ADMISSION_COPY: Record<
   assignBed: {
     heading: "Assign a bed",
     submit: "Confirm bed assignment",
-    note: "The bed is reserved on assignment and becomes occupied when the admission is confirmed. A bed that is not ready is refused.",
-  },
-  confirm: {
-    heading: "Confirm this admission",
-    submit: "Confirm admission",
-    note: "Confirmation activates the stay and occupies the bed. A GIP admission needs an attested CoP 418.108 criterion first.",
+    note: "The bed is reserved on assignment and becomes occupied once M6 acknowledges the level-of-care period and the admission activates. A bed that is not ready is refused.",
   },
   initiateTransfer: {
     heading: "Initiate a transfer",
@@ -262,8 +255,6 @@ export function AdmissionActionModal({
           return requestBed(client, admissionId, unitId);
         case "assignBed":
           return assignBed(client, admissionId, bedId);
-        case "confirm":
-          return confirmAdmission(client, admissionId);
         case "confirmTransfer":
           return confirmTransfer(client, admissionId);
         case "discharge":

@@ -47,6 +47,12 @@ import {
 // F-166 (#248) — M13's `m12.medication_order.active` materializer needs the order's location timezone.
 import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
 import {
+  type GeocodeCoverageSampler,
+  registerGeocodeCoverageMetrics,
+  sampleGeocodeCoverage,
+  warnOnGeocodeCoverageGap,
+} from "./bootstrap/geocode-coverage";
+import {
   DEFAULT_RATE_LIMIT_TIERS,
   FHIR_TOKEN_ENDPOINT_ENABLED_ENV,
   M23_LAUNCH_GATEWAY_ENABLED_ENV,
@@ -124,6 +130,8 @@ import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenan
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 const M8_PLATFORM_JOB_ID = "m8-encounter-automation";
 const M17_PLATFORM_JOB_ID = "m17-scheduling-automation";
+// GAP-054 — the audited platform read behind the geocode-coverage gauge/boot warning (active-org list only).
+const M5_GEOCODE_COVERAGE_JOB_ID = "m5-geocode-coverage";
 // AC-04 — the sentinel the `/ready` object-store check HEADs. Neither the bucket nor the key is
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
@@ -194,6 +202,7 @@ import {
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
   buildM29ProposalApplierConsumer,
+  countActivePatientsWithoutGeocode,
   createCaseloadStoreWithShiftCache,
   createDbPortalAmendmentIntake,
   createDrizzleCareTeamStore,
@@ -1015,8 +1024,10 @@ import {
   M37_OUTBOX_EVENTS,
   M37_PLATFORM_JOB_ID,
   buildDrizzleIpuRouteService,
+  buildDrizzleLcpAdmissionLookup,
   buildM37AdmissionDischargedConsumer,
   buildM37DeathRecordedConsumer,
+  buildM37LcpActivatedConsumer,
   buildM37WorkerDeps,
   getIpuAdmissionStatusReader,
   getIpuOrderReader,
@@ -2441,6 +2452,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
   if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
   // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
@@ -4136,6 +4148,29 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   registerPartitionMetrics(metricsRegistry, {
     coverage: dbHandle ? () => readPartitionCoverage(dbHandle.db) : undefined,
   });
+  // GAP-054 — how many active patients have no geocoded service address (each one's EVV captures record
+  // `no_geofence_baseline`). Registered for every role; -1 when it cannot be measured (no DB / platform pool).
+  const geocodeCoverageSampler: GeocodeCoverageSampler = async () => {
+    if (!dbHandle || !platformDbHandle) return null;
+    const activeOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M5_GEOCODE_COVERAGE_JOB_ID,
+      reason: "GAP-054 geocode-coverage probe: active-org list",
+    });
+    return sampleGeocodeCoverage({
+      listOrgs: () => activeOrgs.listActiveOrgs(),
+      countForOrg: (organizationId) =>
+        countActivePatientsWithoutGeocode(dbHandle.db, organizationId),
+    });
+  };
+  registerGeocodeCoverageMetrics(metricsRegistry, geocodeCoverageSampler);
+  if (dbHandle) {
+    void warnOnGeocodeCoverageGap(geocodeCoverageSampler, {
+      warn: (fields, message) => app.log.warn(fields, message),
+      info: (fields, message) => app.log.info(fields, message),
+    });
+  }
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
   // outbox-dispatcher block below (two SEPARATE top-level `if`s — declared here, outside either, so it's
@@ -6113,6 +6148,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // unit test. Drives `m6.discharge.death` → `transitionAdmission(..., {type: "recordDeath"})`
           // → `m37.ipu_admission.death_recorded` + the auto-opened `ipu_body_release` row.
           buildM37DeathRecordedConsumer({ db: dbHandle.db, outbox: m37OutboxPublisher }),
+          // M6 -> M37 LCP handshake (M37 §2.2 `bed_assigned` -> `active`, §4.5). M6's
+          // `confirmLocBedAssignment` publishes `m6.level_of_care.activated`; this drives the
+          // system-internal `confirm` (GAP-106) as the typed `m6LcpAckActor`, org-explicit and idempotent.
+          // `confirm` needs only the outbox: its other ports are never read on that path.
+          buildM37LcpActivatedConsumer({
+            service: buildDrizzleIpuRouteService(dbHandle.db, { outbox: m37OutboxPublisher }),
+            lookup: buildDrizzleLcpAdmissionLookup(dbHandle.db),
+          }),
           // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
           // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
           // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole

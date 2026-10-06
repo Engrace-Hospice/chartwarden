@@ -25,6 +25,12 @@ export function actorOf(request: FastifyRequest): IpuReadActor {
 export interface IpuWriteActor extends IpuReadActor {
   readonly membershipId: string;
   readonly stepUpRecent: boolean;
+  /**
+   * GAP-106 — the M2 session id the step-up ceremony was performed on, from `context.attributes.sessionId`
+   * (stamped by the authenticate hook from the verified session, never read off a request field). It is
+   * the step-up assertion an attestation is bound to; null when the session carries none.
+   */
+  readonly stepUpAssertionId?: string | null;
 }
 
 /** Extract the write actor (org + user + roles + active membership id + step-up) from `request.context`. */
@@ -41,5 +47,9 @@ export function writeActorOf(request: FastifyRequest): IpuWriteActor {
     roles: ctx.roles,
     membershipId,
     stepUpRecent: ctx.attributes?.stepUpRecent === true,
+    stepUpAssertionId:
+      typeof ctx.attributes?.sessionId === "string" && ctx.attributes.sessionId.length > 0
+        ? ctx.attributes.sessionId
+        : null,
   };
 }

@@ -10,7 +10,14 @@ import {
   PatientLookupField,
 } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
+import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
+import {
+  ASSIGNED_CLINICIAN_MESSAGE,
+  EvvReasonField,
+  evvReasonProblem,
+  isAssignedClinicianRefusal,
+} from "./visit-attestation";
 
 export interface VisitView {
   id: string;
@@ -405,13 +412,19 @@ export function VisitActionPanel({
   const client = useApiClient();
   const navigate = useNavigate();
   const session = useSession();
-  const [action, setAction] = useState<VisitAction | null>(null);
+  const location = useLocation();
+  const draftKey = `visit-attest:${visit.id}`;
+  // Returning from /step-up: reopen the start/arrive dialog with the attestation the user had typed.
+  const [restored] = useState(() =>
+    takeStepUpDraft<{ action: "start" | "arrive"; evvReason: string }>(draftKey),
+  );
+  const [action, setAction] = useState<VisitAction | null>(restored?.action ?? null);
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState("patient_request");
   const [clinicianId, setClinicianId] = useState("");
   const [start, setStart] = useState(toLocalInput(new Date(visit.scheduledStartedAt)));
   const [end, setEnd] = useState(toLocalInput(new Date(visit.scheduledEndedAt)));
-  const [evvReason, setEvvReason] = useState("");
+  const [evvReason, setEvvReason] = useState(restored?.evvReason ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -446,6 +459,13 @@ export function VisitActionPanel({
 
   async function mutate(): Promise<void> {
     if (!action) return;
+    if (action === "start" || action === "arrive") {
+      const problem = evvReasonProblem(evvReason);
+      if (problem) {
+        setError(problem);
+        return;
+      }
+    }
     setBusy(true);
     setError(null);
     let result:
@@ -454,12 +474,12 @@ export function VisitActionPanel({
     if (action === "start") {
       result = await client.POST("/api/v1/visits/{visitId}/start", {
         params: { path: { visitId: visit.id } },
-        body: evvReason.trim() ? { evvMissingReason: evvReason.trim() } : {},
-      } as never);
+        body: { evvMissingReason: evvReason.trim() },
+      });
     } else if (action === "arrive") {
       result = await client.POST("/api/v1/visits/{visitId}/arrive", {
         params: { path: { visitId: visit.id } },
-        body: evvReason.trim() ? { evvMissingReason: evvReason.trim() } : {},
+        body: { evvMissingReason: evvReason.trim() },
       });
     } else if (action === "reassign") {
       result = await client.POST("/api/v1/visits/{visitId}/reassign", {
@@ -492,6 +512,18 @@ export function VisitActionPanel({
     }
     setBusy(false);
     if (result.error) {
+      if (action === "start" || action === "arrive") {
+        const stepUp = stepUpRedirectFor(result.error, `${location.pathname}${location.search}`);
+        if (stepUp) {
+          stashStepUpDraft(draftKey, { action, evvReason });
+          navigate(stepUp);
+          return;
+        }
+        if (isAssignedClinicianRefusal(result.error)) {
+          setError(ASSIGNED_CLINICIAN_MESSAGE);
+          return;
+        }
+      }
       setError(apiErrorMessage(result.error, "The visit action could not be completed."));
       return;
     }
@@ -574,15 +606,7 @@ export function VisitActionPanel({
             </div>
           ) : null}
           {action === "start" || action === "arrive" ? (
-            <label style={field}>
-              <span style={label}>EVV missing reason</span>
-              <textarea
-                value={evvReason}
-                onChange={(e) => setEvvReason(e.target.value)}
-                rows={3}
-                style={textarea}
-              />
-            </label>
+            <EvvReasonField value={evvReason} onChange={setEvvReason} disabled={busy} />
           ) : null}
           {action === "reassign" || action === "reschedule" ? (
             <MembershipLookupField

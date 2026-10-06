@@ -3,6 +3,7 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
+  Modal,
   OffsetPagination,
   PageHeader,
   StatusPill,
@@ -18,8 +19,9 @@ import {
 // Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
+import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
   NewVisitModal,
@@ -28,11 +30,30 @@ import {
   findLinkedEncounter,
   hasPermission,
 } from "./scheduling-workflow";
+import {
+  ASSIGNED_CLINICIAN_MESSAGE,
+  EvvReasonField,
+  evvReasonProblem,
+  isAssignedClinicianRefusal,
+} from "./visit-attestation";
 import type { VisitRow } from "./visit-table";
+
+type AttestAction = "start" | "arrive";
+type AttestDraft = { visitId: string; action: AttestAction; reason: string };
+const ATTEST_DRAFT_KEY = "my-visits-attest";
 
 export function MyVisits(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Start / check-in is a self-attestation (GAP-050): the dialog collects the mandatory EVV reason, and
+  // survives the /step-up round trip.
+  const [restored] = useState(() => takeStepUpDraft<AttestDraft>(ATTEST_DRAFT_KEY));
+  const [attest, setAttest] = useState<{ visitId: string; action: AttestAction } | null>(
+    restored ? { visitId: restored.visitId, action: restored.action } : null,
+  );
+  const [attestReason, setAttestReason] = useState(restored?.reason ?? "");
+  const [attestError, setAttestError] = useState<string | null>(null);
   const [visits, setVisits] = useState<VisitRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -119,37 +140,62 @@ export function MyVisits(): JSX.Element {
     setPage(1);
   };
 
-  async function visitAction(
-    visit: VisitRow,
-    action: "start" | "arrive" | "encounter",
-  ): Promise<void> {
+  async function openEncounter(visit: VisitRow): Promise<void> {
     setBusyVisitId(visit.id);
     setActionNotice(null);
-    if (action === "encounter") {
-      const linked = await findLinkedEncounter(client, visit);
-      setBusyVisitId(null);
-      if (linked) navigate(`/patients/${linked.patientId}/encounters/${linked.id}`);
-      else
-        setActionNotice("Encounter draft is still being created. Refresh the visit in a moment.");
+    const linked = await findLinkedEncounter(client, visit);
+    setBusyVisitId(null);
+    if (linked) navigate(`/patients/${linked.patientId}/encounters/${linked.id}`);
+    else setActionNotice("Encounter draft is still being created. Refresh the visit in a moment.");
+  }
+
+  function openAttest(visit: VisitRow, action: AttestAction): void {
+    setAttest({ visitId: visit.id, action });
+    setAttestReason("");
+    setAttestError(null);
+  }
+
+  async function submitAttest(): Promise<void> {
+    if (!attest) return;
+    const problem = evvReasonProblem(attestReason);
+    if (problem) {
+      setAttestError(problem);
       return;
     }
+    const { visitId, action } = attest;
+    const evvMissingReason = attestReason.trim();
+    setBusyVisitId(visitId);
+    setAttestError(null);
     const { error: err } =
       action === "start"
         ? await client.POST("/api/v1/visits/{visitId}/start", {
-            params: { path: { visitId: visit.id } },
-            body: {},
+            params: { path: { visitId } },
+            body: { evvMissingReason },
           })
         : await client.POST("/api/v1/visits/{visitId}/arrive", {
-            params: { path: { visitId: visit.id } },
-            body: {},
+            params: { path: { visitId } },
+            body: { evvMissingReason },
           });
     setBusyVisitId(null);
     if (err) {
-      setError(
-        apiErrorMessage(err, action === "start" ? "Could not start visit." : "Could not check in."),
+      const stepUp = stepUpRedirectFor(err, `${location.pathname}${location.search}`);
+      if (stepUp) {
+        stashStepUpDraft(ATTEST_DRAFT_KEY, { visitId, action, reason: attestReason });
+        navigate(stepUp);
+        return;
+      }
+      setAttestError(
+        isAssignedClinicianRefusal(err)
+          ? ASSIGNED_CLINICIAN_MESSAGE
+          : apiErrorMessage(
+              err,
+              action === "start" ? "Could not start visit." : "Could not check in.",
+            ),
       );
       return;
     }
+    setAttest(null);
+    setAttestReason("");
     await load();
   }
 
@@ -334,7 +380,7 @@ export function MyVisits(): JSX.Element {
                               loading={busyVisitId === v.id}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void visitAction(v, "start");
+                                openAttest(v, "start");
                               }}
                             >
                               <Glyph name="clock" size={13} /> Start
@@ -348,7 +394,7 @@ export function MyVisits(): JSX.Element {
                               loading={busyVisitId === v.id}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void visitAction(v, "arrive");
+                                openAttest(v, "arrive");
                               }}
                             >
                               <Glyph name="check" size={13} /> Check in
@@ -362,7 +408,7 @@ export function MyVisits(): JSX.Element {
                               loading={busyVisitId === v.id}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void visitAction(v, "encounter");
+                                void openEncounter(v);
                               }}
                             >
                               <Glyph name="file-text" size={13} /> Encounter
@@ -391,6 +437,40 @@ export function MyVisits(): JSX.Element {
         }
         fullPageScroll
       />
+      <Modal
+        open={attest !== null}
+        onClose={busyVisitId ? undefined : () => setAttest(null)}
+        ariaLabel={attest?.action === "arrive" ? "Check in to visit" : "Start visit"}
+        width="34rem"
+      >
+        <div style={{ display: "grid", gap: "0.875rem", padding: "1.25rem" }}>
+          <h2 style={{ margin: 0, fontSize: "1.125rem" }}>
+            {attest?.action === "arrive" ? "Check in to visit" : "Start visit"}
+          </h2>
+          <p style={{ margin: 0, fontSize: "0.8125rem" }}>
+            EVV advances from your device. If it has not recorded this visit, attest why. Only the
+            assigned clinician can do this, and it needs a fresh step-up.
+          </p>
+          {attestError ? (
+            <div role="alert" style={errorBannerStyle}>
+              {attestError}
+            </div>
+          ) : null}
+          <EvvReasonField
+            value={attestReason}
+            onChange={setAttestReason}
+            disabled={busyVisitId !== null}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <Button tone="tertiary" onClick={() => setAttest(null)} disabled={busyVisitId !== null}>
+              Cancel
+            </Button>
+            <Button loading={busyVisitId !== null} onClick={() => void submitAttest()}>
+              Confirm
+            </Button>
+          </div>
+        </div>
+      </Modal>
       <NewVisitModal
         open={creating}
         onClose={() => setCreating(false)}

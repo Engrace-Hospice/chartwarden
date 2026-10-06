@@ -27,6 +27,7 @@ import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildPatientAdmissionClearanceReader } from "../src/modules/05-patient/admission-clearance-reader";
 import { M5_OUTBOX_EVENTS, buildM5IntakeSudPrivacyConsumer } from "../src/modules/05-patient/index";
+import type { SudContentAccess } from "../src/modules/22-documents/extraction/sud-content-gate";
 import {
   type DocLensClassifierPort,
   type DocLensExtractorPort,
@@ -436,8 +437,59 @@ describe.skipIf(!DB_URL)("F-237 — DocLens stage 5 + SUD + review rules — LIV
     }
   });
 
+  // GAP-067 — the route composes the Part 2 probes (licence + `sud_consent_present` on the batch's patient)
+  // and hands the service this object; the service defaults to DENY when it is absent. A PENDING detection
+  // needs only the licence (adjudicating it is internal use, before any consent exists); a CONFIRMED batch
+  // needs the licence AND consent.
+  const sudAllowed: SudContentAccess = {
+    reviewerEligible: async () => true,
+    consentPresent: async (patientId) => patientId !== "",
+  };
+  const sudLicensedNoConsent: SudContentAccess = {
+    reviewerEligible: async () => true,
+    consentPresent: async () => false,
+  };
+  const sudDenied: SudContentAccess = {
+    reviewerEligible: async () => false,
+    consentPresent: async () => true,
+  };
+
+  it("a licensed reviewer WITHOUT consent can read a PENDING detection, so the RN does not adjudicate blind (GAP-067)", async () => {
+    const ws = await workspace.getWorkspace(ORG, batchId, membership, sudLicensedNoConsent);
+    expect(ws.sud.status).toBe("detected");
+    expect(ws.sud.contentRedacted).toBe(false);
+    expect(ws.sud.indicators[0]).toMatchObject({ term: "Methadone" });
+    expect(ws.candidates.find((x) => x.fieldPath === "medications[0].name")?.redacted).toBe(false);
+  });
+
+  it("withholds SUD values and evidence from a viewer without the Part 2 need-to-know (GAP-067)", async () => {
+    for (const viewer of [undefined, sudDenied]) {
+      const ws = await workspace.getWorkspace(ORG, batchId, membership, viewer);
+      expect(ws.sud.status).toBe("detected");
+      expect(ws.sud.contentRedacted).toBe(true);
+      expect(ws.sud.indicators).toEqual([]);
+      const med = ws.candidates.find((x) => x.fieldPath === "medications[0].name");
+      expect(med).toMatchObject({ value: null, redacted: true, sudDetected: true });
+      expect(med?.vision.observedValue).toBeNull();
+      expect(JSON.stringify(ws)).not.toMatch(/methadone/i);
+      // The same batch's non-SUD fields stay readable for review.
+      expect(ws.candidates.find((x) => x.fieldPath === "patient.phoneHome")?.value).toBe(
+        "(503) 555-0142",
+      );
+    }
+  });
+
+  it("refuses a Part 2 batch's page image without the need-to-know, before any render (GAP-067)", async () => {
+    for (const viewer of [undefined, sudDenied]) {
+      await expect(
+        workspace.renderPage(ORG, batchId, 1, "corr-gap067", viewer),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+  });
+
   it("serves the workspace (decrypted for the reviewer) and the queue (counts only)", async () => {
-    const ws = await workspace.getWorkspace(ORG, batchId, membership);
+    const ws = await workspace.getWorkspace(ORG, batchId, membership, sudAllowed);
+    expect(ws.sud.contentRedacted).toBe(false);
     expect(ws.batch).toMatchObject({ patientId: patient, patientName: "Doclens, Mae" });
     expect(ws.pages.map((p) => [p.page, p.documentType])).toEqual([
       [1, "transfer_record"],

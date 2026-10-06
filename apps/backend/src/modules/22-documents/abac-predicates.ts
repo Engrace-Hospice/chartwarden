@@ -251,7 +251,7 @@ export function buildDocumentAbacPredicates(
     // publish a platform template version — must be on the platform team (tenant org_admin cannot, §4.7).
     form_template_publish_authority: async (context) => hasRole(context, "platform_admin"),
 
-    // publish a tenant overlay — must be org_admin for the target org (step-up verified at the route, §4.7).
+    // publish a tenant overlay — must be org_admin for the target org (step-up is a separate `requireStepUp` preHandler on the route, GAP-066, not this predicate).
     tenant_template_overlay_edit_authority: async (context) => hasRole(context, "org_admin"),
 
     // any document-mutating action is denied while an active legal hold exists, regardless of RBAC (§4.7).

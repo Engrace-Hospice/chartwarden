@@ -44,6 +44,14 @@ export {
   type DeathRecordedConsumerDeps,
 } from "./consumers/m6-discharge-death";
 
+// M6 -> M37 LCP handshake: `m6.level_of_care.activated` -> `confirm` as the typed `m6LcpAckActor`.
+export {
+  M37_LCP_ACTIVATED_CONSUMER,
+  buildDrizzleLcpAdmissionLookup,
+  buildM37LcpActivatedConsumer,
+  type LcpActivatedConsumerDeps,
+} from "./consumers/m6-lcp-activated";
+
 // §4.11 — the eight published IPU reader seams (registered over the deny-stubs by the composition root).
 export {
   buildIpuSeams,

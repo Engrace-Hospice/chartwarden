@@ -14,6 +14,7 @@ import {
   createInMemoryEffectivePermissionStore,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
+  registerPredicateIdempotent,
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
@@ -45,6 +46,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const actorKind = request.headers["x-test-actor-kind"];
   if (typeof actorKind === "string") request.context.attributes.actorKind = actorKind;
+  // GAP-066 — the test-local stand-in for the M3 `step_up_recent` predicate reads this flag; production
+  // resolves it server-side from the session through M2's seam, never from a header.
+  if (request.headers["x-test-step-up"] === "1") request.context.attributes.stepUpRecent = true;
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   // No `x-test-licensure` here any more. It stamped `context.attributes.licensure`, which nothing in
@@ -115,6 +119,8 @@ const PERMISSION_SEED = [
   { userId: "viewer_1", permissions: ["documents.read_templates"] },
   { userId: "platform_1", permissions: ["documents.publish_template"] },
   { userId: "orgadmin_1", permissions: ["documents.manage_overlay", "documents.read_templates"] },
+  { userId: "exporter_1", permissions: ["documents.export_phi_bundle"] },
+  { userId: "platform_ops_1", permissions: ["documents.admin_retry_render"] },
 ];
 
 // A single shared backend so the ABAC resolver + caseload stub (registered once, single-owner) stay stable.
@@ -154,7 +160,7 @@ const sharedObjectResolver: SignedUrlObjectResolver = {
 };
 
 // In-memory caseload: the three reviewer personas cover PATIENT but NOT PATIENT_OFF (no real M5 seam).
-const REVIEWERS = ["rn_1", "pa_1", "aide_1"];
+const REVIEWERS = ["rn_1", "pa_1", "aide_1", "exporter_1"];
 const isInCaseload = async (q: { userId: string; patientId: string }): Promise<boolean> =>
   REVIEWERS.includes(q.userId) && q.patientId === PATIENT;
 
@@ -196,6 +202,11 @@ function makeServer(
     activeCredentials: async ({ membershipId }) => CREDENTIALS[membershipId] ?? [],
   });
 
+  registerPredicateIdempotent(
+    "step_up_recent",
+    async (context) => context.attributes.stepUpRecent === true,
+  );
+
   const signedUrl = createSignedUrlService({
     storage: {
       async presignDownload({ descriptor }) {
@@ -224,7 +235,20 @@ const PLATFORM = {
   "x-test-org": ORG,
   "x-test-roles": "platform_admin",
 };
-const ORG_ADMIN = { "x-test-user": "orgadmin_1", "x-test-org": ORG, "x-test-roles": "org_admin" };
+const STEP_UP_FRESH = { "x-test-step-up": "1" };
+/** Holds the RBAC key and the org_admin ABAC role, but NO fresh step-up (GAP-066). */
+const ORG_ADMIN_STALE = {
+  "x-test-user": "orgadmin_1",
+  "x-test-org": ORG,
+  "x-test-roles": "org_admin",
+};
+const ORG_ADMIN = { ...ORG_ADMIN_STALE, ...STEP_UP_FRESH };
+const EXPORTER_STALE = { "x-test-user": "exporter_1", "x-test-org": ORG, "x-test-roles": "rn" };
+const PLATFORM_OPS_STALE = {
+  "x-test-user": "platform_ops_1",
+  "x-test-org": ORG,
+  "x-test-roles": "platform_admin",
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -1084,5 +1108,69 @@ describe("F-235 — POST /intake/reviews/:id/complete guards (the chart-writebac
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("complete");
+  });
+});
+
+// GAP-066 — the route comments claimed step-up on the §164.524 export, the overlay publish and the admin
+// render retry, but none of the three composed `requireStepUp`. A holder of the RBAC key (and, for the
+// overlay, the org_admin role) with no fresh step-up must be refused with STEP_UP_REQUIRED; a fresh one passes.
+describe("M22 GAP-066 — step-up on PHI export, overlay publish and render retry", () => {
+  const exportRequest = (headers: Record<string, string>) => ({
+    method: "POST" as const,
+    url: `/api/v1/documents/${DOC}/export-phi-bundle`,
+    headers: { ...headers, "idempotency-key": "gap066-export" },
+    payload: { patientId: PATIENT, purpose: "patient_access" },
+  });
+  const overlayRequest = (headers: Record<string, string>) => ({
+    method: "PUT" as const,
+    url: "/api/v1/tenant-overlays/election_statement",
+    headers: { ...headers, "if-match": "0", "idempotency-key": "gap066-overlay" },
+    payload: { branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } } },
+  });
+  const retryRequest = (headers: Record<string, string>) => ({
+    method: "POST" as const,
+    url: "/api/v1/admin/form-fills/c0000000-0000-4000-8000-0000000000f1/retry",
+    headers: { ...headers, "idempotency-key": "gap066-retry" },
+    payload: {},
+  });
+
+  it("export-phi-bundle without a fresh step-up is refused with STEP_UP_REQUIRED", async () => {
+    const { app } = makeServer();
+    const res = await app.inject(exportRequest(EXPORTER_STALE));
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("STEP_UP_REQUIRED");
+  });
+
+  it("export-phi-bundle with a fresh step-up passes", async () => {
+    const { app } = makeServer();
+    const res = await app.inject(exportRequest({ ...EXPORTER_STALE, ...STEP_UP_FRESH }));
+    expect(res.statusCode).toBeLessThan(300);
+  });
+
+  it("the overlay PUT without a fresh step-up is refused with STEP_UP_REQUIRED", async () => {
+    const { app } = makeServer();
+    const res = await app.inject(overlayRequest(ORG_ADMIN_STALE));
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("STEP_UP_REQUIRED");
+  });
+
+  it("the overlay PUT with a fresh step-up passes", async () => {
+    // A private backend: the shared one keeps its overlay version across tests, so If-Match "0" would 412.
+    const { app } = makeServer(createInMemoryDocumentBackend().service);
+    const res = await app.inject(overlayRequest(ORG_ADMIN));
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("the admin render retry without a fresh step-up is refused with STEP_UP_REQUIRED", async () => {
+    const { app } = makeServer();
+    const res = await app.inject(retryRequest(PLATFORM_OPS_STALE));
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("STEP_UP_REQUIRED");
+  });
+
+  it("the admin render retry with a fresh step-up passes", async () => {
+    const { app } = makeServer();
+    const res = await app.inject(retryRequest({ ...PLATFORM_OPS_STALE, ...STEP_UP_FRESH }));
+    expect(res.statusCode).toBe(200);
   });
 });

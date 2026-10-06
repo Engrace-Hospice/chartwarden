@@ -16,6 +16,7 @@
 //   m37.ipu.staff_member               — the actor has an active IPU staff assignment on the unit (or is a
 //                                        unit/medical director with org-wide access).
 import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { hasGipAttesterRole } from "../routes/ipu-trust-gates";
 
 /** The §4.7 predicate names M37 OWNS. `inOrg` (M3) is excluded — re-used, never re-registered. */
 export const M37_REGISTERED_ABAC_PREDICATES = [
@@ -44,8 +45,10 @@ export function buildM37AbacPredicates(): Record<
     "m37.irc_episode.within_cap": (_c, t) => targetBool(t, "ircWithinCap"),
     // §2.9 — the equipment's biomed inspection is current (next_due >= today AND last outcome pass/conditional).
     "m37.equipment.inspection_current": (_c, t) => targetBool(t, "equipmentInspectionCurrent"),
-    // §2.4 — the actor is an eligible GIP attester (M2 discipline hospice_md AND M40 ExternalPhysician active).
-    "m37.gip_criteria.attester_eligible": (_c, t) => targetBool(t, "attesterEligible"),
+    // §2.4 — the actor is an eligible GIP attester. GAP-106: the DISCIPLINE half is read from the
+    // server-assembled context roles here (never a target field a client could shape); the M40 physician
+    // half is async and is re-asserted by the route service (`evaluateGipAttesterEligibility`) inside the tx.
+    "m37.gip_criteria.attester_eligible": (c) => hasGipAttesterRole(c.roles),
     // §4.7 — the actor is an active IPU staff member on the unit (or a unit/medical director, org-wide).
     "m37.ipu.staff_member": (_c, t) => targetBool(t, "ipuStaffMember"),
   };

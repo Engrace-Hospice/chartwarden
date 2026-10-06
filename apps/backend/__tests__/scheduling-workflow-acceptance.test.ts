@@ -123,10 +123,10 @@ describe("M17-T09 §7 workflow acceptance", () => {
     expect(created).toEqual(["m17.visit.proposed", "m17.visit.assigned", "m17.visit.published"]);
 
     // The RN arrives and M18 publishes the EVV check-in → the visit advances (system actor, no self-attest).
-    const enRoute = svc.startVisit(ORG, "rn", visit.id, undefined, false);
+    const enRoute = svc.advanceFromEvv(ORG, visit.id, "start");
     expect(enRoute.status).toBe("en_route");
     expect(eventNames(svc.drainEvents())).toContain("m17.visit.started");
-    const inVisit = svc.arriveVisit(ORG, "rn", visit.id, undefined, false);
+    const inVisit = svc.advanceFromEvv(ORG, visit.id, "arrive");
     expect(inVisit.status).toBe("in_visit");
 
     // On `m8.encounter.signed` the §4.4 bidirectional consumer completes the linked in_visit visit (system actor).
@@ -284,7 +284,7 @@ describe("M17-T09 §7 workflow acceptance", () => {
     expect(() =>
       svc.startVisit(
         ORG,
-        "rn",
+        MEM_RN,
         visit.id,
         "x".repeat(EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH),
         false,
@@ -292,14 +292,14 @@ describe("M17-T09 §7 workflow acceptance", () => {
     ).toThrowError(expect.objectContaining({ code: "EVV_SELF_ATTEST_STEP_UP_REQUIRED" }));
 
     // A step-up but a too-short reason is refused.
-    expect(() => svc.startVisit(ORG, "rn", visit.id, "signal failure", true)).toThrowError(
+    expect(() => svc.startVisit(ORG, MEM_RN, visit.id, "signal failure", true)).toThrowError(
       expect.objectContaining({ code: "EVV_MISSING_REASON_TOO_SHORT" }),
     );
 
     // Step-up + a ≥40-char documented reason → the visit advances to en_route.
     const reason =
       "Cell signal failure at patient location — verified by patient signature on the tablet at start";
-    const enRoute = svc.startVisit(ORG, "rn", visit.id, reason, true);
+    const enRoute = svc.startVisit(ORG, MEM_RN, visit.id, reason, true);
     expect(enRoute.status).toBe("en_route");
     expect(eventNames(svc.drainEvents())).toContain("m17.visit.started");
   });

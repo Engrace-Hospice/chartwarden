@@ -26,9 +26,11 @@
 //       coordinate is stored as base64(`lat,lng`) in `coords_cipher` (the real DEK pipeline is D10-deferred).
 //       GAP-032: ./coords.ts now owns BOTH halves of that format, so `clinicianCurrentLocation` recovers what
 //       the capture wrote — it used to answer a hardcoded (0, 0) for every clinician in every tenant;
-//   (3) gps-quality / geofence decision is the in-mem slice's accuracy-band model (accuracy vs the effective
-//       policy `max_accuracy_m`) — the full haversine-vs-baseline pipeline needs the address-coordinate + DEK
-//       decrypt, deferred; `computed_distance_m` is recorded NULL;
+//   (3) RESOLVED (GAP-054). The gps-quality / geofence decision is computed in `./capture-geofence.ts` from the
+//       haversine distance to the patient-address coordinate (M5 `PatientAddressReader.serviceAddressCoordinate`,
+//       resolved before the capture tx opens) against the effective policy; `computed_distance_m` is the real
+//       distance (NULL only when there is no baseline). A client `degraded_attested` flag is an advisory breach,
+//       never a pass. The per-address policy override is still not consulted by `effectivePolicy`;
 //   (4) RESOLVED (F-068 §4). The device-admin + geofence-policy routes used to drop the acting membership,
 //       so `approved_by_membership_id` / `rejected_by_membership_id` / `set_by_membership_id` were filled from
 //       an arbitrary `LIMIT 1` membership in the org — a row naming a colleague who did not do it. Every one
@@ -54,6 +56,7 @@ import {
   ValidationError,
 } from "@wardenx/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import {
   DEFAULT_EVV_WINDOW_AFTER_MS,
   DEFAULT_EVV_WINDOW_BEFORE_MS,
@@ -71,10 +74,12 @@ interface CaptureBinding {
   readonly authority: EvvCaptureAuthority;
   readonly claimedDeviceId: string | undefined;
 }
+import { decideCaptureGeofence } from "./capture-geofence";
 import { decodeStoredCoords, encodeStoredCoords } from "./coords";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
 import type { EvvSideEffect } from "./domain/effects";
 import { correctEvent } from "./domain/event-lifecycle";
+import type { Coordinate } from "./domain/geofence";
 import { transitionMissingResolution } from "./domain/missing-resolution";
 import type {
   ArrivalView,
@@ -169,6 +174,13 @@ export interface EvvWriteOutboxPort {
 }
 const NOOP_OUTBOX: EvvWriteOutboxPort = { async publish() {} };
 
+/** Reads the geocoded coordinate of a patient's service address (null = no baseline). */
+export type AddressCoordinateReader = (
+  organizationId: string,
+  patientId: string,
+  patientAddressId: string | null,
+) => Promise<Coordinate | null>;
+
 /**
  * The production, RLS-backed EVV backend (M18L reads + the write lifecycle). Implements BOTH the
  * {@link EvvRoutePort} surface and its {@link EvvAbacResolver} (the same object is passed to
@@ -177,8 +189,19 @@ const NOOP_OUTBOX: EvvWriteOutboxPort = { async publish() {} };
 export function createDbEvvBackend(
   db: DbClient,
   outbox: EvvWriteOutboxPort = NOOP_OUTBOX,
-  options: { readonly deviceAttestationEnforced?: boolean } = {},
+  options: {
+    readonly deviceAttestationEnforced?: boolean;
+    /**
+     * GAP-054 — the patient-address coordinate the capture geofence measures against. Defaults to M5's
+     * `PatientAddressReader` seam (resolved lazily per call); injectable so a suite can bind a fixed baseline.
+     */
+    readonly addressCoordinate?: AddressCoordinateReader;
+  } = {},
 ): EvvRoutePort {
+  const addressCoordinate: AddressCoordinateReader =
+    options.addressCoordinate ??
+    ((orgId, patientId, patientAddressId) =>
+      getSeam("PatientAddressReader").serviceAddressCoordinate(orgId, patientId, patientAddressId));
   // GAP-055 follow-up: injected from validated server config (`EVV_DEVICE_ATTESTATION_ENFORCED`), default OFF.
   const deviceAttestationEnforced = options.deviceAttestationEnforced ?? false;
   async function emit(
@@ -333,6 +356,40 @@ export function createDbEvvBackend(
   }
 
   /**
+   * GAP-054 — the visit's address coordinate, resolved BEFORE the capture transaction opens (the seam opens its
+   * own org-scoped connection; M17's pre-schedule seam facts follow the same rule). Fail-safe: an absent
+   * visit, a never-geocoded address or a seam that throws all resolve to `null` = "no baseline", which the
+   * decision records as advisory `no_geofence_baseline` — it can never produce a pass.
+   */
+  async function loadGeofenceBaseline(orgId: string, visitId: string): Promise<Coordinate | null> {
+    const registration = await withOrgContext(
+      db,
+      { organizationId: orgId, userId: "" },
+      async (tx) => {
+        const [v] = await (tx as DbClient)
+          .select({
+            patientId: VISIT_REGISTRATION.patientId,
+            patientAddressId: VISIT_REGISTRATION.patientAddressId,
+          })
+          .from(VISIT_REGISTRATION)
+          .where(eq(VISIT_REGISTRATION.visitId, visitId))
+          .limit(1);
+        return v ?? null;
+      },
+    );
+    if (!registration) return null;
+    try {
+      return await addressCoordinate(
+        orgId,
+        registration.patientId,
+        registration.patientAddressId ?? null,
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * The capture write, WITHIN a caller-provided transaction.
    *
    * Extracted from `recordCapture` so `correctEvent` can insert the corrected event, supersede the
@@ -351,6 +408,8 @@ export function createDbEvvBackend(
       accuracyM: number;
       capturedAt: string;
       gpsQualityAttested?: "degraded_attested";
+      /** GAP-054 — the patient-address coordinate (`loadGeofenceBaseline`); null = no baseline. */
+      geofenceBaseline: Coordinate | null;
       /** §7.7 — the event this capture supersedes, and why, when it is a correction-of-record. */
       replacesEventId?: string;
       correctionReason?: string;
@@ -361,16 +420,14 @@ export function createDbEvvBackend(
     const device = await resolveCaptureDevice(tx, userId, binding);
     const policy = await effectivePolicy(tx);
 
-    // gps-quality / geofence decision — the in-mem accuracy-band model (compromise #3).
-    let gpsQuality: EvvEventGpsQuality;
-    let decision: CheckResultView["geofenceDecision"];
-    if (input.accuracyM > policy.maxAccuracyM) {
-      gpsQuality = input.gpsQualityAttested ?? "outside_geofence";
-      decision = input.gpsQualityAttested ? "pass" : "fail_accuracy";
-    } else {
-      gpsQuality = input.accuracyM <= policy.maxAccuracyM / 2 ? "high" : "acceptable";
-      decision = "pass";
-    }
+    // GAP-054 — gps-quality / geofence decision from the haversine distance to the address baseline.
+    const { gpsQuality, decision, computedDistanceM } = decideCaptureGeofence({
+      deviceCoordinate: input.coords,
+      accuracyM: input.accuracyM,
+      attestedDegraded: input.gpsQualityAttested === "degraded_attested",
+      baseline: input.geofenceBaseline,
+      policy,
+    });
     // GAP-032 — through the shared codec, so the read path recovers exactly what this wrote.
     const coordsCipher = encodeStoredCoords(input.coords);
     const capturedAt = new Date(input.capturedAt);
@@ -413,7 +470,7 @@ export function createDbEvvBackend(
       appliedRadiusM: policy.radiusM,
       appliedMaxAccuracyM: policy.maxAccuracyM,
       deviceCoordsCipher: coordsCipher,
-      computedDistanceM: null,
+      computedDistanceM,
       decision,
     });
 
@@ -429,21 +486,23 @@ export function createDbEvvBackend(
         gpsQuality,
         geofenceDecision: decision,
       });
-      if (decision === "pass") {
+      // A distance is only ever REAL here: `pass` implies a baseline (so a number); a breach with no baseline
+      // has no distance to report and emits no breach event (the event itself carries no_geofence_baseline).
+      if (decision === "pass" && computedDistanceM !== null) {
         await emit(tx, orgId, "m18.evv.at_patient_address", "evv_event", eventId, {
           eventId,
           visitId: input.visitId,
           patientId: visit.patientId,
           postingMembershipId: userId,
-          computedDistanceM: 0,
+          computedDistanceM,
           appliedRadiusM: policy.radiusM,
           confirmedAt: recordedAt,
         });
-      } else {
+      } else if (computedDistanceM !== null) {
         await emit(tx, orgId, "m18.evv.geofence_breach_recorded", "evv_event", eventId, {
           eventId,
           visitId: input.visitId,
-          computedDistanceM: 0,
+          computedDistanceM,
           appliedRadiusM: policy.radiusM,
           kind: "check_in",
         });
@@ -477,13 +536,15 @@ export function createDbEvvBackend(
         serviceDurationMinutes,
       });
       if (decision !== "pass") {
-        await emit(tx, orgId, "m18.evv.geofence_breach_recorded", "evv_event", eventId, {
-          eventId,
-          visitId: input.visitId,
-          computedDistanceM: 0,
-          appliedRadiusM: policy.radiusM,
-          kind: "check_out",
-        });
+        if (computedDistanceM !== null) {
+          await emit(tx, orgId, "m18.evv.geofence_breach_recorded", "evv_event", eventId, {
+            eventId,
+            visitId: input.visitId,
+            computedDistanceM,
+            appliedRadiusM: policy.radiusM,
+            kind: "check_out",
+          });
+        }
       } else if (priorCheckIn) {
         // F-194 (#248) — the check-out paired with an in-geofence, non-superseded check-in; the last
         // condition the catalog's own description names ("no open evv_missing_resolution") mirrors the
@@ -600,11 +661,16 @@ export function createDbEvvBackend(
         authority,
         deviceAttestationEnforced,
       );
+      const geofenceBaseline = await loadGeofenceBaseline(orgId, input.visitId);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, (txRaw) =>
-        captureInTx(txRaw as DbClient, orgId, userId, kind, input, {
-          authority,
-          claimedDeviceId: input.claimedDeviceId,
-        }),
+        captureInTx(
+          txRaw as DbClient,
+          orgId,
+          userId,
+          kind,
+          { ...input, geofenceBaseline },
+          { authority, claimedDeviceId: input.claimedDeviceId },
+        ),
       );
     },
 
@@ -658,6 +724,7 @@ export function createDbEvvBackend(
         stepUpVerified: boolean;
       },
     ): Promise<CheckResultView> {
+      const geofenceBaseline = await loadGeofenceBaseline(orgId, input.visitId);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [original] = await tx
@@ -715,6 +782,7 @@ export function createDbEvvBackend(
           accuracyM: input.accuracyM,
           capturedAt: input.capturedAt,
           gpsQualityAttested: input.gpsQualityAttested,
+          geofenceBaseline,
           replacesEventId: supersede.originalEventId,
           correctionReason: reason?.value ?? input.correctionReason,
         });

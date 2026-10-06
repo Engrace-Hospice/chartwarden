@@ -858,6 +858,7 @@ jobs:
           - { name: "M33 schedule cron", scripts: "test:m33:schedule-cron:live" }
           - { name: "M33 schedule authz (GAP-097)", scripts: "test:m33:schedule-authz:live" }
           - { name: "M31 portal telehealth authz (GAP-094)", scripts: "test:m31:portal-telehealth-authz:live" }
+          - { name: "M30 PHI route scope (GAP-091)", scripts: "test:m30:phi-scope:live" }
           # GAP-051: the M33 PDF/XLSX export → M22 render → back-ref chain end-to-end. Nothing in it
           # ran before: the export outbox was unbound, M22 consumed the request event nowhere, and the
           # request carried a SQL string M22 could never have executed.
@@ -1034,6 +1035,8 @@ jobs:
         run: bun run test:auth:live
       - name: device_attestation RLS survives a reused pooled connection (empty-GUC regression)
         run: bun run test:device-attestation-guc:live
+      - name: withOrgContext defaults the write-audit actor to the request user (GAP-111)
+        run: bun run test:audit-actor-default:live
 
       - name: Cleanup auth Postgres
         if: always()

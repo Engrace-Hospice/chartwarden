@@ -44,6 +44,8 @@ export type BodyReleaseEvent =
       readonly type: "releaseBody";
       /** The signed M22 body_release_authorization document is attached (release_document_id set). */
       readonly hasReleaseDocument: boolean;
+      /** GAP-106 — a document WAS named but M22 did not prove it is this release's authorization. */
+      readonly documentRejected?: boolean;
     }
   | { readonly type: "postClose"; readonly isSystemActor: boolean };
 
@@ -113,9 +115,16 @@ export function transitionBodyRelease(
 
     case "releaseBody": {
       requireIpu(
+        event.documentRejected !== true,
+        "BODY_RELEASE_DOCUMENT_INVALID",
+        "releaseBody names a document that is not an active M22 body_release_authorization filed against this release and patient.",
+      );
+      requireIpu(
         event.hasReleaseDocument,
         "BODY_RELEASE_DOCUMENT_REQUIRED",
-        "releaseBody requires the signed M22 body_release_authorization document.",
+        "releaseBody requires an active M22 body_release_authorization document filed against this release. " +
+          "M22 exposes no signed-state fact, so 'signed' is approximated by active-with-an-active-version " +
+          "and is NOT proof of a captured signature.",
       );
       return {
         from,

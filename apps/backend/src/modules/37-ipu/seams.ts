@@ -25,9 +25,11 @@ import { and, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type {
   AdmissionDischargeReader,
+  BodyReleaseDocumentReader,
+  MdmDirectoryReader,
   RestraintOrderReader,
   VisitorConsentGate,
-} from "./routes/service-drizzle";
+} from "./routes/ipu-trust-gates";
 
 type RegisterSeam = <K extends SeamName>(name: K, impl: SeamContracts[K]) => void;
 
@@ -344,6 +346,27 @@ export function getIpuAdmissionStatusReader(): AdmissionDischargeReader {
       return { status: summary.status, dischargedAt: summary.dischargedAt };
     },
   };
+}
+
+/**
+ * GAP-106 — M22's `DocumentReader`, narrowed to `documentMetadata`, the one read the §2.11 release gate
+ * makes (is this document an ACTIVE `body_release_authorization` for THIS release and patient?). The
+ * published seam already exists, so no new contract is added; resolved per call so the deny-stub (which
+ * throws) stands until M22 registers — and the gate reads a throw as "not proven", refusing the release.
+ */
+export function getIpuBodyReleaseDocumentReader(): BodyReleaseDocumentReader {
+  const reader = getSeam("DocumentReader");
+  return {
+    documentMetadata: (args) => reader.documentMetadata(args),
+  };
+}
+
+/**
+ * GAP-106 — M40's `MdmEntityProvider` (held opaquely by the M1 registry), narrowed to the two resolves the
+ * §2.11 funeral-home gate and the §2.4 attester gate make. Both are merge-aware and org-scoped inside M40.
+ */
+export function getIpuMdmDirectoryReader(): MdmDirectoryReader {
+  return getSeam("MdmEntityProvider") as MdmDirectoryReader;
 }
 
 /** Register M37's eight §4.11 published seams over the Phase-0 deny-stubs (composition-root hook). */
