@@ -22,11 +22,39 @@ const ENDED_STATES = ["discharged", "bereavement", "closed"] as const;
 /** A patient with more earlier admissions than this is beyond any realistic history; bounds the `IN (...)`. */
 const MAX_PRIOR_ADMISSIONS = 100;
 
+/**
+ * The SENDING hospice's part of a transfer-in's inherited benefit period (CMS Pub. 100-04 ch. 11 §20.1.3): the
+ * beneficiary was in hospice care at the other hospice from the inherited period's start up to and including the
+ * transfer date (the transferring hospice bills through it). Those are hospice days of the SAME election, so they
+ * carry into the two-tier RHC day count (§30.2 — CWF counts per beneficiary, not per provider). A lower bound:
+ * days at the sending hospice before the inherited period are only known from HETS.
+ */
+export interface TransferInSource {
+  readonly transferEventId: string;
+  /** The inherited period's `effective_at` (the transfer-in's `priorElectionStartDate`); null on legacy rows. */
+  readonly sendingStartedOn: string | null;
+  /** `transfer_event.effective_at` — the change-of-hospice date. */
+  readonly transferOn: string | null;
+  /** `transfer_event.receiving_or_sending_npi` (migration 0375), when captured. */
+  readonly sendingNpi: string | null;
+}
+
 export interface PriorEpisode extends PriorEpisodeFacts {
   readonly admissionState: string;
   readonly patientId: string;
   /** Completed discharge_event / revocation_event / transfer_event id that ended the stay, if any. */
   readonly endingEventId: string | null;
+  /** The admission began as a transfer-in: the sending hospice's part of the inherited period. */
+  readonly transferredIn: TransferInSource | null;
+}
+
+/** One stay the two-tier RHC carry-over counts (M23's `PriorStayFact`): ours, or the sending hospice's. */
+export interface RhcPriorStayFact {
+  readonly admissionId: string;
+  readonly startedOn: string | null;
+  readonly endedOn: string | null;
+  /** Set when the days were spent at ANOTHER hospice (a transfer-in's sending hospice), with its NPI. */
+  readonly otherHospice?: { readonly npi: string | null };
 }
 
 const day = (d: Date | string | null | undefined): string | null =>
@@ -92,6 +120,7 @@ export async function loadPriorEpisodes(
     .select({ id: RE.id, admissionId: RE.admissionId, effectiveAt: RE.effectiveAt })
     .from(RE)
     .where(and(eq(RE.organizationId, organizationId), inArray(RE.admissionId, ids)));
+  const transfersIn = await loadTransferInSources(tx, organizationId, ids);
   const transfers = await tx
     .select({ id: TE.id, admissionId: TE.admissionId, effectiveAt: TE.effectiveAt })
     .from(TE)
@@ -136,9 +165,98 @@ export async function loadPriorEpisodes(
         dischargeType: dis ? String(dis.type) : null,
         lastRanSequence: lastRan,
         endingEventId: ending.id,
+        transferredIn: transfersIn.get(a.id) ?? null,
       };
     })
     .sort((x, y) => (y.endedOn ?? "").localeCompare(x.endedOn ?? ""));
+}
+
+/**
+ * The transfer-in (direction `in`) that opened each of `admissionIds`, with the inherited period's start — RLS-scoped
+ * `tx`, explicit org predicate. An admission opens with at most one transfer-in (R-XFR-01); the earliest is taken.
+ */
+export async function loadTransferInSources(
+  tx: DbClient,
+  organizationId: string,
+  admissionIds: readonly string[],
+): Promise<ReadonlyMap<string, TransferInSource>> {
+  if (admissionIds.length === 0) return new Map();
+  const rows = await tx
+    .select({
+      id: TE.id,
+      admissionId: TE.admissionId,
+      effectiveAt: TE.effectiveAt,
+      sequence: TE.periodSequenceAtTransfer,
+      npi: TE.receivingOrSendingNpi,
+      periodStart: EP.effectiveAt,
+    })
+    .from(TE)
+    .leftJoin(
+      EP,
+      and(
+        eq(EP.admissionId, TE.admissionId),
+        eq(EP.sequenceNumber, TE.periodSequenceAtTransfer),
+        eq(EP.organizationId, organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(TE.organizationId, organizationId),
+        inArray(TE.admissionId, [...admissionIds]),
+        eq(TE.direction, "in"),
+      ),
+    );
+  const out = new Map<string, TransferInSource>();
+  for (const r of [...rows].sort((x, y) =>
+    String(x.effectiveAt).localeCompare(String(y.effectiveAt)),
+  )) {
+    if (out.has(r.admissionId)) continue;
+    out.set(r.admissionId, {
+      transferEventId: r.id,
+      sendingStartedOn: day(r.periodStart),
+      transferOn: day(r.effectiveAt),
+      sendingNpi: r.npi ?? null,
+    });
+  }
+  return out;
+}
+
+/** The sending hospice's span of a transfer-in, as an RHC prior-stay fact (null when its start is unknown). */
+function sendingHospiceStay(
+  admissionId: string,
+  source: TransferInSource | null,
+): RhcPriorStayFact | null {
+  if (!source?.sendingStartedOn || !source.transferOn) return null;
+  if (source.sendingStartedOn > source.transferOn) return null;
+  return {
+    admissionId,
+    startedOn: source.sendingStartedOn,
+    endedOn: source.transferOn,
+    otherHospice: { npi: source.sendingNpi },
+  };
+}
+
+/**
+ * The stays the two-tier RHC carry-over counts: each earlier stay with us, preceded by its sending hospice's span
+ * when it began as a transfer-in; plus, when the stay being priced is itself a transfer-in (`current`), the sending
+ * hospice's days of the inherited period (the new stay's day 1 is the transfer date — the shared hand-off day is
+ * clipped by `computeRhcCarryOver`).
+ */
+export function rhcPriorStayFacts(
+  episodes: readonly PriorEpisode[],
+  current?: { readonly admissionId: string; readonly transferredIn: TransferInSource | null },
+): readonly RhcPriorStayFact[] {
+  const facts: RhcPriorStayFact[] = [];
+  for (const e of episodes) {
+    facts.push({ admissionId: e.admissionId, startedOn: e.startedOn, endedOn: e.endedOn });
+    const sending = sendingHospiceStay(e.admissionId, e.transferredIn);
+    if (sending) facts.push(sending);
+  }
+  const currentSending = current
+    ? sendingHospiceStay(current.admissionId, current.transferredIn)
+    : null;
+  if (currentSending) facts.push(currentSending);
+  return facts;
 }
 
 /** Org-explicit variant for workers / other modules' ports (no request context). */

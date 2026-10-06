@@ -277,6 +277,7 @@ import {
   registerAdmissionRoutes,
   registerAdmissionSeams,
   registerM6CronWorkers,
+  rhcPriorStayFacts,
   scheduleM6Jobs,
   transferInNoticeContextForOrg,
   wireM6Tenancy,
@@ -3869,11 +3870,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                     organizationId,
                     patientId,
                   );
-                  return episodes.map((e) => ({
-                    admissionId: e.admissionId,
-                    startedOn: e.startedOn,
-                    endedOn: e.endedOn,
-                  }));
+                  // Incl. a transfer-in's sending-hospice span (same election, carries into the count).
+                  return rhcPriorStayFacts(episodes);
                 },
               },
             }),

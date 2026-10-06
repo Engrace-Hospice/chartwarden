@@ -227,3 +227,50 @@ describe("computeRhcCarryOver — the 60-day cap", () => {
     expect(r.chain).toHaveLength(1); // the HETS period is never reached
   });
 });
+
+describe("computeRhcCarryOver — a transfer-in's sending hospice span (8xC, ch. 11 §20.1.3)", () => {
+  const sending = {
+    start: "2026-01-20",
+    end: "2026-02-16",
+    ref: "adm-xfer",
+    atOtherHospice: true,
+    hospiceNpi: OTHER_NPI,
+  } as const;
+
+  it("counts the sending hospice's inherited-period days up to the day before the transfer date", () => {
+    // Arrange / Act — transfer-in on 02/16 (= our day 1); the sending hospice ran 01/20 … 02/16.
+    const r = run({ internalStays: [sending] });
+    // Assert — the shared hand-off day is our day 1, so 01/20 … 02/15 = 27 days carry.
+    expect(r.priorDays).toBe(27);
+    expect(r.chain).toEqual([
+      expect.objectContaining({
+        source: "internal",
+        start: "2026-01-20",
+        end: "2026-02-15",
+        hospiceNpi: OTHER_NPI,
+        countedDays: 27,
+      }),
+    ]);
+  });
+
+  it("keeps the sending hospice's HETS row (not taken as our stay) and never double counts the overlap", () => {
+    // Arrange — HETS shows the sending hospice's billed period from 01/01 (an earlier start than M6 recorded).
+    const r = run({
+      internalStays: [sending],
+      hets: hets([billed("2026-01-01", "2026-02-16")]),
+    });
+    // Assert — 01/01 … 02/15 = 46 days, each counted once.
+    expect(r.priorDays).toBe(46);
+    expect(r.chainDays).toBe(46);
+    expect(r.chain.reduce((n, s) => n + s.countedDays, 0)).toBe(46);
+    expect(r.chain.some((s) => s.source === "hets")).toBe(true);
+  });
+
+  it("an own stay overlapping the same HETS row still drops it (our dates win)", () => {
+    const r = run({
+      internalStays: [{ start: "2026-01-01", end: "2026-02-10", ref: "adm-ours" }],
+      hets: hets([billed("2026-01-01", "2026-02-10")]),
+    });
+    expect(r.chain.every((s) => s.source === "internal")).toBe(true);
+  });
+});

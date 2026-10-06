@@ -194,8 +194,11 @@ export { createDbReadmissionService } from "./readmission-service-db";
 export type { PriorElectionClosurePort, ReadmissionService } from "./routes/readmission-service";
 export {
   type PriorEpisode,
+  type RhcPriorStayFact,
+  type TransferInSource,
   latestLiveEndedEpisode,
   priorEpisodesForOrg,
+  rhcPriorStayFacts,
 } from "./seams/prior-episodes";
 export * from "./intake/benefit-period";
 export type { DischargeDetailsService } from "./routes/discharge-details-service";

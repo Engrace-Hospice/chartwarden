@@ -24,4 +24,6 @@ export interface PriorStayFact {
   readonly admissionId: string;
   readonly startedOn: IsoDate | null;
   readonly endedOn: IsoDate | null;
+  /** Days at ANOTHER hospice that M6 recorded (a transfer-in's sending hospice), with its NPI when captured. */
+  readonly otherHospice?: { readonly npi: string | null };
 }

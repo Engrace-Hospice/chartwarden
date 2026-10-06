@@ -31,7 +31,11 @@ import {
   buildRequiredProviderEntityCcnResolver,
 } from "../src/bootstrap/provider-entity-resolver";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
-import { M6_OUTBOX_EVENTS, transferInNoticeContextForOrg } from "../src/modules/06-admission/index";
+import {
+  M6_OUTBOX_EVENTS,
+  claimAssemblyRangeContextForOrg,
+  transferInNoticeContextForOrg,
+} from "../src/modules/06-admission/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
@@ -53,6 +57,7 @@ import {
   runAckPull999,
   runTransferNoticeSubmitJob,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
+import { resolveRhcCarryOver } from "../src/modules/23-billing-medicare/services/rhc-carry-over";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -534,5 +539,39 @@ describe.skipIf(!DB_URL)("M23 transfer notice (TOB 8xC) — LIVE Postgres", () =
       (tx) => tx.execute(sql`SELECT id FROM transfer_notice_record WHERE id = ${a.id}`),
     );
     expect(seenFromB.rows).toHaveLength(0);
+  });
+  it("carries the sending hospice's inherited-period days into the transfer-in's two-tier RHC count", async () => {
+    // Arrange — a transfer-in on 03/10 whose inherited period started 01/01 at the sending hospice.
+    const admissionId = await intakeAdmission(ORG_A);
+    await transferIn(ORG_A, admissionId);
+    const { rows } = await admin.query("SELECT patient_id FROM admission WHERE id=$1", [
+      admissionId,
+    ]);
+    // Act — the claim-assembly range read, as the app role.
+    const range = await claimAssemblyRangeContextForOrg(handle.db, ORG_A, rows[0].patient_id, {
+      from: TRANSFER_DATE,
+      to: TRANSFER_DATE,
+    });
+    // Assert — the sending hospice's span (with its captured NPI) is a prior stay; our day 1 is the transfer date.
+    expect(range?.admission.admissionId).toBe(admissionId);
+    expect(range?.admission.rhcPriorStays).toEqual([
+      {
+        admissionId,
+        startedOn: "2026-01-01",
+        endedOn: TRANSFER_DATE,
+        otherHospice: { npi: SENDING_NPI },
+      },
+    ]);
+    const carry = resolveRhcCarryOver({
+      electionDate: TRANSFER_DATE,
+      priorStays: range?.admission.rhcPriorStays,
+      fallbackPriorDays: range?.admission.rhcPriorHospiceDays ?? 0,
+      check: null,
+      now: new Date(`${TRANSFER_DATE}T12:00:00.000Z`),
+    });
+    // 01/01 … 03/09 = 68 days ⇒ the high-rate days are used up at the sending hospice.
+    expect(carry.chainDays).toBe(68);
+    expect(carry.priorDays).toBe(60);
+    expect(carry.highRateDaysRemaining).toBe(0);
   });
 });

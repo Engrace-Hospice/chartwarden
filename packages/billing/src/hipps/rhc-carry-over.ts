@@ -60,6 +60,14 @@ export interface RhcInternalStay {
   readonly end: IsoDate | null;
   /** An opaque reference shown back to the biller (the admission id). */
   readonly ref?: string | null;
+  /**
+   * The days were at ANOTHER hospice but are on our records — a transfer-in's sending hospice (the inherited
+   * period up to the transfer date). Counted like our stays, but never taken as "our stay" when deciding whether a
+   * HETS row duplicates one of ours (that row is the other hospice's, its days merge without double counting).
+   */
+  readonly atOtherHospice?: boolean;
+  /** The other hospice's NPI, when `atOtherHospice` and captured. */
+  readonly hospiceNpi?: string | null;
 }
 
 /** One HETS 271 hospice row (`eligibility_check.parsed_payload.hospicePeriods[]`). */
@@ -137,6 +145,8 @@ interface Span {
   readonly ref: string | null;
   /** Lower = wins a shared day. */
   readonly priority: number;
+  /** One of OUR stays (not a recorded other-hospice span); only these make a HETS row a duplicate. */
+  readonly ownStay: boolean;
 }
 
 const overlapDays = (a: Span, b: Span): number => {
@@ -157,17 +167,21 @@ function internalSpans(stays: readonly RhcInternalStay[]): Span[] {
       start: toEpochDay(s.start),
       end: s.end ? toEpochDay(s.end) : null,
       endAssumedFromDaysUsed: false,
-      hospiceNpi: null,
+      hospiceNpi: s.atOtherHospice ? (s.hospiceNpi ?? null) : null,
       ref: s.ref ?? null,
       priority: 0,
+      ownStay: s.atOtherHospice !== true,
     }));
 }
 
 function hetsSpans(
   hets: RhcHetsHistory,
-  internal: readonly Span[],
+  recorded: readonly Span[],
   ownNpis: ReadonlySet<string>,
 ): Span[] {
+  // Only OUR stays can make a HETS row a duplicate; a recorded other-hospice span (a transfer-in's sending
+  // hospice) overlapping a HETS row is that hospice's own record — both are kept and their days merge.
+  const internal = recorded.filter((s) => s.ownStay);
   const billed: Span[] = hets.periods
     .filter((p) => p.kind === "benefit_period")
     .map((p) => {
@@ -185,6 +199,7 @@ function hetsSpans(
         hospiceNpi: p.hospiceNpi,
         ref: null,
         priority: 1,
+        ownStay: false,
       };
     });
   const covered = (day: number): boolean =>
@@ -201,6 +216,7 @@ function hetsSpans(
       hospiceNpi: p.hospiceNpi,
       ref: null,
       priority: 2,
+      ownStay: false,
     }));
   const isOurs = (s: Span): boolean => {
     if (s.hospiceNpi !== null && ownNpis.has(s.hospiceNpi)) return true;

@@ -38,7 +38,12 @@ import { pickCertification, pickFaceToFace } from "../certification/adequacy";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
 
 import { rhcCarryOver } from "../intake/benefit-period";
-import { loadPriorEpisodes } from "./prior-episodes";
+import {
+  type RhcPriorStayFact,
+  loadPriorEpisodes,
+  loadTransferInSources,
+  rhcPriorStayFacts,
+} from "./prior-episodes";
 
 const ADM = schema.admissions;
 const REF = schema.referrals;
@@ -264,12 +269,9 @@ export interface ClaimRangeAdmission {
    *  here. Days at another hospice are not known to M6 (M23 merges them in from HETS — `rhcPriorStays`). */
   readonly rhcPriorHospiceDays: number;
   /** This patient's earlier stays with us (start / ending date, both inclusive hospice days), the facts behind
-   *  `rhcPriorHospiceDays`: M23 merges them with the HETS cross-hospice history (`computeRhcCarryOver`). */
-  readonly rhcPriorStays: readonly {
-    readonly admissionId: string;
-    readonly startedOn: string | null;
-    readonly endedOn: string | null;
-  }[];
+   *  `rhcPriorHospiceDays`: M23 merges them with the HETS cross-hospice history (`computeRhcCarryOver`). A
+   *  transfer-in (this stay's or an earlier one's) adds the sending hospice's span, flagged `otherHospice`. */
+  readonly rhcPriorStays: readonly RhcPriorStayFact[];
   /** `discharge_event.effective_at` — NOT `admission.discharged_at`, which the F-107 finding established
    *  is the FILING timestamp, not the CMS-relevant effective date. Only a `completed` discharge counts: a
    *  `voided` one never happened and a `pending_cosign` for-cause filing leaves the admission active (D11). */
@@ -446,15 +448,18 @@ export async function claimAssemblyRangeContextForOrg(
         admissionId,
       );
       const rhc = rhcCarryOver(priorEpisodes, localDate(candidate.start));
+      const currentTransferIn = await loadTransferInSources(tx as DbClient, organizationId, [
+        admissionId,
+      ]);
       const admission: ClaimRangeAdmission = {
         admissionId,
         hospiceAdmissionDate: localDate(candidate.start),
         rhcPriorHospiceDays: rhc.priorHospiceDays,
-        rhcPriorStays: priorEpisodes.map((e) => ({
-          admissionId: e.admissionId,
-          startedOn: e.startedOn,
-          endedOn: e.endedOn,
-        })),
+        // A transfer-in's sending-hospice days of the inherited period carry into this stay's RHC count too.
+        rhcPriorStays: rhcPriorStayFacts(priorEpisodes, {
+          admissionId,
+          transferredIn: currentTransferIn.get(admissionId) ?? null,
+        }),
         dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,

@@ -93,4 +93,39 @@ describe("resolveRhcCarryOver", () => {
     expect(v).toMatchObject({ priorDays: 25, basis: "internal_only", chain: [], hetsCheck: null });
     expect(rhcCarryOverSnapshot(v).readmittedWithin60Days).toBe(true);
   });
+
+  it("a transfer-in's sending hospice span keeps that hospice's overlapping HETS row (no double count)", () => {
+    // The stay being priced is a transfer-in on 02/16; M6 recorded the sending hospice from 01/20 (the
+    // inherited period's start) and HETS shows that hospice billing from 01/10.
+    const v = resolveRhcCarryOver({
+      electionDate: "2026-02-16",
+      priorStays: [
+        {
+          admissionId: "adm-xfer",
+          startedOn: "2026-01-20",
+          endedOn: "2026-02-16",
+          otherHospice: { npi: "1649726464" },
+        },
+      ],
+      fallbackPriorDays: 0,
+      check: check({
+        payload: {
+          hospicePeriods: [
+            {
+              kind: "benefit_period",
+              periodNumber: 1,
+              startDate: "2026-01-10",
+              endDate: null,
+              hospiceNpi: "1649726464",
+            },
+          ],
+          hospiceHistoryTruncated: false,
+        },
+      }),
+      now: NOW,
+    });
+    // 01/10 … 02/15 = 37 days, each counted once.
+    expect(v.priorDays).toBe(37);
+    expect(v.chainDays).toBe(37);
+  });
 });

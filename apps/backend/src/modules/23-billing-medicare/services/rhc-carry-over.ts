@@ -82,6 +82,7 @@ export function resolveRhcCarryOver(input: {
             start: s.startedOn,
             end: s.endedOn,
             ref: s.admissionId,
+            ...(s.otherHospice ? { atOtherHospice: true, hospiceNpi: s.otherHospice.npi } : {}),
           })),
           hets: history,
         });

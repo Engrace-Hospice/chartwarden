@@ -211,6 +211,7 @@ export interface M6ClaimRangeReader {
         readonly admissionId: string;
         readonly startedOn: string | null;
         readonly endedOn: string | null;
+        readonly otherHospice?: { readonly npi: string | null };
       }[];
       readonly dischargeDate: string | null;
       readonly dischargeReason: string | null;

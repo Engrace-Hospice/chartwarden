@@ -70,6 +70,7 @@ export interface AdmissionContext {
     readonly admissionId: string;
     readonly startedOn: IsoDate | null;
     readonly endedOn: IsoDate | null;
+    readonly otherHospice?: { readonly npi: string | null };
   }[];
   /** The COMPLETED `discharge_event` only (a voided or pending-cosign row is not a discharge). */
   readonly dischargeDate: IsoDate | null;
