@@ -168,6 +168,16 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
       target: { value: "031234" },
     });
     typeNarrative("Family relocating to Tucson; Desert Sun accepted the patient on 10/1.");
+    // The receiving care setting is required (claim patient status 50 / 51).
+    cont();
+    expect(screen.getByText("Choose home or facility.")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("radio", { name: "In a facility (nursing home or other facility)" }),
+    );
+    expect(screen.queryByText("Choose home or facility.")).toBeNull();
+    expect(
+      screen.getByText(/patient status on the final claim: 50 \(hospice, home\)/),
+    ).toBeTruthy();
     cont();
     setDate(/^Transfer effective date/, "2026-10-01");
     cont();
@@ -177,6 +187,8 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
       ),
     ).toBeTruthy();
     cont();
+    // The confirm step restates the care setting.
+    expect(screen.getByText("Receiving hospice cares for the patient")).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Transfer out" }));
     await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
@@ -187,6 +199,7 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
         effectiveDate: "2026-10-01",
         otherHospiceName: "Desert Sun Hospice",
         otherHospiceCcn: "031234",
+        receivingCareSetting: "facility",
         narrative: "Family relocating to Tucson; Desert Sun accepted the patient on 10/1.",
       },
     });
@@ -232,6 +245,10 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
     });
     expect(await screen.findByText("Pending medical-director cosign")).toBeTruthy();
     expect(screen.getByText(/the patient stays on service until then/)).toBeTruthy();
+    // Links the medical director straight to route 40 with the filed discharge's id and version.
+    expect(
+      screen.getByRole("link", { name: "Open medical-director cosign" }).getAttribute("href"),
+    ).toBe(`/discharges/d1/cosign?version=1&admissionId=${admissionId}`);
     expect(screen.queryByText(/ADMISSION DETAIL/)).toBeNull();
   });
 
@@ -289,6 +306,7 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
     fireEvent.change(screen.getByLabelText(/^Receiving hospice name/), {
       target: { value: "Desert Sun Hospice" },
     });
+    fireEvent.click(screen.getByRole("radio", { name: "At home" }));
     typeNarrative("Transfer agreed with the receiving hospice.");
     cont();
     setDate(/^Transfer effective date/, "2026-10-01");

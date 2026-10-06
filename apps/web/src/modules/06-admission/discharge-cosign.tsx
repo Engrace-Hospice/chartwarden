@@ -1,30 +1,41 @@
-import { Button, InlineAlert, t, useApiClient } from "@wardenx/ui";
+import { InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — for-cause discharge medical-director cosign
 // (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER "For cause: cosign required → pending"; M6 route 40,
 // POST /api/v1/discharges/:id/cosign-for-cause). A for-cause discharge is filed as `pending_cosign` and
 // the admission stays active until this cosign lands (D11). The server gates on
 // `discharge.cosign_for_cause` plus the medical-director ABAC predicate and an `ifVersion` optimistic
 // lock. M6 exposes no discharge-event read, so the screen takes the version from `?version=` (the
-// filing response carries it) and otherwise sends the row's insert default, 0 — a stale value comes
-// back as VERSION_MISMATCH and is shown as such, never retried blindly.
-import { type JSX, useState } from "react";
+// filing response carries it, and the discharge workflow links here with it) and otherwise sends the
+// row's insert default, 0 — a stale value comes back as VERSION_MISMATCH and is shown as such, never
+// retried blindly. `?admissionId=` puts the screen in the patient workspace frame the other
+// end-of-episode workflows use (end-of-episode-ui.tsx).
+import { type JSX, type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useSession } from "../../shell/session";
-import { ReviewItem } from "./death-pronouncement";
 import {
-  CascadePanel,
-  EpisodeActions,
-  EpisodeField,
-  EpisodePage,
-  EpisodeSection,
+  AdmissionPanel,
+  AttestTile,
+  EpisodeWorkspace,
+  Field,
   LockedField,
-  WorkflowSteps,
+  ReviewList,
+  Section,
+  StepNav,
+  type WhatHappensItem,
+  WhatHappensList,
+  WhatHappensPanel,
+  WorkflowFooter,
+  WorkflowHead,
+  bodyText,
   endOfEpisodeMessage,
   errorCodeOf,
   errorFieldOf,
+  linearSteps,
+  useEpisodeAdmission,
 } from "./end-of-episode-ui";
 import { authFailureRedirect } from "./write-workflow";
 
+const TITLE = "Cosign for-cause discharge";
 const STEPS = ["Filed", "Medical director cosign", "Discharged"] as const;
 const NPI = /^[0-9]{10}$/;
 
@@ -36,11 +47,11 @@ const COSIGN_MESSAGES: Record<string, string> = {
   FORBIDDEN: "Only the organization's medical director can cosign a for-cause discharge.",
 };
 
-const COSIGN_CASCADE = [
-  { label: "Admission → Discharged", detail: "The admission leaves active status." },
-  { label: "Election period closed", detail: "The current benefit period completes with cause." },
-  { label: "Final claim and NOTR", detail: "Billing opens the discharge notice and final claim." },
-  { label: "Discharge summary", detail: "A discharge summary document is generated." },
+const COSIGN_CASCADE: readonly WhatHappensItem[] = [
+  { icon: "clipboard-check", text: "The admission becomes Discharged." },
+  { icon: "calendar-check", text: "The current benefit period completes — cause: discharge." },
+  { icon: "receipt", text: "Billing drafts the NOTR and the final claim." },
+  { icon: "file-text", text: "A discharge summary is generated for the chart." },
 ];
 
 type FieldErrors = Partial<Record<"name" | "npi", string>>;
@@ -50,6 +61,49 @@ export function validateCosign(name: string, npi: string): FieldErrors {
   if (!name.trim()) e.name = "Enter the cosigning medical director's name.";
   if (!NPI.test(npi.trim())) e.npi = "Enter the 10-digit NPI.";
   return e;
+}
+
+/** The workspace frame: the patient workspace when the admission is known, else a bare column. */
+function CosignFrame({
+  admissionId,
+  children,
+}: {
+  admissionId: string | null;
+  children: ReactNode;
+}): JSX.Element {
+  const admission = useEpisodeAdmission(admissionId);
+  const cascade = (
+    <WhatHappensPanel title="When you cosign">
+      <WhatHappensList items={COSIGN_CASCADE} compact />
+      <p style={{ ...bodyText, marginTop: "0.75rem", fontSize: "0.75rem" }}>
+        Until a cosign is recorded the admission stays active.
+      </p>
+    </WhatHappensPanel>
+  );
+  if (admissionId && admission === null) return <LoadingSpinner />;
+  if (!admissionId || admission === null || admission === "error")
+    return (
+      <div className="wx-with-rail">
+        <div className="wx-with-rail-main">{children}</div>
+        <aside className="wx-with-rail-side" aria-label="What happens next">
+          {cascade}
+        </aside>
+      </div>
+    );
+  return (
+    <EpisodeWorkspace
+      patientId={admission.patientId}
+      backTo={`/admissions/${admission.id}`}
+      rail={
+        <>
+          <AdmissionPanel admission={admission} />
+          {cascade}
+        </>
+      }
+    >
+      {children}
+    </EpisodeWorkspace>
+  );
 }
 
 export function DischargeCosign(): JSX.Element {
@@ -111,142 +165,114 @@ export function DischargeCosign(): JSX.Element {
   };
 
   const back = admissionId ? `/admissions/${admissionId}` : "/admissions";
+  const current = done ? STEPS.length : 1;
 
   return (
-    <EpisodePage
-      title="Cosign for-cause discharge"
-      subtitle="A for-cause discharge takes effect only after the medical director cosigns it."
-      breadcrumb={
-        <>
-          <Link to="/admissions">Admissions</Link>
-          {admissionId ? (
-            <>
-              {" "}
-              / <Link to={back}>Admission</Link>
-            </>
-          ) : null}{" "}
-          / For-cause cosign
-        </>
-      }
-      railLabel="What happens next"
-      rail={
-        <CascadePanel
-          title="When you cosign"
-          items={COSIGN_CASCADE}
-          footnote="Until a cosign is recorded the admission stays active."
+    <CosignFrame admissionId={admissionId}>
+      <div className="wx-hope-workspace">
+        <StepNav
+          label="For-cause discharge progress"
+          heading="For-cause discharge"
+          steps={linearSteps(STEPS, current)}
+          activeId={done ? null : String(current)}
         />
-      }
-    >
-      <WorkflowSteps steps={STEPS} current={done ? 3 : 1} label="For-cause discharge progress" />
+        <main className="wx-hope-main">
+          <WorkflowHead
+            title={TITLE}
+            stepLine={done ? "Cosigned" : `Step 2 of ${STEPS.length} · ${STEPS[1]}`}
+          />
 
-      {done ? (
-        <EpisodeSection icon="check-circle" title="Discharge cosigned">
-          <InlineAlert tone="success">
-            The for-cause discharge was cosigned. The admission is now discharged.
-          </InlineAlert>
-          <div style={{ marginTop: "0.75rem" }}>
-            <Button onClick={() => navigate(back)}>
-              {admissionId ? "Open admission" : "Back to admissions"}
-            </Button>
-          </div>
-        </EpisodeSection>
-      ) : (
-        <>
-          <EpisodeSection
-            icon="file-text"
-            title="Discharge being cosigned"
-            description="Review the for-cause narrative on the admission before cosigning."
-          >
-            <dl className="wx-field-grid" style={{ margin: 0 }}>
-              <ReviewItem term="Discharge reason" value="For cause" />
-              <ReviewItem term="Discharge reference" value={id} />
-            </dl>
-          </EpisodeSection>
+          {done ? (
+            <Section icon="check-circle" title="Discharge cosigned">
+              <InlineAlert tone="success">
+                The for-cause discharge was cosigned. The admission is now discharged.
+              </InlineAlert>
+            </Section>
+          ) : (
+            <>
+              <Section
+                icon="file-text"
+                title="Discharge being cosigned"
+                description="Review the for-cause narrative on the admission before cosigning."
+              >
+                <ReviewList
+                  rows={[
+                    { term: "Discharge reason", value: "For cause" },
+                    { term: "Discharge reference", value: id },
+                  ]}
+                />
+              </Section>
 
-          <EpisodeSection
-            icon="shield-check"
-            title="Medical director attestation"
-            description="Your name and NPI are stored on the discharge record."
-          >
-            <div className="wx-field-grid">
-              <EpisodeField
-                htmlFor="cosign-name"
-                label="Cosigner name"
-                code="cosignerName"
-                required
-                error={errors.name}
+              <Section
+                icon="shield-check"
+                title="Medical director attestation"
+                description="Your name and NPI are stored on the discharge record. You may be asked to confirm your identity."
               >
-                <input
-                  id="cosign-name"
-                  type="text"
-                  value={name}
-                  maxLength={200}
-                  autoComplete="name"
-                  aria-invalid={errors.name ? true : undefined}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </EpisodeField>
-              <EpisodeField
-                htmlFor="cosign-npi"
-                label="NPI"
-                code="cosignerNpi"
-                required
-                hint="10 digits"
-                error={errors.npi}
-              >
-                <input
-                  id="cosign-npi"
-                  type="text"
-                  inputMode="numeric"
-                  value={npi}
-                  maxLength={10}
-                  aria-invalid={errors.npi ? true : undefined}
-                  onChange={(e) => setNpi(e.target.value.replace(/\D/g, ""))}
-                />
-              </EpisodeField>
-              <LockedField
-                id="cosign-version"
-                label="Record version"
-                code="ifVersion"
-                value={String(ifVersion)}
-                source="From the filed discharge"
-              />
-              <label
-                className="wx-field-grid-full"
-                style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}
-              >
-                <input
-                  type="checkbox"
-                  checked={attested}
-                  onChange={(e) => setAttested(e.target.checked)}
-                  style={{ marginTop: "0.2rem" }}
-                />
-                <span style={{ fontSize: "0.875rem" }}>
-                  I reviewed the for-cause reason and narrative and agree the patient should be
-                  discharged for cause.
-                </span>
-              </label>
-            </div>
-          </EpisodeSection>
+                <div style={{ display: "grid", gap: "0.875rem" }}>
+                  <div className="wx-field-grid">
+                    <Field id="cosign-name" label="Cosigner name" required error={errors.name}>
+                      <input
+                        id="cosign-name"
+                        type="text"
+                        value={name}
+                        maxLength={200}
+                        autoComplete="name"
+                        aria-invalid={errors.name ? true : undefined}
+                        onChange={(e) => setName(e.target.value)}
+                      />
+                    </Field>
+                    <Field id="cosign-npi" label="NPI" required hint="10 digits" error={errors.npi}>
+                      <input
+                        id="cosign-npi"
+                        type="text"
+                        inputMode="numeric"
+                        value={npi}
+                        maxLength={10}
+                        aria-invalid={errors.npi ? true : undefined}
+                        onChange={(e) => setNpi(e.target.value.replace(/\D/g, ""))}
+                      />
+                    </Field>
+                    <LockedField
+                      id="cosign-version"
+                      label="Record version"
+                      value={String(ifVersion)}
+                      source="From the filed discharge"
+                    />
+                  </div>
+                  <AttestTile checked={attested} onChange={setAttested}>
+                    I reviewed the for-cause reason and narrative and agree the patient should be
+                    discharged for cause.
+                  </AttestTile>
+                  {submitError ? <InlineAlert tone="error">{submitError}</InlineAlert> : null}
+                </div>
+              </Section>
+            </>
+          )}
 
-          <EpisodeActions error={submitError}>
-            <Button tone="secondary" onClick={() => navigate(back)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void submit()}
-              loading={busy}
-              disabled={busy || !attested}
-              title={attested ? undefined : "Confirm the attestation first"}
-            >
-              Cosign discharge
-            </Button>
-          </EpisodeActions>
-          <p style={{ margin: 0, fontSize: "0.75rem", color: t.onSurfaceVariant }}>
-            You may be asked to confirm your identity before the cosign is saved.
-          </p>
-        </>
-      )}
-    </EpisodePage>
+          <WorkflowFooter note="For-cause discharge">
+            {done ? (
+              <Link to={back} className="wx-btn-primary">
+                {admissionId ? "Open admission" : "Back to admissions"}
+              </Link>
+            ) : (
+              <>
+                <Link to={back} className="wx-btn-secondary">
+                  Cancel
+                </Link>
+                <button
+                  type="button"
+                  className="wx-btn-primary"
+                  onClick={() => void submit()}
+                  disabled={busy || !attested}
+                  title={attested ? undefined : "Confirm the attestation first"}
+                >
+                  {busy ? "Cosigning…" : "Cosign discharge"}
+                </button>
+              </>
+            )}
+          </WorkflowFooter>
+        </main>
+      </div>
+    </CosignFrame>
   );
 }

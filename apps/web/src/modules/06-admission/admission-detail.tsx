@@ -965,13 +965,9 @@ export function AdmissionDetail(): JSX.Element {
                   tone={ADMISSION_TONE[admission.state] ?? "neutral"}
                 />
                 {hasPermission("transfer.in") ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/admissions/${admission.id}/transfer-in`)}
-                    style={ghostBtn}
-                  >
+                  <Link to={`/admissions/${admission.id}/transfer-in`} className="wx-btn-secondary">
                     Record transfer-in
-                  </button>
+                  </Link>
                 ) : null}
                 <button
                   type="button"
@@ -1287,13 +1283,9 @@ export function AdmissionDetail(): JSX.Element {
               ) : null}
               {(admission.state === "active" || admission.state === "on_hold") &&
               hasPermission("discharge.death") ? (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/admissions/${admission.id}/death`)}
-                  style={ghostBtn}
-                >
+                <Link to={`/admissions/${admission.id}/death`} className="wx-btn-secondary">
                   Record death
-                </button>
+                </Link>
               ) : null}
             </div>
           }

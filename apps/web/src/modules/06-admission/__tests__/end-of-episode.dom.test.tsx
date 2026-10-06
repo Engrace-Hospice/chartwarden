@@ -7,7 +7,7 @@ import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
 import { DeathPronouncement, validateDeath } from "../death-pronouncement";
 import { DischargeCosign, validateCosign } from "../discharge-cosign";
-import { todayLocal } from "../end-of-episode-ui";
+import { localToday } from "../end-of-episode-ui";
 import { TransferIn, validateTransfer } from "../transfer-in";
 
 // The physician directory lookup is exercised in shell/entity-lookups.dom.test.tsx; here it is a plain
@@ -71,6 +71,13 @@ function admission(state: string, extra: Record<string, unknown> = {}) {
   };
 }
 
+/** GET that answers the admission read and 404s everything else (banner identity, periods). */
+function getFor(adm: ReturnType<typeof admission>) {
+  return vi.fn(async (path: string) =>
+    path === "/api/v1/admissions/{id}" ? ok(adm) : fail(404, "NOT_FOUND"),
+  );
+}
+
 function mount(path: string, el: JSX.Element, routePath: string, client: object) {
   return render(
     <ApiClientProvider client={client as unknown as ApiClient}>
@@ -88,15 +95,22 @@ function mount(path: string, el: JSX.Element, routePath: string, client: object)
 
 describe("validators", () => {
   const today = "2026-10-06";
-  it("death: requires certifier, narrative ≥10, date within admission..today", () => {
+  it("death: requires certifier, place of death, narrative ≥10, date within admission..today", () => {
     expect(
       validateDeath(
-        { deathDate: "2026-10-07", certifierId: "", certifierLabel: "", narrative: "short" },
+        {
+          deathDate: "2026-10-07",
+          placeOfDeath: "",
+          certifierId: "",
+          certifierLabel: "",
+          narrative: "short",
+        },
         "2026-08-01",
         today,
       ),
     ).toEqual({
       deathDate: expect.stringMatching(/future/),
+      placeOfDeath: "Choose where the patient died.",
       certifierId: expect.any(String),
       narrative: expect.any(String),
     });
@@ -104,6 +118,7 @@ describe("validators", () => {
       validateDeath(
         {
           deathDate: "2026-07-01",
+          placeOfDeath: "home",
           certifierId: PHYS,
           certifierLabel: "",
           narrative: "x".repeat(10),
@@ -146,7 +161,7 @@ describe("validators", () => {
 
 describe("DeathPronouncement", () => {
   it("blocks the form on a non-dischargeable admission", async () => {
-    const client = { GET: vi.fn(async () => ok(admission("discharged"))), POST: vi.fn() };
+    const client = { GET: getFor(admission("discharged")), POST: vi.fn() };
     mount(`/admissions/${ADM}/death`, <DeathPronouncement />, "/admissions/:id/death", client);
     expect(await screen.findByText(/can only be recorded on an active/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Review" }) as HTMLButtonElement).disabled).toBe(
@@ -155,10 +170,11 @@ describe("DeathPronouncement", () => {
   });
 
   it("shows field errors and does not post when the form is incomplete", async () => {
-    const client = { GET: vi.fn(async () => ok(admission("active"))), POST: vi.fn() };
+    const client = { GET: getFor(admission("active")), POST: vi.fn() };
     mount(`/admissions/${ADM}/death`, <DeathPronouncement />, "/admissions/:id/death", client);
     fireEvent.click(await screen.findByRole("button", { name: "Review" }));
     expect(screen.getByText("Select the pronouncing physician.")).toBeTruthy();
+    expect(screen.getByText("Choose where the patient died.")).toBeTruthy();
     expect(screen.getByText(/at least 10 characters/)).toBeTruthy();
     expect(client.POST).not.toHaveBeenCalled();
   });
@@ -167,17 +183,19 @@ describe("DeathPronouncement", () => {
 describe("DeathPronouncement submit", () => {
   it("reviews, signs and posts reason=death with the certifier", async () => {
     const POST = vi.fn(async () => ok({ id: DE, state: "completed", version: 0 }, 201));
-    const client = { GET: vi.fn(async () => ok(admission("active"))), POST };
+    const client = { GET: getFor(admission("active")), POST };
     mount(`/admissions/${ADM}/death`, <DeathPronouncement />, "/admissions/:id/death", client);
     fireEvent.change(await screen.findByLabelText(/Date of death/), {
       target: { value: "2026-09-30" },
     });
+    fireEvent.change(screen.getByLabelText(/Place of death/), { target: { value: "facility" } });
     fireEvent.change(screen.getByLabelText(/Pronouncing physician/), { target: { value: PHYS } });
     fireEvent.change(screen.getByLabelText(/Pronouncement note/), {
       target: { value: "  Pronounced at 03:10, family present.  " },
     });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     expect(await screen.findByText("Dr. Kim")).toBeTruthy();
+    expect(screen.getByText("Facility (hospital, nursing home, inpatient unit)")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign and record death" }));
     await screen.findByText("Death recorded");
     expect(POST).toHaveBeenCalledWith("/api/v1/admissions/{id}/discharge", {
@@ -187,15 +205,19 @@ describe("DeathPronouncement submit", () => {
         dischargeDate: "2026-09-30",
         narrative: "Pronounced at 03:10, family present.",
         deathCertifierId: PHYS,
+        placeOfDeath: "facility",
       },
     });
   });
 
   it("returns to the form on DEATH_CERTIFIER_INVALID", async () => {
     const POST = vi.fn(async () => fail(422, "DEATH_CERTIFIER_INVALID"));
-    const client = { GET: vi.fn(async () => ok(admission("on_hold"))), POST };
+    const client = { GET: getFor(admission("on_hold")), POST };
     mount(`/admissions/${ADM}/death`, <DeathPronouncement />, "/admissions/:id/death", client);
-    fireEvent.change(await screen.findByLabelText(/Pronouncing physician/), {
+    fireEvent.change(await screen.findByLabelText(/Place of death/), {
+      target: { value: "home" },
+    });
+    fireEvent.change(screen.getByLabelText(/Pronouncing physician/), {
       target: { value: PHYS },
     });
     fireEvent.change(screen.getByLabelText(/Pronouncement note/), {
@@ -208,6 +230,24 @@ describe("DeathPronouncement submit", () => {
     ).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Review" })).toBeTruthy();
   });
+
+  it("maps PLACE_OF_DEATH_REQUIRED back onto the place-of-death field", async () => {
+    const POST = vi.fn(async () => fail(422, "PLACE_OF_DEATH_REQUIRED"));
+    const client = { GET: getFor(admission("active")), POST };
+    mount(`/admissions/${ADM}/death`, <DeathPronouncement />, "/admissions/:id/death", client);
+    fireEvent.change(await screen.findByLabelText(/Place of death/), {
+      target: { value: "unknown" },
+    });
+    fireEvent.change(screen.getByLabelText(/Pronouncing physician/), { target: { value: PHYS } });
+    fireEvent.change(screen.getByLabelText(/Pronouncement note/), {
+      target: { value: "Pronounced by hospice RN." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(await screen.findByText("Unknown")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign and record death" }));
+    expect(await screen.findAllByText("Choose where the patient died.")).toHaveLength(2);
+    expect(screen.getByLabelText(/Place of death/)).toBeTruthy();
+  });
 });
 
 describe("DischargeCosign", () => {
@@ -217,9 +257,9 @@ describe("DischargeCosign", () => {
       `/discharges/${DE}/cosign?version=2&admissionId=${ADM}`,
       <DischargeCosign />,
       "/discharges/:id/cosign",
-      { GET: vi.fn(), POST },
+      { GET: getFor(admission("active")), POST },
     );
-    fireEvent.change(screen.getByLabelText(/NPI/), { target: { value: "12345-67890" } });
+    fireEvent.change(await screen.findByLabelText(/NPI/), { target: { value: "12345-67890" } });
     const submit = screen.getByRole("button", { name: "Cosign discharge" }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.click(screen.getByRole("checkbox"));
@@ -265,7 +305,7 @@ describe("DischargeCosign", () => {
 describe("TransferIn", () => {
   it("walks the steps, locks the CTI physician to the admission's, and posts the body", async () => {
     const POST = vi.fn(async () => ok({ id: "t-1", state: "created", version: 0 }, 201));
-    const client = { GET: vi.fn(async () => ok(admission("pending"))), POST };
+    const client = { GET: getFor(admission("pending")), POST };
     mount(`/admissions/${ADM}/transfer-in`, <TransferIn />, "/admissions/:id/transfer-in", client);
 
     fireEvent.change(await screen.findByLabelText(/Hospice name/), {
@@ -275,7 +315,7 @@ describe("TransferIn", () => {
       target: { value: "1a2b3c" },
     });
     fireEvent.change(screen.getByLabelText(/Transfer date/), { target: { value: "2026-09-20" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
 
     fireEvent.change(await screen.findByLabelText(/Benefit period number/), {
       target: { value: "2" },
@@ -289,7 +329,7 @@ describe("TransferIn", () => {
     fireEvent.change(screen.getByLabelText(/Transfer note/), {
       target: { value: "Family relocated; records received." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Record transfer" }));
 
     await screen.findByText("Transfer recorded");
@@ -310,20 +350,20 @@ describe("TransferIn", () => {
 
   it("maps TRANSFER_LIMIT_EXCEEDED", async () => {
     const POST = vi.fn(async () => fail(409, "TRANSFER_LIMIT_EXCEEDED"));
-    const client = { GET: vi.fn(async () => ok(admission("pending"))), POST };
+    const client = { GET: getFor(admission("pending")), POST };
     mount(`/admissions/${ADM}/transfer-in`, <TransferIn />, "/admissions/:id/transfer-in", client);
     fireEvent.change(await screen.findByLabelText(/Hospice name/), { target: { value: "S" } });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     fireEvent.change(await screen.findByLabelText(/Benefit period number/), {
       target: { value: "1" },
     });
     fireEvent.change(screen.getByLabelText(/Period start date/), {
-      target: { value: todayLocal() },
+      target: { value: localToday() },
     });
     fireEvent.change(screen.getByLabelText(/Transfer note/), {
       target: { value: "Transferring in today." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Record transfer" }));
     await waitFor(() =>
       expect(screen.getByText("Only one transfer is allowed per benefit period.")).toBeTruthy(),

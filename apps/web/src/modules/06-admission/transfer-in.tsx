@@ -1,4 +1,4 @@
-import { Button, InlineAlert, t, useApiClient } from "@wardenx/ui";
+import { EmptyState, Glyph, InlineAlert, LoadingSpinner, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Transfer-in (WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER "Transfer-in
 // (separate entry)"; M6 W-DC-03 / D9, POST /api/v1/admissions/:id/transfer-in). Records that this
 // admission continues another hospice's benefit period: the carried sequence becomes the ACTIVE period
@@ -6,29 +6,37 @@ import { Button, InlineAlert, t, useApiClient } from "@wardenx/ui";
 // our own CTI. The sequence counter never restarts and a prior signed election statement is not
 // re-collected. The CTI physician must equal the admission's selected hospice physician
 // (CTI_HOSPICE_PHYSICIAN_MISMATCH), so when the admission already names one the field is locked to it.
+// Drawn in the same workspace frame as the discharge workflow (end-of-episode-ui.tsx).
 import { type JSX, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";
+import { fmtDate } from "../../shell/patient-context";
 import { stateLabel } from "./admission-status";
-import { ReviewItem } from "./death-pronouncement";
 import {
-  CascadePanel,
-  EpisodeActions,
-  EpisodeField,
-  EpisodePage,
-  EpisodeSection,
+  AdmissionPanel,
+  EpisodeWorkspace,
+  Field,
   LockedField,
-  WorkflowSteps,
+  ReviewList,
+  Section,
+  StepNav,
+  type WhatHappensItem,
+  WhatHappensList,
+  WhatHappensPanel,
+  WorkflowFooter,
+  WorkflowHead,
   endOfEpisodeMessage,
   errorCodeOf,
   errorFieldOf,
-  longDate,
-  todayLocal,
+  linearSteps,
+  localToday,
   useEpisodeAdmission,
 } from "./end-of-episode-ui";
 import { authFailureRedirect } from "./write-workflow";
 
+const TITLE = "Transfer-in";
 const STEPS = ["Sending hospice", "Benefit period", "Review & record"] as const;
+const REVIEW_STEP = 2;
 const MIN_NARRATIVE = 10;
 const CCN = /^[0-9A-Z]{6}$/;
 /** Transfer-in is recorded during intake, before the admission is activated. */
@@ -44,14 +52,14 @@ const TRANSFER_MESSAGES: Record<string, string> = {
   ELECTION_PERIOD_OVERLAP: "The inherited period overlaps an existing benefit period.",
 };
 
-const TRANSFER_CASCADE = [
+const TRANSFER_CASCADE: readonly WhatHappensItem[] = [
   {
-    label: "Inherited period active",
-    detail: "The sending hospice's period continues, no new CTI.",
+    icon: "calendar-check",
+    text: "The sending hospice's period becomes active here — no new certification for it.",
   },
-  { label: "Next period pending", detail: "Opens the day after; requires our own CTI." },
-  { label: "Election statement", detail: "A prior signed statement is not re-collected." },
-  { label: "Transfer limit", detail: "One transfer per benefit period is enforced." },
+  { icon: "calendar", text: "The next period opens pending, the day after; it needs our own CTI." },
+  { icon: "file-check", text: "A prior signed election statement is not re-collected." },
+  { icon: "shield", text: "One transfer per benefit period is enforced." },
 ];
 
 export interface TransferDraft {
@@ -67,7 +75,7 @@ export interface TransferDraft {
   narrative: string;
 }
 
-type Field =
+type DraftField =
   | "otherHospiceName"
   | "otherHospiceCcn"
   | "effectiveDate"
@@ -75,9 +83,9 @@ type Field =
   | "priorElectionStartDate"
   | "hospiceMedicalDirectorId"
   | "narrative";
-type FieldErrors = Partial<Record<Field, string>>;
+type FieldErrors = Partial<Record<DraftField, string>>;
 
-const STEP_FIELDS: Field[][] = [
+const STEP_FIELDS: DraftField[][] = [
   ["otherHospiceName", "otherHospiceCcn", "effectiveDate"],
   ["priorBenefitPeriodSequence", "priorElectionStartDate", "hospiceMedicalDirectorId", "narrative"],
 ];
@@ -102,37 +110,43 @@ export function validateTransfer(d: TransferDraft, today: string): FieldErrors {
   return e;
 }
 
+const EMPTY_DRAFT = (today: string): TransferDraft => ({
+  otherHospiceName: "",
+  otherHospiceCcn: "",
+  effectiveDate: today,
+  priorBenefitPeriodSequence: "",
+  priorElectionStartDate: "",
+  hospiceMedicalDirectorId: "",
+  hospiceMedicalDirectorLabel: "",
+  attendingPhysicianId: "",
+  attendingPhysicianLabel: "",
+  narrative: "",
+});
+
 export function TransferIn(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const client = useApiClient();
   const navigate = useNavigate();
   const admission = useEpisodeAdmission(id);
-  const today = todayLocal();
+  const today = localToday();
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<TransferDraft>({
-    otherHospiceName: "",
-    otherHospiceCcn: "",
-    effectiveDate: today,
-    priorBenefitPeriodSequence: "",
-    priorElectionStartDate: "",
-    hospiceMedicalDirectorId: "",
-    hospiceMedicalDirectorLabel: "",
-    attendingPhysicianId: "",
-    attendingPhysicianLabel: "",
-    narrative: "",
-  });
+  const [draft, setDraft] = useState<TransferDraft>(() => EMPTY_DRAFT(today));
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
-  if (admission === null) return <output>Loading admission…</output>;
+  if (admission === null) return <LoadingSpinner />;
   if (admission === "error")
     return (
-      <InlineAlert tone="error">This admission was not found or is not visible to you.</InlineAlert>
+      <EmptyState
+        title="Unavailable"
+        description="This admission was not found or is not visible to you."
+      />
     );
 
   const transferable = TRANSFERABLE.has(admission.state);
+  const backTo = `/admissions/${admission.id}`;
   const lockedPhysician = admission.hospicePhysicianId ?? null;
   const effective: TransferDraft = lockedPhysician
     ? {
@@ -184,7 +198,7 @@ export function TransferIn(): JSX.Element {
           navigate(redirect);
           return;
         }
-        const field = errorFieldOf(error) as Field | undefined;
+        const field = errorFieldOf(error) as DraftField | undefined;
         if (field && STEP_FIELDS.some((fs) => fs.includes(field))) {
           setErrors({ [field]: "This value was rejected. Check it and try again." });
           setStep(STEP_FIELDS.findIndex((fs) => fs.includes(field)));
@@ -207,271 +221,341 @@ export function TransferIn(): JSX.Element {
     }
   };
 
+  const current = done ? STEPS.length : step;
+  const navSteps = linearSteps(STEPS, current).map((s, i) => ({ ...s, open: !done && i < step }));
+  const rail = (
+    <>
+      <AdmissionPanel admission={admission} />
+      <WhatHappensPanel title="When the transfer is recorded">
+        <WhatHappensList items={TRANSFER_CASCADE} compact />
+      </WhatHappensPanel>
+    </>
+  );
+
   return (
-    <EpisodePage
-      title="Transfer-in"
-      subtitle="Continue a benefit period started at another hospice."
-      breadcrumb={
-        <>
-          <Link to="/admissions">Admissions</Link> /{" "}
-          <Link to={`/admissions/${admission.id}`}>Admission</Link> / Transfer-in
-        </>
-      }
-      railLabel="What happens next"
-      rail={<CascadePanel title="When the transfer is recorded" items={TRANSFER_CASCADE} />}
-    >
-      <WorkflowSteps steps={STEPS} current={done ? 3 : step} label="Transfer-in progress" />
+    <EpisodeWorkspace patientId={admission.patientId} backTo={backTo} rail={rail}>
+      <div className="wx-hope-workspace">
+        <StepNav
+          label="Transfer-in progress"
+          heading="Transfer-in"
+          steps={navSteps}
+          activeId={done ? null : String(step)}
+          onSelect={(s) => setStep(Number(s))}
+        />
+        <main className="wx-hope-main">
+          <WorkflowHead
+            title={TITLE}
+            stepLine={
+              done ? "Recorded" : `Step ${step + 1} of ${STEPS.length} · ${STEPS[step] ?? ""}`
+            }
+            detail="Continue a benefit period started at another hospice"
+          />
 
-      {!transferable && !done ? (
-        <InlineAlert tone="info">
-          This admission is {stateLabel(admission.state).toLowerCase()}. A transfer-in is recorded
-          during intake, before the admission is activated.
-        </InlineAlert>
-      ) : null}
+          {!transferable && !done ? (
+            <InlineAlert tone="info">
+              This admission is {stateLabel(admission.state).toLowerCase()}. A transfer-in is
+              recorded during intake, before the admission is activated.
+            </InlineAlert>
+          ) : null}
 
-      {done ? (
-        <EpisodeSection icon="check-circle" title="Transfer recorded">
-          <InlineAlert tone="success">
-            Benefit period {effective.priorBenefitPeriodSequence} from{" "}
-            {effective.otherHospiceName.trim()} is now active on this admission.
-          </InlineAlert>
-          <div style={{ marginTop: "0.75rem" }}>
-            <Button onClick={() => navigate(`/admissions/${admission.id}`)}>Open admission</Button>
-          </div>
-        </EpisodeSection>
-      ) : null}
+          {done ? (
+            <Section icon="check-circle" title="Transfer recorded">
+              <InlineAlert tone="success">
+                Benefit period {effective.priorBenefitPeriodSequence} from{" "}
+                {effective.otherHospiceName.trim()} is now active on this admission.
+              </InlineAlert>
+            </Section>
+          ) : null}
 
-      {!done && step === 0 ? (
-        <EpisodeSection
-          icon="building"
-          title="Sending hospice"
-          description="The hospice the patient is transferring from."
-        >
-          <div className="wx-field-grid">
-            <EpisodeField
-              htmlFor="ti-name"
-              label="Hospice name"
-              code="otherHospiceName"
-              required
-              error={errors.otherHospiceName}
-            >
-              <input
-                id="ti-name"
-                type="text"
-                maxLength={200}
-                value={draft.otherHospiceName}
-                aria-invalid={errors.otherHospiceName ? true : undefined}
-                onChange={(e) => patch({ otherHospiceName: e.target.value })}
-                disabled={!transferable}
-              />
-            </EpisodeField>
-            <EpisodeField
-              htmlFor="ti-ccn"
-              label="CMS Certification Number"
-              code="otherHospiceCcn"
-              optional
-              hint="6 characters"
-              error={errors.otherHospiceCcn}
-            >
-              <input
-                id="ti-ccn"
-                type="text"
-                maxLength={6}
-                value={draft.otherHospiceCcn}
-                aria-invalid={errors.otherHospiceCcn ? true : undefined}
-                onChange={(e) => patch({ otherHospiceCcn: e.target.value.toUpperCase() })}
-                disabled={!transferable}
-              />
-            </EpisodeField>
-            <EpisodeField
-              htmlFor="ti-date"
-              label="Transfer date"
-              code="effectiveDate"
-              required
-              error={errors.effectiveDate}
-            >
-              <input
-                id="ti-date"
-                type="date"
-                max={today}
-                value={draft.effectiveDate}
-                aria-invalid={errors.effectiveDate ? true : undefined}
-                onChange={(e) => patch({ effectiveDate: e.target.value })}
-                disabled={!transferable}
-              />
-            </EpisodeField>
-          </div>
-        </EpisodeSection>
-      ) : null}
+          {!done && step === 0 ? (
+            <SendingHospiceStep
+              draft={draft}
+              errors={errors}
+              disabled={!transferable}
+              today={today}
+              patch={patch}
+            />
+          ) : null}
 
-      {!done && step === 1 ? (
-        <>
-          <EpisodeSection
-            icon="calendar"
-            title="Inherited benefit period"
-            description="The period in progress at the sending hospice. It continues here without a new certification."
-          >
-            <div className="wx-field-grid">
-              <EpisodeField
-                htmlFor="ti-seq"
-                label="Benefit period number"
-                code="priorBenefitPeriodSequence"
-                required
-                hint="1 and 2 are 90-day periods; 3 and later are 60 days."
-                error={errors.priorBenefitPeriodSequence}
-              >
-                <input
-                  id="ti-seq"
-                  type="number"
-                  min={1}
-                  step={1}
-                  inputMode="numeric"
-                  value={draft.priorBenefitPeriodSequence}
-                  aria-invalid={errors.priorBenefitPeriodSequence ? true : undefined}
-                  onChange={(e) => patch({ priorBenefitPeriodSequence: e.target.value })}
-                />
-              </EpisodeField>
-              <EpisodeField
-                htmlFor="ti-start"
-                label="Period start date"
-                code="priorElectionStartDate"
-                required
-                error={errors.priorElectionStartDate}
-              >
-                <input
-                  id="ti-start"
-                  type="date"
-                  max={draft.effectiveDate || today}
-                  value={draft.priorElectionStartDate}
-                  aria-invalid={errors.priorElectionStartDate ? true : undefined}
-                  onChange={(e) => patch({ priorElectionStartDate: e.target.value })}
-                />
-              </EpisodeField>
-            </div>
-          </EpisodeSection>
+          {!done && step === 1 ? (
+            <BenefitPeriodStep
+              draft={draft}
+              errors={errors}
+              today={today}
+              lockedPhysicianLabel={
+                lockedPhysician
+                  ? (admission.hospicePhysician?.displayName ?? lockedPhysician)
+                  : null
+              }
+              patch={patch}
+            />
+          ) : null}
 
-          <EpisodeSection
-            icon="stethoscope"
-            title="Physicians"
-            description="Our certifying physician for the next benefit period."
-          >
-            <div className="wx-field-grid">
-              {lockedPhysician ? (
-                <LockedField
-                  id="ti-hmd"
-                  label="Hospice physician (CTI)"
-                  code="hospiceMedicalDirectorId"
-                  value={admission.hospicePhysician?.displayName ?? lockedPhysician}
-                  source="From the admission's selected hospice physician"
-                />
-              ) : (
-                <div>
-                  <MdmEntityLookupField
-                    kind="physician"
-                    label="Hospice physician (CTI)"
-                    value={draft.hospiceMedicalDirectorId}
-                    valueLabel={draft.hospiceMedicalDirectorLabel || undefined}
-                    onChange={(value, option) =>
-                      patch({
-                        hospiceMedicalDirectorId: value,
-                        hospiceMedicalDirectorLabel: option?.searchLabel ?? "",
-                      })
-                    }
-                    required
-                    error={errors.hospiceMedicalDirectorId}
-                    hint="Also becomes the admission's hospice physician."
-                  />
-                </div>
-              )}
-              <div>
-                <MdmEntityLookupField
-                  kind="physician"
-                  label="Attending physician"
-                  value={draft.attendingPhysicianId}
-                  valueLabel={draft.attendingPhysicianLabel || undefined}
-                  onChange={(value, option) =>
-                    patch({
-                      attendingPhysicianId: value,
-                      attendingPhysicianLabel: option?.searchLabel ?? "",
-                    })
-                  }
-                  clearable
-                  hint="Optional"
-                />
+          {!done && step === REVIEW_STEP ? (
+            <Section icon="file-check" title="Review">
+              <div style={{ display: "grid", gap: "0.875rem" }}>
+                <ReviewList rows={reviewRows(effective)} />
+                {submitError ? <InlineAlert tone="error">{submitError}</InlineAlert> : null}
               </div>
-              <EpisodeField
-                htmlFor="ti-narrative"
-                label="Transfer note"
-                code="narrative"
+            </Section>
+          ) : null}
+
+          {!done && step < REVIEW_STEP && submitError ? (
+            <InlineAlert tone="error">{submitError}</InlineAlert>
+          ) : null}
+
+          <WorkflowFooter note={`Admission state: ${stateLabel(admission.state)}`}>
+            {done ? (
+              <Link to={backTo} className="wx-btn-primary">
+                Open admission
+              </Link>
+            ) : (
+              <>
+                {step === 0 ? (
+                  <Link to={backTo} className="wx-btn-secondary">
+                    Cancel
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="wx-btn-secondary"
+                    onClick={() => setStep(step - 1)}
+                    disabled={busy}
+                  >
+                    Back
+                  </button>
+                )}
+                {step < REVIEW_STEP ? (
+                  <button
+                    type="button"
+                    className="wx-btn-primary"
+                    onClick={next}
+                    disabled={!transferable}
+                  >
+                    Continue <Glyph name="arrow-right" size={16} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="wx-btn-primary"
+                    onClick={() => void submit()}
+                    disabled={busy || !transferable}
+                  >
+                    {busy ? "Recording…" : "Record transfer"}
+                  </button>
+                )}
+              </>
+            )}
+          </WorkflowFooter>
+        </main>
+      </div>
+    </EpisodeWorkspace>
+  );
+}
+
+function reviewRows(d: TransferDraft): { term: string; value: string; multiline?: boolean }[] {
+  return [
+    { term: "Sending hospice", value: d.otherHospiceName.trim() },
+    { term: "CCN", value: d.otherHospiceCcn || "—" },
+    { term: "Transfer date", value: fmtDate(d.effectiveDate) },
+    {
+      term: "Inherited period",
+      value: `Period ${d.priorBenefitPeriodSequence}, from ${fmtDate(d.priorElectionStartDate)}`,
+    },
+    { term: "Hospice physician", value: d.hospiceMedicalDirectorLabel || "Selected" },
+    { term: "Attending physician", value: d.attendingPhysicianLabel || "—" },
+    { term: "Transfer note", value: d.narrative.trim(), multiline: true },
+  ];
+}
+
+function SendingHospiceStep({
+  draft,
+  errors,
+  disabled,
+  today,
+  patch,
+}: {
+  draft: TransferDraft;
+  errors: FieldErrors;
+  disabled: boolean;
+  today: string;
+  patch: (p: Partial<TransferDraft>) => void;
+}): JSX.Element {
+  return (
+    <Section
+      icon="building"
+      title="Sending hospice"
+      description="The hospice the patient is transferring from."
+    >
+      <div className="wx-field-grid">
+        <Field id="ti-name" label="Hospice name" required error={errors.otherHospiceName}>
+          <input
+            id="ti-name"
+            type="text"
+            maxLength={200}
+            value={draft.otherHospiceName}
+            aria-invalid={errors.otherHospiceName ? true : undefined}
+            onChange={(e) => patch({ otherHospiceName: e.target.value })}
+            disabled={disabled}
+          />
+        </Field>
+        <Field
+          id="ti-ccn"
+          label="CMS Certification Number"
+          optional
+          hint="Medicare CCN — 6 characters."
+          error={errors.otherHospiceCcn}
+        >
+          <input
+            id="ti-ccn"
+            type="text"
+            maxLength={6}
+            value={draft.otherHospiceCcn}
+            aria-invalid={errors.otherHospiceCcn ? true : undefined}
+            onChange={(e) => patch({ otherHospiceCcn: e.target.value.toUpperCase() })}
+            disabled={disabled}
+          />
+        </Field>
+        <Field id="ti-date" label="Transfer date" required error={errors.effectiveDate}>
+          <input
+            id="ti-date"
+            type="date"
+            max={today}
+            value={draft.effectiveDate}
+            aria-invalid={errors.effectiveDate ? true : undefined}
+            onChange={(e) => patch({ effectiveDate: e.target.value })}
+            disabled={disabled}
+          />
+        </Field>
+      </div>
+    </Section>
+  );
+}
+
+function BenefitPeriodStep({
+  draft,
+  errors,
+  today,
+  lockedPhysicianLabel,
+  patch,
+}: {
+  draft: TransferDraft;
+  errors: FieldErrors;
+  today: string;
+  lockedPhysicianLabel: string | null;
+  patch: (p: Partial<TransferDraft>) => void;
+}): JSX.Element {
+  return (
+    <>
+      <Section
+        icon="calendar"
+        title="Inherited benefit period"
+        description="The period in progress at the sending hospice. It continues here without a new certification."
+      >
+        <div className="wx-field-grid">
+          <Field
+            id="ti-seq"
+            label="Benefit period number"
+            required
+            hint="1 and 2 are 90-day periods; 3 and later are 60 days."
+            error={errors.priorBenefitPeriodSequence}
+          >
+            <input
+              id="ti-seq"
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={draft.priorBenefitPeriodSequence}
+              aria-invalid={errors.priorBenefitPeriodSequence ? true : undefined}
+              onChange={(e) => patch({ priorBenefitPeriodSequence: e.target.value })}
+            />
+          </Field>
+          <Field
+            id="ti-start"
+            label="Period start date"
+            required
+            error={errors.priorElectionStartDate}
+          >
+            <input
+              id="ti-start"
+              type="date"
+              max={draft.effectiveDate || today}
+              value={draft.priorElectionStartDate}
+              aria-invalid={errors.priorElectionStartDate ? true : undefined}
+              onChange={(e) => patch({ priorElectionStartDate: e.target.value })}
+            />
+          </Field>
+        </div>
+      </Section>
+
+      <Section
+        icon="stethoscope"
+        title="Physicians"
+        description="Our certifying physician for the next benefit period."
+      >
+        <div className="wx-field-grid">
+          {lockedPhysicianLabel !== null ? (
+            <LockedField
+              id="ti-hmd"
+              label="Hospice physician (CTI)"
+              value={lockedPhysicianLabel}
+              source="From the admission's selected hospice physician"
+            />
+          ) : (
+            <div>
+              <MdmEntityLookupField
+                kind="physician"
+                label="Hospice physician (CTI)"
+                value={draft.hospiceMedicalDirectorId}
+                valueLabel={draft.hospiceMedicalDirectorLabel || undefined}
+                onChange={(value, option) =>
+                  patch({
+                    hospiceMedicalDirectorId: value,
+                    hospiceMedicalDirectorLabel: option?.searchLabel ?? "",
+                  })
+                }
                 required
-                full
-                hint={`At least ${MIN_NARRATIVE} characters. Why the patient is transferring and what records were received.`}
-                error={errors.narrative}
-              >
-                <textarea
-                  id="ti-narrative"
-                  rows={4}
-                  maxLength={4000}
-                  value={draft.narrative}
-                  aria-invalid={errors.narrative ? true : undefined}
-                  onChange={(e) => patch({ narrative: e.target.value })}
-                />
-              </EpisodeField>
+                error={errors.hospiceMedicalDirectorId}
+                hint="Also becomes the admission's hospice physician."
+              />
             </div>
-          </EpisodeSection>
-        </>
-      ) : null}
-
-      {!done && step === 2 ? (
-        <EpisodeSection icon="file-check" title="Review">
-          <dl className="wx-field-grid" style={{ margin: 0 }}>
-            <ReviewItem term="Sending hospice" value={effective.otherHospiceName.trim()} />
-            <ReviewItem term="CCN" value={effective.otherHospiceCcn || "—"} />
-            <ReviewItem term="Transfer date" value={longDate(effective.effectiveDate)} />
-            <ReviewItem
-              term="Inherited period"
-              value={`Period ${effective.priorBenefitPeriodSequence}, from ${longDate(effective.priorElectionStartDate)}`}
-            />
-            <ReviewItem
-              term="Hospice physician"
-              value={effective.hospiceMedicalDirectorLabel || "Selected"}
-            />
-            <ReviewItem
-              term="Attending physician"
-              value={effective.attendingPhysicianLabel || "—"}
-            />
-            <div className="wx-field-grid-full">
-              <ReviewItem term="Transfer note" value={effective.narrative.trim()} />
-            </div>
-          </dl>
-        </EpisodeSection>
-      ) : null}
-
-      {!done ? (
-        <EpisodeActions error={submitError}>
-          {step === 0 ? (
-            <Button tone="secondary" onClick={() => navigate(`/admissions/${admission.id}`)}>
-              Cancel
-            </Button>
-          ) : (
-            <Button tone="secondary" onClick={() => setStep(step - 1)} disabled={busy}>
-              Back
-            </Button>
           )}
-          {step < 2 ? (
-            <Button onClick={next} disabled={!transferable}>
-              Continue
-            </Button>
-          ) : (
-            <Button onClick={() => void submit()} loading={busy} disabled={busy || !transferable}>
-              Record transfer
-            </Button>
-          )}
-        </EpisodeActions>
-      ) : null}
-      <p style={{ margin: 0, fontSize: "0.75rem", color: t.onSurfaceVariant }}>
-        Admission state: {stateLabel(admission.state)}
-      </p>
-    </EpisodePage>
+          <div>
+            <MdmEntityLookupField
+              kind="physician"
+              label="Attending physician"
+              value={draft.attendingPhysicianId}
+              valueLabel={draft.attendingPhysicianLabel || undefined}
+              onChange={(value, option) =>
+                patch({
+                  attendingPhysicianId: value,
+                  attendingPhysicianLabel: option?.searchLabel ?? "",
+                })
+              }
+              clearable
+              hint="Optional"
+            />
+          </div>
+          <Field
+            id="ti-narrative"
+            label="Transfer note"
+            required
+            full
+            hint={`At least ${MIN_NARRATIVE} characters. Why the patient is transferring and what records were received.`}
+            error={errors.narrative}
+          >
+            <textarea
+              id="ti-narrative"
+              rows={4}
+              maxLength={4000}
+              value={draft.narrative}
+              aria-invalid={errors.narrative ? true : undefined}
+              onChange={(e) => patch({ narrative: e.target.value })}
+            />
+          </Field>
+        </div>
+      </Section>
+    </>
   );
 }

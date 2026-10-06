@@ -1,12 +1,29 @@
-import { Glyph, InlineAlert, Panel, t, useApiClient } from "@wardenx/ui";
-// apps/web/src/modules/06-admission — shared pieces of the M6 end-of-episode workflows (Death &
-// Pronouncement, for-cause medical-director cosign, transfer-in), in the 2026-09-25 redesign idiom:
-// flat ClinicalSection-style sections (`.wx-clinical-section`), a field anatomy of label · required
-// mark · muted code tag · control · source line (`.wx-hope-field`), read-only workflow-controlled values
-// as a locked field with a "From …" line, the four-dot `.wx-stepper`, and a right context rail
-// (`.wx-with-rail`). The HOPE module owns the React components these classes were first drawn with;
-// modules may not import each other, so this file re-draws the same anatomy on the same global classes.
+import {
+  Glyph,
+  type GlyphName,
+  InfoRows,
+  Panel,
+  PatientWorkspaceLayout,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
+// apps/web/src/modules/06-admission — the shared frame of the M6 end-of-episode workflows (discharge /
+// revocation / transfer-out, death & pronouncement, for-cause cosign, transfer-in), drawn in the 2026-09-25
+// redesign idiom the HOPE workspace established: the patient chart banner, a step navigator on the left
+// (`.wx-hope-nav`), flat clinical sections in the centre (`.wx-clinical-section`), the field anatomy of
+// label · required/optional mark · control · hint or error (`.wx-hope-field`), a locked value for anything
+// the workflow controls (`.wx-locked-value`), the footer action bar (`.wx-hope-footer`), and the right
+// context rail (admission, what happens on submit, patient summary). Modules may not import each other, so
+// this re-draws the HOPE anatomy on the same global classes rather than importing its components.
 import { type JSX, type ReactNode, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  ChartBanner,
+  PatientSummaryPanel,
+  fmtDate,
+  useChartIdentity,
+} from "../../shell/patient-context";
+import { ADMISSION_TONE, stateLabel } from "./admission-status";
 
 // ---------- admission context ----------
 
@@ -24,7 +41,9 @@ export interface EpisodeAdmission {
 export type Loadable<T> = T | null | "error";
 
 /** Loads the admission aggregate once; `null` while loading, `"error"` when it is not visible. */
-export function useEpisodeAdmission(admissionId: string | undefined): Loadable<EpisodeAdmission> {
+export function useEpisodeAdmission(
+  admissionId: string | null | undefined,
+): Loadable<EpisodeAdmission> {
   const client = useApiClient();
   const [admission, setAdmission] = useState<Loadable<EpisodeAdmission>>(null);
   useEffect(() => {
@@ -34,8 +53,8 @@ export function useEpisodeAdmission(admissionId: string | undefined): Loadable<E
     }
     let active = true;
     setAdmission(null);
-    void client
-      .GET("/api/v1/admissions/{id}", { params: { path: { id: admissionId } } })
+    void Promise.resolve()
+      .then(() => client.GET("/api/v1/admissions/{id}", { params: { path: { id: admissionId } } }))
       .then(({ data, error }) => {
         if (!active) return;
         setAdmission(error || !data ? "error" : (data as EpisodeAdmission));
@@ -57,15 +76,15 @@ export function errorCodeOf(err: unknown): string | undefined {
   return (err as { error?: { code?: string } } | null | undefined)?.error?.code;
 }
 
-/** The first failing field of a 400 VALIDATION_FAILED envelope, when the server named one. */
+/** The first failing field of a VALIDATION_FAILED envelope, when the server named one. */
 export function errorFieldOf(err: unknown): string | undefined {
   return (err as { error?: { details?: { field?: string }[] } } | null | undefined)?.error
     ?.details?.[0]?.field;
 }
 
 /**
- * Codes every end-of-episode write can return, mapped to a sentence the clinician can act on. A
- * workflow passes its own `specific` map first; anything unmapped falls back by HTTP status.
+ * Codes every end-of-episode write can return, mapped to a sentence the clinician can act on. A workflow
+ * passes its own `specific` map first; anything unmapped falls back by HTTP status.
  */
 export function endOfEpisodeMessage(
   status: number | undefined,
@@ -86,120 +105,273 @@ export function endOfEpisodeMessage(
 
 // ---------- dates ----------
 
-/** Today as a local `YYYY-MM-DD` (what an `<input type="date">` holds and the routes accept). */
-export function todayLocal(now: Date = new Date()): string {
+/** Today as a local calendar date (YYYY-MM-DD) — the clinician's day, not UTC's. */
+export function localToday(now: Date = new Date()): string {
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
+export function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 /** `YYYY-MM-DD` slice of an ISO timestamp (or the date itself), else `""`. */
 export function dateOnly(value: string | null | undefined): string {
   const m = value ? /^(\d{4}-\d{2}-\d{2})/.exec(value) : null;
-  return m ? m[1]! : "";
+  return m ? (m[1] ?? "") : "";
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** `2026-09-24` → `Sep 24, 2026` (calendar date, no timezone shift); `—` when absent. */
-export function longDate(value: string | null | undefined): string {
-  const m = value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null;
-  if (!m) return "—";
-  return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
-}
+// ---------- workspace frame ----------
 
-// ---------- page frame ----------
-
-export function EpisodePage({
-  title,
-  subtitle,
-  breadcrumb,
-  actions,
+/**
+ * The patient workspace every end-of-episode workflow sits in: the chart banner (with a "Back to
+ * admission" action) over the workflow, and the right context rail ending in the patient summary.
+ */
+export function EpisodeWorkspace({
+  patientId,
+  backTo,
   rail,
-  railLabel,
   children,
 }: {
-  title: string;
-  subtitle: ReactNode;
-  breadcrumb: ReactNode;
-  actions?: ReactNode;
+  patientId: string | undefined;
+  backTo: string;
   rail: ReactNode;
-  railLabel: string;
+  children: ReactNode;
+}): JSX.Element {
+  const identity = useChartIdentity(patientId);
+  const banner = identity ? (
+    <ChartBanner
+      identity={identity}
+      actions={
+        <Link to={backTo} className="wx-btn-secondary">
+          <Glyph name="chevron-left" size={16} /> Back to admission
+        </Link>
+      }
+    />
+  ) : patientId ? (
+    <div className="wx-patient-banner" aria-busy="true" style={{ minHeight: "6.25rem" }} />
+  ) : null;
+  return (
+    <PatientWorkspaceLayout
+      banner={banner}
+      rail={
+        <>
+          {rail}
+          <PatientSummaryPanel identity={identity} />
+        </>
+      }
+    >
+      {children}
+    </PatientWorkspaceLayout>
+  );
+}
+
+/** Rail card: the admission this workflow acts on. */
+export function AdmissionPanel({
+  admission,
+  extra = [],
+}: {
+  admission: EpisodeAdmission;
+  extra?: { label: string; value: ReactNode; hint?: string }[];
+}): JSX.Element {
+  const admitted = dateOnly(admission.admissionAt);
+  return (
+    <Panel title="Admission" icon="clipboard-check">
+      <InfoRows
+        labelWidth="7rem"
+        rows={[
+          {
+            label: "Status",
+            value: (
+              <StatusPill
+                label={stateLabel(admission.state)}
+                tone={ADMISSION_TONE[admission.state] ?? "neutral"}
+              />
+            ),
+          },
+          { label: "Admitted", value: admitted ? fmtDate(admitted) : "—" },
+          ...extra,
+        ]}
+      />
+    </Panel>
+  );
+}
+
+/** Rail card: what the server runs when the workflow submits, stated plainly (never live status). */
+export function WhatHappensPanel({
+  title = "What happens on submit",
+  children,
+}: {
+  title?: string;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className="wx-with-rail">
-      <div className="wx-with-rail-main">
-        <nav aria-label="Breadcrumb" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
-          {breadcrumb}
-        </nav>
-        <header className="wx-page-head">
-          <div>
-            <h1 style={{ fontSize: "1.875rem" }}>{title}</h1>
-            <p>{subtitle}</p>
-          </div>
-          {actions ? <div style={{ display: "flex", gap: "0.625rem" }}>{actions}</div> : null}
-        </header>
-        {children}
-      </div>
-      <aside className="wx-with-rail-side" aria-label={railLabel}>
-        {rail}
-      </aside>
-    </div>
+    <Panel title={title} icon="activity">
+      {children}
+    </Panel>
   );
 }
 
-// ---------- stepper ----------
+export interface WhatHappensItem {
+  icon: GlyphName;
+  text: ReactNode;
+}
 
-export function WorkflowSteps({
-  steps,
-  current,
+/** The cascade list: one glyph + sentence per downstream effect. */
+export function WhatHappensList({
+  items,
+  compact = false,
   label,
 }: {
-  steps: readonly string[];
-  /** Index of the step in progress; every earlier step reads as done. `steps.length` = all done. */
-  current: number;
-  label: string;
+  items: readonly WhatHappensItem[];
+  compact?: boolean;
+  label?: string;
 }): JSX.Element {
   return (
-    <ol
-      className="wx-stepper"
-      aria-label={label}
-      style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+    <ul
+      aria-label={label ?? (compact ? "Summary of what happens on submit" : "What happens")}
+      style={{
+        listStyle: "none",
+        margin: 0,
+        padding: 0,
+        display: "grid",
+        gap: compact ? "0.5rem" : "0.75rem",
+        fontSize: compact ? "0.8125rem" : "0.875rem",
+        color: "var(--color-on-surface)",
+      }}
     >
-      {steps.map((s, i) => {
-        const done = i < current;
-        const isCurrent = i === current;
-        return (
-          <li
-            key={s}
-            className={done ? "is-done" : isCurrent ? "is-current" : undefined}
-            aria-current={isCurrent ? "step" : undefined}
-          >
-            <span className="wx-step-dot" aria-hidden>
-              {done ? <Glyph name="check" size={12} strokeWidth={3} /> : i + 1}
-            </span>
-            <span>{s}</span>
-          </li>
-        );
-      })}
-    </ol>
+      {items.map((item, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static, ordered list.
+        <li key={i} style={{ display: "flex", gap: "0.625rem", alignItems: "flex-start" }}>
+          <span style={{ color: "var(--color-primary)", marginTop: "0.0625rem" }} aria-hidden>
+            <Glyph name={item.icon} size={compact ? 15 : 18} />
+          </span>
+          <span>{item.text}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-// ---------- flat section ----------
+// ---------- step navigator ----------
 
-export function EpisodeSection({
+export type StepState = "complete" | "attention" | "empty";
+
+export interface NavStep {
+  id: string;
+  title: string;
+  state: StepState;
+  /** Status line under the title ("Complete", "Needs attention", "Not started"). */
+  line: string;
+  /** Whether the step can be opened from the navigator. */
+  open: boolean;
+}
+
+/** Sequential progress: every step before `current` is complete, the rest not started. */
+export function linearSteps(titles: readonly string[], current: number): NavStep[] {
+  return titles.map((title, i) => ({
+    id: String(i),
+    title,
+    state: i < current ? "complete" : "empty",
+    line: i < current ? "Complete" : i === current ? "In progress" : "Not started",
+    open: false,
+  }));
+}
+
+export function StepNav({
+  label,
+  heading,
+  steps,
+  activeId,
+  onSelect,
+}: {
+  label: string;
+  heading: string;
+  steps: readonly NavStep[];
+  activeId: string | null;
+  onSelect?: (id: string) => void;
+}): JSX.Element {
+  return (
+    <aside className="wx-hope-admission-rail">
+      <nav className="wx-hope-nav wx-hope-admission-section-nav" aria-label={label}>
+        <div className="wx-hope-nav-title">{heading}</div>
+        <ol>
+          {steps.map((s, i) => {
+            const isActive = s.id === activeId;
+            return (
+              <li key={s.id} className={isActive ? "active" : undefined}>
+                <button
+                  type="button"
+                  onClick={() => s.open && onSelect?.(s.id)}
+                  disabled={!s.open}
+                  aria-current={isActive ? "step" : undefined}
+                  aria-label={`${s.title} — ${s.line}`}
+                >
+                  <span className={`wx-hope-step wx-hope-step-${isActive ? "active" : s.state}`}>
+                    {s.state === "complete" && !isActive ? (
+                      <Glyph name="check" size={14} strokeWidth={3} />
+                    ) : (
+                      i + 1
+                    )}
+                  </span>
+                  <span className="wx-hope-nav-text">
+                    <span className="wx-hope-nav-label">{s.title}</span>
+                    <span className={`wx-hope-nav-status wx-hope-nav-status-${s.state}`}>
+                      {s.line}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+    </aside>
+  );
+}
+
+// ---------- centre column ----------
+
+export function WorkflowHead({
+  eyebrow = "Admission",
+  title,
+  stepLine,
+  detail,
+}: {
+  eyebrow?: string;
+  title: string;
+  stepLine?: string;
+  detail?: string;
+}): JSX.Element {
+  return (
+    <header className="wx-hope-head">
+      <div>
+        <p className="wx-hope-eyebrow">{eyebrow}</p>
+        <h1 className="wx-hope-title">{title}</h1>
+        {stepLine ? (
+          <p className="wx-hope-step-line">
+            {stepLine}
+            {detail ? <span> · {detail}</span> : null}
+          </p>
+        ) : null}
+      </div>
+    </header>
+  );
+}
+
+export function Section({
   icon,
   title,
   description,
-  aside,
   children,
 }: {
-  icon: Parameters<typeof Glyph>[0]["name"];
+  icon: GlyphName;
   title: ReactNode;
   description?: ReactNode;
-  aside?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -212,49 +384,43 @@ export function EpisodeSection({
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>
-        {aside ? <div className="wx-clinical-section-aside">{aside}</div> : null}
       </header>
       <div className="wx-clinical-section-body">{children}</div>
     </section>
   );
 }
 
-// ---------- field anatomy ----------
-
-/** Muted wire/CMS identifier on the right of a field label (e.g. the request field it lands in). */
-export function CodeTag({ code }: { code: string }): JSX.Element {
-  return <span className="wx-cms-code">{code}</span>;
-}
-
-export function EpisodeField({
-  htmlFor,
+/** Field anatomy of the redesign: label · required/optional mark, control, then hint/source or error. */
+export function Field({
+  id,
   label,
-  code,
   required,
   optional,
+  locked,
+  source,
   hint,
   error,
   full,
   children,
 }: {
-  htmlFor?: string;
+  id: string;
   label: ReactNode;
-  code?: string;
   required?: boolean;
   optional?: boolean;
-  /** Source / guidance line under the control. */
+  locked?: boolean;
+  source?: string;
   hint?: ReactNode;
-  error?: string | null;
+  error?: string;
   /** Span the whole field grid row. */
   full?: boolean;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className={`wx-hope-field${full ? " wx-field-grid-full" : ""}`}>
+    <div className={full ? "wx-hope-field wx-field-grid-full" : "wx-hope-field"}>
       <div className="wx-hope-field-head">
-        <label htmlFor={htmlFor} className="wx-hope-field-label">
+        <label htmlFor={id} className="wx-hope-field-label">
           {label}
-          {required ? (
+          {required && !locked ? (
             <span className="wx-required-mark" aria-hidden>
               {" "}
               *
@@ -266,103 +432,188 @@ export function EpisodeField({
             </span>
           ) : null}
         </label>
-        {code ? <CodeTag code={code} /> : null}
       </div>
       {children}
-      {hint ? <div className="wx-hope-field-hint">{hint}</div> : null}
-      {error ? <div className="wx-hope-field-msg wx-hope-field-msg-error">{error}</div> : null}
+      {error ? (
+        <div className="wx-hope-field-msg wx-hope-field-msg-error" role="alert">
+          {error}
+        </div>
+      ) : source || hint ? (
+        <div className="wx-hope-field-hint">{source ?? hint}</div>
+      ) : null}
     </div>
   );
 }
 
-/** A value the workflow controls: a locked read-only field with the lock glyph and a source line. */
+/** A value the workflow controls: a locked, read-only field with the lock glyph and a source line. */
 export function LockedField({
   id,
   label,
   value,
   source,
-  code,
   full,
 }: {
   id: string;
   label: string;
   value: string;
-  source: ReactNode;
-  code?: string;
+  source: string;
   full?: boolean;
 }): JSX.Element {
   return (
-    <EpisodeField
-      htmlFor={id}
-      label={label}
-      code={code}
-      full={full}
-      hint={
-        <span>
-          <Glyph name="lock" size={11} /> {source}
-        </span>
-      }
-    >
+    <Field id={id} label={label} locked source={source} full={full}>
       <div className="wx-locked-value">
-        <input id={id} type="text" readOnly value={value} aria-readonly="true" />
+        <input id={id} readOnly aria-readonly="true" value={value} />
         <span aria-hidden>
           <Glyph name="lock" size={15} strokeWidth={1.75} />
         </span>
       </div>
-    </EpisodeField>
+    </Field>
   );
 }
 
-// ---------- rail ----------
+export interface ChoiceOption<V extends string> {
+  value: V;
+  label: string;
+  hint?: string;
+}
 
-/** "What happens next" rail card: the server-side cascade, stated as what runs, never as live status. */
-export function CascadePanel({
-  title,
-  items,
-  footnote,
+/** A required single choice drawn as option rows (`.wx-option-row`), with an error line under it. */
+export function ChoiceRows<V extends string>({
+  name,
+  legend,
+  options,
+  value,
+  onChange,
+  error,
+  hint,
 }: {
-  title: string;
-  items: { label: string; detail: string }[];
-  footnote?: ReactNode;
+  name: string;
+  legend: string;
+  options: readonly ChoiceOption<V>[];
+  value: V | "";
+  onChange: (value: V) => void;
+  error?: string;
+  hint?: ReactNode;
 }): JSX.Element {
   return (
-    <Panel title={title} icon="activity">
-      <ul className="wx-rail-list" style={{ margin: 0, padding: 0, listStyle: "none" }}>
-        {items.map((i) => (
-          <li key={i.label}>
-            <div>
-              <strong>{i.label}</strong>
-              <span>{i.detail}</span>
-            </div>
-          </li>
-        ))}
-      </ul>
-      {footnote ? (
-        <p style={{ margin: "0.75rem 0 0", fontSize: "0.75rem", color: t.onSurfaceVariant }}>
-          {footnote}
+    <fieldset className="wx-choice-fieldset">
+      <legend className="wx-hope-field-label">
+        {legend}
+        <span className="wx-required-mark" aria-hidden>
+          {" "}
+          *
+        </span>
+      </legend>
+      <div className="wx-option-rows">
+        {options.map((o) => {
+          const checked = value === o.value;
+          return (
+            <label
+              key={o.value}
+              className={checked ? "wx-option-row checked" : "wx-option-row"}
+              style={{ alignItems: "flex-start", padding: "0.65rem 0.875rem" }}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={o.value}
+                checked={checked}
+                aria-label={o.label}
+                onChange={() => onChange(o.value)}
+              />
+              <span className="wx-tile-text">
+                <span style={{ fontWeight: 600 }}>{o.label}</span>
+                {o.hint ? <small>{o.hint}</small> : null}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {error ? (
+        <p className="wx-hope-field-msg wx-hope-field-msg-error" role="alert">
+          {error}
         </p>
+      ) : hint ? (
+        <div className="wx-hope-field-hint">{hint}</div>
       ) : null}
-    </Panel>
+    </fieldset>
   );
 }
 
-/** Footer action row under the form sections. */
-export function EpisodeActions({
-  error,
+/** Review rows as a key/value list (`.wx-kv`). */
+export function ReviewList({
+  rows,
+}: {
+  rows: readonly { term: string; value: ReactNode; multiline?: boolean }[];
+}): JSX.Element {
+  return (
+    <dl className="wx-kv">
+      {rows.map((r) => (
+        <ReviewRow key={r.term} term={r.term} value={r.value} multiline={r.multiline} />
+      ))}
+    </dl>
+  );
+}
+
+function ReviewRow({
+  term,
+  value,
+  multiline,
+}: {
+  term: string;
+  value: ReactNode;
+  multiline?: boolean;
+}): JSX.Element {
+  return (
+    <>
+      <dt>{term}</dt>
+      <dd style={multiline ? { whiteSpace: "pre-wrap" } : undefined}>{value}</dd>
+    </>
+  );
+}
+
+/** The attestation checkbox tile the confirm step ends with. */
+export function AttestTile({
+  checked,
+  onChange,
   children,
 }: {
-  error: string | null;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div style={{ display: "grid", gap: "0.75rem" }}>
-      {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-      <div
-        className="wx-sticky-footer"
-        style={{ display: "flex", justifyContent: "flex-end", gap: "0.625rem", flexWrap: "wrap" }}
-      >
-        {children}
-      </div>
-    </div>
+    <label className={checked ? "wx-tile checked" : "wx-tile"}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.currentTarget.checked)}
+      />
+      <span className="wx-tile-text">
+        <span>{children}</span>
+      </span>
+    </label>
   );
 }
+
+/** The footer action bar under the centre column: a note on the left, actions on the right. */
+export function WorkflowFooter({
+  note,
+  children,
+}: {
+  note: ReactNode;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <footer className="wx-hope-footer">
+      <span className="wx-hope-footer-note">{note}</span>
+      <div style={{ display: "flex", gap: "0.625rem" }}>{children}</div>
+    </footer>
+  );
+}
+
+export const bodyText = {
+  margin: 0,
+  fontSize: "0.875rem",
+  color: "var(--color-on-surface-variant)",
+} as const;
