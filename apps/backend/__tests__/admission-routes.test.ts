@@ -1039,17 +1039,30 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       method: "POST",
       url: `/api/v1/face-to-face/${F2F}/complete`,
       headers: RN_AS_NP,
-      payload: { encounterDate: "2026-06-15", ifVersion: 1 },
+      payload: { encounterDate: "2026-06-15", encounterLocation: "patient_home", ifVersion: 1 },
     });
     expect(res.statusCode).toBe(200);
     expect(seen).toHaveLength(1);
     expect(seen[0]?.[3]).toBe("2026-06-15");
+    // FY2027 R-F2F-05 — the modality is forwarded too, and is REQUIRED on the route.
+    expect(seen[0]?.[4]).toEqual({
+      encounterLocation: "patient_home",
+      telehealthEligibility: null,
+    });
+    const noModality = await app.inject({
+      method: "POST",
+      url: `/api/v1/face-to-face/${F2F}/complete`,
+      headers: RN_AS_NP,
+      payload: { encounterDate: "2026-06-15", ifVersion: 1 },
+    });
+    expect(noModality.statusCode).toBeGreaterThanOrEqual(400);
+    expect(seen).toHaveLength(1);
     // a malformed date never reaches the service
     const bad = await app.inject({
       method: "POST",
       url: `/api/v1/face-to-face/${F2F}/complete`,
       headers: RN_AS_NP,
-      payload: { encounterDate: "not-a-date", ifVersion: 1 },
+      payload: { encounterDate: "not-a-date", encounterLocation: "patient_home", ifVersion: 1 },
     });
     expect(bad.statusCode).toBeGreaterThanOrEqual(400);
     expect(seen).toHaveLength(1);

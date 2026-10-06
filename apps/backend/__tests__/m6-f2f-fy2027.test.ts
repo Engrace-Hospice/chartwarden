@@ -60,7 +60,10 @@ describe("R-F2F-05 checkF2fModality — telehealth sunset and (A)-(C) exclusions
   it.each([
     ["(A) moratorium area", { ...ELIGIBLE, patientInMoratoriumArea: true }],
     ["(B) enhanced oversight", { ...ELIGIBLE, hospiceUnderEnhancedOversight: true }],
-    ["(C) performer not enrolled / opted out", { ...ELIGIBLE, performerMedicareEnrolledOrOptedOut: false }],
+    [
+      "(C) performer not enrolled / opted out",
+      { ...ELIGIBLE, performerMedicareEnrolledOrOptedOut: false },
+    ],
   ])("refuses telehealth when %s", (_label, eligibility) => {
     expect(modality("2026-10-15", eligibility)).toBe("F2F_TELEHEALTH_NOT_PERMITTED");
   });
@@ -125,7 +128,10 @@ describe("R-F2F-06 checkF2fSignedNote — the § 418.22(b)(4) clinical-note atte
 });
 
 describe("F2F attest — either the narrative or a linked signed note satisfies it", () => {
-  const attest = (narrative: string | null, signedNote: Parameters<typeof checkF2fSignedNote>[0] | null) =>
+  const attest = (
+    narrative: string | null,
+    signedNote: Parameters<typeof checkF2fSignedNote>[0] | null,
+  ) =>
     transitionFaceToFace("completed", {
       type: "attest",
       narrative,

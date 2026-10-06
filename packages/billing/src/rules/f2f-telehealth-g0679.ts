@@ -92,10 +92,14 @@ export const f2fTelehealthG0679: Rule = {
     }
     for (const line of g0679Lines) {
       if (line.revenueCode !== G0679_REVENUE_CODE) {
-        defects.push(`${line.serviceDate}: G0679 on revenue code ${line.revenueCode} (must be 0657)`);
+        defects.push(
+          `${line.serviceDate}: G0679 on revenue code ${line.revenueCode} (must be 0657)`,
+        );
       }
       if (line.serviceDate < G0679_EFFECTIVE_FROM) {
-        defects.push(`${line.serviceDate}: G0679 before its ${G0679_EFFECTIVE_FROM} effective date`);
+        defects.push(
+          `${line.serviceDate}: G0679 before its ${G0679_EFFECTIVE_FROM} effective date`,
+        );
       }
     }
     if (

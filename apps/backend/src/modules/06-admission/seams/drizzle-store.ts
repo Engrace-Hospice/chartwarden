@@ -453,7 +453,6 @@ export async function claimAssemblyRangeContextForOrg(
             attendingCosigned: pick.attendingMdSignedAt !== null,
           });
         }
-
       }
 
       // F2F rows for EVERY period of the admission: an overlapping period's F2F is reported as before
