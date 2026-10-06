@@ -1,7 +1,7 @@
 // @wardenx/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
 // MODEL (the `Rule` interface, the `ValidationContext` aggregate snapshot, `RuleResult` + its
 // `pass`/`fail`/`skip` constructors, the severity/category unions, the context helpers), the rule
-// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 19 platform-default rules
+// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 20 platform-default rules
 // assembled into a freshly-built default registry. PURE DOMAIN throughout — no Fastify, no Drizzle/DB, no
 // BullMQ, no `@wardenx/db`, no `getSeam`, no clock; no PHI.
 //
@@ -14,13 +14,18 @@ export * from "./types";
 export * from "./_registry";
 
 import { BillingRuleRegistry } from "./_registry";
-// ── the 19 platform-default rules (one file per rule) ──────────────────────────────────────────────────
+// ── the 20 platform-default rules (one file per rule; the 20th is FY2027's election addendum) ──────────────────────────────────────────────────
 import type { Rule } from "./types";
 
 import { aggregateCapProjection } from "./aggregate-cap-projection";
 import { bereavementDischargeLegitimacy } from "./bereavement-discharge";
 import { ctiSignedPerPeriod } from "./cti-signed";
 import { duplicateBillingCheck } from "./duplicate-billing";
+import {
+  ADDENDUM_APPLIES_TO_ELECTIONS_FROM,
+  ADDENDUM_ENFORCE_FROM,
+  electionAddendumSigned,
+} from "./election-addendum-signed";
 import { electionPeriodActive } from "./election-period-active";
 import { eligibilityCheckFreshness30d } from "./eligibility-freshness";
 import { evvBracketCoherence } from "./evv-coherence";
@@ -57,13 +62,16 @@ export {
   bereavementDischargeLegitimacy,
   modifierCodesValid,
   evvBracketCoherence,
+  electionAddendumSigned,
+  ADDENDUM_APPLIES_TO_ELECTIONS_FROM,
+  ADDENDUM_ENFORCE_FROM,
   CMS_HOSPICE_MODIFIER_VALUE_SET,
   POS_BY_QCODE,
   POS_LABEL_ALIASES,
 };
 
 /**
- * The 19 platform-default validation rules in §4.5 table order. This is the canonical platform-floor set
+ * The 20 platform-default validation rules in §4.5 table order (19 + FY2027 `election_addendum_signed`). This is the canonical platform-floor set
  * the Phase-3 composition root registers (then layers MAC-profile + tenant-overlay rules atop, then
  * freezes). Frozen tuple — the array itself is immutable; the `Rule` objects are already `readonly`.
  */
@@ -87,10 +95,12 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
   bereavementDischargeLegitimacy,
   modifierCodesValid,
   evvBracketCoherence,
+  // FY2027 (CMS-1851-F) — the twentieth rule: 42 CFR 418.24(c) election statement addendum.
+  electionAddendumSigned,
 ]);
 
 /**
- * Build a fresh, UN-frozen registry pre-populated with the 19 platform-default rules. The Phase-3 boot
+ * Build a fresh, UN-frozen registry pre-populated with the 20 platform-default rules. The Phase-3 boot
  * calls this, registers any MAC-profile / tenant-overlay rules, then `freeze()`s. A factory (not a shared
  * singleton) so each composition / test gets an isolated, mutable-until-frozen registry.
  */

@@ -41,6 +41,9 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "patient.pps_drop_20",
       "admission.recert_window_opening",
       "admission.f2f_due",
+      // FY2027 — the 42 CFR 418.24(d) election addendum window missed (care team + compliance audiences).
+      "m6.election_addendum.overdue",
+      "m6.election_addendum.overdue_compliance",
       "m6.admission.discharged",
       "visit.late",
       "m17.visit.cancelled",

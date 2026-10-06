@@ -10,6 +10,8 @@ export * from "./alert-payloads";
 export * from "./patient";
 export * from "./admission";
 export * from "./care-plan";
+export * from "./election-addendum";
+export * from "./hospice-coverage";
 export * from "./encounter";
 export * from "./assessment";
 export * from "./hope";

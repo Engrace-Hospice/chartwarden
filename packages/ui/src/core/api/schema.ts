@@ -1994,6 +1994,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/election-addendum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Election statement addendum: current version, history and open 418.24(d) windows */
+        get: operations["getApiV1AdmissionsByIdElectionaddendum"];
+        put?: never;
+        /** Draft the addendum (initial), refresh the draft, or start an update after a plan-of-care change */
+        post: operations["postApiV1AdmissionsByIdElectionaddendum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a draft addendum (items, diagnoses, explanation) */
+        patch: operations["patchApiV1AdmissionsByIdElectionaddendumByAddendumId"];
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/furnish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Furnish the addendum in writing (renders the PDF; closes the 418.24(d) window) */
+        post: operations["postApiV1AdmissionsByIdElectionaddendumByAddendumIdFurnish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/refusal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a refusal to sign, with the reason (418.24(c)(9)) */
+        post: operations["postApiV1AdmissionsByIdElectionaddendumByAddendumIdRefusal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the beneficiary's or representative's receipt signature (418.24(c)(9)) */
+        post: operations["postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/election-addendum/{addendumId}/signature-not-required": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that the patient died, revoked or was discharged before furnish/signature (418.24(d)(3)/(4)) */
+        post: operations["postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignaturenotrequired"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/election-periods": {
         parameters: {
             query?: never;
@@ -25971,6 +26074,712 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AdmissionsByIdElectionaddendum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        required: boolean;
+                        electionEffectiveDate: string | null;
+                        inCare: boolean;
+                        current: {
+                            id: string;
+                            admissionId: string;
+                            patientId: string;
+                            electionStatementId: string | null;
+                            versionNumber: number;
+                            trigger: "initial" | "poc_change";
+                            triggerCause: string | null;
+                            triggeredAt: string;
+                            status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                            hospiceName: string | null;
+                            patientName: string | null;
+                            medicalRecordNumber: string | null;
+                            terminalDiagnosis: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            relatedDiagnoses: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            items: {
+                                category: "condition" | "item" | "service" | "drug";
+                                description: string;
+                                reasonNotCovered: string;
+                                source?: "problem" | "medication" | "dme" | "supply" | "service";
+                                sourceId?: string;
+                            }[];
+                            noNonCoveredItems: boolean;
+                            clinicalExplanation: string | null;
+                            guidelineReferences: string | null;
+                            dueAt: string | null;
+                            furnishedAt: string | null;
+                            furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                            signedAt: string | null;
+                            signerKind: "beneficiary" | "representative" | null;
+                            representativeName: string | null;
+                            representativeRelationship: string | null;
+                            refusedAt: string | null;
+                            refusalReason: string | null;
+                            signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                            signatureNotRequiredNote: string | null;
+                            signatureNotRequiredAt: string | null;
+                            documentId: string | null;
+                            supersededById: string | null;
+                            supersededAt: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                            version: number;
+                        } | null;
+                        history: {
+                            id: string;
+                            admissionId: string;
+                            patientId: string;
+                            electionStatementId: string | null;
+                            versionNumber: number;
+                            trigger: "initial" | "poc_change";
+                            triggerCause: string | null;
+                            triggeredAt: string;
+                            status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                            hospiceName: string | null;
+                            patientName: string | null;
+                            medicalRecordNumber: string | null;
+                            terminalDiagnosis: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            relatedDiagnoses: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            items: {
+                                category: "condition" | "item" | "service" | "drug";
+                                description: string;
+                                reasonNotCovered: string;
+                                source?: "problem" | "medication" | "dme" | "supply" | "service";
+                                sourceId?: string;
+                            }[];
+                            noNonCoveredItems: boolean;
+                            clinicalExplanation: string | null;
+                            guidelineReferences: string | null;
+                            dueAt: string | null;
+                            furnishedAt: string | null;
+                            furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                            signedAt: string | null;
+                            signerKind: "beneficiary" | "representative" | null;
+                            representativeName: string | null;
+                            representativeRelationship: string | null;
+                            refusedAt: string | null;
+                            refusalReason: string | null;
+                            signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                            signatureNotRequiredNote: string | null;
+                            signatureNotRequiredAt: string | null;
+                            documentId: string | null;
+                            supersededById: string | null;
+                            supersededAt: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                            version: number;
+                        }[];
+                        openWindows: {
+                            id: string;
+                            kind: string;
+                            status: string;
+                            dueAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdElectionaddendum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        required: boolean;
+                        electionEffectiveDate: string | null;
+                        inCare: boolean;
+                        current: {
+                            id: string;
+                            admissionId: string;
+                            patientId: string;
+                            electionStatementId: string | null;
+                            versionNumber: number;
+                            trigger: "initial" | "poc_change";
+                            triggerCause: string | null;
+                            triggeredAt: string;
+                            status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                            hospiceName: string | null;
+                            patientName: string | null;
+                            medicalRecordNumber: string | null;
+                            terminalDiagnosis: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            relatedDiagnoses: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            items: {
+                                category: "condition" | "item" | "service" | "drug";
+                                description: string;
+                                reasonNotCovered: string;
+                                source?: "problem" | "medication" | "dme" | "supply" | "service";
+                                sourceId?: string;
+                            }[];
+                            noNonCoveredItems: boolean;
+                            clinicalExplanation: string | null;
+                            guidelineReferences: string | null;
+                            dueAt: string | null;
+                            furnishedAt: string | null;
+                            furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                            signedAt: string | null;
+                            signerKind: "beneficiary" | "representative" | null;
+                            representativeName: string | null;
+                            representativeRelationship: string | null;
+                            refusedAt: string | null;
+                            refusalReason: string | null;
+                            signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                            signatureNotRequiredNote: string | null;
+                            signatureNotRequiredAt: string | null;
+                            documentId: string | null;
+                            supersededById: string | null;
+                            supersededAt: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                            version: number;
+                        } | null;
+                        history: {
+                            id: string;
+                            admissionId: string;
+                            patientId: string;
+                            electionStatementId: string | null;
+                            versionNumber: number;
+                            trigger: "initial" | "poc_change";
+                            triggerCause: string | null;
+                            triggeredAt: string;
+                            status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                            hospiceName: string | null;
+                            patientName: string | null;
+                            medicalRecordNumber: string | null;
+                            terminalDiagnosis: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            relatedDiagnoses: {
+                                icd10Code: string | null;
+                                description: string;
+                            }[];
+                            items: {
+                                category: "condition" | "item" | "service" | "drug";
+                                description: string;
+                                reasonNotCovered: string;
+                                source?: "problem" | "medication" | "dme" | "supply" | "service";
+                                sourceId?: string;
+                            }[];
+                            noNonCoveredItems: boolean;
+                            clinicalExplanation: string | null;
+                            guidelineReferences: string | null;
+                            dueAt: string | null;
+                            furnishedAt: string | null;
+                            furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                            signedAt: string | null;
+                            signerKind: "beneficiary" | "representative" | null;
+                            representativeName: string | null;
+                            representativeRelationship: string | null;
+                            refusedAt: string | null;
+                            refusalReason: string | null;
+                            signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                            signatureNotRequiredNote: string | null;
+                            signatureNotRequiredAt: string | null;
+                            documentId: string | null;
+                            supersededById: string | null;
+                            supersededAt: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                            version: number;
+                        }[];
+                        openWindows: {
+                            id: string;
+                            kind: string;
+                            status: string;
+                            dueAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AdmissionsByIdElectionaddendumByAddendumId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    items?: {
+                        category: "condition" | "item" | "service" | "drug";
+                        description: string;
+                        reasonNotCovered: string;
+                        source?: "problem" | "medication" | "dme" | "supply" | "service";
+                        sourceId?: string;
+                    }[];
+                    noNonCoveredItems?: boolean;
+                    clinicalExplanation?: string | null;
+                    guidelineReferences?: string | null;
+                    terminalDiagnosis?: {
+                        icd10Code: string | null;
+                        description: string;
+                    }[];
+                    relatedDiagnoses?: {
+                        icd10Code: string | null;
+                        description: string;
+                    }[];
+                    hospiceName?: string | null;
+                    patientName?: string | null;
+                    medicalRecordNumber?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        electionStatementId: string | null;
+                        versionNumber: number;
+                        trigger: "initial" | "poc_change";
+                        triggerCause: string | null;
+                        triggeredAt: string;
+                        status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                        hospiceName: string | null;
+                        patientName: string | null;
+                        medicalRecordNumber: string | null;
+                        terminalDiagnosis: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        relatedDiagnoses: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        items: {
+                            category: "condition" | "item" | "service" | "drug";
+                            description: string;
+                            reasonNotCovered: string;
+                            source?: "problem" | "medication" | "dme" | "supply" | "service";
+                            sourceId?: string;
+                        }[];
+                        noNonCoveredItems: boolean;
+                        clinicalExplanation: string | null;
+                        guidelineReferences: string | null;
+                        dueAt: string | null;
+                        furnishedAt: string | null;
+                        furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                        signedAt: string | null;
+                        signerKind: "beneficiary" | "representative" | null;
+                        representativeName: string | null;
+                        representativeRelationship: string | null;
+                        refusedAt: string | null;
+                        refusalReason: string | null;
+                        signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                        signatureNotRequiredNote: string | null;
+                        signatureNotRequiredAt: string | null;
+                        documentId: string | null;
+                        supersededById: string | null;
+                        supersededAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdElectionaddendumByAddendumIdFurnish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    method: "paper" | "electronic_with_paper_copy";
+                    /** Format: date-time */
+                    furnishedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        electionStatementId: string | null;
+                        versionNumber: number;
+                        trigger: "initial" | "poc_change";
+                        triggerCause: string | null;
+                        triggeredAt: string;
+                        status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                        hospiceName: string | null;
+                        patientName: string | null;
+                        medicalRecordNumber: string | null;
+                        terminalDiagnosis: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        relatedDiagnoses: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        items: {
+                            category: "condition" | "item" | "service" | "drug";
+                            description: string;
+                            reasonNotCovered: string;
+                            source?: "problem" | "medication" | "dme" | "supply" | "service";
+                            sourceId?: string;
+                        }[];
+                        noNonCoveredItems: boolean;
+                        clinicalExplanation: string | null;
+                        guidelineReferences: string | null;
+                        dueAt: string | null;
+                        furnishedAt: string | null;
+                        furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                        signedAt: string | null;
+                        signerKind: "beneficiary" | "representative" | null;
+                        representativeName: string | null;
+                        representativeRelationship: string | null;
+                        refusedAt: string | null;
+                        refusalReason: string | null;
+                        signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                        signatureNotRequiredNote: string | null;
+                        signatureNotRequiredAt: string | null;
+                        documentId: string | null;
+                        supersededById: string | null;
+                        supersededAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdElectionaddendumByAddendumIdRefusal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        electionStatementId: string | null;
+                        versionNumber: number;
+                        trigger: "initial" | "poc_change";
+                        triggerCause: string | null;
+                        triggeredAt: string;
+                        status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                        hospiceName: string | null;
+                        patientName: string | null;
+                        medicalRecordNumber: string | null;
+                        terminalDiagnosis: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        relatedDiagnoses: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        items: {
+                            category: "condition" | "item" | "service" | "drug";
+                            description: string;
+                            reasonNotCovered: string;
+                            source?: "problem" | "medication" | "dme" | "supply" | "service";
+                            sourceId?: string;
+                        }[];
+                        noNonCoveredItems: boolean;
+                        clinicalExplanation: string | null;
+                        guidelineReferences: string | null;
+                        dueAt: string | null;
+                        furnishedAt: string | null;
+                        furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                        signedAt: string | null;
+                        signerKind: "beneficiary" | "representative" | null;
+                        representativeName: string | null;
+                        representativeRelationship: string | null;
+                        refusedAt: string | null;
+                        refusalReason: string | null;
+                        signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                        signatureNotRequiredNote: string | null;
+                        signatureNotRequiredAt: string | null;
+                        documentId: string | null;
+                        supersededById: string | null;
+                        supersededAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    signerKind: "beneficiary" | "representative";
+                    representativeName?: string | null;
+                    representativeRelationship?: string | null;
+                    /** Format: date-time */
+                    signedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        electionStatementId: string | null;
+                        versionNumber: number;
+                        trigger: "initial" | "poc_change";
+                        triggerCause: string | null;
+                        triggeredAt: string;
+                        status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                        hospiceName: string | null;
+                        patientName: string | null;
+                        medicalRecordNumber: string | null;
+                        terminalDiagnosis: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        relatedDiagnoses: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        items: {
+                            category: "condition" | "item" | "service" | "drug";
+                            description: string;
+                            reasonNotCovered: string;
+                            source?: "problem" | "medication" | "dme" | "supply" | "service";
+                            sourceId?: string;
+                        }[];
+                        noNonCoveredItems: boolean;
+                        clinicalExplanation: string | null;
+                        guidelineReferences: string | null;
+                        dueAt: string | null;
+                        furnishedAt: string | null;
+                        furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                        signedAt: string | null;
+                        signerKind: "beneficiary" | "representative" | null;
+                        representativeName: string | null;
+                        representativeRelationship: string | null;
+                        refusedAt: string | null;
+                        refusalReason: string | null;
+                        signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                        signatureNotRequiredNote: string | null;
+                        signatureNotRequiredAt: string | null;
+                        documentId: string | null;
+                        supersededById: string | null;
+                        supersededAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdElectionaddendumByAddendumIdSignaturenotrequired: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    reason: "death" | "revocation" | "discharge";
+                    note?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        electionStatementId: string | null;
+                        versionNumber: number;
+                        trigger: "initial" | "poc_change";
+                        triggerCause: string | null;
+                        triggeredAt: string;
+                        status: "draft" | "furnished" | "signed" | "refused" | "signature_not_required" | "not_required";
+                        hospiceName: string | null;
+                        patientName: string | null;
+                        medicalRecordNumber: string | null;
+                        terminalDiagnosis: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        relatedDiagnoses: {
+                            icd10Code: string | null;
+                            description: string;
+                        }[];
+                        items: {
+                            category: "condition" | "item" | "service" | "drug";
+                            description: string;
+                            reasonNotCovered: string;
+                            source?: "problem" | "medication" | "dme" | "supply" | "service";
+                            sourceId?: string;
+                        }[];
+                        noNonCoveredItems: boolean;
+                        clinicalExplanation: string | null;
+                        guidelineReferences: string | null;
+                        dueAt: string | null;
+                        furnishedAt: string | null;
+                        furnishMethod: "paper" | "electronic_with_paper_copy" | null;
+                        signedAt: string | null;
+                        signerKind: "beneficiary" | "representative" | null;
+                        representativeName: string | null;
+                        representativeRelationship: string | null;
+                        refusedAt: string | null;
+                        refusalReason: string | null;
+                        signatureNotRequiredReason: ("death" | "revocation" | "discharge") | null;
+                        signatureNotRequiredNote: string | null;
+                        signatureNotRequiredAt: string | null;
+                        documentId: string | null;
+                        supersededById: string | null;
+                        supersededAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AdmissionsByIdElectionperiods: {
         parameters: {
             query?: never;
@@ -26323,12 +27132,12 @@ export interface operations {
                         completed: number;
                         blockingRemaining: number;
                         requirements: {
-                            code: "patient_identity" | "admission_details" | "patient_privacy" | "notice_of_rights" | "election_statement" | "cti" | "f2f";
+                            code: "patient_identity" | "admission_details" | "patient_privacy" | "notice_of_rights" | "election_statement" | "cti" | "f2f" | "election_addendum";
                             label: string;
                             status: "complete" | "action_required" | "awaiting_signature" | "pending" | "blocked" | "overdue" | "not_applicable";
                             blocking: boolean;
                             message?: string;
-                            action?: "RESOLVE_PATIENT" | "COMPLETE_ADMISSION_DETAILS" | "REVIEW_PRIVACY" | "COMPLETE_NOTICE_OF_RIGHTS" | "COMPLETE_ELECTION_STATEMENT" | "COMPLETE_ELECTION_SIGNATURE" | "COMPLETE_CTI" | "COMPLETE_CTI_SIGNATURE" | "REVIEW_F2F";
+                            action?: "RESOLVE_PATIENT" | "COMPLETE_ADMISSION_DETAILS" | "REVIEW_PRIVACY" | "COMPLETE_NOTICE_OF_RIGHTS" | "COMPLETE_ELECTION_STATEMENT" | "COMPLETE_ELECTION_SIGNATURE" | "COMPLETE_CTI" | "COMPLETE_CTI_SIGNATURE" | "REVIEW_F2F" | "COMPLETE_ELECTION_ADDENDUM";
                             satisfiedBy?: "normal" | "override";
                             evidence?: {
                                 sourceType: "structured" | "uploaded";
@@ -40019,7 +40828,7 @@ export interface operations {
                     /** Format: uuid */
                     admissionId?: string;
                     retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
-                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                     /** Format: uuid */
                     aggregateId?: string;
                     title: string;
@@ -40028,7 +40837,7 @@ export interface operations {
                     byteSize: number;
                     sha256Hex: string;
                     sourceMetadata?: {
-                        documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
+                        documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                         sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                         /** Format: date-time */
                         receivedAt?: string;
@@ -40162,7 +40971,7 @@ export interface operations {
                             patientFacing: boolean;
                             attachToDisclosures: boolean;
                             metadata: {
-                                documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
+                                documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                                 sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                                 /** Format: date-time */
                                 receivedAt?: string;
@@ -40204,7 +41013,7 @@ export interface operations {
                     /** Format: uuid */
                     admissionId?: string;
                     retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
-                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                     /** Format: uuid */
                     aggregateId?: string;
                     title: string;
@@ -40261,7 +41070,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;
@@ -40322,7 +41131,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;
@@ -40413,7 +41222,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;

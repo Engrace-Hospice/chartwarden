@@ -549,6 +549,7 @@ const RequirementActionSchema = Type.Union([
   Type.Literal("COMPLETE_CTI"),
   Type.Literal("COMPLETE_CTI_SIGNATURE"),
   Type.Literal("REVIEW_F2F"),
+  Type.Literal("COMPLETE_ELECTION_ADDENDUM"),
 ]);
 
 const RequirementEvidenceSchema = Type.Object({
@@ -577,6 +578,7 @@ const RequirementCodeSchema = Type.Union([
   Type.Literal("election_statement"),
   Type.Literal("cti"),
   Type.Literal("f2f"),
+  Type.Literal("election_addendum"),
 ]);
 
 export const AdmissionReadinessResponseSchema = Type.Object({

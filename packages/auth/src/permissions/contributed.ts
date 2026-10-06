@@ -745,6 +745,26 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "admission.scope",
   },
+  // --- FY2027 election statement addendum (42 CFR 418.24(c)/(d); mig 0382 grants each to the roles
+  //     holding its election.* counterpart) ---
+  "election_addendum.read": {
+    resource: "election_addendum",
+    action: "read",
+    category: "clinical",
+    abac: "admission.scope",
+  },
+  "election_addendum.write": {
+    resource: "election_addendum",
+    action: "write",
+    category: "clinical",
+    abac: "admission.scope",
+  },
+  "election_addendum.acknowledge": {
+    resource: "election_addendum",
+    action: "acknowledge",
+    category: "clinical",
+    abac: "admission.scope",
+  },
   // --- CTI (routes 22–27) ---
   "cti.draft": { resource: "cti", action: "draft", category: "clinical", abac: "admission.scope" },
   "cti.read": { resource: "cti", action: "read", category: "clinical", abac: "admission.scope" },

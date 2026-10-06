@@ -1,4 +1,4 @@
-// @wardenx/forms — §4.5 the 31 v1 platform-floor Form Template Library as pure data.
+// @wardenx/forms — §4.5 the 32 v1 platform-floor (31 + the FY2027 election addendum) Form Template Library as pure data.
 //
 // One row per §4.5 template-library entry. `lab_results_pdf` declares `clinical_record` as its default
 // retention class; the D23 SUD auto-tag promotes an individual render to `compliance_42cfr_part2` at the
@@ -56,10 +56,37 @@ const TEMPLATE_SEEDS: readonly TemplateSeed[] = [
     engine: "react_pdf",
     retentionClass: "compliance",
     patientFacing: true,
+    // FY2027 (CMS-1851-F) — every 42 CFR 418.24(b)(1)–(8) element is a floor an overlay cannot drop.
     extraRequiredFields: [
       "election_effective_date",
       "beneficiary_signature_block",
       "attending_physician_block",
+      "palliative_care_acknowledgment",
+      "coverage_waiver_and_unrelated_services_text",
+      "cost_sharing_text",
+      "election_addendum_notice",
+      "bfcc_qio_immediate_advocacy",
+    ],
+  },
+  // FY2027 (CMS-1851-F) — the 42 CFR 418.24(c) "Patient Notification of Hospice Non-Covered Items, Services, and
+  // Drugs", mandatory for elections effective on/after 2026-10-01. Each (c)(1)–(10) element is a floor field.
+  {
+    key: "election_addendum",
+    aggregateType: "election_addendum",
+    engine: "react_pdf",
+    retentionClass: "compliance",
+    patientFacing: true,
+    extraRequiredFields: [
+      "addendum_title_verbatim",
+      "hospice_name",
+      "beneficiary_name_and_medical_record_number",
+      "terminal_and_related_diagnoses",
+      "non_covered_items_with_reasons",
+      "clinical_explanation_and_relatedness_statement",
+      "guideline_references",
+      "purpose_and_bfcc_qio_immediate_advocacy",
+      "receipt_only_signature_block",
+      "date_furnished",
     ],
   },
   {

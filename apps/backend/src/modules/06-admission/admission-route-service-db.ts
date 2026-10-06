@@ -41,6 +41,15 @@ import {
   sql,
 } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
+import { addendumRequiredForElection } from "./election-addendum/due-dates";
+import {
+  exemptionReasonForDischarge,
+  listAddendumVersions,
+  loadAddendumAdmissionFacts,
+  openAddendumWindows,
+  openInitialAddendumInTx,
+  settleAddendumOnLeavingCareInTx,
+} from "./election-addendum/store";
 import { getSeam } from "../../bootstrap/index";
 import { readCurrentResidenceAddress } from "../05-patient/address-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
@@ -1411,6 +1420,26 @@ export function createDbAdmissionRouteService(
     }
   }
 
+  /** FY2027 — the informational 42 CFR 418.24(c) checklist facts (never blocking; see activation-gate.ts). */
+  async function addendumReadinessFacts(
+    tx: DbClient,
+    admissionId: string,
+    activated: boolean,
+  ): Promise<NonNullable<AdmissionReadinessFacts["electionAddendum"]>> {
+    const addendumFacts = await loadAddendumAdmissionFacts(tx, admissionId);
+    const effective = addendumFacts?.electionEffectiveDate ?? null;
+    // Before activation the effective date is not set; activation dates it today, so judge by today.
+    const required = addendumRequiredForElection(effective ?? isoDay(now()));
+    const [latest] = await listAddendumVersions(tx, admissionId);
+    const windows = await openAddendumWindows(tx, admissionId);
+    return {
+      activated: activated && effective !== null,
+      required,
+      latestStatus: latest?.status ?? null,
+      overdue: windows.some((w) => w.status === "overdue"),
+    };
+  }
+
   async function readinessForAdmission(
     tx: DbClient,
     organizationId: string,
@@ -1427,6 +1456,7 @@ export function createDbAdmissionRouteService(
         patientResidenceAddressId: ADM.patientResidenceAddressId,
         serviceAddressLine1: ADM.serviceAddressLine1,
         attendingPhysicianId: ADM.attendingPhysicianId,
+        activatedAt: ADM.activatedAt,
       })
       .from(ADM)
       .where(eq(ADM.id, admissionId))
@@ -1588,6 +1618,7 @@ export function createDbAdmissionRouteService(
         attested: !!f2f?.attestationSignedAt || f2f?.status === "attested",
         satisfiedBy: f2f?.windowOverride ? "override" : undefined,
       },
+      electionAddendum: await addendumReadinessFacts(tx, admissionId, !!adm.activatedAt),
     };
     return evaluateAdmissionReadiness(facts);
   }
@@ -1810,6 +1841,15 @@ export function createDbAdmissionRouteService(
         .returning({ status: ADM.status, version: ADM.version }),
       "admission not found",
     );
+    // FY2027 — 42 CFR 418.24(d)(3)/(d)(4): leaving hospice care settles any open addendum obligation (an
+    // unfurnished draft → not_required, a furnished-but-unsigned version → signature_not_required), with the
+    // reason noted on the addendum, and closes the addendum windows.
+    await settleAddendumOnLeavingCareInTx(tx, outbox, {
+      organizationId,
+      admissionId,
+      reason: exemptionReasonForDischarge(ev.dischargeType),
+      at: now(),
+    });
     // `m6.admission.discharged`'s `reason`/`dischargeDate` were previously never supplied (`runEffects`'
     // base payload is just `{aggregateId, admissionId}`) — 500ing on EVERY discharge/revocation/
     // transfer-out. `m6.discharge.created`/`.death` need `dischargeEventId` too, but only real discharge
@@ -3860,6 +3900,15 @@ export function createDbAdmissionRouteService(
               version: sql`${EP.version} + 1`,
             })
             .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
+          // FY2027 — 42 CFR 418.24(d)(1): an election effective on/after 2026-10-01 owes the addendum within 5
+          // calendar days of its effective date, which this transaction has just written. Opens draft v1 + the
+          // `election_addendum_initial` window (a no-op for earlier elections and on re-entry). A transfer-in's
+          // inherited period is not a new election and is skipped with the rest of this block.
+          await openInitialAddendumInTx(tx as DbClient, outbox, {
+            organizationId,
+            admissionId: id,
+            now: activatedAt,
+          });
         }
         await runEffects(
           tx,
@@ -4090,11 +4139,24 @@ export function createDbAdmissionRouteService(
           .returning({ id: ES.id, status: ES.status, version: ES.version });
         if (!r) throw new ResourceNotFoundError(id);
         const [period] = await tx
-          .select({ admissionId: EP.admissionId })
+          .select({ admissionId: EP.admissionId, effectiveAt: EP.effectiveAt })
           .from(EP)
           .where(eq(EP.id, cur.electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(cur.electionPeriodId);
+        // FY2027 — the 42 CFR 418.24(b)(1) hospice the statement names, for M22's statement template.
+        const [electingAdmission] = await tx
+          .select({ providerEntityId: ADM.providerEntityId })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        const hospiceName = electingAdmission?.providerEntityId
+          ? await foundationSites.providerEntityLegalName(
+              tx as DbClient,
+              organizationId,
+              electingAdmission.providerEntityId,
+            )
+          : null;
         await createAdmissionEvidenceService(tx).recordStructuredEvidence({
           organizationId,
           admissionId: period.admissionId,
@@ -4117,6 +4179,11 @@ export function createDbAdmissionRouteService(
             signedAt,
             // F-100 — the chart. `election_statement.patient_id` is on the row this path already read.
             patientId: cur.patientId,
+            // FY2027 — what M22's election-statement template prints (42 CFR 418.24(b)(1), (4), (8)).
+            patientName: input.signingPatientName,
+            signerKind: SIGNER_KIND_BY_ROLE[input.signingRole],
+            ...(hospiceName ? { hospiceName } : {}),
+            ...(period.effectiveAt ? { effectiveDate: period.effectiveAt } : {}),
           },
           organizationId,
           aggregateKind: "election_statement",

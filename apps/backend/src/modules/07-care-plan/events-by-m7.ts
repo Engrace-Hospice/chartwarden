@@ -20,6 +20,13 @@ const versionKind = Type.Union([
   Type.Literal("discharge"),
 ]);
 
+/** The problem relatedness determination (mirrors `problem_kind`). */
+const problemRelatedness = Type.Union([
+  Type.Literal("terminal"),
+  Type.Literal("related"),
+  Type.Literal("unrelated"),
+]);
+
 export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   // ── care plan root ──────────────────────────────────────────────────────────────────────────────
   {
@@ -70,7 +77,9 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
     // the only cross-module communication M8 performs "at the boundary" — the encounter-authoring gate
     // reads M7's `CarePlanReader` seam fresh at sign time (`getCarePlanReader()`, a boot-validated M1
     // registry seam, "NOT a schema import"), never a cached push.
-    declaredConsumers: ["m14", "m17", "m22"],
+    // FY2027 — m6: a signed plan-of-care version that changes the unrelated determinations triggers the
+    // election-addendum update (42 CFR 418.24(d)(2)); M6's consumer diffs and opens the 3-day window.
+    declaredConsumers: ["m6", "m14", "m17", "m22"],
     // F-115 (#248) — m28/m30 removed: m28 never subscribes to anything (its FHIR reads resolve seams
     // fresh per-request, F-035); m30 reads the care-plan review cycle via
     // `CarePlanCycleCountsView.fifteenDayCycleCountsForOrg` (care_plan_15_day_adherence) on its nightly
@@ -201,8 +210,12 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       planId: Type.String({ minLength: 1 }),
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
+      // FY2027 — additive, optional: the admission and the relatedness determination, so M6's
+      // election-addendum consumer can open the 42 CFR 418.24(d)(2) update window without reading M7.
+      admissionId: Type.Optional(Type.String({ minLength: 1 })),
+      kind: Type.Optional(problemRelatedness),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
   {
@@ -213,8 +226,13 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       planId: Type.String({ minLength: 1 }),
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
+      // FY2027 — additive, optional: the admission and the relatedness determination, so M6's
+      // election-addendum consumer can open the 42 CFR 418.24(d)(2) update window without reading M7.
+      admissionId: Type.Optional(Type.String({ minLength: 1 })),
+      kind: Type.Optional(problemRelatedness),
+      previousKind: Type.Optional(problemRelatedness),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
   {
@@ -225,8 +243,12 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       planId: Type.String({ minLength: 1 }),
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
+      // FY2027 — additive, optional: the admission and the relatedness determination, so M6's
+      // election-addendum consumer can open the 42 CFR 418.24(d)(2) update window without reading M7.
+      admissionId: Type.Optional(Type.String({ minLength: 1 })),
+      kind: Type.Optional(problemRelatedness),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
   // F-238 dx-writeback — M7's reply to `m22.extraction.diagnosis_commit_requested`: per diagnosis, the

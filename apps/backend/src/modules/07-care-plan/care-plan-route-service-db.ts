@@ -1367,6 +1367,9 @@ export function createDbCarePlanRouteService(
           planId,
           problemId: p.id,
           status: p.status,
+          // FY2027 — M6's election-addendum consumer keys on the admission + relatedness (418.24(d)(2)).
+          admissionId: plan.admissionId,
+          kind: p.kind,
         });
         return { id: p.id, status: p.status, version: Number(p.version) };
       });
@@ -1375,7 +1378,8 @@ export function createDbCarePlanRouteService(
     async patchProblem(org, planId, problemId, ifVersion, body: PatchProblemInput) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        ensurePlanWritable(await loadPlan(t, planId));
+        const plan = await loadPlan(t, planId);
+        ensurePlanWritable(plan);
         const row = await loadProblem(t, planId, problemId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
         const updated = firstOrThrow(
@@ -1397,6 +1401,9 @@ export function createDbCarePlanRouteService(
           planId,
           problemId: updated.id,
           status: updated.status,
+          admissionId: plan.admissionId,
+          kind: updated.kind,
+          previousKind: row.kind,
         });
         return { id: updated.id, status: updated.status, version: Number(updated.version) };
       });
@@ -1405,7 +1412,8 @@ export function createDbCarePlanRouteService(
     async resolveProblem(org, planId, problemId, ifVersion, note) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        ensurePlanWritable(await loadPlan(t, planId));
+        const plan = await loadPlan(t, planId);
+        ensurePlanWritable(plan);
         const row = await loadProblem(t, planId, problemId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
         const updated = firstOrThrow(
@@ -1426,6 +1434,8 @@ export function createDbCarePlanRouteService(
           planId,
           problemId: updated.id,
           status: updated.status,
+          admissionId: plan.admissionId,
+          kind: updated.kind,
         });
         return { id: updated.id, status: updated.status, version: Number(updated.version) };
       });

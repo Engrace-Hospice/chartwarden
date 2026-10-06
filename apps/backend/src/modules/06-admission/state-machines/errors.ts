@@ -59,6 +59,12 @@ export const M6_ERROR_STATUS = {
   DISCHARGE_NARRATIVE_TOO_SHORT: 422,
   // Compliance windows (§2.4.1 R-CW-*)
   WINDOW_OVERRIDE_FORBIDDEN: 403,
+  // FY2027 election statement addendum (42 CFR 418.24(c)/(d); state-machines/election-addendum.ts)
+  ADDENDUM_INCOMPLETE: 422,
+  ADDENDUM_ITEMS_CONFLICT: 422,
+  ADDENDUM_REFUSAL_REASON_REQUIRED: 422,
+  ADDENDUM_REPRESENTATIVE_REQUIRED: 422,
+  ADDENDUM_NOT_APPLICABLE: 409,
   // Structural — an event dispatched from a state that does not accept it (§2.3 graph).
   ILLEGAL_TRANSITION: 409,
 } as const;
