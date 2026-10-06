@@ -19,4 +19,10 @@ describe("InlineAlert", () => {
     render(<InlineAlert tone="info">Heads up</InlineAlert>);
     expect(screen.getByRole("status").textContent).toBe("Heads up");
   });
+
+  it("renders warning as a polite status output (advisory, never an alert)", () => {
+    render(<InlineAlert tone="warning">Rates differ from the CMS reference</InlineAlert>);
+    expect(screen.getByRole("status").textContent).toBe("Rates differ from the CMS reference");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

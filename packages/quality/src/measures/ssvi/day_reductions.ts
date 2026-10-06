@@ -3,7 +3,10 @@
 // Both are defined over routine-home-care DAYS joined to skilled-VISIT days, which no single module holds: M6
 // owns the level-of-care spans, M8 owns which days a skilled discipline (RN, LPN, MSW) visited. The worker reads
 // both aggregates and reduces them here (the HCI 8/9 posture, `skilledNursingMinutesOnRhcDays`).
-import { HCI_ROUTINE_HOME_CARE_LEVEL, type HciLevelOfCareSpan } from "../hci/skilled_nursing_minutes";
+import {
+  HCI_ROUTINE_HOME_CARE_LEVEL,
+  type HciLevelOfCareSpan,
+} from "../hci/skilled_nursing_minutes";
 
 /** One (admission, service date) with a signed skilled visit (the M8 `SkilledVisitDay` shape). */
 export interface SsviSkilledVisitDay {

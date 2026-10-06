@@ -14,13 +14,7 @@ import type { MeasurePeriodKind } from "../contracts";
 import type { ComputeMeasureInput, QualityMeasureValueResult } from "./result";
 
 /** The measure family a code belongs to (drives dashboard grouping + which seam reads it). */
-export type MeasureFamily =
-  | "hci"
-  | "ssvi"
-  | "hvldl"
-  | "hope_derived"
-  | "operational"
-  | "cahps";
+export type MeasureFamily = "hci" | "ssvi" | "hvldl" | "hope_derived" | "operational" | "cahps";
 
 /** A pure measure calculator: a per-measure input type → the uniform result. */
 export type MeasureCalculator<I extends ComputeMeasureInput = ComputeMeasureInput> = (
@@ -250,7 +244,8 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     periodKind: ROLLING,
     activatesFy: 2027,
     calculatorVersion: "0.1.0",
-    description: "SSVI 8 — Live discharges back to the same hospice within 7 days (internal estimate)",
+    description:
+      "SSVI 8 — Live discharges back to the same hospice within 7 days (internal estimate)",
   },
   {
     code: "ssvi_metric_09",

@@ -73,7 +73,7 @@ const MS_PER_DAY = 86_400_000;
 
 /** `yyyy-mm-dd` of an ISO instant/date shifted by `days`. */
 function shiftDay(iso: string, days: number): string {
-  return new Date(Date.parse(iso.slice(0, 10) + "T00:00:00.000Z") + days * MS_PER_DAY)
+  return new Date(Date.parse(`${iso.slice(0, 10)}T00:00:00.000Z`) + days * MS_PER_DAY)
     .toISOString()
     .slice(0, 10);
 }

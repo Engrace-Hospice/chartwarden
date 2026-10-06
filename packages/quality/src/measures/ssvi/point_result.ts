@@ -51,7 +51,9 @@ export function ssviBinaryMetricResult(args: {
 }
 
 /** The SSVI points a (persisted or fresh) metric result carries; 0 when the snapshot has none. */
-export function ssviPointsOf(result: Pick<QualityMeasureValueResult, "computationSnapshot">): number {
+export function ssviPointsOf(
+  result: Pick<QualityMeasureValueResult, "computationSnapshot">,
+): number {
   const points = result.computationSnapshot?.[SSVI_POINTS_SNAPSHOT_KEY];
   return typeof points === "number" && Number.isFinite(points) ? points : 0;
 }

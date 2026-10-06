@@ -32,6 +32,7 @@ import {
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { createDischargeReader } from "../src/modules/06-admission/seams/discharge-reader";
 import { createLevelOfCarePeriodReader } from "../src/modules/06-admission/seams/level-of-care-period-reader";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
 import { createSignedEncountersReader } from "../src/modules/08-encounters/seams/readers";
@@ -549,6 +550,56 @@ describe.skipIf(!DB_URL)("F-042 — HCI indicator inputs, LIVE Postgres", () => 
       const result = computeHciIndicator02(input as never);
       expect(result.rate).toBeNull();
       expect(result.bandColor).toBe("insufficient_n");
+    });
+  });
+
+  // ── FY2027 SSVI — the two new reads, live as the NOBYPASSRLS app role ──
+  describe("SSVI reads (M8 skilled-visit days, M6 discharge counts)", () => {
+    it("skilledVisitDaysForOrg returns DISTINCT (admission, day) pairs for signed rn/lpn/msw only", async () => {
+      const a = await activate();
+      await seedEncounter(a.admissionId, a.patientId, "2026-01-17", "rn", 30);
+      await seedEncounter(a.admissionId, a.patientId, "2026-01-17", "msw", 45);
+      await seedEncounter(a.admissionId, a.patientId, "2026-01-18", "msw", 45);
+      await seedEncounter(a.admissionId, a.patientId, "2026-01-19", "chaplain", 45);
+      const days = (
+        await seams.encounters.skilledVisitDaysForOrg(ORG_A, {
+          from: PERIOD.start,
+          to: PERIOD.end,
+        })
+      )
+        .filter((d) => d.admissionId === a.admissionId)
+        .map((d) => d.serviceDate)
+        .sort();
+      expect(days).toEqual(["2026-01-17", "2026-01-18"]);
+    });
+
+    it("ssviDischargeCounts: live share, LOS > 180 and a same-hospice readmission within 7 days", async () => {
+      const reader = createDischargeReader(handle.db);
+      const window = { from: "2026-01-01", to: "2026-02-01" };
+      const before = await reader.ssviDischargeCounts(ORG_A, window);
+      const first = await activate();
+      const second = await admit();
+      // The first stay ended in a live discharge (one OPEN admission per patient is a DB rule).
+      await admin.query(
+        "UPDATE admission SET admission_at = '2025-06-01T12:00:00Z', status = 'discharged' WHERE id = $1",
+        [first.admissionId],
+      );
+      await admin.query(
+        "UPDATE admission SET patient_id = $1, admission_at = '2026-01-14T15:00:00Z' WHERE id = $2",
+        [first.patientId, second.admissionId],
+      );
+      await admin.query(
+        `INSERT INTO discharge_event (organization_id, admission_id, discharge_type, effective_at)
+         VALUES ($1, $2, 'revocation', '2026-01-10')`,
+        [ORG_A, first.admissionId],
+      );
+      const after = await reader.ssviDischargeCounts(ORG_A, window);
+      expect(after.totalDischarges - before.totalDischarges).toBe(1);
+      expect(after.liveDischarges - before.liveDischarges).toBe(1);
+      expect(after.dischargesWithLosOver180 - before.dischargesWithLosOver180).toBe(1);
+      expect(
+        after.liveDischargesReadmittedWithin7Days - before.liveDischargesReadmittedWithin7Days,
+      ).toBe(1);
     });
   });
 });

@@ -14,6 +14,11 @@
 -- from 0393 and from the amend path. Runs as the migration owner (superuser), so it sees every tenant's
 -- cap_period row. Idempotent.
 
+-- The SECURITY DEFINER bodies (this one and 0189's) run AS `cap_platform_loader`, which therefore needs USAGE on the
+-- schema. A stock database grants it to PUBLIC; a schema re-created by a test harness (or a hardened deploy that
+-- revoked PUBLIC usage) does not, and the call then fails "relation does not exist". Explicit and idempotent.
+GRANT USAGE ON SCHEMA public TO cap_platform_loader;--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION cap_platform_loader_mark_constant_in_use(p_cap_year varchar(7))
 RETURNS void
 LANGUAGE sql

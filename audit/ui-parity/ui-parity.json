@@ -1548,6 +1548,14 @@
       "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
+      "id": "billing.rate-tables",
+      "path": "/billing/rate-tables",
+      "permission": "billing.rate_table.read"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
       "id": "billing.sequestration",
       "path": "/billing/sequestration-policy",
       "permission": "billing.sequestration_policy.read"

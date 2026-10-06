@@ -42,7 +42,12 @@ function seams(overrides: Record<string, unknown> = {}) {
     levelOfCarePeriodReader: {
       chcOrGipCoverageCounts: async () => ({ numerator: 0, denominator: 12 }),
       levelOfCareDaySpans: async () => [
-        { admissionId: "a1", levelOfCare: "routine_home_care", from: "2026-01-01", to: "2026-01-11" },
+        {
+          admissionId: "a1",
+          levelOfCare: "routine_home_care",
+          from: "2026-01-01",
+          to: "2026-01-11",
+        },
       ],
       electionPeriodSpans: fail("electionPeriodSpans"),
     },

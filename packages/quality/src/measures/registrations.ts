@@ -13,19 +13,6 @@ import {
   computeHciScore,
 } from "./hci/index";
 import type { HciCompositeInput } from "./hci/index";
-// SSVI — nine metrics + the total (FY2027; internal estimate).
-import {
-  computeSsviMetric01,
-  computeSsviMetric02,
-  computeSsviMetric03,
-  computeSsviMetric04,
-  computeSsviMetric05,
-  computeSsviMetric06,
-  computeSsviMetric07,
-  computeSsviMetric08,
-  computeSsviMetric09,
-  computeSsviScore,
-} from "./ssvi/index";
 // HOPE-derived (FY2028).
 import { computeTimelyFollowUpNonPain, computeTimelyFollowUpPain } from "./hope_derived/index";
 // HVLDL.
@@ -70,6 +57,19 @@ import {
 import { MEASURE_CATALOG, registerMeasure } from "./registry";
 import type { MeasureCalculator, MeasurePeriodRuleBinding, MeasureRegistration } from "./registry";
 import type { ComputeMeasureInput } from "./result";
+// SSVI — nine metrics + the total (FY2027; internal estimate).
+import {
+  computeSsviMetric01,
+  computeSsviMetric02,
+  computeSsviMetric03,
+  computeSsviMetric04,
+  computeSsviMetric05,
+  computeSsviMetric06,
+  computeSsviMetric07,
+  computeSsviMetric08,
+  computeSsviMetric09,
+  computeSsviScore,
+} from "./ssvi/index";
 
 /**
  * Resolve the period rule for a measure `code` from its {@link MEASURE_CATALOG} descriptor. Throws loudly on
@@ -102,7 +102,8 @@ function ruleForCode(code: string): MeasurePeriodRuleBinding {
 const compositeCalculator = computeHciScore as unknown as MeasureCalculator<ComputeMeasureInput>;
 
 /** The SSVI total composes persisted metric results exactly like the HCI composite — same erasure, same reason. */
-const ssviCompositeCalculator = computeSsviScore as unknown as MeasureCalculator<ComputeMeasureInput>;
+const ssviCompositeCalculator =
+  computeSsviScore as unknown as MeasureCalculator<ComputeMeasureInput>;
 
 /**
  * Every M30 measure that has a CONCRETE pure calculator, bound to its catalog descriptor (§3.1). The HCI ten

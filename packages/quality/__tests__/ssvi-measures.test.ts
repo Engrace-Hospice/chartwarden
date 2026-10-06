@@ -8,10 +8,10 @@ import {
   SSVI_INTERNAL_ESTIMATE_NOTICE,
   SSVI_METRIC_MEASURE_CODES,
   SSVI_OUTLIER_SCORE,
-  SSVI_THRESHOLDS_FY2025_DATA as T,
   SSVI_UNAVAILABLE_MEASURE_CODES,
   SSVI_UNAVAILABLE_METRICS,
   type SsviMetricKey,
+  SSVI_THRESHOLDS_FY2025_DATA as T,
   buildMeasureRegistry,
   computeSsviMetric01,
   computeSsviMetric02,
@@ -132,7 +132,12 @@ describe("SSVI binary metrics — the point is earned on the CONCERN side, inclu
   it("metric 4: ≥ 47.5% live discharges", () => {
     const pt = (live: number) =>
       ssviPointsOf(
-        computeSsviMetric04({ ...BASE, totalDischarges: 200, liveDischarges: live, rule: r.metric_04 }),
+        computeSsviMetric04({
+          ...BASE,
+          totalDischarges: 200,
+          liveDischarges: live,
+          rule: r.metric_04,
+        }),
       );
     expect(pt(95)).toBe(1);
     expect(pt(94)).toBe(0);
@@ -355,7 +360,12 @@ describe("SSVI day reductions", () => {
   // 2026-01-03 is a Saturday, 2026-01-04 a Sunday.
   const spans = [
     { admissionId: "a1", levelOfCare: "routine_home_care", from: "2026-01-01", to: "2026-01-08" },
-    { admissionId: "a2", levelOfCare: "general_inpatient_care", from: "2026-01-01", to: "2026-01-08" },
+    {
+      admissionId: "a2",
+      levelOfCare: "general_inpatient_care",
+      from: "2026-01-01",
+      to: "2026-01-08",
+    },
   ];
 
   it("metric 7 divides weekend RHC days WITH a skilled visit by ALL RHC days", () => {
@@ -376,7 +386,12 @@ describe("SSVI day reductions", () => {
       { admissionId: "d2", levelOfCare: "routine_home_care", from: "2026-01-01", to: "2026-01-10" },
       // moved to GIP for the last day → not in the denominator
       { admissionId: "d3", levelOfCare: "routine_home_care", from: "2026-01-01", to: "2026-01-09" },
-      { admissionId: "d3", levelOfCare: "general_inpatient_care", from: "2026-01-09", to: "2026-01-11" },
+      {
+        admissionId: "d3",
+        levelOfCare: "general_inpatient_care",
+        from: "2026-01-09",
+        to: "2026-01-11",
+      },
     ];
     const out = ssviLastTwoDaysRhcWithVisit(
       [
@@ -387,7 +402,10 @@ describe("SSVI day reductions", () => {
       deathSpans,
       [{ admissionId: "d1", serviceDate: "2026-01-09" }],
     );
-    expect(out).toEqual({ decedentsWithLastTwoDaysRhc: 2, decedentsWithSkilledVisitInLastTwoDays: 1 });
+    expect(out).toEqual({
+      decedentsWithLastTwoDaysRhc: 2,
+      decedentsWithSkilledVisitInLastTwoDays: 1,
+    });
   });
 });
 
