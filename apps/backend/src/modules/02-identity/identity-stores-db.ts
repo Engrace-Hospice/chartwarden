@@ -366,7 +366,8 @@ export function createDbUserDirectory(db: DbClient): UserDirectory {
           .from(U)
           .where(eq(U.id, userId))
           .for("update");
-        if (!row) return { outcome: "not_found", memberOrganizationIds: [], revokedMemberships: [] };
+        if (!row)
+          return { outcome: "not_found", memberOrganizationIds: [], revokedMemberships: [] };
         const memberOrganizationIds = liveMembershipOrganizationIds(
           await membershipsOf(tx, userId),
         );

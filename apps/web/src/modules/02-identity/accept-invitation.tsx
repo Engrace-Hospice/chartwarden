@@ -67,7 +67,8 @@ export function AcceptInvitation(): JSX.Element {
       const signedInAs = sessionRes.data?.user?.email ?? null;
       setSessionEmail(signedInAs);
       if (!signedInAs) setPhase("needs-account");
-      else setPhase(sameEmail(signedInAs, peekRes.data?.email) ? "ready-to-accept" : "wrong-account");
+      else
+        setPhase(sameEmail(signedInAs, peekRes.data?.email) ? "ready-to-accept" : "wrong-account");
     })();
     return () => {
       active = false;
@@ -79,7 +80,10 @@ export function AcceptInvitation(): JSX.Element {
     const { error: err } = await client.POST("/api/v1/invitations/accept", { body: { token } });
     // GAP-009: the server binds the token to the invited address. The invitation is still valid (the
     // refusal does not burn it) — the fix is the right account, not "request a new one".
-    if ((err as { error?: { code?: string } } | undefined)?.error?.code === "INVITATION_EMAIL_MISMATCH") {
+    if (
+      (err as { error?: { code?: string } } | undefined)?.error?.code ===
+      "INVITATION_EMAIL_MISMATCH"
+    ) {
       setPhase("wrong-account");
       return;
     }
