@@ -251,6 +251,7 @@ import {
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
   buildM6CarePlanAddendumConsumer,
+  buildM6CoverageAddendumConsumer,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
@@ -2974,7 +2975,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
   // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum service: one instance shared by M6's routes
   // and its M7 plan-of-care consumer. Non-covered determinations come through `composeNonCoveredItemsReaders`
-  // (M7 unrelated problems today; workstream B appends M12 medications / M21 DME readers to this list).
+  // (M7 unrelated problems, M12 not-covered medication orders, M21 not-covered DME / supply requests). The M12 /
+  // M21 readers resolve through their seams on each call: those seams register later in boot.
   const m6ElectionAddendum = dbHandle
     ? createElectionAddendumService({
         db: dbHandle.db,
@@ -2982,6 +2984,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         sources: {
           nonCoveredItems: composeNonCoveredItemsReaders([
             createUnrelatedProblemItemsReader(dbHandle.db),
+            {
+              listForAdmission: (orgId, admissionId) =>
+                getSeam("NonCoveredMedicationsReader").listForAdmission(orgId, admissionId),
+            },
+            {
+              listForAdmission: (orgId, admissionId) =>
+                getSeam("NonCoveredDmeSuppliesReader").listForAdmission(orgId, admissionId),
+            },
           ]),
           diagnoses: createAddendumDiagnosesReader(dbHandle.db),
           // (c)(3) name + hospice medical record identifier, through M5's published PatientReader seam.
@@ -7008,6 +7018,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           ...(m6ElectionAddendum
             ? [
                 buildM6CarePlanAddendumConsumer({
+                  addendum: () => m6ElectionAddendum,
+                }),
+                // FY2027 — 42 CFR 418.24(d)(2): an M12 drug / M21 DME-supply coverage determination change
+                // changes the addendum's non-covered list → the same 3-day update window.
+                buildM6CoverageAddendumConsumer({
                   addendum: () => m6ElectionAddendum,
                 }),
               ]

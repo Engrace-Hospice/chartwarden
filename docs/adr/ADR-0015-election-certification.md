@@ -109,6 +109,6 @@ amended as follows; everything else in D1 stands.
 
 As built: M6 owns the versioned `election_addendum` table (migrations 0380–0382), its state machine, the
 `election_addendum_initial` / `election_addendum_update` compliance windows, the plan-of-care update path
-(`openAddendumUpdateWindow`), and automatic settlement on death, revocation or discharge (M6 spec v0.8 §2.6). The
+(`openAddendumUpdateWindow`), and automatic settlement on death, revocation or discharge (M6 spec v0.9 §2.6). The
 non-covered determinations reach M6 through the `NonCoveredItemsReader` seam (M7 problems today; M12 medications
 and M21 DME and supplies next), which is how "the non-covered DME path terminates on this addendum" is realized.

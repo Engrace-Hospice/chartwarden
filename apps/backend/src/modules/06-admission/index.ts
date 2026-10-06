@@ -19,8 +19,8 @@ import {
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
-import { createDbPhysicianAuthority } from "./physician-authority-db";
 import type { ElectionAddendumService } from "./election-addendum/service";
+import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
 import { registerElectionAddendumRoutes as _registerM6AddendumRoutes } from "./routes/election-addendum-routes";
 
@@ -37,6 +37,12 @@ export {
   buildM6CarePlanAddendumConsumer,
   decideCarePlanAddendum,
 } from "./outbox-consumers/m7-care-plan-addendum";
+export {
+  M6_COVERAGE_ADDENDUM_CONSUMER,
+  M6_COVERAGE_ADDENDUM_EVENTS,
+  buildM6CoverageAddendumConsumer,
+  decideCoverageAddendum,
+} from "./outbox-consumers/coverage-determination-addendum";
 export { registerElectionAddendumRoutes } from "./routes/election-addendum-routes";
 
 /**

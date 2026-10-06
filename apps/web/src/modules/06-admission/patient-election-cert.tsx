@@ -26,9 +26,9 @@ import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { CtiDetailModal } from "./cti-detail-modal";
-import type { F2fEncounterLocation } from "./election-certification-api";
 import { ADDENDUM_WINDOW_LABEL } from "./election-addendum-format";
 import { ElectionAddendumPanel } from "./election-addendum-panel";
+import type { F2fEncounterLocation } from "./election-certification-api";
 import { ElectionStatementDetailModal } from "./election-statement-detail-modal";
 import { FaceToFaceRail } from "./face-to-face-rail";
 

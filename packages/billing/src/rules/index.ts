@@ -1,7 +1,7 @@
 // @wardenx/billing — M23 §11.A validation-framework barrel (D1, spec §4.5). Re-exports the pure rule
 // MODEL (the `Rule` interface, the `ValidationContext` aggregate snapshot, `RuleResult` + its
 // `pass`/`fail`/`skip` constructors, the severity/category unions, the context helpers), the rule
-// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 20 platform-default rules
+// REGISTRY (`BillingRuleRegistry` + `runRules` + `summarizeRuleRun`), and the 21 platform-default rules
 // assembled into a freshly-built default registry. PURE DOMAIN throughout — no Fastify, no Drizzle/DB, no
 // BullMQ, no `@wardenx/db`, no `getSeam`, no clock; no PHI.
 //
@@ -121,7 +121,7 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
 ]);
 
 /**
- * Build a fresh, UN-frozen registry pre-populated with the 20 platform-default rules. The Phase-3 boot
+ * Build a fresh, UN-frozen registry pre-populated with the 21 platform-default rules. The Phase-3 boot
  * calls this, registers any MAC-profile / tenant-overlay rules, then `freeze()`s. A factory (not a shared
  * singleton) so each composition / test gets an isolated, mutable-until-frozen registry.
  */
