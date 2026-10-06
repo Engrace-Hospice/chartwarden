@@ -129,6 +129,9 @@ export function MedicationActionModal({
   const [reason, setReason] = useState<DiscontinueReason>(DISCONTINUE_REASONS[0]);
   const [notes, setNotes] = useState("");
   const [namedPrescriberMdmId, setNamedPrescriberMdmId] = useState("");
+  // GAP-036: shown only after the server answers 422 ALLERGY_CHECK_NOT_PASSED (a drug-allergy conflict).
+  const [allergyConflict, setAllergyConflict] = useState(false);
+  const [allergyOverrideReason, setAllergyOverrideReason] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -138,6 +141,8 @@ export function MedicationActionModal({
     setAttestation("");
     setNotes("");
     setNamedPrescriberMdmId("");
+    setAllergyConflict(false);
+    setAllergyOverrideReason("");
   }, [open, prescriberRoles]);
 
   if (!open) return null;
@@ -150,7 +155,8 @@ export function MedicationActionModal({
   const blocked =
     (needsDiscipline && discipline === "") ||
     (action === "verbal" && namedPrescriberMdmId.trim() === "") ||
-    (needsAttestation && attestation.trim().length < min);
+    (needsAttestation && attestation.trim().length < min) ||
+    (allergyConflict && allergyOverrideReason.trim() === "");
 
   async function submit(): Promise<void> {
     setBusy(true);
@@ -158,7 +164,12 @@ export function MedicationActionModal({
     let res: WriteResult<MedicationOrderView>;
     switch (action) {
       case "request-signature":
-        res = await requestSignature(client, orderId, discipline);
+        res = await requestSignature(
+          client,
+          orderId,
+          discipline,
+          allergyConflict ? allergyOverrideReason.trim() : undefined,
+        );
         break;
       case "sign":
         // GAP-035: the server derives the signer's discipline and standing from the session and the order.
@@ -188,6 +199,9 @@ export function MedicationActionModal({
     }
     setBusy(false);
     if (!res.ok) {
+      if (action === "request-signature" && res.code === "ALLERGY_CHECK_NOT_PASSED") {
+        setAllergyConflict(true);
+      }
       setError(res.message);
       return;
     }
@@ -233,6 +247,15 @@ export function MedicationActionModal({
             value={cosignerRole}
             onChange={(e) => setCosignerRole(e.target.value as CosignerRole)}
             options={COSIGNER_ROLES.map((r) => ({ value: r, label: humanize(r) }))}
+          />
+        ) : null}
+
+        {allergyConflict ? (
+          <TextAreaField
+            label="Allergy override reason"
+            value={allergyOverrideReason}
+            onChange={(e) => setAllergyOverrideReason(e.target.value)}
+            rows={3}
           />
         ) : null}
 

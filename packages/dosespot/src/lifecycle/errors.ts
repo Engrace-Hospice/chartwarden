@@ -18,7 +18,7 @@ export const M12_ERROR_STATUS = {
   // §2.2 `requestSignature` — the M12 allergy interaction check has not passed.
   ALLERGY_CHECK_NOT_PASSED: 422,
   // §2.2 `requestSignature` — the SUD-treatment-medication consent gate (§7.8 / M39) is not satisfied.
-  SUD_CONSENT_REQUIRED: 412,
+  SUD_CONSENT_REQUIRED: 422,
   // §2.2 / §2.4 D18 — the tenant's `epcs_certification_status` is not `'certified'`; controlled-substance
   // prescribing is blocked for this tenant.
   EPCS_NOT_CERTIFIED: 403,

@@ -8,6 +8,7 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { registerEmarAbacPredicates as _registerM13Abac } from "./abac-predicates";
+import { toAdministrationIdentity } from "./administration-identity";
 import { type EmarWriteOutboxPort, createDbEmarBackend } from "./emar-route-service-db";
 import { registerEmarRoutes as _registerM13Routes } from "./routes/emar-routes";
 
@@ -41,20 +42,7 @@ export function mountEmarRoutes(
           medicationOrderId,
         );
         if (ctx === null) return null;
-        const policy = ctx.order.sigStructured.ivContinuousPolicy;
-        return {
-          patientId: ctx.order.patientId,
-          admissionId: ctx.order.admissionId,
-          drugName: ctx.order.drugName,
-          route: ctx.order.route,
-          ivContinuousPolicy: policy ? { minRate: policy.minRate, maxRate: policy.maxRate } : null,
-          allowAdministration: ctx.allowAdministration,
-          blockedReasons: ctx.blockedReasons,
-          // GAP-005 — this adapter used to drop both, leaving the request body as the only answer to
-          // "is this a controlled substance?". M12's order is the authority.
-          medClass: ctx.order.medClass,
-          isControlledSubstance: ctx.order.isControlledSubstance,
-        };
+        return toAdministrationIdentity(ctx);
       },
     }),
   );

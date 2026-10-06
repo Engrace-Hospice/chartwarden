@@ -112,7 +112,8 @@ export interface ResumePlanInput {
   readonly expectedVersion?: number;
 }
 
-/** Route 8 — D7 early close (≥40-char narrative; the cosign lands on route 9). */
+/** Route 8 — D7 early-close REQUEST (≥40-char narrative). It only records a pending request; route 9, by a
+ *  different supervisor, performs the transition. */
 export interface CloseEarlyInput {
   readonly expectedVersion?: number;
   readonly reason: string;
@@ -312,7 +313,7 @@ export interface M16WriteService {
     actor: M16WriteActor,
     planId: string,
     input: CloseEarlyInput,
-  ): Promise<BereavementClosureView>;
+  ): Promise<BereavementPlanDetail>;
   cosignClose(
     actor: M16WriteActor,
     planId: string,

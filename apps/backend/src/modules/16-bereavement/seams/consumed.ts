@@ -15,6 +15,7 @@
 // `BereavementRiskTierProvider`, …) land in M16-T05.
 import type {
   AdmissionStatusReader,
+  BereavementEncounterReader,
   DeathDischargeReader,
   MswRiskFactorReader,
   PatientReader,
@@ -63,4 +64,11 @@ export function getScaleSeriesProvider(): ScaleSeriesProvider {
  */
 export function getVolunteerComplianceProvider(): VolunteerComplianceProvider {
   return getSeam("VolunteerComplianceProvider");
+}
+
+/** GAP-049 — M16 CONSUMES M8's BereavementEncounterReader: the signed / patient / type facts behind a
+ *  completed in-person visit's `sourceEncounterId`. Fail-CLOSED — an unbound seam is the deny-stub, which
+ *  `verifySourceEncounter` turns into a 422. */
+export function getBereavementEncounterReader(): BereavementEncounterReader {
+  return getSeam("BereavementEncounterReader");
 }

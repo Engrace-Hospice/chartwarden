@@ -40,6 +40,9 @@ import {
 } from "@wardenx/fhir";
 import type { FhirClientId, FhirClientSessionJti } from "@wardenx/types";
 
+import type { FhirBaaStatusView } from "../seams/index";
+import { BAA_NOT_IN_FORCE_CODE, isBaaInForce, isIpAllowed } from "./client-gates";
+import type { FhirClientRateLimiter } from "./client-rate-limiter";
 import type { FhirGatewayStore, FhirTokenClientView } from "./store";
 
 /** Resolves a registered client's `jwks_uri` to its published key set. */
@@ -155,7 +158,20 @@ export function createHttpFhirJwksFetcher(opts: { cacheTtlMs?: number } = {}): F
 /** An OAuth error body, as the token endpoint must render it (RFC 6749 §5.2). */
 export interface FhirTokenError {
   readonly status: number;
-  readonly body: { readonly error: string; readonly error_description: string };
+  readonly body: {
+    readonly error: string;
+    readonly error_description: string;
+    /** Only set for a BAA refusal, which is reported AFTER the credential verified (no oracle). */
+    readonly wardenx_code?: string;
+  };
+  /** Seconds to wait; set on a 429 so the route can emit `Retry-After`. */
+  readonly retryAfterSeconds?: number;
+  /** Set when the BAA gate refused: the route writes the structured server-side log line from it. */
+  readonly baaFailure?: {
+    readonly clientId: string;
+    readonly organizationId: string;
+    readonly contractReference: string;
+  };
   /** The precise internal reason, for the server log — never sent to the client (see header). */
   readonly logReason: string;
 }
@@ -188,6 +204,13 @@ export interface FhirTokenMintDeps {
    */
   readonly tokenEndpointUrl?: string;
   readonly nowMs?: () => number;
+  /**
+   * GAP-083 — the M40 BAA gate. UNBOUND ⇒ no token is minted (fail closed): a client whose BAA cannot be
+   * shown to be in force must not be handed a credential for PHI egress.
+   */
+  readonly baa?: Pick<FhirBaaStatusView, "isBaaActive">;
+  /** D16 — per-client token bucket for the mint (absent ⇒ unthrottled, as before; production binds it). */
+  readonly rateLimiter?: FhirClientRateLimiter;
 }
 
 /** The token-request fields, after body validation. */
@@ -303,6 +326,10 @@ export async function mintFhirToken(
     if (client.status !== "active") {
       return { ok: false, error: INVALID_CLIENT(`client status is ${client.status}`) };
     }
+    // GAP-083 / D12 — the IP allowlist binds the mint too; `request.ip` is the trusted-proxy-derived peer.
+    if (!isIpAllowed(request.ip, client.ipAllowlist)) {
+      return { ok: false, error: INVALID_CLIENT("source ip is outside the client's allowlist") };
+    }
     if (client.jwksUri === null || client.jwksUri.length === 0) {
       return { ok: false, error: INVALID_CLIENT("client has no registered jwks_uri") };
     }
@@ -348,6 +375,10 @@ export async function mintFhirToken(
     if (client.status !== "active") {
       return { ok: false, error: INVALID_CLIENT(`client status is ${client.status}`) };
     }
+    // GAP-083 / D12 — the IP allowlist binds the mint too; `request.ip` is the trusted-proxy-derived peer.
+    if (!isIpAllowed(request.ip, client.ipAllowlist)) {
+      return { ok: false, error: INVALID_CLIENT("source ip is outside the client's allowlist") };
+    }
     const presented = sha256Hex(secret);
     // Every candidate is compared, without short-circuiting on the first match, so the time taken does
     // not reveal WHICH credential matched — during a rotation overlap that would leak whether the
@@ -358,6 +389,56 @@ export async function mintFhirToken(
     );
     if (!matched) return { ok: false, error: INVALID_CLIENT("api-key secret did not match") };
     tokenKeyFingerprint = presented;
+  }
+
+  // D16 — the mint is throttled per client, AFTER the credential verified so an unauthenticated caller
+  // cannot drain a real client's allowance. A separate key from reads: a read flood must not block a
+  // client from refreshing its token, and a mint loop must not starve its reads.
+  if (deps.rateLimiter !== undefined) {
+    const verdict = await deps.rateLimiter.consume(`mint:${client.id}`, client.rateLimitRps);
+    if (!verdict.allowed) {
+      return {
+        ok: false,
+        error: {
+          status: 429,
+          body: {
+            error: "temporarily_unavailable",
+            error_description: "token requests for this client are rate limited; retry later",
+          },
+          retryAfterSeconds: verdict.retryAfterSeconds,
+          logReason: "token mint rate limit exceeded for client",
+        },
+      };
+    }
+  }
+
+  // GAP-083 / D12 — BAA after the credential verified (so an unauthenticated caller cannot drive the
+  // lookup), before any token exists.
+  const baaOk = await isBaaInForce(deps.baa, {
+    organizationId: client.organizationId,
+    contractReference: client.baaContractReference,
+    asOf: new Date(nowMs).toISOString(),
+  });
+  if (!baaOk) {
+    // The caller has proven the credential, so naming the cause leaks nothing and tells the partner (and
+    // the operator reading logs) this is a contract problem, not a bad secret.
+    return {
+      ok: false,
+      error: {
+        ...INVALID_CLIENT(`client BAA is not in force (${BAA_NOT_IN_FORCE_CODE})`),
+        body: {
+          error: "invalid_client",
+          error_description:
+            "the presenting client could not be authenticated: no BAA is in force for this client",
+          wardenx_code: BAA_NOT_IN_FORCE_CODE,
+        },
+        baaFailure: {
+          clientId: client.id,
+          organizationId: client.organizationId,
+          contractReference: client.baaContractReference,
+        },
+      },
+    };
   }
 
   // ── §2.3 scope resolution: subset-or-refuse, never a silent down-scope ───────────────────────────

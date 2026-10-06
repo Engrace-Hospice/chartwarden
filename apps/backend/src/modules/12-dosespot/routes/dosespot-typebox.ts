@@ -82,6 +82,12 @@ export const UpdateMedicationOrderRequest = Type.Object({
 
 export const RequestSignatureRequest = Type.Object({
   signerDiscipline: Type.String({ minLength: 1, maxLength: 64 }),
+  /**
+   * GAP-036 — acknowledge an allergy conflict with a written reason (spec §6 "Allergy banner"). The minimum
+   * length (10, trimmed) is enforced by the gate so a short reason gets the 422 that names the rule; a
+   * conflict still needs a prescriber-eligible actor with a FRESH step-up (resolved from the session).
+   */
+  allergyOverrideReason: Type.Optional(Type.String({ maxLength: 1000 })),
 });
 
 /** GAP-035 — the signer's discipline and ordering-physician standing are decided server-side (session roles +

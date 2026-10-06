@@ -35,7 +35,12 @@ import {
 } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-import { getFhirTerminologyProvider } from "../seams/index";
+import { type FhirBaaStatusView, getFhirTerminologyProvider } from "../seams/index";
+import { BAA_NOT_IN_FORCE_CODE, isBaaInForce, isIpAllowed } from "./client-gates";
+import {
+  type FhirClientRateLimiter,
+  createInMemoryFhirClientRateLimiter,
+} from "./client-rate-limiter";
 import { codeSystemIdForUri } from "./code-system-uris";
 import {
   ExportQuery,
@@ -85,6 +90,10 @@ export interface FhirR4RouteDeps {
   readonly replay?: FhirAssertionReplayGuard;
   /** R3 — this endpoint's absolute URL, the `aud` an assertion must carry. */
   readonly tokenEndpointUrl?: string;
+  /** GAP-083 — the M40 BAA gate for mint + reads. UNBOUND ⇒ every client is refused (fail closed). */
+  readonly baa?: Pick<FhirBaaStatusView, "isBaaActive">;
+  /** GAP-083 / D16 — per-client token bucket. Defaults to a per-process bucket. */
+  readonly rateLimiter?: FhirClientRateLimiter;
 }
 
 /**
@@ -108,6 +117,7 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
   const { store } = deps;
   const now = deps.now ?? (() => new Date().toISOString());
   const replay = deps.replay ?? createInMemoryFhirReplayGuard();
+  const rateLimiter = deps.rateLimiter ?? createInMemoryFhirClientRateLimiter();
   const auditRead = async (envelope: FhirReadDisclosureEnvelope): Promise<void> => {
     // Defaults to the LEDGER (F-035). A failure to record must not be swallowed silently, but neither
     // may it un-serve a read the client is entitled to and has already been authorised for: the
@@ -168,16 +178,55 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
       return null;
     }
     const ctx = await store.resolveBearer(token);
-    if (ctx === null || ctx.clientStatus !== "active") {
+    // GAP-083 / D12 (§4.7 `fhir_client_active`): status, IP allowlist, BAA. `request.ip` is Fastify's
+    // trusted-proxy-derived peer, never a raw `X-Forwarded-For`. Status/IP failures stay the generic 401;
+    // a BAA failure (reached only for an active, allowlisted client holding a live session) carries the
+    // distinct BAA_NOT_IN_FORCE code so it is not mistaken for a bad credential.
+    const sendBad = async (message: string, code: string): Promise<null> => {
       await reply
         .code(401)
+        .header("content-type", FHIR_JSON_CONTENT_TYPE)
+        .send(operationOutcome("error", "security", message, code));
+      return null;
+    };
+    if (
+      ctx === null ||
+      ctx.clientStatus !== "active" ||
+      !isIpAllowed(request.ip, ctx.ipAllowlist)
+    ) {
+      return sendBad("the bearer token is invalid or expired", "FHIR_BAD_BEARER");
+    }
+    const baaOk = await isBaaInForce(deps.baa, {
+      organizationId: ctx.organizationId,
+      contractReference: ctx.baaContractReference,
+      asOf: now(),
+    });
+    if (!baaOk) {
+      request.log.warn(
+        {
+          code: BAA_NOT_IN_FORCE_CODE,
+          clientId: ctx.clientId,
+          organizationId: ctx.organizationId,
+          contractReference: ctx.baaContractReference,
+        },
+        "M28: FHIR read refused, client BAA is not in force",
+      );
+      return sendBad("no BAA is in force for this client", BAA_NOT_IN_FORCE_CODE);
+    }
+    // D16 — per-client token bucket, AFTER authentication so an unauthenticated caller cannot drain a
+    // client's allowance.
+    const verdict = await rateLimiter.consume(ctx.clientId, ctx.rateLimitRps);
+    if (!verdict.allowed) {
+      await reply
+        .code(429)
+        .header("retry-after", String(verdict.retryAfterSeconds))
         .header("content-type", FHIR_JSON_CONTENT_TYPE)
         .send(
           operationOutcome(
             "error",
-            "security",
-            "the bearer token is invalid or expired",
-            "FHIR_BAD_BEARER",
+            "throttled",
+            "this client has exceeded its request rate",
+            "FHIR_RATE_LIMITED",
           ),
         );
       return null;
@@ -245,6 +294,8 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
           },
         },
         replay,
+        baa: deps.baa,
+        rateLimiter,
         tokenEndpointUrl: deps.tokenEndpointUrl,
         nowMs: () => Date.parse(now()),
       },
@@ -267,6 +318,16 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
         { reason: result.error.logReason, clientId: body.client_id },
         "M28 R3: token request refused",
       );
+      if (result.error.baaFailure !== undefined) {
+        // Structured, secret-free: client id, org and the reference that failed to resolve.
+        request.log.warn(
+          { code: BAA_NOT_IN_FORCE_CODE, ...result.error.baaFailure },
+          "M28 R3: token mint refused, client BAA is not in force",
+        );
+      }
+      if (result.error.retryAfterSeconds !== undefined) {
+        reply.header("retry-after", String(result.error.retryAfterSeconds));
+      }
       reply.code(result.error.status);
       return result.error.body;
     }

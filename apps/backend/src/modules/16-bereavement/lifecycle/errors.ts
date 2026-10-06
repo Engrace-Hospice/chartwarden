@@ -30,6 +30,9 @@ export const M16_ERROR_STATUS = {
   // Closure (§2.2 / D7 / D6)
   EARLY_CLOSE_REASON_TOO_SHORT: 422,
   EARLY_CLOSE_COSIGN_REQUIRED: 412,
+  EARLY_CLOSE_SELF_COSIGN: 403,
+  EARLY_CLOSE_ALREADY_REQUESTED: 409,
+  EARLY_CLOSE_NOT_REQUESTED: 409,
   NOT_ALL_CONTACTS_OPTED_OUT: 409,
   BEREAVEMENT_WINDOW_STILL_OPEN: 409,
   LEGAL_HOLD_ACTIVE: 409,
@@ -51,6 +54,11 @@ export const M16_ERROR_STATUS = {
   OUTREACH_KIND_NOT_PERMITTED: 422,
   SOURCE_ENCOUNTER_REQUIRED: 422,
   SOURCE_ENCOUNTER_FORBIDDEN: 422,
+  /** GAP-049 — the encounter is unknown, unsigned, not a `bereavement_contact`, another patient's, or
+   *  could not be verified (an unbound/erroring M8 seam fails closed). */
+  SOURCE_ENCOUNTER_INVALID: 422,
+  /** GAP-049 — the completion's kind differs from the kind the outreach row was scheduled as. */
+  OUTREACH_KIND_MISMATCH: 409,
   OUTREACH_NOT_YET_OVERDUE: 409,
   LATE_ATTEMPT_GRACE_EXPIRED: 409,
   CONTACT_LOG_REQUIRED: 422,

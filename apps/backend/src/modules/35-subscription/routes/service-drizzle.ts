@@ -24,6 +24,7 @@ import {
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
+import { redeemPromoInTx } from "./promo-redemption";
 import type {
   AckView,
   AddMeterArgs,
@@ -842,7 +843,10 @@ export function buildDrizzleM35RouteService(
     },
 
     async applyPromoTenant(actor, promoCode): Promise<PromoApplicationView> {
-      return withOrgContext(db, ctxWrite(actor), async (tx) => {
+      // GAP-099 — the promo is a platform-shared catalog row `wardenx_app` can only SELECT, so the lock +
+      // count increment run on the platform tx. The subscription is derived HERE from the verified actor
+      // org (never from the request), and the application is written for that org explicitly.
+      return platform(async (tx) => {
         const [sub] = await tx
           .select()
           .from(S)
@@ -850,22 +854,16 @@ export function buildDrizzleM35RouteService(
           .orderBy(desc(S.startedAt))
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
-        const [promo] = await tx.select().from(PROMO).where(eq(PROMO.code, promoCode)).limit(1);
-        if (!promo || !promo.isActive) throw new NotFoundError("promo code not found or inactive");
         if (sub.status !== "active" && sub.status !== "trialing") {
           throw new ConflictError("subscription is not in a promo-eligible state");
         }
-        const [app] = await tx
-          .insert(PAPP)
-          .values({
-            organizationId: actor.organizationId,
-            subscriptionId: sub.id,
-            promoCodeId: promo.id,
-            appliedByMembershipId: actor.membershipId,
-            startedAt: now(),
-          })
-          .returning();
-        if (!app) throw new WardenXError("PERSIST_FAILED", "the write returned no row", 500);
+        const { application: app, promoCode: code } = await redeemPromoInTx(tx, {
+          code: promoCode,
+          organizationId: actor.organizationId,
+          subscriptionId: sub.id,
+          appliedByMembershipId: actor.membershipId,
+          now: now(),
+        });
         await emit(
           tx,
           "m35.promo.applied",
@@ -873,7 +871,7 @@ export function buildDrizzleM35RouteService(
             applicationId: app.id,
             organizationId: actor.organizationId,
             subscriptionId: sub.id,
-            promoCode: promo.code,
+            promoCode: code,
             appliedByMembershipId: actor.membershipId,
           },
           actor.organizationId,
@@ -883,7 +881,7 @@ export function buildDrizzleM35RouteService(
         return {
           applicationId: app.id,
           subscriptionId: sub.id,
-          promoCode: promo.code,
+          promoCode: code,
           applied: true,
         };
       });
@@ -1305,19 +1303,13 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
         if (!sub) throw new NotFoundError("subscription not found");
-        const [promo] = await tx.select().from(PROMO).where(eq(PROMO.code, promoCode)).limit(1);
-        if (!promo || !promo.isActive) throw new NotFoundError("promo code not found or inactive");
-        const [app] = await tx
-          .insert(PAPP)
-          .values({
-            organizationId: sub.organizationId,
-            subscriptionId: sub.id,
-            promoCodeId: promo.id,
-            appliedByMembershipId: actor.membershipId,
-            startedAt: now(),
-          })
-          .returning();
-        if (!app) throw new WardenXError("PERSIST_FAILED", "the write returned no row", 500);
+        const { application: app, promoCode: code } = await redeemPromoInTx(tx, {
+          code: promoCode,
+          organizationId: sub.organizationId,
+          subscriptionId: sub.id,
+          appliedByMembershipId: actor.membershipId,
+          now: now(),
+        });
         await emit(
           tx,
           "m35.promo.applied",
@@ -1325,7 +1317,7 @@ export function buildDrizzleM35RouteService(
             applicationId: app.id,
             organizationId: sub.organizationId,
             subscriptionId: sub.id,
-            promoCode: promo.code,
+            promoCode: code,
             appliedByMembershipId: actor.membershipId,
           },
           sub.organizationId,
@@ -1335,7 +1327,7 @@ export function buildDrizzleM35RouteService(
         return {
           applicationId: app.id,
           subscriptionId: sub.id,
-          promoCode: promo.code,
+          promoCode: code,
           applied: true,
         };
       });

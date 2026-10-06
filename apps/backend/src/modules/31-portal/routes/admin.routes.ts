@@ -1,7 +1,8 @@
 // apps/backend/src/modules/31-portal/routes/admin.routes.ts — M31 (§4.1) the STAFF-side admin surface:
 // magic-link invitations, portal-account lifecycle (suspend/reinstate/roster/grants/audit), the telehealth
-// visit roster + compliance halt, and the engagement-scoped auditor view. These run under the standard
-// staff session class and gate on `inOrg` (the org-scoped floor; see ./guards on the caseload note).
+// visit roster + compliance halt, and the engagement-scoped auditor view. The org-level rows gate on `inOrg`
+// (the org-scoped floor; see ./guards); the per-patient invitation routes gate on `caseload_or_scope`
+// (./invitation-scope) and the auditor view on `portal_engagement_scope` (GAP-093).
 //
 // The account roster / grant list / telehealth roster read the owned tables through the Drizzle store — real
 // and RLS-scoped. Invitation ISSUANCE binds M2's collaborator-invite primitive + the T03 `issueInvitation`
@@ -9,14 +10,24 @@
 // magic-link is accepted and the tenant DEK cipher (M1) encrypts the contact PHI, so this route does not
 // write plaintext into the `*_cipher` columns. The §164.528 audit view is M4's disclosure trail (read via
 // M4, empty here until the M4 read seam is bound).
-import { WardenXError } from "@wardenx/types";
+import { ForbiddenError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { resolveInvitationTtlMs } from "../lifecycle/invitation";
 import { actorOf } from "./actor";
+import {
+  AUDITOR_VIEW_WINDOW_DAYS,
+  resolveAuditorEngagementView,
+  seamEngagementReader,
+} from "./auditor-engagement";
 import { requireIdempotencyKey } from "./concurrency";
 import { rejectOffsetPagination } from "./concurrency";
-import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
+import { ABAC_ENGAGEMENT_SCOPE, ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
+import {
+  invitationPatientScope,
+  patientFromBody,
+  patientsFromAccountGrants,
+} from "./invitation-scope";
 import {
   AccountSuspendRequest,
   InviteBereavedRequest,
@@ -52,17 +63,21 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     return deps.reasonCipher.encrypt(organizationId, reason);
   };
 
+  // GAP-093 — the invitation's patient is authorized through `caseload_or_scope`; the handler re-asserts.
+  const issueScope = invitationPatientScope("portal.invitation.issue", patientFromBody);
+  const inviteBereavedScope = invitationPatientScope(
+    "portal.invitation.invite_bereaved",
+    patientsFromAccountGrants(store),
+  );
+
   // ── invitations ──────────────────────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/admin/portal-invitations",
     {
-      preHandler: [
-        P("portal.invitation.issue"),
-        ABAC_IN_ORG("portal.invitation.issue"),
-        IDEMPOTENT,
-      ],
+      preHandler: [P("portal.invitation.issue"), issueScope, IDEMPOTENT],
     },
     async (request, reply) => {
+      await issueScope(request, reply);
       const actor = actorOf(request);
       const body = parse(PortalInvitationIssueRequest, request.body);
       const ttlMs = resolveInvitationTtlMs();
@@ -104,13 +119,10 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   app.post(
     "/api/v1/admin/portal-accounts/:id/invite-bereaved",
     {
-      preHandler: [
-        P("portal.invitation.invite_bereaved"),
-        ABAC_IN_ORG("portal.invitation.invite_bereaved"),
-        IDEMPOTENT,
-      ],
+      preHandler: [P("portal.invitation.invite_bereaved"), inviteBereavedScope, IDEMPOTENT],
     },
     async (request, reply) => {
+      await inviteBereavedScope(request, reply);
       actorOf(request);
       const body = parse(InviteBereavedRequest, request.body);
       void body;
@@ -272,6 +284,7 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
       const { id } = request.params as { id: string };
       await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, id, {
         recordingEnabled: false,
+        recordingRequested: false, // CHECK telehealth_visit_recording_requires_enabled
       });
       return { ok: true };
     },
@@ -283,16 +296,38 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     {
       preHandler: [
         P("portal.engagement.read_auditor"),
-        ABAC_IN_ORG("portal.engagement.read_auditor"),
+        ABAC_ENGAGEMENT_SCOPE("portal.engagement.read_auditor"),
       ],
       config: { auditRead: { resourceKind: "portal_engagement", list: false } },
     },
     async (request) => {
       const actor = actorOf(request);
       const { engagementId } = request.params as { engagementId: string };
-      // The engagement id names a patient in M3's engagement scope; the resolver reads the owned-table
-      // aggregates for it (behavioural counts are M4's, exposed as 0 here).
-      return store.engagement.engagementForPatient(actor.organizationId, engagementId, 90);
+      // GAP-093(d) — the route names an ENGAGEMENT. Re-assert (service layer) that it is the session's own,
+      // then resolve what it covers through M3's reader and read ONLY those patients' owned-table
+      // aggregates (behavioural counts are M4's, exposed as 0 here). An unreadable / not-live engagement
+      // is a 403, never a wider answer.
+      const sessionEngagementId = request.context.attributes?.engagementId;
+      if (actor.sessionClass !== "auditor" || sessionEngagementId !== engagementId) {
+        throw new ForbiddenError("auditor engagement scope required");
+      }
+      let view: Awaited<ReturnType<typeof resolveAuditorEngagementView>> = null;
+      try {
+        view = await resolveAuditorEngagementView({
+          organizationId: actor.organizationId,
+          engagementId,
+          auditorUserId: actor.userId,
+          at: (deps.now ?? (() => new Date()))(),
+          windowDays: AUDITOR_VIEW_WINDOW_DAYS,
+          reader: deps.engagementReader ?? seamEngagementReader,
+          store,
+        });
+      } catch (err) {
+        // An unbound / erroring M3 denies the auditor view (fail closed), loudly.
+        request.log.warn({ err, engagementId }, "M31 auditor engagement coverage unreadable");
+      }
+      if (!view) throw new ForbiddenError("auditor engagement not active");
+      return view;
     },
   );
 }

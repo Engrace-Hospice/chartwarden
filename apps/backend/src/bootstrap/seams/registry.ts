@@ -21,11 +21,13 @@ import {
   aiPromptRegistryDenyStub,
   aiTokenMeterProviderDenyStub,
   alertEmitterDenyStub,
+  auditorEngagementReaderDenyStub,
   auditorSessionMinterDenyStub,
   baaStatusProviderDenyStub,
   bereavedPortalScopeProviderDenyStub,
   bereavementAssignmentReaderDenyStub,
   bereavementComplianceProviderDenyStub,
+  bereavementEncounterReaderDenyStub,
   bereavementOutreachProviderDenyStub,
   bereavementPlanProviderDenyStub,
   bereavementRiskFactorsProviderDenyStub,
@@ -121,6 +123,7 @@ import {
   organizationReaderDenyStub,
   patientAddressReaderDenyStub,
   patientAdmissionClearanceReaderDenyStub,
+  patientAllergyReaderDenyStub,
   patientCaregiverReaderDenyStub,
   patientCounterProviderDenyStub,
   patientCoverageReaderDenyStub,
@@ -246,6 +249,13 @@ export const REQUIRED_SEAMS = [
   // M5 (§3.5) — GAP-061: the sex-class + active-privacy-flag read M37's shared-room occupancy gate
   // consults before `assignBed`. PHI: a patient's sex and privacy-category flags; M5 registers a real
   // impl over `patient` + `patient_privacy_flag_snapshot` at boot.
+  // M5 — GAP-036: the allergy list M12's requestSignature allergy gate reads. PHI.
+  {
+    key: "PatientAllergyReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientAllergyReaderDenyStub,
+  },
   {
     key: "PatientPrivacyFlagReader",
     ownerModule: 5,
@@ -690,8 +700,20 @@ export const REQUIRED_SEAMS = [
     denyStub: admissionStatusReaderDenyStub,
   },
   { key: "PatientSitingReader", ownerModule: 6, phi: true, denyStub: patientSitingReaderDenyStub },
+  {
+    key: "BereavementEncounterReader",
+    ownerModule: 8,
+    phi: true,
+    denyStub: bereavementEncounterReaderDenyStub,
+  },
   // phi: FALSE — membership/location ids only, no patient reference.
   { key: "SupervisorReader", ownerModule: 3, phi: false, denyStub: supervisorReaderDenyStub },
+  {
+    key: "AuditorEngagementReader",
+    ownerModule: 3,
+    phi: false,
+    denyStub: auditorEngagementReaderDenyStub,
+  },
   {
     key: "AdmissionCensusReader",
     ownerModule: 6,

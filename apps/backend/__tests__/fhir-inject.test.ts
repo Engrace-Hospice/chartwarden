@@ -166,6 +166,7 @@ const API_KEY_DIGEST = createHash("sha256").update(API_KEY_SECRET, "utf8").diges
 interface MakeServerOptions {
   readonly tokenEndpointUrl?: string;
   readonly disclosureSink?: FhirReadDisclosureEnvelope[];
+  readonly baa?: { isBaaActive: (input: { contractReference: string }) => Promise<boolean> };
 }
 
 function makeServer(options: MakeServerOptions = {}) {
@@ -248,6 +249,9 @@ function makeServer(options: MakeServerOptions = {}) {
   mountM28Routes(app, {
     store,
     now: () => NOW,
+    // GAP-083 — an absent BAA gate fails closed; these cases are about auth/scope/shape, so the partner's
+    // BAA is in force (the BAA-denial cases live in gap-083-m28-client-enforcement.test.ts).
+    baa: options.baa ?? { isBaaActive: async () => true },
     ...(options.tokenEndpointUrl ? { tokenEndpointUrl: options.tokenEndpointUrl } : {}),
   });
   return { app, store };
@@ -1060,5 +1064,96 @@ describe("M28-fhir-inject — admin: tenant config (R37-R39)", () => {
     });
     expect(rotate.statusCode).toBe(403);
     await app.close();
+  });
+});
+
+// ── GAP-083 follow-up — the fail-closed BAA gate made operable (admin surface) ───────────────────────
+describe("M28-fhir-inject — admin: BAA operability (GAP-083 follow-up)", () => {
+  const proposal = (over: Record<string, unknown> = {}) => ({
+    name: "Partner EHR Co",
+    type: "api_key",
+    allowedScopes: ["system/Patient.read"],
+    tier: "tier-2",
+    baaContractReference: "baa-ref-001",
+    ...over,
+  });
+  const post = async (
+    app: ReturnType<typeof makeServer>["app"],
+    payload: Record<string, unknown>,
+  ) => await app.inject({ method: "POST", url: "/api/v1/fhir/clients", headers: SUPER, payload });
+
+  it("create refuses 422 BAA_NOT_IN_FORCE when the reference has no in-force contract", async () => {
+    const { app } = makeServer({ baa: { isBaaActive: async () => false } });
+    const res = await post(app, proposal());
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json())).toContain("BAA_NOT_IN_FORCE");
+    await app.close();
+  });
+
+  it("create fails closed (503, not 201) when the M40 seam throws", async () => {
+    const { app } = makeServer({
+      baa: {
+        isBaaActive: async () => {
+          throw new Error("m40 down");
+        },
+      },
+    });
+    const res = await post(app, proposal());
+    expect(res.statusCode).toBe(503);
+    await app.close();
+  });
+
+  it("approve re-checks the BAA at approval time: a contract that lapsed after the proposal blocks activation", async () => {
+    let inForce = true;
+    const { app, store } = makeServer({ baa: { isBaaActive: async () => inForce } });
+    const create = await post(app, proposal());
+    expect(create.statusCode).toBe(201);
+    const clientId = create.json().client.id as string;
+    inForce = false;
+    const approve = await app.inject({
+      method: "POST",
+      url: `/api/v1/fhir/clients/${clientId}/approve`,
+      headers: COMPLIANCE,
+      payload: { rationale: "BAA verified and scopes reviewed for this partner integration." },
+    });
+    expect(approve.statusCode).toBe(422);
+    expect((await store.getClient(ORG, clientId))?.status).toBe("pending_approval");
+    await app.close();
+  });
+
+  it("rejects a malformed ip_allowlist entry with 422 and accepts IPv4, IPv6 and CIDR", async () => {
+    const { app } = makeServer();
+    for (const bad of ["10.0.0.0/33", "not-an-ip", "2001:db8::/129", "1.2.3.4/"]) {
+      const res = await post(app, proposal({ ipAllowlist: ["10.0.0.0/8", bad] }));
+      expect(res.statusCode).toBe(422);
+    }
+    const ok = await post(
+      app,
+      proposal({ ipAllowlist: ["10.0.0.0/8", "203.0.113.5", "2001:db8::/32"] }),
+    );
+    expect(ok.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("list carries a derived baaStatus per client (in_force / not_in_force / unknown)", async () => {
+    const mk = (fn: () => Promise<boolean>) => makeServer({ baa: { isBaaActive: fn } });
+    const inForce = mk(async () => true);
+    const off = mk(async () => false);
+    const down = mk(async () => {
+      throw new Error("m40 down");
+    });
+    const status = async (srv: ReturnType<typeof mk>) => {
+      const res = await srv.app.inject({
+        method: "GET",
+        url: "/api/v1/fhir/clients",
+        headers: SUPER,
+      });
+      expect(res.statusCode).toBe(200);
+      return new Set((res.json().clients as { baaStatus: string }[]).map((c) => c.baaStatus));
+    };
+    expect([...(await status(inForce))]).toEqual(["in_force"]);
+    expect([...(await status(off))]).toEqual(["not_in_force"]);
+    expect([...(await status(down))]).toEqual(["unknown"]);
+    await Promise.all([inForce.app.close(), off.app.close(), down.app.close()]);
   });
 });

@@ -229,7 +229,11 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
 
         const plans = await tx
           .update(PLAN)
-          .set({ pauseReasonRedacted: null, ipocBereavementIntentSummaryRedacted: null })
+          .set({
+            pauseReasonRedacted: null,
+            ipocBereavementIntentSummaryRedacted: null,
+            earlyCloseNarrativeRedacted: null,
+          })
           .where(inArray(PLAN.id, planIds))
           .returning({ id: PLAN.id });
 

@@ -32,6 +32,7 @@ import { telehealthLifecycleState, telehealthVendor } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
+import { users } from "../users";
 
 export const telehealthVisits = pgTable(
   "telehealth_visit",
@@ -59,6 +60,10 @@ export const telehealthVisits = pgTable(
     audioOnlyFallbackActive: boolean("audio_only_fallback_active").notNull().default(false),
     recordingEnabled: boolean("recording_enabled").notNull().default(false),
     recordingRequested: boolean("recording_requested").notNull().default(false),
+    // GAP-093(b): the session user who started the recording (NULL = none, or started before 0339).
+    recordingStartedByUserId: uuid("recording_started_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
 
     roomMintedAt: timestamp("room_minted_at", { withTimezone: true }).notNull().defaultNow(),
     firstParticipantJoinedAt: timestamp("first_participant_joined_at", { withTimezone: true }),

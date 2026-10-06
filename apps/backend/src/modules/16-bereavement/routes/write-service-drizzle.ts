@@ -45,6 +45,7 @@ import type {
   BereavedContactRelationship,
   BereavementAnniversaryMark,
   BereavementContactLogOutcome,
+  BereavementEncounterReader,
   BereavementExternalSourceMetadata,
   BereavementOptOutKind,
   BereavementOutreachKind,
@@ -58,6 +59,9 @@ import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
   BereavementStateError,
   anniversaryMarksForTier,
+  assertCompletionKindMatchesOutreach,
+  assertCosignerDistinct,
+  assertEarlyCloseRequestable,
   checkExternalSourceFirstContactGate,
   checkOutreachKindAllowed,
   checkVersion,
@@ -65,9 +69,10 @@ import {
   transitionBereavedContact,
   transitionBereavementOutreach,
   transitionBereavementPlan,
+  verifySourceEncounter,
 } from "../lifecycle/index";
 import { scoreBereavementRisk } from "../risk/index";
-import { getVolunteerComplianceProvider } from "../seams/index";
+import { getBereavementEncounterReader, getVolunteerComplianceProvider } from "../seams/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";
 import { type EffectPatch, runEffects } from "./effects-runner";
 import type {
@@ -146,6 +151,8 @@ export interface M16WriteDeps {
     organizationId: string;
     patientId: string;
   }) => Promise<boolean>;
+  /** GAP-049 — resolves M8's BereavementEncounterReader per call (default: the M1 seam registry). */
+  readonly encounterReader?: () => BereavementEncounterReader;
 }
 
 export function buildDrizzleM16WriteService(
@@ -170,6 +177,7 @@ export function buildDrizzleM16WriteService(
     (async () => ({ hasOutreachConsent: false, isPrimaryCaregiverWithFamilyAccess: false }));
   const relationshipOk = deps.relationshipInValueSet ?? (async () => true);
   const sudAllowed = deps.sudDisclosureAllowed ?? (async () => false);
+  const encounterReader = deps.encounterReader ?? getBereavementEncounterReader;
 
   const scope = (actor: M16MutatingActor) => ({
     organizationId: actor.organizationId,
@@ -931,22 +939,64 @@ export function buildDrizzleM16WriteService(
       return planDetail(actor, planId);
     },
 
-    // ── 8 — D7 early close ──────────────────────────────────────────────────────────────────────────
+    // ── 8 — D7 early close REQUEST (GAP-047) ────────────────────────────────────────────────────────
+    // Records a PENDING request on the plan and nothing else: the plan stays in its current state, no
+    // outreach is cancelled and no closure row or event is written. The transition is route 9's, performed
+    // by a DIFFERENT supervisor — the requesting counselor is never recorded as the cosigner.
     async closeEarly(actor, planId, input: CloseEarlyInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, planId);
         checkVersion(input.expectedVersion, plan.version);
+        assertEarlyCloseRequestable(plan.status, plan.earlyCloseRequestedAt);
         const at = now();
-        // D7 — the supervisor cosign is a SEPARATE call (route 9), so the closing counselor is recorded as
-        // the cosigner-of-record for the machine's guard and route 9 replaces it with the real supervisor.
-        // The §3.3.7 CHECK requires a non-null cosigner on these five reasons, so the row cannot land
-        // without one; recording the closer is the only truthful placeholder available at this instant.
-        const transition = transitionBereavementPlan(plan.status, {
+        // Dry-run the machine so an illegal state, a short narrative or a legal hold is refused NOW rather
+        // than at cosign time. The requester stands in as cosigner only to satisfy the guard; the result is
+        // discarded and nothing is executed.
+        transitionBereavementPlan(plan.status, {
           type: "closeEarly",
           reason: input.reason as BereavementPlanClosureReason,
           narrative: input.narrative,
           at: at as IsoInstant,
           cosignedByUserId: actor.membershipId as MembershipId,
+          legalHoldActive: plan.legalHoldId !== null,
+        });
+        await tx
+          .update(PLAN)
+          .set({
+            earlyCloseReason: input.reason as BereavementPlanClosureReason,
+            earlyCloseNarrativeRedacted: input.narrative,
+            earlyCloseRequestedByUserId: actor.membershipId,
+            earlyCloseRequestedAt: new Date(at),
+            version: plan.version + 1,
+            updatedAt: new Date(at),
+          })
+          .where(eq(PLAN.id, plan.id));
+        return planDetail(actor, planId);
+      });
+    },
+
+    // ── 9 — the D7 supervisor cosign: performs the transition (GAP-047) ─────────────────────────────
+    async cosignClose(actor, planId, input: CosignCloseInput) {
+      return withOrgContext(db, scope(actor), async (tx) => {
+        const plan = await planOr404(tx, planId);
+        checkVersion(input.expectedVersion, plan.version);
+        const { earlyCloseReason, earlyCloseNarrativeRedacted, earlyCloseRequestedByUserId } = plan;
+        if (!earlyCloseReason || !earlyCloseNarrativeRedacted || !earlyCloseRequestedByUserId) {
+          throw new BereavementStateError(
+            "EARLY_CLOSE_NOT_REQUESTED",
+            "no early close is awaiting a clinical-supervisor cosign",
+          );
+        }
+        // §6.1 (S) — the requester and the cosigner must be two people, or the D7 ratification means nothing.
+        assertCosignerDistinct(earlyCloseRequestedByUserId, actor.membershipId);
+        const at = now();
+        const transition = transitionBereavementPlan(plan.status, {
+          type: "closeEarly",
+          reason: earlyCloseReason as BereavementPlanClosureReason,
+          narrative: earlyCloseNarrativeRedacted,
+          at: at as IsoInstant,
+          cosignedByUserId: actor.membershipId as MembershipId,
+          requestedByUserId: earlyCloseRequestedByUserId as MembershipId,
           legalHoldActive: plan.legalHoldId !== null,
         });
         const patch = await runEffects(
@@ -955,29 +1005,23 @@ export function buildDrizzleM16WriteService(
           effectCtx(actor, plan, at, {
             "m16.bereavement.plan_closed_early": {
               planId: plan.id,
-              reason: input.reason,
+              reason: earlyCloseReason,
               closedAt: at,
               cosignedByUserId: actor.membershipId,
             },
           }),
         );
-        const cancelledCount = await cancelFutureOutreach(
-          tx,
-          { planId: plan.id },
-          at,
-          "plan closed early",
-        );
-        void cancelledCount;
+        await cancelFutureOutreach(tx, { planId: plan.id }, at, "plan closed early");
         const stats = await closeoutStats(tx, plan.id);
         const [closure] = await tx
           .insert(CLOSURE)
           .values({
             ...inherit(plan),
             planId: plan.id,
-            reason: input.reason as BereavementPlanClosureReason,
-            reasonNarrativeRedacted: input.narrative,
+            reason: earlyCloseReason as BereavementPlanClosureReason,
+            reasonNarrativeRedacted: earlyCloseNarrativeRedacted,
             closedAt: new Date(at),
-            closedByUserId: actor.membershipId,
+            closedByUserId: earlyCloseRequestedByUserId,
             closeKind: "manual",
             cosignedByUserId: actor.membershipId,
             cosignedAt: new Date(at),
@@ -986,36 +1030,16 @@ export function buildDrizzleM16WriteService(
           .returning();
         if (!closure) throw new Error("m16: the closure insert returned no row");
         await patchPlan(tx, plan, transition.to, patch, at);
+        await tx
+          .update(PLAN)
+          .set({
+            earlyCloseReason: null,
+            earlyCloseNarrativeRedacted: null,
+            earlyCloseRequestedByUserId: null,
+            earlyCloseRequestedAt: null,
+          })
+          .where(eq(PLAN.id, plan.id));
         return toClosureView(closure);
-      });
-    },
-
-    // ── 9 — the D7 supervisor cosign ────────────────────────────────────────────────────────────────
-    async cosignClose(actor, planId, input: CosignCloseInput) {
-      return withOrgContext(db, scope(actor), async (tx) => {
-        const plan = await planOr404(tx, planId);
-        checkVersion(input.expectedVersion, plan.version);
-        const [existing] = await tx
-          .select()
-          .from(CLOSURE)
-          .where(eq(CLOSURE.planId, planId))
-          .limit(1);
-        if (!existing) throw new NotFoundError("bereavement plan closure not found");
-        // §6.1 (S) — a supervisor cannot cosign their own early close; the two signatures on the survey
-        // record must be two people, or the D7 ratification means nothing.
-        if (existing.closedByUserId === actor.membershipId) {
-          throw new ForbiddenError(
-            "the clinical-supervisor cosign must come from someone other than the closing counselor (D7)",
-          );
-        }
-        const at = now();
-        const [row] = await tx
-          .update(CLOSURE)
-          .set({ cosignedByUserId: actor.membershipId, cosignedAt: new Date(at) })
-          .where(eq(CLOSURE.id, existing.id))
-          .returning();
-        if (!row) throw new Error("m16: the cosign update returned no row");
-        return toClosureView(row);
       });
     },
 
@@ -1438,6 +1462,17 @@ export function buildDrizzleM16WriteService(
       return withOrgContext(db, scope(actor), async (tx) => {
         const outreach = await outreachOr404(tx, outreachId);
         const plan = await planOr404(tx, outreach.planId);
+        // GAP-049 / D15 — the kind recorded is the kind the row was scheduled as, never the client's claim;
+        // and an in-person visit's encounter is resolved through M8 (signed, same patient, bereavement_contact).
+        assertCompletionKindMatchesOutreach(outreach.kind, input.kind);
+        if (requiresSourceEncounter(outreach.kind) && input.sourceEncounterId) {
+          await verifySourceEncounter({
+            reader: encounterReader(),
+            organizationId: actor.organizationId,
+            patientId: plan.patientId,
+            encounterId: input.sourceEncounterId,
+          });
+        }
         const at = now();
         // The contact-log row lands FIRST so §2.4's "completion means at least one contact-log row exists"
         // guard is satisfied by a real count rather than by an optimistic 1.

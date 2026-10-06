@@ -93,14 +93,31 @@ export const ABAC_RECORDING_STATE = (action: string, idParam = "visitId"): PreHa
   }) as PreHandler;
 
 /**
+ * GAP-093 §4.1 — the auditor-engagement gate. The engagement id comes from the ROUTE (what the auditor
+ * asks for) and the SESSION's own engagement from `context.attributes.engagementId` (server-stamped);
+ * `portal_engagement_scope` requires an auditor session on an ACTIVE engagement that is the one named.
+ * Not break-glass-satisfiable: an emergency PHI grant is not an engagement.
+ */
+export const ABAC_ENGAGEMENT_SCOPE = (action: string, idParam = "engagementId"): PreHandler =>
+  requireAbac(action, "portal_engagement_scope", {
+    getTarget: ((r: TargetRequest & FastifyRequest) => ({
+      engagementId: param(r, idParam),
+      sessionEngagementId: sessionAttr(r, "engagementId"),
+    })) as never,
+    notFoundOnDeny: false,
+    breakGlassBypassable: false,
+  }) as PreHandler;
+
+/**
  * The ORG-SCOPED staff cells — M3's intrinsic `inOrg` (the M20 `org_scope ≡ inOrg` decision).
  *
- * The staff telehealth + invitation + account routes carry `caseload_membership` as their §4.6 catalog
- * DEFAULT (the intended per-patient narrowing), but the route binds `inOrg` because `caseload_membership`
- * has no live producer today — no module registers it (it is catalog metadata only), and binding an
- * unregistered name would be a permanently-dead 403 endpoint AND fail `arch:abac-predicates`. `inOrg` is
- * the honest floor: the route is org-scoped and RLS is the row-level control, exactly as the M20 org-scope
- * cells resolve. When M5/M17 register `caseload_membership`, these rows tighten to it with no route rename.
+ * Used where NO patient is nameable from the request: the org-wide rosters, the account lifecycle
+ * (suspend / reinstate — an account is not one patient's), the invitation list/revoke stubs, and the
+ * telehealth admin reads. RLS is the row-level control there. The per-patient staff surfaces do NOT use
+ * it: the telehealth join/leave/record/end routes are scoped to the visit's patient
+ * (`./staff-visit-scope`) and the invitation issue / invite-bereaved routes to the invited patient
+ * (`./invitation-scope`), both via `caseload_or_scope` semantics (M5 registers `CaseloadProvider`, M7 the
+ * shared predicate — the earlier "no live producer" premise was false, GAP-093).
  */
 export const ABAC_IN_ORG = (action: string): PreHandler =>
   requireAbac(action, "inOrg", { getTarget: () => ({}), notFoundOnDeny: false }) as PreHandler;

@@ -862,7 +862,12 @@ export function createDrizzleFhirGatewayStore(
             .limit(1);
           if (!row || row.revokedAt !== null || row.expiresAt <= new Date()) return null;
           const [client] = await tx
-            .select({ status: CLIENT.status })
+            .select({
+              status: CLIENT.status,
+              ipAllowlist: CLIENT.ipAllowlist,
+              baaContractReference: CLIENT.baaContractReference,
+              rateLimitRps: CLIENT.rateLimitRps,
+            })
             .from(CLIENT)
             .where(eq(CLIENT.id, row.clientId))
             .limit(1);
@@ -879,6 +884,9 @@ export function createDrizzleFhirGatewayStore(
             clientId: row.clientId,
             scopesGranted: asStringArray(row.scopesGranted),
             clientStatus: client.status,
+            ipAllowlist: asStringArray(client.ipAllowlist),
+            baaContractReference: client.baaContractReference,
+            rateLimitRps: client.rateLimitRps,
           };
         });
       } catch {
@@ -929,6 +937,9 @@ export function createDrizzleFhirGatewayStore(
           jwksUri: row.jwksUri,
           allowedScopes: asStringArray(row.allowedScopes),
           apiKeyDigests,
+          ipAllowlist: asStringArray(row.ipAllowlist),
+          baaContractReference: row.baaContractReference,
+          rateLimitRps: row.rateLimitRps,
         };
       });
     },

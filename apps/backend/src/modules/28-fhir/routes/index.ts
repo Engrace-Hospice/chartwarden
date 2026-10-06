@@ -19,12 +19,15 @@ export {
   type FhirServedResource,
   SERVED_RESOURCES,
   createHttpFhirJwksFetcher,
+  createInMemoryFhirClientRateLimiter,
   createInMemoryFhirReplayGuard,
+  createRedisFhirClientRateLimiter,
   createRedisFhirReplayGuard,
   mintFhirToken,
   projectResourceById,
   projectSearch,
 } from "./mount";
+export { sampleFhirBaaCoverage, warnOnFhirBaaGap } from "./client-baa-ops";
 export {
   type M28ReadActor,
   type M28WriteActor,

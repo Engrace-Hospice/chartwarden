@@ -332,7 +332,11 @@ export const ReplayQueuedResponseSchema = Type.Object({
 /** POST /remittance/lines/:id/manual-match — the ad-hoc handler literal. */
 export const ManualMatchResponseSchema = Type.Object({
   id: Type.String(),
-  matchState: Type.Literal("manual_matched"),
+  matchState: Type.Union([
+    Type.Literal("posted"),
+    Type.Literal("reversed"),
+    Type.Literal("manual_matched"),
+  ]),
 });
 
 /** POST /remittance/adjustments/:id/override — the ad-hoc handler literal (echoes the new post-action). */

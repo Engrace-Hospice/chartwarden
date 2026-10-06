@@ -18,10 +18,12 @@
 // kinds, the five-key permission family, the `feature_flag_write_authority` ABAC predicate, the admin
 // screen and the kill switch were all inert, and nothing could tell.
 //
-// WHAT IS BOUND HERE: the reader (every consumer), plus `list` and `upsert` on the admin seam.
-// `setKillSwitch` REMAINS REFUSING, and deliberately — see the note on `KILL_SWITCH_BLOCKED_REASON`.
+// WHAT IS BOUND HERE: the reader (every consumer), plus `list`, `upsert` and `setKillSwitch` on the admin
+// seam. `setKillSwitch` is the audited §4.7 emergency control: it needs the platform-context + outbox +
+// alert + audit ports (`FeatureFlagKillSwitchPorts`) and refuses (501) on a boot that has none.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import { NotFoundError } from "@wardenx/types";
 import { and, eq, isNull, or } from "drizzle-orm";
 
 /** Reader port over `feature_flag` — the resolved boolean map for one org. M1 owns this shape; M22/M38/
@@ -173,8 +175,14 @@ export interface FeatureFlagUpsertArgs {
 /** Structurally M34's `SetKillSwitchArgs`. */
 export interface FeatureFlagKillSwitchArgs {
   readonly flagKey: string;
+  /** The flag's SCOPE: the owning org, or `null` for a platform-global flag. */
   readonly organizationId: string | null;
   readonly killSwitchActive: boolean;
+  /** The acting operator's own (session) organization — the org the emergency alert/outbox row is emitted
+   *  under, because a global flag has no org of its own. Server-derived, never from the body. */
+  readonly actorOrganizationId: string;
+  /** The acting operator's session membership, when the session carries one. */
+  readonly actorMembershipId: string | null;
 }
 
 /** Structurally M34's `FeatureFlagAdminPort` (§4.7 / D13). */
@@ -190,31 +198,61 @@ export interface FeatureFlagAdminAccess {
   ): Promise<FeatureFlagAdminView>;
 }
 
+/** The catalogued outbox event + alert event type the kill switch raises (M34 §4.7/§4.9). */
+export const KILL_SWITCH_EVENT_NAME = "m34.feature_flag.platform_emergency_changed";
+
+/** What the composition root injects so the kill switch can be the AUDITED emergency control §4.7 specifies.
+ *  The bootstrap takes no dependency edge on M34/M36/M4: each carrier arrives as a port. */
+export interface FeatureFlagKillSwitchPorts {
+  /** Run `fn` in ONE audited platform-context transaction (the write, outbox row, audit and alert share it). */
+  runPlatform<T>(reason: string, fn: (tx: DbClient) => Promise<T>): Promise<T>;
+  /** Catalog-validated outbox publish over the same tx. */
+  publish(
+    tx: DbClient,
+    input: {
+      eventName: string;
+      organizationId: string;
+      aggregateKind: string;
+      aggregateId: string;
+      payload: Record<string, unknown>;
+    },
+  ): Promise<void>;
+  /** The `severity=critical` audit row (§7.4). */
+  audit(
+    tx: DbClient,
+    event: {
+      eventType: string;
+      resourceId: string;
+      correlationId: string;
+      context: Record<string, unknown>;
+    },
+  ): Promise<void>;
+  /** M36 `AlertEmitter.emit` — the critical `feature_flag.platform_emergency_changed` alert. */
+  alert(
+    organizationId: string,
+    input: {
+      eventType: string;
+      payload: Record<string, unknown>;
+      severity: "critical";
+      correlationId: string;
+    },
+  ): Promise<unknown>;
+  now?(): Date;
+}
+
 /**
- * WHY `setKillSwitch` STILL REFUSES, and why that is the correct binding rather than a gap.
- *
- * M34 §4.7 specifies the kill switch as an AUDITED EMERGENCY control: flipping it "raises the critical
- * `feature_flag.platform_emergency_changed` alert to the platform security owner", in-tx with the write.
- * Both carriers for that alert fail on precisely the flag that matters most — a PLATFORM-GLOBAL one:
- *
- *   • the catalogued outbox payload (`events-by-m34.ts`) requires a NON-NULL `actorMembershipId`, and a
- *     platform-ops operator toggling an org-NULL flag holds no membership in any tenant; and
- *   • M36's seam is `AlertEmitter.emit(orgId, …)` — it takes an org, and a global flag has none.
- *
- * Writing the switch without the alert would be strictly WORSE than refusing: an emergency disable whose
- * security owner is never told is an emergency control that reports itself as having worked. Refusing
- * leaves a working disable path — `upsert` sets the same flag's value to false — so nothing an operator
- * needs is unreachable; what is unreachable is the *audited* variant, which is the half that is genuinely
- * unbuilt. Fixing it means widening the payload (or the alert seam) to express an org-less platform actor,
- * which is a decision about the alert taxonomy, not about this store.
+ * Why `setKillSwitch` can still refuse: only on a boot WITHOUT the platform ports (a slice/no-platform
+ * credential boot). Writing the switch without its alert would be strictly worse than refusing — an emergency
+ * disable whose security owner is never told reports itself as having worked — so absent carriers fail closed.
+ * (F-091 carried the older blocker: the payload required a non-null actorMembershipId and the alert seam an
+ * orgId, which a platform operator toggling a global flag lacks. Resolved by widening the payload to carry
+ * `actorUserId` with a nullable membership, and emitting under the operator's own org.)
  */
 export const KILL_SWITCH_BLOCKED_REASON =
-  "the §4.7 kill switch must raise `m34.feature_flag.platform_emergency_changed` in-tx with the write; " +
-  "the catalogued payload requires a non-null actorMembershipId and M36's AlertEmitter requires an orgId, " +
-  "neither of which a platform-ops actor toggling a GLOBAL (org-NULL) flag has. Use upsert to set the " +
-  "flag's value to false; the audited emergency variant needs an org-less alert carrier first (F-091).";
+  "the §4.7 kill switch needs the audited platform ports (platform-context tx, outbox, M36 alert, audit); " +
+  "none are bound on this boot. Use upsert to set the flag's value to false.";
 
-/** Raised by `setKillSwitch` — carries `KILL_SWITCH_BLOCKED_REASON` so the 5xx says what is missing. */
+/** Raised by `setKillSwitch` when no platform ports are bound — carries `KILL_SWITCH_BLOCKED_REASON`. */
 export class FeatureFlagKillSwitchUnavailable extends Error {
   readonly code = "FEATURE_FLAG_KILL_SWITCH_UNAVAILABLE";
   readonly statusCode = 501;
@@ -250,7 +288,10 @@ function adminView(row: typeof schema.featureFlags.$inferSelect): FeatureFlagAdm
  * collapses an absent filter to null (`filter.organizationId ?? null`), so a null that meant "global only"
  * would make the unfiltered platform-ops listing look empty on a platform full of per-tenant flags.
  */
-export function createDrizzleFeatureFlagAdmin(platformDb: DbClient): FeatureFlagAdminAccess {
+export function createDrizzleFeatureFlagAdmin(
+  platformDb: DbClient,
+  killSwitchPorts?: FeatureFlagKillSwitchPorts,
+): FeatureFlagAdminAccess {
   const T = schema.featureFlags;
   return {
     async list(organizationId, flagKind) {
@@ -304,8 +345,75 @@ export function createDrizzleFeatureFlagAdmin(platformDb: DbClient): FeatureFlag
       return adminView(row);
     },
 
-    async setKillSwitch() {
-      throw new FeatureFlagKillSwitchUnavailable();
+    async setKillSwitch(actorUserId, args) {
+      if (!killSwitchPorts) throw new FeatureFlagKillSwitchUnavailable();
+      const ports = killSwitchPorts;
+      const changedAt = (ports.now ?? (() => new Date()))();
+      return ports.runPlatform("m34 platform-ops feature-flag kill switch", async (tx) => {
+        // Exact-scope match: (flag_key, organization_id) — a same-key global row is never toggled in place
+        // of an org's own row, nor the reverse. The kill switch never creates a row.
+        const [row] = await tx
+          .update(T)
+          .set({
+            killSwitchActive: args.killSwitchActive,
+            updatedBy: actorUserId,
+            updatedAt: changedAt,
+          })
+          .where(
+            and(
+              eq(T.flagKey, args.flagKey),
+              args.organizationId === null
+                ? isNull(T.organizationId)
+                : eq(T.organizationId, args.organizationId),
+            ),
+          )
+          .returning();
+        if (!row) throw new NotFoundError("feature flag");
+        const payload = {
+          flagKey: row.flagKey,
+          killSwitchActive: row.killSwitchActive,
+          actorUserId,
+          actorMembershipId: args.actorMembershipId,
+          orgId: row.organizationId,
+          changedAt: changedAt.toISOString(),
+        };
+        const correlationId = `${KILL_SWITCH_EVENT_NAME}:${row.id}:${changedAt.getTime()}`;
+        // All three emissions are in the SAME tx as the write: if any carrier fails the flag does not flip
+        // and the operator sees the failure — an emergency control must never report success unaudited.
+        await ports.publish(tx, {
+          eventName: KILL_SWITCH_EVENT_NAME,
+          organizationId: args.actorOrganizationId,
+          aggregateKind: "feature_flag",
+          aggregateId: row.id,
+          payload,
+        });
+        await ports.audit(tx, {
+          eventType: "feature_flag.platform_emergency_changed",
+          resourceId: row.id,
+          correlationId,
+          context: payload,
+        });
+        await ports.alert(args.actorOrganizationId, {
+          eventType: KILL_SWITCH_EVENT_NAME,
+          payload,
+          severity: "critical",
+          correlationId,
+        });
+        return adminView(row);
+      });
     },
   };
+}
+
+/**
+ * Every `feature_flag` row for one key (platform-global and per-tenant), read on the PLATFORM pool — the
+ * fact source for M34's `feature_flag_write_authority` ABAC resolver. Only the owning org is projected: the
+ * predicate needs scope, never the value. Errors propagate (the resolver turns them into a deny).
+ */
+export function createDrizzleFeatureFlagScopeLoader(
+  platformDb: DbClient,
+): (flagKey: string) => Promise<readonly { readonly organizationId: string | null }[]> {
+  const T = schema.featureFlags;
+  return (flagKey) =>
+    platformDb.select({ organizationId: T.organizationId }).from(T).where(eq(T.flagKey, flagKey));
 }

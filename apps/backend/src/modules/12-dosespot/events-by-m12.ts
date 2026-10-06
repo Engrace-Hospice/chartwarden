@@ -83,6 +83,15 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       orderId: id,
       prescriberMembershipId: id,
       prescribingPhysicianMdmId: id,
+      // GAP-036 — present only when the prescriber acknowledged an allergy conflict. Class wording and the
+      // acknowledging membership only; the free-text reason is never put on the bus.
+      allergyOverride: Type.Optional(
+        Type.Object({
+          acknowledgedByMembershipId: Type.String({ minLength: 1 }),
+          matchedClasses: Type.Array(Type.String({ minLength: 1 })),
+          reasonLength: Type.Integer({ minimum: 1 }),
+        }),
+      ),
     }),
     // F-176 (#248) — m22 REMOVED: same harm as `m11.order.draft_created`; the real signed render is `.document_requested`.
     declaredConsumers: [],

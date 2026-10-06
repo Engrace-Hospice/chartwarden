@@ -255,6 +255,8 @@ export interface SessionScopeFields {
     portalAccountId?: string;
     /** The `external_triage_vendor` row an M19 answering-service session acts for. */
     externalActorId?: string;
+    /** The `auditor_engagement` an auditor session was minted for (GAP-093(c)). */
+    engagementId?: string;
   } | null;
   readonly engagementStart?: Date | string | null;
   readonly engagementEnd?: Date | string | null;
@@ -320,6 +322,22 @@ export function sessionExternalActorId(fields: SessionScopeFields): string | nul
   return SESSION_CLASS_DESCRIPTORS[fields.sessionClass].requiresExternalActor
     ? (fields.scope?.externalActorId ?? null)
     : null;
+}
+
+/**
+ * The `auditor_engagement` an auditor session was minted for, or null (GAP-093(c)).
+ *
+ * Class-gated like {@link sessionExternalActorId}: only a class that carries an engagement window
+ * (`auditor`) can name an engagement, so a staff session whose `scope` jsonb happens to hold an
+ * `engagementId` reads null. The window bounds must also be present — the same pair `session_scope_chk`
+ * requires of an auditor row — so a half-written row resolves no engagement rather than a partial one.
+ * This is M31's `portal_engagement_scope` subject; it comes from the session row, never from a request.
+ */
+export function sessionEngagementId(fields: SessionScopeFields): string | null {
+  if (!SESSION_CLASS_DESCRIPTORS[fields.sessionClass].requiresEngagementWindow) return null;
+  if (fields.engagementStart == null || fields.engagementEnd == null) return null;
+  const id = fields.scope?.engagementId;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }
 
 /** Whether a class permits concurrent sessions (auditor: never). */

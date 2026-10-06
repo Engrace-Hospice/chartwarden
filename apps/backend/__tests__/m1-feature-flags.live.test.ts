@@ -32,6 +32,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  type FeatureFlagKillSwitchPorts,
   createDrizzleFeatureFlagAdmin,
   createDrizzleFeatureFlagReader,
 } from "../src/bootstrap/feature-flag-store";
@@ -283,18 +284,86 @@ describe.skipIf(!DB_URL)("F-091 M1 feature flags — LIVE Postgres", () => {
     expect(await readFlags(ORG_A)).toEqual({ "ai.full": false });
   });
 
-  it("setKillSwitch refuses, and says what is missing rather than failing anonymously", async () => {
-    // A DECLARED absence, not an oversight: §4.7 specifies the switch as an AUDITED emergency control and
-    // both carriers for its alert fail on a global flag (the catalogued payload needs a non-null
-    // actorMembershipId; M36's AlertEmitter needs an orgId). Writing it silently would be worse than
-    // refusing — an emergency disable whose security owner is never told. `upsert` remains the working
-    // disable path, which is why nothing an operator needs is unreachable.
+  it("setKillSwitch with no platform ports refuses 501 (never an unaudited flip)", async () => {
+    await admin.query(
+      `INSERT INTO feature_flag (organization_id,flag_key,flag_kind,value_type,value)
+       VALUES (NULL,'ai.full','kill_switch','bool','true'::jsonb)`,
+    );
     await expect(
       flagAdmin.setKillSwitch(OPERATOR, {
         flagKey: "ai.full",
         organizationId: null,
         killSwitchActive: true,
+        actorOrganizationId: ORG_A,
+        actorMembershipId: null,
       }),
     ).rejects.toMatchObject({ code: "FEATURE_FLAG_KILL_SWITCH_UNAVAILABLE", statusCode: 501 });
+    const { rows } = await admin.query("SELECT kill_switch_active FROM feature_flag");
+    expect(rows[0].kill_switch_active).toBe(false);
+  });
+
+  describe("setKillSwitch with the audited platform ports (M34 §4.7)", () => {
+    const emitted: string[] = [];
+    const portsFor = (failAlert = false): FeatureFlagKillSwitchPorts => ({
+      runPlatform: (_reason, fn) => platformHandle.db.transaction((tx) => fn(tx as DbClient)),
+      publish: async () => {
+        emitted.push("publish");
+      },
+      audit: async () => {
+        emitted.push("audit");
+      },
+      alert: async () => {
+        emitted.push("alert");
+        if (failAlert) throw new Error("alert down");
+        return { alertId: "a" };
+      },
+    });
+    const toggle = (organizationId: string | null, ports: FeatureFlagKillSwitchPorts) =>
+      createDrizzleFeatureFlagAdmin(platformHandle.db as DbClient, ports).setKillSwitch(OPERATOR, {
+        flagKey: "ai.full",
+        organizationId,
+        killSwitchActive: true,
+        actorOrganizationId: ORG_A,
+        actorMembershipId: null,
+      });
+
+    beforeEach(async () => {
+      emitted.length = 0;
+      await admin.query(
+        `INSERT INTO feature_flag (organization_id,flag_key,flag_kind,value_type,value) VALUES
+           (NULL,'ai.full','kill_switch','bool','true'::jsonb),
+           ($1,'ai.full','kill_switch','bool','true'::jsonb)`,
+        [ORG_B],
+      );
+    });
+
+    it("flips a GLOBAL flag, emits the three carriers, and the reader then reads false", async () => {
+      const view = await toggle(null, portsFor());
+      expect(view).toMatchObject({ organizationId: null, killSwitchActive: true });
+      expect(emitted).toEqual(["publish", "audit", "alert"]);
+      expect(await readFlags(ORG_A)).toEqual({ "ai.full": false });
+    });
+
+    it("flips ONLY the org's own row when scoped - the same-key global row stays live", async () => {
+      await toggle(ORG_B, portsFor());
+      const { rows } = await admin.query(
+        "SELECT organization_id, kill_switch_active FROM feature_flag ORDER BY organization_id NULLS FIRST",
+      );
+      expect(rows.map((r) => r.kill_switch_active)).toEqual([false, true]);
+    });
+
+    it("rolls the flip back when the alert carrier fails (in-tx with the write)", async () => {
+      await expect(toggle(null, portsFor(true))).rejects.toThrow("alert down");
+      const { rows } = await admin.query(
+        "SELECT kill_switch_active FROM feature_flag WHERE organization_id IS NULL",
+      );
+      expect(rows[0].kill_switch_active).toBe(false);
+    });
+
+    it("404s a toggle at a scope with no row, and emits nothing", async () => {
+      await admin.query("DELETE FROM feature_flag WHERE organization_id = $1", [ORG_B]);
+      await expect(toggle(ORG_B, portsFor())).rejects.toMatchObject({ statusCode: 404 });
+      expect(emitted).toEqual([]);
+    });
   });
 });

@@ -11,3 +11,4 @@ export * from "./posting";
 export * from "./match";
 export * from "./denial-machine";
 export * from "./appeal-machine";
+export * from "./manual-posting";

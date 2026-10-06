@@ -41,6 +41,13 @@ export interface AdjustmentOverrideInput {
   readonly newPostAction: "auto_posted" | "ledger_recorded" | "denial_seeded";
   readonly reason: string;
 }
+/** The post-command match state (`posted` / `reversed`, or the stored state on an idempotent replay). */
+export interface ManualMatchResult {
+  readonly matchState: string;
+}
+export interface AdjustmentOverrideResult {
+  readonly postAction: AdjustmentOverrideInput["newPostAction"];
+}
 export interface DenialAssignInput {
   readonly assigneeMembershipId: string;
   readonly reason?: string;
@@ -72,12 +79,16 @@ export interface TaxonomyOverlayInput {
 /** The WRITE surface every M25 mutating route composes over. */
 export interface M25WriteService {
   replayAdvice(actor: M25WriteActor, adviceId: string): Promise<void>;
-  manualMatch(actor: M25WriteActor, lineId: string, input: ManualMatchInput): Promise<void>;
+  manualMatch(
+    actor: M25WriteActor,
+    lineId: string,
+    input: ManualMatchInput,
+  ): Promise<ManualMatchResult>;
   overrideAdjustment(
     actor: M25WriteActor,
     adjustmentId: string,
     input: AdjustmentOverrideInput,
-  ): Promise<void>;
+  ): Promise<AdjustmentOverrideResult>;
 
   assignDenial(
     actor: M25WriteActor,

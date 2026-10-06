@@ -86,6 +86,9 @@ export {
   createProposedRoleGuard,
 } from "./proposed-role-ceiling";
 export { createDbBreakGlassStore } from "./break-glass-store";
+// GAP-011 / GAP-093 — the durable engagement store and the published AuditorEngagementReader.
+export { createDbEngagementStore } from "./engagement-store";
+export { createDbAuditorEngagementReader } from "./engagement-reader";
 export { M3_OUTBOX_EVENTS } from "./events-by-m3";
 export type { M3OutboxPublisher } from "./authz-ports";
 
@@ -101,12 +104,12 @@ import {
   type ComplianceNotifier,
   type M3OutboxPublisher,
   createInMemoryAuditorSessionMinter as _auditorMinter,
-  createInMemoryEngagementStore as _engagements,
   createFixedPermissionResolver as _fixedPerms,
   createInMemoryComplianceNotifier as _notifier,
 } from "./authz-ports";
 import { createDbBreakGlassStore as _dbBreakGlass } from "./break-glass-store";
 import { registerBreakGlassContract as _registerBreakGlass } from "./contract";
+import { createDbEngagementStore as _dbEngagements } from "./engagement-store";
 import { createDbMembershipRoleStore as _dbMembershipRoles } from "./membership-role-store";
 import { createDbRoleStore as _dbRoleStore } from "./role-store";
 import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/authz-routes";
@@ -149,8 +152,8 @@ export function createTenantAuditExecutor(db: DbClient): AuditExecutor {
  * Drizzle path (`audit: db` — `AuditExecutor` is structurally `insert(table).values(row)`, the M2
  * precedent; migration 0119 gave `wardenx_app` the INSERT policy that makes it legal under RLS), so
  * every M3 lifecycle event (role grant/revoke, break-glass, engagement) lands in `audit_event`
- * instead of a per-process Map. The remaining route deps (engagements, auditor sessions, compliance
- * notifier, anti-escalation resolver) are still in-memory — recorded in the TASK-001 in-memory
+ * instead of a per-process Map. Engagements are durable too (GAP-011: `createDbEngagementStore`). The
+ * remaining route deps (auditor sessions, compliance notifier, anti-escalation resolver) are still in-memory — recorded in the TASK-001 in-memory
  * ledger at the composition root — and land in follow-up M3 wiring (TASK-004).
  * requirePermission is the live RBAC resolver.
  */
@@ -180,7 +183,8 @@ export function mountAuthorizationRoutes(
     roles: _dbRoleStore(db),
     membershipRoles: _dbMembershipRoles(db, outbox),
     breakGlass,
-    engagements: _engagements().store,
+    // GAP-011 — durable: `auditor_engagement` is written (RLS-scoped), so the M31 auditor view has a real engagement to resolve.
+    engagements: _dbEngagements(db),
     auditorSessions: _auditorMinter().minter,
     // With an outbox the break-glass store has already published `m3.breakglass.invoked` in the invoke's tx, so
     // the route-level notify must not notify a second time (the in-memory array nothing read was GAP-010).

@@ -83,6 +83,14 @@ import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
 import { assertAssignedClinician } from "./routes/assigned-clinician";
 import {
+  type CallerAuthority,
+  assertMayCancelTimeOff,
+  assertMayDecideTimeOff,
+  assertMayEditAvailability,
+  assertMayRequestTimeOff,
+  resolveTimeOffListScope,
+} from "./routes/own-vs-any";
+import {
   type AvailabilityView,
   type CreateRecurringInput,
   type CreateVisitInput,
@@ -1898,7 +1906,9 @@ export function createDbSchedulingBackend(
       userId: string,
       membershipId: string,
       input: UpsertAvailabilityInput,
+      authority: CallerAuthority,
     ): Promise<AvailabilityView> {
+      assertMayEditAvailability(userId, membershipId, authority);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         // Merge per (membership, day_of_week): UPDATE the existing row, else INSERT. No DELETE grant → a
@@ -1932,8 +1942,14 @@ export function createDbSchedulingBackend(
     // ── time off ──────────────────────────────────────────────────────────────────────────────────────
     async listTimeOff(
       orgId: string,
-      filters: { membership?: string; state?: string },
+      userId: string,
+      filtersIn: { membership?: string; state?: string },
+      authority: CallerAuthority,
     ): Promise<TimeOffView[]> {
+      const filters = {
+        ...filtersIn,
+        membership: resolveTimeOffListScope(userId, filtersIn.membership, authority),
+      };
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const conds: SQL[] = [];
         if (filters.membership) conds.push(eq(TO.membershipId, filters.membership));
@@ -1964,7 +1980,9 @@ export function createDbSchedulingBackend(
       orgId: string,
       userId: string,
       input: RequestTimeOffInput,
+      authority: CallerAuthority,
     ): Promise<TimeOffView> {
+      assertMayRequestTimeOff(userId, input.membershipId, authority);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [inserted] = await tx
@@ -1998,11 +2016,17 @@ export function createDbSchedulingBackend(
       });
     },
 
-    async approveTimeOff(orgId: string, userId: string, id: string): Promise<TimeOffView> {
+    async approveTimeOff(
+      orgId: string,
+      userId: string,
+      id: string,
+      authority: CallerAuthority,
+    ): Promise<TimeOffView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [t] = await tx.select().from(TO).where(eq(TO.id, id)).limit(1);
         if (!t) throw new NotFoundError("time_off");
+        assertMayDecideTimeOff(userId, t.membershipId, authority);
         transitionTimeOff(t.approvalState as TimeOffState, {
           type: "approve",
           approverPresent: true,
@@ -2033,11 +2057,13 @@ export function createDbSchedulingBackend(
       userId: string,
       id: string,
       reason: string,
+      authority: CallerAuthority,
     ): Promise<TimeOffView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [t] = await tx.select().from(TO).where(eq(TO.id, id)).limit(1);
         if (!t) throw new NotFoundError("time_off");
+        assertMayDecideTimeOff(userId, t.membershipId, authority);
         transitionTimeOff(t.approvalState as TimeOffState, { type: "deny", reason });
         await tx
           .update(TO)
@@ -2059,11 +2085,17 @@ export function createDbSchedulingBackend(
       });
     },
 
-    async cancelTimeOff(orgId: string, userId: string, id: string): Promise<TimeOffView> {
+    async cancelTimeOff(
+      orgId: string,
+      userId: string,
+      id: string,
+      authority: CallerAuthority,
+    ): Promise<TimeOffView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [t] = await tx.select().from(TO).where(eq(TO.id, id)).limit(1);
         if (!t) throw new NotFoundError("time_off");
+        assertMayCancelTimeOff(userId, t.membershipId, authority);
         transitionTimeOff(t.approvalState as TimeOffState, {
           type: "cancel",
           windowStarted: new Date(t.startsAt) <= new Date(),

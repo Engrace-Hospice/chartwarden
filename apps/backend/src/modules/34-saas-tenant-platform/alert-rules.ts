@@ -459,6 +459,23 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // §4.1/§4.7 kill-switch toggle — `severity=critical`. The kill-switch store emits this under the ACTING
+  // platform-ops operator's own organization (a global flag has no org of its own, and the operator holds
+  // no membership in the flag's tenant), so `role_set` over `platform_ops` reaches the platform staff in
+  // that org — the same real-people machinery as the oversized-hold rule above. The affected scope rides
+  // in the payload (`orgId`, null = platform-global).
+  {
+    ruleKey: "feature_flag.platform_emergency_changed",
+    eventType: "m34.feature_flag.platform_emergency_changed",
+    category: "system",
+    severityFloor: "critical",
+    specSeverity: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [PLATFORM_OPS_ROLE_KEY] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /**
@@ -485,7 +502,7 @@ export const M36_BUILT_IN_RESOLVERS: readonly string[] = [
 export const seedableM34AlertRules = (): readonly M34AlertRuleSeed[] =>
   M34_ALERT_RULES.filter((r) => M36_BUILT_IN_RESOLVERS.includes(r.recipientResolver));
 
-/** The fourteen distinct §4.8 rule keys (the canonical key set, before platform-ops companion rows). */
+/** The fifteen distinct §4.8 rule keys (the canonical key set, before platform-ops companion rows). */
 export const M34_ALERT_RULE_KEYS = [
   "tenant.onboarding_step_blocked_5d",
   "tenant.onboarding_overdue",
@@ -501,6 +518,7 @@ export const M34_ALERT_RULE_KEYS = [
   "dsar_export.sla_escalation_27d",
   "dsar_export.sla_escalation_30d",
   "tenant_export.oversized_hold",
+  "feature_flag.platform_emergency_changed",
 ] as const;
 
 // TODO(Phase 2D — boot wiring): the composition root must (1) call `registerM34AlertResolvers(registry,

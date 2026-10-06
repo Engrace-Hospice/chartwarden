@@ -28,6 +28,14 @@ import { ConflictError, ForbiddenError, NotFoundError } from "@wardenx/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
 import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
 import { assertAssignedClinician } from "./assigned-clinician";
+import {
+  type CallerAuthority,
+  assertMayCancelTimeOff,
+  assertMayDecideTimeOff,
+  assertMayEditAvailability,
+  assertMayRequestTimeOff,
+  resolveTimeOffListScope,
+} from "./own-vs-any";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope; M17-T08) ─────────────
 export interface RecordedSchedulingEvent {
@@ -536,10 +544,12 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
 
   upsertAvailability(
     orgId: string,
-    _userId: string,
+    userId: string,
     membershipId: string,
     input: UpsertAvailabilityInput,
+    authority: CallerAuthority,
   ): AvailabilityView {
+    assertMayEditAvailability(userId, membershipId, authority);
     const record = {
       organizationId: orgId,
       membershipId,
@@ -551,15 +561,27 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   }
 
   // ── time off ──────────────────────────────────────────────────────────────────────────────────────────
-  listTimeOff(orgId: string, filters: { membership?: string; state?: string }): TimeOffView[] {
+  listTimeOff(
+    orgId: string,
+    userId: string,
+    filters: { membership?: string; state?: string },
+    authority: CallerAuthority,
+  ): TimeOffView[] {
+    const membership = resolveTimeOffListScope(userId, filters.membership, authority);
     return [...this.timeOff.values()]
       .filter((t) => t.organizationId === orgId)
-      .filter((t) => (filters.membership ? t.membershipId === filters.membership : true))
+      .filter((t) => (membership ? t.membershipId === membership : true))
       .filter((t) => (filters.state ? t.state === filters.state : true))
       .map(stripOrg);
   }
 
-  requestTimeOff(orgId: string, _userId: string, input: RequestTimeOffInput): TimeOffView {
+  requestTimeOff(
+    orgId: string,
+    userId: string,
+    input: RequestTimeOffInput,
+    authority: CallerAuthority,
+  ): TimeOffView {
+    assertMayRequestTimeOff(userId, input.membershipId, authority);
     const record = {
       id: this.newId(),
       organizationId: orgId,
@@ -574,16 +596,48 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return stripOrg(record);
   }
 
-  approveTimeOff(orgId: string, _userId: string, id: string): TimeOffView {
+  approveTimeOff(
+    orgId: string,
+    userId: string,
+    id: string,
+    authority: CallerAuthority,
+  ): TimeOffView {
+    this.assertDecider(orgId, userId, id, authority);
     return this.transitionTimeOff(orgId, id, "approved", "m17.time_off.approved");
   }
 
-  denyTimeOff(orgId: string, _userId: string, id: string, _reason: string): TimeOffView {
+  denyTimeOff(
+    orgId: string,
+    userId: string,
+    id: string,
+    _reason: string,
+    authority: CallerAuthority,
+  ): TimeOffView {
+    this.assertDecider(orgId, userId, id, authority);
     return this.transitionTimeOff(orgId, id, "denied", "m17.time_off.denied");
   }
 
-  cancelTimeOff(orgId: string, _userId: string, id: string): TimeOffView {
+  cancelTimeOff(
+    orgId: string,
+    userId: string,
+    id: string,
+    authority: CallerAuthority,
+  ): TimeOffView {
+    const record = this.timeOff.get(id);
+    if (!record || record.organizationId !== orgId) throw new NotFoundError("time_off");
+    assertMayCancelTimeOff(userId, record.membershipId, authority);
     return this.transitionTimeOff(orgId, id, "cancelled", null);
+  }
+
+  private assertDecider(
+    orgId: string,
+    userId: string,
+    id: string,
+    authority: CallerAuthority,
+  ): void {
+    const record = this.timeOff.get(id);
+    if (!record || record.organizationId !== orgId) throw new NotFoundError("time_off");
+    assertMayDecideTimeOff(userId, record.membershipId, authority);
   }
 
   private transitionTimeOff(

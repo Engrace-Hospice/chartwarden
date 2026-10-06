@@ -70,7 +70,9 @@ import {
   registerEffectivePermissionResolver,
   resetAbacRegistry,
   resetAuthorizationContract,
+  resetBreakGlassChecker,
   resetRbacEngine,
+  setBreakGlassChecker,
 } from "@wardenx/auth";
 import type {
   ExternalGriefResource,
@@ -88,6 +90,7 @@ import type {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 import {
   type PortalAbacPorts,
   buildPortalAbacPredicates,
@@ -129,6 +132,10 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof membership === "string" && membership.length > 0) {
     request.context.attributes.membershipId = membership;
   }
+  const engagement = request.headers["x-test-engagement"];
+  if (typeof engagement === "string" && engagement.length > 0) {
+    request.context.attributes.engagementId = engagement;
+  }
   const portalPatient = request.headers["x-test-portal-patient"];
   if (typeof portalPatient === "string" && portalPatient.length > 0) {
     request.context.attributes.sessionPatientId = portalPatient;
@@ -166,6 +173,7 @@ function createFakePortalStore(): {
   const accounts = new Map<string, PortalAccountDigest>();
   const grants = new Map<string, PortalAccessGrantDigest>();
   const visits = new Map<string, TelehealthVisitDigest>();
+  const recording = new Map<string, { enabled: boolean; startedByUserId: string | null }>();
   const statusChangeReasons: { id: string; action: string; reasonCipher: string }[] = [];
 
   const findActiveGrant = (
@@ -220,9 +228,11 @@ function createFakePortalStore(): {
       },
     },
     engagement: {
-      async engagementForPatient() {
+      async engagementForPatient(_orgId, patientId) {
         return {
-          hasActiveAccount: true,
+          // GAP-093(d) — only the seeded patient has an account, so a view that read some OTHER id (the
+          // engagement id, say) shows `false` here instead of a fixed `true`.
+          hasActiveAccount: patientId === PATIENT,
           daysActive: 3,
           lastViewedAt: NOW as IsoInstant,
           messagesSent: 0,
@@ -332,9 +342,23 @@ function createFakePortalStore(): {
     async telehealthList() {
       return [...visits.values()];
     },
+    async telehealthRecordingState(_orgId, id) {
+      if (!visits.has(id)) return null;
+      return recording.get(id) ?? { enabled: false, startedByUserId: null };
+    },
     async updateTelehealthLifecycle(_orgId, _userId, id, patch) {
       const row = visits.get(id);
       if (!row) return null;
+      if (patch.recordingEnabled !== undefined || patch.recordingStartedByUserId !== undefined) {
+        const prior = recording.get(id) ?? { enabled: false, startedByUserId: null };
+        recording.set(id, {
+          enabled: patch.recordingEnabled ?? prior.enabled,
+          startedByUserId:
+            patch.recordingStartedByUserId === undefined
+              ? prior.startedByUserId
+              : patch.recordingStartedByUserId,
+        });
+      }
       const updated: TelehealthVisitDigest = {
         ...row,
         lifecycleState: (patch.lifecycleState ?? row.lifecycleState) as TelehealthLifecycleState,
@@ -414,6 +438,13 @@ function makeServer(
     /** M31 staff-telehealth scope — what the M5 `CaseloadProvider` answers (`userId → patient ids`), or
      *  `"throws"` for an unreadable seam. Default: `staff_user` carries `PATIENT` (the seeded visits' patient). */
     readonly staffCaseload?: Readonly<Record<string, readonly string[]>> | "throws";
+    /** GAP-093 — what M3's engagement reader answers for the auditor route (default: active). */
+    readonly engagementActive?: boolean | "throws";
+    /** GAP-093(d) — what M3's reader says the engagement COVERS (default: the one seeded patient). */
+    readonly engagementCoverage?:
+      | { tenantWide: boolean; patientIds: readonly string[] }
+      | null
+      | "throws";
   } = {},
 ) {
   const backend = createFakePortalStore();
@@ -587,6 +618,30 @@ function makeServer(
     },
     {
       orgId: ORG,
+      userId: "staff_two",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M31_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "auditor_user",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M31_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
       userId: "no_perms_user",
       grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
     },
@@ -611,6 +666,10 @@ function makeServer(
     async patientResidenceState() {
       return "TX"; // a one-party recording-consent state — simplifies the recording-consent 2xx path
     },
+    async engagementActive() {
+      if (opts.engagementActive === "throws") throw new Error("engagement reader unreadable");
+      return opts.engagementActive ?? true;
+    },
   };
   const reg = createPredicateRegistry();
   for (const [name, predicate] of Object.entries(
@@ -619,6 +678,28 @@ function makeServer(
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
+  // M7's REAL shared `caseload_or_scope` (nine modules bind this name) over the same CaseloadProvider
+  // fake — GAP-093 composes it on the staff invitation routes, so the suite must run the real rule.
+  reg.register(
+    "caseload_or_scope",
+    buildCarePlanAbacPredicates({
+      resolver: {
+        async loadPlan() {
+          return null;
+        },
+        async loadProblem() {
+          return null;
+        },
+        async loadVersion() {
+          return null;
+        },
+      } as never,
+      isInCaseload: async (q) => {
+        if (staffCaseload === "throws") throw new Error("caseload seam unreadable");
+        return (staffCaseload[q.userId] ?? []).includes(q.patientId);
+      },
+    }).caseload_or_scope as never,
+  );
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -639,6 +720,14 @@ function makeServer(
   const deps: PortalRouteDeps = {
     store: backend.store,
     telehealth,
+    engagementReader: {
+      async engagementScope() {
+        if (opts.engagementCoverage === "throws") throw new Error("engagement reader unreadable");
+        return opts.engagementCoverage === undefined
+          ? { tenantWide: false, patientIds: [PATIENT] }
+          : opts.engagementCoverage;
+      },
+    },
     now: () => new Date(NOW),
     ...(opts.amendmentIntakeUnbound ? {} : { amendmentIntake }),
     ...(opts.lazyMint
@@ -687,6 +776,14 @@ const CAREGIVER_NO_PATIENT_SELECTED = {
 };
 const STAFF = { "x-test-user": "staff_user", "x-test-org": ORG, "x-test-roles": "org_admin" };
 const STAFF_ORG_WIDE = { ...STAFF, "x-test-roles": "medical_director" };
+const ENGAGEMENT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const AUDITOR = {
+  "x-test-user": "auditor_user",
+  "x-test-org": ORG,
+  "x-test-roles": "auditor",
+  "x-test-session-class": "auditor",
+  "x-test-engagement": ENGAGEMENT,
+};
 const NO_PERMS_CAREGIVER = {
   "x-test-user": "no_perms_user",
   "x-test-org": ORG,
@@ -1210,8 +1307,8 @@ const ROUTE_CASES: readonly RouteCase[] = [
   {
     label: "53 GET /auditor/portal-engagement/:engagementId",
     method: "GET",
-    url: `/api/v1/auditor/portal-engagement/${PATIENT}`,
-    headers: STAFF,
+    url: `/api/v1/auditor/portal-engagement/${ENGAGEMENT}`,
+    headers: AUDITOR,
     expectStatus: 200,
   },
 ];
@@ -1996,5 +2093,240 @@ describe("M31 telehealth — staff join/leave/record/end authorization (caseload
       expect(mintedRooms).toHaveLength(1);
       await app.close();
     });
+  });
+});
+
+// ── GAP-093: staff invitations are caseload-scoped, stop-recording is starter-only, the auditor view is
+//    engagement-scoped ──────────────────────────────────────────────────────────────────────────────────
+describe("M31 GAP-093 — staff invitation routes (caseload_or_scope over a resolved patient)", () => {
+  const OTHER_PATIENT = "33333333-3333-4333-8333-333333333333";
+  const issueBody = (patientId: string) => ({
+    patientId,
+    relationship: "family_caregiver",
+    inviteeDisplayName: "Jane Roe",
+    inviteeEmail: "jane.roe@example.com",
+    proposedScopeSet: ["care_plan"],
+  });
+  const issue = (
+    app: ReturnType<typeof makeServer>["app"],
+    patientId: string,
+    key: string,
+    headers: Record<string, string> = STAFF,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: "/api/v1/admin/portal-invitations",
+      headers: { ...headers, ...IDEMP(key) },
+      payload: issueBody(patientId),
+    });
+  const inviteBereaved = (
+    app: ReturnType<typeof makeServer>["app"],
+    accountId: string,
+    key: string,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/admin/portal-accounts/${accountId}/invite-bereaved`,
+      headers: { ...STAFF, ...IDEMP(key) },
+      payload: {
+        bereavedContactId: PATIENT,
+        inviteeDisplayName: "John Doe",
+        inviteeEmail: "john.doe@example.com",
+      },
+    });
+
+  it("404s an invitation for a patient OFF the caller's caseload", async () => {
+    const { app } = makeServer();
+    expect((await issue(app, OTHER_PATIENT, "k093-i1")).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("202s an invitation for a patient ON the caller's caseload", async () => {
+    const { app } = makeServer();
+    expect((await issue(app, PATIENT, "k093-i2")).statusCode).toBe(202);
+    await app.close();
+  });
+
+  it("202s an org-wide role for any patient, with no caseload lookup", async () => {
+    const { app } = makeServer({ staffCaseload: "throws" });
+    expect((await issue(app, OTHER_PATIENT, "k093-i3", STAFF_ORG_WIDE)).statusCode).toBe(202);
+    await app.close();
+  });
+
+  it("fails CLOSED (404) when the caseload seam throws", async () => {
+    const { app } = makeServer({ staffCaseload: "throws" });
+    expect((await issue(app, PATIENT, "k093-i4")).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("is not satisfiable by a break-glass grant (a mutating route)", async () => {
+    const { app } = makeServer();
+    setBreakGlassChecker(() => ({ eventId: "bg-1" }));
+    try {
+      const res = await issue(app, OTHER_PATIENT, "k093-i5");
+      expect(res.statusCode).toBe(404);
+    } finally {
+      resetBreakGlassChecker();
+      await app.close();
+    }
+  });
+
+  it("invite-bereaved: resolves the patient from the ACCOUNT'S grants, never the body", async () => {
+    const onCaseload = makeServer();
+    expect((await inviteBereaved(onCaseload.app, ACCOUNT, "k093-b1")).statusCode).toBe(202);
+    await onCaseload.app.close();
+
+    const offCaseload = makeServer({ staffCaseload: { staff_user: [OTHER_PATIENT] } });
+    expect((await inviteBereaved(offCaseload.app, ACCOUNT, "k093-b2")).statusCode).toBe(404);
+    await offCaseload.app.close();
+  });
+
+  it("invite-bereaved: an absent account, or one with no grants, is a 404", async () => {
+    const { app } = makeServer();
+    const absent = "99999999-0000-4000-8000-999999999999";
+    expect((await inviteBereaved(app, absent, "k093-b3")).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+describe("M31 GAP-093 — stop-recording is starter-only", () => {
+  const startAs = (app: ReturnType<typeof makeServer>["app"], user: string, key: string) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/start-recording`,
+      headers: { ...STAFF, "x-test-user": user, ...IDEMP(key) },
+      payload: { acknowledgesStateRules: true, acknowledgesPatientConsent: true },
+    });
+  const stopAs = (app: ReturnType<typeof makeServer>["app"], user: string, key: string) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/stop-recording`,
+      headers: { ...STAFF, "x-test-user": user, ...IDEMP(key) },
+      payload: {},
+    });
+  const both = { staff_user: [PATIENT], staff_two: [PATIENT] };
+
+  it("lets the clinician who started the recording stop it", async () => {
+    const { app, backend } = makeServer({ staffCaseload: both });
+    expect((await startAs(app, "staff_user", "k093-s1")).statusCode).toBe(200);
+    expect((await stopAs(app, "staff_user", "k093-s2")).statusCode).toBe(200);
+    expect((await backend.store.telehealthRecordingState(ORG, VISIT_ROOM_MINTED))?.enabled).toBe(
+      false,
+    );
+    await app.close();
+  });
+
+  it("403s a DIFFERENT caseload clinician stopping it, leaving the recording on", async () => {
+    const { app, backend } = makeServer({ staffCaseload: both });
+    expect((await startAs(app, "staff_user", "k093-s3")).statusCode).toBe(200);
+    expect((await stopAs(app, "staff_two", "k093-s4")).statusCode).toBe(403);
+    expect((await backend.store.telehealthRecordingState(ORG, VISIT_ROOM_MINTED))?.enabled).toBe(
+      true,
+    );
+    await app.close();
+  });
+
+  it("records the starter from the SESSION, not the body", async () => {
+    const { app, backend } = makeServer({ staffCaseload: both });
+    await startAs(app, "staff_two", "k093-s5");
+    expect(
+      (await backend.store.telehealthRecordingState(ORG, VISIT_ROOM_MINTED))?.startedByUserId,
+    ).toBe("staff_two");
+    await app.close();
+  });
+
+  it("is an idempotent 200 when nothing is recording, for any in-scope clinician", async () => {
+    const { app } = makeServer({ staffCaseload: both });
+    expect((await stopAs(app, "staff_two", "k093-s6")).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("an unknown starter falls back to the visit's ASSIGNED clinician only", async () => {
+    const { app, backend } = makeServer({ staffCaseload: both });
+    await backend.store.updateTelehealthLifecycle(ORG, "seed", VISIT_ROOM_MINTED, {
+      recordingEnabled: true,
+      recordingRequested: true,
+    });
+    expect((await stopAs(app, "staff_two", "k093-s7")).statusCode).toBe(403);
+    const assigned = await app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/stop-recording`,
+      headers: { ...STAFF, "x-test-membership": CLINICIAN_MEMBERSHIP, ...IDEMP("k093-s8") },
+      payload: {},
+    });
+    expect(assigned.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+describe("M31 GAP-093 — auditor engagement view is engagement-scoped", () => {
+  const get = (
+    app: ReturnType<typeof makeServer>["app"],
+    id: string,
+    headers: Record<string, string> = AUDITOR,
+  ) => app.inject({ method: "GET", url: `/api/v1/auditor/portal-engagement/${id}`, headers });
+
+  it("200s an auditor inside the active engagement the route names", async () => {
+    const { app } = makeServer();
+    expect((await get(app, ENGAGEMENT)).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("returns ONLY the covered patients' data (GAP-093(d))", async () => {
+    const { app } = makeServer();
+    const res = await get(app, ENGAGEMENT);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ hasActiveAccount: true, daysActive: 3 });
+    await app.close();
+  });
+
+  it("does not read the engagement id as a patient, nor patients outside the engagement", async () => {
+    const OTHER_PATIENT = "99999999-0000-4000-8000-999999999999";
+    const { app } = makeServer({
+      engagementCoverage: { tenantWide: false, patientIds: [OTHER_PATIENT] },
+    });
+    const res = await get(app, ENGAGEMENT);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().hasActiveAccount).toBe(false); // PATIENT is not covered ⇒ not read
+    await app.close();
+  });
+
+  it("403s when M3 says the engagement is not live, and fails CLOSED when the coverage read throws", async () => {
+    for (const engagementCoverage of [null, "throws"] as const) {
+      const { app } = makeServer({ engagementCoverage });
+      expect((await get(app, ENGAGEMENT)).statusCode).toBe(403);
+      await app.close();
+    }
+  });
+
+  it("403s an auditor naming a DIFFERENT engagement than their session's", async () => {
+    const { app } = makeServer();
+    expect((await get(app, "ffffffff-0000-4000-8000-ffffffffffff")).statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("403s an auditor whose engagement is not active (closed / outside its window)", async () => {
+    const { app } = makeServer({ engagementActive: false });
+    expect((await get(app, ENGAGEMENT)).statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("fails CLOSED (403) when the engagement reader throws", async () => {
+    const { app } = makeServer({ engagementActive: "throws" });
+    expect((await get(app, ENGAGEMENT)).statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("403s a session that carries no engagement anchor", async () => {
+    const { app } = makeServer();
+    const { "x-test-engagement": _drop, ...noAnchor } = AUDITOR;
+    expect((await get(app, ENGAGEMENT, noAnchor)).statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("403s a STAFF session on the auditor route even in the same org", async () => {
+    const { app } = makeServer();
+    expect((await get(app, ENGAGEMENT, STAFF)).statusCode).toBe(403);
+    await app.close();
   });
 });

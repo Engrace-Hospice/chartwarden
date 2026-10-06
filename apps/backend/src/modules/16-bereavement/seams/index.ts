@@ -51,6 +51,7 @@ import { type BereavementSeamStore, createInMemoryBereavementSeamStore } from ".
 
 export {
   getAdmissionStatusReader,
+  getBereavementEncounterReader,
   getDeathDischargeReader,
   getMswRiskFactorReader,
   getPatientReader,

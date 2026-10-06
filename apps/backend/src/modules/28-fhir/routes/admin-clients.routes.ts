@@ -6,11 +6,13 @@ import { unsupportedScopes } from "@wardenx/fhir";
 // (revoke/suspend → sessions revoked + in-flight exports cancelled) live in the store's §2.2 FSM path; the
 // routes bind the §4.6 permission + §4.7 ABAC and shape the request. `rate_limit_rps` is a PLATFORM-FLOOR /
 // tenant-tighten-only value (§2.3): the tier's floor is the default and an override may only LOWER it.
-import { ValidationError } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@wardenx/types";
 import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
+import type { FhirBaaStatusView } from "../seams/index";
 import { actorOf, writeActorOf } from "./actor";
+import { assertBaaInForceForClient, parseIpAllowlist, withBaaStatus } from "./client-baa-ops";
 import { ABAC_CLIENT_ORG, ABAC_IN_ORG, P } from "./guards";
 import {
   ApproveClientBody,
@@ -27,10 +29,14 @@ import type { FhirGatewayStore } from "./store";
 
 export interface AdminClientsRouteDeps {
   readonly store: FhirGatewayStore;
+  /** GAP-083 — M40 BAA port. Absent ⇒ create/approve refuse (fail closed) and `baaStatus` is `unknown`. */
+  readonly baa?: Pick<FhirBaaStatusView, "isBaaActive">;
+  readonly now?: () => string;
 }
 
 export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClientsRouteDeps): void {
-  const { store } = deps;
+  const { store, baa } = deps;
+  const now = deps.now ?? (() => new Date().toISOString());
 
   // R23 — list the org's registered clients.
   app.get(
@@ -46,7 +52,9 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
     async (request) => {
       const actor = actorOf(request);
       const { status } = parseQuery(ClientListQuery, request.query);
-      return { clients: await store.listClients(actor.organizationId, { status }) };
+      const clients = await store.listClients(actor.organizationId, { status });
+      // Additive, server-derived: operators filter on `baaStatus` to find partners that cannot mint.
+      return { clients: await withBaaStatus(baa, actor.organizationId, clients, now()) };
     },
   );
 
@@ -87,6 +95,13 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
           },
         ]);
       }
+      const ipAllowlist = parseIpAllowlist(body.ipAllowlist);
+      // Never register a client that could not mint: the reference must resolve to an in-force M40 contract now.
+      await assertBaaInForceForClient(baa, {
+        organizationId: actor.organizationId,
+        contractReference: body.baaContractReference,
+        asOf: now(),
+      });
       const result = await store.createClient(actor.organizationId, {
         name: body.name,
         type: body.type,
@@ -94,7 +109,7 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
         allowedScopes: body.allowedScopes,
         tier: body.tier as FhirClientTier,
         rateLimitRps: body.rateLimitRpsOverride ?? floor,
-        ipAllowlist: body.ipAllowlist ?? [],
+        ipAllowlist,
         baaContractReference: body.baaContractReference,
         proposedByMembershipId: actor.membershipId,
       });
@@ -110,6 +125,14 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
       const actor = writeActorOf(request);
       const { id } = parse(ClientIdParams, request.params);
       const { rationale } = parse(ApproveClientBody, request.body);
+      const existing = await store.getClient(actor.organizationId, id);
+      if (existing === null) throw new NotFoundError("fhir_client", id);
+      // Re-checked AT approval time: a contract that lapsed since the proposal must stop activation.
+      await assertBaaInForceForClient(baa, {
+        organizationId: actor.organizationId,
+        contractReference: existing.baaContractReference,
+        asOf: now(),
+      });
       return store.approveClient(actor.organizationId, id, actor.membershipId, rationale);
     },
   );

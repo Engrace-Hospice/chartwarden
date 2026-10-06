@@ -40,6 +40,7 @@
 
 export * from "./classes/catalog";
 export * from "./classes/contracts";
+export * from "./classes/sud-treatment-drugs";
 export * from "./lifecycle";
 export * from "./refill";
 export * from "./epcs";
@@ -47,3 +48,4 @@ export * from "./client";
 export * from "./webhook";
 export * from "./transmission";
 export * from "./patient-sync";
+export * from "./allergy";

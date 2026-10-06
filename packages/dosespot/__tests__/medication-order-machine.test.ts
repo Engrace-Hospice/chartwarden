@@ -99,10 +99,10 @@ describe("§2.2 requestSignature (draft → pending_signature)", () => {
       transitionMedicationOrder("draft", { ...goodRequest, allergyCheckPassed: false }),
     ).toThrowError(expect.objectContaining({ code: "ALLERGY_CHECK_NOT_PASSED" }));
   });
-  it("refuses without SUD consent (412)", () => {
+  it("refuses without SUD consent (422)", () => {
     expect(() =>
       transitionMedicationOrder("draft", { ...goodRequest, sudConsentSatisfied: false }),
-    ).toThrowError(expect.objectContaining({ code: "SUD_CONSENT_REQUIRED", statusCode: 412 }));
+    ).toThrowError(expect.objectContaining({ code: "SUD_CONSENT_REQUIRED", statusCode: 422 }));
   });
   it("blocks a controlled order on an uncertified tenant (403 EPCS_NOT_CERTIFIED, D18)", () => {
     expect(() =>

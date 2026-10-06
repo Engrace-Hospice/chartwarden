@@ -8,7 +8,7 @@
 // never sees a real identity (per-participant short-TTL tokens), and the room url/token are cipher-only in
 // the row (never projected). The Record button is D9-gated by `state_two_party_recording_consent_present`
 // (+ step-up), composed in `./mount`; the webhooks verify the vendor HMAC before touching the row.
-import { NotFoundError } from "@wardenx/types";
+import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { ensureTelehealthRoomForVisit } from "../telehealth/room-mint";
 import { deriveEndReason, endStateFor, foldParticipantJoin } from "../telehealth/visit-lifecycle";
@@ -76,6 +76,29 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   ) => {
     const { visitId } = request.params as { visitId: string };
     return assertStaffMayAccessVisit(scopeDeps, actorOf(request), visitId, opts);
+  };
+
+  /**
+   * GAP-093 — only the clinician who STARTED a recording may stop it (§4.6 `telehealth.record_stop`:
+   * "whoever started"). Nothing recording ⇒ idempotent no-op for any in-scope clinician. When the starter
+   * is not recorded (no column yet) the fallback is the visit's ASSIGNED clinician; the org-wide
+   * compliance halt (`halt-recording`, step-up) remains the override. Any read failure denies.
+   */
+  const assertMayStopRecording = async (
+    actor: M31Actor,
+    visitId: string,
+    assignedMembershipId: string | null,
+  ): Promise<void> => {
+    const state = await store.telehealthRecordingState(actor.organizationId, visitId);
+    if (!state) throw new NotFoundError("telehealth visit not found");
+    if (!state.enabled) return;
+    const allowed =
+      state.startedByUserId !== null
+        ? state.startedByUserId === actor.userId
+        : actor.membershipId !== null && actor.membershipId === assignedMembershipId;
+    if (!allowed) {
+      throw new ForbiddenError("only the clinician who started the recording may stop it");
+    }
   };
 
   /** Route-layer ownership guard for the portal-side routes (runs before the consent predicate). */
@@ -226,6 +249,8 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
       await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
         recordingEnabled: true,
         recordingRequested: true,
+        // GAP-093 — the starter is the SESSION user, never a body field.
+        recordingStartedByUserId: actor.userId,
       });
       return { ok: true };
     },
@@ -245,9 +270,13 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const actor = actorOf(request);
       const { visitId } = request.params as { visitId: string };
-      await reassertStaff(request);
+      const facts = await reassertStaff(request);
+      await assertMayStopRecording(actor, visitId, facts.assignedMembershipId);
+      // `recording_requested` must drop with `recording_enabled` (CHECK telehealth_visit_recording_requires_enabled);
+      // `recordingStartedByUserId` is kept as the record of who ran the last recording.
       await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
         recordingEnabled: false,
+        recordingRequested: false,
       });
       return { ok: true };
     },

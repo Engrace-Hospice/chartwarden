@@ -156,8 +156,14 @@ export function writeHeaders(version?: number | null): Record<string, string> {
  * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (412 =
  * the row moved, 428 = a blind write, 409 = a gate refused and SAID WHICH) rather than a generic failure.
  */
+/** GAP-047 — the server's machine code when the cosigner is the counselor who requested the close. */
+export const EARLY_CLOSE_SELF_COSIGN_CODE = "EARLY_CLOSE_SELF_COSIGN";
+export const EARLY_CLOSE_SELF_COSIGN_MESSAGE =
+  "You requested this early close, so you cannot cosign it. A different clinical supervisor must cosign.";
+
 export function errorMessage(error: unknown, fallback: string): string {
   const body = error as { title?: string; detail?: string; code?: string; status?: number } | null;
+  if (body?.code === EARLY_CLOSE_SELF_COSIGN_CODE) return EARLY_CLOSE_SELF_COSIGN_MESSAGE;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
   if (body?.status === 412)
@@ -336,20 +342,24 @@ export async function resumePlan(
   return { plan: res.data, error: null };
 }
 
-/** Route 8 — D7 early close (step-up; ≥40-char narrative). Lands awaiting the route-9 supervisor cosign. */
+/**
+ * Route 8 — D7 early close REQUEST (step-up; ≥40-char narrative). GAP-047: this only records a pending
+ * request (`earlyCloseRequest` on the returned plan detail); the plan stays active until a DIFFERENT
+ * clinical supervisor performs the route-9 cosign.
+ */
 export async function closeEarly(
   client: ApiClient,
   planId: string,
   version: number,
   body: ReqBody<operations["postApiV1BereavementPlansByPlanIdCloseearly"]>,
-): Promise<{ closure: ClosureView | null; error: unknown }> {
+): Promise<{ plan: PlanDetail | null; error: unknown }> {
   const res = await client.POST("/api/v1/bereavement/plans/{planId}/close-early", {
     params: { path: { planId } },
     headers: writeHeaders(version),
     body,
   });
-  if (res.error) return { closure: null, error: res.error };
-  return { closure: res.data, error: null };
+  if (res.error) return { plan: null, error: res.error };
+  return { plan: res.data, error: null };
 }
 
 /** Route 9 — the clinical-supervisor cosign that ratifies the early close (step-up). */

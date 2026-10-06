@@ -187,6 +187,13 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     if (actor.portalAccountId) request.context.attributes.portalAccountId = actor.portalAccountId;
     if (actor.sessionPatientId)
       request.context.attributes.sessionPatientId = actor.sessionPatientId;
+    // GAP-093(c) — the auditor session's OWN engagement, for M31's `portal_engagement_scope`. Stamped only
+    // for the `auditor` class and only from the resolver (`session.scope.engagementId`, class- and
+    // window-gated at the source by `sessionEngagementId`) — never from a header or the route, which is
+    // exactly the claim the predicate compares this against.
+    if (actor.sessionClass === "auditor" && actor.engagementId) {
+      request.context.attributes.engagementId = actor.engagementId;
+    }
     // SecHardening §12.4 — the platform's OWN verdict on the device, resolved from M2's
     // `device_attestation` row and never from anything the request carries. Stamped only when a LIVE
     // attestation stands behind the session: absent means "no attested device", which is exactly what

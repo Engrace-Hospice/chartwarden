@@ -339,12 +339,14 @@ function createM25Backend(): {
       lines.set(lineId, {
         ...row,
         claimId: input.proposedClaimId,
-        matchState: "manual_matched",
+        matchState: "posted",
         matchStrategy: "manual",
       });
+      return { matchState: "posted" };
     },
-    async overrideAdjustment(_actor, adjustmentId, _input) {
+    async overrideAdjustment(_actor, adjustmentId, input) {
       void adjustmentId;
+      return { postAction: input.newPostAction };
     },
     async assignDenial(_actor, id, input, _ifMatch) {
       const row = denials.get(id);

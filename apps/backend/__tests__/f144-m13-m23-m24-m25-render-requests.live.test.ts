@@ -263,6 +263,7 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
           blockedReasons: [],
           medClass: "standard",
           isControlledSubstance: false,
+          isSudTreatment: false,
         };
       },
     };

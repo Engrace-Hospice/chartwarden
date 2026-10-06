@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import {
   SESSION_CLASSES,
   type SessionClass,
+  sessionEngagementId,
   sessionExternalActorId,
   sessionPinnedPatientId,
 } from "./session-classes";
@@ -38,6 +39,9 @@ export interface SessionRow {
   readonly sessionClass: string | null;
   /** `{ patientId }` for collaborator/funeral; `{ portalAccountId, patientId? }` for the portal classes. */
   readonly scope: unknown;
+  /** Auditor-session window bounds (`session_scope_chk` requires both on an auditor row). */
+  readonly engagementStart?: Date | null;
+  readonly engagementEnd?: Date | null;
   /**
    * The joined `device_attestation` row this session points at (SecHardening §12.4), or null when the
    * session is bound to no device — the ordinary case for a browser session.
@@ -72,6 +76,7 @@ export function toSessionContextRecord(
   const sessionClass = row.sessionClass ?? "staff";
   const patientId = scopeString(row.scope, "patientId");
   const externalActorId = scopeString(row.scope, "externalActorId");
+  const engagementId = scopeString(row.scope, "engagementId");
   return {
     sessionId,
     userId: row.userId,
@@ -102,6 +107,15 @@ export function toSessionContextRecord(
       ? sessionExternalActorId({
           sessionClass,
           scope: { ...(externalActorId ? { externalActorId } : {}) },
+        })
+      : null,
+    // Class- and window-gated (GAP-093(c)): the auditor's own engagement, off the session row only.
+    engagementId: isSessionClass(sessionClass)
+      ? sessionEngagementId({
+          sessionClass,
+          scope: { ...(engagementId ? { engagementId } : {}) },
+          engagementStart: row.engagementStart ?? null,
+          engagementEnd: row.engagementEnd ?? null,
         })
       : null,
   };
@@ -143,7 +157,7 @@ export function liveDeviceAttestation(
 /** One string field out of the `scope` jsonb, or null. Never throws on a malformed/absent value. */
 function scopeString(
   scope: unknown,
-  key: "portalAccountId" | "patientId" | "externalActorId",
+  key: "portalAccountId" | "patientId" | "externalActorId" | "engagementId",
 ): string | null {
   if (typeof scope !== "object" || scope === null) return null;
   const value = (scope as Record<string, unknown>)[key];
@@ -175,6 +189,8 @@ export function createDbSessionContextStore(
           lastStepUpFactor: schema.sessions.lastStepUpFactor,
           sessionClass: schema.sessions.sessionClass,
           scope: schema.sessions.scope,
+          engagementStart: schema.sessions.engagementStart,
+          engagementEnd: schema.sessions.engagementEnd,
           // SecHardening §12.4 — joined, not a second round trip: this runs on every authenticated
           // request. LEFT so a session with no device (every browser session) still resolves.
           attId: schema.deviceAttestations.id,

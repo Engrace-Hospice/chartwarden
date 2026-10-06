@@ -372,6 +372,9 @@ describe.skipIf(!DB_URL)("GAP-094 M31 portal telehealth authz — LIVE Postgres"
       async patientResidenceState() {
         return null;
       },
+      async engagementActive() {
+        return false;
+      },
     };
     const registry = createPredicateRegistry();
     for (const [name, predicate] of Object.entries(
@@ -540,5 +543,33 @@ describe.skipIf(!DB_URL)("GAP-094 M31 portal telehealth authz — LIVE Postgres"
     const after = await visitRow(f.visitId);
     expect(after.lifecycle_state).toBe("room_minted");
     expect(after.version).toBe(before.version);
+  });
+
+  // GAP-093(b): the starter is a real column (0339), so stop-recording is starter-only over the real DB.
+  it("stop-recording is starter-only: a different caseload clinician is 403 and the recording stays on; the starter stops it", async () => {
+    const f = await seedPortalPatient("stop-recording-starter");
+    const otherUserId = await seedUser("stop-recording-other");
+    await admin.query(
+      "UPDATE telehealth_visit SET recording_enabled = true, recording_requested = true, " +
+        "recording_started_by_user_id = $2 WHERE id = $1",
+      [f.visitId, staffUserId],
+    );
+    staffCaseload.set(staffUserId, new Set([f.patientId]));
+    staffCaseload.set(otherUserId, new Set([f.patientId]));
+    const as = (userId: string) => ({
+      "x-test-user": userId,
+      "x-test-org": ORG_A,
+      "x-test-roles": "org_admin",
+      "idempotency-key": `k-093b-stop-${++requestSeq}`,
+    });
+    const stopUrl = `/api/v1/telehealth/visits/${f.visitId}/stop-recording`;
+    const refused = await post(stopUrl, as(otherUserId));
+    expect(refused.statusCode).toBe(403);
+    expect((await visitRow(f.visitId)).recording_enabled).toBe(true);
+    const stopped = await post(stopUrl, as(staffUserId));
+    expect(stopped.statusCode).toBe(200);
+    const after = await visitRow(f.visitId);
+    expect(after.recording_enabled).toBe(false);
+    expect(after.recording_started_by_user_id).toBe(staffUserId);
   });
 });

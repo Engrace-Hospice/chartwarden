@@ -1,6 +1,7 @@
 import type { DbClient } from "@wardenx/db";
 import type {
   PatientAddressReader,
+  PatientAllergyReader,
   PatientCoverageReader,
   PatientHopeAdmissionPrefillReader,
   PatientMutator,
@@ -14,6 +15,7 @@ import { getSeam, registerSeam } from "../../../bootstrap/index";
 // PatientMutator (§4.9, T08). `registerPatientSeams` registers them all from the composition root.
 import { buildPatientAddressReader } from "../address-reader";
 import { buildPatientAdmissionClearanceReader } from "../admission-clearance-reader";
+import { buildPatientAllergyReader } from "../allergy-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
 import { buildPatientHopeAdmissionPrefillReader } from "../hope-admission-prefill-reader";
 import { buildPatientPrivacyFlagReader } from "../privacy-flag-reader";
@@ -117,6 +119,7 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // GAP-061 — the §3.5 sex-class + privacy-flag read M37's shared-room occupancy gate consults. Same
   // posture again: registered only with a db present. The deny-stub's throw is the honest answer for a
   // db-less boot, and M37 refuses the bed assignment on it rather than reading "no roommates".
+  if (deps.db) registerSeam("PatientAllergyReader", buildPatientAllergyReader(deps.db));
   if (deps.db) registerSeam("PatientPrivacyFlagReader", buildPatientPrivacyFlagReader(deps.db));
   if (deps.db)
     registerSeam("PatientAdmissionClearanceReader", buildPatientAdmissionClearanceReader(deps.db));
@@ -153,6 +156,11 @@ export function getPatientAddressReader(): PatientAddressReader {
 /** Typed resolver for M5's §3.5 PatientPrivacyFlagReader seam (the M37 shared-room occupancy read). */
 export function getPatientPrivacyFlagReader(): PatientPrivacyFlagReader {
   return getSeam("PatientPrivacyFlagReader");
+}
+
+/** Typed resolver for M5's PatientAllergyReader seam (the M12 requestSignature allergy gate). */
+export function getPatientAllergyReader(): PatientAllergyReader {
+  return getSeam("PatientAllergyReader");
 }
 
 /** Typed resolver for M5's PatientMutator seam. */

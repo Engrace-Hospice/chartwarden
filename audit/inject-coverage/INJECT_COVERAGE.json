@@ -105,6 +105,7 @@
         "apps/backend/__tests__/orm-recovery.test.ts",
         "apps/backend/__tests__/orm-resend.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts",
+        "apps/backend/__tests__/portal-inject.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
@@ -218,7 +219,8 @@
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/scheduling-caseload-scope.test.ts",
-        "apps/backend/__tests__/scheduling-inject.test.ts"
+        "apps/backend/__tests__/scheduling-inject.test.ts",
+        "apps/backend/__tests__/scheduling-own-vs-any.test.ts"
       ],
       "directRoutesReferenced": 33
     },

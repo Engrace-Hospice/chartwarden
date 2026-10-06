@@ -36038,6 +36038,69 @@
                         }
                       ]
                     },
+                    "earlyCloseRequest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "reason",
+                            "requestedAt",
+                            "requestedByUserId"
+                          ],
+                          "properties": {
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "const": "thirteen_month_completion",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_contacts_declined",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_pre_death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_post_creation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant_offboarding",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_bereaved_deceased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "geographic_relocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "family_legal_action",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_early",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "requestedByUserId": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "version": {
                       "type": "integer"
                     },
@@ -36696,6 +36759,69 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "earlyCloseRequest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "reason",
+                            "requestedAt",
+                            "requestedByUserId"
+                          ],
+                          "properties": {
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "const": "thirteen_month_completion",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_contacts_declined",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_pre_death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_post_creation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant_offboarding",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_bereaved_deceased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "geographic_relocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "family_legal_action",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_early",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "requestedByUserId": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -37389,6 +37515,69 @@
                         }
                       ]
                     },
+                    "earlyCloseRequest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "reason",
+                            "requestedAt",
+                            "requestedByUserId"
+                          ],
+                          "properties": {
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "const": "thirteen_month_completion",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_contacts_declined",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_pre_death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_post_creation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant_offboarding",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_bereaved_deceased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "geographic_relocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "family_legal_action",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_early",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "requestedByUserId": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "version": {
                       "type": "integer"
                     },
@@ -37453,7 +37642,7 @@
         "tags": [
           "16-bereavement"
         ],
-        "summary": "D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8)",
+        "summary": "D7 early-close request — step-up; ≥40-char narrative; records a pending request only, the plan stays open until a different supervisor cosigns (§4.1 #8)",
         "parameters": [
           {
             "name": "planId",
@@ -37472,71 +37661,152 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "closureId",
                     "planId",
-                    "reason",
-                    "closeKind",
+                    "patientId",
+                    "admissionId",
+                    "providerEntityId",
+                    "locationId",
+                    "status",
+                    "deathDate",
+                    "deathTime",
+                    "windowEndsAt",
+                    "openedAt",
+                    "pausedAt",
+                    "pauseKind",
                     "closedAt",
-                    "closedByUserId",
-                    "cosignedByUserId",
-                    "cosignedAt",
+                    "assignedCounselorUserId",
+                    "assignedCounselorAssignedAt",
+                    "assignedVolunteerUserId",
+                    "assignedVolunteerAssignedAt",
+                    "externalSource",
+                    "firstContactAllowed",
+                    "firstContactGateReason",
+                    "contacts",
                     "stats",
-                    "bereavementSummaryDocumentId"
+                    "legalHoldId",
+                    "version",
+                    "updatedAt",
+                    "redactedCategories"
                   ],
                   "properties": {
-                    "closureId": {
-                      "type": "string"
-                    },
                     "planId": {
                       "type": "string"
                     },
-                    "reason": {
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "locationId": {
                       "anyOf": [
                         {
-                          "const": "thirteen_month_completion",
                           "type": "string"
                         },
                         {
-                          "const": "all_contacts_declined",
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "eligible",
                           "type": "string"
                         },
                         {
-                          "const": "patient_opt_out_pre_death",
+                          "const": "initiating",
                           "type": "string"
                         },
                         {
-                          "const": "patient_opt_out_post_creation",
+                          "const": "active",
                           "type": "string"
                         },
                         {
-                          "const": "tenant_offboarding",
+                          "const": "paused",
                           "type": "string"
                         },
                         {
-                          "const": "all_bereaved_deceased",
+                          "const": "closed_completed",
                           "type": "string"
                         },
                         {
-                          "const": "geographic_relocation",
+                          "const": "closed_declined",
                           "type": "string"
                         },
                         {
-                          "const": "family_legal_action",
+                          "const": "closed_early",
                           "type": "string"
                         },
                         {
-                          "const": "other_early",
+                          "const": "closed_legal_hold_extended",
                           "type": "string"
                         }
                       ]
                     },
-                    "closeKind": {
+                    "deathDate": {
                       "type": "string"
+                    },
+                    "deathTime": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "windowEndsAt": {
+                      "type": "string"
+                    },
+                    "openedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pausedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pauseKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "operational",
+                              "type": "string"
+                            },
+                            {
+                              "const": "family_request",
+                              "type": "string"
+                            },
+                            {
+                              "const": "counselor_unavailable_temp",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "closedAt": {
-                      "type": "string"
-                    },
-                    "closedByUserId": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -37546,7 +37816,7 @@
                         }
                       ]
                     },
-                    "cosignedByUserId": {
+                    "assignedCounselorUserId": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -37556,7 +37826,7 @@
                         }
                       ]
                     },
-                    "cosignedAt": {
+                    "assignedCounselorAssignedAt": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -37565,6 +37835,365 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "assignedVolunteerUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedVolunteerAssignedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalSource": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "sourceProposalId",
+                            "sourceMessageId",
+                            "sourceFacilityMdmId",
+                            "sourceFacilityName",
+                            "ackReceivedAt",
+                            "cosignStatus"
+                          ],
+                          "properties": {
+                            "sourceProposalId": {
+                              "type": "string"
+                            },
+                            "sourceMessageId": {
+                              "type": "string"
+                            },
+                            "sourceFacilityMdmId": {
+                              "type": "string"
+                            },
+                            "sourceFacilityName": {
+                              "type": "string"
+                            },
+                            "ackReceivedAt": {
+                              "type": "string"
+                            },
+                            "cosignStatus": {
+                              "anyOf": [
+                                {
+                                  "const": "pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cosigned",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "cosignedAt": {
+                              "type": "string"
+                            },
+                            "medicalDirectorMembershipId": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "firstContactAllowed": {
+                      "type": "boolean"
+                    },
+                    "firstContactGateReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contacts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "contactId",
+                          "planId",
+                          "status",
+                          "displayName",
+                          "relationshipCode",
+                          "preferredLanguageIso639",
+                          "portalAccountId",
+                          "consentRecordId",
+                          "allowedOutreachKinds",
+                          "volunteerVisibleOnly",
+                          "confirmedAt",
+                          "optedOutAt",
+                          "unreachableAt",
+                          "deceasedAt",
+                          "mayRescindOptOut",
+                          "version"
+                        ],
+                        "properties": {
+                          "contactId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "proposed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "opted_out",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deceased",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unreachable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ineligible_post_review",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "relationshipCode": {
+                            "anyOf": [
+                              {
+                                "const": "spouse",
+                                "type": "string"
+                              },
+                              {
+                                "const": "domestic_partner",
+                                "type": "string"
+                              },
+                              {
+                                "const": "parent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "child",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sibling",
+                                "type": "string"
+                              },
+                              {
+                                "const": "grandparent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "grandchild",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aunt_uncle",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cousin",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_law",
+                                "type": "string"
+                              },
+                              {
+                                "const": "friend",
+                                "type": "string"
+                              },
+                              {
+                                "const": "neighbor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "clergy",
+                                "type": "string"
+                              },
+                              {
+                                "const": "colleague",
+                                "type": "string"
+                              },
+                              {
+                                "const": "caregiver_non_family",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "preferredLanguageIso639": {
+                            "type": "string"
+                          },
+                          "portalAccountId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "consentRecordId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "allowedOutreachKinds": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "phone_call",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "in_person_visit",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sympathy_card",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sympathy_letter",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "anniversary_letter",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "email",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "portal_message",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "group_support_invitation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "external_referral",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "volunteerVisibleOnly": {
+                            "type": "boolean"
+                          },
+                          "confirmedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "optedOutAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "unreachableAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deceasedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mayRescindOptOut": {
+                            "type": "boolean"
+                          },
+                          "currentRiskTier": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "low",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "moderate",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "high",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "complicated",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
                     },
                     "stats": {
                       "type": "object",
@@ -37589,7 +38218,34 @@
                         }
                       }
                     },
-                    "bereavementSummaryDocumentId": {
+                    "currentRiskTier": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "low",
+                              "type": "string"
+                            },
+                            {
+                              "const": "moderate",
+                              "type": "string"
+                            },
+                            {
+                              "const": "high",
+                              "type": "string"
+                            },
+                            {
+                              "const": "complicated",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "currentRiskComputedAt": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -37598,6 +38254,100 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "legalHoldId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "earlyCloseRequest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "reason",
+                            "requestedAt",
+                            "requestedByUserId"
+                          ],
+                          "properties": {
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "const": "thirteen_month_completion",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_contacts_declined",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_pre_death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_post_creation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant_offboarding",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_bereaved_deceased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "geographic_relocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "family_legal_action",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_early",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "requestedByUserId": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
                     }
                   }
                 }
@@ -38297,7 +39047,7 @@
         "tags": [
           "16-bereavement"
         ],
-        "summary": "The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
+        "summary": "The clinical-supervisor cosign that performs the early close (a different supervisor than the requester; self-cosign is 403) — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
         "parameters": [
           {
             "name": "planId",
@@ -39792,6 +40542,69 @@
                         }
                       ]
                     },
+                    "earlyCloseRequest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "reason",
+                            "requestedAt",
+                            "requestedByUserId"
+                          ],
+                          "properties": {
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "const": "thirteen_month_completion",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_contacts_declined",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_pre_death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_post_creation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant_offboarding",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_bereaved_deceased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "geographic_relocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "family_legal_action",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_early",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "requestedByUserId": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "version": {
                       "type": "integer"
                     },
@@ -41155,6 +41968,69 @@
                         }
                       ]
                     },
+                    "earlyCloseRequest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "reason",
+                            "requestedAt",
+                            "requestedByUserId"
+                          ],
+                          "properties": {
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "const": "thirteen_month_completion",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_contacts_declined",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_pre_death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_opt_out_post_creation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant_offboarding",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "all_bereaved_deceased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "geographic_relocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "family_legal_action",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_early",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "requestedByUserId": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "version": {
                       "type": "integer"
                     },
@@ -42117,6 +42993,69 @@
                           "anyOf": [
                             {
                               "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "earlyCloseRequest": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "reason",
+                                "requestedAt",
+                                "requestedByUserId"
+                              ],
+                              "properties": {
+                                "reason": {
+                                  "anyOf": [
+                                    {
+                                      "const": "thirteen_month_completion",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "all_contacts_declined",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient_opt_out_pre_death",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient_opt_out_post_creation",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "tenant_offboarding",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "all_bereaved_deceased",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "geographic_relocation",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "family_legal_action",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "other_early",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "requestedAt": {
+                                  "type": "string"
+                                },
+                                "requestedByUserId": {
+                                  "type": "string"
+                                }
+                              }
                             },
                             {
                               "type": "null"
@@ -90853,7 +91792,8 @@
                           "status",
                           "baaContractReference",
                           "approvedAt",
-                          "createdAt"
+                          "createdAt",
+                          "baaStatus"
                         ],
                         "properties": {
                           "id": {
@@ -90932,6 +91872,22 @@
                           "createdAt": {
                             "format": "date-time",
                             "type": "string"
+                          },
+                          "baaStatus": {
+                            "anyOf": [
+                              {
+                                "const": "in_force",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_in_force",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
                           }
                         }
                       }
@@ -126708,6 +127664,10 @@
                   "signerDiscipline": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "type": "string"
+                  },
+                  "allergyOverrideReason": {
+                    "maxLength": 1000,
                     "type": "string"
                   }
                 }
@@ -176332,8 +177292,20 @@
                       "type": "string"
                     },
                     "matchState": {
-                      "const": "manual_matched",
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "const": "posted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reversed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual_matched",
+                          "type": "string"
+                        }
+                      ]
                     }
                   }
                 }

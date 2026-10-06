@@ -311,9 +311,9 @@ export function buildDrizzlePlatformService(deps: {
   };
   // F-091 — bound in production. The stub below is the no-accessor fallback (a slice/no-db boot), NOT
   // the deployed state any more: until F-091 this stub WAS the production binding, so all three §4.7
-  // admin routes answered 5xx and the `feature_flag` table had no writer at all. `setKillSwitch` still
-  // refuses even when bound — the reason lives with the implementation (M1's `KILL_SWITCH_BLOCKED_REASON`)
-  // because it is a fact about the alert taxonomy, not about this wiring.
+  // admin routes answered 5xx and the `feature_flag` table had no writer at all. `setKillSwitch` works when
+  // the composition root passes M1's seam built WITH the audited kill-switch ports (platform tx, outbox,
+  // M36 alert, audit); without them it refuses 501 (M1's `KILL_SWITCH_BLOCKED_REASON`).
   const featureFlags: FeatureFlagAdminPort = deps.featureFlags ?? {
     async list() {
       throw new M34InfraPortUnbound(

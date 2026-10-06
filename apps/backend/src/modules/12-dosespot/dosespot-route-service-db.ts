@@ -30,17 +30,26 @@ import { type DbClient, schema } from "@wardenx/db";
 // table in Phase 1 — the put* routes apply their tighten-only guards and return the computed view without
 // persisting (the platform default is authoritative).
 import {
+  ALLERGY_OVERRIDE_DATA_KEY,
   isEpcsRequired,
   transitionMedicationOrder,
   transitionRefillRequest,
   validateMedicationOrderData,
 } from "@wardenx/dosespot";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { DeaSchedule, MedClass } from "@wardenx/types";
-import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import type { DeaSchedule, MedClass, PatientAllergyReader } from "@wardenx/types";
+import { NotFoundError, StepUpRequiredError, ValidationError, WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, exists, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { getOrderSignatureProvider } from "../11-orders";
+import {
+  type ConsentGatePort,
+  allergyGateError,
+  evaluateAllergyGate,
+  isSudTreatmentDrug,
+  resolveAllergyOverride,
+  sudConsentSatisfied,
+} from "./medication-order-safety-gates";
 import {
   assertCosignSatisfied,
   assertCosignStanding,
@@ -241,9 +250,26 @@ export function refillInboxWhere(
  * lifecycle are live over Drizzle+RLS; every mutation emits `m12.*` on the bound transactional `outbox`. Org
  * is bound from the request context by the caller — never the body.
  */
+/** Return `data` with the server-recorded allergy acknowledgement replaced (or removed when `null`). */
+function withAllergyOverride(data: unknown, override: Record<string, unknown> | null): unknown {
+  const base =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : {};
+  const { [ALLERGY_OVERRIDE_DATA_KEY]: _previous, ...rest } = base;
+  return override === null ? rest : { ...rest, [ALLERGY_OVERRIDE_DATA_KEY]: override };
+}
+
+/** GAP-036 — test seam for the two `requestSignature` safety gates; production leaves both on the M39 / M5 seams. */
+export interface DoseSpotSafetyGateDeps {
+  readonly resolveConsentEvaluator?: () => ConsentGatePort;
+  readonly resolveAllergyReader?: () => PatientAllergyReader;
+}
+
 export function createDbDoseSpotBackend(
   db: DbClient,
   outbox: DoseSpotWriteOutboxPort = NOOP_OUTBOX,
+  gates: DoseSpotSafetyGateDeps = {},
 ): MedicationOrderRouteService {
   const withOrg = <T>(organizationId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as DbClient));
@@ -435,6 +461,7 @@ export function createDbDoseSpotBackend(
           rxnormRxcui: args.rxnormRxcui ?? null,
           ndc: args.ndc ?? null,
           drugName: args.drugName,
+          isSudTreatment: isSudTreatmentDrug(args.drugName),
           strength: args.strength,
           doseForm: args.doseForm,
           route: args.route,
@@ -608,8 +635,10 @@ export function createDbDoseSpotBackend(
         await tx
           .update(MO)
           .set({
-            data: patch.data !== undefined ? patch.data : r.data,
+            // A prior acknowledgement belongs to the previous signature request: never carry it into a new draft cycle.
+            data: withAllergyOverride(patch.data !== undefined ? patch.data : r.data, null),
             drugName: patch.drugName ?? r.drugName,
+            isSudTreatment: isSudTreatmentDrug(patch.drugName ?? r.drugName),
             strength: patch.strength ?? r.strength,
             refillsRemaining: patch.refillsAuthorized ?? r.refillsRemaining,
             refillsAuthorized: patch.refillsAuthorized ?? r.refillsAuthorized,
@@ -620,24 +649,84 @@ export function createDbDoseSpotBackend(
         return readOrder(tx, id);
       });
     },
-    async requestSignature(organizationId, id, signerDiscipline, heldDisciplines) {
+    async requestSignature(
+      organizationId,
+      id,
+      signerDiscipline,
+      heldDisciplines,
+      actorMembershipIdArg,
+      allergyOverrideInput,
+    ) {
+      const actorMembershipId = actorMembershipIdArg ?? null;
       assertDisciplineHeld(heldDisciplines, signerDiscipline);
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
         const findings = validateMedicationOrderData(r.medClass, undefined, r.data, true);
         if (findings.length)
           throw new ValidationError("medication order is not ready for signature", findings);
+        // GAP-036 — both safety gates are decided from the stored order + the SESSION actor and fail closed
+        // (a seam throw or unreadable data denies). `is_sud_treatment` is re-derived from the drug name so a
+        // row written before the column was populated cannot dodge the Part 2 gate.
+        const sudTreatment = r.isSudTreatment || isSudTreatmentDrug(r.drugName);
+        const [allergyGate, sudOk] = await Promise.all([
+          evaluateAllergyGate({
+            organizationId,
+            patientId: r.patientId,
+            drugName: r.drugName,
+            resolveReader: gates.resolveAllergyReader,
+          }),
+          sudConsentSatisfied({
+            isSudTreatment: sudTreatment,
+            organizationId,
+            patientId: r.patientId,
+            actorMembershipId,
+            resolveEvaluator: gates.resolveConsentEvaluator,
+          }),
+        ]);
+        // Allergy acknowledgement: a conflict proceeds only with a written reason + a fresh step-up; an
+        // unreadable list never does. The machine below still refuses an ineligible prescriber FIRST (its
+        // guard order), so an override can never be recorded for an actor who may not prescribe.
+        const allergyDecision = resolveAllergyOverride(allergyGate, allergyOverrideInput);
         // medication_order has no prescriber_discipline column — read the threaded discipline arg (§4.1).
-        transitionMedicationOrder(r.status, {
-          type: "requestSignature",
-          medClass: r.medClass,
-          containsControlled: r.isControlledSubstance,
-          requiredDataComplete: true,
-          prescriberEligible: prescriberEligible(signerDiscipline, r.medClass),
-          allergyCheckPassed: true,
-          sudConsentSatisfied: true, // M39 consent unbound in the DB backend → allowed (§7.13)
-          tenantEpcsCertified: DEFAULT_CS_POLICY.epcsCertificationStatus === "certified", // false (D18)
-        });
+        try {
+          transitionMedicationOrder(r.status, {
+            type: "requestSignature",
+            medClass: r.medClass,
+            containsControlled: r.isControlledSubstance,
+            requiredDataComplete: true,
+            prescriberEligible: prescriberEligible(signerDiscipline, r.medClass),
+            // A reason without a fresh step-up passes the machine (so eligibility is still judged first) and is
+            // refused 403 STEP_UP_REQUIRED right after it, instead of masquerading as an unacknowledged conflict.
+            allergyCheckPassed:
+              allergyDecision.outcome === "proceed" ||
+              allergyDecision.outcome === "step_up_required",
+            sudConsentSatisfied: sudOk,
+            tenantEpcsCertified: DEFAULT_CS_POLICY.epcsCertificationStatus === "certified", // false (D18)
+          });
+        } catch (err) {
+          // Re-raise the generic machine refusal as the richer 422 (class wording + how to acknowledge).
+          if (
+            err instanceof WardenXError &&
+            err.code === "ALLERGY_CHECK_NOT_PASSED" &&
+            allergyGate.status !== "clear"
+          )
+            throw allergyGateError(allergyGate);
+          throw err;
+        }
+        if (allergyDecision.outcome === "step_up_required") throw new StepUpRequiredError();
+        const allergyOverride =
+          allergyDecision.outcome === "proceed" && allergyDecision.override !== null
+            ? {
+                reason: allergyDecision.override.reason,
+                acknowledgedByMembershipId: actorMembershipId ?? "",
+                acknowledgedAt: new Date().toISOString(),
+                matchedClasses: [
+                  ...new Set(
+                    allergyDecision.override.matches.map((m) => m.label ?? "ordered drug"),
+                  ),
+                ],
+              }
+            : null;
         // GAP-034 — the cosign axis from the drafting/requesting session discipline (held, asserted above),
         // never a body field: an RN-tier drafter's order owes a supervising cosign before it can be signed.
         const cosignRequired = cosignRequiredFor(
@@ -647,6 +736,8 @@ export function createDbDoseSpotBackend(
           .update(MO)
           .set({
             status: "pending_signature",
+            data: withAllergyOverride(r.data, allergyOverride),
+            isSudTreatment: sudTreatment,
             cosignRequired,
             cosignStatus: cosignRequired ? "pending" : null,
             version: r.version + 1,
@@ -663,6 +754,16 @@ export function createDbDoseSpotBackend(
             orderId: id,
             prescriberMembershipId: r.prescriberMembershipId,
             prescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
+            // GAP-036 — the override is never silent: who acknowledged and which class, NEVER the reason text.
+            ...(allergyOverride
+              ? {
+                  allergyOverride: {
+                    acknowledgedByMembershipId: allergyOverride.acknowledgedByMembershipId,
+                    matchedClasses: allergyOverride.matchedClasses,
+                    reasonLength: allergyOverride.reason.length,
+                  },
+                }
+              : {}),
           },
         );
         return readOrder(tx, id);

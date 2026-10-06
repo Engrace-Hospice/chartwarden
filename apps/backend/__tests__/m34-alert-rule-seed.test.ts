@@ -41,6 +41,16 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     expect(rule?.resolverArgs).toEqual({ roleKeys: [PLATFORM_OPS_ROLE_KEY] });
   });
 
+  it("seeds a critical rule for the kill-switch emergency event, routed at real people today", () => {
+    const rule = M34_ALERT_RULES.find(
+      (r) => r.ruleKey === "feature_flag.platform_emergency_changed",
+    );
+    expect(rule?.eventType).toBe("m34.feature_flag.platform_emergency_changed");
+    expect(rule?.severityFloor).toBe("critical");
+    expect(rule?.enabled).toBe(true);
+    expect(seedableM34AlertRules().some((r) => r.ruleKey === rule?.ruleKey)).toBe(true);
+  });
+
   it("seeds ONLY rules whose resolver is an M36 built-in", () => {
     for (const rule of seedableM34AlertRules()) {
       expect(

@@ -76,6 +76,8 @@ describe("M2-T07 — published seams register over the M1 deny-stubs (§4.7)", (
       // as a decided "no device", which is what the §12.4 gate denies on.
       deviceAttestation: null,
       externalActorId: null,
+      // GAP-093(c) — null on every class but `auditor`.
+      engagementId: null,
     });
     const stepUp = await resolver.resolveStepUpState({ orgId: ORG }, "sess_1");
     expect(stepUp).toEqual({ lastStepUpAt: at, lastStepUpFactor: "webauthn" });

@@ -132,11 +132,11 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
       const actor = writeActorOf(request);
       const id = (request.params as { id: string }).id;
       const body = parse(ManualMatchRequestSchema, request.body);
-      await writeService.manualMatch(actor, id, {
+      const result = await writeService.manualMatch(actor, id, {
         proposedClaimId: body.proposedClaimId,
         reason: body.reason,
       });
-      return reply.send({ id, matchState: "manual_matched" });
+      return reply.send({ id, matchState: result.matchState });
     },
   );
 
@@ -148,11 +148,11 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
       const id = (request.params as { id: string }).id;
       const body = parse(AdjustmentOverrideRequestSchema, request.body);
       // Adjustments are worker-written; no optimistic version on this surface (the step-up is the gate).
-      await writeService.overrideAdjustment(actor, id, {
+      const result = await writeService.overrideAdjustment(actor, id, {
         newPostAction: body.newPostAction,
         reason: body.reason,
       });
-      return reply.send({ id, postAction: body.newPostAction });
+      return reply.send({ id, postAction: result.postAction });
     },
   );
 }

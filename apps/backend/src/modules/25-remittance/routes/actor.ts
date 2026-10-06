@@ -8,6 +8,7 @@
 // `m25.system_principal` attribute (architecture §17 service-to-service token).
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { BROAD_DENIAL_SCOPE_ROLES } from "../abac-predicates";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -38,6 +39,12 @@ export interface M25WriteActor extends M25ReadActor {
   readonly membershipId: string;
   /** True iff the session carries a recent (server-verified) step-up auth (§D15). */
   readonly stepUpRecent: boolean;
+  /**
+   * SERVER-DERIVED provider-entity scope (GAP-073): `undefined` = unrestricted (an org-wide oversight role or
+   * the service principal); an array restricts the actor to exactly those ProviderEntities, and an EMPTY array
+   * matches nothing (fail-closed). Never read off the body/query.
+   */
+  readonly providerEntityScope?: readonly string[];
 }
 
 /** Extract the write actor (org + user + roles + active membership id + step-up) from `request.context`, or 401. */
@@ -54,5 +61,15 @@ export function writeActorOf(request: FastifyRequest): M25WriteActor {
     roles: ctx.roles,
     membershipId,
     stepUpRecent: ctx.attributes?.stepUpRecent === true,
+    providerEntityScope: providerEntityScopeOf(ctx),
   };
+}
+
+/** Oversight roles + the service principal are org-wide; everyone else is limited to their membership's PEs. */
+function providerEntityScopeOf(
+  ctx: NonNullable<FastifyRequest["context"]>,
+): readonly string[] | undefined {
+  if (ctx.attributes?.actorKind === "system") return undefined;
+  if (BROAD_DENIAL_SCOPE_ROLES.some((r) => ctx.roles.includes(r))) return undefined;
+  return ctx.providerEntityIds ?? [];
 }

@@ -89,6 +89,7 @@ import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type {
   PatientAddressReader,
   PatientAdmissionClearanceReader,
+  PatientAllergyReader,
   PatientCaregiverReader,
   PatientCoverageReader,
   PatientHopeAdmissionPrefillReader,
@@ -161,6 +162,7 @@ export type SeamName =
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
   | "PatientAddressReader" // M5 — TASK-015: patient residence state (M31 portal two-party-recording ABAC)
+  | "PatientAllergyReader" // M5 — the patient's current allergy list (M12 requestSignature allergy gate, GAP-036)
   | "PatientPrivacyFlagReader" // M5 §3.5 — sex class + active privacy flags (M37 shared-room gate, GAP-061)
   | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
@@ -372,8 +374,10 @@ export type SeamName =
   // `on_call` recipient resolver, M20's after-hours SOS parallel recipient, M14's IDG packet, M31's portal
   // care-log and M30/M33's operational measures had no read path at all. M19-T06 registers the real impls;
   // the deny-stubs stay the fail-closed default for a boot that does not wire M19.
+  | "BereavementEncounterReader" // M8 — one encounter's type/status/patient facts (M16 verifies a bereavement visit's source encounter)
   | "PatientSitingReader" // M6 — the location ids of a patient's active admission(s) (M36 care-team channel siting)
   | "SupervisorReader" // M3 — supervision/location facts about a membership (M33 scoping, M36 member admin)
+  | "AuditorEngagementReader" // M3 — is an auditor engagement active for this auditor now (M31 auditor view, GAP-093)
   | "OnCallProvider" // M19 — who is on call now + the active shifts M36's channel synchronizer re-syncs on
   | "TriageCallReader" // M19 — M32's PHI-free feature read + M14's since-last-IDG digest
   | "TriageCallProvider" // M19 — M14's full packet slice + M11's verbal-order → triage-context reverse lookup
@@ -501,6 +505,69 @@ export interface CaseloadProvider {
     organizationId: string;
     userId: string;
   }): Promise<readonly string[]>;
+}
+
+/**
+ * M8 — the facts M16 needs to verify the `sourceEncounterId` of a completed in-person bereavement visit
+ * (D15): that the encounter exists in the caller's tenant, which patient it documents, whether it is of
+ * type `bereavement_contact`, and whether it has been SIGNED (signed / cosign_pending / cosigned; a draft
+ * or a voided encounter is not). Returns `null` for an unknown or cross-tenant id (never a throw for "no
+ * such encounter"; an unbound/unreadable M8 throws via the deny-stub, which M16 treats as a refusal).
+ * Ids and enums only — leaf-safe, no clinical content.
+ */
+export interface BereavementEncounterReader {
+  getBereavementEncounterFacts(input: {
+    organizationId: string;
+    encounterId: string;
+  }): Promise<BereavementEncounterFacts | null>;
+}
+
+/** The leaf-safe encounter facts behind {@link BereavementEncounterReader}. */
+export interface BereavementEncounterFacts {
+  readonly encounterId: string;
+  readonly patientId: string;
+  /** True iff the encounter's type is `bereavement_contact`. */
+  readonly isBereavementContact: boolean;
+  /** True iff the encounter is signed (signed / cosign_pending / cosigned) and not voided. */
+  readonly isSigned: boolean;
+}
+
+/**
+ * M3 — is an `auditor_engagement` ACTIVE for this auditor right now. M3 owns the engagement entity; a
+ * consumer that serves an auditor-session view (M31's engagement view) asks this instead of trusting the
+ * engagement id the request names. True only when the engagement belongs to `organizationId`, is `active`
+ * (not scheduled / closed / cancelled), `at` lies inside its window, and `auditorUserId` is the auditor it
+ * was enrolled for. Anything else — unknown id, another org's engagement, closed, not enrolled — is `false`;
+ * a missing/unreadable M3 throws via the deny-stub (consumers fail closed on a throw).
+ */
+export interface AuditorEngagementReader {
+  isEngagementActiveForAuditor(input: {
+    organizationId: string;
+    engagementId: string;
+    auditorUserId: string;
+    /** ISO instant the window is compared against (the caller's server clock). */
+    at: string;
+  }): Promise<boolean>;
+  /**
+   * What an engagement COVERS, resolved from its own `scope` — only when the engagement passes exactly the
+   * {@link isEngagementActiveForAuditor} checks (org, `active`, window); otherwise `null` (a consumer serving
+   * the auditor view treats `null` as deny). `tenantWide` is true only when the scope says so explicitly;
+   * `patientIds` is the explicit, de-duplicated patient list (malformed entries dropped). A scope that names
+   * neither (e.g. provider-entity or claim slices only) covers NO patients here — enumerating a provider
+   * entity's patients is not M3's to do, so an unresolvable slice fails closed to the empty set.
+   */
+  engagementScope(input: {
+    organizationId: string;
+    engagementId: string;
+    auditorUserId: string;
+    at: string;
+  }): Promise<EngagementCoverage | null>;
+}
+
+/** The patient coverage of an auditor engagement (see {@link AuditorEngagementReader.engagementScope}). */
+export interface EngagementCoverage {
+  readonly tenantWide: boolean;
+  readonly patientIds: readonly string[];
 }
 
 /**
@@ -720,6 +787,14 @@ export interface ResolvedActor {
    * `externalActorId` attribute reach a vendor-scoped call".
    */
   readonly externalActorId: string | null;
+  /**
+   * The `auditor_engagement` an `auditor`-class session was minted for (GAP-093(c)), or null on every other
+   * class. SERVER-SIDE session state only (`session.scope.engagementId`, written by M2 at mint and
+   * class-gated through `sessionEngagementId`) — it is the session's OWN engagement that M31's
+   * `portal_engagement_scope` compares against the engagement the route names, so it must never come from a
+   * request field. Optional so existing fixtures keep their shape; absent reads as "no engagement" (deny).
+   */
+  readonly engagementId?: string | null;
 }
 
 /**
@@ -973,6 +1048,7 @@ export interface SeamContracts {
   PatientCoverageReader: PatientCoverageReader;
   PatientCaregiverReader: PatientCaregiverReader;
   PatientAddressReader: PatientAddressReader;
+  PatientAllergyReader: PatientAllergyReader;
   PatientPrivacyFlagReader: PatientPrivacyFlagReader;
   ExternalGriefResourceReader: ExternalGriefResourceReader;
   PatientMutator: PatientMutator;
@@ -1227,7 +1303,9 @@ export interface SeamContracts {
   // `triage_call` row. NEITHER encrypted column crosses: `caller_quote_cipher` / `transcript_cipher` are
   // §3.6-denylisted and the per-tenant DEK never leaves M19's boundary (D14).
   PatientSitingReader: PatientSitingReader;
+  BereavementEncounterReader: BereavementEncounterReader;
   SupervisorReader: SupervisorReader;
+  AuditorEngagementReader: AuditorEngagementReader;
   OnCallProvider: OnCallProvider;
   TriageCallReader: TriageCallReader;
   TriageCallProvider: TriageCallProvider;
