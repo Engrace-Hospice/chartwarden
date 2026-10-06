@@ -42,6 +42,12 @@ import {
   windowTierLabel,
   windowTierTone,
 } from "./billing-status";
+import {
+  type CorrectableNotice,
+  NoticeCorrectionAction,
+  NoticeCorrectionLinks,
+} from "./notice-correction";
+import { payerDateLabel } from "./notice-correction-model";
 
 // ── config (the only NOE↔NOTR difference) ─────────────────────────────────────────────────────────────
 export interface NoticeWindowConfig {
@@ -57,6 +63,10 @@ export interface NoticeWindowConfig {
   submitPath: string;
   /** Cancel action path template. */
   cancelPath: string;
+  /** "File corrected …" action path template (a rejected notice → a new linked DRAFT). */
+  correctPath: string;
+  /** The notice-owned date a correction may fix: NOE admission date, NOTR effective end date. */
+  correctableDateLabel: string;
   /** Web route base (no /app prefix — repo convention), e.g. "/billing/noe". */
   routeBase: string;
 }
@@ -68,6 +78,8 @@ export const NOE_CONFIG: NoticeWindowConfig = {
   detailPath: "/api/v1/noe-records/{id}",
   submitPath: "/api/v1/noe-records/{id}/submit",
   cancelPath: "/api/v1/noe-records/{id}/cancel",
+  correctPath: "/api/v1/noe-records/{id}/correct",
+  correctableDateLabel: "Admission (election) date",
   routeBase: "/billing/noe",
 };
 
@@ -78,6 +90,8 @@ export const NOTR_CONFIG: NoticeWindowConfig = {
   detailPath: "/api/v1/notr-records/{id}",
   submitPath: "/api/v1/notr-records/{id}/submit",
   cancelPath: "/api/v1/notr-records/{id}/cancel",
+  correctPath: "/api/v1/notr-records/{id}/correct",
+  correctableDateLabel: "Discharge / revocation date",
   routeBase: "/billing/notr",
 };
 
@@ -105,6 +119,15 @@ interface NoticeRecord {
   rejectedAt?: string | null;
   rejectionStage?: "999" | "277ca" | null;
   rejectionCodes?: string[];
+  // Medicare's own date for that answer (277CA STC02 / 999 GS04 / ISA09, else our receipt date) + its source.
+  payerStatusDate?: string | null;
+  payerStatusDateSource?: string | null;
+  // The correction chain: the rejected notice a correction was filed for, and the correction of a rejected one.
+  correctsNoticeId?: string | null;
+  correctionReason?: string | null;
+  correctedBy?: { noticeId: string; state: string } | null;
+  electionEffectiveDate?: string | null;
+  effectiveEndDate?: string | null;
   totalChargeCents?: number | null;
   version: number;
 }
@@ -126,6 +149,19 @@ const TERMINAL_STATES = new Set([
 
 function recordId(rec: NoticeRecord): string {
   return rec.id ?? rec.noeId ?? rec.notrId ?? rec.noeRecordId ?? rec.notrRecordId ?? "";
+}
+
+function correctable(rec: NoticeRecord): CorrectableNotice {
+  return {
+    id: recordId(rec),
+    state: rec.state,
+    correctsNoticeId: rec.correctsNoticeId ?? null,
+    correctionReason: rec.correctionReason ?? null,
+    correctedBy: rec.correctedBy ?? null,
+    correctableDate: rec.electionEffectiveDate ?? rec.effectiveEndDate ?? null,
+    rejectionStage: rec.rejectionStage ?? null,
+    rejectionCodes: rec.rejectionCodes ?? [],
+  };
 }
 
 function payerControlNumberOf(rec: NoticeRecord): string | null {
@@ -471,6 +507,11 @@ function NoticeTable({
                   >
                     {id || "—"}
                   </Link>
+                  {r.correctsNoticeId ? (
+                    <span className="wx-row-sub" style={{ display: "block" }}>
+                      Corrected {config.acronym}
+                    </span>
+                  ) : null}
                 </td>
                 <td style={tdStyle}>
                   <StatusPill label={statusLabel(r.state)} tone={noeNotrStateTone(r.state)} />
@@ -528,6 +569,8 @@ function NoticePreview({
         }
       />
       <NoticeAckOutcome record={record} config={config} />
+      <NoticeCorrectionLinks notice={correctable(record)} config={config} />
+      <NoticeCorrectionAction notice={correctable(record)} config={config} onFiled={onChanged} />
       {record.windowTargetAt && isActive(record) ? (
         <Field
           label="Filing window"
@@ -653,9 +696,21 @@ export function NoticeWindowDetail({
           }
         />
         <NoticeAckOutcome record={record} config={config} />
+        <NoticeCorrectionLinks notice={correctable(record)} config={config} />
+        <NoticeCorrectionAction
+          notice={correctable(record)}
+          config={config}
+          onFiled={() => void load()}
+        />
         {record.patientId ? <Field label="Patient" value={record.patientId} mono /> : null}
         {record.providerEntityId ? (
           <Field label="Provider entity" value={record.providerEntityId} mono />
+        ) : null}
+        {record.electionEffectiveDate ? (
+          <Field label="Admission date" value={record.electionEffectiveDate} />
+        ) : null}
+        {record.effectiveEndDate ? (
+          <Field label="Discharge / revocation date" value={record.effectiveEndDate} />
         ) : null}
         {record.effectiveDate ? (
           <Field label="Effective date" value={record.effectiveDate} />
@@ -834,12 +889,22 @@ function NoticeAckOutcome({
           value={codes.length > 0 ? codes.join(", ") : "None reported"}
           mono={codes.length > 0}
         />
+        {record.payerStatusDate ? (
+          <Field
+            label="Medicare's rejection date"
+            value={payerDateLabel(record.payerStatusDate, record.payerStatusDateSource)}
+          />
+        ) : null}
       </>
     );
   }
   if (record.acceptedAt) {
+    const payerDate = payerDateLabel(record.payerStatusDate, record.payerStatusDateSource);
     return (
-      <Field label="Accepted by Medicare" value={new Date(record.acceptedAt).toLocaleString()} />
+      <>
+        <Field label="Accepted by Medicare" value={new Date(record.acceptedAt).toLocaleString()} />
+        {payerDate ? <Field label="Medicare's acceptance date" value={payerDate} /> : null}
+      </>
     );
   }
   return null;
