@@ -388,6 +388,43 @@ describe("f2f_attested_for_recert (D5 regulatory)", () => {
     });
     expect(r.passed).toBe(true);
   });
+
+  describe("death within 2 days of a documented-exception new admission (MBPM ch. 9 §20.1(5)(d))", () => {
+    const withDeath = (deathDate: string | null, documented: boolean) => {
+      const ctx = passingContext();
+      return run(f2fAttestedForRecert, {
+        ...ctx,
+        claim: { ...ctx.claim, deathDate },
+        electionPeriods: [
+          {
+            sequence: 3,
+            effectiveFrom: "2026-02-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+            f2fExceptionDocumented: documented,
+          },
+        ],
+        faceToFace: [],
+      });
+    };
+    it("deems the F2F complete when the patient dies on day 0, +1 or +2", () => {
+      for (const d of ["2026-02-01", "2026-02-02", "2026-02-03"]) {
+        const r = withDeath(d, true);
+        expect(r.passed).toBe(true);
+        expect(r.message).toMatch(/deemed complete/);
+      }
+    });
+    it("a death on day +3 is not within the 2 days", () => {
+      expect(withDeath("2026-02-04", true).passed).toBe(false);
+    });
+    it("needs the documented exception — a death alone does not excuse the F2F", () => {
+      expect(withDeath("2026-02-02", false).passed).toBe(false);
+    });
+    it("a documented exception without a death still needs the F2F", () => {
+      expect(withDeath(null, true).passed).toBe(false);
+    });
+  });
 });
 
 describe("level_of_care_coherence", () => {

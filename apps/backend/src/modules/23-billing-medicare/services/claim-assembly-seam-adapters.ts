@@ -230,6 +230,8 @@ export interface M6ClaimRangeReader {
       /** F-127 (#251) — a SIGNED statement's `attending_physician_id` (M40), for
        *  `mdm.resolveClinicalParticipants`. */
       readonly attendingPhysicianId: string | null;
+      /** A new admission's first period (3+) admitted with a documented F2F exception (MBPM ch. 9 §20.1(5)(d)). */
+      readonly f2fExceptionDocumented?: boolean;
     }[];
     readonly certifications: readonly {
       readonly electionPeriodSequence: number;

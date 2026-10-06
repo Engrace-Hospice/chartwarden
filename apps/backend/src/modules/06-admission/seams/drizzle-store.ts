@@ -302,6 +302,10 @@ export interface ClaimRangeElectionPeriod {
    *  attending is not yet a legal election and `voided` carries no live claim (F-127, #251). `null` when
    *  no signed statement names one. */
   readonly attendingPhysicianId: string | null;
+  /** `election_period.f2f_exception_reason` is on file: a NEW admission's first period (3+) admitted with
+   *  documented exceptional circumstances (MBPM ch. 9 §20.1(5)(d)) — a death within 2 days of the start then
+   *  deems the F2F complete (M23 `f2f_attested_for_recert`). */
+  readonly f2fExceptionDocumented: boolean;
 }
 
 export interface ClaimRangeCertification {
@@ -459,6 +463,7 @@ export async function claimAssemblyRangeContextForOrg(
           scheduledEndAt: EP.scheduledEndAt,
           actualEndAt: EP.actualEndAt,
           completedByCause: EP.completedByCause,
+          f2fExceptionReason: EP.f2fExceptionReason,
         })
         .from(EP)
         .where(and(eq(EP.admissionId, admissionId), isNotNull(EP.effectiveAt)))
@@ -496,6 +501,7 @@ export async function claimAssemblyRangeContextForOrg(
         revoked: p.completedByCause === "revocation",
         revocationDate: p.completedByCause === "revocation" ? localDateN(p.actualEndAt) : null,
         attendingPhysicianId: attendingByPeriod.get(p.id) ?? null,
+        f2fExceptionDocumented: !!p.f2fExceptionReason?.trim(),
       }));
       const bySequence = new Map(overlapping.map((p) => [p.id, Number(p.sequenceNumber)]));
 

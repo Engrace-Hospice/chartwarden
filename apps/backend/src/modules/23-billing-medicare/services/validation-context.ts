@@ -98,6 +98,7 @@ export function assembleValidationContext(
       priorClaimServiceTo: claim.priorClaimServiceTo,
       dischargeDate: discharge?.effectiveDate ?? null,
       dischargeReason: discharge?.kind ?? null,
+      deathDate: discharge?.deathDate ?? null,
       dischargeClaimCodes,
       dischargeSourceEventId: discharge?.sourceEventId ?? null,
     },

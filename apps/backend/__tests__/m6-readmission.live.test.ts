@@ -498,6 +498,22 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     });
     await completeAndActivate(excepted);
     expect((await periodsOf(excepted))[0].status).toBe("active");
+
+    // The M6→M23 claim-range seam carries the documented exception, so M23's `f2f_attested_for_recert` can
+    // deem the F2F complete on a death within 2 days (MBPM ch. 9 §20.1(5)(d)) — no cross-module table read.
+    const range = await claimAssemblyRangeContextForOrg(handle.db, ORG, other, {
+      from: today(),
+      to: today(),
+    });
+    expect(range?.admission.admissionId).toBe(excepted);
+    expect(range?.electionPeriods).toEqual([
+      expect.objectContaining({ sequence: 3, f2fExceptionDocumented: true }),
+    ]);
+    const plain = await claimAssemblyRangeContextForOrg(handle.db, ORG, other, {
+      from: daysAgo(15),
+      to: daysAgo(15),
+    });
+    expect(plain?.electionPeriods.every((p) => p.f2fExceptionDocumented === false)).toBe(true);
   }, 120_000);
 
   it("a transfer out keeps the benefit period; the recently-discharged worklist lists the live ending", async () => {

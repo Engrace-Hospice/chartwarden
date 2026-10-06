@@ -186,6 +186,8 @@ export interface ClaimSnapshot {
   /** Discharge facts for the `bereavement_discharge_legitimacy` rule (null on non-discharge TOBs). */
   readonly dischargeDate: IsoDate | null;
   readonly dischargeReason: string | null;
+  /** The date of death when the stay ended in death (M6 `discharge_event.death_at`); null/absent otherwise. */
+  readonly deathDate?: IsoDate | null;
   /**
    * The discharge-driven claim codes (patient status / condition 52, H2 / occurrence 42, 55) derived from
    * the same facts (`deriveDischargeClaimCodes`). Required so no context producer can omit it; the
@@ -225,6 +227,12 @@ export interface ElectionPeriodSnapshot {
   readonly effectiveTo: IsoDate | null;
   readonly revoked: boolean;
   readonly revocationDate: IsoDate | null;
+  /**
+   * M6 seam fact: this period is a NEW admission's first period (3+) admitted with DOCUMENTED exceptional
+   * circumstances (MBPM ch. 9 §20.1(5)(d)). With it, a death within 2 days of the period start deems the F2F
+   * complete. Absent/false on every other period.
+   */
+  readonly f2fExceptionDocumented?: boolean;
 }
 
 /** Certification (CTI) facts per election period (M6 `CertificationReader`). */
