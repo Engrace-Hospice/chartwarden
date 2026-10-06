@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import type { RhcCarryOver } from "../../shell/rhc-carry-over";
 import {
   claimStateTone,
   dollars,
@@ -37,6 +38,7 @@ import {
 } from "./billing-status";
 import { ClaimStayEndPanels } from "./claim-stay-end-panels";
 import type { ClaimAttention } from "./discharge-attention";
+import { RhcDayCount } from "./rhc-day-count";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 const REPLACEABLE: ReadonlySet<string> = new Set(["ack_accepted", "ack_partial", "paid"]);
@@ -48,6 +50,9 @@ interface HippsPricing {
   wageIndexFiscalYear: number;
   wageIndexFactor: string;
   calculatedAt: string;
+  rhcDays1to60?: number;
+  rhcDays61Plus?: number;
+  rhcCarryOver?: RhcCarryOver | null;
 }
 
 interface SiaPricing {
@@ -626,6 +631,18 @@ function PricingCards({ claim }: { claim: ClaimDetail }): JSX.Element {
           </>
         )}
       </section>
+      {hipps && hipps.rhcDays1to60 !== undefined && hipps.rhcDays61Plus !== undefined ? (
+        <section style={{ ...cardStyle, flex: "1 1 100%" }}>
+          <h3 style={cardTitleStyle}>RHC day count</h3>
+          <RhcDayCount
+            pricing={{
+              rhcDays1to60: hipps.rhcDays1to60,
+              rhcDays61Plus: hipps.rhcDays61Plus,
+              rhcCarryOver: hipps.rhcCarryOver ?? null,
+            }}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

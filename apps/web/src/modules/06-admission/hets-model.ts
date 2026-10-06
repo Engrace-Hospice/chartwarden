@@ -5,6 +5,7 @@
 // Medicare counts benefit periods per beneficiary across every hospice (Claims Processing Manual ch. 11 §20.1.6).
 // HETS returns the CWF's elections and billed periods but no period number, so the server computes the next number
 // only when the history is complete (`nextPeriodBasis: "computed"`); every other basis is explained, never guessed.
+import type { RhcCarryOver } from "../../shell/rhc-carry-over";
 
 export type HetsNextPeriodBasis =
   | "computed"
@@ -35,6 +36,8 @@ export interface HetsHospicePeriodsView {
     checkedAt: string;
     reason: string | null;
   } | null;
+  /** The RHC carry-over for the requested election date (absent / null when none was asked for). */
+  rhcCarryOver?: RhcCarryOver | null;
 }
 
 /** What the hook resolved: nothing to ask (no patient), loading, quietly unavailable, or the answer. */

@@ -388,8 +388,11 @@ describe("HETS on the screens", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: /Continue/ }));
     expect(await screen.findByRole("button", { name: "Use period 3" })).toBeTruthy();
+    // The readmission screen also asks for the RHC carry-over of a new election on the admission date.
     expect(client.GET).toHaveBeenCalledWith(HOSPICE_PERIODS, {
-      params: { query: { patientId: PATIENT } },
+      params: {
+        query: { patientId: PATIENT, electionDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+      },
     });
   });
 });

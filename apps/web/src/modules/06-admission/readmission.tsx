@@ -10,8 +10,10 @@ import { type JSX, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";
 import { fmtDate } from "../../shell/patient-context";
+import { RhcCarryOverSummary } from "../../shell/rhc-carry-over";
 import {
   BenefitPeriodField,
+  type HetsHandle,
   WarningNote,
   useBenefitPeriodPlan,
   useHetsHospicePeriods,
@@ -50,6 +52,11 @@ import {
   validateBenefitPeriod,
 } from "./readmission-model";
 import { authFailureRedirect } from "./write-workflow";
+
+/** The merged RHC carry-over from the HETS read (null until loaded, or when HETS is unavailable). */
+function rhcCarryOverOf(hets: HetsHandle) {
+  return hets.load.kind === "loaded" ? (hets.load.view.rhcCarryOver ?? null) : null;
+}
 
 const STEPS = ["Previous episode", "Benefit period", "Requirements", "Intake", "Review"] as const;
 const REVIEW_STEP = STEPS.length - 1;
@@ -137,7 +144,9 @@ export function Readmission(): JSX.Element {
   });
   const loadedPlan = plan && plan !== "error" ? plan : null;
   const suggested = loadedPlan?.suggestion.suggestedSequence ?? null;
-  const hets = useHetsHospicePeriods(loadedPlan?.patientId);
+  const hets = useHetsHospicePeriods(loadedPlan?.patientId, {
+    electionDate: intake.admissionDate || today,
+  });
 
   // Prefill the suggestion once, when the plan first arrives.
   useEffect(() => {
@@ -277,7 +286,7 @@ export function Readmission(): JSX.Element {
             </InlineAlert>
           ) : null}
 
-          {step === 0 ? <PreviousEpisodeStep plan={loadedPlan} /> : null}
+          {step === 0 ? <PreviousEpisodeStep plan={loadedPlan} hets={hets} /> : null}
 
           {step === 1 ? (
             <Section
@@ -433,8 +442,15 @@ export function Readmission(): JSX.Element {
   );
 }
 
-function PreviousEpisodeStep({ plan }: { plan: BenefitPeriodPlan }): JSX.Element {
+function PreviousEpisodeStep({
+  plan,
+  hets,
+}: {
+  plan: BenefitPeriodPlan;
+  hets: HetsHandle;
+}): JSX.Element {
   const prev = plan.previous;
+  const carry = rhcCarryOverOf(hets);
   return (
     <Section
       icon="clipboard-check"
@@ -462,12 +478,22 @@ function PreviousEpisodeStep({ plan }: { plan: BenefitPeriodPlan }): JSX.Element
               { term: "Prior election close-out", value: closureLabel(plan.priorElectionClosure) },
               {
                 term: "Prior hospice days (RHC)",
-                value: plan.rhc.applies
-                  ? `${plan.rhc.priorHospiceDays} carry over (readmitted within 60 days)`
-                  : "Day count starts again (more than 60 days since discharge)",
+                value: carry
+                  ? `${carry.priorDays} carry over (our stays${carry.basis === "internal_only" ? "" : " + other hospices via HETS"})`
+                  : plan.rhc.applies
+                    ? `${plan.rhc.priorHospiceDays} carry over (readmitted within 60 days)`
+                    : "Day count starts again (more than 60 days since discharge)",
               },
             ]}
           />
+          {carry ? <RhcCarryOverSummary carry={carry} fmt={fmtDate} /> : null}
+          {plan.rhc.applies && (!carry || carry.basis !== "hets_merged") ? (
+            <WarningNote>
+              Readmitted within 60 days of a discharge, but no recent HETS check is on file: days
+              the patient spent at another hospice are not counted, so the RHC high/low rate split
+              may be wrong. Run a HETS check on the Benefit period step.
+            </WarningNote>
+          ) : null}
           {prev.transfer ? (
             <InlineAlert tone="info">
               This stay ended in a transfer: the period kept running at the other hospice. If the

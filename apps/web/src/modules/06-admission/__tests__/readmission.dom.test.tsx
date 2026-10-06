@@ -125,8 +125,11 @@ function plan(sequence = 2, over: Partial<BenefitPeriodPlan> = {}): BenefitPerio
   };
 }
 
-function makeClient(opts: { planOver?: Partial<BenefitPeriodPlan>; postFail?: string } = {}) {
+function makeClient(
+  opts: { planOver?: Partial<BenefitPeriodPlan>; postFail?: string; hets?: object } = {},
+) {
   const GET = vi.fn(async (path: string, init?: { params?: { query?: { sequence?: number } } }) => {
+    if (path === "/api/v1/billing/eligibility/hospice-periods" && opts.hets) return ok(opts.hets);
     if (path === "/api/v1/admissions/{id}")
       return ok({
         id: ADM,
@@ -400,5 +403,92 @@ describe("New admission — benefit period field", () => {
         benefitPeriod: { sequence: 2, source: "internal_history" },
       },
     });
+  });
+});
+
+describe("Readmission screen — RHC carry-over across hospices (HETS)", () => {
+  const hetsView = {
+    status: "available",
+    hetsConfigured: true,
+    patientId: PATIENT,
+    checkId: "33333333-3333-4333-8333-333333333333",
+    asOfServiceDate: "2026-10-01",
+    outcome: "active_part_a",
+    checkedAt: "2026-10-01T12:00:00.000Z",
+    staleAt: "2026-10-31T12:00:00.000Z",
+    stale: false,
+    synthetic: false,
+    hospiceHistoryReturned: true,
+    hospiceElectionOpen: false,
+    hospiceHistoryTruncated: false,
+    hospicePeriods: [],
+    nextPeriodNumber: 2,
+    nextPeriodBasis: "computed",
+    lastAttempt: null,
+    rhcCarryOver: {
+      electionDate: "2026-10-06",
+      priorDays: 57,
+      chainDays: 57,
+      basis: "hets_merged",
+      startsAtDay: 58,
+      highRateDaysRemaining: 3,
+      daysSinceLastCare: 16,
+      chain: [
+        {
+          source: "hets",
+          kind: "benefit_period",
+          start: "2026-07-01",
+          end: "2026-07-07",
+          endAssumed: false,
+          countedDays: 7,
+          hospiceNpi: "1649726464",
+          ref: null,
+        },
+        {
+          source: "internal",
+          kind: "stay",
+          start: "2026-08-01",
+          end: "2026-09-19",
+          endAssumed: false,
+          countedDays: 50,
+          hospiceNpi: null,
+          ref: ADM,
+        },
+      ],
+      warnings: [],
+      hetsCheck: {
+        checkId: "33333333-3333-4333-8333-333333333333",
+        checkedAt: "2026-10-01T12:00:00.000Z",
+        ageDays: 5,
+        stale: false,
+      },
+    },
+  };
+
+  it("shows the merged carry-over with each source, and asks the read for the election date", async () => {
+    const client = makeClient({ hets: hetsView });
+    mount(`/admissions/${ADM}/readmit`, "/admissions/:id/readmit", <Readmission />, client);
+
+    expect(
+      await screen.findByText(/57 carry over \(our stays \+ other hospices via HETS\)/),
+    ).toBeTruthy();
+    const summary = screen.getByTestId("rhc-carry-over");
+    expect(within(summary).getByText("Our records + HETS")).toBeTruthy();
+    expect(within(summary).getByText("Other hospice (HETS, NPI 1649726464)")).toBeTruthy();
+    expect(within(summary).getByText("Our stay")).toBeTruthy();
+    expect(
+      within(summary).getByText(/starts at RHC day 58, with 3 high-rate days left/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/no recent HETS check is on file/)).toBeNull();
+    const hetsCall = client.GET.mock.calls.find(
+      (c) => c[0] === "/api/v1/billing/eligibility/hospice-periods",
+    ) as unknown as [string, { params: { query: Record<string, string> } }];
+    expect(hetsCall[1].params.query.electionDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("warns that the split may be wrong when HETS has not been checked", async () => {
+    mount(`/admissions/${ADM}/readmit`, "/admissions/:id/readmit", <Readmission />, makeClient());
+    expect(await screen.findByText(/50 carry over \(readmitted within 60 days\)/)).toBeTruthy();
+    expect(screen.getByText(/no recent HETS check is on file/)).toBeTruthy();
   });
 });

@@ -1,5 +1,6 @@
 // apps/web/src/modules/06-admission — the live HETS hospice-period answer inside the benefit-period field (readmission
-// and New admission). `useHetsHospicePeriods` reads GET /api/v1/billing/eligibility/hospice-periods?patientId= through
+// and New admission). `useHetsHospicePeriods` reads GET /api/v1/billing/eligibility/hospice-periods?patientId=
+// (&electionDate= on the readmission screen, for the RHC carry-over) through
 // the typed client; `HetsPeriodPanel` shows it. A 403 (no `billing.eligibility.read`) or an unconfigured HETS falls
 // back to the manual checkbox flow with a quiet hint — never an error banner, never a block.
 //
@@ -30,11 +31,18 @@ export interface HetsHandle {
 
 type FetchResult = HetsLoad | { kind: "idle" };
 
-/** The HETS hospice-period read for a patient (`null` patient → idle). `pollMs` is for tests. */
+/**
+ * The HETS hospice-period read for a patient (`null` patient → idle). `pollMs` is for tests. With `electionDate`
+ * the view also carries the two-tier RHC carry-over a new election on that date starts with (`rhcCarryOver`).
+ */
 export function useHetsHospicePeriods(
   patientId: string | null | undefined,
-  opts: { pollMs?: number } = {},
+  opts: { pollMs?: number; electionDate?: string } = {},
 ): HetsHandle {
+  const electionDate =
+    opts.electionDate && /^\d{4}-\d{2}-\d{2}$/.test(opts.electionDate)
+      ? opts.electionDate
+      : undefined;
   const client = useApiClient();
   const session = useSession();
   const canCheck = session?.permissions?.includes(HETS_CHECK_PERMISSION) ?? false;
@@ -55,7 +63,7 @@ export function useHetsHospicePeriods(
       try {
         const { data, error, response } = await client.GET(
           "/api/v1/billing/eligibility/hospice-periods",
-          { params: { query: { patientId: id } } },
+          { params: { query: { patientId: id, ...(electionDate ? { electionDate } : {}) } } },
         );
         if (response?.status === 403) return { kind: "unavailable", reason: "forbidden" };
         if (error || !data) return { kind: "unavailable", reason: "error" };
@@ -67,7 +75,7 @@ export function useHetsHospicePeriods(
         return { kind: "unavailable", reason: "error" };
       }
     },
-    [client],
+    [client, electionDate],
   );
 
   useEffect(() => {
