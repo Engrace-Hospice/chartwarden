@@ -62,6 +62,9 @@ export type NoeTransitionPatch = Partial<
 /** The NOE states that have left the 5-day window in flight (excluded from the watchdog scan + admission uq). */
 const NOE_TERMINAL_DB: schema.NoeRecord["state"][] = ["ACK_ACCEPTED", "CANCELLED", "ACK_REJECTED"];
 
+/** The NOE states that never establish an election on the CWF (a withdrawn or MAC-rejected filing). */
+const NOE_NOT_EFFECTIVE_DB: schema.NoeRecord["state"][] = ["CANCELLED", "ACK_REJECTED"];
+
 /** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 function toNoeRecord(row: schema.NoeRecord): NoeRecord {
   return { ...row, state: noticeStateCodec.fromDb(row.state) };
@@ -113,6 +116,23 @@ export class NoeRepository {
       .select()
       .from(N)
       .where(and(eq(N.admissionId, admissionId), notInArray(N.state, NOE_TERMINAL_DB)))
+      .limit(1);
+    return row ? toNoeRecord(row) : null;
+  }
+
+  /**
+   * The admission's EFFECTIVE NOE — the latest one that is neither cancelled nor rejected, INCLUDING an
+   * `ack_accepted` one (which {@link findActiveByAdmission} deliberately excludes: it answers "is a NOE still in
+   * flight?", not "is there a NOE for this admission?"). This is what claim validation reads: an accepted NOE is
+   * the strongest evidence of an election, never "no NOE". `null` when only cancelled/rejected NOEs (or none)
+   * exist.
+   */
+  async findEffectiveByAdmission(admissionId: string): Promise<NoeRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(N)
+      .where(and(eq(N.admissionId, admissionId), notInArray(N.state, NOE_NOT_EFFECTIVE_DB)))
+      .orderBy(desc(N.createdAt), desc(N.id))
       .limit(1);
     return row ? toNoeRecord(row) : null;
   }

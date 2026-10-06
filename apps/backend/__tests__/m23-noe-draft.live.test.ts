@@ -27,7 +27,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repositories } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -421,5 +423,34 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
 
     expect(await noesFor(admissionId)).toHaveLength(1);
     expect(skips.map((s) => s.reason)).toContain("not_first_period");
+  });
+  it("an ACCEPTED NOE is the admission's effective NOE (claim validation read it as missing before)", async () => {
+    const admissionId = await activeAdmission(ORG_A, randomUUID());
+    await dispatcher.tick();
+    const [drafted] = await noesFor(admissionId);
+    const read = () =>
+      withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, async (tx) => {
+        const repo = new repositories.NoeRepository(tx as never);
+        return {
+          active: await repo.findActiveByAdmission(admissionId),
+          effective: await repo.findEffectiveByAdmission(admissionId),
+        };
+      });
+    // In flight: both reads agree.
+    expect((await read()).effective?.id).toBe(drafted.id);
+    expect((await read()).active?.id).toBe(drafted.id);
+
+    // Medicare accepted it: no longer "in flight", but it IS the admission's NOE.
+    await admin.query("UPDATE noe_record SET state='ACK_ACCEPTED' WHERE id=$1", [drafted.id]);
+    const accepted = await read();
+    expect(accepted.active).toBeNull();
+    expect(accepted.effective?.id).toBe(drafted.id);
+    expect(accepted.effective?.state).toBe("ack_accepted");
+
+    // A withdrawn / rejected filing never establishes the election.
+    await admin.query("UPDATE noe_record SET state='ACK_REJECTED' WHERE id=$1", [drafted.id]);
+    expect((await read()).effective).toBeNull();
+    await admin.query("UPDATE noe_record SET state='CANCELLED' WHERE id=$1", [drafted.id]);
+    expect((await read()).effective).toBeNull();
   });
 });

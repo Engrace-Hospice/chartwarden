@@ -88,7 +88,10 @@ export function buildClaimValidationContextPort(
             claim.patientId,
           )
         : null;
-      const noeRow = await new repositories.NoeRepository(tx).findActiveByAdmission(
+      // The admission's EFFECTIVE NOE (latest non-cancelled, non-rejected — an `ack_accepted` one included).
+      // `findActiveByAdmission` excludes accepted NOEs (it means "still in flight"), which made an accepted NOE
+      // validate as "No Notice of Election".
+      const noeRow = await new repositories.NoeRepository(tx).findEffectiveByAdmission(
         facts.admission.admissionId,
       );
 
