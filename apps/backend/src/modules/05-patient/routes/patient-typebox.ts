@@ -181,23 +181,6 @@ export const PatientDemographicsSchema = Type.Object({
   aliases: Type.Array(NameAliasSchema),
 });
 
-/** Editable, non-identifier patient demographics. MRN and lifecycle are deliberately absent. */
-export const UpdatePatientDemographicsBodySchema = Type.Object({
-  legalFirstName: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
-  legalMiddleName: Type.Optional(Type.Union([Type.String({ maxLength: 120 }), Type.Null()])),
-  legalLastName: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
-  legalNameSuffix: Type.Optional(Type.Union([Type.String({ maxLength: 32 }), Type.Null()])),
-  dob: Type.Optional(Type.String({ format: "date" })),
-  sexAssignedAtBirth: Type.Optional(Type.String({ minLength: 1, maxLength: 32 })),
-  genderIdentityCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
-  sexualOrientationCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
-  pronounsCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
-  maritalStatusCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
-  raceCodes: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 20 })),
-  ethnicityCodes: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 20 })),
-  preferredLanguageCode: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
-});
-
 // GET /api/v1/patients/:id/identifiers (§3.3/§2.2) — ssn/state_id are `sensitive`: `value` is null,
 // only `last4` is returned (the ciphertext is never serialized).
 const PatientIdentifierSchema = Type.Object({

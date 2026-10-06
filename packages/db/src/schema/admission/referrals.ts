@@ -54,6 +54,8 @@ export const referrals = pgTable(
     // The patient's Medicaid number from the referrer (1-14 alphanumerics, 0317). M5 keeps Medicaid IDs on
     // `patient_payer`, so it pre-fills the intake Coverage / Payers form instead of being copied.
     medicaidNumberAtReceipt: text("medicaid_number_at_receipt"),
+    // Captured at referral intake and supplied only when M6 creates a new M5 patient.
+    sexAssignedAtBirth: text("sex_assigned_at_birth"),
     referringDxText: text("referring_dx_text"),
     icd10TerminalPrimary: text("icd10_terminal_primary"),
     sourceChannel: referralSourceChannel("source_channel").notNull(),

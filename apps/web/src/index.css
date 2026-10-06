@@ -1083,6 +1083,32 @@
   .wx-patient-card table {
     min-width: 36rem;
   }
+  /* Care Team & Assignments: the clinical list is the primary reading column;
+     relationship/contact context remains available in a compact sticky rail. */
+  .wx-care-team-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(18.75rem, 0.9fr);
+    align-items: start;
+    gap: 1rem;
+  }
+  .wx-care-team-main {
+    display: grid;
+    min-width: 0;
+    gap: 1rem;
+  }
+  .wx-care-team-rail {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    min-width: 0;
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+  }
+  .wx-care-team-rail-cards {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+  }
   /* Tables inside panels read as the mockups' clean lists: no forced min-width block scroll. */
   .wx-panel table {
     display: table;
@@ -4582,6 +4608,14 @@
     }
     .wx-visit-panel-body {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-care-team-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-care-team-rail {
+      position: static;
+      max-height: none;
+      overflow: visible;
     }
   }
   @media (max-width: 720px) {

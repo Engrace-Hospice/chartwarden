@@ -256,24 +256,6 @@ export interface DemographicsView {
   readonly aliases: readonly NameAliasView[];
 }
 
-export type UpdateDemographicsInput = Partial<
-  Pick<
-    DemographicsView,
-    | "legalFirstName"
-    | "legalMiddleName"
-    | "legalLastName"
-    | "legalNameSuffix"
-    | "dob"
-    | "sexAssignedAtBirth"
-    | "genderIdentityCode"
-    | "sexualOrientationCode"
-    | "pronounsCode"
-    | "maritalStatusCode"
-    | "raceCodes"
-    | "ethnicityCodes"
-    | "preferredLanguageCode"
-  >
->;
 
 /** The route service surface (§4.2). */
 /** A query for the §4.2 census/list. Org binding is server-side, never in the query. */
@@ -288,12 +270,6 @@ export interface PatientRouteService {
   admit(organizationId: string, input: AdmitInput, actorUserId: string): Promise<AdmitResult>;
   getPatient(organizationId: string, id: string): Promise<PatientView | null>;
   getDemographics(organizationId: string, id: string): Promise<DemographicsView | null>;
-  updateDemographics(
-    organizationId: string,
-    id: string,
-    input: UpdateDemographicsInput,
-    actorUserId: string,
-  ): Promise<DemographicsView | null>;
   getIdentifiers(organizationId: string, id: string): Promise<IdentifierView[] | null>;
   /**
    * The §4.2 census. `scope` is the §7.5 narrowing set (F-096):
@@ -370,7 +346,6 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
   const amendments = new Map<string, AmendmentView>();
   const addresses = new Map<string, AddressView[]>(); // patientId → append-only address history
   const payers = new Map<string, PatientPayerView[]>(); // patientId → §3.4 coverage rows
-  const demographicOverrides = new Map<string, Partial<DemographicsView>>();
   const assignments = new Map<string, AssignmentView[]>();
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
   let seq = 0;
@@ -468,15 +443,7 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
         ethnicityCodes: [],
         preferredLanguageCode: null,
         aliases: [],
-        ...demographicOverrides.get(id),
       };
-    },
-    async updateDemographics(organizationId, id, input, _actorUserId) {
-      const p = patients.get(id);
-      if (!p || p.organizationId !== organizationId) return null;
-      demographicOverrides.set(id, { ...(demographicOverrides.get(id) ?? {}), ...input });
-      events.push("m5.patient.updated");
-      return this.getDemographics(organizationId, id);
     },
 
     async getIdentifiers(organizationId, id) {

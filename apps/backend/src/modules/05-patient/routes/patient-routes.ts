@@ -72,7 +72,6 @@ import {
   LooseIdParamsSchema,
   MergeBodySchema,
   PatientListQuerySchema,
-  UpdatePatientDemographicsBodySchema,
   parse,
 } from "./patient-typebox";
 import type { PatientRouteService } from "./service";
@@ -224,23 +223,6 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       const { organizationId } = actorOf(request);
       const query = parse(PatientListQuerySchema, request.query);
       return service.list(organizationId, query, await censusScope(request));
-    },
-  );
-
-  app.put(
-    "/api/v1/patients/:id/demographics",
-    { preHandler: [EDIT, SCOPE_EDIT] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { id } = parse(LooseIdParamsSchema, request.params);
-      const updated = await service.updateDemographics(
-        organizationId,
-        id,
-        parse(UpdatePatientDemographicsBodySchema, request.body),
-        userId,
-      );
-      if (updated === null) throw notFound("patient");
-      return updated;
     },
   );
 

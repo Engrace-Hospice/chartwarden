@@ -35,7 +35,6 @@ import type {
   PatientRouteService,
   PatientView,
   PrivacyFlagsView,
-  UpdateDemographicsInput,
 } from "./routes/service";
 
 const ID = schema.patientIdentifiers;
@@ -251,54 +250,6 @@ export function createDbPatientRouteService(db: DbClient, outbox: M5OutboxPort =
           lastName: a.lastName ?? null,
         })),
       };
-    });
-
-  const updateDemographics = async (
-    organizationId: string,
-    id: string,
-    input: UpdateDemographicsInput,
-    _actorUserId: string,
-  ): Promise<DemographicsView | null> =>
-    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-      const patientFields = {
-        legalFirstName: input.legalFirstName,
-        legalMiddleName: input.legalMiddleName,
-        legalLastName: input.legalLastName,
-        legalNameSuffix: input.legalNameSuffix,
-        dob: input.dob,
-        sexAssignedAtBirth: input.sexAssignedAtBirth,
-        genderIdentityCode: input.genderIdentityCode,
-        sexualOrientationCode: input.sexualOrientationCode,
-        pronounsCode: input.pronounsCode,
-        maritalStatusCode: input.maritalStatusCode,
-        raceCodes: input.raceCodes,
-        ethnicityCodes: input.ethnicityCodes,
-        updatedAt: new Date(),
-      };
-      const changedPatientFields = Object.fromEntries(
-        Object.entries(patientFields).filter(([, value]) => value !== undefined),
-      );
-      if (Object.keys(changedPatientFields).length > 1) {
-        const rows = await tx.update(P).set(changedPatientFields).where(eq(P.id, id)).returning({ id: P.id });
-        if (!rows[0]) return null;
-      } else {
-        const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, id)).limit(1);
-        if (!exists[0]) return null;
-      }
-      if (input.preferredLanguageCode !== undefined) {
-        if (input.preferredLanguageCode === null) {
-          await tx.delete(COMM).where(eq(COMM.patientId, id));
-        } else {
-          await tx
-            .insert(COMM)
-            .values({ patientId: id, organizationId, preferredLanguageCode: input.preferredLanguageCode })
-            .onConflictDoUpdate({
-              target: COMM.patientId,
-              set: { preferredLanguageCode: input.preferredLanguageCode },
-            });
-        }
-      }
-      return getDemographics(organizationId, id);
     });
 
   // §3.3/§2.2 Identifiers tab. MASKED BY CONSTRUCTION: ssn/state_id rows return `value: null` and only
@@ -928,7 +879,6 @@ export function createDbPatientRouteService(db: DbClient, outbox: M5OutboxPort =
     censusMetrics,
     getPatient,
     getDemographics,
-    updateDemographics,
     getIdentifiers,
     listAddresses,
     listPayers,

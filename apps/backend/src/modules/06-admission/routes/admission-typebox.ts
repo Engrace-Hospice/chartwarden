@@ -70,6 +70,9 @@ export const ReferralCreateSchema = Type.Object({
   medicareNumberAtReceipt: Type.Optional(Type.String({ maxLength: 20 })),
   // The patient's Medicaid number from the referrer (1-14 letters/digits once dashes/spaces are removed).
   medicaidNumberAtReceipt: Type.Optional(Type.String({ maxLength: 24 })),
+  sexAssignedAtBirth: Type.Optional(
+    Type.Union([Type.Literal("F"), Type.Literal("M"), Type.Literal("O"), Type.Literal("U")]),
+  ),
   referringDxText: Type.Optional(Type.String({ maxLength: 2000 })),
   referrerName: Type.Optional(Type.String({ maxLength: 200 })),
   referrerOrganization: Type.Optional(Type.String({ maxLength: 200 })),
@@ -183,6 +186,9 @@ export const ReferralUpdateSchema = Type.Object({
   referrerName: Type.Optional(Type.String({ maxLength: 200 })),
   referrerOrganization: Type.Optional(Type.String({ maxLength: 200 })),
   referrerPhone: Type.Optional(Type.String({ maxLength: 32 })),
+  sexAssignedAtBirth: Type.Optional(
+    Type.Union([Type.Literal("F"), Type.Literal("M"), Type.Literal("O"), Type.Literal("U")]),
+  ),
   ifVersion: Version(),
 });
 

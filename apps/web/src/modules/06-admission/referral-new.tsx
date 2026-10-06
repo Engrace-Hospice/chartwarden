@@ -27,6 +27,7 @@ export function ReferralNew(): JSX.Element {
     patientDobAtReceipt: "",
     medicareNumberAtReceipt: "",
     medicaidNumberAtReceipt: "",
+    sexAssignedAtBirth: "U",
     source: "phone",
     referrerOrganization: "",
     referrerName: "",
@@ -44,13 +45,22 @@ export function ReferralNew(): JSX.Element {
         params: { path: { id: patientId } },
       });
       if (!data || cancelled) return;
-      const patient = data as { firstName?: string; lastName?: string; dob?: string };
+      const patient = data as {
+        firstName?: string;
+        lastName?: string;
+        dob?: string;
+        sexAssignedAtBirth?: string;
+      };
       setForm((prev) => ({
         ...prev,
         patientNameAtReceipt:
           prev.patientNameAtReceipt ||
           [patient.firstName, patient.lastName].filter(Boolean).join(" "),
         patientDobAtReceipt: prev.patientDobAtReceipt || patient.dob || "",
+        sexAssignedAtBirth:
+          prev.sexAssignedAtBirth === "U"
+            ? patient.sexAssignedAtBirth || "U"
+            : prev.sexAssignedAtBirth,
       }));
     }
     void loadPatient();
@@ -97,6 +107,7 @@ export function ReferralNew(): JSX.Element {
         ...(form.medicaidNumberAtReceipt.trim()
           ? { medicaidNumberAtReceipt: form.medicaidNumberAtReceipt.trim() }
           : {}),
+        sexAssignedAtBirth: form.sexAssignedAtBirth,
         ...(form.referrerOrganization.trim()
           ? { referrerOrganization: form.referrerOrganization.trim() }
           : {}),
@@ -193,6 +204,16 @@ export function ReferralNew(): JSX.Element {
               Optional, if the patient has Medicaid. Pre-fills the Medicaid coverage on the referral
               once the patient is resolved.
             </span>
+            Sex assigned at birth
+            <select
+              value={form.sexAssignedAtBirth}
+              onChange={(ev) => setField("sexAssignedAtBirth", ev.target.value)}
+            >
+              <option value="F">Female</option>
+              <option value="M">Male</option>
+              <option value="O">Other</option>
+              <option value="U">Unknown / not known</option>
+            </select>
           </label>
         </section>
 

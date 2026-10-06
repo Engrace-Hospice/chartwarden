@@ -166,37 +166,6 @@ afterEach(() => {
 });
 
 describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", () => {
-  it("edits a caseload patient's demographics but keeps the MRN outside the write contract", async () => {
-    const { app, events } = makeServer();
-    const res = await app.inject({
-      method: "PUT",
-      url: `/api/v1/patients/${EXISTING}/demographics`,
-      headers: EDIT,
-      payload: {
-        legalFirstName: "Augusta",
-        sexAssignedAtBirth: "F",
-        genderIdentityCode: "woman",
-        pronounsCode: "she/her",
-        raceCodes: ["2106-3"],
-        ethnicityCodes: ["2186-5"],
-        preferredLanguageCode: "en",
-      },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({
-      mrn: "MRN-E",
-      legalFirstName: "Augusta",
-      sexAssignedAtBirth: "F",
-      genderIdentityCode: "woman",
-      pronounsCode: "she/her",
-      raceCodes: ["2106-3"],
-      ethnicityCodes: ["2186-5"],
-      preferredLanguageCode: "en",
-    });
-    expect(events).toContain("m5.patient.updated");
-    await app.close();
-  });
-
   it("denies admit without patient.create (403)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
