@@ -69,6 +69,10 @@ export async function readAssemblyFacts(
     );
   }
   const certifications = await seams.certifications.forPatient(orgId, patientId, range);
+  // FY2027 — the election addendum facts (42 CFR 418.24(c)); undefined when the M6 reader is not bound.
+  const electionAddendum = seams.electionAddendum
+    ? await seams.electionAddendum.forAdmission(orgId, admission.admissionId)
+    : undefined;
   const faceToFace = await seams.faceToFace.forPatient(orgId, patientId, range);
   const resolvedLoc = await seams.levelOfCare.periodsInRange(orgId, patientId, range);
 
@@ -172,6 +176,7 @@ export async function readAssemblyFacts(
     admission,
     resolvedPeriods,
     certifications,
+    electionAddendum,
     faceToFace,
     resolvedLoc,
     pe,

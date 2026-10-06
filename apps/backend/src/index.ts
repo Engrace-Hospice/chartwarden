@@ -250,15 +250,19 @@ import {
   activeAdmissionSitingForPatientForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
+  buildM6CarePlanAddendumConsumer,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
   buildM6RecertificationSignedConsumer,
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
+  composeNonCoveredItemsReaders,
   createAdmissionLocPeriodsReader,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
+  createElectionAddendumService,
+  electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgCurrentLevelOfCareForOrg,
   idgHospitalEventsForOrg,
@@ -289,9 +293,11 @@ import {
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
   claimDiagnosesForOrg,
+  createAddendumDiagnosesReader,
   createDbCarePlanAbacResolver,
   createDrizzleCarePlanEraseStore,
   createDrizzleCarePlanReaderStore,
+  createUnrelatedProblemItemsReader,
   idgPacketCarePlanContextForOrg,
   mountCarePlanRoutes,
   registerCarePlanAbacPredicates,
@@ -1092,6 +1098,7 @@ import {
   selectTransactionalEmailTransport,
   wireAlertRuleSeed,
 } from "./modules/36-messaging/index";
+import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
@@ -2521,6 +2528,11 @@ function buildM23AssemblyPorts(db: DbClient): {
       forRange: (orgId, patientId, range) =>
         claimAssemblyRangeContextForOrg(db, orgId, patientId, range),
     },
+    // FY2027 — M6's election addendum facts for the `election_addendum_signed` rule (42 CFR 418.24(c)).
+    m6ElectionAddendum: {
+      forAdmission: (orgId, admissionId) =>
+        electionAddendumComplianceForOrg(db, orgId, admissionId),
+    },
     // F-209 (#251) — M7's org-explicit, patient-keyed claim-diagnosis read.
     m7ClaimDiagnoses: {
       forRange: (orgId, patientId, range) => claimDiagnosesForOrg(db, orgId, patientId, range),
@@ -2960,6 +2972,26 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // GAP-004 — the M5 §7.8 death-cascade `m5.patient.deceased` emit (deceased-db.ts).
   const m5OutboxPublisher = bindCallerModule(txOutboxPublisher, "m5");
   const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
+  // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum service: one instance shared by M6's routes
+  // and its M7 plan-of-care consumer. Non-covered determinations come through `composeNonCoveredItemsReaders`
+  // (M7 unrelated problems today; workstream B appends M12 medications / M21 DME readers to this list).
+  const m6ElectionAddendum = dbHandle
+    ? createElectionAddendumService({
+        db: dbHandle.db,
+        outbox: m6OutboxPublisher,
+        sources: {
+          nonCoveredItems: composeNonCoveredItemsReaders([
+            createUnrelatedProblemItemsReader(dbHandle.db),
+          ]),
+          diagnoses: createAddendumDiagnosesReader(dbHandle.db),
+          // (c)(3) name + hospice medical record identifier, through M5's published PatientReader seam.
+          patientIdentity: async (organizationId, patientId) => {
+            const p = await getSeam("PatientReader").findById({ organizationId, id: patientId });
+            return p ? { name: `${p.firstName} ${p.lastName}`.trim(), mrn: p.mrn } : null;
+          },
+        },
+      })
+    : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
   // so registration order at boot never matters. This is the real "bedId verified with M37" check the
@@ -3456,6 +3488,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               signedNoteFor: (orgId, encounterId) =>
                 signedEncounterNoteForOrg(dbHandle.db, orgId, encounterId),
             },
+            // FY2027 — the election statement addendum routes (42 CFR 418.24(c)/(d)).
+            m6ElectionAddendum ?? undefined,
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
@@ -6549,6 +6583,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
           // (M13 spec §4.9): previously unconsumed (M36 sat on the seam-consumer list).
           buildM36EmarAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
+          // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
+          buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-061 — M20's check-in overdue / escalated / coverage-gap watchdog alerts (M20 spec §4.9): previously
           // unconsumed, so a lone worker's missed check-in paged nobody.
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
@@ -6966,6 +7003,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // statement, the face-to-face, the notice of rights, the revocation and the discharge summary,
           // all six commented "M22 document" since M6's schema landed and all six NULL in every database.
           buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
+          // FY2027 — 42 CFR 418.24(d)(2): a plan-of-care change to the unrelated determinations (M7 problem
+          // events + signed care-plan versions) opens the 3-day election-addendum update window.
+          ...(m6ElectionAddendum
+            ? [
+                buildM6CarePlanAddendumConsumer({
+                  addendum: () => m6ElectionAddendum,
+                }),
+              ]
+            : []),
           // F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           // Migration 0250 adds the `source_order_id` idempotency key a genuine redelivery needs.
           buildM6LevelOfCareChangeSignedConsumer({

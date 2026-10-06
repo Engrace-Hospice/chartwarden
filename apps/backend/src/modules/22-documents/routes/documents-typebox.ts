@@ -98,6 +98,8 @@ const DOCUMENT_AGGREGATE_TYPE = [
   "election_statement",
   "cti",
   "intake_source",
+  // FY2027 — a scanned, wet-signed election statement addendum (42 CFR 418.24(c)(9)).
+  "election_addendum",
   "other",
 ] as const;
 const VERIFIED_UPLOAD_MIME_TYPE = [

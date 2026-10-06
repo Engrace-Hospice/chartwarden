@@ -62,7 +62,8 @@ export type RuleCategory =
   | "cap"
   | "discharge"
   | "modifiers"
-  | "evv";
+  | "evv"
+  | "election";
 
 export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "eligibility",
@@ -82,6 +83,7 @@ export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "discharge",
   "modifiers",
   "evv",
+  "election",
 ] as const;
 
 /** The target a remediation hint blames, so the worklist can deep-link to the owning module's editor. */
@@ -381,6 +383,23 @@ export interface WageIndexSnapshot {
 }
 
 /**
+ * FY2027 (CMS-1851-F) — the admission's election statement addendum facts (42 CFR 418.24(c)/(d)) for the
+ * `election_addendum_signed` rule, read from M6's `electionAddendumComplianceForOrg`. Flags only, no PHI.
+ */
+export interface ElectionAddendumSnapshot {
+  /** The election's effective date (period 1); `null` when the admission was never activated. */
+  readonly electionEffectiveDate: IsoDate | null;
+  readonly versionCount: number;
+  readonly anyFurnished: boolean;
+  readonly anySigned: boolean;
+  readonly anyRefusalDocumented: boolean;
+  /** A `signature_not_required` / `not_required` version with its (d)(3)/(d)(4) reason documented. */
+  readonly anyExemptionDocumented: boolean;
+  /** Set once the patient died, revoked, or was discharged. */
+  readonly leftCareReason: "death" | "revocation" | "discharge" | null;
+}
+
+/**
  * Which forward seams are bound at evaluation time (D8/D13). When a flag is false, the rules that depend
  * on that seam SKIP with `reason: 'seam_not_bound'` rather than fail — the deny-stub contract.
  */
@@ -433,6 +452,12 @@ export interface ValidationContext {
   readonly sequestration: SequestrationSnapshot | null;
   /** `null` when the wage-index file for this CCN/FY is not loaded. */
   readonly wageIndex: WageIndexSnapshot | null;
+  /**
+   * FY2027 — the election addendum facts. `undefined` when the M6 addendum seam is not bound (the rule then
+   * SKIPs `seam_not_bound`, the D8 deny-stub posture); optional so a context producer that predates the rule
+   * still type-checks.
+   */
+  readonly electionAddendum?: ElectionAddendumSnapshot;
 
   readonly seams: SeamAvailabilityFlags;
 }

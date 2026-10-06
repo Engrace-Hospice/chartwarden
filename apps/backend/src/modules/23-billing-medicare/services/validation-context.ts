@@ -68,6 +68,7 @@ export function assembleValidationContext(
     capProjectionBound,
     capProjectionCtx,
     signedEncounters,
+    electionAddendum,
   } = facts;
   return {
     orgId,
@@ -149,6 +150,7 @@ export function assembleValidationContext(
       factorDecimal: wageIndex.factorDecimal,
       cbsaCode: wageIndex.cbsaCode,
     },
+    ...(electionAddendum ? { electionAddendum } : {}),
     seams: {
       capProjectionBound,
       mdmResolverBound: true,

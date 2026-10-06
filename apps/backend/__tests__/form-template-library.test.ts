@@ -20,9 +20,9 @@ import { describe, expect, it } from "vitest";
 const ORG = "org-1";
 
 describe("§4.5 platform-floor catalog (D14)", () => {
-  it("ships the 31 v1 templates, all at version 1.0.0", () => {
-    expect(FORM_TEMPLATE_REGISTRY).toHaveLength(31);
-    expect(listPlatformTemplates()).toHaveLength(31);
+  it("ships the 32 v1 templates (31 + the FY2027 election addendum), all at version 1.0.0", () => {
+    expect(FORM_TEMPLATE_REGISTRY).toHaveLength(32);
+    expect(listPlatformTemplates()).toHaveLength(32);
     for (const t of FORM_TEMPLATE_REGISTRY) expect(t.version).toBe(V1_TEMPLATE_VERSION);
   });
 

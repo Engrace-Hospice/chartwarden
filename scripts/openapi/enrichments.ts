@@ -104,6 +104,7 @@ import {
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
+  ComplianceWindowPageResponseSchema as M6ComplianceWindowPageResponseSchema,
   PatientAdmissionsResponseSchema as M6PatientAdmissionsResponseSchema,
   ReferralListResponseSchema as M6ReferralListResponseSchema,
   SummaryItemsResponseSchema as M6SummaryItemsResponseSchema,
@@ -140,6 +141,16 @@ import {
   UploadedElectionEvidenceSchema,
   UploadedNoticeOfRightsSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/admission-typebox";
+import {
+  ElectionAddendumDraftSchema as M6ElectionAddendumDraftSchema,
+  ElectionAddendumFurnishSchema as M6ElectionAddendumFurnishSchema,
+  ElectionAddendumOverviewSchema as M6ElectionAddendumOverviewSchema,
+  ElectionAddendumPatchSchema as M6ElectionAddendumPatchSchema,
+  ElectionAddendumRefusalSchema as M6ElectionAddendumRefusalSchema,
+  ElectionAddendumSignatureNotRequiredSchema as M6ElectionAddendumSignatureNotRequiredSchema,
+  ElectionAddendumSignatureSchema as M6ElectionAddendumSignatureSchema,
+  ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
 import { PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 // M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
@@ -3659,6 +3670,43 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Sign the election statement",
     body: ElectionSignSchema,
   },
+  // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum.
+  "GET /api/v1/admissions/:id/election-addendum": {
+    summary: "Election statement addendum: current version, history and open 418.24(d) windows",
+    response: M6ElectionAddendumOverviewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum": {
+    summary:
+      "Draft the addendum (initial), refresh the draft, or start an update after a plan-of-care change",
+    body: M6ElectionAddendumDraftSchema,
+    response: M6ElectionAddendumOverviewSchema,
+  },
+  "PATCH /api/v1/admissions/:id/election-addendum/:addendumId": {
+    summary: "Edit a draft addendum (items, diagnoses, explanation)",
+    body: M6ElectionAddendumPatchSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/furnish": {
+    summary: "Furnish the addendum in writing (renders the PDF; closes the 418.24(d) window)",
+    body: M6ElectionAddendumFurnishSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature": {
+    summary: "Record the beneficiary's or representative's receipt signature (418.24(c)(9))",
+    body: M6ElectionAddendumSignatureSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/refusal": {
+    summary: "Record a refusal to sign, with the reason (418.24(c)(9))",
+    body: M6ElectionAddendumRefusalSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
+  "POST /api/v1/admissions/:id/election-addendum/:addendumId/signature-not-required": {
+    summary:
+      "Record that the patient died, revoked or was discharged before furnish/signature (418.24(d)(3)/(4))",
+    body: M6ElectionAddendumSignatureNotRequiredSchema,
+    response: M6ElectionAddendumViewSchema,
+  },
   "POST /api/v1/election-statements/:id/void": {
     summary: "Void an election statement",
     body: ElectionVoidSchema,
@@ -3811,9 +3859,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6SummaryItemsResponseSchema,
   },
   "GET /api/v1/compliance-windows": {
-    summary: "Org-wide compliance-window worklist (cursor-paginated)",
+    summary:
+      "Org-wide compliance-window worklist (cursor-paginated; rows carry the window kind and due instant)",
     query: M6ComplianceListQuerySchema,
-    response: M6SummaryPageResponseSchema,
+    response: M6ComplianceWindowPageResponseSchema,
   },
   "POST /api/v1/compliance-windows/:id/close": {
     summary: "Close a compliance window",

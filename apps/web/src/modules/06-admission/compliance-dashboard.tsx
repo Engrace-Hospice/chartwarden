@@ -18,11 +18,20 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { WINDOW_TONE, stateLabel } from "./admission-status";
 import { AdmissionsTabs, Filter, Stat } from "./admissions-chrome";
+import { ADDENDUM_WINDOW_LABEL } from "./election-addendum-format";
 
 interface WindowRow {
   id: string;
   state: string;
   version: number;
+  /** The window kind, when the list read carries it (the FY2027 addendum kinds get plain labels). */
+  windowKind?: string;
+}
+
+/** A window's kind label: the FY2027 addendum windows by name, others humanized, else the generic line. */
+export function windowKindLabel(kind?: string): string {
+  if (!kind) return "Admission compliance window";
+  return ADDENDUM_WINDOW_LABEL[kind] ?? stateLabel(kind);
 }
 
 const WINDOW_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -250,7 +259,7 @@ function WindowTable({ items }: { items: WindowRow[] }): JSX.Element {
                   <span className="wx-row-title wx-data-md" style={{ cursor: "default" }}>
                     {w.id}
                   </span>
-                  <span className="wx-row-sub">Admission compliance window</span>
+                  <span className="wx-row-sub">{windowKindLabel(w.windowKind)}</span>
                 </span>
               </span>
             </td>

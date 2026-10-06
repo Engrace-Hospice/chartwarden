@@ -4925,3 +4925,49 @@
     animation: none;
   }
 }
+
+/* FY2027 election statement addendum (06-admission/election-addendum-panel.tsx): the clinical section with
+   the admissions drawer beside it for the selected version; stacks under 1100px. */
+.wx-addendum-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+.wx-addendum-split.has-drawer {
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+}
+.wx-addendum-body {
+  display: grid;
+  gap: 1rem;
+}
+.wx-addendum-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.wx-addendum-icon {
+  color: var(--color-primary);
+}
+.wx-addendum-items {
+  display: grid;
+  gap: 0.75rem;
+}
+.wx-addendum-item {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0 0 0.75rem;
+  border: none;
+  border-bottom: 1px solid var(--color-card-border);
+}
+.wx-addendum-split .wx-clinical-section-aside {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+@media (max-width: 1100px) {
+  .wx-addendum-split.has-drawer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -121,6 +121,40 @@ export const M6_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: ["narrative_free_text"],
     isPartTwoEligible: false,
   },
+  // FY2027 — 42 CFR 418.24(c)/(d) election statement addendum. Ids + enums only; the refusal reason and the
+  // exemption note are free text on the row (denylisted in the 0381 trigger) and never ride these events.
+  {
+    action: "m6.election_addendum.furnished",
+    moduleOwner: "m6",
+    defaultRetentionClass: "compliance",
+    description: "An election statement addendum version was furnished in writing (418.24(c)(10); method + version).",
+    denylistCategories: [],
+    isPartTwoEligible: true,
+  },
+  {
+    action: "m6.election_addendum.signature_recorded",
+    moduleOwner: "m6",
+    defaultRetentionClass: "compliance",
+    description: "Receipt of an addendum version was acknowledged by signature (418.24(c)(9); signer kind).",
+    denylistCategories: [],
+    isPartTwoEligible: true,
+  },
+  {
+    action: "m6.election_addendum.refusal_recorded",
+    moduleOwner: "m6",
+    defaultRetentionClass: "compliance",
+    description: "The beneficiary or representative refused to sign an addendum version; the reason is on the addendum (418.24(c)(9)).",
+    denylistCategories: ["narrative_free_text"],
+    isPartTwoEligible: true,
+  },
+  {
+    action: "m6.election_addendum.exemption_recorded",
+    moduleOwner: "m6",
+    defaultRetentionClass: "compliance",
+    description: "An addendum version was marked not required / signature not required because the patient died, revoked or was discharged (418.24(d)(3)/(4)).",
+    denylistCategories: ["narrative_free_text"],
+    isPartTwoEligible: true,
+  },
   {
     action: "m6.applier.processed",
     moduleOwner: "m6",

@@ -933,6 +933,9 @@ export function AdmissionDetail(): JSX.Element {
     else if (action === "COMPLETE_CTI_SIGNATURE") setCeremony("sign-cti-hospice-md");
     else if (action === "REVIEW_PRIVACY") setCeremony("privacy");
     else if (action === "RECORD_ADMISSION_RECOMMENDATION") setRecommending(true);
+    // FY2027 — the informational 42 CFR 418.24(c) addendum item: worked on the patient's Election tab.
+    else if (action === "COMPLETE_ELECTION_ADDENDUM" && admission.patientId)
+      navigate(`/patients/${admission.patientId}/election-certification`);
   };
   const actionContext = { electionStatement, cti };
 
@@ -2508,6 +2511,7 @@ function isActionHandled(
     case "COMPLETE_CTI_SIGNATURE":
     case "REVIEW_PRIVACY":
     case "RECORD_ADMISSION_RECOMMENDATION":
+    case "COMPLETE_ELECTION_ADDENDUM":
       return true;
     case "REVIEW_CTI":
       return !context.cti || !context.cti.hospiceMdSigned;
@@ -2785,6 +2789,7 @@ function actionLabel(
   if (action === "COMPLETE_CTI_SIGNATURE") return "Complete CTI signature";
   if (action === "REVIEW_PRIVACY") return "Review privacy";
   if (action === "RECORD_ADMISSION_RECOMMENDATION") return "Record recommendation";
+  if (action === "COMPLETE_ELECTION_ADDENDUM") return "Open election addendum";
 
   if (action === "REVIEW_CTI") {
     if (!context.cti) {

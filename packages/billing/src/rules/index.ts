@@ -16,13 +16,18 @@ export * from "./types";
 export * from "./_registry";
 
 import { BillingRuleRegistry } from "./_registry";
-// ── the 20 platform-default rules (one file per rule) ──────────────────────────────────────────────────
+// ── the 21 platform-default rules (one file per rule) ──────────────────────────────────────────────────
 import type { Rule } from "./types";
 
 import { aggregateCapProjection } from "./aggregate-cap-projection";
 import { bereavementDischargeLegitimacy } from "./bereavement-discharge";
 import { ctiSignedPerPeriod } from "./cti-signed";
 import { duplicateBillingCheck } from "./duplicate-billing";
+import {
+  ADDENDUM_APPLIES_TO_ELECTIONS_FROM,
+  ADDENDUM_ENFORCE_FROM,
+  electionAddendumSigned,
+} from "./election-addendum-signed";
 import { electionPeriodActive } from "./election-period-active";
 import { eligibilityCheckFreshness30d } from "./eligibility-freshness";
 import { evvBracketCoherence } from "./evv-coherence";
@@ -77,13 +82,16 @@ export {
   bereavementDischargeLegitimacy,
   modifierCodesValid,
   evvBracketCoherence,
+  electionAddendumSigned,
+  ADDENDUM_APPLIES_TO_ELECTIONS_FROM,
+  ADDENDUM_ENFORCE_FROM,
   CMS_HOSPICE_MODIFIER_VALUE_SET,
   POS_BY_QCODE,
   POS_LABEL_ALIASES,
 };
 
 /**
- * The 20 platform-default validation rules in §4.5 table order. This is the canonical platform-floor set
+ * The 21 platform-default validation rules in §4.5 table order. This is the canonical platform-floor set
  * the Phase-3 composition root registers (then layers MAC-profile + tenant-overlay rules atop, then
  * freezes). Frozen tuple — the array itself is immutable; the `Rule` objects are already `readonly`.
  */
@@ -108,6 +116,8 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
   bereavementDischargeLegitimacy,
   modifierCodesValid,
   evvBracketCoherence,
+  // FY2027 (CMS-1851-F) — the twentieth rule: 42 CFR 418.24(c) election statement addendum.
+  electionAddendumSigned,
 ]);
 
 /**

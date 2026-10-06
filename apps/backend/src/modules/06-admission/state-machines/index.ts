@@ -96,3 +96,18 @@ export {
   validateTransferIn,
   type CommandCascade,
 } from "./commands";
+export {
+  ADDENDUM_TEXT_MINIMUM,
+  ELECTION_ADDENDUM_GRAPH,
+  SETTLED_ADDENDUM_STATUSES,
+  checkAddendumItems,
+  exemptionEventFor,
+  missingAddendumContent,
+  transitionElectionAddendum,
+  type AddendumContentFacts,
+  type AddendumItemInput,
+  type ElectionAddendumEmission,
+  type ElectionAddendumEvent,
+  type ElectionAddendumEventType,
+  type ElectionAddendumTransition,
+} from "./election-addendum";

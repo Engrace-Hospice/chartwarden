@@ -69,7 +69,7 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     expect(DEFAULT_RULE_SET_VERSION).toBe(1);
   });
 
-  it("DEFAULT_BILLING_RULES holds 20 rules with unique keys", () => {
+  it("DEFAULT_BILLING_RULES holds 21 rules with unique keys", () => {
     expect(DEFAULT_BILLING_RULES).toHaveLength(20);
     const keys = DEFAULT_BILLING_RULES.map((r) => r.key);
     expect(new Set(keys).size).toBe(20);
@@ -87,6 +87,7 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     const reg = createDefaultBillingRegistry();
     const regKeys = reg.regulatoryRequiredKeys();
     expect(regKeys).toHaveLength(18);
+    expect(regKeys).toContain("election_addendum_signed"); // FY2027, 42 CFR 418.24(c)
     expect(regKeys).not.toContain("eligibility_check_freshness_30d"); // non-regulatory (warn)
     expect(regKeys).not.toContain("evv_bracket_coherence"); // ADR-0008: operational, never a Medicare regulatory floor
   });

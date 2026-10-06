@@ -27,6 +27,8 @@ import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { CtiDetailModal } from "./cti-detail-modal";
 import type { F2fEncounterLocation } from "./election-certification-api";
+import { ADDENDUM_WINDOW_LABEL } from "./election-addendum-format";
+import { ElectionAddendumPanel } from "./election-addendum-panel";
 import { ElectionStatementDetailModal } from "./election-statement-detail-modal";
 import { FaceToFaceRail } from "./face-to-face-rail";
 
@@ -377,6 +379,9 @@ export function PatientElectionCert(): JSX.Element {
                   ) : null}
                 </section>
 
+                {/* FY2027 — 42 CFR 418.24(c) election statement addendum. */}
+                <ElectionAddendumPanel admissionId={admission.id} />
+
                 <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>Benefit periods</h2>
                 {data && data.periods.length === 0 ? (
                   <p style={meta}>No benefit periods opened yet for this admission.</p>
@@ -625,7 +630,7 @@ export function PatientElectionCert(): JSX.Element {
                               color: t.onSurface,
                             }}
                           >
-                            {stateLabel(w.windowKind)}
+                            {ADDENDUM_WINDOW_LABEL[w.windowKind] ?? stateLabel(w.windowKind)}
                           </span>
 
                           <StatusPill

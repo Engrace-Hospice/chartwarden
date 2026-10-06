@@ -83,7 +83,10 @@ export type ComplianceWindowKind =
   | "notice_of_rights"
   | "concurrent_hospital_admission"
   | "external_discharge_notice"
-  | "hl7_admission_cancellation";
+  | "hl7_admission_cancellation"
+  // FY2027 — 42 CFR 418.24(d) election statement addendum clocks (mig 0380).
+  | "election_addendum_initial"
+  | "election_addendum_update";
 
 /** An inclusive calendar-date range used by day-count reads (§4.7). */
 export interface DateRange {
@@ -108,7 +111,8 @@ export type M6TableName =
   | "transfer_event"
   | "discharge_event"
   | "notice_of_rights_acknowledgment"
-  | "compliance_window";
+  | "compliance_window"
+  | "election_addendum";
 
 /** Per-table audit denylist (§2.2). The trigger records that a write happened but never mirrors the
  * listed high-sensitivity columns into the audit row. Empty array = no free-text PHI on that table. */
@@ -134,6 +138,20 @@ export const M6_AUDIT_DENYLIST: {
   discharge_event: ["narrative", "for_cause_reason"],
   notice_of_rights_acknowledgment: [],
   compliance_window: ["close_reason", "override_reason"],
+  // FY2027 — the addendum's identifying snapshot, diagnoses, item list and every free-text note.
+  election_addendum: [
+    "patient_name",
+    "medical_record_number",
+    "terminal_diagnosis",
+    "related_diagnoses",
+    "items",
+    "clinical_explanation",
+    "guideline_references",
+    "representative_name",
+    "representative_relationship",
+    "refusal_reason",
+    "signature_not_required_note",
+  ],
 } as const;
 
 /** The typed payload shape carried on the three external-signal compliance windows (§2.2 note / D15).
@@ -205,6 +223,12 @@ export const M6_EVENT_NAMES = [
   "m6.compliance.window.closed",
   "m6.compliance.window.overdue",
   "m6.compliance.window.overridden",
+  // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum lifecycle.
+  "m6.election_addendum.drafted",
+  "m6.election_addendum.furnished",
+  "m6.election_addendum.acknowledged",
+  "m6.election_addendum.not_required",
+  "m6.election_addendum.overdue",
   "m6.bereavement.eligible",
   "m6.applier.refused",
 ] as const;

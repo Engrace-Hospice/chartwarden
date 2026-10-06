@@ -83,3 +83,32 @@ A beneficiary may **transfer hospices once per benefit period**; the transfer re
   the transfer statement.
 - M23's claim pre-submission rules (election validity, CTI, F2F) validate against this corrected
   model; M21's non-covered DME terminates on the addendum.
+
+## Amendment (FY2027, 2026-10-06) — D1: the addendum is mandatory for every election from 2026-10-01
+
+The FY2027 hospice final rule (CMS-1851-F, 91 FR 49118, effective 2026-10-01; correction CMS-1851-CN) amended
+42 CFR 418.24(b)(6), the (c) introductory text, (c)(9), (c)(10) and (d). Primary-source text and implementation
+facts: [`docs/research/FY2027_HOSPICE_COP_RESEARCH.md`](../research/FY2027_HOSPICE_COP_RESEARCH.md) §1. D1 is
+amended as follows; everything else in D1 stands.
+
+- **Scope.** The addendum is no longer furnished on request: it is **mandatory for every election whose
+  effective date is on or after 2026-10-01**. The "72 hours when requested after day 5" path no longer
+  applies to those elections. Earlier elections keep the old rule (not built as a separate workflow).
+- **Timeframes (418.24(d)).** Initial: within **5 calendar days** of the election's effective date. Update:
+  within **3 calendar days** of a plan-of-care change that affects the determinations. Death, revocation or
+  discharge before the addendum is furnished means it need not be furnished; before it is signed means it need
+  not be signed for payment. Either way the reason is noted (on the addendum, for a missing signature).
+- **Content (418.24(c)).** The exact title "Patient Notification of Hospice Non-Covered Items, Services, and
+  Drugs"; a refusal to sign is documented on the addendum with the reason; signing acknowledges receipt only;
+  the date furnished is recorded. "No non-covered items" is a documented determination, not a blank form.
+- **Election statement (418.24(b)(6)).** The election statement tells the beneficiary they **will** receive the
+  addendum.
+- **Payment.** CMS treats a signed addendum (or the documented exceptions) as a condition for payment. CMS
+  announced enforcement discretion for 2026-10-01 through 2026-12-31 (MLN Connects, 2026-10-01): M23's
+  `election_addendum_signed` rule warns during that window and blocks from 2027-01-01.
+
+As built: M6 owns the versioned `election_addendum` table (migrations 0380–0382), its state machine, the
+`election_addendum_initial` / `election_addendum_update` compliance windows, the plan-of-care update path
+(`openAddendumUpdateWindow`), and automatic settlement on death, revocation or discharge (M6 spec v0.8 §2.6). The
+non-covered determinations reach M6 through the `NonCoveredItemsReader` seam (M7 problems today; M12 medications
+and M21 DME and supplies next), which is how "the non-covered DME path terminates on this addendum" is realized.

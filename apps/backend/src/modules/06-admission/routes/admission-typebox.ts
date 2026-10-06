@@ -667,6 +667,7 @@ const RequirementActionSchema = Type.Union([
   Type.Literal("COMPLETE_CTI_SIGNATURE"),
   Type.Literal("REVIEW_F2F"),
   Type.Literal("RECORD_ADMISSION_RECOMMENDATION"),
+  Type.Literal("COMPLETE_ELECTION_ADDENDUM"),
 ]);
 
 const RequirementEvidenceSchema = Type.Object({
@@ -696,6 +697,7 @@ const RequirementCodeSchema = Type.Union([
   Type.Literal("cti"),
   Type.Literal("f2f"),
   Type.Literal("admission_recommendation"),
+  Type.Literal("election_addendum"),
 ]);
 
 export const AdmissionReadinessResponseSchema = Type.Object({
@@ -721,6 +723,22 @@ export const AdmissionReadinessResponseSchema = Type.Object({
       reasonCode: Type.Optional(RequirementReasonCodeSchema),
     }),
   ),
+});
+
+/** FY2027 — a compliance-window worklist row: the summary plus the window kind, admission and due instant. */
+export const ComplianceWindowRowResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  admissionId: Type.Optional(Type.String()),
+  windowKind: Type.Optional(Type.String()),
+  severity: Type.Optional(Type.String()),
+  dueAt: Type.Optional(Type.String()),
+});
+export const ComplianceWindowPageResponseSchema = Type.Object({
+  items: Type.Array(ComplianceWindowRowResponseSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
 
 /** The cursor-paginated page the list routes return (`{ items, nextCursor }`). */

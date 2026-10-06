@@ -76,6 +76,15 @@ import {
   dischargeRequiresCosign,
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
+import { addendumRequiredForElection } from "./election-addendum/due-dates";
+import {
+  exemptionReasonForDischarge,
+  listAddendumVersions,
+  loadAddendumAdmissionFacts,
+  openAddendumWindows,
+  openInitialAddendumInTx,
+  settleAddendumOnLeavingCareInTx,
+} from "./election-addendum/store";
 import { completeActiveElectionPeriod } from "./election-period-completion";
 import {
   type AdmissionReadinessFacts,
@@ -120,6 +129,7 @@ import type {
   AdmissionAbacResolver,
   AdmissionDetail,
   AdmissionRouteService,
+  ComplianceWindowRow,
   MutationResult,
   Page,
   PatientAdmissionSummary,
@@ -1433,6 +1443,26 @@ export function createDbAdmissionRouteService(
     }
   }
 
+  /** FY2027 — the informational 42 CFR 418.24(c) checklist facts (never blocking; see activation-gate.ts). */
+  async function addendumReadinessFacts(
+    tx: DbClient,
+    admissionId: string,
+    activated: boolean,
+  ): Promise<NonNullable<AdmissionReadinessFacts["electionAddendum"]>> {
+    const addendumFacts = await loadAddendumAdmissionFacts(tx, admissionId);
+    const effective = addendumFacts?.electionEffectiveDate ?? null;
+    // Before activation the effective date is not set; activation dates it today, so judge by today.
+    const required = addendumRequiredForElection(effective ?? isoDay(now()));
+    const [latest] = await listAddendumVersions(tx, admissionId);
+    const windows = await openAddendumWindows(tx, admissionId);
+    return {
+      activated: activated && effective !== null,
+      required,
+      latestStatus: latest?.status ?? null,
+      overdue: windows.some((w) => w.status === "overdue"),
+    };
+  }
+
   async function readinessForAdmission(
     tx: DbClient,
     organizationId: string,
@@ -1450,6 +1480,7 @@ export function createDbAdmissionRouteService(
         serviceAddressLine1: ADM.serviceAddressLine1,
         attendingPhysicianId: ADM.attendingPhysicianId,
         recommendedByUserId: ADM.recommendedByUserId,
+        activatedAt: ADM.activatedAt,
       })
       .from(ADM)
       .where(eq(ADM.id, admissionId))
@@ -1612,6 +1643,7 @@ export function createDbAdmissionRouteService(
         satisfiedBy: f2f?.windowOverride ? "override" : undefined,
       },
       admissionRecommendation: { recorded: adm.recommendedByUserId !== null },
+      electionAddendum: await addendumReadinessFacts(tx, admissionId, !!adm.activatedAt),
     };
     return evaluateAdmissionReadiness(facts);
   }
@@ -1656,6 +1688,33 @@ export function createDbAdmissionRouteService(
     });
   }
   /** Page a status-bearing table on the integer-offset cursor, newest-first. */
+  const complianceWindowColumns = {
+    id: CW.id,
+    state: CW.status,
+    version: CW.version,
+    admissionId: CW.admissionId,
+    windowKind: CW.windowKind,
+    severity: CW.severity,
+    mustCompleteBy: CW.mustCompleteBy,
+  };
+  function toComplianceWindowRow(r: {
+    id: string;
+    state: string;
+    version: number;
+    admissionId: string;
+    windowKind: string;
+    severity: string;
+    mustCompleteBy: Date;
+  }): ComplianceWindowRow {
+    return {
+      ...toSummary(r),
+      admissionId: r.admissionId,
+      windowKind: r.windowKind,
+      severity: r.severity,
+      dueAt: r.mustCompleteBy.toISOString(),
+    };
+  }
+
   async function pageByStatus(
     organizationId: string,
     table: typeof REF | typeof ADM | typeof CW,
@@ -1834,6 +1893,15 @@ export function createDbAdmissionRouteService(
         .returning({ status: ADM.status, version: ADM.version }),
       "admission not found",
     );
+    // FY2027 — 42 CFR 418.24(d)(3)/(d)(4): leaving hospice care settles any open addendum obligation (an
+    // unfurnished draft → not_required, a furnished-but-unsigned version → signature_not_required), with the
+    // reason noted on the addendum, and closes the addendum windows.
+    await settleAddendumOnLeavingCareInTx(tx, outbox, {
+      organizationId,
+      admissionId,
+      reason: exemptionReasonForDischarge(ev.dischargeType),
+      at: now(),
+    });
     // `m6.admission.discharged`'s `reason`/`dischargeDate` were previously never supplied (`runEffects`'
     // base payload is just `{aggregateId, admissionId}`) — 500ing on EVERY discharge/revocation/
     // transfer-out. `m6.discharge.created`/`.death` need `dischargeEventId` too, but only real discharge
@@ -2452,15 +2520,31 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         if (!(await admissionExists(tx as DbClient, admissionId))) return null;
         const rows = await tx
-          .select({ id: CW.id, state: CW.status, version: CW.version })
+          .select(complianceWindowColumns)
           .from(CW)
           .where(eq(CW.admissionId, admissionId))
           .orderBy(desc(CW.mustCompleteBy));
-        return rows.map(toSummary);
+        return rows.map(toComplianceWindowRow);
       });
     },
     async listComplianceWindows(organizationId, query) {
-      return pageByStatus(organizationId, CW, CW.mustCompleteBy, query);
+      // FY2027 — its own read (not `pageByStatus`) so each row says what the window is and when it is due:
+      // the dashboard could not tell an election-addendum window from any other kind.
+      const limit = clampLimit(query.limit);
+      const offset = parseOffset(query.cursor);
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select(complianceWindowColumns)
+          .from(CW)
+          .where(query.state ? eq(CW.status, query.state as never) : undefined)
+          .orderBy(desc(CW.mustCompleteBy), desc(CW.id))
+          .limit(limit + 1)
+          .offset(offset);
+        return {
+          items: rows.slice(0, limit).map(toComplianceWindowRow),
+          nextCursor: rows.length > limit ? String(offset + limit) : null,
+        };
+      });
     },
 
     // ── Writes — the M6L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ───────────────────────
@@ -3909,6 +3993,15 @@ export function createDbAdmissionRouteService(
               version: sql`${EP.version} + 1`,
             })
             .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
+          // FY2027 — 42 CFR 418.24(d)(1): an election effective on/after 2026-10-01 owes the addendum within 5
+          // calendar days of its effective date, which this transaction has just written. Opens draft v1 + the
+          // `election_addendum_initial` window (a no-op for earlier elections and on re-entry). A transfer-in's
+          // inherited period is not a new election and is skipped with the rest of this block.
+          await openInitialAddendumInTx(tx as DbClient, outbox, {
+            organizationId,
+            admissionId: id,
+            now: activatedAt,
+          });
         }
         await runEffects(
           tx,
@@ -4139,11 +4232,24 @@ export function createDbAdmissionRouteService(
           .returning({ id: ES.id, status: ES.status, version: ES.version });
         if (!r) throw new ResourceNotFoundError(id);
         const [period] = await tx
-          .select({ admissionId: EP.admissionId })
+          .select({ admissionId: EP.admissionId, effectiveAt: EP.effectiveAt })
           .from(EP)
           .where(eq(EP.id, cur.electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(cur.electionPeriodId);
+        // FY2027 — the 42 CFR 418.24(b)(1) hospice the statement names, for M22's statement template.
+        const [electingAdmission] = await tx
+          .select({ providerEntityId: ADM.providerEntityId })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        const hospiceName = electingAdmission?.providerEntityId
+          ? await foundationSites.providerEntityLegalName(
+              tx as DbClient,
+              organizationId,
+              electingAdmission.providerEntityId,
+            )
+          : null;
         await createAdmissionEvidenceService(tx).recordStructuredEvidence({
           organizationId,
           admissionId: period.admissionId,
@@ -4166,6 +4272,11 @@ export function createDbAdmissionRouteService(
             signedAt,
             // F-100 — the chart. `election_statement.patient_id` is on the row this path already read.
             patientId: cur.patientId,
+            // FY2027 — what M22's election-statement template prints (42 CFR 418.24(b)(1), (4), (8)).
+            patientName: input.signingPatientName,
+            signerKind: SIGNER_KIND_BY_ROLE[input.signingRole],
+            ...(hospiceName ? { hospiceName } : {}),
+            ...(period.effectiveAt ? { effectiveDate: period.effectiveAt } : {}),
           },
           organizationId,
           aggregateKind: "election_statement",

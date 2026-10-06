@@ -406,6 +406,12 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ["m6.discharge.cosigned", "discharge_summary", { dischargeEventId: ORDER }],
     // F-192 (#248) — M6's seventh artifact, the transfer summary (both directions, one template).
     ["m6.transfer.created", "discharge_summary_transfer", { transferEventId: ORDER }],
+    // FY2027 — the election statement addendum (content rides `renderPayload`).
+    [
+      "m6.election_addendum.furnished",
+      "election_addendum",
+      { electionAddendumId: ORDER, renderPayload: { versionNumber: 1 } },
+    ],
   ])("%s renders %s against its own row, on the patient's chart", (eventType, templateKey, ids) => {
     const { event, payload } = normalizeDocumentRequest({
       eventType,
@@ -574,6 +580,9 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m6.revocation.created",
       "m6.discharge.created",
       "m6.discharge.cosigned",
+      // FY2027 — the 42 CFR 418.24(c) election statement addendum (genesis + acknowledgement append).
+      "m6.election_addendum.furnished",
+      "m6.election_addendum.acknowledged",
       // F-144 (#248) — four render requests catalogued, spec-named by their producing module's own
       // document-request table, and never emitted anywhere (the producer-side gap, not a declaration
       // gap): the M13 machine's effect list was never read, and M23/M24/M25 had every typed builder and
