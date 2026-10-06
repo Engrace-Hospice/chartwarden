@@ -4582,6 +4582,57 @@
     font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
   }
+  /* M6 physician signer set (42 CFR 418.25(a) recommendation, 418.26(b) discharge order) —
+     06-admission/physician-authority-ui.tsx, admission-recommendation-ui.tsx, discharge-order-ui.tsx. */
+  .wx-pa-head-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-md);
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+  .wx-pa-head-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-pa-subtitle {
+    margin: 0.125rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-pa-stack {
+    display: grid;
+    gap: 0.875rem;
+  }
+  .wx-pa-source {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+  .wx-pa-capacities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .wx-pa-section-aside {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .wx-pa-order-text {
+    margin: 0;
+    white-space: pre-wrap;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
 }
 
 /* ---- Motion: keyframes for the @wardenx/ui system primitives ----
