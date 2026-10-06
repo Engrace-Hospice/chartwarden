@@ -54,7 +54,10 @@ export function useBenefitPeriodPlan(
       )
       .then(({ data, error }) => {
         if (!active) return;
-        setPlan(error || !data ? "error" : (data as BenefitPeriodPlan));
+        // A response without the plan's shape (an older server, a stubbed client) reads as unavailable rather
+        // than crashing the screen on `plan.suggestion`.
+        const loaded = data as BenefitPeriodPlan | undefined;
+        setPlan(error || !loaded?.suggestion || !loaded.requirements ? "error" : loaded);
       })
       .catch(() => {
         if (active) setPlan("error");
