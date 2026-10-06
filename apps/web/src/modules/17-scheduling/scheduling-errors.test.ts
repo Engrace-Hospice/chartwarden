@@ -18,9 +18,7 @@ describe("scheduling error mapping", () => {
       },
       422,
     );
-    expect(mapped.fieldErrors.reason).toBe(
-      "Please enter at least 20 characters.",
-    );
+    expect(mapped.fieldErrors.reason).toBe("Please enter at least 20 characters.");
     expect(mapped.message).not.toContain("request validation failed");
   });
   it("never exposes credential predicate names", () => {

@@ -59,12 +59,8 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //   • The OSRM map polyline, the Capacitor mobile Today/Map variants, and the M31 portal view.
 import { lazy } from "react";
 import type { ComponentType } from "react";
-const MyVisits = lazy(() =>
-  import("./my-visits").then((m) => ({ default: m.MyVisits })),
-);
-const SchedulingDay = lazy(() =>
-  import("./day-view").then((m) => ({ default: m.SchedulingDay })),
-);
+const MyVisits = lazy(() => import("./my-visits").then((m) => ({ default: m.MyVisits })));
+const SchedulingDay = lazy(() => import("./day-view").then((m) => ({ default: m.SchedulingDay })));
 const SchedulingMetrics = lazy(() =>
   import("./scheduling-metrics").then((m) => ({
     default: m.SchedulingMetrics,
@@ -82,9 +78,7 @@ const SchedulingTimeOff = lazy(() =>
 const SchedulingWeek = lazy(() =>
   import("./week-view").then((m) => ({ default: m.SchedulingWeek })),
 );
-const VisitDetail = lazy(() =>
-  import("./visit-detail").then((m) => ({ default: m.VisitDetail })),
-);
+const VisitDetail = lazy(() => import("./visit-detail").then((m) => ({ default: m.VisitDetail })));
 const CalendarPage = lazy(() =>
   import("./calendar-page").then((m) => ({
     default: m.CalendarPage,

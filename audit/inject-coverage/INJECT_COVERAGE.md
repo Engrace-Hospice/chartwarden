@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1382/1382 route defs sit behind a covered module · 1331/1382 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1384/1384 route defs sit behind a covered module · 1331/1384 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -23,7 +23,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 14-idg | 36 | ✅ | 36/36 | apps/backend/__tests__/idg-discipline-notes.test.ts, apps/backend/__tests__/idg-enrichment.test.ts, apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-packet-content.test.ts, apps/backend/__tests__/idg-routes.test.ts, apps/backend/__tests__/idg-schedule-meeting.test.ts, apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts |
 | 15-discipline-care-plans | 28 | ✅ | 28/28 | apps/backend/__tests__/discipline-plans-caseload-scope.test.ts, apps/backend/__tests__/discipline-plans-inject.test.ts |
 | 16-bereavement | 34 | ✅ | 34/34 | apps/backend/__tests__/bereavement-inject.test.ts |
-| 17-scheduling | 33 | ✅ | 33/33 | apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/scheduling-caseload-scope.test.ts, apps/backend/__tests__/scheduling-inject.test.ts, apps/backend/__tests__/scheduling-own-vs-any.test.ts |
+| 17-scheduling | 35 | ✅ | 33/35 | apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/scheduling-caseload-scope.test.ts, apps/backend/__tests__/scheduling-inject.test.ts, apps/backend/__tests__/scheduling-own-vs-any.test.ts |
 | 18-evv | 25 | ✅ | 25/25 | apps/backend/__tests__/evv-inject.test.ts |
 | 19-oncall | 40 | ✅ | 39/40 | apps/backend/__tests__/oncall-inject.test.ts |
 | 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts |

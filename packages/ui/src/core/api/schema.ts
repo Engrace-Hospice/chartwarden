@@ -18110,6 +18110,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scheduling/eligible-clinicians": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Advisory D8 projection for the scheduling UI — each active clinician with eligibility + reason codes (POST /visits still enforces every gate) */
+        get: operations["getApiV1SchedulingEligibleclinicians"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scheduling/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Minimal scheduling staff directory — membership id, display name, clinical discipline */
+        get: operations["getApiV1SchedulingStaff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/step-up": {
         parameters: {
             query?: never;
@@ -67257,6 +67291,7 @@ export interface operations {
                     patientDobAtReceipt?: string;
                     medicareNumberAtReceipt?: string;
                     medicaidNumberAtReceipt?: string;
+                    sexAssignedAtBirth?: "F" | "M" | "O" | "U";
                     referringDxText?: string;
                     referrerName?: string;
                     referrerOrganization?: string;
@@ -67324,6 +67359,7 @@ export interface operations {
                     referrerName?: string;
                     referrerOrganization?: string;
                     referrerPhone?: string;
+                    sexAssignedAtBirth?: "F" | "M" | "O" | "U";
                     ifVersion: number;
                 };
             };
@@ -72532,6 +72568,67 @@ export interface operations {
                         dueAt: string;
                         status: "pending" | "administered" | "missed" | "cancelled" | "intentionally_held";
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SchedulingEligibleclinicians: {
+        parameters: {
+            query: {
+                patientId: string;
+                visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                scheduledStartedAt: string;
+                scheduledEndedAt: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        displayName: string;
+                        disciplines: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa")[];
+                        eligible: boolean;
+                        reasonCodes: string[];
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SchedulingStaff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        displayName: string;
+                        discipline: ("rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa") | null;
+                    }[];
                 };
             };
             "4XX": components["responses"]["Error"];

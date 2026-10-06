@@ -100,9 +100,7 @@ export interface ClinicalData {
 
 type Client = ReturnType<typeof useApiClient>;
 
-async function settle<T>(
-  p: Promise<{ data?: unknown; error?: unknown }>,
-): Promise<T | undefined> {
+async function settle<T>(p: Promise<{ data?: unknown; error?: unknown }>): Promise<T | undefined> {
   try {
     const r = await p;
     return r.error ? undefined : (r.data as T);
@@ -155,9 +153,7 @@ export function useClinicalData(
       }),
     ).then((r) =>
       merge({
-        esas: [...(r?.assessments ?? [])].sort((a, b) =>
-          a.capturedAt.localeCompare(b.capturedAt),
-        ),
+        esas: [...(r?.assessments ?? [])].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)),
       }),
     );
     void settle<{ events: SignificantChange[] }>(
@@ -171,9 +167,7 @@ export function useClinicalData(
     );
     void settle<{ data: Consent[] }>(
       client.GET("/api/v1/patients/{patientId}/consents", { params: { path } }),
-    ).then((r) =>
-      merge({ consents: (r?.data ?? []).filter((c) => c.status === "active") }),
-    );
+    ).then((r) => merge({ consents: (r?.data ?? []).filter((c) => c.status === "active") }));
     void settle<{ data: Dpoa | null }>(
       client.GET("/api/v1/patients/{patientId}/dpoa/active-primary", {
         params: { path },
@@ -346,10 +340,7 @@ function Sparkline({ values }: { values: number[] }): JSX.Element {
   const hi = Math.min(10, Math.max(...values) + 2);
   const range = Math.max(hi - lo, 1);
   const pts = values
-    .map(
-      (v, i) =>
-        `${(i / (values.length - 1)) * w},${h - 3 - ((v - lo) / range) * (h - 6)}`,
-    )
+    .map((v, i) => `${(i / (values.length - 1)) * w},${h - 3 - ((v - lo) / range) * (h - 6)}`)
     .join(" ");
   return (
     <svg
@@ -383,18 +374,10 @@ export function ClinicalTab({
 }): JSX.Element {
   return (
     <div className="wx-overview-grid">
-      <ClinicalOverviewPanel
-        patientId={patient.id}
-        data={data}
-        className="wx-c15"
-      />
+      <ClinicalOverviewPanel patientId={patient.id} data={data} className="wx-c15" />
       <ClinicalStatusPanel clinical={clinical} className="wx-c9" />
       <SymptomsPanel clinical={clinical} className="wx-c24" />
-      <VitalsPanel
-        patientId={patient.id}
-        clinical={clinical}
-        className="wx-c10"
-      />
+      <VitalsPanel patientId={patient.id} clinical={clinical} className="wx-c10" />
       <FunctionalPanel clinical={clinical} className="wx-c14" />
       <ClinicalNotesPanel
         patientId={patient.id}
@@ -402,11 +385,7 @@ export function ClinicalTab({
         clinical={clinical}
         className="wx-c13"
       />
-      <RecentDocumentsPanel
-        patientId={patient.id}
-        data={data}
-        className="wx-c11"
-      />
+      <RecentDocumentsPanel patientId={patient.id} data={data} className="wx-c11" />
     </div>
   );
 }
@@ -430,10 +409,7 @@ function ClinicalOverviewPanel({
       description="Key clinical information, diagnoses, and current status."
       className={className}
       action={
-        <Link
-          to={`/patients/${patientId}/care-plan`}
-          className="wx-btn-secondary wx-btn-sm"
-        >
+        <Link to={`/patients/${patientId}/care-plan`} className="wx-btn-secondary wx-btn-sm">
           View all diagnoses{problems ? ` (${problems.length})` : ""}
         </Link>
       }
@@ -447,9 +423,7 @@ function ClinicalOverviewPanel({
           <div className="wx-subcard">
             <div className="wx-subcard-head">
               <strong>Primary Diagnosis</strong>
-              {primary.icd10Code ? (
-                <span className="wx-code-chip">{primary.icd10Code}</span>
-              ) : null}
+              {primary.icd10Code ? <span className="wx-code-chip">{primary.icd10Code}</span> : null}
             </div>
             <div
               style={{
@@ -471,12 +445,8 @@ function ClinicalOverviewPanel({
                   {primary.description}
                 </div>
                 <div style={{ ...muted, marginTop: "0.375rem" }}>
-                  {primary.kind === "terminal"
-                    ? "Terminal diagnosis"
-                    : titleCase(primary.kind)}
-                  {primary.onsetAt
-                    ? ` · since ${fmtDate(primary.onsetAt)}`
-                    : ""}
+                  {primary.kind === "terminal" ? "Terminal diagnosis" : titleCase(primary.kind)}
+                  {primary.onsetAt ? ` · since ${fmtDate(primary.onsetAt)}` : ""}
                 </div>
               </div>
             </div>
@@ -526,10 +496,7 @@ function StatusRow({
         <Glyph name={icon} size={16} strokeWidth={1.75} />
       </span>
       <span style={{ flex: 1, color: t.onSurfaceVariant }}>{label}</span>
-      <span
-        className="wx-nums"
-        style={{ fontWeight: strong ? 700 : 500, color: t.onSurface }}
-      >
+      <span className="wx-nums" style={{ fontWeight: strong ? 700 : 500, color: t.onSurface }}>
         {value}
       </span>
     </li>
@@ -601,18 +568,12 @@ function ClinicalStatusPanel({
           <StatusRow
             icon="calendar"
             label="Last assessed"
-            value={fmtDate(
-              [pps?.capturedAt, esas?.capturedAt].filter(Boolean).sort().at(-1),
-            )}
+            value={fmtDate([pps?.capturedAt, esas?.capturedAt].filter(Boolean).sort().at(-1))}
           />
           <StatusRow
             icon="scale"
             label="Weight"
-            value={
-              vitals?.weight
-                ? `${vitals.weight} ${vitals.weightUnit ?? ""}`.trim()
-                : "—"
-            }
+            value={vitals?.weight ? `${vitals.weight} ${vitals.weightUnit ?? ""}`.trim() : "—"}
           />
         </ul>
       )}
@@ -669,12 +630,8 @@ function SymptomsPanel({
   const list = clinical.esas;
   const latest = list?.at(-1);
   // Trend window: the week ending at the latest capture.
-  const windowStart = latest
-    ? new Date(latest.capturedAt).getTime() - 7 * 86_400_000
-    : 0;
-  const week = (list ?? []).filter(
-    (a) => new Date(a.capturedAt).getTime() >= windowStart,
-  );
+  const windowStart = latest ? new Date(latest.capturedAt).getTime() - 7 * 86_400_000 : 0;
+  const week = (list ?? []).filter((a) => new Date(a.capturedAt).getTime() >= windowStart);
   const recent = latest
     ? Date.now() - new Date(latest.capturedAt).getTime() < 7 * 86_400_000
     : false;
@@ -714,13 +671,9 @@ function SymptomsPanel({
                   <span style={{ color: s.color }}>
                     <Glyph name={s.icon} size={16} strokeWidth={1.75} />
                   </span>
-                  <span style={{ fontSize: "0.8125rem", color: t.onSurface }}>
-                    {s.label}
-                  </span>
+                  <span style={{ fontSize: "0.8125rem", color: t.onSurface }}>{s.label}</span>
                 </div>
-                <div className="wx-symptom-value wx-nums">
-                  {v != null ? `${v}/10` : "—"}
-                </div>
+                <div className="wx-symptom-value wx-nums">{v != null ? `${v}/10` : "—"}</div>
                 <Sparkline values={series} />
               </div>
             );
@@ -842,15 +795,10 @@ function VitalsPanel({
               <IconTile icon={tile.icon} color={tile.color} size={2} />
               <div style={{ minWidth: 0 }}>
                 <div style={muted}>{tile.label}</div>
-                <div
-                  className="wx-nums"
-                  style={{ fontSize: "1.0625rem", fontWeight: 700 }}
-                >
+                <div className="wx-nums" style={{ fontSize: "1.0625rem", fontWeight: 700 }}>
                   {tile.value ?? "—"}
                 </div>
-                {tile.unit && tile.value ? (
-                  <div style={muted}>{tile.unit}</div>
-                ) : null}
+                {tile.unit && tile.value ? <div style={muted}>{tile.unit}</div> : null}
               </div>
             </div>
           ))}
@@ -879,33 +827,13 @@ function PpsChart({
   const area = `${x(min)},${y(0)} ${line} ${x(max)},${y(0)}`;
   const ticks = [0, 25, 50, 75, 100];
   const labels =
-    points.length > 5
-      ? points.filter((_, i) => i % Math.ceil(points.length / 5) === 0)
-      : points;
+    points.length > 5 ? points.filter((_, i) => i % Math.ceil(points.length / 5) === 0) : points;
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      role="img"
-      aria-label="PPS trend, last 30 days"
-    >
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="PPS trend, last 30 days">
       {ticks.map((tk) => (
         <g key={tk}>
-          <line
-            x1={L}
-            x2={W}
-            y1={y(tk)}
-            y2={y(tk)}
-            stroke={t.cardBorder}
-            strokeWidth="1"
-          />
-          <text
-            x={L - 6}
-            y={y(tk) + 3}
-            textAnchor="end"
-            fontSize="9"
-            fill={t.onSurfaceVariant}
-          >
+          <line x1={L} x2={W} y1={y(tk)} y2={y(tk)} stroke={t.cardBorder} strokeWidth="1" />
+          <text x={L - 6} y={y(tk) + 3} textAnchor="end" fontSize="9" fill={t.onSurfaceVariant}>
             {tk}%
           </text>
         </g>
@@ -913,13 +841,7 @@ function PpsChart({
       <polygon points={area} fill={t.primary} opacity="0.1" />
       <polyline points={line} fill="none" stroke={t.primary} strokeWidth="2" />
       {points.map((p) => (
-        <circle
-          key={p.at}
-          cx={x(p.at)}
-          cy={y(p.score)}
-          r="3.5"
-          fill={t.primary}
-        />
+        <circle key={p.at} cx={x(p.at)} cy={y(p.score)} r="3.5" fill={t.primary} />
       ))}
       {labels.map((p) => (
         <text
@@ -999,9 +921,7 @@ function ClinicalNotesPanel({
       icon="file-text"
       flush
       className={className}
-      action={
-        <PanelLink to={`/patients/${patientId}/encounters`}>View all</PanelLink>
-      }
+      action={<PanelLink to={`/patients/${patientId}/encounters`}>View all</PanelLink>}
     >
       {notes === undefined ? (
         <div style={{ padding: "0 1.125rem" }}>
@@ -1033,9 +953,7 @@ function ClinicalNotesPanel({
                   </Link>
                 </td>
                 <td>{memberName(data, n.authoredByUserId) ?? "—"}</td>
-                <td style={{ color: t.onSurfaceVariant }}>
-                  {noteSummary(n.finalDocumentation)}
-                </td>
+                <td style={{ color: t.onSurfaceVariant }}>{noteSummary(n.finalDocumentation)}</td>
               </tr>
             ))}
           </tbody>
@@ -1061,9 +979,7 @@ function RecentDocumentsPanel({
       icon="folder"
       flush
       className={className}
-      action={
-        <PanelLink to={`/patients/${patientId}/documents`}>View all</PanelLink>
-      }
+      action={<PanelLink to={`/patients/${patientId}/documents`}>View all</PanelLink>}
     >
       {docs === undefined ? (
         <div style={{ padding: "0 1.125rem" }}>
@@ -1125,14 +1041,10 @@ export function ClinicalRail({
 }): JSX.Element {
   const changes = clinical.changes;
   const contacts = data.careTeam
-    ? [...data.careTeam.emergencyContacts]
-        .sort((a, b) => a.priority - b.priority)
-        .slice(0, 2)
+    ? [...data.careTeam.emergencyContacts].sort((a, b) => a.priority - b.priority).slice(0, 2)
     : undefined;
   const directives = (clinical.consents ?? []).filter(
-    (c) =>
-      c.typeKey === "advance_directive_acknowledgment" ||
-      c.typeKey === "dpoa_healthcare",
+    (c) => c.typeKey === "advance_directive_acknowledgment" || c.typeKey === "dpoa_healthcare",
   );
   const period = activePeriod(data.election);
   const upcoming: {
@@ -1177,9 +1089,7 @@ export function ClinicalRail({
             }}
           >
             Clinical Alerts
-            {changes && changes.length > 0 ? (
-              <CountBadge count={changes.length} />
-            ) : null}
+            {changes && changes.length > 0 ? <CountBadge count={changes.length} /> : null}
           </span>
         }
         icon="activity"
@@ -1205,11 +1115,7 @@ export function ClinicalRail({
                   <RailAlert
                     tone={c.severity === "high" ? "danger" : "warning"}
                     title={label.title}
-                    detail={
-                      c.status === "escalated"
-                        ? `${label.detail} · escalated`
-                        : label.detail
-                    }
+                    detail={c.status === "escalated" ? `${label.detail} · escalated` : label.detail}
                     to={`/patients/${patient.id}/assessments`}
                   />
                 </li>
@@ -1221,11 +1127,7 @@ export function ClinicalRail({
       <Panel
         title="Key Contacts"
         icon="user-circle"
-        action={
-          <PanelLink to={`/patients/${patient.id}?view=care-team`}>
-            Edit
-          </PanelLink>
-        }
+        action={<PanelLink to={`/patients/${patient.id}?view=care-team`}>Edit</PanelLink>}
       >
         {contacts === undefined ? (
           <Loading />
@@ -1239,14 +1141,10 @@ export function ClinicalRail({
                   <Glyph name="user" size={18} strokeWidth={1.75} />
                 </span>
                 <div>
-                  <strong>
-                    {i === 0 ? "Primary Contact" : "Alternate Contact"}
-                  </strong>
+                  <strong>{i === 0 ? "Primary Contact" : "Alternate Contact"}</strong>
                   <div>
                     {c.name}{" "}
-                    <span style={{ color: t.onSurfaceVariant }}>
-                      ({titleCase(c.relationship)})
-                    </span>
+                    <span style={{ color: t.onSurfaceVariant }}>({titleCase(c.relationship)})</span>
                   </div>
                   <div className="wx-nums" style={muted}>
                     {c.phone}
@@ -1260,18 +1158,12 @@ export function ClinicalRail({
       <Panel
         title="Advance Directives"
         icon="shield-check"
-        action={
-          <PanelLink to={`/patients/${patient.id}?view=privacy`}>
-            Edit
-          </PanelLink>
-        }
+        action={<PanelLink to={`/patients/${patient.id}?view=privacy`}>Edit</PanelLink>}
       >
         {clinical.consents === undefined || clinical.dpoa === undefined ? (
           <Loading />
         ) : directives.length === 0 && !clinical.dpoa ? (
-          <EmptyLine>
-            No advance directive or healthcare DPOA on file.
-          </EmptyLine>
+          <EmptyLine>No advance directive or healthcare DPOA on file.</EmptyLine>
         ) : (
           <ul className="wx-contact-list">
             {directives.map((c) => (
@@ -1287,18 +1179,15 @@ export function ClinicalRail({
                   </strong>
                   {c.typeKey === "dpoa_healthcare" && clinical.dpoa ? (
                     <div style={muted}>
-                      Agent: {clinical.dpoa.agentName} (
-                      {titleCase(clinical.dpoa.agentRelationship)})
+                      Agent: {clinical.dpoa.agentName} ({titleCase(clinical.dpoa.agentRelationship)}
+                      )
                     </div>
                   ) : null}
-                  {c.signedAt ? (
-                    <div style={muted}>Signed {fmtDate(c.signedAt)}</div>
-                  ) : null}
+                  {c.signedAt ? <div style={muted}>Signed {fmtDate(c.signedAt)}</div> : null}
                 </div>
               </li>
             ))}
-            {clinical.dpoa &&
-            !directives.some((c) => c.typeKey === "dpoa_healthcare") ? (
+            {clinical.dpoa && !directives.some((c) => c.typeKey === "dpoa_healthcare") ? (
               <li>
                 <span style={{ color: t.success }}>
                   <Glyph name="check-circle" size={18} strokeWidth={1.75} />
@@ -1306,8 +1195,7 @@ export function ClinicalRail({
                 <div>
                   <strong>Healthcare proxy</strong>
                   <div style={muted}>
-                    {clinical.dpoa.agentName} (
-                    {titleCase(clinical.dpoa.agentRelationship)})
+                    {clinical.dpoa.agentName} ({titleCase(clinical.dpoa.agentRelationship)})
                   </div>
                 </div>
               </li>
@@ -1319,9 +1207,7 @@ export function ClinicalRail({
         title="Upcoming"
         icon="calendar"
         action={
-          <PanelLink to={`/calendar?patient=${encodeURIComponent(patient.id)}`}>
-            View all
-          </PanelLink>
+          <PanelLink to={`/calendar?patient=${encodeURIComponent(patient.id)}`}>View all</PanelLink>
         }
       >
         {data.visits === undefined ? (
@@ -1337,10 +1223,7 @@ export function ClinicalRail({
                 </span>
                 <div>
                   <strong>{u.title}</strong>
-                  <div
-                    className="wx-nums"
-                    style={{ ...muted, whiteSpace: "pre" }}
-                  >
+                  <div className="wx-nums" style={{ ...muted, whiteSpace: "pre" }}>
                     {u.when}
                   </div>
                 </div>

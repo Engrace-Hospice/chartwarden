@@ -19,9 +19,7 @@ import "../src/schema/index";
 
 /** A `pg` DatabaseError as the driver actually presents one: `code` + `constraint` as own props. */
 function pgUniqueViolation(constraint: string): Error {
-  const err = new Error(
-    `duplicate key value violates unique constraint "${constraint}"`,
-  );
+  const err = new Error(`duplicate key value violates unique constraint "${constraint}"`);
   Object.assign(err, {
     code: "23505",
     constraint,
@@ -32,9 +30,7 @@ function pgUniqueViolation(constraint: string): Error {
 }
 
 function pgExclusionViolation(constraint: string): Error {
-  const err = new Error(
-    `conflicting key value violates exclusion constraint "${constraint}"`,
-  );
+  const err = new Error(`conflicting key value violates exclusion constraint "${constraint}"`);
   Object.assign(err, {
     code: "23P01",
     constraint,
@@ -50,32 +46,24 @@ const wrapped = (cause: Error) =>
 
 describe("businessRule() — the registration IS the index declaration", () => {
   it("returns the constraint name it was given, so it can be passed straight to uniqueIndex()", () => {
-    expect(businessRule("fixture_rule_uq", "You already did that.")).toBe(
-      "fixture_rule_uq",
-    );
-    expect(businessRuleMeaning("fixture_rule_uq")).toBe(
-      "You already did that.",
-    );
+    expect(businessRule("fixture_rule_uq", "You already did that.")).toBe("fixture_rule_uq");
+    expect(businessRuleMeaning("fixture_rule_uq")).toBe("You already did that.");
   });
 
   it("is idempotent for the same meaning — a schema module may be imported more than once", () => {
     businessRule("fixture_idempotent_uq", "Same sentence.");
-    expect(() =>
-      businessRule("fixture_idempotent_uq", "Same sentence."),
-    ).not.toThrow();
+    expect(() => businessRule("fixture_idempotent_uq", "Same sentence.")).not.toThrow();
   });
 
   it("refuses a second, DIFFERENT meaning for one constraint — one of the two is stale", () => {
     businessRule("fixture_conflict_uq", "The first sentence.");
-    expect(() =>
-      businessRule("fixture_conflict_uq", "A different sentence."),
-    ).toThrow(/already registered with a different meaning/);
+    expect(() => businessRule("fixture_conflict_uq", "A different sentence.")).toThrow(
+      /already registered with a different meaning/,
+    );
   });
 
   it("registers the M9 scale-license rule by importing the schema, not a separate list", () => {
-    const meaning = businessRuleMeaning(
-      "scale_license_active_per_org_scale_uq",
-    );
+    const meaning = businessRuleMeaning("scale_license_active_per_org_scale_uq");
     expect(meaning).toBeDefined();
     expect(meaning).toMatch(/already has an active license/i);
     expect(businessRuleConstraints().map((c) => c.constraint)).toContain(
@@ -114,33 +102,25 @@ describe("classifyDatabaseError()", () => {
 
   it("recognises the bare driver error too (no wrapper)", () => {
     expect(
-      classifyDatabaseError(
-        pgUniqueViolation("scale_license_active_per_org_scale_uq"),
-      ),
+      classifyDatabaseError(pgUniqueViolation("scale_license_active_per_org_scale_uq")),
     ).not.toBeNull();
   });
 
   it("translates a visit overlap exclusion violation into a business conflict", () => {
-    const v = classifyDatabaseError(
-      wrapped(pgExclusionViolation("visit_default_no_overlap")),
-    );
+    const v = classifyDatabaseError(wrapped(pgExclusionViolation("visit_default_no_overlap")));
     expect(v).toMatchObject({
       kind: "business-rule-violation",
       constraint: "visit_default_no_overlap",
       reason: "CLINICIAN_SCHEDULE_CONFLICT",
     });
-    expect(v?.meaning).toBe(
-      "This clinician already has another visit during this time.",
-    );
+    expect(v?.meaning).toBe("This clinician already has another visit during this time.");
   });
 
   it("returns null for a 23505 on a constraint nobody has written a meaning for", () => {
     // The deliberate choice: silence, not a sentence guessed from the name. The caller keeps the
     // 500 it already got rather than being told something that might be wrong.
     expect(
-      classifyDatabaseError(
-        wrapped(pgUniqueViolation("some_index_nobody_declared_uq")),
-      ),
+      classifyDatabaseError(wrapped(pgUniqueViolation("some_index_nobody_declared_uq"))),
     ).toBeNull();
   });
 
@@ -158,9 +138,7 @@ describe("classifyDatabaseError()", () => {
     expect(classifyDatabaseError("not an error")).toBeNull();
     expect(classifyDatabaseError(undefined)).toBeNull();
     expect(
-      classifyDatabaseError(
-        wrapped(new Error("some driver failure with no code")),
-      ),
+      classifyDatabaseError(wrapped(new Error("some driver failure with no code"))),
     ).toBeNull();
   });
 

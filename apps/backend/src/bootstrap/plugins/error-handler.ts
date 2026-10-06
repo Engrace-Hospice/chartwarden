@@ -26,8 +26,7 @@ function asFrameworkError(
 ): { statusCode: number; code: string; message: string } | null {
   if (!(err instanceof Error)) return null;
   const statusCode = (err as { statusCode?: unknown }).statusCode;
-  if (typeof statusCode !== "number" || statusCode < 400 || statusCode >= 500)
-    return null;
+  if (typeof statusCode !== "number" || statusCode < 400 || statusCode >= 500) return null;
   const code = (err as { code?: unknown }).code;
   return {
     statusCode,
@@ -69,10 +68,7 @@ export function applyErrorHandler(app: FastifyInstance): void {
           "handled server error",
         );
       } else {
-        request.log.info(
-          { errCode: err.code, statusCode: err.statusCode },
-          "handled error",
-        );
+        request.log.info({ errCode: err.code, statusCode: err.statusCode }, "handled error");
       }
       return reply.code(err.statusCode).send({
         error: {

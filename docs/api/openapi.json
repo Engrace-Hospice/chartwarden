@@ -181770,6 +181770,26 @@
                     "maxLength": 24,
                     "type": "string"
                   },
+                  "sexAssignedAtBirth": {
+                    "anyOf": [
+                      {
+                        "const": "F",
+                        "type": "string"
+                      },
+                      {
+                        "const": "M",
+                        "type": "string"
+                      },
+                      {
+                        "const": "O",
+                        "type": "string"
+                      },
+                      {
+                        "const": "U",
+                        "type": "string"
+                      }
+                    ]
+                  },
                   "referringDxText": {
                     "maxLength": 2000,
                     "type": "string"
@@ -181919,6 +181939,26 @@
                   "referrerPhone": {
                     "maxLength": 32,
                     "type": "string"
+                  },
+                  "sexAssignedAtBirth": {
+                    "anyOf": [
+                      {
+                        "const": "F",
+                        "type": "string"
+                      },
+                      {
+                        "const": "M",
+                        "type": "string"
+                      },
+                      {
+                        "const": "O",
+                        "type": "string"
+                      },
+                      {
+                        "const": "U",
+                        "type": "string"
+                      }
+                    ]
                   },
                   "ifVersion": {
                     "minimum": 0,
@@ -204438,6 +204478,290 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/scheduling/eligible-clinicians": {
+      "get": {
+        "operationId": "getApiV1SchedulingEligibleclinicians",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Advisory D8 projection for the scheduling UI — each active clinician with eligibility + reason codes (POST /visits still enforces every gate)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "visitPurpose",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "routine_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "prn",
+                  "type": "string"
+                },
+                {
+                  "const": "aide_poc",
+                  "type": "string"
+                },
+                {
+                  "const": "msw_assessment",
+                  "type": "string"
+                },
+                {
+                  "const": "msw_followup",
+                  "type": "string"
+                },
+                {
+                  "const": "chaplain_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "chaplain_assessment",
+                  "type": "string"
+                },
+                {
+                  "const": "volunteer_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "f2f",
+                  "type": "string"
+                },
+                {
+                  "const": "recert",
+                  "type": "string"
+                },
+                {
+                  "const": "loc_change",
+                  "type": "string"
+                },
+                {
+                  "const": "pronouncement",
+                  "type": "string"
+                },
+                {
+                  "const": "admission_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "discharge_visit",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "scheduledStartedAt",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "scheduledEndedAt",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "membershipId",
+                      "displayName",
+                      "disciplines",
+                      "eligible",
+                      "reasonCodes"
+                    ],
+                    "properties": {
+                      "membershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "disciplines": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "const": "rn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "lpn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "chha",
+                              "type": "string"
+                            },
+                            {
+                              "const": "msw",
+                              "type": "string"
+                            },
+                            {
+                              "const": "chaplain",
+                              "type": "string"
+                            },
+                            {
+                              "const": "volunteer",
+                              "type": "string"
+                            },
+                            {
+                              "const": "md",
+                              "type": "string"
+                            },
+                            {
+                              "const": "np",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pa",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "eligible": {
+                        "type": "boolean"
+                      },
+                      "reasonCodes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/scheduling/staff": {
+      "get": {
+        "operationId": "getApiV1SchedulingStaff",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Minimal scheduling staff directory — membership id, display name, clinical discipline",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "membershipId",
+                      "displayName",
+                      "discipline"
+                    ],
+                    "properties": {
+                      "membershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "discipline": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "const": "rn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "lpn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chha",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer",
+                                "type": "string"
+                              },
+                              {
+                                "const": "md",
+                                "type": "string"
+                              },
+                              {
+                                "const": "np",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pa",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

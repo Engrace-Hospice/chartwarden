@@ -1553,6 +1553,8 @@ import {
   DiscontinueRecurringVisitRequest as M17DiscontinueRecurringVisitRequest,
   DismissProposalRequest as M17DismissProposalRequest,
   EditVisitRequest as M17EditVisitRequest,
+  EligibleCliniciansQuerySchema as M17EligibleCliniciansQuerySchema,
+  EligibleCliniciansResponseSchema as M17EligibleCliniciansResponseSchema,
   GrantCredentialRequest as M17GrantCredentialRequest,
   MapViewQuerySchema as M17MapViewQuerySchema,
   MapViewResponseSchema as M17MapViewResponseSchema,
@@ -1575,6 +1577,7 @@ import {
   RevokeCredentialRequest as M17RevokeCredentialRequest,
   RouteEfficiencyQuerySchema as M17RouteEfficiencyQuerySchema,
   RouteEfficiencyResponseSchema as M17RouteEfficiencyResponseSchema,
+  SchedulingStaffResponseSchema as M17SchedulingStaffResponseSchema,
   StartVisitRequest as M17StartVisitRequest,
   TimeOffListQuerySchema as M17TimeOffListQuerySchema,
   TimeOffListResponseSchema as M17TimeOffListResponseSchema,
@@ -5282,6 +5285,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
     query: M17RouteEfficiencyQuerySchema,
     response: M17RouteEfficiencyResponseSchema,
+  },
+  "GET /api/v1/scheduling/eligible-clinicians": {
+    summary:
+      "Advisory D8 projection for the scheduling UI — each active clinician with eligibility + reason codes (POST /visits still enforces every gate)",
+    query: M17EligibleCliniciansQuerySchema,
+    response: M17EligibleCliniciansResponseSchema,
+  },
+  "GET /api/v1/scheduling/staff": {
+    summary:
+      "Minimal scheduling staff directory — membership id, display name, clinical discipline",
+    response: M17SchedulingStaffResponseSchema,
   },
   "GET /api/v1/memberships/:membershipId/credentials": {
     summary: "GAP-093: a membership's clinical-license/certification roster",

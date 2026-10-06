@@ -14,12 +14,7 @@ import {
 // (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  Link,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
   type EncounterLink,
@@ -53,9 +48,7 @@ export function VisitDetail(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [clinicianName, setClinicianName] = useState<string | null>(null);
   const [addressLabel, setAddressLabel] = useState<string | null>(null);
-  const [admissionStartedAt, setAdmissionStartedAt] = useState<string | null>(
-    null,
-  );
+  const [admissionStartedAt, setAdmissionStartedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!visitId) return;
@@ -83,10 +76,7 @@ export function VisitDetail(): JSX.Element {
       const [staff, addresses, admissions] = await Promise.all([
         (
           client as unknown as {
-            GET: (
-              path: string,
-              options: unknown,
-            ) => Promise<{ data?: unknown }>;
+            GET: (path: string, options: unknown) => Promise<{ data?: unknown }>;
           }
         ).GET("/api/v1/scheduling/staff", {}),
         client.GET("/api/v1/patients/{id}/addresses", {
@@ -96,16 +86,13 @@ export function VisitDetail(): JSX.Element {
           params: { path: { patientId: loaded.patientId } },
         }),
       ]);
-      const clinicians = (
-        Array.isArray(staff.data) ? staff.data : []
-      ) as Array<{
+      const clinicians = (Array.isArray(staff.data) ? staff.data : []) as Array<{
         membershipId: string;
         displayName: string;
       }>;
       setClinicianName(
-        clinicians.find(
-          (item) => item.membershipId === loaded.assignedMembershipId,
-        )?.displayName ?? "Clinician details unavailable",
+        clinicians.find((item) => item.membershipId === loaded.assignedMembershipId)?.displayName ??
+          "Clinician details unavailable",
       );
       const address = (
         (addresses.data?.addresses ?? []) as Array<{
@@ -119,13 +106,7 @@ export function VisitDetail(): JSX.Element {
       ).find((item) => item.id === loaded.patientAddressId);
       setAddressLabel(
         address
-          ? [
-              address.line1,
-              address.line2,
-              address.city,
-              address.state,
-              address.postalCode,
-            ]
+          ? [address.line1, address.line2, address.city, address.state, address.postalCode]
               .filter(Boolean)
               .join(", ")
           : null,
@@ -137,9 +118,7 @@ export function VisitDetail(): JSX.Element {
           admittedAt?: string | null;
         }>
       ).find((item) => item.id === loaded.admissionId);
-      setAdmissionStartedAt(
-        admission?.startedAt ?? admission?.admittedAt ?? null,
-      );
+      setAdmissionStartedAt(admission?.startedAt ?? admission?.admittedAt ?? null);
     }
     setLoading(false);
   }, [client, visitId]);
@@ -177,10 +156,7 @@ export function VisitDetail(): JSX.Element {
               <Link to={backToSchedule}>← Back to schedule</Link>
               <span style={meta}>
                 Scheduling / {visit.serviceDate} /{" "}
-                {patient
-                  ? `${patient.firstName} ${patient.lastName}`
-                  : "Patient"}{" "}
-                / Visit
+                {patient ? `${patient.firstName} ${patient.lastName}` : "Patient"} / Visit
               </span>
               {patient ? (
                 <Link to={`/patients/${visit.patientId}`}>
@@ -192,15 +168,11 @@ export function VisitDetail(): JSX.Element {
               <div style={sectionHeader}>
                 <div>
                   <h2 style={sectionTitle}>
-                    {patient
-                      ? `${patient.firstName} ${patient.lastName}`
-                      : "Scheduled visit"}
+                    {patient ? `${patient.firstName} ${patient.lastName}` : "Scheduled visit"}
                   </h2>
                   <p style={meta}>
                     {patient ? `MRN ${patient.mrn} · ` : ""}Hospice admission
-                    {admissionStartedAt
-                      ? ` · Started ${formatInstant(admissionStartedAt)}`
-                      : ""}
+                    {admissionStartedAt ? ` · Started ${formatInstant(admissionStartedAt)}` : ""}
                   </p>
                 </div>
                 <StatusPill
@@ -209,24 +181,16 @@ export function VisitDetail(): JSX.Element {
                 />
               </div>
               <div style={factsGrid}>
-                <FieldValue label="Purpose">
-                  {stateLabel(visit.visitPurpose)}
-                </FieldValue>
-                <FieldValue label="Setting">
-                  {stateLabel(visit.visitSetting)}
-                </FieldValue>
+                <FieldValue label="Purpose">{stateLabel(visit.visitPurpose)}</FieldValue>
+                <FieldValue label="Setting">{stateLabel(visit.visitSetting)}</FieldValue>
                 <FieldValue label="Service date">
                   <span className="tabular-nums">{visit.serviceDate}</span>
                 </FieldValue>
                 <FieldValue label="Scheduled start">
-                  <span className="tabular-nums">
-                    {formatInstant(visit.scheduledStartedAt)}
-                  </span>
+                  <span className="tabular-nums">{formatInstant(visit.scheduledStartedAt)}</span>
                 </FieldValue>
                 <FieldValue label="Scheduled end">
-                  <span className="tabular-nums">
-                    {formatInstant(visit.scheduledEndedAt)}
-                  </span>
+                  <span className="tabular-nums">{formatInstant(visit.scheduledEndedAt)}</span>
                 </FieldValue>
                 <FieldValue label="Assigned clinician">
                   {clinicianName ?? "Clinician details unavailable"}
@@ -244,9 +208,7 @@ export function VisitDetail(): JSX.Element {
                       type="button"
                       style={linkButton}
                       onClick={() =>
-                        navigate(
-                          `/patients/${encounter.patientId}/encounters/${encounter.id}`,
-                        )
+                        navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)
                       }
                     >
                       {stateLabel(encounter.status)}
@@ -260,11 +222,7 @@ export function VisitDetail(): JSX.Element {
                     <button
                       type="button"
                       style={linkButton}
-                      onClick={() =>
-                        navigate(
-                          `/scheduling/visits/${visit.rescheduledIntoVisitId}`,
-                        )
-                      }
+                      onClick={() => navigate(`/scheduling/visits/${visit.rescheduledIntoVisitId}`)}
                     >
                       Open rescheduled visit
                     </button>

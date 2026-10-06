@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 162 statically-routable `web` screen(s) — 19/162 E2E-reached, 156/162 axe-reached.
+**Coverage:** 163 statically-routable `web` screen(s) — 19/163 E2E-reached, 157/163 axe-reached.
 
 ## Zero E2E coverage
 
@@ -120,6 +120,7 @@
 | `safety.policy` | 20-field-safety | `/safety/policy` | safety_policy.read |
 | `safety.sos.active` | 20-field-safety | `/safety/sos` | safety.sos.read |
 | `safety.subscriptions` | 20-field-safety | `/safety/supervisor-subscriptions` | safety_supervisor.read |
+| `scheduling.clinician-credentials` | 17-scheduling | `/scheduling/clinician-credentials` | membership_credential.read |
 | `scheduling.proposals` | 17-scheduling | `/scheduling/proposals` | visit.proposal.read |
 | `scheduling.recurring` | 17-scheduling | `/scheduling/recurring` | recurring_visit.read |
 | `scheduling.time-off` | 17-scheduling | `/scheduling/time-off` | time_off.read_team |

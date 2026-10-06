@@ -980,6 +980,14 @@
       "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
+      "id": "scheduling.clinician-credentials",
+      "path": "/scheduling/clinician-credentials",
+      "permission": "membership_credential.read"
+    },
+    {
+      "app": "web",
+      "module": "17-scheduling",
+      "moduleId": 17,
       "id": "scheduling.calendar",
       "path": "/calendar",
       "permission": "(none)"

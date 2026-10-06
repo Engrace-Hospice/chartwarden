@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 162,
+  "totalStaticWebScreens": 163,
   "e2eReachedCount": 19,
-  "axeReachedCount": 156,
+  "axeReachedCount": 157,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -897,6 +897,14 @@
       "module": "20-field-safety",
       "path": "/safety/supervisor-subscriptions",
       "permission": "safety_supervisor.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "scheduling.clinician-credentials",
+      "module": "17-scheduling",
+      "path": "/scheduling/clinician-credentials",
+      "permission": "membership_credential.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2221,6 +2229,14 @@
       "module": "20-field-safety",
       "path": "/safety/supervisor-subscriptions",
       "permission": "safety_supervisor.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "scheduling.clinician-credentials",
+      "module": "17-scheduling",
+      "path": "/scheduling/clinician-credentials",
+      "permission": "membership_credential.read",
       "e2eReached": false,
       "axeReached": true
     },

@@ -38,14 +38,8 @@ const TYPES: Record<string, string> = {
 const label = (v: string) => TYPES[v] ?? v;
 const api = (client: unknown) =>
   client as {
-    GET: (
-      p: string,
-      o: unknown,
-    ) => Promise<{ data?: unknown; error?: unknown }>;
-    POST: (
-      p: string,
-      o: unknown,
-    ) => Promise<{ data?: unknown; error?: unknown }>;
+    GET: (p: string, o: unknown) => Promise<{ data?: unknown; error?: unknown }>;
+    POST: (p: string, o: unknown) => Promise<{ data?: unknown; error?: unknown }>;
     DELETE: (p: string, o: unknown) => Promise<{ error?: unknown }>;
   };
 
@@ -65,9 +59,7 @@ export function ClinicianCredentials(): JSX.Element {
   const [addOpen, setAddOpen] = useState(false);
   const [revoke, setRevoke] = useState<Credential | null>(null);
   const [type, setType] = useState("rn");
-  const [effectiveAt, setEffectiveAt] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [effectiveAt, setEffectiveAt] = useState(new Date().toISOString().slice(0, 10));
   const [expiresAt, setExpiresAt] = useState("");
   const [issuingBody, setIssuingBody] = useState("");
   const [reason, setReason] = useState("");
@@ -83,10 +75,9 @@ export function ClinicianCredentials(): JSX.Element {
     }
     setLoading(true);
     setError(null);
-    const res = await api(client).GET(
-      "/api/v1/memberships/{membershipId}/credentials",
-      { params: { path: { membershipId } } },
-    );
+    const res = await api(client).GET("/api/v1/memberships/{membershipId}/credentials", {
+      params: { path: { membershipId } },
+    });
     setLoading(false);
     if (res.error) {
       setError("Credentials could not be loaded.");
@@ -103,23 +94,18 @@ export function ClinicianCredentials(): JSX.Element {
       return;
     }
     setBusy(true);
-    const res = await api(client).POST(
-      "/api/v1/memberships/{membershipId}/credentials",
-      {
-        params: { path: { membershipId } },
-        body: {
-          credentialType: type,
-          effectiveAt,
-          ...(expiresAt ? { expiresAt } : {}),
-          ...(issuingBody.trim() ? { issuingBody: issuingBody.trim() } : {}),
-        },
+    const res = await api(client).POST("/api/v1/memberships/{membershipId}/credentials", {
+      params: { path: { membershipId } },
+      body: {
+        credentialType: type,
+        effectiveAt,
+        ...(expiresAt ? { expiresAt } : {}),
+        ...(issuingBody.trim() ? { issuingBody: issuingBody.trim() } : {}),
       },
-    );
+    });
     setBusy(false);
     if (res.error) {
-      setError(
-        "Credential could not be added. Review the details and try again.",
-      );
+      setError("Credential could not be added. Review the details and try again.");
       return;
     }
     setAddOpen(false);
@@ -154,8 +140,7 @@ export function ClinicianCredentials(): JSX.Element {
             color: "var(--color-on-surface-variant)",
           }}
         >
-          Manage clinical licenses and certifications used when scheduling
-          visits.
+          Manage clinical licenses and certifications used when scheduling visits.
         </p>
       </PageHeader>
       <div style={{ maxWidth: "32rem", margin: "1.25rem 0" }}>
@@ -285,11 +270,7 @@ export function ClinicianCredentials(): JSX.Element {
                     >
                       <StatusPill
                         label={row.revokedAt ? "Revoked" : row.status}
-                        tone={
-                          row.status === "active" && !row.revokedAt
-                            ? "success"
-                            : "neutral"
-                        }
+                        tone={row.status === "active" && !row.revokedAt ? "success" : "neutral"}
                       />
                       {canRevoke && !row.revokedAt ? (
                         <Button
@@ -367,11 +348,7 @@ export function ClinicianCredentials(): JSX.Element {
               gap: ".5rem",
             }}
           >
-            <Button
-              tone="tertiary"
-              onClick={() => setAddOpen(false)}
-              disabled={busy}
-            >
+            <Button tone="tertiary" onClick={() => setAddOpen(false)} disabled={busy}>
               Cancel
             </Button>
             <Button disabled={busy || !effectiveAt} onClick={() => void save()}>
@@ -389,9 +366,8 @@ export function ClinicianCredentials(): JSX.Element {
         <div style={{ padding: "1.25rem", display: "grid", gap: ".85rem" }}>
           <h2 style={{ margin: 0 }}>Revoke this clinical credential?</h2>
           <p style={{ margin: 0 }}>
-            This clinician will no longer be considered clinically credentialed
-            under this license. This may prevent future visit assignments that
-            require it.
+            This clinician will no longer be considered clinically credentialed under this license.
+            This may prevent future visit assignments that require it.
           </p>
           <label>
             Reason *
@@ -410,11 +386,7 @@ export function ClinicianCredentials(): JSX.Element {
               gap: ".5rem",
             }}
           >
-            <Button
-              tone="tertiary"
-              onClick={() => setRevoke(null)}
-              disabled={busy}
-            >
+            <Button tone="tertiary" onClick={() => setRevoke(null)} disabled={busy}>
               Cancel
             </Button>
             <Button

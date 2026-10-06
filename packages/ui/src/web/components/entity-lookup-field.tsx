@@ -27,9 +27,7 @@ export interface EntityLookupFieldProps {
   label: ReactNode;
   value: string;
   onChange: (value: string, option: EntityLookupOption | null) => void;
-  loadOptions: (
-    input: EntityLookupLoadInput,
-  ) => Promise<EntityLookupLoadResult>;
+  loadOptions: (input: EntityLookupLoadInput) => Promise<EntityLookupLoadResult>;
   placeholder?: string;
   hint?: ReactNode;
   error?: ReactNode;
@@ -113,9 +111,7 @@ export function EntityLookupField({
           cursor,
           limit: pageSize,
         });
-        setOptions((current) =>
-          append ? [...current, ...result.options] : result.options,
-        );
+        setOptions((current) => (append ? [...current, ...result.options] : result.options));
         setNextCursor(result.nextCursor ?? null);
         if (!append) setActiveIndex(-1);
       } catch {
@@ -196,18 +192,11 @@ export function EntityLookupField({
 
     if (event.key === "ArrowUp" && open && options.length > 0) {
       event.preventDefault();
-      setActiveIndex((current) =>
-        current <= 0 ? options.length - 1 : current - 1,
-      );
+      setActiveIndex((current) => (current <= 0 ? options.length - 1 : current - 1));
       return;
     }
 
-    if (
-      event.key === "Enter" &&
-      open &&
-      activeIndex >= 0 &&
-      options[activeIndex]
-    ) {
+    if (event.key === "Enter" && open && activeIndex >= 0 && options[activeIndex]) {
       event.preventDefault();
       select(options[activeIndex]!);
     }
@@ -278,9 +267,9 @@ export function EntityLookupField({
         ) : null}
 
         {open ? (
-          // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
           // biome-ignore lint/a11y/useFocusableInteractive: focus stays in the combobox input; option buttons are intentionally removed from the tab order
           <span
+            // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
             id={listId}
             role="listbox"
             aria-labelledby={labelId}
@@ -292,10 +281,7 @@ export function EntityLookupField({
                 {appearance === "modal" ? <span>Searching…</span> : null}
               </span>
             ) : loadError ? (
-              <span
-                role="alert"
-                style={{ ...stateStyle(appearance), color: t.error }}
-              >
+              <span role="alert" style={{ ...stateStyle(appearance), color: t.error }}>
                 {loadError}
               </span>
             ) : options.length === 0 ? (
@@ -312,6 +298,7 @@ export function EntityLookupField({
                   <button
                     id={`${listId}-option-${index}`}
                     key={option.id}
+                    // biome-ignore lint/a11y/useSemanticElements: an <option> element cannot carry the description markup or the click behaviour these rows have
                     type="button"
                     role="option"
                     tabIndex={-1}
@@ -330,9 +317,7 @@ export function EntityLookupField({
                     style={optionStyle(appearance, selected, active)}
                   >
                     <span style={optionTopLine}>
-                      <span style={{ fontWeight: 650, color: t.onSurface }}>
-                        {option.label}
-                      </span>
+                      <span style={{ fontWeight: 650, color: t.onSurface }}>{option.label}</span>
                       {selected ? (
                         <span aria-hidden="true" style={selectedMarkStyle}>
                           ✓
@@ -374,19 +359,12 @@ export function EntityLookupField({
       </span>
 
       {hint && !error ? (
-        <span
-          id={hintId}
-          style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}
-        >
+        <span id={hintId} style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}>
           {hint}
         </span>
       ) : null}
       {error ? (
-        <span
-          id={errorId}
-          role="alert"
-          style={{ color: t.error, fontSize: "0.75rem" }}
-        >
+        <span id={errorId} role="alert" style={{ color: t.error, fontSize: "0.75rem" }}>
           {error}
         </span>
       ) : null}
@@ -431,15 +409,11 @@ const inputStyle = (
     fontSize: "0.875rem",
     outline: "none",
     boxShadow:
-      open && !invalid
-        ? `0 0 0 3px color-mix(in srgb, ${t.primary} 13%, transparent)`
-        : "none",
+      open && !invalid ? `0 0 0 3px color-mix(in srgb, ${t.primary} 13%, transparent)` : "none",
   };
 };
 
-const clearStyle = (
-  appearance: "default" | "modal",
-): CSSProperties => ({
+const clearStyle = (appearance: "default" | "modal"): CSSProperties => ({
   position: "absolute",
   right: "0.45rem",
   top: appearance === "modal" ? "0.58rem" : "0.45rem",
@@ -457,9 +431,7 @@ const clearStyle = (
   lineHeight: appearance === "modal" ? 1 : undefined,
 });
 
-const popoverStyle = (
-  appearance: "default" | "modal",
-): CSSProperties => ({
+const popoverStyle = (appearance: "default" | "modal"): CSSProperties => ({
   position: "absolute",
   zIndex: appearance === "modal" ? 120 : 30,
   top: appearance === "modal" ? "calc(100% + 0.35rem)" : "calc(100% + 0.25rem)",
@@ -513,9 +485,7 @@ const selectedMarkStyle: CSSProperties = {
   fontWeight: 800,
 };
 
-const stateStyle = (
-  appearance: "default" | "modal",
-): CSSProperties => ({
+const stateStyle = (appearance: "default" | "modal"): CSSProperties => ({
   display: "flex",
   alignItems: "center",
   gap: "0.55rem",

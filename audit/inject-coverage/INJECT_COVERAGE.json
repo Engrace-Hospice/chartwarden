@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1382,
-    "coveredRoutes": 1382,
+    "routes": 1384,
+    "coveredRoutes": 1384,
     "directRoutesReferenced": 1331
   },
   "modules": [
@@ -219,7 +219,7 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 33,
+      "routes": 35,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",

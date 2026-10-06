@@ -95,12 +95,14 @@ import {
   type CreateRecurringInput,
   type CreateVisitInput,
   type EditVisitInput,
+  type EligibleClinicianView,
   type OptimizeDayInput,
   type ProposalView,
   type RecurringView,
   type RequestTimeOffInput,
   type RescheduleVisitInput,
   type SchedulingRouteService,
+  type SchedulingStaffView,
   type TimeOffView,
   type UpsertAvailabilityInput,
   VISIT_LIST_LIMIT,
@@ -229,11 +231,7 @@ export interface SchedulingAutomationService {
     orgId: string,
     userId: string,
     options?: { now?: Date; horizonDays?: number },
-  ): Promise<{
-    policiesScanned: number;
-    visitsCreated: number;
-    occurrencesSkipped: number;
-  }>;
+  ): Promise<{ policiesScanned: number; visitsCreated: number; occurrencesSkipped: number }>;
   generateCarePlanVisitProposals(
     orgId: string,
     userId: string,
@@ -467,11 +465,7 @@ export function createDbSchedulingBackend(
     patientId: string,
   ): Promise<boolean> {
     if (userId === null) return false;
-    return getSeam("CaseloadProvider").isInCaseload({
-      organizationId: orgId,
-      userId,
-      patientId,
-    });
+    return getSeam("CaseloadProvider").isInCaseload({ organizationId: orgId, userId, patientId });
   }
 
   // GAP-093 — the real `clinician_credentials_active` check: does `membershipId` hold an ACTIVE
@@ -623,10 +617,7 @@ export function createDbSchedulingBackend(
     orgId: string,
     userId: string,
     input: CreateVisitInput,
-    lineage: {
-      parentRecurringVisitId: string | null;
-      parentProposalId: string | null;
-    },
+    lineage: { parentRecurringVisitId: string | null; parentProposalId: string | null },
     seamFacts: PreScheduleSeamFacts,
   ): Promise<VisitView> {
     const { providerEntityId, locationId } = await resolveSiting(tx, input.assignedMembershipId);
@@ -685,10 +676,7 @@ export function createDbSchedulingBackend(
       input.scheduledEndedAt,
       seamFacts,
     );
-    const published = transitionVisit("proposed", {
-      type: "publish",
-      gatePassed,
-    });
+    const published = transitionVisit("proposed", { type: "publish", gatePassed });
     await tx
       .update(V)
       .set({ status: published.to, version: 1, updatedAt: new Date() })
@@ -1036,6 +1024,7 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
+        assertAssignedClinician(v.assignedMembershipId as string, userId);
         const sited = {
           id: visitId,
           providerEntityId: v.providerEntityId as string,
@@ -1043,18 +1032,16 @@ export function createDbSchedulingBackend(
         };
         const transition = transitionVisit(v.status as VisitStatus, {
           type: "start",
-          source:
-            evvMissingReason === undefined
-              ? { via: "evv" }
-              : { via: "self_attest", evvMissingReason, stepUpSatisfied },
+          // GAP-050 — the HTTP route is ALWAYS the self-attest path; `via:'evv'` belongs to the M18 consumers.
+          source: { via: "self_attest", evvMissingReason, stepUpSatisfied },
         });
-        const bracket = evvMissingReason === undefined ? "evv_present" : "evv_missing_documented";
+        const bracket = "evv_missing_documented";
         await tx
           .update(V)
           .set({
             status: transition.to,
             evvBracketState: bracket,
-            evvMissingReason: evvMissingReason ?? null,
+            evvMissingReason,
             actualStartedAt: new Date(),
             version: (v.version as number) + 1,
             updatedAt: new Date(),
@@ -1081,6 +1068,7 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
+        assertAssignedClinician(v.assignedMembershipId as string, userId);
         const sited = {
           id: visitId,
           providerEntityId: v.providerEntityId as string,
@@ -1088,18 +1076,16 @@ export function createDbSchedulingBackend(
         };
         const transition = transitionVisit(v.status as VisitStatus, {
           type: "arrive",
-          source:
-            evvMissingReason === undefined
-              ? { via: "evv" }
-              : { via: "self_attest", evvMissingReason, stepUpSatisfied },
+          // GAP-050 — the HTTP route is ALWAYS the self-attest path; `via:'evv'` belongs to the M18 consumers.
+          source: { via: "self_attest", evvMissingReason, stepUpSatisfied },
         });
-        const bracket = evvMissingReason === undefined ? "evv_present" : "evv_missing_documented";
+        const bracket = "evv_missing_documented";
         await tx
           .update(V)
           .set({
             status: transition.to,
             evvBracketState: bracket,
-            evvMissingReason: evvMissingReason ?? null,
+            evvMissingReason,
             version: (v.version as number) + 1,
             updatedAt: new Date(),
           })
@@ -1256,10 +1242,7 @@ export function createDbSchedulingBackend(
           providerEntityId: v.providerEntityId as string,
           locationId: v.locationId as string,
         };
-        const transition = transitionVisit(v.status as VisitStatus, {
-          type: "no_show",
-          reason,
-        });
+        const transition = transitionVisit(v.status as VisitStatus, { type: "no_show", reason });
         await tx
           .update(V)
           .set({
@@ -1697,11 +1680,7 @@ export function createDbSchedulingBackend(
           visitsCreated += 1;
         }
       }
-      return {
-        policiesScanned: policies.length,
-        visitsCreated,
-        occurrencesSkipped,
-      };
+      return { policiesScanned: policies.length, visitsCreated, occurrencesSkipped };
     },
 
     async generateCarePlanVisitProposals(
@@ -1799,10 +1778,7 @@ export function createDbSchedulingBackend(
                   .onConflictDoNothing({
                     target: [VP.organizationId, VP.source, VP.sourceIdempotencyKey],
                   })
-                  .returning({
-                    id: VP.id,
-                    proposedForDate: VP.proposedForDate,
-                  }),
+                  .returning({ id: VP.id, proposedForDate: VP.proposedForDate }),
               );
               const proposal = inserted[0];
               if (!proposal) {
@@ -1899,10 +1875,7 @@ export function createDbSchedulingBackend(
               lt(V.scheduledEndedAt, possibleMissedCutoff),
             ),
           );
-        return {
-          staleVisits: stale.length,
-          possibleMissedVisits: possibleMissed.length,
-        };
+        return { staleVisits: stale.length, possibleMissedVisits: possibleMissed.length };
       });
     },
 
@@ -1910,11 +1883,7 @@ export function createDbSchedulingBackend(
     async getAvailability(orgId: string, membershipId: string): Promise<AvailabilityView | null> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const rows = await tx
-          .select({
-            dayOfWeek: CA.dayOfWeek,
-            startTime: CA.startTime,
-            endTime: CA.endTime,
-          })
+          .select({ dayOfWeek: CA.dayOfWeek, startTime: CA.startTime, endTime: CA.endTime })
           .from(CA)
           .where(eq(CA.membershipId, membershipId))
           .orderBy(CA.dayOfWeek);
@@ -1940,6 +1909,7 @@ export function createDbSchedulingBackend(
       input: UpsertAvailabilityInput,
       authority: CallerAuthority,
     ): Promise<AvailabilityView> {
+      assertMayEditAvailability(userId, membershipId, authority);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         // Merge per (membership, day_of_week): UPDATE the existing row, else INSERT. No DELETE grant → a
@@ -1954,11 +1924,7 @@ export function createDbSchedulingBackend(
           if (hit) {
             await tx
               .update(CA)
-              .set({
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                updatedAt: new Date(),
-              })
+              .set({ startTime: slot.startTime, endTime: slot.endTime, updatedAt: new Date() })
               .where(eq(CA.id, hit));
           } else {
             await tx.insert(CA).values({
@@ -2017,6 +1983,7 @@ export function createDbSchedulingBackend(
       input: RequestTimeOffInput,
       authority: CallerAuthority,
     ): Promise<TimeOffView> {
+      assertMayRequestTimeOff(userId, input.membershipId, authority);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [inserted] = await tx
@@ -2182,10 +2149,7 @@ export function createDbSchedulingBackend(
 
     async portalUpcoming(orgId: string, patientId: string, withinHours: number) {
       const cutoff = new Date(Date.now() + withinHours * 3_600_000).toISOString();
-      const visits = await backend.listVisits(orgId, {
-        patient: patientId,
-        status: "published",
-      });
+      const visits = await backend.listVisits(orgId, { patient: patientId, status: "published" });
       return visits
         .filter((v) => v.scheduledStartedAt <= cutoff)
         .map((v) => ({
@@ -2202,11 +2166,7 @@ export function createDbSchedulingBackend(
       const total = visits.length || 1;
       const noShow = visits.filter((v) => v.status === "no_show").length;
       const rescheduled = visits.filter((v) => v.status === "rescheduled").length;
-      return {
-        onTimeRate: 1,
-        noShowRate: noShow / total,
-        rescheduleRate: rescheduled / total,
-      };
+      return { onTimeRate: 1, noShowRate: noShow / total, rescheduleRate: rescheduled / total };
     },
 
     routeEfficiencyMetrics(_orgId: string, membershipId: string) {
@@ -2460,11 +2420,7 @@ export function createDbSchedulingBackend(
       credentialId: string,
       revokedReason: string,
     ): Promise<void> {
-      return credentialStore.revoke(orgId, {
-        credentialId,
-        revokedReason,
-        revokedByMembershipId,
-      });
+      return credentialStore.revoke(orgId, { credentialId, revokedReason, revokedByMembershipId });
     },
   };
 
