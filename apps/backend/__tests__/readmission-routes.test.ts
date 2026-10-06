@@ -51,6 +51,7 @@ const PLAN = buildBenefitPeriodPlan({
       dischargeType: "no_longer_terminal",
       lastRanSequence: 1,
       endingEventId: "de_1",
+      transferredIn: null,
     },
   ],
   readmitFrom: { admissionId: "adm_prior", state: "discharged" },
