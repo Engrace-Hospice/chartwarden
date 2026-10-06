@@ -38,6 +38,9 @@ const ReferralInbox = lazy(() =>
 const DeathPronouncement = lazy(() =>
   import("./death-pronouncement").then((m) => ({ default: m.DeathPronouncement })),
 );
+const DischargeDetails = lazy(() =>
+  import("./discharge-details").then((m) => ({ default: m.DischargeDetails })),
+);
 const DischargeCosign = lazy(() =>
   import("./discharge-cosign").then((m) => ({ default: m.DischargeCosign })),
 );
@@ -147,6 +150,17 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       title: "Cosign for-cause discharge",
       requiredPermission: "discharge.cosign_for_cause",
       screen: DischargeCosign,
+    },
+    {
+      // Discharge details for billing — completes a death discharge / transfer-out recorded before the place of
+      // death / receiving care setting was captured (the final claim's patient status needs it). Reached from the
+      // admission detail's alert and a blocked claim's "Fix discharge details". Reading is admission.read; the
+      // save is gated server-side on discharge.death / transfer.out (+ admission scope) and says so on a 403.
+      id: "admission.discharge-details",
+      path: "/admissions/:id/discharge-details",
+      title: "Discharge details for billing",
+      requiredPermission: "admission.read",
+      screen: DischargeDetails,
     },
   ],
 };

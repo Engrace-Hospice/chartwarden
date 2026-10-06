@@ -51,6 +51,7 @@ import {
   WINDOW_TONE,
   stateLabel,
 } from "./admission-status";
+import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
 import { PatientIntakeDetails } from "./patient-intake-details";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -1316,6 +1317,7 @@ export function AdmissionDetail(): JSX.Element {
     >
       <div style={contentShellStyle}>
         {flashNotice ? <InlineAlert tone="success">{flashNotice}</InlineAlert> : null}
+        <MissingDischargeDetailsAlert admissionId={admission.id} admissionState={admission.state} />
         <section style={summaryCardStyle}>
           <div style={summaryHeaderStyle}>
             <div>

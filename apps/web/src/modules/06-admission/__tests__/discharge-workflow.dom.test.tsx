@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
 import { DischargeWorkflow } from "../discharge-workflow";
+import { messageForError } from "../discharge-workflow-model";
 
 const admissionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const patientId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -337,5 +338,14 @@ describe("DischargeWorkflow (M6 discharge / revocation / transfer-out)", () => {
       await screen.findByText(/Only an active or on-hold admission can be discharged/),
     ).toBeTruthy();
     expect(screen.queryByRole("radio")).toBeNull();
+  });
+});
+
+describe("messageForError — the claim-detail codes", () => {
+  it("explains RECEIVING_CARE_SETTING_REQUIRED and PLACE_OF_DEATH_NOT_ALLOWED", () => {
+    expect(messageForError(422, "RECEIVING_CARE_SETTING_REQUIRED")).toMatch(
+      /patient status \(50 or 51\)/,
+    );
+    expect(messageForError(422, "PLACE_OF_DEATH_NOT_ALLOWED")).toMatch(/only recorded on a death/);
   });
 });

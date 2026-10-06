@@ -35,7 +35,11 @@ import {
   tobLabel,
   validationRunTone,
 } from "./billing-status";
+import { ClaimStayEndPanels } from "./claim-stay-end-panels";
+import type { ClaimAttention } from "./discharge-attention";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
+
+const REPLACEABLE: ReadonlySet<string> = new Set(["ack_accepted", "ack_partial", "paid"]);
 
 interface HippsPricing {
   hippsCode: string;
@@ -86,6 +90,8 @@ interface ClaimDetail {
   replacementReason: string | null;
   latestValidation: ValidationRunSummary | null;
   pricing: { hipps: HippsPricing | null; sia: SiaPricing | null };
+  /** How the stay ended → missing discharge details / Type of Bill change (server-computed, live M6 facts). */
+  attention?: ClaimAttention | null;
 }
 
 interface ClaimLine {
@@ -259,7 +265,8 @@ export function ClaimEditor(): JSX.Element {
   if (error || !claim) return <EmptyState title="Unavailable" description={error ?? "No claim."} />;
 
   const canSubmit = claim.state === "ready";
-  const canReplaceVoid = claim.state === "paid" || claim.state === "ack_accepted";
+  // The server's REPLACEABLE_STATES (write-service-drizzle.ts): accepted, partially accepted, paid.
+  const canReplaceVoid = REPLACEABLE.has(claim.state);
   const v = claim.latestValidation;
 
   return (
@@ -306,6 +313,12 @@ export function ClaimEditor(): JSX.Element {
       }
       aside={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <ClaimStayEndPanels
+            claim={claim}
+            canReplace={canReplaceVoid}
+            onReplace={() => setCeremony("replace")}
+            onRevalidated={() => void load()}
+          />
           <ReplacementChain claim={claim} />
           <ValidationSummary claimId={claim.claimId} run={v} />
           <SequestrationCard claim={claim} />

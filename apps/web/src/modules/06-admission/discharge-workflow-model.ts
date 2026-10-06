@@ -235,6 +235,11 @@ const CODE_MESSAGES: Record<string, string> = {
     "The revocation cannot take effect before the date it was signed.",
   TRANSFER_LIMIT_EXCEEDED:
     "A transfer out has already been recorded in this benefit period — only one is allowed per period.",
+  RECEIVING_CARE_SETTING_REQUIRED:
+    "Choose where the receiving hospice will care for the patient (at home or in a facility) on the " +
+    "transfer step — it sets the final claim's patient status (50 or 51).",
+  PLACE_OF_DEATH_NOT_ALLOWED:
+    "A place of death is only recorded on a death. Use Record death on the admission for a death.",
   FOR_CAUSE_REQUIRES_COSIGN:
     "A for-cause discharge cannot take effect until the medical director cosigns it.",
   ILLEGAL_TRANSITION:
