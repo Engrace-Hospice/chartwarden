@@ -77,3 +77,50 @@ export { createPalmettoJjPortalClient, PalmettoJjPortalClient } from "./mac-port
 export { createPalmettoJmPortalClient, PalmettoJmPortalClient } from "./mac-portal/palmetto-jm";
 export { createNoridianJfPortalClient, NoridianJfPortalClient } from "./mac-portal/noridian-jf";
 export { createNoridianJePortalClient, NoridianJePortalClient } from "./mac-portal/noridian-je";
+
+// ─── HETS 270/271 eligibility codec + transport (ADR-0037: TypeScript, not the sidecar) ─────────────
+// Pure 270 builder / 271 parser / hospice-history derivation, the CORE MIME transport port, and the
+// fixture-backed sandbox transport (dev/test only). Each module imports only its eligibility siblings.
+export {
+  build270,
+  Hets270BuildError,
+  HETS_DEFAULT_SERVICE_TYPES,
+  MBI_PATTERN,
+} from "./eligibility/build-270";
+export type { Hets270Request } from "./eligibility/build-270";
+export { assertNoMbi, MbiLeakError, parse271 } from "./eligibility/parse-271";
+export type {
+  Hets271Outcome,
+  Hets271Rejection,
+  HospiceRecord,
+  HospiceRevocationCode,
+  PartAEntitlement,
+  Parsed271,
+} from "./eligibility/parse-271";
+export {
+  deriveHospiceHistory,
+  HETS_HOSPICE_PERIOD_RETURN_CAP,
+} from "./eligibility/hospice-history";
+export type {
+  HospiceHistory,
+  HospicePeriod,
+  NextPeriodBasis,
+} from "./eligibility/hospice-history";
+export {
+  buildCoreMimeForm,
+  coreSenderId,
+  createCoreMimeHetsTransport,
+  HetsTransportError,
+} from "./eligibility/transport";
+export type {
+  CoreMimeHetsTransportConfig,
+  HetsFetch,
+  HetsTransport,
+  HetsTransportRequest,
+  HetsTransportResponse,
+} from "./eligibility/transport";
+export { createSandboxHetsTransport } from "./eligibility/sandbox-transport";
+export type { SandboxHetsTransportOptions } from "./eligibility/sandbox-transport";
+export { HETS_271_SCENARIOS, synthetic271 } from "./eligibility/fixtures";
+export type { Hets271Scenario, Synthetic271Context } from "./eligibility/fixtures";
+export { X12FormatError } from "./eligibility/x12-envelope";
