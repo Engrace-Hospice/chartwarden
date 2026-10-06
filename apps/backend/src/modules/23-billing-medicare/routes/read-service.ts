@@ -19,6 +19,7 @@ import type {
   NoticeState,
   TypeOfBill,
 } from "@wardenx/billing";
+import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 
@@ -72,6 +73,12 @@ export interface ClaimSummaryView {
   readonly totalChargeCents: number;
   readonly totalExpectedPaymentCents: number;
   readonly version: number;
+  /**
+   * What the biller must do because of how the stay ended (missing place of death / receiving care setting, a
+   * Type of Bill the resolver now derives differently), from M6's CURRENT facts. Present on the list and detail
+   * reads when the stay-end facts port is bound; absent/`null` otherwise.
+   */
+  readonly attention?: ClaimAttentionView | null;
 }
 
 export interface ClaimPricingView {
@@ -357,6 +364,11 @@ export interface ClaimListFilter {
   readonly providerEntityId?: string;
   readonly patientId?: string;
   readonly state?: ClaimState;
+  /**
+   * Only claims carrying this attention flag (`missing_discharge_details` / `tob_changed`). Computed from M6's
+   * live stay-end facts, so the read SCANS pages (bounded) rather than filtering in SQL — see the Drizzle read.
+   */
+  readonly attention?: ClaimAttentionFlag;
   /**
    * SERVER-DERIVED provider-entity restriction (authorization, never a query param). `undefined` =
    * unrestricted (org-wide billing role / system principal); `[]` = the actor has no provider scope and

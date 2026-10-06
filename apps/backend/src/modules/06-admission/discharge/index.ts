@@ -17,6 +17,7 @@ export {
   dischargeRequiresCosign,
   checkDischargeNarrative,
   checkPlaceOfDeath,
+  issueDetails,
   resolvePlaceOfDeath,
   PLACES_OF_DEATH,
   type PlaceOfDeath,
@@ -39,3 +40,4 @@ export {
   type TransferInPlan,
   planTransferIn,
 } from "./transfer-in";
+export * from "./discharge-details";

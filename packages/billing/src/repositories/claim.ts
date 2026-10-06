@@ -14,7 +14,7 @@
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@wardenx/db/schema";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
-import type { ClaimState } from "../contracts";
+import type { ClaimState, TypeOfBill } from "../contracts";
 import {
   type BillingDb,
   type CursorPage,
@@ -331,6 +331,22 @@ export class ClaimRepository {
             OR ${C.occurrenceCodes} IS DISTINCT FROM ${JSON.stringify(codes.occurrenceCodes)}::jsonb)`,
         ),
       )
+      .returning({ id: C.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Re-type an UNSUBMITTED normal-cadence claim whose stored Type of Bill no longer matches the one the resolver
+   * derives from current M6 facts (e.g. assembled as interim 812/813 before a revocation or transfer-out was
+   * counted as the end of the stay; now final 811/814). Guarded on the stored value (`fromTob`) so a concurrent
+   * replace/void builder or a second refresh cannot double-apply. Like {@link refreshDischargeCodes} this is a
+   * derived projection, not a user edit: no version bump; the write-audit trigger records the change.
+   */
+  async refreshTypeOfBill(id: string, fromTob: TypeOfBill, toTob: TypeOfBill): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({ tob: toTob, updatedAt: new Date() })
+      .where(and(eq(C.id, id), eq(C.tob, fromTob)))
       .returning({ id: C.id });
     return rows.length > 0;
   }

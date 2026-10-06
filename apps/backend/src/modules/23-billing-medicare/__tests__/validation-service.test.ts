@@ -261,3 +261,100 @@ describe("guards", () => {
     expect(store.runs.size).toBe(0);
   });
 });
+
+describe("Type of Bill refresh on re-validation (812/813 → 811/814 once the stay-end counts)", () => {
+  function contextEndingOn(
+    dischargeDate: string | null,
+    reason: string | null,
+  ): ValidationContextPort {
+    return {
+      build: async (_tx, _actor, claim) => ({
+        context: {
+          claimId: claim.id,
+          claim: {
+            tob: claim.tob,
+            dischargeDate,
+            dischargeReason: reason,
+            dischargeClaimCodes: {
+              patientStatus: "01",
+              conditionCodes: [],
+              occurrenceCodes: [],
+              unresolved: null,
+            },
+          },
+        } as unknown as ValidationContext,
+        overlays: {},
+      }),
+    };
+  }
+  const seen: string[] = [];
+  const tobProbe: Rule = {
+    ...passRule,
+    key: "test.tob_probe",
+    check: (ctx) => {
+      seen.push(ctx.claim.tob);
+      return pass("test.tob_probe", "error", "ok");
+    },
+  };
+
+  it("re-types an unsubmitted interim claim whose stay ended by revocation inside the window", async () => {
+    seedValidatingClaim();
+    store.claims.set("claim-1", {
+      ...store.claims.get("claim-1"),
+      tob: "812",
+      serviceFrom: "2026-03-01",
+      serviceTo: "2026-03-31",
+    });
+    seen.length = 0;
+    const svc = makeService([tobProbe], {
+      contextPort: contextEndingOn("2026-03-20", "revocation"),
+    });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    expect(store.claims.get("claim-1").tob).toBe("811");
+    expect(store.claims.get("claim-1").version).toBe(0); // a derived projection, not a user edit
+    expect(seen).toEqual(["811"]); // the rules validate the corrected TOB
+  });
+
+  it("keeps a continuing interim claim (813 → 814 only when discharged on/before the Through date)", async () => {
+    seedValidatingClaim();
+    store.claims.set("claim-1", {
+      ...store.claims.get("claim-1"),
+      tob: "813",
+      serviceFrom: "2026-03-01",
+      serviceTo: "2026-03-31",
+    });
+    const svc = makeService([passRule], { contextPort: contextEndingOn("2026-04-05", "transfer") });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    expect(store.claims.get("claim-1").tob).toBe("813");
+    const svc2 = makeService([passRule], {
+      contextPort: contextEndingOn("2026-03-31", "transfer"),
+    });
+    await svc2.validateClaim(ACTOR, { claimId: "claim-1", trigger: "pre_submission" });
+    expect(store.claims.get("claim-1").tob).toBe("814");
+  });
+
+  it("persists a re-validated result's remediation flat (summary at the top level, defects alongside)", async () => {
+    seedValidatingClaim();
+    const defectRule: Rule = {
+      ...blockingFailRule,
+      check: () => {
+        const r = fail("test.regulatory_block", "error", "x", { summary: "Fix it" }, { n: 1 });
+        return {
+          ...r,
+          annotations: {
+            ...r.annotations,
+            defects: [{ code: "PLACE_OF_DEATH_MISSING", message: "m" }],
+          },
+        };
+      },
+    };
+    const svc = makeService([defectRule], { contextPort: constantContextPort() });
+    await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    const result = [...store.results.values()][0];
+    expect(result.remediation).toEqual({
+      summary: "Fix it",
+      observed: { n: 1 },
+      defects: [{ code: "PLACE_OF_DEATH_MISSING", message: "m" }],
+    });
+  });
+});

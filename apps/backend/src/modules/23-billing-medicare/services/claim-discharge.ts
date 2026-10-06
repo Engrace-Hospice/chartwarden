@@ -17,16 +17,24 @@ import {
   type IsoDate,
   type PlaceOfDeath,
   type ReceivingCareSetting,
+  type TypeOfBill,
   deriveDischargeClaimCodes,
+  deriveTypeOfBill,
 } from "@wardenx/billing";
 import type { AdmissionContext } from "./claim-assembly-types";
 
 const PLACES: readonly string[] = ["home", "facility", "unknown"];
 const SETTINGS: readonly string[] = ["home", "facility"];
 
+/** The admission facts the stay-end resolution reads (a structural subset of {@link AdmissionContext}). */
+export type StayEndAdmissionFacts = Pick<
+  AdmissionContext,
+  "dischargeDate" | "dischargeReason" | "deceasedDate" | "placeOfDeath" | "transferOut"
+> & { readonly dischargeEventId?: string | null };
+
 /** The stay-ending fact for the admission, or `null` while the patient is still on service. */
 export function resolveClaimDischarge(
-  admission: AdmissionContext,
+  admission: StayEndAdmissionFacts,
   electionPeriods: readonly {
     readonly revoked: boolean;
     readonly revocationDate: IsoDate | null;
@@ -42,6 +50,7 @@ export function resolveClaimDischarge(
         isDeath && admission.placeOfDeath !== null && PLACES.includes(admission.placeOfDeath)
           ? (admission.placeOfDeath as PlaceOfDeath)
           : null,
+      sourceEventId: admission.dischargeEventId ?? null,
     };
   }
   const candidates: ClaimDischargeFact[] = [];
@@ -52,6 +61,7 @@ export function resolveClaimDischarge(
       effectiveDate: admission.transferOut.effectiveDate,
       receivingCareSetting:
         setting !== null && SETTINGS.includes(setting) ? (setting as ReceivingCareSetting) : null,
+      sourceEventId: admission.transferOut.transferEventId ?? null,
     });
   }
   const revocation = electionPeriods
@@ -80,7 +90,7 @@ export function claimDischargeCodeColumns(codes: DischargeClaimCodes): {
 
 /** The discharge codes for a claim whose window ends on `serviceTo`. */
 export function claimDischargeCodes(
-  admission: AdmissionContext,
+  admission: StayEndAdmissionFacts,
   electionPeriods: readonly {
     readonly revoked: boolean;
     readonly revocationDate: IsoDate | null;
@@ -89,4 +99,26 @@ export function claimDischargeCodes(
 ): { readonly discharge: ClaimDischargeFact | null; readonly codes: DischargeClaimCodes } {
   const discharge = resolveClaimDischarge(admission, electionPeriods);
   return { discharge, codes: deriveDischargeClaimCodes({ serviceTo, discharge }) };
+}
+
+/** The normal-cadence Types of Bill (`deriveTypeOfBill` with `adjustment: "none"`). */
+const CADENCE_TOBS: readonly string[] = ["811", "812", "813", "814"];
+
+/**
+ * The Type of Bill the resolver derives TODAY for a stored normal-cadence claim. The prior-claim half of the
+ * cadence is read back from the stored TOB itself (811/812 = no prior claim, 813/814 = a prior claim exists —
+ * exactly the fact assembly used); the discharged half is re-derived from the current stay-ending fact. `null`
+ * for a replacement / void (817/818), whose TOB is not cadence-derived.
+ */
+export function rederivedTypeOfBill(
+  storedTob: string,
+  discharge: ClaimDischargeFact | null,
+  serviceTo: IsoDate,
+): TypeOfBill | null {
+  if (!CADENCE_TOBS.includes(storedTob)) return null;
+  return deriveTypeOfBill({
+    hasPriorClaimForAdmission: storedTob === "813" || storedTob === "814",
+    patientDischarged: discharge !== null && discharge.effectiveDate <= serviceTo,
+    adjustment: "none",
+  });
 }

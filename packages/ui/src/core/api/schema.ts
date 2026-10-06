@@ -1994,6 +1994,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/discharge-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The admission's stay-ending record (completed discharge / transfer-out) and the claim detail it lacks */
+        get: operations["getApiV1AdmissionsByIdDischargedetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/election-periods": {
         parameters: {
             query?: never;
@@ -6645,6 +6662,23 @@ export interface paths {
         put?: never;
         /** Medical-director cosign for a for-cause discharge (§6.3 ABAC) */
         post: operations["postApiV1DischargesByIdCosignforcause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discharges/{id}/place-of-death": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the place of death on a completed death discharge (claim patient status 40/41/42); a recorded value is replaced only with a correctionReason */
+        post: operations["postApiV1DischargesByIdPlaceofdeath"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19349,6 +19383,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transfers/{id}/receiving-care-setting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record where the receiving hospice cares for the patient on a transfer-out (claim patient status 50/51); a recorded value is replaced only with a correctionReason */
+        post: operations["postApiV1TransfersByIdReceivingcaresetting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/triage-calls": {
         parameters: {
             query?: never;
@@ -25956,6 +26007,7 @@ export interface operations {
                     forCauseReason?: string;
                     /** Format: uuid */
                     deathCertifierId?: string;
+                    /** @description REQUIRED when reason is "death", refused otherwise. Where the patient died: "home", "facility" or "unknown". Sets the Medicare claim's patient discharge status — 40 (expired at home), 41 (expired in a medical facility) or 42 (expired, place unknown), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid on a death → 422 PLACE_OF_DEATH_REQUIRED; sent on another reason → 422 PLACE_OF_DEATH_NOT_ALLOWED. A death recorded without it can be completed later with POST /api/v1/discharges/{id}/place-of-death. */
                     placeOfDeath?: "home" | "facility" | "unknown";
                 };
             };
@@ -25967,6 +26019,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdmissionsByIdDischargedetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        patientId: string;
+                        admissionState: string;
+                        discharge: {
+                            dischargeEventId: string;
+                            reason: string;
+                            status: string;
+                            /** Format: date */
+                            effectiveDate: string;
+                            placeOfDeath: ("home" | "facility" | "unknown") | null;
+                            placeOfDeathCorrectionReason: string | null;
+                            version: number;
+                        } | null;
+                        transferOut: {
+                            transferEventId: string;
+                            /** Format: date */
+                            effectiveDate: string;
+                            receivingHospiceName: string | null;
+                            receivingCareSetting: ("home" | "facility") | null;
+                            receivingCareSettingCorrectionReason: string | null;
+                            version: number;
+                        } | null;
+                        /** @description The claim-relevant detail the stay-ending event lacks (the final Medicare claim is blocked until it is recorded), or null. */
+                        missing: "place_of_death" | "receiving_care_setting" | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26468,6 +26569,7 @@ export interface operations {
                     effectiveDate: string;
                     otherHospiceName: string;
                     otherHospiceCcn?: string;
+                    /** @description REQUIRED. Where the RECEIVING hospice will care for the patient: "home" or "facility". Sets the Medicare claim's patient discharge status — 50 (discharged to hospice, home) or 51 (discharged to hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid → 422 RECEIVING_CARE_SETTING_REQUIRED. A transfer recorded without it can be completed later with POST /api/v1/transfers/{id}/receiving-care-setting. */
                     receivingCareSetting: "home" | "facility";
                     narrative: string;
                 };
@@ -30974,6 +31076,7 @@ export interface operations {
                 providerEntityId?: string;
                 patientId?: string;
                 state?: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "ack_partial" | "paid" | "denied" | "replaced" | "voided";
+                attention?: "missing_discharge_details" | "tob_changed";
             };
             header?: never;
             path?: never;
@@ -31004,6 +31107,26 @@ export interface operations {
                             totalChargeCents: number;
                             totalExpectedPaymentCents: number;
                             version: number;
+                            attention?: {
+                                stayEnd: {
+                                    kind: string;
+                                    effectiveDate: string;
+                                } | null;
+                                typeOfBill: {
+                                    stored: string;
+                                    derived: ("811" | "812" | "813" | "814" | "817" | "818") | null;
+                                    changed: boolean;
+                                    remedy: "revalidate" | "await_acknowledgment" | "replace" | "manual" | null;
+                                };
+                                missingDischargeDetail: {
+                                    detail: "place_of_death" | "receiving_care_setting";
+                                    admissionId: string;
+                                    dischargeEventId: string | null;
+                                    transferEventId: string | null;
+                                    fixPath: string;
+                                } | null;
+                                flags: ("missing_discharge_details" | "tob_changed")[];
+                            } | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -31047,6 +31170,26 @@ export interface operations {
                         totalChargeCents: number;
                         totalExpectedPaymentCents: number;
                         version: number;
+                        attention?: {
+                            stayEnd: {
+                                kind: string;
+                                effectiveDate: string;
+                            } | null;
+                            typeOfBill: {
+                                stored: string;
+                                derived: ("811" | "812" | "813" | "814" | "817" | "818") | null;
+                                changed: boolean;
+                                remedy: "revalidate" | "await_acknowledgment" | "replace" | "manual" | null;
+                            };
+                            missingDischargeDetail: {
+                                detail: "place_of_death" | "receiving_care_setting";
+                                admissionId: string;
+                                dischargeEventId: string | null;
+                                transferEventId: string | null;
+                                fixPath: string;
+                            } | null;
+                            flags: ("missing_discharge_details" | "tob_changed")[];
+                        } | null;
                         electionPeriodIdFrom: string;
                         electionPeriodIdTo: string;
                         patientPayerId: string;
@@ -39032,6 +39175,51 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DischargesByIdPlaceofdeath: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Where the patient died: "home" (claim patient status 40, expired at home), "facility" (41, expired in a medical facility) or "unknown" (42, expired, place unknown) — CMS Pub. 100-04 Ch. 11 §30.3. */
+                    placeOfDeath: "home" | "facility" | "unknown";
+                    ifVersion: number;
+                    /** @description Required only when a DIFFERENT value is already recorded (a correction): why it is being changed, 20–2000 characters. Stored beside the value and captured by the audit trail. Ignored when the value was never recorded. */
+                    correctionReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The discharge_event or transfer_event id. */
+                        id: string;
+                        admissionId: string;
+                        detail: "place_of_death" | "receiving_care_setting";
+                        value: string;
+                        previousValue: string | null;
+                        changed: boolean;
+                        version: number;
+                        /** @description The claim patient discharge status this value sets (40/41/42 or 50/51). */
+                        claimPatientStatus: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -75811,6 +75999,51 @@ export interface operations {
                         /** Format: date-time */
                         endsAt: string;
                         state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TransfersByIdReceivingcaresetting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Where the RECEIVING hospice cares for the patient: "home" (claim patient status 50, discharged to hospice, home) or "facility" (51, discharged to hospice, medical facility) — CMS Pub. 100-04 Ch. 11 §30.3. */
+                    receivingCareSetting: "home" | "facility";
+                    ifVersion: number;
+                    /** @description Required only when a DIFFERENT value is already recorded (a correction): why it is being changed, 20–2000 characters. Stored beside the value and captured by the audit trail. Ignored when the value was never recorded. */
+                    correctionReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The discharge_event or transfer_event id. */
+                        id: string;
+                        admissionId: string;
+                        detail: "place_of_death" | "receiving_care_setting";
+                        value: string;
+                        previousValue: string | null;
+                        changed: boolean;
+                        version: number;
+                        /** @description The claim patient discharge status this value sets (40/41/42 or 50/51). */
+                        claimPatientStatus: string;
                     };
                 };
             };

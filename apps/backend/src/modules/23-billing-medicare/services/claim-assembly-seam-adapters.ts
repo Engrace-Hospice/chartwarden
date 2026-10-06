@@ -197,7 +197,9 @@ export interface M6ClaimRangeReader {
       readonly dischargeReason: string | null;
       readonly deceasedDate: string | null;
       readonly placeOfDeath: string | null;
+      readonly dischargeEventId?: string | null;
       readonly transferOut: {
+        readonly transferEventId?: string;
         readonly effectiveDate: string;
         readonly receivingCareSetting: string | null;
       } | null;

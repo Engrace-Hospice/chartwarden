@@ -115,10 +115,22 @@ export interface RuleRemediation {
 /** Aggregate, PHI-free observed values a rule may attach for the worklist (e.g. `{ daysToWindow: 2 }`). */
 export type RuleObserved = Readonly<Record<string, number | string | boolean>>;
 
+/**
+ * One machine-readable defect behind a failed result (e.g. `PLACE_OF_DEATH_MISSING`), with the record ids a UI
+ * needs to route the fix (`admissionId`, `dischargeEventId`, `transferEventId`, ...). PHI-free: codes and ids only.
+ */
+export interface RuleDefect {
+  readonly code: string;
+  readonly message: string;
+  readonly refs?: Readonly<Record<string, string>>;
+}
+
 /** Optional structured annotations carried alongside a result. */
 export interface RuleAnnotations {
   readonly remediation?: RuleRemediation;
   readonly observed?: RuleObserved;
+  /** Structured defects (additive — rules that do not set it are unchanged). */
+  readonly defects?: readonly RuleDefect[];
   /** Present iff the rule SKIPPED (deny-stub seam or not-applicable); a skip is non-blocking. */
   readonly skipReason?: RuleSkipReason;
 }
@@ -180,6 +192,11 @@ export interface ClaimSnapshot {
    * `bereavement_discharge_legitimacy` rule blocks a claim whose codes are unresolved or conflicting.
    */
   readonly dischargeClaimCodes: DischargeClaimCodes;
+  /**
+   * The M6 row the stay-ending fact came from (`discharge_event.id` for a discharge, `transfer_event.id` for a
+   * transfer-out; `null`/absent for a revocation or a still-open stay). Only used to address the fix.
+   */
+  readonly dischargeSourceEventId?: string | null;
 }
 
 /** One assembled `claim_line` (per service-date per LOC). */

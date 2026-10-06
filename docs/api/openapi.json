@@ -20390,6 +20390,7 @@
                     "type": "string"
                   },
                   "placeOfDeath": {
+                    "description": "REQUIRED when reason is \"death\", refused otherwise. Where the patient died: \"home\", \"facility\" or \"unknown\". Sets the Medicare claim's patient discharge status — 40 (expired at home), 41 (expired in a medical facility) or 42 (expired, place unknown), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid on a death → 422 PLACE_OF_DEATH_REQUIRED; sent on another reason → 422 PLACE_OF_DEATH_NOT_ALLOWED. A death recorded without it can be completed later with POST /api/v1/discharges/{id}/place-of-death.",
                     "anyOf": [
                       {
                         "const": "home",
@@ -20408,6 +20409,221 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/discharge-details": {
+      "get": {
+        "operationId": "getApiV1AdmissionsByIdDischargedetails",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "The admission's stay-ending record (completed discharge / transfer-out) and the claim detail it lacks",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "patientId",
+                    "admissionState",
+                    "discharge",
+                    "transferOut",
+                    "missing"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionState": {
+                      "type": "string"
+                    },
+                    "discharge": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "dischargeEventId",
+                            "reason",
+                            "status",
+                            "effectiveDate",
+                            "placeOfDeath",
+                            "placeOfDeathCorrectionReason",
+                            "version"
+                          ],
+                          "properties": {
+                            "dischargeEventId": {
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "placeOfDeath": {
+                              "anyOf": [
+                                {
+                                  "description": "Where the patient died: \"home\" (claim patient status 40, expired at home), \"facility\" (41, expired in a medical facility) or \"unknown\" (42, expired, place unknown) — CMS Pub. 100-04 Ch. 11 §30.3.",
+                                  "anyOf": [
+                                    {
+                                      "const": "home",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "facility",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unknown",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "placeOfDeathCorrectionReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "version": {
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "transferOut": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "transferEventId",
+                            "effectiveDate",
+                            "receivingHospiceName",
+                            "receivingCareSetting",
+                            "receivingCareSettingCorrectionReason",
+                            "version"
+                          ],
+                          "properties": {
+                            "transferEventId": {
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "receivingHospiceName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "receivingCareSetting": {
+                              "anyOf": [
+                                {
+                                  "description": "Where the RECEIVING hospice cares for the patient: \"home\" (claim patient status 50, discharged to hospice, home) or \"facility\" (51, discharged to hospice, medical facility) — CMS Pub. 100-04 Ch. 11 §30.3.",
+                                  "anyOf": [
+                                    {
+                                      "const": "home",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "facility",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "receivingCareSettingCorrectionReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "version": {
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "missing": {
+                      "description": "The claim-relevant detail the stay-ending event lacks (the final Medicare claim is blocked until it is recorded), or null.",
+                      "anyOf": [
+                        {
+                          "const": "place_of_death",
+                          "type": "string"
+                        },
+                        {
+                          "const": "receiving_care_setting",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -21707,6 +21923,7 @@
                     "type": "string"
                   },
                   "receivingCareSetting": {
+                    "description": "REQUIRED. Where the RECEIVING hospice will care for the patient: \"home\" or \"facility\". Sets the Medicare claim's patient discharge status — 50 (discharged to hospice, home) or 51 (discharged to hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid → 422 RECEIVING_CARE_SETTING_REQUIRED. A transfer recorded without it can be completed later with POST /api/v1/transfers/{id}/receiving-care-setting.",
                     "anyOf": [
                       {
                         "const": "home",
@@ -44107,6 +44324,24 @@
                 }
               ]
             }
+          },
+          {
+            "name": "attention",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "Only claims needing this action: `missing_discharge_details` (the stay ended by a death with no place of death or a transfer-out with no receiving care setting — the patient status cannot be derived) or `tob_changed` (the Type of Bill derived from how the stay ended differs from the stored one). Scans up to 1,000 claims per request; follow `nextCursor` to continue.",
+              "anyOf": [
+                {
+                  "const": "missing_discharge_details",
+                  "type": "string"
+                },
+                {
+                  "const": "tob_changed",
+                  "type": "string"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -44273,6 +44508,194 @@
                           },
                           "version": {
                             "type": "integer"
+                          },
+                          "attention": {
+                            "anyOf": [
+                              {
+                                "description": "Needs-attention facts from how the stay ended: a missing place of death / receiving care setting (the patient status cannot be derived), and whether the Type of Bill derived today differs from the stored one, with the remedy for the claim's state (revalidate / await_acknowledgment / replace / manual).",
+                                "type": "object",
+                                "required": [
+                                  "stayEnd",
+                                  "typeOfBill",
+                                  "missingDischargeDetail",
+                                  "flags"
+                                ],
+                                "properties": {
+                                  "stayEnd": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "required": [
+                                          "kind",
+                                          "effectiveDate"
+                                        ],
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string"
+                                          },
+                                          "effectiveDate": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "typeOfBill": {
+                                    "type": "object",
+                                    "required": [
+                                      "stored",
+                                      "derived",
+                                      "changed",
+                                      "remedy"
+                                    ],
+                                    "properties": {
+                                      "stored": {
+                                        "type": "string"
+                                      },
+                                      "derived": {
+                                        "anyOf": [
+                                          {
+                                            "anyOf": [
+                                              {
+                                                "const": "811",
+                                                "type": "string"
+                                              },
+                                              {
+                                                "const": "812",
+                                                "type": "string"
+                                              },
+                                              {
+                                                "const": "813",
+                                                "type": "string"
+                                              },
+                                              {
+                                                "const": "814",
+                                                "type": "string"
+                                              },
+                                              {
+                                                "const": "817",
+                                                "type": "string"
+                                              },
+                                              {
+                                                "const": "818",
+                                                "type": "string"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "changed": {
+                                        "type": "boolean"
+                                      },
+                                      "remedy": {
+                                        "anyOf": [
+                                          {
+                                            "const": "revalidate",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "await_acknowledgment",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "replace",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "manual",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "missingDischargeDetail": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "required": [
+                                          "detail",
+                                          "admissionId",
+                                          "dischargeEventId",
+                                          "transferEventId",
+                                          "fixPath"
+                                        ],
+                                        "properties": {
+                                          "detail": {
+                                            "anyOf": [
+                                              {
+                                                "const": "place_of_death",
+                                                "type": "string"
+                                              },
+                                              {
+                                                "const": "receiving_care_setting",
+                                                "type": "string"
+                                              }
+                                            ]
+                                          },
+                                          "admissionId": {
+                                            "type": "string"
+                                          },
+                                          "dischargeEventId": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "transferEventId": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "fixPath": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "flags": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "const": "missing_discharge_details",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "tob_changed",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -44528,6 +44951,194 @@
                     },
                     "version": {
                       "type": "integer"
+                    },
+                    "attention": {
+                      "anyOf": [
+                        {
+                          "description": "Needs-attention facts from how the stay ended: a missing place of death / receiving care setting (the patient status cannot be derived), and whether the Type of Bill derived today differs from the stored one, with the remedy for the claim's state (revalidate / await_acknowledgment / replace / manual).",
+                          "type": "object",
+                          "required": [
+                            "stayEnd",
+                            "typeOfBill",
+                            "missingDischargeDetail",
+                            "flags"
+                          ],
+                          "properties": {
+                            "stayEnd": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "kind",
+                                    "effectiveDate"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "effectiveDate": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "typeOfBill": {
+                              "type": "object",
+                              "required": [
+                                "stored",
+                                "derived",
+                                "changed",
+                                "remedy"
+                              ],
+                              "properties": {
+                                "stored": {
+                                  "type": "string"
+                                },
+                                "derived": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "const": "811",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "812",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "813",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "814",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "817",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "818",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "changed": {
+                                  "type": "boolean"
+                                },
+                                "remedy": {
+                                  "anyOf": [
+                                    {
+                                      "const": "revalidate",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "await_acknowledgment",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "replace",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "manual",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "missingDischargeDetail": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "detail",
+                                    "admissionId",
+                                    "dischargeEventId",
+                                    "transferEventId",
+                                    "fixPath"
+                                  ],
+                                  "properties": {
+                                    "detail": {
+                                      "anyOf": [
+                                        {
+                                          "const": "place_of_death",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "receiving_care_setting",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "admissionId": {
+                                      "type": "string"
+                                    },
+                                    "dischargeEventId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "transferEventId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "fixPath": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "flags": {
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "const": "missing_discharge_details",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tob_changed",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "electionPeriodIdFrom": {
                       "type": "string"
@@ -73765,6 +74376,141 @@
                   "ifVersion": {
                     "minimum": 0,
                     "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/discharges/{id}/place-of-death": {
+      "post": {
+        "operationId": "postApiV1DischargesByIdPlaceofdeath",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Record the place of death on a completed death discharge (claim patient status 40/41/42); a recorded value is replaced only with a correctionReason",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "detail",
+                    "value",
+                    "previousValue",
+                    "changed",
+                    "version",
+                    "claimPatientStatus"
+                  ],
+                  "properties": {
+                    "id": {
+                      "description": "The discharge_event or transfer_event id.",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "anyOf": [
+                        {
+                          "const": "place_of_death",
+                          "type": "string"
+                        },
+                        {
+                          "const": "receiving_care_setting",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "type": "string"
+                    },
+                    "previousValue": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "changed": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "claimPatientStatus": {
+                      "description": "The claim patient discharge status this value sets (40/41/42 or 50/51).",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "placeOfDeath",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "placeOfDeath": {
+                    "description": "Where the patient died: \"home\" (claim patient status 40, expired at home), \"facility\" (41, expired in a medical facility) or \"unknown\" (42, expired, place unknown) — CMS Pub. 100-04 Ch. 11 §30.3.",
+                    "anyOf": [
+                      {
+                        "const": "home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "facility",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "correctionReason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "description": "Required only when a DIFFERENT value is already recorded (a correction): why it is being changed, 20–2000 characters. Stored beside the value and captured by the audit trail. Ignored when the value was never recorded.",
+                    "type": "string"
                   }
                 }
               }
@@ -220216,6 +220962,137 @@
                   "reason": {
                     "minLength": 20,
                     "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/transfers/{id}/receiving-care-setting": {
+      "post": {
+        "operationId": "postApiV1TransfersByIdReceivingcaresetting",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Record where the receiving hospice cares for the patient on a transfer-out (claim patient status 50/51); a recorded value is replaced only with a correctionReason",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admissionId",
+                    "detail",
+                    "value",
+                    "previousValue",
+                    "changed",
+                    "version",
+                    "claimPatientStatus"
+                  ],
+                  "properties": {
+                    "id": {
+                      "description": "The discharge_event or transfer_event id.",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "anyOf": [
+                        {
+                          "const": "place_of_death",
+                          "type": "string"
+                        },
+                        {
+                          "const": "receiving_care_setting",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "type": "string"
+                    },
+                    "previousValue": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "changed": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "claimPatientStatus": {
+                      "description": "The claim patient discharge status this value sets (40/41/42 or 50/51).",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "receivingCareSetting",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "receivingCareSetting": {
+                    "description": "Where the RECEIVING hospice cares for the patient: \"home\" (claim patient status 50, discharged to hospice, home) or \"facility\" (51, discharged to hospice, medical facility) — CMS Pub. 100-04 Ch. 11 §30.3.",
+                    "anyOf": [
+                      {
+                        "const": "home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "facility",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "correctionReason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "description": "Required only when a DIFFERENT value is already recorded (a correction): why it is being changed, 20–2000 characters. Stored beside the value and captured by the audit trail. Ignored when the value was never recorded.",
                     "type": "string"
                   }
                 }

@@ -39,6 +39,9 @@ export const dischargeEvents = pgTable(
     // (home) / 41 (medical facility) / 42 (place unknown) per CMS Pub. 100-04 Ch. 11 §30.3. Required on new
     // internal death discharges; an HL7-reported death records `unknown`; NULL on historic rows.
     placeOfDeath: text("place_of_death", { enum: ["home", "facility", "unknown"] }),
+    // Migration 0372: why a RECORDED place of death was changed afterwards (POST /discharges/:id/place-of-death);
+    // NULL when the value was only ever filled in. Audited with the value change by the M4 write-audit trigger.
+    placeOfDeathCorrectionReason: text("place_of_death_correction_reason"),
     forCauseReason: text("for_cause_reason"),
     narrative: text("narrative"),
     documentId: uuid("document_id"), // M22 document (app-validated)

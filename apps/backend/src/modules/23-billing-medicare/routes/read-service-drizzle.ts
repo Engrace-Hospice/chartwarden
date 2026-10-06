@@ -26,6 +26,11 @@ import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
+import {
+  type ClaimAttentionView,
+  type ClaimStayEndFactsPort,
+  claimAttention,
+} from "../services/claim-attention";
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 import type {
@@ -61,7 +66,15 @@ type BillingDb = repositories.BillingDb;
  */
 export interface M23ReadServicePorts {
   readonly now?: () => Date;
+  /**
+   * M6's batched stay-end facts (`claimStayEndFactsForOrg`), bound at the composition root. When absent the claim
+   * reads carry no `attention` block and an `attention` list filter returns an empty page.
+   */
+  readonly stayEndFacts?: ClaimStayEndFactsPort;
 }
+
+/** The most claims one `attention`-filtered list request scans (M6 facts are live, so it cannot be SQL). */
+export const ATTENTION_SCAN_MAX_CLAIMS = 1000;
 
 // ── small projection helpers ───────────────────────────────────────────────────────────────────────────
 
@@ -329,30 +342,70 @@ export function buildDrizzleM23ReadService(
     return row;
   };
 
+  /** Attach each claim's {@link ClaimAttentionView} from ONE batched M6 stay-end read (no-op when unbound). */
+  const withAttention = async <C extends ClaimSummaryView>(
+    actor: M23ReadActor,
+    claims: readonly C[],
+  ): Promise<C[]> => {
+    if (!ports.stayEndFacts || claims.length === 0) return [...claims];
+    const rows = await ports.stayEndFacts.forAdmissions(
+      actor.organizationId,
+      claims.map((c) => c.admissionId),
+    );
+    const byAdmission = new Map(rows.map((r) => [r.admissionId, r]));
+    return claims.map((c) => ({
+      ...c,
+      attention: claimAttention(c, byAdmission.get(c.admissionId)) satisfies ClaimAttentionView,
+    }));
+  };
+
   return {
     async listClaims(actor, filter: ClaimListFilter, cursor, limit) {
-      return read(actor, async (tx) => {
-        const page = await new repositories.ClaimRepository(tx).listByOrgPage(
-          actor.organizationId,
-          {
-            providerEntityId: filter.providerEntityId,
-            patientId: filter.patientId,
-            state: filter.state,
-            providerEntityScope: filter.providerEntityScope,
-          },
-          cursor,
-          limit,
+      const pageOf = (from: string | undefined) =>
+        read(actor, (tx) =>
+          new repositories.ClaimRepository(tx).listByOrgPage(
+            actor.organizationId,
+            {
+              providerEntityId: filter.providerEntityId,
+              patientId: filter.patientId,
+              state: filter.state,
+              providerEntityScope: filter.providerEntityScope,
+            },
+            from,
+            limit,
+          ),
         );
+      if (filter.attention === undefined) {
+        const page = await pageOf(cursor);
         return {
-          items: page.items.map(mapClaimSummary),
+          items: await withAttention(actor, page.items.map(mapClaimSummary)),
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
         } satisfies CursorPage<ClaimSummaryView>;
-      });
+      }
+      // Attention filter: scan whole repository pages (so the returned cursor never skips a claim), keep the
+      // matches, stop once a page's worth matched or the scan bound is reached; `nextCursor` resumes the scan.
+      const flag = filter.attention;
+      if (!ports.stayEndFacts) return { items: [], nextCursor: null, hasMore: false };
+      const wanted = limit ?? repositories.DEFAULT_PAGE_SIZE;
+      const items: ClaimSummaryView[] = [];
+      let from = cursor;
+      let scanned = 0;
+      for (;;) {
+        const page = await pageOf(from);
+        scanned += page.items.length;
+        const decorated = await withAttention(actor, page.items.map(mapClaimSummary));
+        items.push(...decorated.filter((c) => c.attention?.flags.includes(flag)));
+        from = page.nextCursor ?? undefined;
+        if (!page.hasMore || !from) return { items, nextCursor: null, hasMore: false };
+        if (items.length >= wanted || scanned >= ATTENTION_SCAN_MAX_CLAIMS) {
+          return { items, nextCursor: from, hasMore: true };
+        }
+      }
     },
 
     async getClaim(actor, claimId) {
-      return read(actor, async (tx) => {
+      const detail = await read(actor, async (tx) => {
         const row = await loadClaim(tx, actor, claimId);
         const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(
           claimId,
@@ -373,6 +426,7 @@ export function buildDrizzleM23ReadService(
           latestSubmissionId: row.latestSubmissionId ?? null,
           acknowledgmentDocumentId: row.acknowledgmentDocumentId ?? null,
           dischargeCodes: claimDischargeCodesView(row),
+          attention: null,
           latestValidation: latestRun ? mapValidationRun(latestRun) : null,
           pricing: {
             hipps: hipps
@@ -399,6 +453,8 @@ export function buildDrizzleM23ReadService(
           updatedAt: isoReq(row.updatedAt),
         } satisfies ClaimDetailView;
       });
+      const [decorated] = await withAttention(actor, [detail]);
+      return { ...detail, attention: decorated?.attention ?? null };
     },
 
     async listClaimLines(actor, claimId) {

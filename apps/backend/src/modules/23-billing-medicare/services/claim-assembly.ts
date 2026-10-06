@@ -51,6 +51,7 @@ import {
   readAssemblyFacts,
 } from "./claim-assembly-facts";
 import { claimDischargeCodeColumns, claimDischargeCodes } from "./claim-discharge";
+import { persistedRemediation } from "./persisted-remediation";
 import { assembleValidationContext } from "./validation-context";
 
 // The org-context transaction handle every repo writes through (structurally a `BillingDb`). withOrgContext
@@ -478,8 +479,7 @@ export function buildClaimAssemblyService(
               ruleVersion: seams.ruleRegistry.getRule(r.ruleKey)?.version ?? 1,
               severity: r.severity,
               outcome: resultOutcome(r),
-              remediation: (r.annotations?.remediation ??
-                {}) as NewValidationResultInput["remediation"],
+              remediation: persistedRemediation(r) as NewValidationResultInput["remediation"],
             })),
           );
         }

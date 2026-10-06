@@ -24,6 +24,7 @@ import {
   type ClaimState,
   type RuleParameterOverlays,
   type RuleResult,
+  type TypeOfBill,
   type ValidationContext,
   repositories,
   summarizeRuleRun,
@@ -31,7 +32,7 @@ import {
 import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
-import { claimDischargeCodeColumns } from "./claim-discharge";
+import { claimDischargeCodeColumns, rederivedTypeOfBill } from "./claim-discharge";
 import {
   type BillingDb,
   type BillingTx,
@@ -39,6 +40,7 @@ import {
   type ClaimStateService,
   assertNotAiActor,
 } from "./claim-state-service";
+import { persistedRemediation } from "./persisted-remediation";
 
 /** The materialized validation inputs the service runs the registry against (PHI-free, plain-data). */
 export interface MaterializedValidationInputs {
@@ -202,7 +204,12 @@ export function buildClaimValidationService(
     }
 
     // Materialize the aggregate context + tenant overlays, then run the FROZEN rule set (pure).
-    const { context, overlays } = await contextPort.build(tx, actor, claim);
+    const built = await contextPort.build(tx, actor, claim);
+    const { overlays } = built;
+    // An unsubmitted claim assembled before revocations and transfer-outs counted as the end of the stay was
+    // typed interim (812/813); the resolver now derives final (811/814). Re-type it here, before the rules run,
+    // so the persisted TOB and the TOB the rules validate agree (submitted claims need a replacement instead).
+    const context = await refreshedTypeOfBill(claimRepo, claim, built.context);
     // Keep the persisted discharge claim codes (sent to the X12 gateway at submission) in step with the
     // facts this run validated — e.g. a biller recorded the missing place of death since assembly.
     await claimRepo.refreshDischargeCodes(
@@ -272,7 +279,7 @@ export function buildClaimValidationService(
         ruleVersion: registry.getRule(r.ruleKey)?.version ?? 1,
         severity: r.severity,
         outcome: resultOutcome(r),
-        remediation: (r.annotations ?? {}) as schema.NewValidationResult["remediation"],
+        remediation: persistedRemediation(r) as schema.NewValidationResult["remediation"],
       })),
     );
 
@@ -341,4 +348,30 @@ export function buildClaimValidationService(
       );
     },
   };
+}
+
+/**
+ * Re-derive an unsubmitted claim's Type of Bill from the context's stay-ending fact and, when it changed,
+ * persist it (`ClaimRepository.refreshTypeOfBill`) and return the context the rules should see.
+ */
+async function refreshedTypeOfBill<C extends { readonly claim: ValidationContext["claim"] }>(
+  claimRepo: repositories.ClaimRepository,
+  claim: {
+    readonly id: string;
+    readonly tob: string;
+    readonly state: string;
+    readonly serviceTo: string;
+  },
+  context: C,
+): Promise<C> {
+  if (claim.state !== "validating" && claim.state !== "ready") return context;
+  const end = context.claim.dischargeDate;
+  const derived = rederivedTypeOfBill(
+    claim.tob,
+    end === null ? null : { kind: context.claim.dischargeReason ?? "", effectiveDate: end },
+    claim.serviceTo,
+  );
+  if (derived === null || derived === claim.tob) return context;
+  await claimRepo.refreshTypeOfBill(claim.id, claim.tob as TypeOfBill, derived);
+  return { ...context, claim: { ...context.claim, tob: derived } };
 }

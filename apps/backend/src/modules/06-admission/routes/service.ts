@@ -21,6 +21,7 @@ import {
   decideBereavementEligibility,
   dischargeRequiresCosign,
   fileForCauseDischarge,
+  issueDetails,
   planTransferIn,
   resolveForCauseDischarge,
   resolvePlaceOfDeath,
@@ -2450,7 +2451,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         input.externalSource !== undefined,
       );
       const placeIssue = checkPlaceOfDeath(input.reason, placeOfDeath);
-      if (placeIssue) throw new AdmissionStateError(placeIssue.code, placeIssue.message);
+      if (placeIssue)
+        throw new AdmissionStateError(
+          placeIssue.code,
+          placeIssue.message,
+          issueDetails(placeIssue),
+        );
       const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
       events.push("m6.discharge.created");
       if (requiresMedicalDirectorCosign) {

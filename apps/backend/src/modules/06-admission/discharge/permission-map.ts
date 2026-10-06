@@ -6,6 +6,11 @@
 // §6.3 table, as PURE data + functions (no I/O, no throw; the slice maps a verdict to a thrown
 // AdmissionStateError so the §2.4 code catalog stays the one place codes→status are bound).
 
+import {
+  PLACE_OF_DEATH_NOT_ALLOWED_MESSAGE,
+  PLACE_OF_DEATH_REQUIRED_MESSAGE,
+} from "./discharge-details";
+
 /** The §4.2.7 discharge reasons (canonical list; the TypeBox schema's union is built from this). */
 export const DISCHARGE_REASONS = [
   "death",
@@ -102,6 +107,8 @@ export interface DischargeNarrativeIssue {
     | "PLACE_OF_DEATH_REQUIRED"
     | "PLACE_OF_DEATH_NOT_ALLOWED";
   readonly message: string;
+  /** The request field the issue is about, when it is one field (rendered as the error's `details[]`). */
+  readonly field?: string;
 }
 
 /** Where the patient died (`discharge_event.place_of_death`) — drives claim patient status 40/41/42. */
@@ -124,7 +131,8 @@ export function checkPlaceOfDeath(
     ) {
       return {
         code: "PLACE_OF_DEATH_REQUIRED",
-        message: "death discharge requires placeOfDeath (home, facility or unknown)",
+        message: PLACE_OF_DEATH_REQUIRED_MESSAGE,
+        field: "placeOfDeath",
       };
     }
     return null;
@@ -132,7 +140,8 @@ export function checkPlaceOfDeath(
   if (placeOfDeath !== undefined) {
     return {
       code: "PLACE_OF_DEATH_NOT_ALLOWED",
-      message: "placeOfDeath is only recorded on a death discharge",
+      message: PLACE_OF_DEATH_NOT_ALLOWED_MESSAGE,
+      field: "placeOfDeath",
     };
   }
   return null;
@@ -186,4 +195,13 @@ export function checkDischargeNarrative(
     };
   }
   return null;
+}
+
+/** The `details[]` entry an issue renders as (one per field-scoped issue), for `AdmissionStateError`. */
+export function issueDetails(
+  issue: DischargeNarrativeIssue,
+): { field: string; code: string; message: string }[] | undefined {
+  return issue.field
+    ? [{ field: issue.field, code: issue.code, message: issue.message }]
+    : undefined;
 }

@@ -76,6 +76,12 @@ export {
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
 } from "./drizzle-store";
+// M23 claim list / detail — the batched, admission-keyed stay-end facts ("needs attention" flags).
+export {
+  CLAIM_STAY_END_BATCH_MAX,
+  type ClaimStayEndFacts,
+  claimStayEndFactsForOrg,
+} from "./claim-stay-end-store";
 // M14 IDG screens — the org-explicit, BATCHED per-patient recert/F2F window read (M6's own pure window math).
 export {
   type IdgRecertF2fStatus,

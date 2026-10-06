@@ -816,6 +816,57 @@ describe("bereavement_discharge_legitimacy", () => {
     expect(r.passed).toBe(false);
     expect(String(r.annotations?.observed?.firstDefect)).toContain(text);
   });
+  it.each([
+    ["place_of_death_missing", "PLACE_OF_DEATH_MISSING", "dischargeEventId"],
+    ["transfer_setting_missing", "RECEIVING_CARE_SETTING_MISSING", "transferEventId"],
+  ] as const)(
+    "emits a structured %s defect with the ids and a Fix discharge details link",
+    (reason, code, idKey) => {
+      const ctx = passingContext();
+      const r = run(bereavementDischargeLegitimacy, {
+        ...ctx,
+        claim: {
+          ...ctx.claim,
+          tob: "811",
+          dischargeDate: "2026-03-20",
+          dischargeReason: reason === "place_of_death_missing" ? "death" : "transfer",
+          dischargeSourceEventId: "evt-1",
+          dischargeClaimCodes: {
+            patientStatus: null,
+            conditionCodes: [],
+            occurrenceCodes: [],
+            unresolved: reason,
+          },
+        },
+      });
+      expect(r.passed).toBe(false);
+      const defect = r.annotations?.defects?.find((d) => d.code === code);
+      expect(defect?.refs).toEqual({
+        admissionId: ctx.claim.admissionId,
+        claimId: ctx.claim.claimId,
+        [idKey]: "evt-1",
+      });
+      expect(r.annotations?.observed?.defectCodes).toBe(code);
+      expect(r.annotations?.remediation).toMatchObject({
+        blameTarget: "admission",
+        blameTargetId: ctx.claim.admissionId,
+        fixAction: "fix_discharge_details",
+        fixDeepLink: `/admissions/${ctx.claim.admissionId}/discharge-details?claimId=${ctx.claim.claimId}`,
+      });
+      expect(r.annotations?.remediation?.summary).toContain("CMS requires the patient status");
+    },
+  );
+  it("keeps the claim-level remediation and codes every other defect", () => {
+    const ctx = passingContext();
+    const r = run(bereavementDischargeLegitimacy, {
+      ...ctx,
+      claim: { ...ctx.claim, tob: "811", dischargeDate: null, dischargeReason: null },
+    });
+    expect(r.annotations?.remediation?.fixAction).toBe("edit_claim");
+    expect(r.annotations?.defects?.map((d) => d.code)).toEqual(
+      expect.arrayContaining(["DISCHARGE_DATE_MISSING", "DISCHARGE_REASON_MISSING"]),
+    );
+  });
   it("fails a discharge bill (814) still carrying status 30", () => {
     const ctx = passingContext();
     const r = run(bereavementDischargeLegitimacy, {

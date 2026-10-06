@@ -86,6 +86,9 @@ export interface ClaimDischargeFact {
   readonly placeOfDeath?: PlaceOfDeath | null;
   /** Transfer only. `null` = not recorded (historic rows) ⇒ unresolved. */
   readonly receivingCareSetting?: ReceivingCareSetting | null;
+  /** The M6 row the fact comes from (`discharge_event.id` / `transfer_event.id`); absent for a revocation. Lets a
+   *  blocked claim point the biller at the exact record to complete. Never affects the derived codes. */
+  readonly sourceEventId?: string | null;
 }
 
 export type DischargeCodesUnresolvedReason =

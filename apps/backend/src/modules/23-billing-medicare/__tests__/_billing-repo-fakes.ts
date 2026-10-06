@@ -117,6 +117,13 @@ export function buildFakeRepositories(): {
       store.claims.set(id, { ...c, ...codes, updatedAt: new Date() });
       return true;
     }
+    /** Mirrors the real repo: re-type a claim guarded on its stored TOB, without bumping `version`. */
+    async refreshTypeOfBill(id: string, fromTob: string, toTob: string): Promise<boolean> {
+      const c = store.claims.get(id);
+      if (!c || c.tob !== fromTob) return false;
+      store.claims.set(id, { ...c, tob: toTob, updatedAt: new Date() });
+      return true;
+    }
   }
 
   class ClaimLineRepository {

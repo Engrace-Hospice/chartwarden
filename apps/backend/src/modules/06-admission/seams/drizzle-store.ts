@@ -233,10 +233,13 @@ export interface ClaimRangeAdmission {
   /** `discharge_event.place_of_death` (`home` / `facility` / `unknown`) on a completed death; `null` when not
    *  a death or not recorded (historic rows). Drives claim patient status 40/41/42. */
   readonly placeOfDeath: string | null;
+  /** The completed `discharge_event.id` (`null` when none) — lets a blocked claim address the record to fix. */
+  readonly dischargeEventId: string | null;
   /** The admission's transfer-OUT (`transfer_event`, direction `out`), which ends the stay without a
    *  `discharge_event` row. `receivingCareSetting` (`home` / `facility`, `null` on historic rows) drives
    *  claim patient status 50/51. */
   readonly transferOut: {
+    readonly transferEventId: string;
     readonly effectiveDate: string;
     readonly receivingCareSetting: string | null;
   } | null;
@@ -364,6 +367,7 @@ export async function claimAssemblyRangeContextForOrg(
       // still `pending_cosign` leaves the admission active until the medical director cosigns (D11).
       const [dischargeRow] = await tx
         .select({
+          id: DE.id,
           effectiveAt: DE.effectiveAt,
           dischargeType: DE.dischargeType,
           deathAt: DE.deathAt,
@@ -376,7 +380,11 @@ export async function claimAssemblyRangeContextForOrg(
       // A transfer-out discharges the admission without a discharge_event row (§2.3.1); R-XFR-01 allows one
       // per benefit period, so take the latest.
       const [transferOutRow] = await tx
-        .select({ effectiveAt: TE.effectiveAt, receivingCareSetting: TE.receivingCareSetting })
+        .select({
+          id: TE.id,
+          effectiveAt: TE.effectiveAt,
+          receivingCareSetting: TE.receivingCareSetting,
+        })
         .from(TE)
         .where(and(eq(TE.admissionId, admissionId), eq(TE.direction, "out")))
         .orderBy(desc(TE.effectiveAt))
@@ -389,8 +397,10 @@ export async function claimAssemblyRangeContextForOrg(
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,
         placeOfDeath: dischargeRow?.placeOfDeath ?? null,
+        dischargeEventId: dischargeRow?.id ?? null,
         transferOut: transferOutRow
           ? {
+              transferEventId: transferOutRow.id,
               effectiveDate: localDate(transferOutRow.effectiveAt),
               receivingCareSetting: transferOutRow.receivingCareSetting ?? null,
             }

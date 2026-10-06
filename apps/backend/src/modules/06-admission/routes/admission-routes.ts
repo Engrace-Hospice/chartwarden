@@ -15,7 +15,13 @@ import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
-import { deriveDischargePermissionKey } from "../discharge";
+import {
+  type DischargeDetailBodyIssue,
+  checkPlaceOfDeathBody,
+  checkTransferOutCareSettingBody,
+  deriveDischargePermissionKey,
+} from "../discharge";
+import { AdmissionStateError } from "../state-machines/errors";
 import {
   AdmissionActivateSchema,
   AdmissionCreateSchema,
@@ -73,6 +79,8 @@ import {
   UploadedNoticeOfRightsSchema,
   parse,
 } from "./admission-typebox";
+import { registerDischargeDetailsRoutes } from "./discharge-details-routes";
+import type { DischargeDetailsService } from "./discharge-details-service";
 import {
   type AdmissionReadScope,
   type AdmissionRouteService,
@@ -84,6 +92,11 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface AdmissionRouteDeps {
   service: AdmissionRouteService;
+  /**
+   * The after-the-fact discharge-details service (place of death / receiving care setting). Absent in slices
+   * that do not need it — its routes then answer 503 DEGRADED rather than disappearing.
+   */
+  dischargeDetails?: DischargeDetailsService;
   /**
    * The patients on a clinician's caseload (GAP-020) — defaults to M5's published `CaseloadProvider` seam.
    * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
@@ -268,6 +281,14 @@ function dischargeReasonGuard(): PreHandler {
   };
 }
 
+/** The claim-relevant field prechecks (transfer-out care setting, place of death) as a field-scoped 422. */
+function throwBodyIssue(issue: DischargeDetailBodyIssue | null): void {
+  if (!issue) return;
+  throw new AdmissionStateError(issue.code, issue.message, [
+    { field: issue.field, code: issue.code, message: issue.message },
+  ]);
+}
+
 const notFound = (id: string): never => {
   throw new ResourceNotFoundError(id);
 };
@@ -275,6 +296,8 @@ const notFound = (id: string): never => {
 export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRouteDeps): void {
   const { service } = deps;
   const caseloadPatientIds = deps.caseloadPatientIds ?? defaultCaseloadPatientIds;
+  // After-the-fact claim details (place of death / receiving care setting) — own registrar + service.
+  registerDischargeDetailsRoutes(app, { service: deps.dischargeDetails });
 
   // ── Referral (routes 1–7) ──────────────────────────────────────────────────────────────────
   app.post("/api/v1/referrals", { preHandler: [REFERRAL_CREATE] }, async (request, reply) => {
@@ -1125,6 +1148,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [TRANSFER_OUT, admissionScope("transfer.out")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      throwBodyIssue(checkTransferOutCareSettingBody(request.body));
       const body = parse(TransferOutSchema, request.body);
       const res = await service.transferOut(
         organizationId,
@@ -1173,6 +1197,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [dischargeReasonGuard()] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
+      throwBodyIssue(checkPlaceOfDeathBody(request.body));
       const body = parse(DischargeCreateSchema, request.body);
       const res = await service.discharge(
         organizationId,

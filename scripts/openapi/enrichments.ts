@@ -137,6 +137,12 @@ import {
   UploadedElectionEvidenceSchema,
   UploadedNoticeOfRightsSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/admission-typebox";
+import {
+  DischargeDetailRecordResultSchema,
+  DischargeDetailsViewSchema,
+  PlaceOfDeathRecordSchema,
+  ReceivingCareSettingRecordSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/discharge-details-typebox";
 import { PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 // M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
@@ -3765,6 +3771,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/discharges/:id/cosign-for-cause": {
     summary: "Medical-director cosign for a for-cause discharge (§6.3 ABAC)",
     body: DischargeCosignSchema,
+  },
+  // After-the-fact claim details (discharge-details-routes.ts)
+  "GET /api/v1/admissions/:id/discharge-details": {
+    summary:
+      "The admission's stay-ending record (completed discharge / transfer-out) and the claim detail it lacks",
+    response: DischargeDetailsViewSchema,
+  },
+  "POST /api/v1/discharges/:id/place-of-death": {
+    summary:
+      "Record the place of death on a completed death discharge (claim patient status 40/41/42); a recorded value is replaced only with a correctionReason",
+    body: PlaceOfDeathRecordSchema,
+    response: DischargeDetailRecordResultSchema,
+  },
+  "POST /api/v1/transfers/:id/receiving-care-setting": {
+    summary:
+      "Record where the receiving hospice cares for the patient on a transfer-out (claim patient status 50/51); a recorded value is replaced only with a correctionReason",
+    body: ReceivingCareSettingRecordSchema,
+    response: DischargeDetailRecordResultSchema,
   },
   // NOR (routes 41–42)
   "POST /api/v1/admissions/:id/nor": {
@@ -9277,6 +9301,50 @@ const M23NotrTriggerKind = Type.Union([
   Type.Literal("discharge"),
 ]);
 
+// What a biller must do because of how the claim's stay ended (services/claim-attention.ts), computed from
+// M6's live stay-end facts on the claim list and detail reads.
+const M23ClaimAttentionView = Type.Object(
+  {
+    stayEnd: Type.Union([
+      Type.Object({ kind: Type.String(), effectiveDate: Type.String() }),
+      Type.Null(),
+    ]),
+    typeOfBill: Type.Object({
+      stored: Type.String(),
+      derived: Type.Union([M23TypeOfBill, Type.Null()]),
+      changed: Type.Boolean(),
+      remedy: Type.Union([
+        Type.Literal("revalidate"),
+        Type.Literal("await_acknowledgment"),
+        Type.Literal("replace"),
+        Type.Literal("manual"),
+        Type.Null(),
+      ]),
+    }),
+    missingDischargeDetail: Type.Union([
+      Type.Object({
+        detail: Type.Union([
+          Type.Literal("place_of_death"),
+          Type.Literal("receiving_care_setting"),
+        ]),
+        admissionId: Type.String(),
+        dischargeEventId: Type.Union([Type.String(), Type.Null()]),
+        transferEventId: Type.Union([Type.String(), Type.Null()]),
+        fixPath: Type.String(),
+      }),
+      Type.Null(),
+    ]),
+    flags: Type.Array(
+      Type.Union([Type.Literal("missing_discharge_details"), Type.Literal("tob_changed")]),
+    ),
+  },
+  {
+    description:
+      "Needs-attention facts from how the stay ended: a missing place of death / receiving care setting (the " +
+      "patient status cannot be derived), and whether the Type of Bill derived today differs from the stored " +
+      "one, with the remedy for the claim's state (revalidate / await_acknowledgment / replace / manual).",
+  },
+);
 const M23ClaimSummaryView = Type.Object({
   claimId: Type.String(),
   organizationId: Type.String(),
@@ -9293,6 +9361,7 @@ const M23ClaimSummaryView = Type.Object({
   totalChargeCents: Type.Integer(),
   totalExpectedPaymentCents: Type.Integer(),
   version: Type.Integer(),
+  attention: Type.Optional(Type.Union([M23ClaimAttentionView, Type.Null()])),
 });
 const M23ClaimListResponse = Type.Object({
   items: Type.Array(M23ClaimSummaryView),

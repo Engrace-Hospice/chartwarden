@@ -42,9 +42,9 @@ export const PatientIdParamsSchema = Type.Object({
   patientId: Type.String({ minLength: 1, maxLength: 64 }),
 });
 
-const Uuid = () => Type.String({ format: "uuid" });
+export const Uuid = () => Type.String({ format: "uuid" });
 const Reason = (min = 10, max = 4000) => Type.String({ minLength: min, maxLength: max });
-const Version = () => Type.Integer({ minimum: 0 });
+export const Version = () => Type.Integer({ minimum: 0 });
 const Icd10 = () => Type.String({ pattern: "^[A-Z][0-9A-Z.]{1,7}$" });
 const Npi = () => Type.String({ pattern: "^[0-9]{10}$" });
 
@@ -399,7 +399,14 @@ export const TransferOutSchema = Type.Object({
   // Where the RECEIVING hospice cares for the patient — the claim's patient discharge status 50 (hospice,
   // home) vs 51 (hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Persisted on
   // `transfer_event.receiving_care_setting` (migration 0370).
-  receivingCareSetting: Type.Union([Type.Literal("home"), Type.Literal("facility")]),
+  receivingCareSetting: Type.Union([Type.Literal("home"), Type.Literal("facility")], {
+    description:
+      'REQUIRED. Where the RECEIVING hospice will care for the patient: "home" or "facility". Sets the ' +
+      "Medicare claim's patient discharge status — 50 (discharged to hospice, home) or 51 (discharged to " +
+      "hospice, medical facility), CMS Pub. 100-04 Ch. 11 §30.3. Missing or invalid → 422 " +
+      "RECEIVING_CARE_SETTING_REQUIRED. A transfer recorded without it can be completed later with " +
+      "POST /api/v1/transfers/{id}/receiving-care-setting.",
+  }),
   narrative: Reason(10, 4000),
 });
 
@@ -434,7 +441,15 @@ export const DischargeCreateSchema = Type.Object({
   // Required (service-enforced, `checkPlaceOfDeath`) when reason='death', refused otherwise: where the
   // patient died — the claim's patient discharge status 40 / 41 / 42 (CMS Pub. 100-04 Ch. 11 §30.3).
   placeOfDeath: Type.Optional(
-    Type.Union([Type.Literal("home"), Type.Literal("facility"), Type.Literal("unknown")]),
+    Type.Union([Type.Literal("home"), Type.Literal("facility"), Type.Literal("unknown")], {
+      description:
+        'REQUIRED when reason is "death", refused otherwise. Where the patient died: "home", "facility" ' +
+        'or "unknown". Sets the Medicare claim\'s patient discharge status — 40 (expired at home), 41 ' +
+        "(expired in a medical facility) or 42 (expired, place unknown), CMS Pub. 100-04 Ch. 11 §30.3. " +
+        "Missing or invalid on a death → 422 PLACE_OF_DEATH_REQUIRED; sent on another reason → 422 " +
+        "PLACE_OF_DEATH_NOT_ALLOWED. A death recorded without it can be completed later with " +
+        "POST /api/v1/discharges/{id}/place-of-death.",
+    }),
   ),
 });
 

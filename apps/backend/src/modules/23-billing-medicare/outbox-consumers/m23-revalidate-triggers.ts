@@ -66,6 +66,9 @@ export const M23_REVALIDATE_TRIGGER_EVENTS = [
   "m6.election.period_ended",
   "m8.encounter.cosigned",
   "m5.patient.deceased",
+  // The discharge-details routes: a place of death / receiving care setting recorded after the fact. Carries
+  // `admissionId` (+ `patientId`) directly, so the resolver finds the admission's VALIDATING/READY claims.
+  "m6.discharge.details_recorded",
 ] as const;
 
 export type M23RevalidateTriggerEventName = (typeof M23_REVALIDATE_TRIGGER_EVENTS)[number];

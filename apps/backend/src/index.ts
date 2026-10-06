@@ -256,6 +256,7 @@ import {
   buildM6RecertificationSignedConsumer,
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
+  claimStayEndFactsForOrg,
   createAdmissionLocPeriodsReader,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
@@ -3811,7 +3812,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
             // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
             sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
-            readService: buildDrizzleM23ReadService(dbHandle.db),
+            readService: buildDrizzleM23ReadService(dbHandle.db, {
+              // How each claim's stay ended, from M6's live facts (org-explicit, batched): the claim list /
+              // detail "needs attention" block — missing place of death / receiving care setting, and a Type
+              // of Bill the resolver now derives differently (812/813 → 811/814).
+              stayEndFacts: {
+                forAdmissions: (orgId, admissionIds) =>
+                  claimStayEndFactsForOrg(dbHandle.db, orgId, admissionIds),
+              },
+            }),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               jobs: buildM23OutboxBackedSubmissionGate({

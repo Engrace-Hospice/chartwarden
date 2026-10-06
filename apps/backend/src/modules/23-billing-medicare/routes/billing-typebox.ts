@@ -186,6 +186,15 @@ export const ClaimListQuerySchema = Type.Object({
   providerEntityId: Type.Optional(uuid()),
   patientId: Type.Optional(uuid()),
   state: Type.Optional(lit(CLAIM_STATE)),
+  attention: Type.Optional(
+    Type.Union([Type.Literal("missing_discharge_details"), Type.Literal("tob_changed")], {
+      description:
+        "Only claims needing this action: `missing_discharge_details` (the stay ended by a death with no place " +
+        "of death or a transfer-out with no receiving care setting — the patient status cannot be derived) or " +
+        "`tob_changed` (the Type of Bill derived from how the stay ended differs from the stored one). Scans " +
+        "up to 1,000 claims per request; follow `nextCursor` to continue.",
+    }),
+  ),
 });
 
 /**

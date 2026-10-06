@@ -943,6 +943,27 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m16", "m22"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m6.discharge.details_recorded",
+    moduleOwner: "m6",
+    description:
+      "A claim-relevant detail was recorded after the fact (discharge-details routes): the place of death on " +
+      "a completed death discharge or the receiving care setting on a transfer-out. They set the Medicare " +
+      "claim's patient discharge status (40/41/42, 50/51), so M23 re-validates the admission's open claims.",
+    payloadSchema: Type.Object({
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      detail: Type.Union([Type.Literal("place_of_death"), Type.Literal("receiving_care_setting")]),
+      dischargeEventId: Type.Optional(Type.String({ minLength: 1 })),
+      transferEventId: Type.Optional(Type.String({ minLength: 1 })),
+      value: Type.String({ minLength: 1 }),
+      previousValue: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      corrected: Type.Boolean(),
+    }),
+    // M23 is the only consumer: its `revalidate` effect re-runs the discharge rule against the new value.
+    declaredConsumers: ["m23"],
+    isOutboxOnly: true,
+  },
   // ── notice of rights ────────────────────────────────────────────────────────────────────────────
   {
     eventName: "m6.nor.acknowledged",

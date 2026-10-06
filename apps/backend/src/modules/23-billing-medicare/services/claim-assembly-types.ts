@@ -69,8 +69,12 @@ export interface AdmissionContext {
   readonly deceasedDate: IsoDate | null;
   /** M6 `discharge_event.place_of_death` (`home` / `facility` / `unknown`); claim patient status 40/41/42. */
   readonly placeOfDeath: string | null;
+  /** The completed `discharge_event.id` (addresses the record a blocked claim needs completed). Optional so
+   *  older fakes/fixtures stay valid; absent ⇒ unknown. */
+  readonly dischargeEventId?: string | null;
   /** M6 transfer-OUT (no `discharge_event` row); `receivingCareSetting` drives claim patient status 50/51. */
   readonly transferOut: {
+    readonly transferEventId?: string;
     readonly effectiveDate: IsoDate;
     readonly receivingCareSetting: string | null;
   } | null;

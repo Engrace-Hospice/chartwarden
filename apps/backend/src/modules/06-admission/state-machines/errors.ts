@@ -7,7 +7,7 @@
 // HTTP status the UI keys its message off, with no cross-module import edge. The code→status mapping
 // is the single source mirrored from §2.4; nothing transitions on a string match — each code is an
 // enumerated constant.
-import { WardenXError } from "@wardenx/types";
+import { type ErrorDetailType, WardenXError } from "@wardenx/types";
 
 /** The full §2.4 + §2.3 machine-readable failure-code catalog → canonical HTTP status. */
 export const M6_ERROR_STATUS = {
@@ -60,6 +60,12 @@ export const M6_ERROR_STATUS = {
   // Claim patient discharge status 40/41/42 needs the place of death (CMS Pub. 100-04 Ch. 11 §30.3).
   PLACE_OF_DEATH_REQUIRED: 422,
   PLACE_OF_DEATH_NOT_ALLOWED: 422,
+  // Claim patient status 50/51 needs where the receiving hospice cares for the patient.
+  RECEIVING_CARE_SETTING_REQUIRED: 422,
+  // After-the-fact discharge details (discharge/discharge-details.ts): replacing a recorded value needs a
+  // correction reason; the detail must belong to the event kind (a death / a transfer-out).
+  DISCHARGE_DETAIL_CORRECTION_REASON_REQUIRED: 409,
+  DISCHARGE_DETAIL_NOT_APPLICABLE: 422,
   // Compliance windows (§2.4.1 R-CW-*)
   WINDOW_OVERRIDE_FORBIDDEN: 403,
   // Structural — an event dispatched from a state that does not accept it (§2.3 graph).
@@ -75,8 +81,8 @@ export type M6ErrorCode = keyof typeof M6_ERROR_STATUS;
  * failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
 export class AdmissionStateError extends WardenXError {
-  constructor(code: M6ErrorCode, message: string) {
-    super(code, message, M6_ERROR_STATUS[code]);
+  constructor(code: M6ErrorCode, message: string, details?: ErrorDetailType[]) {
+    super(code, message, M6_ERROR_STATUS[code], details);
     this.name = "AdmissionStateError";
   }
 }

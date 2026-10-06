@@ -530,6 +530,13 @@ describe("M6-T09 — route layer (§6.3)", () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("PLACE_OF_DEATH_REQUIRED");
+    // Self-explanatory for integrators: the field, the values and the claim effect, plus a field-scoped detail.
+    expect(res.json().error.message).toMatch(
+      /placeOfDeath is required.*"home", "facility" or "unknown".*40.*41.*42/,
+    );
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({ field: "placeOfDeath", code: "PLACE_OF_DEATH_REQUIRED" }),
+    ]);
     expect(backend.events).not.toContain("m6.discharge.created");
     expect((await backend.service.getAdmission(ORG, ADMISSION))?.state).toBe("active");
     await app.close();
@@ -550,10 +557,30 @@ describe("M6-T09 — route layer (§6.3)", () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("PLACE_OF_DEATH_NOT_ALLOWED");
+    expect(res.json().error.details?.[0]?.field).toBe("placeOfDeath");
     await app.close();
   });
 
-  it("a transfer-out without receivingCareSetting is rejected by the body schema", async () => {
+  it("a death with an invalid placeOfDeath names the allowed values (PLACE_OF_DEATH_REQUIRED, not a schema error)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/discharge`,
+      headers: MD,
+      payload: {
+        reason: "death",
+        dischargeDate: "2026-06-20",
+        narrative: "patient expired at the hospital",
+        deathCertifierId: "55555555-5555-4555-8555-555555555555",
+        placeOfDeath: "hospital",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("PLACE_OF_DEATH_REQUIRED");
+    await app.close();
+  });
+
+  it("a transfer-out without receivingCareSetting returns 422 RECEIVING_CARE_SETTING_REQUIRED naming values and claim effect", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -566,8 +593,17 @@ describe("M6-T09 — route layer (§6.3)", () => {
         narrative: "patient requested transfer to a closer facility",
       },
     });
-    expect(res.json().error.code).toBe("VALIDATION_FAILED");
-    expect(JSON.stringify(res.json().error)).toContain("receivingCareSetting");
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("RECEIVING_CARE_SETTING_REQUIRED");
+    expect(res.json().error.message).toMatch(
+      /receivingCareSetting is required.*"home" or "facility".*50.*51/,
+    );
+    expect(res.json().error.details).toEqual([
+      expect.objectContaining({
+        field: "receivingCareSetting",
+        code: "RECEIVING_CARE_SETTING_REQUIRED",
+      }),
+    ]);
     await app.close();
   });
 });

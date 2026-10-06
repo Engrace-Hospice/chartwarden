@@ -75,6 +75,7 @@ import {
   checkDischargeNarrative,
   checkPlaceOfDeath,
   dischargeRequiresCosign,
+  issueDetails,
   resolvePlaceOfDeath,
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
@@ -5398,7 +5399,12 @@ export function createDbAdmissionRouteService(
           input.externalSource !== undefined,
         );
         const placeIssue = checkPlaceOfDeath(input.reason, placeOfDeath);
-        if (placeIssue) throw new AdmissionStateError(placeIssue.code, placeIssue.message);
+        if (placeIssue)
+          throw new AdmissionStateError(
+            placeIssue.code,
+            placeIssue.message,
+            issueDetails(placeIssue),
+          );
         const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
         const dbType = REASON_TO_DB_TYPE[input.reason];
         if (requiresMedicalDirectorCosign) {

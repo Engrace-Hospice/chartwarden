@@ -99,6 +99,7 @@ export function assembleValidationContext(
       dischargeDate: discharge?.effectiveDate ?? null,
       dischargeReason: discharge?.kind ?? null,
       dischargeClaimCodes,
+      dischargeSourceEventId: discharge?.sourceEventId ?? null,
     },
     lines: lines.map((row) => ({
       claimLineId: row.id,

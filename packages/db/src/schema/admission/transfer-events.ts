@@ -28,6 +28,9 @@ export const transferEvents = pgTable(
     // claim's patient discharge status 50 (hospice, home) vs 51 (hospice, medical facility) per CMS Pub.
     // 100-04 Ch. 11 §30.3. Required on new transfer-outs (route 37); NULL on transfer-ins and historic rows.
     receivingCareSetting: text("receiving_care_setting", { enum: ["home", "facility"] }),
+    // Migration 0372: why a RECORDED receiving care setting was changed afterwards
+    // (POST /transfers/:id/receiving-care-setting); NULL when the value was only ever filled in.
+    receivingCareSettingCorrectionReason: text("receiving_care_setting_correction_reason"),
     effectiveAt: date("effective_at").notNull(),
     periodSequenceAtTransfer: smallint("period_sequence_at_transfer").notNull(),
     narrative: text("narrative"),
