@@ -29,7 +29,7 @@ import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { buildDrizzleIpuRouteService } from "../src/modules/37-ipu/routes/service-drizzle";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { admitViaQualifiedReferral, registerM5IntakeSeams, seedM5Patient } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
 const F2F_ATTESTATION_NARRATIVE =
   "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
@@ -851,6 +851,8 @@ describe.skipIf(!DB_URL)(
 
     it("transfer-in → inherited active + next pending period (no counter restart)", async () => {
       const patientId = randomUUID();
+      // Direct intake confirms the patient belongs to the org (readmission security review).
+      await seedM5Patient(admin, ORG_A, patientId);
       const adm = await svc.createAdmission(
         ORG_A,
         { patientId, intakeMethod: "transfer_in", hospiceMedicalDirectorId: MD },

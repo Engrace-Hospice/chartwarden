@@ -2944,6 +2944,7 @@ export function createDbAdmissionRouteService(
         } satisfies AdmissionEvent);
         // Readmission workflow — the first benefit period (staff-entered or history-suggested), validated first.
         const first = await resolveFirstBenefitPeriod(tx as DbClient, {
+          organizationId,
           patientId,
           input,
           actorUserId,
@@ -3348,9 +3349,32 @@ export function createDbAdmissionRouteService(
     // event (opens the same 4 compliance windows, lands on `pending`), a seeded period 1, and a draft
     // CTI carrying the hospice-MD/attending ids the form actually asked for.
     async createAdmission(organizationId, input, actorUserId): Promise<MutationResult> {
-      void actorUserId;
+      if (input.referralId) throw new ReferralAdmissionPathError();
+      // The body's patient id must be a patient of THIS org (M5's org-scoped read — the same confirmation referral
+      // conversion runs). Resolved before the transaction: the seam opens its own org context.
+      const confirmed = await patientResolver().confirmPatient({
+        organizationId,
+        patientId: input.patientId,
+      });
+      if (!confirmed)
+        throw new WardenXError(
+          "PATIENT_NOT_FOUND",
+          "the patient does not exist in this organization",
+          409,
+        );
+      if (input.readmittedFromAdmissionId && input.intakeMethod === "transfer_in")
+        throw new AdmissionStateError(
+          "READMISSION_SOURCE_INVALID",
+          "A transfer-in continues another hospice's election; record it through the transfer-in workflow, not as a readmission",
+          [
+            {
+              field: "readmittedFromAdmissionId",
+              code: "READMISSION_SOURCE_INVALID",
+              message: "not allowed with intakeMethod transfer_in",
+            },
+          ],
+        );
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
-        if (input.referralId) throw new ReferralAdmissionPathError();
         // §2.3.1 no double-election: same rule acceptReferral enforces — direct intake is a second
         // entry path into the same admission lifecycle, not an exemption from it.
         const [open] = await tx
@@ -3376,6 +3400,7 @@ export function createDbAdmissionRouteService(
           input.intakeMethod === "transfer_in"
             ? null
             : await resolveFirstBenefitPeriod(tx as DbClient, {
+                organizationId,
                 patientId: input.patientId,
                 input,
                 actorUserId,
@@ -3392,7 +3417,9 @@ export function createDbAdmissionRouteService(
               attendingPhysicianId: input.attendingPhysicianId ?? null,
               status: t.to,
               ...(first?.admissionAt ? { admissionAt: first.admissionAt } : {}),
-              ...(input.readmittedFromAdmissionId
+              // Only once `resolveFirstBenefitPeriod` verified it is an earlier, live-ended stay of THIS patient in
+              // THIS org (explicit org + patient predicates, not RLS alone).
+              ...(first && input.readmittedFromAdmissionId
                 ? { readmittedFromAdmissionId: input.readmittedFromAdmissionId }
                 : {}),
             })

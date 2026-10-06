@@ -39,6 +39,7 @@ import {
   priorEpisodesForOrg,
   registerAdmissionSeams,
 } from "../src/modules/06-admission/index";
+import { loadPriorEpisodes } from "../src/modules/06-admission/seams/prior-episodes";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
@@ -76,6 +77,7 @@ const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
+const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const ATTENDING = "77777777-7777-7777-7777-777777777777";
 const MD = "66666666-6666-6666-6666-666666666666";
@@ -245,8 +247,8 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     await resetSchema();
     await applyMigrations();
     await admin.query(
-      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')",
-      [ORG],
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
+      [ORG, ORG_B],
     );
     await admin.query(
       `INSERT INTO "user" (id,email) VALUES ($1,'rd@x.test'),($2,'rdmd@x.test'),($3,'rdat@x.test')`,
@@ -264,10 +266,11 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
          VALUES ($1,'Loc','1 St','Town','OR','97000','America/Los_Angeles','active')`,
       [providerId],
     );
-    await admin.query(
-      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
-      [USER, ORG],
-    );
+    for (const org of [ORG, ORG_B])
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active')`,
+        [USER, org],
+      );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db);
@@ -577,5 +580,61 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       sequence_number: 2,
       benefit_period_source: "internal_history",
     });
+  }, 120_000);
+
+  it("cross-tenant: another org can neither read, suggest from, nor readmit from this org's stays", async () => {
+    // Arrange: a live-ended stay in ORG (A); a patient of ORG_B.
+    const patientA = randomUUID();
+    const stayOfA = await admit(patientA, {}, `${daysAgo(10)}T00:00:00.000Z`);
+    await completeAndActivate(stayOfA);
+    await dischargeLive(stayOfA);
+    const patientB = randomUUID();
+    await seedM5Patient(admin, ORG_B, patientB);
+
+    // The readmission context of A's stay is invisible from ORG_B (RLS as wardenx_app + explicit org predicate).
+    expect(await readmission.getReadmissionContext(ORG_B, stayOfA, {})).toBeNull();
+    // ORG_B's plan for A's patient knows nothing of A's history.
+    const plan = await readmission.getPatientBenefitPeriodPlan(ORG_B, patientA, {});
+    expect(plan.previous).toBeNull();
+    expect(plan.suggestion.suggestedSequence).toBe(1);
+    // ORG_B cannot name A's stay as a readmission source, for its own patient or for A's patient id.
+    for (const patientId of [patientB, patientA]) {
+      await expect(
+        svc.createAdmission(
+          ORG_B,
+          {
+            patientId,
+            intakeMethod: "in_person",
+            hospiceMedicalDirectorId: MD,
+            readmittedFromAdmissionId: stayOfA,
+          },
+          USER,
+        ),
+      ).rejects.toMatchObject({
+        code: patientId === patientB ? "READMISSION_SOURCE_INVALID" : "PATIENT_NOT_FOUND",
+      });
+    }
+    // A direct intake in ORG for ORG_B's patient is refused (the body's patient must belong to the caller's org).
+    await expect(
+      svc.createAdmission(
+        ORG,
+        { patientId: patientB, intakeMethod: "in_person", hospiceMedicalDirectorId: MD },
+        USER,
+      ),
+    ).rejects.toMatchObject({ code: "PATIENT_NOT_FOUND" });
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM admission WHERE readmitted_from_admission_id=$1",
+      [stayOfA],
+    );
+    expect(rows[0].n).toBe(0);
+
+    // The explicit org predicate holds even on a connection that BYPASSES RLS (superuser = system paths).
+    const superuser = createDbClient({ connectionString: DB_URL as string });
+    try {
+      expect(await loadPriorEpisodes(superuser.db, ORG_B, patientA)).toHaveLength(0);
+      expect(await loadPriorEpisodes(superuser.db, ORG, patientA)).toHaveLength(1);
+    } finally {
+      await superuser.close();
+    }
   }, 120_000);
 });

@@ -429,7 +429,7 @@ export async function claimAssemblyRangeContextForOrg(
         .limit(1);
 
       const rhc = rhcCarryOver(
-        await loadPriorEpisodes(tx as DbClient, patientId, admissionId),
+        await loadPriorEpisodes(tx as DbClient, organizationId, patientId, admissionId),
         localDate(candidate.start),
       );
       const admission: ClaimRangeAdmission = {

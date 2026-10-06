@@ -38,6 +38,7 @@ const minDay = (xs: readonly (string | null)[]): string | null =>
 /** The patient's earlier admissions (RLS-scoped `tx`), newest ending first. */
 export async function loadPriorEpisodes(
   tx: DbClient,
+  organizationId: string,
   patientId: string,
   excludeAdmissionId?: string,
 ): Promise<readonly PriorEpisode[]> {
@@ -51,6 +52,9 @@ export async function loadPriorEpisodes(
     .from(ADM)
     .where(
       and(
+        // Explicit org predicate — the second wall behind RLS, so a system / superuser connection (which bypasses
+        // RLS) can never pull another tenant's stays into a suggestion or accept one as a readmission source.
+        eq(ADM.organizationId, organizationId),
         eq(ADM.patientId, patientId),
         inArray(ADM.status, [...ENDED_STATES]),
         ...(excludeAdmissionId ? [ne(ADM.id, excludeAdmissionId)] : []),
@@ -68,7 +72,7 @@ export async function loadPriorEpisodes(
       effectiveAt: EP.effectiveAt,
     })
     .from(EP)
-    .where(inArray(EP.admissionId, ids));
+    .where(and(eq(EP.organizationId, organizationId), inArray(EP.admissionId, ids)));
   const discharges = await tx
     .select({
       id: DE.id,
@@ -77,15 +81,27 @@ export async function loadPriorEpisodes(
       effectiveAt: DE.effectiveAt,
     })
     .from(DE)
-    .where(and(inArray(DE.admissionId, ids), eq(DE.status, "completed")));
+    .where(
+      and(
+        eq(DE.organizationId, organizationId),
+        inArray(DE.admissionId, ids),
+        eq(DE.status, "completed"),
+      ),
+    );
   const revocations = await tx
     .select({ id: RE.id, admissionId: RE.admissionId, effectiveAt: RE.effectiveAt })
     .from(RE)
-    .where(inArray(RE.admissionId, ids));
+    .where(and(eq(RE.organizationId, organizationId), inArray(RE.admissionId, ids)));
   const transfers = await tx
     .select({ id: TE.id, admissionId: TE.admissionId, effectiveAt: TE.effectiveAt })
     .from(TE)
-    .where(and(inArray(TE.admissionId, ids), eq(TE.direction, "out")));
+    .where(
+      and(
+        eq(TE.organizationId, organizationId),
+        inArray(TE.admissionId, ids),
+        eq(TE.direction, "out"),
+      ),
+    );
   return adms
     .map((a): PriorEpisode => {
       const ran = periods.filter(
@@ -133,7 +149,7 @@ export async function priorEpisodesForOrg(
   excludeAdmissionId?: string,
 ): Promise<readonly PriorEpisode[]> {
   return withOrgContext(db, { organizationId, userId: "" }, (tx) =>
-    loadPriorEpisodes(tx as DbClient, patientId, excludeAdmissionId),
+    loadPriorEpisodes(tx as DbClient, organizationId, patientId, excludeAdmissionId),
   );
 }
 

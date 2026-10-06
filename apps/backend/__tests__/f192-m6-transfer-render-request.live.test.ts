@@ -76,7 +76,7 @@ import {
 } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { admitViaQualifiedReferral, registerM5IntakeSeams, seedM5Patient } from "./_m6-admit";
 
 /** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
 const CTI_CLINICAL = {
@@ -350,6 +350,8 @@ describe.skipIf(!DB_URL)("F-192 — M6 transfer summary renders + back-refs, LIV
 
   it("transferIn requests + renders its own transfer summary, distinct from transfer-out's", async () => {
     const patientId = randomUUID();
+    // Direct intake confirms the patient belongs to the org (readmission security review).
+    await seedM5Patient(admin, ORG_A, patientId);
     const adm = await svc.createAdmission(
       ORG_A,
       { patientId, intakeMethod: "transfer_in", hospiceMedicalDirectorId: MD },

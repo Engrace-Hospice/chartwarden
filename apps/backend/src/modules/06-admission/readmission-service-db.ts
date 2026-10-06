@@ -79,6 +79,7 @@ function readmissionSourceInvalid(message: string): never {
 export async function resolveFirstBenefitPeriod(
   tx: DbClient,
   args: {
+    readonly organizationId: string;
     readonly patientId: string;
     readonly input: FirstBenefitPeriodInput & { readonly readmittedFromAdmissionId?: string };
     readonly actorUserId: string;
@@ -86,7 +87,7 @@ export async function resolveFirstBenefitPeriod(
   },
 ): Promise<FirstBenefitPeriodPlan> {
   const today = orgToday(args.now);
-  const episodes = await loadPriorEpisodes(tx, args.patientId);
+  const episodes = await loadPriorEpisodes(tx, args.organizationId, args.patientId);
   const fromId = args.input.readmittedFromAdmissionId;
   if (fromId) {
     const from = episodes.find((e) => e.admissionId === fromId);
@@ -172,11 +173,21 @@ export function createDbReadmissionService(
     });
   }
 
-  async function openAdmissionExists(tx: DbClient, patientId: string): Promise<boolean> {
+  async function openAdmissionExists(
+    tx: DbClient,
+    organizationId: string,
+    patientId: string,
+  ): Promise<boolean> {
     const [open] = await tx
       .select({ id: ADM.id })
       .from(ADM)
-      .where(and(eq(ADM.patientId, patientId), notInArray(ADM.status, [...OPEN_EXCLUDED])))
+      .where(
+        and(
+          eq(ADM.organizationId, organizationId),
+          eq(ADM.patientId, patientId),
+          notInArray(ADM.status, [...OPEN_EXCLUDED]),
+        ),
+      )
       .limit(1);
     return !!open;
   }
@@ -193,7 +204,7 @@ export function createDbReadmissionService(
             createdAt: ADM.createdAt,
           })
           .from(ADM)
-          .where(eq(ADM.id, admissionId))
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
           .limit(1);
         if (!adm) return null;
         const [newer] = await tx
@@ -201,6 +212,7 @@ export function createDbReadmissionService(
           .from(ADM)
           .where(
             and(
+              eq(ADM.organizationId, organizationId),
               eq(ADM.patientId, adm.patientId),
               ne(ADM.id, adm.id),
               // Compared in SQL: the JS Date round-trip drops the column's microseconds.
@@ -212,8 +224,8 @@ export function createDbReadmissionService(
         return {
           patientId: adm.patientId,
           readmitFrom: { admissionId: adm.id, state: String(adm.status) },
-          episodes: await loadPriorEpisodes(tx, adm.patientId),
-          openAdmissionExists: await openAdmissionExists(tx, adm.patientId),
+          episodes: await loadPriorEpisodes(tx, organizationId, adm.patientId),
+          openAdmissionExists: await openAdmissionExists(tx, organizationId, adm.patientId),
           newerAdmissionExists: !!newer,
         };
       });
@@ -224,8 +236,8 @@ export function createDbReadmissionService(
       const facts = await withOrgContext(db, { organizationId, userId: "" }, async (raw) => {
         const tx = raw as DbClient;
         return {
-          episodes: await loadPriorEpisodes(tx, patientId),
-          openAdmissionExists: await openAdmissionExists(tx, patientId),
+          episodes: await loadPriorEpisodes(tx, organizationId, patientId),
+          openAdmissionExists: await openAdmissionExists(tx, organizationId, patientId),
         };
       });
       return planFor(organizationId, patientId, query, facts);
