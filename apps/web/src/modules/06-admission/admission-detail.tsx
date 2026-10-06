@@ -53,6 +53,7 @@ import {
 } from "./admission-status";
 import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
 import { PatientIntakeDetails } from "./patient-intake-details";
+import { TransferNoticeStatus } from "./transfer-notice-status";
 import { authFailureRedirect } from "./write-workflow";
 
 const NOR_METHODS = [
@@ -1009,6 +1010,7 @@ export function AdmissionDetail(): JSX.Element {
         }
       >
         <div style={contentShellStyle}>
+          <TransferNoticeStatus admissionId={admission.id} />
           <section style={summaryCardStyle}>
             <div style={summaryHeaderStyle}>
               <div>
@@ -1324,6 +1326,7 @@ export function AdmissionDetail(): JSX.Element {
       <div style={contentShellStyle}>
         {flashNotice ? <InlineAlert tone="success">{flashNotice}</InlineAlert> : null}
         <MissingDischargeDetailsAlert admissionId={admission.id} admissionState={admission.state} />
+        <TransferNoticeStatus admissionId={admission.id} />
         <section style={summaryCardStyle}>
           <div style={summaryHeaderStyle}>
             <div>

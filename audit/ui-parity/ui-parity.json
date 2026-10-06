@@ -1588,6 +1588,14 @@
       "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
+      "id": "billing.transfer-notices",
+      "path": "/billing/transfer-notices",
+      "permission": "billing.noe.read"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
       "id": "billing.rule-config",
       "path": "/billing/rule-config",
       "permission": "billing.rule_config.read"
