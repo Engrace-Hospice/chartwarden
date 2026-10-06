@@ -200,6 +200,8 @@ export const M6_EVENT_NAMES = [
   "m6.discharge.created",
   "m6.discharge.death",
   "m6.discharge.cosigned",
+  // A place of death / receiving care setting recorded after the fact (claim patient status 40-42 / 50-51).
+  "m6.discharge.details_recorded",
   "m6.nor.acknowledged",
   "m6.compliance.window.opened",
   "m6.compliance.window.closed",
