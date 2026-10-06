@@ -6,6 +6,8 @@
 // admission aggregate (route 10), so the §5.2.5 UI checklist and the server can never diverge (§7.2
 // "Done means" — the gate is verified by re-fetch after out-of-band mutation).
 
+import { ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION } from "../physician-authority";
+
 export type AdmissionReadinessStatus = "blocked" | "action_required" | "ready";
 export type RequirementStatus =
   | "complete"
@@ -22,7 +24,8 @@ export type RequirementCode =
   | "notice_of_rights"
   | "election_statement"
   | "cti"
-  | "f2f";
+  | "f2f"
+  | "admission_recommendation";
 export type RequirementAction =
   | "RESOLVE_PATIENT"
   | "COMPLETE_ADMISSION_DETAILS"
@@ -32,7 +35,8 @@ export type RequirementAction =
   | "COMPLETE_ELECTION_SIGNATURE"
   | "COMPLETE_CTI"
   | "COMPLETE_CTI_SIGNATURE"
-  | "REVIEW_F2F";
+  | "REVIEW_F2F"
+  | "RECORD_ADMISSION_RECOMMENDATION";
 
 export interface AdmissionRequirementEvidence {
   readonly sourceType: "structured" | "uploaded";
@@ -155,6 +159,11 @@ export interface AdmissionReadinessFacts {
     readonly overdue?: boolean;
     readonly satisfiedBy?: "normal" | "override";
   };
+  /**
+   * 42 CFR 418.25(a) — has the medical director / physician designee / IDG physician member's admission
+   * recommendation been recorded? Optional so legacy fact builders read as "not recorded".
+   */
+  readonly admissionRecommendation?: { readonly recorded: boolean };
 }
 
 const complete = (
@@ -391,6 +400,27 @@ export function evaluateAdmissionReadiness(
   } else {
     requirements.push(complete("f2f", "Face-to-Face Encounter"));
   }
+
+  // 42 CFR 418.25(a) — a payment condition surfaced on the checklist; whether it blocks activation is the one
+  // `ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION` decision (physician-authority.ts carries the rationale).
+  requirements.push(
+    facts.admissionRecommendation?.recorded
+      ? {
+          code: "admission_recommendation",
+          label: "Physician admission recommendation",
+          status: "complete",
+          blocking: ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION,
+        }
+      : {
+          code: "admission_recommendation",
+          label: "Physician admission recommendation",
+          status: "action_required",
+          blocking: ADMISSION_RECOMMENDATION_BLOCKS_ACTIVATION,
+          message:
+            "Record the admission recommendation of the medical director, physician designee or IDG physician (42 CFR 418.25(a)).",
+          action: "RECORD_ADMISSION_RECOMMENDATION",
+        },
+  );
 
   const completed = requirements.filter(
     (r) => r.status === "complete" || r.status === "not_applicable",

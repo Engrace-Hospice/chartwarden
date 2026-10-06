@@ -6,18 +6,26 @@
 // injected `AdmissionAbacResolver` (org-scoped, RLS-backstopped). `patient.scope` (route 8) is M5's
 // re-used predicate — M6 does not own or register it.
 //
-// FOUR of the ten are pure over `context.roles` (no resolver, no closure) — `f2f.is_hospice_md_or_np`,
-// `f2f.window_override`, `discharge.is_medical_director`, `compliance.window_override`. The routes
-// wire `requireAbac` on those four (the spec's role-gated signer/override predicates). The remaining
-// six are resource-bound (scope + signer-identity); they are registered for the §4.6 handshake and
-// resolve a resource's owner facts, with full route-level `requireAbac` wiring landing alongside the
-// Drizzle resolver in the M6 workflow tasks.
+// THREE of the ten are pure over `context.roles` (no resolver, no closure) — `f2f.is_hospice_md_or_np`,
+// `f2f.window_override`, `compliance.window_override`. `discharge.is_order_signer` (route 40) replaced the
+// role-only `discharge.is_medical_director` for 42 CFR 418.26(b) (FY 2027): it loads the discharge's date
+// and chart and admits the medical director, the physician designee, or the physician member of THIS
+// patient's IDG (medical director only for a pre-2026-10-01 discharge and for an external-death
+// attestation). The remaining six are resource-bound (scope + signer-identity).
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
 // is idempotent via registerPredicateIdempotent.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { getSeam } from "../../bootstrap/index";
 import { F2F_PERFORMER_ROLE_KEYS } from "./certification/f2f-performer";
+import {
+  MEDICAL_DIRECTOR_ROLE_KEY,
+  PHYSICIAN_DESIGNEE_ROLE_KEY,
+  type PhysicianAuthorityPort,
+  type PhysicianSignerCapacity,
+  dischargeOrderCapacities,
+  heldSignerCapacities,
+} from "./physician-authority";
 import type { AdmissionAbacResolver } from "./routes/service";
 
 /** The §4.6 predicate names M6 owns (registered into M3). `patient.scope` is excluded — it is M5's. */
@@ -29,7 +37,7 @@ export const M6_ABAC_PREDICATES = [
   "f2f.is_hospice_clinician",
   "f2f.is_hospice_md_or_np",
   "f2f.window_override",
-  "discharge.is_medical_director",
+  "discharge.is_order_signer",
   "compliance.scope",
   "compliance.window_override",
 ] as const;
@@ -38,7 +46,7 @@ export const M6_ABAC_PREDICATES = [
 export const M6_ROLE_PREDICATE_NAMES = {
   f2fAttest: "f2f.is_hospice_md_or_np",
   f2fWindowOverride: "f2f.window_override",
-  dischargeMedicalDirector: "discharge.is_medical_director",
+  dischargeOrderSigner: "discharge.is_order_signer",
   complianceWindowOverride: "compliance.window_override",
 } as const;
 
@@ -64,6 +72,8 @@ export interface AdmissionAbacDeps {
     userId: string;
     patientId: string;
   }) => Promise<boolean>;
+  /** 42 CFR 418.26(b) — the IDG care-team fact for the route-40 signer (absent = role capacities only). */
+  readonly physicianAuthority?: PhysicianAuthorityPort;
 }
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
@@ -211,7 +221,36 @@ export function buildAdmissionAbacPredicates(
     },
     "f2f.is_hospice_md_or_np": async (context) => MD_OR_NP.some((r) => hasRole(context, r)),
     "f2f.window_override": async (context) => hasRole(context, "compliance_officer"),
-    "discharge.is_medical_director": async (context) => hasRole(context, "medical_director"),
+    "discharge.is_order_signer": async (context, target) => {
+      const id = targetId(target);
+      const facts = id ? await resolver.loadDischargeSigning(context.organizationId, id) : null;
+      // An unknown / cross-tenant discharge: admit a physician-role caller so the service answers 404
+      // (the pre-418.26 predicate was role-only and never turned "absent" into 403).
+      if (!facts)
+        return (
+          hasRole(context, MEDICAL_DIRECTOR_ROLE_KEY) ||
+          hasRole(context, PHYSICIAN_DESIGNEE_ROLE_KEY)
+        );
+      const allowed: readonly PhysicianSignerCapacity[] = facts.externalDeath
+        ? ["medical_director"]
+        : dischargeOrderCapacities(facts.dischargeDate);
+      const idgPhysicianOfPatient =
+        allowed.includes("idg_physician_member") &&
+        facts.patientId !== null &&
+        !!context.userId &&
+        deps.physicianAuthority !== undefined
+          ? (
+              await deps.physicianAuthority.signerFacts(
+                context.organizationId,
+                context.userId,
+                facts.patientId,
+              )
+            ).idgPhysicianOfPatient
+          : false;
+      return heldSignerCapacities({ roleKeys: context.roles, idgPhysicianOfPatient }).some((c) =>
+        allowed.includes(c),
+      );
+    },
     "compliance.scope": async (context, target) => {
       if (hasRole(context, "compliance_officer")) return true; // org-wide
       const id = targetId(target);

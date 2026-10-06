@@ -63,6 +63,12 @@ export const M6_ERROR_STATUS = {
   // Discharge reason-specific capture gates (§6.3 / D11)
   NARRATIVE_REQUIRED_FOR_CAUSE: 412,
   DISCHARGE_NARRATIVE_TOO_SHORT: 422,
+  // 42 CFR 418.26(b) / 418.25(a) physician signer set (physician-authority.ts)
+  DISCHARGE_ORDER_REQUIRED: 422,
+  DISCHARGE_ORDER_TIMING_INVALID: 422,
+  PHYSICIAN_SIGNER_INVALID: 422,
+  ADMISSION_RECOMMENDATION_INVALID: 422,
+  ATTENDING_CONSULT_NOTE_REQUIRED: 422,
   // Compliance windows (§2.4.1 R-CW-*)
   WINDOW_OVERRIDE_FORBIDDEN: 403,
   // Structural — an event dispatched from a state that does not accept it (§2.3 graph).

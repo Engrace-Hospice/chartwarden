@@ -19,12 +19,14 @@ import {
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
+import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
 
 export * from "./state-machines";
 export * from "./admission-evidence-service";
 export * from "./certification/f2f-performer";
 export * from "./admission-uploaded-evidence";
+export * from "./physician-authority";
 
 /**
  * M6L-T01 — mount the M6 admission routes over the PRODUCTION Drizzle route service + ABAC resolver
@@ -43,7 +45,9 @@ export function mountAdmissionRoutes(
   f2fClinicianRoles?: F2fClinicianRolePort,
   f2fSignedNotes?: F2fSignedNotePort,
 ): void {
-  _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
+  // 42 CFR 418.25(a) / 418.26(b) — ONE physician-authority binding for the route-40 predicate and the service.
+  const physicianAuthority = createDbPhysicianAuthority(db);
+  _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db), physicianAuthority });
   _registerM6Routes(app, {
     service: createDbAdmissionRouteService(
       db,
@@ -54,6 +58,7 @@ export function mountAdmissionRoutes(
       dpoaConsentCheck(),
       f2fClinicianRoles,
       f2fSignedNotes,
+      physicianAuthority,
     ),
   });
 }

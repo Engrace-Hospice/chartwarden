@@ -74,7 +74,11 @@ const ATTENDING = "77777777-7777-7777-7777-777777777777";
 const MD = "66666666-6666-6666-6666-666666666666";
 const DIRECTOR = "88888888-8888-8888-8888-888888888888";
 const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
-const COSIGNER = { cosignerName: "Dr. Medical Director", cosignerNpi: "1234567893" } as const;
+const COSIGNER = {
+  cosignerName: "Dr. Medical Director",
+  cosignerNpi: "1234567893",
+  actorRoleKeys: ["medical_director"],
+};
 
 describe.skipIf(!DB_URL)("F-227 — external death cosign M6 → M16, LIVE Postgres", () => {
   let admin: Client;

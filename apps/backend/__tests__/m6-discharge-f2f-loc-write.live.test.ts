@@ -31,6 +31,7 @@ import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { validatingM6Outbox } from "./_m6-outbox";
+import { dischargeOrderBy, seedPhysicianRole } from "./_physician-signer";
 const F2F_ATTESTATION_NARRATIVE =
   "Face-to-face encounter performed by the hospice clinician; findings support a terminal prognosis of six months or less (GAP-022 fixture).";
 
@@ -148,6 +149,8 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO "user" (id,email) VALUES ($1,'m6t4a@x.test'),($2,'m6t4b@x.test'),($3,'m6t4md@x.test')`,
         [USER, OTHER, MD],
       );
+      // 42 CFR 418.26(b) — the live discharges below are dated today, so they carry a physician order.
+      await seedPhysicianRole(admin, ORG_A, MD);
       await admin.query(
         `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
          VALUES ($1,$2,'CCN-M6T4','M6 T4 Hospice','NPI-M6T4','enc','12-31')`,
@@ -603,6 +606,7 @@ describe.skipIf(!DB_URL)(
           reason: "moved_out_of_service_area",
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "relocated out of the service area",
+          dischargeOrder: dischargeOrderBy(MD),
         },
         USER,
       );
@@ -701,7 +705,11 @@ describe.skipIf(!DB_URL)(
       const cosigned = await svc.cosignDischarge(
         ORG_A,
         filed.id,
-        { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+        {
+          cosignerName: "Dr. Med Director",
+          cosignerNpi: "1234567893",
+          actorRoleKeys: ["medical_director"],
+        },
         filed.version,
         MD,
       );
@@ -712,7 +720,11 @@ describe.skipIf(!DB_URL)(
         svc.cosignDischarge(
           ORG_A,
           filed.id,
-          { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+          {
+            cosignerName: "Dr. Med Director",
+            cosignerNpi: "1234567893",
+            actorRoleKeys: ["medical_director"],
+          },
           cosigned.version,
           MD,
         ),

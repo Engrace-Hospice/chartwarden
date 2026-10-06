@@ -84,6 +84,7 @@
     "test:m6:read:live": "vitest run apps/backend/__tests__/m6-admission-read-service.live.test.ts",
     "test:m6:write:live": "vitest run apps/backend/__tests__/m6-admission-write-lifecycle.live.test.ts",
     "test:m6:election-guards:live": "vitest run apps/backend/__tests__/m6-election-period-guards.live.test.ts",
+    "test:m6:physician-authority:live": "vitest run apps/backend/__tests__/m6-physician-authority.live.test.ts",
     "test:m6:t3:write:live": "vitest run apps/backend/__tests__/m6-election-cti-write.live.test.ts",
     "test:m6:t4:write:live": "vitest run apps/backend/__tests__/m6-discharge-f2f-loc-write.live.test.ts",
     "test:m6:t5:write:live": "vitest run apps/backend/__tests__/m6-compliance-window-write.live.test.ts",

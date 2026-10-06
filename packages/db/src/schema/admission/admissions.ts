@@ -15,11 +15,12 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { admissionStatus } from "../../enums";
+import { admissionStatus, physicianSignerCapacity } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { patientAddresses } from "../patient/patient-addresses";
 import { providerEntities } from "../provider-entities";
+import { users } from "../users";
 import { referrals } from "./referrals";
 
 export const admissions = pgTable(
@@ -61,6 +62,17 @@ export const admissions = pgTable(
     transferredIn: boolean("transferred_in").notNull().default(false),
     transferredInFromCcn: text("transferred_in_from_ccn"),
     inheritedPeriodSequence: smallint("inherited_period_sequence"),
+    // 42 CFR 418.25(a) (FY 2026 rule, effective 2025-10-01; migration 0389) — the physician admission
+    // recommendation: a USER validated against the medical director / physician designee / patient-IDG
+    // physician signer set, with the attending-consultation fact. All-or-none (CHECK); the note is scrubbed.
+    recommendedByUserId: uuid("recommended_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    recommenderCapacity: physicianSignerCapacity("recommender_capacity"),
+    recommendedAt: timestamp("recommended_at", { withTimezone: true }),
+    attendingConsulted: boolean("attending_consulted"),
+    attendingConsultNote: text("attending_consult_note"),
+    recommendationRecordedByUserId: uuid("recommendation_recorded_by_user_id"), // acting user (logical)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),

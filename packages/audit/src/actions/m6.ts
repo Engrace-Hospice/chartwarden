@@ -108,7 +108,8 @@ export const M6_ACTION_CATALOG: ModuleActionCatalog = [
     action: "m6.discharge.cosigned",
     moduleOwner: "m6",
     defaultRetentionClass: "compliance",
-    description: "A medical director cosigned a for-cause discharge (W-DC-02 completion).",
+    description:
+      "A physician signer (medical director, physician designee or the patient's IDG physician; 42 CFR 418.26(b)) cosigned a for-cause discharge — the written discharge order (W-DC-02 completion).",
     denylistCategories: [],
     isPartTwoEligible: true,
   },

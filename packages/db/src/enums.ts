@@ -935,6 +935,17 @@ export const dischargeEventStatus = pgEnum("discharge_event_status", [
   "voided",
 ]);
 
+/**
+ * `physician_signer_capacity` — the 42 CFR 418.25(a) / 418.26(b) physician signer set (migration 0388): the
+ * hospice medical director, the physician designee (§ 418.3), or the physician member of the patient's IDG.
+ * Never the attending physician, an NP or a PA. Shared by the discharge order and the admission recommendation.
+ */
+export const physicianSignerCapacity = pgEnum("physician_signer_capacity", [
+  "medical_director",
+  "physician_designee",
+  "idg_physician_member",
+]);
+
 /** `nor_acknowledgment_method` — how the Notice of Rights was acknowledged (§3.2). */
 export const norAcknowledgmentMethod = pgEnum("nor_acknowledgment_method", [
   "wet_ink_scanned",

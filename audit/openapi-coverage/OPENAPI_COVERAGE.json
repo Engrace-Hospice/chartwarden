@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1378,
-    "enriched": 1373,
+    "routes": 1379,
+    "enriched": 1374,
     "deficit": 5,
-    "mutating": 780,
+    "mutating": 779,
     "mutatingNoBody": 1,
-    "gets": 565,
+    "gets": 567,
     "getsNoResponse": 10
   },
   "modules": [
@@ -51,12 +51,12 @@
     },
     {
       "module": "06-admission",
-      "routes": 68,
-      "enriched": 68,
+      "routes": 71,
+      "enriched": 71,
       "deficit": 0,
-      "mutating": 51,
+      "mutating": 52,
       "mutatingNoBody": 0,
-      "gets": 17,
+      "gets": 19,
       "getsNoResponse": 0
     },
     {
@@ -111,10 +111,10 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
-      "enriched": 34,
+      "routes": 33,
+      "enriched": 33,
       "deficit": 0,
-      "mutating": 23,
+      "mutating": 22,
       "mutatingNoBody": 0,
       "gets": 11,
       "getsNoResponse": 0
@@ -201,10 +201,10 @@
     },
     {
       "module": "21-supplies",
-      "routes": 39,
-      "enriched": 39,
+      "routes": 38,
+      "enriched": 38,
       "deficit": 0,
-      "mutating": 26,
+      "mutating": 25,
       "mutatingNoBody": 0,
       "gets": 12,
       "getsNoResponse": 0

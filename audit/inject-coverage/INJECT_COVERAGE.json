@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1367,
-    "coveredRoutes": 1367,
-    "directRoutesReferenced": 1324
+    "routes": 1368,
+    "coveredRoutes": 1368,
+    "directRoutesReferenced": 1325
   },
   "modules": [
     {
@@ -73,15 +73,16 @@
     },
     {
       "module": "06-admission",
-      "routes": 68,
+      "routes": 71,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
         "apps/backend/__tests__/admission-discharge.test.ts",
         "apps/backend/__tests__/admission-intake.test.ts",
-        "apps/backend/__tests__/admission-routes.test.ts"
+        "apps/backend/__tests__/admission-routes.test.ts",
+        "apps/backend/__tests__/m6-physician-authority.test.ts"
       ],
-      "directRoutesReferenced": 68
+      "directRoutesReferenced": 71
     },
     {
       "module": "07-care-plan",
@@ -157,16 +158,15 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
+      "routes": 33,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 26
     },
     {
       "module": "13-emar",
@@ -255,13 +255,12 @@
     },
     {
       "module": "21-supplies",
-      "routes": 39,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/supplies-inject.test.ts"
       ],
-      "directRoutesReferenced": 39
+      "directRoutesReferenced": 38
     },
     {
       "module": "22-documents",

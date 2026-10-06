@@ -20048,6 +20048,70 @@
                         }
                       ]
                     },
+                    "attendingPhysicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionRecommendation": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "recommendedByUserId",
+                            "capacity",
+                            "recommendedAt",
+                            "attendingConsulted",
+                            "attendingConsultNote"
+                          ],
+                          "properties": {
+                            "recommendedByUserId": {
+                              "type": "string"
+                            },
+                            "capacity": {
+                              "anyOf": [
+                                {
+                                  "const": "medical_director",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "physician_designee",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_physician_member",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "recommendedAt": {
+                              "type": "string"
+                            },
+                            "attendingConsulted": {
+                              "type": "boolean"
+                            },
+                            "attendingConsultNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "activationGate": {
                       "type": "object",
                       "required": [
@@ -20233,6 +20297,123 @@
         }
       }
     },
+    "/api/v1/admissions/{id}/admission-recommendation": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByIdAdmissionrecommendation",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Record the 42 CFR 418.25(a) physician admission recommendation (medical director, physician designee, or the patient's IDG physician; attending consultation)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "recommendedByUserId",
+                  "recommendedAt",
+                  "attendingConsulted",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "recommendedByUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "recommendedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "capacity": {
+                    "anyOf": [
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "physician_designee",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_physician_member",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "attendingConsulted": {
+                    "type": "boolean"
+                  },
+                  "attendingConsultNote": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admissions/{id}/compliance-windows": {
       "get": {
         "operationId": "getApiV1AdmissionsByIdCompliancewindows",
@@ -20388,10 +20569,236 @@
                   "deathCertifierId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "dischargeOrder": {
+                    "type": "object",
+                    "required": [
+                      "signedByUserId",
+                      "signedAt"
+                    ],
+                    "properties": {
+                      "signedByUserId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "signedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "capacity": {
+                        "anyOf": [
+                          {
+                            "const": "medical_director",
+                            "type": "string"
+                          },
+                          {
+                            "const": "physician_designee",
+                            "type": "string"
+                          },
+                          {
+                            "const": "idg_physician_member",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "orderText": {
+                        "minLength": 1,
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "orderReference": {
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/discharge-order": {
+      "get": {
+        "operationId": "getApiV1AdmissionsByIdDischargeorder",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "The admission's 42 CFR 418.26(b) discharge order and for-cause cosigner (null until discharged)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "discharge"
+                  ],
+                  "properties": {
+                    "discharge": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "dischargeEventId",
+                            "reason",
+                            "status",
+                            "dischargeDate",
+                            "orderRequired",
+                            "order",
+                            "cosigner"
+                          ],
+                          "properties": {
+                            "dischargeEventId": {
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "dischargeDate": {
+                              "type": "string"
+                            },
+                            "orderRequired": {
+                              "type": "boolean"
+                            },
+                            "order": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "signedByUserId",
+                                    "signedByName",
+                                    "capacity",
+                                    "signedAt",
+                                    "orderText",
+                                    "orderReference"
+                                  ],
+                                  "properties": {
+                                    "signedByUserId": {
+                                      "type": "string"
+                                    },
+                                    "signedByName": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "capacity": {
+                                      "anyOf": [
+                                        {
+                                          "const": "medical_director",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "physician_designee",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "idg_physician_member",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "signedAt": {
+                                      "type": "string"
+                                    },
+                                    "orderText": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "orderReference": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "cosigner": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "name",
+                                    "npi",
+                                    "cosignedAt"
+                                  ],
+                                  "properties": {
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "npi": {
+                                      "type": "string"
+                                    },
+                                    "cosignedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -21124,6 +21531,93 @@
         }
       }
     },
+    "/api/v1/admissions/{id}/physician-signers": {
+      "get": {
+        "operationId": "getApiV1AdmissionsByIdPhysiciansigners",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Physicians eligible to sign for this admission's patient under 42 CFR 418.25(a)/418.26(b), with their capacities",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "name",
+                          "capacities"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "capacities": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "medical_director",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "physician_designee",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_physician_member",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admissions/{id}/readiness": {
       "get": {
         "operationId": "getApiV1AdmissionsByIdReadiness",
@@ -21225,6 +21719,10 @@
                               {
                                 "const": "f2f",
                                 "type": "string"
+                              },
+                              {
+                                "const": "admission_recommendation",
+                                "type": "string"
                               }
                             ]
                           },
@@ -21305,6 +21803,10 @@
                               },
                               {
                                 "const": "REVIEW_F2F",
+                                "type": "string"
+                              },
+                              {
+                                "const": "RECORD_ADMISSION_RECOMMENDATION",
                                 "type": "string"
                               }
                             ]
@@ -73645,7 +74147,7 @@
         "tags": [
           "06-admission"
         ],
-        "summary": "Medical-director cosign for a for-cause discharge (§6.3 ABAC)",
+        "summary": "Physician cosign of a for-cause discharge — the 42 CFR 418.26(b) discharge order (medical director, physician designee, or the patient's IDG physician)",
         "parameters": [
           {
             "name": "id",
@@ -73686,6 +74188,32 @@
                   },
                   "cosignerNpi": {
                     "pattern": "^[0-9]{10}$",
+                    "type": "string"
+                  },
+                  "capacity": {
+                    "anyOf": [
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "physician_designee",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_physician_member",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "orderText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "orderReference": {
+                    "minLength": 1,
+                    "maxLength": 200,
                     "type": "string"
                   },
                   "ifVersion": {
