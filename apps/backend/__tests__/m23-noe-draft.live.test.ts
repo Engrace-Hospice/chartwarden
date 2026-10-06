@@ -27,7 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { repositories } from "@wardenx/billing";
+import { noeTimeliness5d, repositories } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
@@ -48,11 +48,21 @@ import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import { M22_OUTBOX_EVENTS } from "../src/modules/22-documents/index";
+import { fixedValidationSeams } from "../src/modules/23-billing-medicare/__tests__/_validation-seams-fixture";
 import {
   M23_OUTBOX_EVENTS,
   buildM23NoeDraftConsumer,
   noeWindowTargetAt,
 } from "../src/modules/23-billing-medicare/index";
+import {
+  type M23WorkerDeps,
+  type Parsed277ca,
+  type Parsed999,
+  runAckPull277ca,
+  runAckPull999,
+  runNoeSubmit,
+} from "../src/modules/23-billing-medicare/jobs/m23-jobs";
+import { buildClaimValidationContextPort } from "../src/modules/23-billing-medicare/services/claim-validation-context-port";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -90,6 +100,13 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   const locationOf: Record<string, string> = {};
   const ccnOf: Record<string, string> = {};
   const skips: { reason: string; organizationId: string; electionPeriodId: string }[] = [];
+  // The M23 worker bundle the ack-pull crons run over: the real catalog-validating publisher (bound to m23), the
+  // two external wires faked (x12 gateway, MAC transport), alerts recorded.
+  let workerDeps: M23WorkerDeps;
+  const alerts: { alertCode: string; organizationId: string; payload: Record<string, unknown> }[] =
+    [];
+  let parsed999: Parsed999[] = [];
+  let parsed277: Parsed277ca[] = [];
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -279,6 +296,30 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       eventCatalog: catalog,
       options: { log: () => {} },
     });
+
+    workerDeps = {
+      connection: {} as never,
+      db: handle.db as never,
+      outbox: bind("m23") as never,
+      alerts: { dispatch: async (a) => void alerts.push(a) },
+      x12: {
+        generate837i: async () => ({ x12: "", correlationId: "" }),
+        generateNoe: async (input) => ({ x12: "ISA*...~", correlationId: `corr-${input.noeId}` }),
+        generateNotr: async () => ({ x12: "", correlationId: "" }),
+        parse999: async () => parsed999,
+        parse277ca: async () => parsed277,
+      },
+      macPortal: {
+        upload: async (input) => ({
+          accepted: true,
+          generatedFileUri: `s3://notices/${input.controlNumber}.x12`,
+        }),
+        pullPending999: async () => [{ rawFileUri: "s3://acks/999.x12" }],
+        pullPending277ca: async () => [{ rawFileUri: "s3://acks/277.x12" }],
+        probeHealth: async () => true,
+      },
+      jurisdictions: { listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }] },
+    };
   }, 180_000);
 
   afterAll(async () => {
@@ -452,5 +493,226 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect((await read()).effective).toBeNull();
     await admin.query("UPDATE noe_record SET state='CANCELLED' WHERE id=$1", [drafted.id]);
     expect((await read()).effective).toBeNull();
+  });
+
+  // ── the MAC's answer: the 999 / 277CA crons route a NOE's acknowledgment to the NOE ────────────────────────
+
+  /** A drafted NOE, made READY and transmitted by the REAL `noe.submit` processor (as wardenx_app). */
+  async function submittedNoe(org: string): Promise<{
+    admissionId: string;
+    noeId: string;
+    submissionId: string;
+    controlNumber: string;
+  }> {
+    const admissionId = await activeAdmission(org, randomUUID());
+    await dispatcher.tick();
+    const [drafted] = await noesFor(admissionId);
+    await withOrgContext(handle.db as never, { organizationId: org, userId: "" }, async (tx) => {
+      const noes = new repositories.NoeRepository(tx as never);
+      const noe = await noes.findById(drafted.id);
+      await noes.transitionToState(drafted.id, noe?.version ?? 0, "ready");
+      await runNoeSubmit(tx as never, workerDeps, { organizationId: org, noeId: drafted.id });
+    });
+    const { rows } = await admin.query(
+      "SELECT id FROM claim_submission WHERE noe_id=$1 AND kind='noe' AND outcome='submitted'",
+      [drafted.id],
+    );
+    expect(rows).toHaveLength(1);
+    return {
+      admissionId,
+      noeId: drafted.id as string,
+      submissionId: rows[0].id as string,
+      controlNumber: drafted.noe_control_number as string,
+    };
+  }
+
+  async function noeAckState(noeId: string) {
+    const { rows } = await admin.query(
+      `SELECT state, accepted_at, rejected_at, rejection_stage, rejection_codes, payer_noe_control_number,
+              latest_acknowledgment_id
+         FROM noe_record WHERE id=$1`,
+      [noeId],
+    );
+    return rows[0];
+  }
+
+  /** The production ValidationContextPort's NOE read + the `noe_timeliness_5d` rule, as wardenx_app. */
+  async function noeRuleFor(org: string, admissionId: string) {
+    const { rows } = await admin.query(
+      `SELECT n.patient_id, n.provider_entity_id,
+              (COALESCE(a.admission_at, now()) AT TIME ZONE 'UTC')::date::text AS day
+         FROM noe_record n JOIN admission a ON a.id = n.admission_id
+        WHERE n.admission_id=$1 ORDER BY n.created_at DESC LIMIT 1`,
+      [admissionId],
+    );
+    const day = rows[0].day as string;
+    const now = new Date(`${day}T12:00:00.000Z`);
+    const port = buildClaimValidationContextPort({
+      seams: fixedValidationSeams({ admissionId, hospiceAdmissionDate: day }, now),
+      eligibilityBound: false,
+      now: () => now,
+    });
+    const { context } = await withOrgContext(
+      handle.db as never,
+      { organizationId: org, userId: USER },
+      (tx) =>
+        port.build(
+          tx as never,
+          { organizationId: org, userId: USER, membershipId: "m", actorKind: "user" } as never,
+          {
+            id: randomUUID(),
+            providerEntityId: rows[0].provider_entity_id,
+            patientId: rows[0].patient_id,
+            admissionId,
+            tob: "812",
+            serviceFrom: day,
+            serviceTo: day,
+            replacesClaimId: null,
+            totalChargeCents: 0,
+          } as never,
+        ),
+    );
+    return {
+      context,
+      result: noeTimeliness5d.check(context, noeTimeliness5d.defaultParameters ?? {}),
+    };
+  }
+
+  it("a 999-REJECTED NOE is recorded as rejected, alerts the billers, and blocks claim validation as 'no NOE'", async () => {
+    const { admissionId, noeId, submissionId, controlNumber } = await submittedNoe(ORG_A);
+    alerts.length = 0;
+    // Before the MAC answers, the in-flight NOE is the admission's NOE.
+    expect((await noeRuleFor(ORG_A, admissionId)).context.noe?.state).toBe("submitted");
+
+    parsed999 = [
+      {
+        // Tenant B naming tenant A's submission: under B's RLS context the submission does not exist → no-op.
+        organizationId: ORG_B,
+        claimId: "",
+        submissionId,
+        claimControlNumber: controlNumber,
+        accepted: true,
+        reasonCodes: [],
+        ackFileUri: `s3://acks/999/${noeId}-cross-tenant.json`,
+      },
+      {
+        organizationId: ORG_A,
+        claimId: "",
+        submissionId,
+        claimControlNumber: controlNumber,
+        accepted: false,
+        reasonCodes: ["IK5:R", "IK3:8"],
+        ackFileUri: `s3://acks/999/${noeId}.json`,
+      },
+    ];
+    await runAckPull999(workerDeps);
+
+    const noe = await noeAckState(noeId);
+    expect(noe).toMatchObject({
+      state: "ACK_REJECTED",
+      rejection_stage: "999",
+      rejection_codes: ["IK5:R", "IK3:8"],
+      accepted_at: null,
+    });
+    expect(noe.rejected_at).toBeInstanceOf(Date);
+    const { rows: acks } = await admin.query(
+      "SELECT id, organization_id, claim_id, kind, outcome_status FROM claim_acknowledgment WHERE submission_id=$1",
+      [submissionId],
+    );
+    expect(acks).toEqual([
+      {
+        id: noe.latest_acknowledgment_id,
+        organization_id: ORG_A,
+        claim_id: null,
+        kind: "ack_999",
+        outcome_status: "rejected",
+      },
+    ]);
+    const rejected = await eventRows("m23.noe.rejected", "noeId", noeId);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.payload).toMatchObject({
+      rejectionStage: "999",
+      rejectionCodes: ["IK5:R", "IK3:8"],
+    });
+    expect(alerts).toEqual([
+      expect.objectContaining({
+        alertCode: "m23.noe.rejected",
+        organizationId: ORG_A,
+        payload: expect.objectContaining({
+          noeId,
+          providerEntityId: providerOf[ORG_A],
+          admissionId,
+        }),
+      }),
+    ]);
+
+    // Re-pulling the same file changes nothing.
+    await runAckPull999(workerDeps);
+    expect(
+      (
+        await admin.query("SELECT 1 FROM claim_acknowledgment WHERE submission_id=$1", [
+          submissionId,
+        ])
+      ).rows,
+    ).toHaveLength(1);
+    expect(await eventRows("m23.noe.rejected", "noeId", noeId)).toHaveLength(1);
+    expect(alerts).toHaveLength(1);
+    expect(await noeAckState(noeId)).toEqual(noe);
+
+    // A rejected NOE never established the election: the claim validates as having no NOE (blocking).
+    const { context, result } = await noeRuleFor(ORG_A, admissionId);
+    expect(context.noe).toBeNull();
+    expect(result.passed).toBe(false);
+    expect(result.message).toBe("No Notice of Election exists for the admission.");
+  });
+
+  it("a 999- then 277CA-ACCEPTED NOE records the acceptance date and payer control number, and validates", async () => {
+    const { admissionId, noeId, submissionId, controlNumber } = await submittedNoe(ORG_A);
+    alerts.length = 0;
+    const acceptedAt = new Date("2026-10-06T15:30:00.000Z");
+    const deps = { ...workerDeps, now: () => acceptedAt };
+
+    parsed999 = [
+      {
+        organizationId: ORG_A,
+        claimId: "",
+        submissionId,
+        claimControlNumber: controlNumber,
+        accepted: true,
+        reasonCodes: [],
+        ackFileUri: `s3://acks/999/${noeId}-ok.json`,
+      },
+    ];
+    await runAckPull999(deps);
+    expect((await noeAckState(noeId)).state).toBe("ACK_PENDING");
+
+    parsed277 = [
+      {
+        organizationId: ORG_A,
+        claimId: "",
+        submissionId,
+        outcome: "accepted",
+        payerClaimControlNumber: "PAYER-778",
+        reasonCodes: [],
+        ackFileUri: `s3://acks/277/${noeId}-ok.json`,
+      },
+    ];
+    await runAckPull277ca(deps);
+
+    expect(await noeAckState(noeId)).toMatchObject({
+      state: "ACK_ACCEPTED",
+      accepted_at: acceptedAt,
+      rejected_at: null,
+      rejection_stage: null,
+      payer_noe_control_number: "PAYER-778",
+    });
+    const accepted = await eventRows("m23.noe.accepted", "noeId", noeId);
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]?.payload).toMatchObject({ acceptedAt: acceptedAt.toISOString() });
+    expect(alerts).toEqual([]);
+
+    const { context, result } = await noeRuleFor(ORG_A, admissionId);
+    expect(context.noe?.state).toBe("ack_accepted");
+    expect(result.passed).toBe(true);
   });
 });

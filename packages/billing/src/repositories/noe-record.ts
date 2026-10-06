@@ -56,6 +56,10 @@ export type NoeTransitionPatch = Partial<
     | "latestAcknowledgmentId"
     | "confirmationDocumentId"
     | "windowBreachedAt"
+    | "acceptedAt"
+    | "rejectedAt"
+    | "rejectionStage"
+    | "rejectionCodes"
   >
 >;
 

@@ -380,8 +380,14 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // effect of THIS transition on the M23 side alone — `NoeRepository.listWindowWatchCandidates`
     // filters `notInArray(N.state, NOE_TERMINAL_DB)`, so an `ACK_ACCEPTED` row self-excludes from
     // every future watchdog scan with no cross-module handshake needed.
-    description: "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED.",
-    payloadSchema: Type.Object({ noeId: id, acknowledgmentId: id, payerNoeControlNumber: str }),
+    description:
+      "The 277CA accepted the NOE; ACK_PENDING → ACK_ACCEPTED. `acceptedAt` is the acceptance date recorded on the NOE.",
+    payloadSchema: Type.Object({
+      noeId: id,
+      acknowledgmentId: id,
+      payerNoeControlNumber: str,
+      acceptedAt: isoInstant,
+    }),
     declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
@@ -389,8 +395,15 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.noe.rejected",
     moduleOwner: "m23",
-    description: "The NOE was rejected; the rejection codes are attached for remediation + alert.",
-    payloadSchema: Type.Object({ noeId: id, rejectionCodes: Type.Array(str) }),
+    description:
+      "The 999 or 277CA rejected the NOE; → ACK_REJECTED. The PHI-free reason codes are attached for remediation; the worker raises the biller alert of the same name.",
+    payloadSchema: Type.Object({
+      noeId: id,
+      acknowledgmentId: id,
+      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca")]),
+      rejectionCodes: Type.Array(str),
+      rejectedAt: isoInstant,
+    }),
     declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
@@ -468,8 +481,14 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // mechanism, table, or seam exists to close a "NOTR compliance window," M6 cannot reach M23
     // (`dependsOn` excludes 23), and the watchdog's own terminal-state exclusion already retires the
     // row on the M23 side alone.
-    description: "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED.",
-    payloadSchema: Type.Object({ notrId: id, acknowledgmentId: id, payerNotrControlNumber: str }),
+    description:
+      "The 277CA accepted the NOTR; ACK_PENDING → ACK_ACCEPTED. `acceptedAt` is the acceptance date recorded on the NOTR.",
+    payloadSchema: Type.Object({
+      notrId: id,
+      acknowledgmentId: id,
+      payerNotrControlNumber: str,
+      acceptedAt: isoInstant,
+    }),
     declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
@@ -477,8 +496,15 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.notr.rejected",
     moduleOwner: "m23",
-    description: "The NOTR was rejected; the rejection codes are attached for remediation + alert.",
-    payloadSchema: Type.Object({ notrId: id, rejectionCodes: Type.Array(str) }),
+    description:
+      "The 999 or 277CA rejected the NOTR; → ACK_REJECTED (it no longer closes the election). The PHI-free reason codes are attached; the worker raises the biller alert of the same name.",
+    payloadSchema: Type.Object({
+      notrId: id,
+      acknowledgmentId: id,
+      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca")]),
+      rejectionCodes: Type.Array(str),
+      rejectedAt: isoInstant,
+    }),
     declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,

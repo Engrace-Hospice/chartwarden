@@ -63,6 +63,12 @@ import {
   buildM23NotrDraftConsumer,
   priorElectionClosureForOrg,
 } from "../src/modules/23-billing-medicare/index";
+import {
+  type M23WorkerDeps,
+  type Parsed999,
+  runAckPull999,
+  runNotrSubmit,
+} from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import { readClaimRhcCarryOver } from "../src/modules/23-billing-medicare/services/rhc-carry-over";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
@@ -115,6 +121,10 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
   let m5Discharged: ReturnType<typeof buildM5AdmissionDischargedConsumer>;
   let providerId = "";
   const noeSkips: { reason: string; electionPeriodId: string }[] = [];
+  // The M23 ack-pull cron's bundle: the real catalog-validating publisher, the x12 / MAC wires faked.
+  let workerDeps: M23WorkerDeps;
+  const alerts: { alertCode: string; payload: Record<string, unknown> }[] = [];
+  let parsed999: Parsed999[] = [];
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -369,6 +379,29 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       eventCatalog: catalog,
       options: { log: () => {} },
     });
+    workerDeps = {
+      connection: {} as never,
+      db: handle.db as never,
+      outbox: bind("m23") as never,
+      alerts: { dispatch: async (a) => void alerts.push(a) },
+      x12: {
+        generate837i: async () => ({ x12: "", correlationId: "" }),
+        generateNoe: async () => ({ x12: "", correlationId: "" }),
+        generateNotr: async (input) => ({ x12: "ISA*...~", correlationId: `corr-${input.notrId}` }),
+        parse999: async () => parsed999,
+        parse277ca: async () => [],
+      },
+      macPortal: {
+        upload: async (input) => ({
+          accepted: true,
+          generatedFileUri: `s3://notices/${input.controlNumber}.x12`,
+        }),
+        pullPending999: async () => [{ rawFileUri: "s3://acks/999.x12" }],
+        pullPending277ca: async () => [],
+        probeHealth: async () => true,
+      },
+      jurisdictions: { listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }] },
+    };
     const m5Publisher = { publish: (tx: never, input: never) => bind("m5").publish(tx, input) };
     m5Siting = buildM5AdmissionSitingConsumer({ db: handle.db, outbox: m5Publisher as never });
     m5Discharged = buildM5AdmissionDischargedConsumer({
@@ -499,6 +532,89 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     // ── the chart is under care again ──
     await deliver(m5Siting, "m6.admission.activated", second);
     expect(await patientStatus(patientId)).toBe("active");
+  }, 120_000);
+
+  it("a NOTR the MAC REJECTS stops closing the prior election: the readmission's NOE is blocked again", async () => {
+    const patientId = randomUUID();
+    const first = await admit(patientId, {}, `${daysAgo(30)}T00:00:00.000Z`);
+    await completeAndActivate(first);
+    await deliver(m5Siting, "m6.admission.activated", first);
+    await dischargeLive(first, daysAgo(5));
+    await deliver(m5Discharged, "m6.admission.discharged", first);
+    await dispatcher.tick(); // the first NOE and the discharge NOTR
+    const second = await admit(patientId, {
+      benefitPeriod: { sequence: 2, source: "hets_confirmed", confirmedOn: today() },
+    });
+    await completeAndActivate(second);
+    await dispatcher.tick(); // the readmission's NOE
+    const noe = await one<{ id: string }>("SELECT id FROM noe_record WHERE admission_id=$1", [
+      second,
+    ]);
+    const notr = await one<{ id: string; notr_control_number: string }>(
+      "SELECT id, notr_control_number FROM notr_record WHERE admission_id=$1",
+      [first],
+    );
+
+    // File the prior stay's NOTR for real: the route queues it, the `notr.submit` processor transmits it.
+    const queued = await m23.submitNotr(WRITE_ACTOR as never, notr.id);
+    expect(queued.kind).toBe("notr");
+    await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
+      runNotrSubmit(tx as never, workerDeps, { organizationId: ORG, notrId: notr.id }),
+    );
+    const submission = await one<{ id: string }>(
+      "SELECT id FROM claim_submission WHERE notr_id=$1 AND kind='notr' AND outcome='submitted'",
+      [notr.id],
+    );
+    // The route's QUEUED attempt is the one the worker transmitted (terminalized, not left queued).
+    expect(submission?.id).toBe(queued.submissionId);
+    expect((await readmission.getReadmissionContext(ORG, first, {}))?.noeBlocked).toBe(false);
+
+    // The MAC's 999 rejects the NOTR file.
+    alerts.length = 0;
+    parsed999 = [
+      {
+        organizationId: ORG,
+        claimId: "",
+        submissionId: submission.id,
+        claimControlNumber: notr.notr_control_number,
+        accepted: false,
+        reasonCodes: ["IK5:R"],
+        ackFileUri: `s3://acks/999/${notr.id}.json`,
+      },
+    ];
+    await runAckPull999(workerDeps);
+
+    expect(
+      await one(
+        "SELECT state, rejection_stage, rejection_codes, rejected_at IS NOT NULL AS stamped FROM notr_record WHERE id=$1",
+        [notr.id],
+      ),
+    ).toEqual({
+      state: "ACK_REJECTED",
+      rejection_stage: "999",
+      rejection_codes: ["IK5:R"],
+      stamped: true,
+    });
+    expect(
+      (
+        await admin.query(
+          "SELECT 1 FROM outbox_event WHERE event_type='m23.notr.rejected' AND payload->>'notrId'=$1",
+          [notr.id],
+        )
+      ).rows,
+    ).toHaveLength(1);
+    expect(alerts.map((a) => [a.alertCode, a.payload.notrId])).toEqual([
+      ["m23.notr.rejected", notr.id],
+    ]);
+
+    // The prior election is open again: Medicare would reject the readmission's NOE.
+    const ctx = await readmission.getReadmissionContext(ORG, first, {});
+    expect(ctx?.priorElectionClosure).toMatchObject({ admissionId: first, status: "not_filed" });
+    expect(ctx?.noeBlocked).toBe(true);
+    await expect(m23.submitNoe(WRITE_ACTOR as never, noe.id)).rejects.toMatchObject({
+      code: "PRIOR_ELECTION_NOT_CLOSED",
+      statusCode: 409,
+    });
   }, 120_000);
 
   it("a period-3 readmission needs a face-to-face before activation, unless exceptional circumstances are documented", async () => {

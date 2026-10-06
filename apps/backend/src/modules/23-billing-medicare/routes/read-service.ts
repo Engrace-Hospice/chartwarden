@@ -297,7 +297,16 @@ export interface ValidationOverrideView {
 
 // ── NOE / NOTR view DTOs ──────────────────────────────────────────────────────────────────────────────
 
-export interface NoeView {
+/** The MAC's answer on a NOE / NOTR (migration 0377). Reason codes are PHI-free X12 codes. */
+export interface NoticeAckOutcomeView {
+  /** When the 277CA accepted the notice (the NOE timeliness / occurrence-span-77 acceptance date). */
+  readonly acceptedAt: string | null;
+  readonly rejectedAt: string | null;
+  readonly rejectionStage: "999" | "277ca" | null;
+  readonly rejectionCodes: readonly string[];
+}
+
+export interface NoeView extends NoticeAckOutcomeView {
   readonly noeId: string;
   readonly organizationId: string;
   readonly providerEntityId: string;
@@ -318,7 +327,7 @@ export interface NoeView {
   readonly updatedAt: string;
 }
 
-export interface NotrView {
+export interface NotrView extends NoticeAckOutcomeView {
   readonly notrId: string;
   readonly organizationId: string;
   readonly providerEntityId: string;

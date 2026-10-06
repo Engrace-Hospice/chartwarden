@@ -45,6 +45,7 @@ import {
   priorElectionClosureTx,
 } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
+import { noticeAckOutcomeView } from "./notice-ack-view";
 import type {
   ClaimDetailView,
   ClaimSummaryView,
@@ -124,6 +125,7 @@ function mapNoe(row: repositories.NoeRecord): NoeView {
     windowBreachedAt: row.windowBreachedAt ?? null,
     noeControlNumber: row.noeControlNumber,
     payerNoeControlNumber: row.payerNoeControlNumber ?? null,
+    ...noticeAckOutcomeView(row),
     latestSubmissionId: row.latestSubmissionId ?? null,
     latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
     confirmationDocumentId: row.confirmationDocumentId ?? null,
@@ -150,6 +152,7 @@ function mapNotr(row: repositories.NotrRecord): NotrView {
     state: row.state,
     notrControlNumber: row.notrControlNumber,
     payerNotrControlNumber: row.payerNotrControlNumber ?? null,
+    ...noticeAckOutcomeView(row),
     latestSubmissionId: row.latestSubmissionId ?? null,
     latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
     confirmationDocumentId: row.confirmationDocumentId ?? null,

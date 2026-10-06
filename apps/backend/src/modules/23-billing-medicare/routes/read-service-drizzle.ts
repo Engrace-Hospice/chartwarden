@@ -35,6 +35,7 @@ import { type PriorStayFact, resolveRhcCarryOver } from "../services/rhc-carry-o
 import type { M23ReadActor } from "./actor";
 import type { CursorPage } from "./concurrency";
 import { projectHospicePeriods } from "./hospice-periods";
+import { noticeAckOutcomeView } from "./notice-ack-view";
 import type {
   ClaimAcknowledgmentView,
   ClaimDetailView,
@@ -166,6 +167,7 @@ function mapNoe(row: repositories.NoeRecord): NoeView {
     windowBreachedAt: row.windowBreachedAt ?? null,
     noeControlNumber: row.noeControlNumber,
     payerNoeControlNumber: row.payerNoeControlNumber ?? null,
+    ...noticeAckOutcomeView(row),
     latestSubmissionId: row.latestSubmissionId ?? null,
     latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
     confirmationDocumentId: row.confirmationDocumentId ?? null,
@@ -192,6 +194,7 @@ function mapNotr(row: repositories.NotrRecord): NotrView {
     state: row.state,
     notrControlNumber: row.notrControlNumber,
     payerNotrControlNumber: row.payerNotrControlNumber ?? null,
+    ...noticeAckOutcomeView(row),
     latestSubmissionId: row.latestSubmissionId ?? null,
     latestAcknowledgmentId: row.latestAcknowledgmentId ?? null,
     confirmationDocumentId: row.confirmationDocumentId ?? null,

@@ -47,6 +47,13 @@ export const noeRecord = pgTable(
     noeControlNumber: text("noe_control_number").notNull(),
     payerNoeControlNumber: text("payer_noe_control_number"),
 
+    // The MAC's answer (migration 0377): the 277CA acceptance date, or the 999 / 277CA rejection with its PHI-free
+    // reason codes. The raw acknowledgment is never stored here (it stays behind `claim_acknowledgment.ack_file_uri`).
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    rejectionStage: text("rejection_stage").$type<"999" | "277ca">(),
+    rejectionCodes: text("rejection_codes").array(),
+
     // Submission / acknowledgment pointers (latest):
     latestSubmissionId: uuid("latest_submission_id"),
     latestAcknowledgmentId: uuid("latest_acknowledgment_id"),

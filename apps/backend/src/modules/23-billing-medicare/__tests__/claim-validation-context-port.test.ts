@@ -1,4 +1,4 @@
-import { BillingRuleRegistry, noeTimeliness5d, type repositories } from "@wardenx/billing";
+import { noeTimeliness5d, type repositories } from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/claim-validation-context-port.test.ts — the production
 // ValidationContextPort reads the admission's EFFECTIVE NOE. Before the fix it used
 // `NoeRepository.findActiveByAdmission`, which excludes `ack_accepted` (that read means "still in flight"), so a
@@ -8,8 +8,8 @@ import { BillingRuleRegistry, noeTimeliness5d, type repositories } from "@warden
 // in-memory NOE table that mirrors both repository reads' documented state filters; every pure derivation
 // (facts, HIPPS, the rule) stays real. The SQL itself is proven live (`test:m23:noe-draft:live`).
 import { describe, expect, it, vi } from "vitest";
-import type { ClaimAssemblySeams } from "../services/claim-assembly";
 import { buildClaimValidationContextPort } from "../services/claim-validation-context-port";
+import { fixedValidationSeams } from "./_validation-seams-fixture";
 
 interface FakeNoe {
   readonly id: string;
@@ -71,115 +71,6 @@ vi.mock("@wardenx/billing", async (importOriginal) => {
 
 const ADMISSION = "adm-1";
 
-function seams(): ClaimAssemblySeams {
-  return {
-    patientPayer: {
-      medicarePrimaryForRange: async () => ({ patientPayerId: "pp-1", medicarePrimary: true }),
-    },
-    admission: {
-      resolveForRange: async () => ({
-        admissionId: ADMISSION,
-        hospiceAdmissionDate: "2025-11-01",
-        dischargeDate: null,
-        dischargeReason: null,
-        deceasedDate: null,
-        placeOfDeath: null,
-        transferOut: null,
-      }),
-    },
-    electionPeriods: {
-      coveringRange: async () => [
-        {
-          electionPeriodId: "ep-1",
-          sequence: 1,
-          effectiveFrom: "2025-11-01",
-          effectiveTo: null,
-          revoked: false,
-          revocationDate: null,
-        },
-      ],
-    },
-    certifications: { forPatient: async () => [] },
-    faceToFace: { forPatient: async () => [] },
-    levelOfCare: {
-      periodsInRange: async () => [
-        {
-          levelOfCarePeriodId: "loc-1",
-          levelOfCare: "routine_home_care",
-          from: "2025-11-01",
-          to: "2025-11-30",
-          chcDocumentedHours: null,
-          gipAdmissionCriteriaDocumented: null,
-        },
-      ],
-    },
-    billableEncounters: { forRange: async () => [] },
-    diagnoses: {
-      forRange: async () => ({
-        sequence: [],
-        withheldForConsentCount: 0,
-        terminalWithheldForConsent: false,
-      }),
-    },
-    signedEncounters: { inWindow: async () => [] },
-    evvCompliance: { bracketsForEncounters: async () => [] },
-    mdm: {
-      resolveProviderEntity: async () => ({
-        ccn: "123456",
-        macJurisdiction: "ngs_j6",
-        cbsaCode: null,
-      }),
-      resolveClinicalParticipants: async () => ({
-        attending: null,
-        hospicePhysician: null,
-        placeOfService: "home",
-      }),
-    },
-    terminology: {
-      resolveForClaim: async () => ({ valueSetMembership: {}, icd10Billable: {} }),
-    },
-    capProjection: {
-      projectionForOrg: async () => ({
-        status: "unavailable",
-        aggregateProjectedCents: null,
-        aggregateCapCents: null,
-        pctOfCap: null,
-        ipuWithinCap: null,
-      }),
-      projectionForPatient: async () => ({
-        status: "unavailable",
-        projectedCapCents: null,
-        capLimitCents: null,
-        withinCap: null,
-      }),
-    },
-    referenceData: {
-      hippsRateTable: async () => ({
-        rhcDays1to60PerDiemCents: 20_000,
-        rhcDays61PlusPerDiemCents: 16_000,
-        chcHourlyRateCents: 6_250,
-        ircPerDiemCents: 50_000,
-        gipPerDiemCents: 100_000,
-        rhcLaborShare: "0.6600",
-        chcLaborShare: "0.6600",
-        ircLaborShare: "0.5400",
-        gipLaborShare: "0.6400",
-      }),
-      chcHourlyRateCents: async () => 6_000,
-      wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
-      activeSequestrationPolicy: async () => ({
-        sequestrationPolicyId: "seq-1",
-        percentage: "2.00",
-        effectiveFrom: "2025-01-01",
-        effectiveTo: null,
-      }),
-    },
-    ruleRegistry: new BillingRuleRegistry(),
-    outbox: { publish: async () => undefined },
-    now: () => new Date("2025-11-20T00:00:00.000Z"),
-  } as ClaimAssemblySeams;
-}
-
 const CLAIM = {
   id: "claim-1",
   providerEntityId: "pe-1",
@@ -195,7 +86,10 @@ const CLAIM = {
 async function noeRuleFor(rows: FakeNoe[]) {
   NOES.splice(0, NOES.length, ...rows);
   const port = buildClaimValidationContextPort({
-    seams: seams(),
+    seams: fixedValidationSeams(
+      { admissionId: ADMISSION, hospiceAdmissionDate: "2025-11-01" },
+      new Date("2025-11-20T00:00:00.000Z"),
+    ),
     eligibilityBound: false,
     now: () => new Date("2025-11-20T00:00:00.000Z"),
   });

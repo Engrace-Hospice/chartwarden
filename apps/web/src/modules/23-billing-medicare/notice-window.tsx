@@ -6,6 +6,7 @@ import {
   EmptyState,
   FilterBar,
   Glyph,
+  InlineAlert,
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
@@ -82,8 +83,10 @@ export const NOTR_CONFIG: NoticeWindowConfig = {
 
 // ── wire shape (openapi emits no response schema for billing; model the fields the surface reads) ───────
 interface NoticeRecord {
-  // The backend keys the id as `id`, `noeRecordId`, or `notrRecordId` depending on the route shape; accept all.
+  // The backend keys the id as `noeId` / `notrId` (older shapes: `id`, `noeRecordId`, `notrRecordId`); accept all.
   id?: string;
+  noeId?: string;
+  notrId?: string;
   noeRecordId?: string;
   notrRecordId?: string;
   state: string;
@@ -95,6 +98,13 @@ interface NoticeRecord {
   admissionDate?: string | null;
   submittedAt?: string | null;
   payerControlNumber?: string | null;
+  payerNoeControlNumber?: string | null;
+  payerNotrControlNumber?: string | null;
+  // The MAC's answer: the 277CA acceptance date, or the 999 / 277CA rejection with its PHI-free reason codes.
+  acceptedAt?: string | null;
+  rejectedAt?: string | null;
+  rejectionStage?: "999" | "277ca" | null;
+  rejectionCodes?: string[];
   totalChargeCents?: number | null;
   version: number;
 }
@@ -115,7 +125,11 @@ const TERMINAL_STATES = new Set([
 ]);
 
 function recordId(rec: NoticeRecord): string {
-  return rec.id ?? rec.noeRecordId ?? rec.notrRecordId ?? "";
+  return rec.id ?? rec.noeId ?? rec.notrId ?? rec.noeRecordId ?? rec.notrRecordId ?? "";
+}
+
+function payerControlNumberOf(rec: NoticeRecord): string | null {
+  return rec.payerControlNumber ?? rec.payerNoeControlNumber ?? rec.payerNotrControlNumber ?? null;
 }
 
 // Days remaining until the filing window closes (negative = breached). A row already flagged
@@ -513,6 +527,7 @@ function NoticePreview({
           <StatusPill label={statusLabel(record.state)} tone={noeNotrStateTone(record.state)} />
         }
       />
+      <NoticeAckOutcome record={record} config={config} />
       {record.windowTargetAt && isActive(record) ? (
         <Field
           label="Filing window"
@@ -637,6 +652,7 @@ export function NoticeWindowDetail({
             <StatusPill label={statusLabel(record.state)} tone={noeNotrStateTone(record.state)} />
           }
         />
+        <NoticeAckOutcome record={record} config={config} />
         {record.patientId ? <Field label="Patient" value={record.patientId} mono /> : null}
         {record.providerEntityId ? (
           <Field label="Provider entity" value={record.providerEntityId} mono />
@@ -651,8 +667,8 @@ export function NoticeWindowDetail({
           <Field label="Window target" value={record.windowTargetAt} />
         ) : null}
         {record.submittedAt ? <Field label="Submitted at" value={record.submittedAt} /> : null}
-        {record.payerControlNumber ? (
-          <Field label="Payer control #" value={record.payerControlNumber} mono />
+        {payerControlNumberOf(record) ? (
+          <Field label="Payer control #" value={payerControlNumberOf(record)} mono />
         ) : null}
         {typeof record.totalChargeCents === "number" ? (
           <Field label="Total charge" value={dollars(record.totalChargeCents)} />
@@ -787,6 +803,48 @@ function NoticeActions({
 }
 
 // ── small shared building blocks ──────────────────────────────────────────────────────────────────────
+// The MAC's answer: when the 277CA accepted the notice, or when and at which stage it was rejected and why.
+const REJECTION_STAGE_LABEL: Record<"999" | "277ca", string> = {
+  "999": "999 (file syntax)",
+  "277ca": "277CA (claim content)",
+};
+
+function NoticeAckOutcome({
+  record,
+  config,
+}: {
+  record: NoticeRecord;
+  config: NoticeWindowConfig;
+}): JSX.Element | null {
+  if (record.rejectedAt) {
+    const codes = record.rejectionCodes ?? [];
+    return (
+      <>
+        <InlineAlert tone="error">
+          {`Medicare rejected this ${config.acronym}: it was not filed. Correct it and file a new ${config.acronym}.`}
+        </InlineAlert>
+        <Field
+          label="Rejected"
+          value={`${new Date(record.rejectedAt).toLocaleString()}${
+            record.rejectionStage ? ` · ${REJECTION_STAGE_LABEL[record.rejectionStage]}` : ""
+          }`}
+        />
+        <Field
+          label="Reason codes"
+          value={codes.length > 0 ? codes.join(", ") : "None reported"}
+          mono={codes.length > 0}
+        />
+      </>
+    );
+  }
+  if (record.acceptedAt) {
+    return (
+      <Field label="Accepted by Medicare" value={new Date(record.acceptedAt).toLocaleString()} />
+    );
+  }
+  return null;
+}
+
 function Field({
   label,
   value,
