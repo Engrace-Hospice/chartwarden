@@ -237,6 +237,7 @@
     "test:m31:lazy-room-mint:live": "vitest run apps/backend/__tests__/m31-lazy-telehealth-room-mint.live.test.ts",
     "test:f144:render-requests:live": "vitest run apps/backend/__tests__/f144-m13-m23-m24-m25-render-requests.live.test.ts",
     "test:m23:noe-draft:live": "vitest run apps/backend/__tests__/m23-noe-draft.live.test.ts",
+    "test:m23:hets-eligibility:live": "vitest run apps/backend/__tests__/m23-hets-eligibility.live.test.ts",
     "test:m23:notr-draft:live": "vitest run apps/backend/__tests__/m23-notr-draft.live.test.ts",
     "test:m33:schedule-cron:live": "vitest run apps/backend/__tests__/gap-050-m33-schedule-cron.live.test.ts",
     "test:m33:export-render:live": "vitest run apps/backend/__tests__/gap-051-m33-export-render.live.test.ts",
